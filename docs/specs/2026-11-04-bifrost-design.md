@@ -1,0 +1,702 @@
+# Bifrost - design
+
+"Bifrost for Claude Code". Design document.
+
+| Item | Value |
+|---|---|
+| Status | Approved on 2026-11-04 |
+| Date | 2026-11-04 |
+| Owner | Bifrost |
+| Repository | `~/Developer/bifrost` (local only) |
+
+## 1. Purpose
+
+Bifrost is a macOS desktop app. It shows all local Claude Code sessions in one window, and it lets you control them.
+
+The user interface uses ideas from the EVE Online client:
+
+- An Overview list of sessions.
+- A Selected Item panel with action buttons.
+- A right-click menu with submenus.
+- Panels that you can move, resize, snap and stack.
+
+Each chat window shows the real Claude Code terminal UI. You move and resize the chat windows to show your priorities.
+
+Bifrost uses the mechanics of the EVE interface. It does not copy EVE art, icons, sounds or logos.
+
+### 1.1 Not in v1
+
+- Windows and Linux.
+- Shell commands from Bifrost. Use the `!` prefix in a chat window.
+- The Mac App Store and TestFlight.
+- Cloud sessions and Remote Control sessions.
+- Automatic updates. These come with the S3 update feed.
+- A public release.
+- Signing, notarization and distribution to colleagues. These come later.
+
+## 2. Terms
+
+| Term | Meaning |
+|---|---|
+| Session | One Claude Code conversation. |
+| Owned session | A session that the Claude Code supervisor runs in the background. Bifrost can attach to it and type into it. |
+| External session | An interactive session that a terminal app owns, for example Warp. Bifrost shows its status only. |
+| Parked session | A session that has a saved conversation but no process. |
+| Supervisor | The Claude Code background service that runs owned sessions. |
+| Panel | An internal window inside the Bifrost window. |
+| Box | An attention mark on an Overview row. A box is yellow or red. |
+| Event directory | The directory where the hook script writes one file for each hook event. |
+| Status file | The file where the statusline wrapper writes the latest statusLine JSON of a session. |
+
+## 3. Summary of decisions
+
+| Topic | Decision |
+|---|---|
+| Platform | Electron, React, TypeScript, xterm.js and node-pty. |
+| Operating system | macOS only in v1. A "Mod" key layer keeps a Windows port possible. |
+| Window model | One app window. Internal panels float inside it. |
+| Session hosting | Bifrost starts sessions with `claude --bg`. Each chat window runs `claude attach <id>`. |
+| External sessions | Status only. The "Take control" action moves them to the supervisor. |
+| Data | Global hooks, a statusline wrapper and `claude agents --json`. |
+| Labels | Plain labels and space labels. A setting selects the set. |
+| Alerts | Yellow and red boxes flash. A macOS notification and a sound are optional. |
+| Scale | 20 sessions and 8 visible chat windows. |
+| Name | Bifrost. Subtitle: "for Claude Code". |
+| Release | Local builds on your Mac for now. Signing, notarization and distribution come later (section 14.2). |
+| Repository | Local and private. `"license": "UNLICENSED"`. |
+
+## 4. Facts about Claude Code
+
+These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
+
+- `claude agents --json` prints all active sessions, interactive and background.
+- Each entry has `pid`, `cwd`, `kind`, `startedAt`, `sessionId`, `name` and `status`.
+- `claude --bg` starts a background session and prints its short ID.
+- `claude attach <id|name>` opens a background session in a terminal. The session continues after you detach.
+- `claude stop`, `claude rm`, `claude logs` and `claude respawn` control background sessions.
+- `claude --bg --resume <session-id>` continues a session in the background with the same ID.
+- If that session still runs, `claude --bg --resume` starts a copy.
+- `/bg`, or ← on an empty prompt, moves an interactive session to the supervisor.
+- The supervisor stops an idle, unattached session after about 1 hour. It keeps the conversation.
+- A restart of the computer stops all background sessions.
+- Hooks in `~/.claude/settings.json` apply to all local sessions.
+- The statusLine command gets the session JSON on stdin. The JSON includes the model, the cost, the context window and the rate limits.
+- No documented API lets a program type into an interactive session that a terminal owns.
+- The transcript JSONL format is internal. Bifrost does not read transcripts.
+
+## 5. Architecture
+
+```text
++------------------------- Bifrost (Electron) --------------------------+
+| Renderer (React)                                                       |
+|   Window manager, Overview, Selected Item, Chat windows (xterm.js),    |
+|   Show Info, Event log, Usage HUD, dialogs                             |
+|                          ^ typed IPC (preload)                         |
+| Main process (Node)                                                    |
+|   Session registry <-- poll:  claude agents --json                     |
+|                    <-- watch: ~/.bifrost/events/                       |
+|                    <-- watch: ~/.bifrost/sessions/*/status.json        |
+|   PTY manager      --> node-pty: claude attach <id>                    |
+|   Action runner    --> claude --bg / stop / rm, signals, open -a       |
+|   Integration      --> ~/.claude/settings.json (install, uninstall)    |
++------------------------------------------------------------------------+
+         ^ hook events                         ^ statusLine JSON
+  ~/.bifrost/bin/bifrost-hook        ~/.bifrost/bin/bifrost-statusline
+         ^                                     ^
+         +--------- Claude Code sessions ------+
+```
+
+### 5.1 Main process
+
+| Part | Function |
+|---|---|
+| Session registry | Merges all data sources into one list of sessions. Runs the state machine. |
+| PTY manager | Starts one `claude attach <id>` process for each open chat window. Also starts the hidden attach for the send box. |
+| Action runner | Runs Claude Code commands, sends signals and opens other apps. |
+| Integration | Installs, repairs and removes the hooks and the statusline wrapper. |
+| Store | Keeps the settings, layouts, priorities and panel positions on disk. |
+
+### 5.2 Renderer
+
+The renderer is one React app. Zustand keeps the state. The main process sends updates of the registry to the renderer. It sends a maximum of 4 updates each second.
+
+Context isolation is on. The preload script supplies a typed API. The renderer has no direct access to Node.
+
+### 5.3 Files and directories
+
+| Path | Content |
+|---|---|
+| `~/.bifrost/bin/bifrost-hook` | The hook script. |
+| `~/.bifrost/bin/bifrost-statusline` | The statusline wrapper. |
+| `~/.bifrost/events/` | The event directory. Bifrost deletes each file after it reads it. |
+| `~/.bifrost/sessions/<session-id>/status.json` | The status file of the session. |
+| `~/.bifrost/statusline-original.json` | Your statusLine setting from before the install. |
+| `~/.bifrost/backups/` | Copies of `settings.json` from before each change. |
+| `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities and panel positions. |
+
+The scripts use `~/.bifrost/` because that path has no spaces. So the commands in `settings.json` stay simple.
+
+## 6. Data sources
+
+### 6.1 Session list
+
+Bifrost runs `claude agents --json` every 2 seconds. This gives the active sessions and their idle or busy status.
+
+Bifrost runs `claude agents --json --all` every 30 seconds. This gives the finished background sessions.
+
+The `kind` field shows the type of the session: owned or external. Bifrost also keeps a list of the sessions that it started. If one of these sessions is not active, Bifrost shows it as parked.
+
+### 6.2 Hook events
+
+The installer adds one hook entry for each row below. All entries run the same script, `~/.bifrost/bin/bifrost-hook`.
+
+| Event | Matcher | Result |
+|---|---|---|
+| `SessionStart` | All | Adds the session. Clears the parked state. |
+| `SessionEnd` | All | Marks the end of the session. |
+| `UserPromptSubmit` | All | Sets the state to Working. Clears the box. |
+| `PreToolUse` | `AskUserQuestion` | Sets a red box. Claude asks you a question. |
+| `PermissionRequest` | All | Sets a red box. |
+| `PostToolUse` | All | Sets the state to Working. Clears a red box after you answer a prompt. |
+| `Notification` | `permission_prompt` | Sets a red box. |
+| `Notification` | `idle_prompt` | Keeps the yellow box. |
+| `Stop` | All | Sets a yellow box. Keeps `last_assistant_message` for the preview. |
+| `StopFailure` | All | Sets a red box and the state Error. |
+
+Rules for the hook script:
+
+- The script is POSIX `sh`. It does not need `jq`, Node or Python.
+- The script writes its stdin to a new file in the event directory.
+- The file name starts with the time.
+- The script writes to a temporary name first.
+- The script then moves the file to its final name. Bifrost never reads a partial file.
+- The script never writes to stdout. Claude Code adds hook stdout to the context for some events.
+- The script always exits with code 0.
+- The script must finish in less than 50 ms.
+
+M1 measures the cost of the `PostToolUse` hook. If the cost is too high, Bifrost uses the busy status from `claude agents --json`.
+
+### 6.3 Statusline wrapper
+
+Claude Code sends the live session data only to the statusLine command. The wrapper copies this data for Bifrost.
+
+The wrapper does these steps:
+
+1. Read all of stdin.
+2. Find the `session_id` with a strict UUID pattern.
+3. Write the JSON to a temporary file.
+4. Move the temporary file to the status file.
+5. Run your original statusLine command with the same stdin.
+6. Send the output of your command to stdout without changes.
+
+If you had no statusLine command, the wrapper writes nothing to stdout. The installer keeps your `refreshInterval` and `padding` values.
+
+The status file supplies these values: model, context %, cost, session name and rate limits.
+
+### 6.4 Git branch
+
+Bifrost runs `git -C <cwd> rev-parse --abbrev-ref HEAD` every 10 seconds for each project directory. If the directory is not a git repository, the column is empty.
+
+## 7. Session states
+
+| State | Box | Cause |
+|---|---|---|
+| Working | None | `status` is busy, or a `UserPromptSubmit` or `PostToolUse` event. |
+| Needs you | Yellow | A `Stop` event. Claude finished its turn. |
+| Needs you | Red | A permission prompt, an `AskUserQuestion` call, or an old yellow box (rule 4). |
+| Error | Red | A `StopFailure` event. |
+| Idle | None | The session waits, and no event set a box. An example is a new session before the first prompt. |
+| Parked | None | The session has no process. The row is grey. |
+
+Box rules:
+
+1. A new box flashes.
+2. The flash stops when you select the row or focus the chat window. The box stays.
+3. The box clears when the session starts to work again.
+4. A yellow box changes to red after 10 minutes. The timer starts with the yellow box.
+5. The "Escalation time" setting changes the time. The value 0 stops the escalation.
+6. Bifrost does not move a row because of a box. Only the sort column of the tab sets the row order.
+7. External sessions also get boxes, because the hooks are global.
+8. Parked sessions never get a box.
+
+## 8. User interface
+
+### 8.1 Window model
+
+Bifrost has one app window. All panels float inside it.
+
+Panel functions:
+
+- Drag the title bar to move the panel.
+- Drag an edge or a corner to resize the panel.
+- The panel snaps to the window edges and to other panels at 8 pixels or less.
+- Drop a panel on the title bar of a different panel to stack the two as tabs.
+- Drag a tab out of a stack to make a separate panel.
+- Minimise a panel to the side bar.
+- Lock a panel to prevent moves and resizes.
+- Set the opacity of a panel from 30% to 100%.
+
+Position memory:
+
+- Each panel has a fixed identity, for example `overview:1`, `selected-item` or `chat:<session-id>`.
+- When you close a panel, Bifrost keeps its position and size.
+- When you open the panel again, Bifrost puts it in the same position.
+- A panel without a saved position opens in the centre of the window.
+- If a saved position is outside the window, Bifrost moves the panel into the window.
+
+Layouts:
+
+- You can save the full layout with a name.
+- A layout includes the open panels, the stacks and the open chat windows.
+- At start, Bifrost restores the last layout.
+
+The side bar is a thin bar on the left edge. It has one button for each panel type. It also holds the minimised panels.
+
+Bifrost uses its own window manager, because the snap and stack rules are specific. M2 can change this decision if a library meets all the rules.
+
+### 8.2 Panels
+
+| Panel | Content |
+|---|---|
+| Overview | The session list. You can open more than one Overview. Each one has its own tabs and sort. |
+| Selected Item | The selected session, its action buttons and the send box. |
+| Chat window | The Claude Code terminal UI of one session. |
+| Show Info | All details of one session. |
+| Event log | All hook events, with their times. |
+| Usage HUD | The 5-hour and 7-day rate limits. |
+
+### 8.3 Overview
+
+Columns:
+
+| Column | Source |
+|---|---|
+| Kind icon | `kind`. External rows show the icon of their terminal app. |
+| Name | `name`, or `session_name` from the status file. |
+| Priority | Bifrost. Values 1 to 5, or none. Each value has a colour. |
+| State | The state machine (section 7). |
+| Project | `cwd`. The column shows the last two parts of the path. |
+| Branch | Git (section 6.4). |
+| Model | `model.display_name` from the status file. |
+| Context % | `context_window.used_percentage` from the status file. |
+| Cost | `cost.total_cost_usd` from the status file. |
+| Last activity | The time of the latest event from any source. |
+
+Default tabs:
+
+| Tab | Rows |
+|---|---|
+| All | All sessions except parked sessions. |
+| Needs you | Rows with a yellow or red box. |
+| Working | Rows with the state Working. |
+| Idle | Rows with the state Idle. |
+| Parked | Parked sessions. |
+
+Tab rules:
+
+- You can add, remove, rename and move tabs.
+- Each tab has its own filter, columns and sort column.
+- Click a column header to sort by that column. Click it again to reverse the sort.
+
+Mouse:
+
+| Input | Result |
+|---|---|
+| Left-click | Selects the session. |
+| Double-click | Opens the chat window. |
+| Right-click | Opens the right-click menu. |
+| Hold a key and left-click | Does the action of that key on the row (section 9.4). |
+
+### 8.4 Selected Item
+
+The panel shows these items, from top to bottom:
+
+1. The name, the state and the priority.
+2. A row of icon buttons: Open, Send message, Run slash command, Interrupt, Show Info, Open in terminal and Stop session.
+3. The project, the branch and the model.
+4. A context bar and the cost.
+5. The first 3 lines of the last Claude reply. The `Stop` hook supplies this text.
+6. The send box.
+
+Send box rules:
+
+- Enter sends the text. Shift+Enter adds a new line.
+- Text that starts with `/` runs as a slash command.
+- If the chat window is open, Bifrost types into that window.
+- If the chat window is not open, Bifrost types through a hidden attach.
+- If the session has a red box, Bifrost blocks the send. Typed text can answer a prompt by accident.
+- The block message is "Answer the prompt in the chat window first."
+- The send box is not available for external sessions or parked sessions.
+
+### 8.5 Chat window
+
+- The chat window runs `claude attach <id>` in node-pty and shows it in xterm.js.
+- The title bar shows the name, the state colour and the priority.
+- When you close the chat window, Bifrost ends the attach process. The session continues.
+- Visible chat windows use the WebGL renderer.
+- A chat window in a back tab, or a minimised chat window, releases its WebGL context.
+
+### 8.6 Show Info
+
+Show Info shows these values for one session:
+
+- Name, session ID, short ID, kind and PID.
+- Project directory and transcript path.
+- Branch, PR and worktree.
+- Model, effort and permission mode.
+- Start time and duration.
+- Cost, context window size and context use.
+- Rate limits and the Claude Code version.
+
+You can open one Show Info panel for each session.
+
+### 8.7 Event log
+
+The Event log shows all hook events with the time, the session and the event name. You can filter it by session. It keeps the last 5,000 events in memory. It does not keep events on disk.
+
+### 8.8 Usage HUD
+
+The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. The data comes from the newest status file.
+
+### 8.9 New session dialog
+
+| Field | Default |
+|---|---|
+| Directory | The last directory. A list shows recent project directories. A Browse button is also available. |
+| Name | The directory name and a short suffix. |
+| Model | The last model. |
+| Permission mode | The last mode. |
+| First prompt | Empty. This field is optional. |
+| Worktree | Off. This field is optional. |
+
+Dialog rules:
+
+- Enter accepts the current values.
+- Bifrost runs `claude --bg` in the directory, with the flags from the dialog.
+- After the start, Bifrost opens the chat window of the new session.
+
+### 8.10 Theme
+
+- The theme is dark. The panels are translucent, with a background blur.
+- Bifrost uses its own colours, icons and fonts. It does not copy EVE assets.
+- One file holds all colour tokens.
+- Yellow, red and grey have fixed meanings: yellow box, red box and parked session.
+- The terminal font is a setting.
+
+## 9. Actions and keys
+
+### 9.1 Actions
+
+| Plain label | Space label | Available for | Method |
+|---|---|---|---|
+| New session | Launch | - | `claude --bg` (section 8.9). |
+| Open | Warp to | Owned | Focus or open the chat window. |
+| Send message | Hail | Owned | Type the text into the session. |
+| Run slash command | Activate module | Owned | Type `/<command>` into the session. |
+| Interrupt | Full stop | Owned | Send Esc to the session. |
+| Rename | Set callsign | Owned | Type `/rename <name>` into the session. |
+| Set priority | Set threat level | All | Bifrost data only. |
+| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. |
+| Resume all | Reactivate all | Parked | Resume each parked session that was active when Bifrost last ran. |
+| Show Info | Scan | All | Open the Show Info panel. |
+| Copy session ID | Copy transponder ID | All | Copy to the clipboard. |
+| Open project | Open cargo hold | All | `open -a <app> <cwd>`. |
+| Open in terminal | Jump to terminal | Owned, external | Owned: run `claude attach <id>` in the terminal app. External: bring the terminal app to the front. |
+| Take control | Commandeer | External | Section 9.2. |
+| Close window | Disengage | Owned, with an open chat window | End the attach process. |
+| Stop session | Power down | Owned | `claude stop <id>`. Bifrost asks for confirmation if the session is busy. |
+| Delete session | Self-destruct | Owned, parked | `claude rm <id>`. Bifrost always asks for confirmation. |
+
+The "Labels" setting selects plain labels or space labels. The setting applies to menus, buttons, tooltips and dialogs.
+
+Bifrost disables an action that is not available. The action shows darker and faded in menus and on buttons, as in EVE. Clicks and keys have no effect on it. A tooltip gives the reason.
+
+### 9.2 Take control
+
+Rules:
+
+- The action is available only for an external session that is idle or has a yellow box.
+- Bifrost blocks the action when the session is busy. The action would stop the work.
+- Bifrost blocks the action when the session has a red box. The end of the process would cancel the open prompt.
+
+Bifrost does these steps:
+
+1. Find the terminal app from the parent processes of the session.
+2. Show the confirmation: "This ends the {terminal} process and hands control to Bifrost."
+3. Send the stop signal to the session process. M0 selects the signal.
+4. Wait for the process to end, for a maximum of 5 seconds.
+5. Run `claude --bg --resume <session-id>` in the session directory.
+6. Open the chat window of the session.
+
+If the process does not end in 5 seconds, Bifrost stops and shows an error. It does not start a copy of the session.
+
+### 9.3 Key rules
+
+- A shortcut that includes Cmd works at all times, also when a chat window has focus.
+- A shortcut with Ctrl but without Cmd goes to Bifrost only when focus is not in a chat window.
+- A single-key shortcut acts on the selected session.
+- A single-key shortcut works only when focus is not in a chat window or a text box.
+- Hold-key-and-click actions use letter keys and number keys.
+- Hold-key-and-click actions do not use Ctrl, because macOS changes Ctrl+click into a right-click.
+- You can change all keys in Settings > Keys.
+- Bifrost does not use the shortcuts that macOS keeps (section 9.7).
+
+The key map stores "Mod" in place of "Cmd". On macOS, Mod is Cmd. A Windows port can make Mod equal to Ctrl+Shift.
+
+### 9.4 Default key map
+
+Shortcuts that work at all times:
+
+| Keys | Action |
+|---|---|
+| Cmd+N | New session |
+| Cmd+1 to Cmd+9 | Select row 1 to 9 in the focused Overview |
+| Cmd+Up, Cmd+Down | Select the previous row, the next row |
+| Cmd+0 | Move focus to the Overview |
+| Cmd+Enter | Open |
+| Cmd+Shift+M | Send message (focus the send box) |
+| Cmd+/ | Run slash command |
+| Cmd+. | Interrupt |
+| Cmd+I | Show Info |
+| Cmd+Shift+C | Copy session ID |
+| Cmd+Shift+O | Open project in the default app |
+| Cmd+Shift+J | Open in terminal |
+| Cmd+Shift+T | Take control |
+| Cmd+R | Resume |
+| Cmd+Shift+R | Resume all |
+| Cmd+Ctrl+1 to Cmd+Ctrl+5 | Set priority 1 to 5 |
+| Cmd+Ctrl+0 | Clear the priority |
+| Cmd+W | Close the focused panel |
+| Cmd+Shift+Backspace | Stop session |
+| Cmd+Option+Shift+Backspace | Delete session |
+| Cmd+[, Cmd+] | Previous tab, next tab in the focused stack |
+| Cmd+Option+1 to Cmd+Option+9 | Load layout 1 to 9 |
+| Cmd+Option+S | Save the layout |
+| Cmd+L | Event log |
+| Cmd+U | Usage HUD |
+| Cmd+, | Settings |
+
+Single keys. These work only when focus is not in a chat window or a text box:
+
+| Key | Action |
+|---|---|
+| Up, Down | Select the previous row, the next row |
+| Tab, Shift+Tab | Next Overview tab, previous Overview tab |
+| O or Enter | Open |
+| M | Send message |
+| / | Run slash command |
+| X | Interrupt |
+| I | Show Info |
+| J | Open in terminal |
+| P | Open project |
+| C | Copy session ID |
+| R | Rename |
+| T | Take control |
+| 1 to 5 | Set priority |
+| 0 | Clear the priority |
+| Backspace | Stop session |
+| Shift+Backspace | Delete session |
+| Esc | Clear the selection, or leave the send box |
+
+Hold a key and left-click a row:
+
+| Hold | Action on the row |
+|---|---|
+| O | Open |
+| M | Send message |
+| I | Show Info |
+| J | Open in terminal |
+| X | Interrupt |
+| 1 to 5 | Set priority |
+
+### 9.5 Right-click menu
+
+The menu shows plain labels below. With space labels, the menu uses the space label from section 9.1.
+
+```text
+Open
+Send message...
+Run slash command    >   favourites, recent commands, Other...
+Interrupt
+-----------------------
+Set priority         >   1, 2, 3, 4, 5, None
+Rename...
+Show Info
+Copy session ID
+Open project         >   Finder, VS Code, Zed, <terminal app>
+Open in terminal
+-----------------------
+Take control             (external sessions only)
+Resume                   (parked sessions only)
+Close window             (when the chat window is open)
+Stop session...
+Delete session...
+```
+
+The "Open project" submenu shows only the apps on your Mac.
+
+### 9.6 Slash command favourites
+
+Settings > Slash commands holds your favourite commands. The default list is `/compact`, `/clear` and `/context`. The submenu shows the favourites first, then the 5 most recent commands.
+
+### 9.7 Shortcuts that macOS keeps
+
+Bifrost does not bind these shortcuts:
+
+- Cmd+Tab, Cmd+Space, Cmd+H, Cmd+M and Cmd+Q.
+- Cmd+Option+Esc.
+- Cmd+Shift+3, Cmd+Shift+4 and Cmd+Shift+5.
+- Cmd+Shift+Q and Cmd+Shift+/.
+- Cmd+Ctrl+Q and Cmd+Ctrl+F.
+- Ctrl+Space.
+
+## 10. Alerts
+
+| Alert | Default | Cause |
+|---|---|---|
+| Row flash | On | A new yellow box or red box. |
+| macOS notification | On | A new box when Bifrost is not in focus. |
+| Sound | On | A new red box. |
+
+Click a notification to select the session and open its chat window.
+
+## 11. First-run setup and integration
+
+### 11.1 Setup dialog
+
+At the first start, Bifrost shows the setup dialog. The dialog shows each change before Bifrost makes it:
+
+1. The hook entries that Bifrost adds to `~/.claude/settings.json`.
+2. The new statusLine command, and your current statusLine command that the wrapper runs.
+3. The backup path.
+
+You select "Install" or "Skip".
+
+### 11.2 Install
+
+Bifrost does these steps:
+
+1. Read `~/.claude/settings.json`. If the file is not valid JSON, stop and show an error.
+2. Copy the file to `~/.bifrost/backups/settings-<time>.json`.
+3. Add the hook entries. Keep all your current hooks.
+4. Save your statusLine setting to `~/.bifrost/statusline-original.json`.
+5. Set the statusLine command to the wrapper. Keep `refreshInterval` and `padding`.
+6. Write the new file to a temporary name.
+7. Move the temporary file to `~/.claude/settings.json`.
+
+### 11.3 Uninstall
+
+Bifrost does these steps:
+
+1. Make a new backup.
+2. Remove each hook entry that runs `~/.bifrost/bin/bifrost-hook`.
+3. Restore your statusLine setting from `~/.bifrost/statusline-original.json`.
+
+### 11.4 Skip
+
+If you select "Skip", Bifrost shows only the data from `claude agents --json`. This data is the name, the project and the idle or busy status. Bifrost then shows no boxes, cost or context %. Settings > Integration can run the install later.
+
+### 11.5 Checks at start
+
+- Bifrost checks the integration at each start. If Bifrost cannot find an entry, Settings shows a warning and a Repair button.
+- Bifrost reads `claude --version` at each start. Below the minimum version, Bifrost shows a warning. M0 sets the minimum version.
+
+## 12. Settings
+
+| Setting | Default |
+|---|---|
+| Labels | Plain |
+| Terminal app | The first installed app from this list: Warp, Ghostty, iTerm2, Terminal. |
+| Default app for "Open project" | VS Code if installed, or else Finder. |
+| Escalation time | 10 minutes. The value 0 stops the escalation. |
+| Row flash | On |
+| macOS notification | On |
+| Sound for a red box | On |
+| Start at login | Off |
+| Poll interval | 2 seconds |
+| Snap distance | 8 pixels |
+| Slash commands | `/compact`, `/clear`, `/context` |
+| Terminal font | SF Mono, 13 pt |
+| Keys | Section 9.4 |
+| Integration | Install, Repair, Uninstall |
+
+## 13. Performance targets
+
+- 20 sessions in the registry.
+- 8 visible chat windows at the same time, with smooth output.
+- A maximum of 12 WebGL contexts.
+- A maximum of 4 registry updates to the renderer each second.
+- Less than 800 MB of memory with 8 open chat windows.
+- One `claude agents --json` process at a time. A new poll starts only after the last poll ends.
+
+## 14. Build and release
+
+### 14.1 Now
+
+- The tools are pnpm, electron-vite, TypeScript, React, Zustand, `@xterm/xterm`, `node-pty` and electron-builder.
+- `pnpm dev` starts Bifrost from the repository.
+- `pnpm dist` makes a universal DMG for Apple Silicon and Intel.
+- The build uses an ad-hoc signature, because Apple Silicon does not run code without a signature.
+- `package.json` has `"private": true` and `"license": "UNLICENSED"`.
+- The repository has no remote.
+- Bifrost stays on your Mac for now.
+
+### 14.2 Later
+
+- The Account Holder of the company Apple Developer team creates a "Developer ID Application" certificate.
+- An Admin with the cloud-managed Developer ID access role can also sign.
+- electron-builder signs the app with this certificate and the hardened runtime.
+- electron-builder also signs the native files of `node-pty`, which include `spawn-helper`.
+- `notarytool` sends the DMG to Apple for notarization.
+- The App Store Connect API key comes from environment variables. It is never in the repository.
+- You give the DMG to colleagues by hand.
+- A later version adds an S3 update feed and `electron-updater`.
+
+## 15. Tests
+
+| Level | Tool | Scope |
+|---|---|---|
+| Unit | Vitest | The state machine, the registry merge, install and uninstall, and key map conflicts. |
+| Script | Vitest and `sh` | The hook script and the wrapper, with sample JSON. |
+| Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. |
+| Manual | Checklist | The M0 questions, Take control and the DMG. |
+
+## 16. Milestones
+
+| Milestone | Content | Exit criteria |
+|---|---|---|
+| M0 - Test | The questions in section 17. | All answers are known. If an answer blocks the design, stop and ask the user. |
+| M1 - Data | Hook script, wrapper, install, uninstall, registry, state machine. | The unit tests pass. A debug view shows real sessions with boxes. |
+| M2 - Window manager | Panels, drag, resize, snap, stacks, position memory, layouts. | All panel functions in section 8.1 work. |
+| M3 - Core panels | Overview, Selected Item, right-click menu, chat windows. | You can select, open and use sessions. |
+| M4 - Actions | Send box, slash commands, stop, delete, new session, Take control, parked sessions, Resume all. | All actions in section 9.1 work. |
+| M5 - Finish | Keys, label toggle, alerts, Show Info, Event log, Usage HUD, theme, DMG. | You install the DMG on your Mac and use Bifrost. |
+
+## 17. Questions for M0
+
+1. Does `claude attach` show correctly in xterm.js through node-pty? Check the colours, the mouse and the resize.
+2. Does the statusline show in an attached session?
+3. Can two clients attach to one session at the same time? What occurs to the first client?
+4. What is the clean method to detach? Is it the end of the attach process, or the ← key?
+5. Can a hidden attach type text and Enter correctly? Check bracketed paste for text with more than one line.
+6. Which signal ends an interactive session cleanly and keeps the conversation?
+7. After that signal, does `claude --bg --resume` keep the same session ID?
+8. Which values do `kind` and `status` have in `claude agents --json`?
+9. How does `claude agents --json` show a session that the supervisor stopped after 1 hour?
+10. Which flags does `claude --bg` accept? Check `--name`, `--model`, `--permission-mode`, a first prompt and a worktree.
+11. Does `/rename` exist in Claude Code 2.1.318?
+12. Which Claude Code version is the minimum?
+
+## 18. Decisions from the review
+
+The user confirmed these points in the review on 2026-11-04:
+
+1. The escalation timer starts with the yellow box. Your selection stops only the flash, not the timer.
+2. The Take control confirmation names Bifrost (section 9.2).
+3. The space label for "Take control" is "Commandeer".
+4. Bifrost disables an action that is not available. The action shows darker and faded, as in EVE (section 9.1).
+5. The "All" tab does not show parked sessions.
+6. After a new session starts, its chat window opens.
+7. Interrupt uses the single key X and the shortcut Cmd+.
+8. "Resume all" resumes each parked session that was active when Bifrost last ran.
+9. The `claude-statusline` installer always replaces the statusLine block. If you run it again, it removes the wrapper. Bifrost then shows the Repair warning.
