@@ -14,6 +14,8 @@ function subscribe(channel: string, handler: (...args: never[]) => void): () => 
 const api: BifrostApi = {
   claudePath: () => ipcRenderer.invoke('claude:path'),
   agents: { list: (all) => ipcRenderer.invoke('agents:list', all) },
+  claude: { run: (args, cwd) => ipcRenderer.invoke('claude:run', args, cwd) },
+  proc: { signal: (pid, signal) => ipcRenderer.invoke('proc:signal', pid, signal) },
   pty: {
     open: (viewId, args, opts) => ipcRenderer.invoke('pty:open', viewId, args, opts),
     write: (viewId, data) => ipcRenderer.invoke('pty:write', viewId, data),

@@ -1,9 +1,13 @@
 import type { AgentList } from '../main/claude/agents'
+import type { ExecResult } from '../main/claude/cli'
 
 // The type of window.bifrost. The preload script implements it.
 export interface BifrostApi {
   claudePath(): Promise<string | null>
   agents: { list(all?: boolean): Promise<AgentList> }
+  claude: { run(args: string[], cwd: string): Promise<ExecResult> }
+  // The main process sends the signal only to a test session.
+  proc: { signal(pid: number, signal: string): Promise<boolean> }
   pty: {
     open(
       viewId: string,

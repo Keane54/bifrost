@@ -1,5 +1,7 @@
+import { Harness } from './m0/Harness'
+
 function App(): React.JSX.Element {
-  return <h1>Bifrost</h1>
+  return <Harness />
 }
 
 export default App

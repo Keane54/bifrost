@@ -2,8 +2,11 @@ import { resolve } from 'path'
 import { BrowserWindow, ipcMain } from 'electron'
 import { createRunClaude, execFile, resolveClaudePath } from './claude/cli'
 import { listAgents } from './claude/agents'
+import { canSignal } from './claude/guard'
 import { PtyManager } from './pty/pty-manager'
 import { nodePtySpawn } from './pty/node-pty-spawn'
+
+const ALLOWED_SIGNALS = ['SIGTERM', 'SIGHUP', 'SIGINT']
 
 let registered = false
 let currentWindow: BrowserWindow | null = null
@@ -37,6 +40,26 @@ export function registerIpc(): void {
     const path = await claudePath
     if (!path) return { entries: [], error: 'claude not found' }
     return listAgents(createRunClaude(execFile, path), { all: all === true })
+  })
+  ipcMain.handle('claude:run', async (_e, args: string[], cwd: string) => {
+    const path = await claudePath
+    if (!path) return { code: 127, stdout: '', stderr: 'claude not found' }
+    // A relative cwd starts at the working directory of the app, as in pty:open.
+    return createRunClaude(execFile, path)(args, { cwd: resolve(process.cwd(), cwd) })
+  })
+  // Send a signal only to a test session. Any other signal or PID gives false.
+  ipcMain.handle('proc:signal', async (_e, pid: number, signal: string) => {
+    if (!ALLOWED_SIGNALS.includes(signal)) return false
+    const path = await claudePath
+    if (!path) return false
+    const list = await listAgents(createRunClaude(execFile, path))
+    if (!canSignal(list.entries, pid)) return false
+    try {
+      process.kill(pid, signal as NodeJS.Signals)
+      return true
+    } catch {
+      return false
+    }
   })
   ipcMain.handle(
     'pty:open',
