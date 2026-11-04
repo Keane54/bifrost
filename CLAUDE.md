@@ -16,6 +16,14 @@ Core rules of the specification:
 - Use a word as one part of speech only.
 - Never use the em dash. Use the standard "-" character, or write separate sentences.
 
+# Code rules
+
+- Add a library only when a feature needs it. Name that feature in the plan.
+- Write ESM TypeScript only. Do not write CommonJS.
+- Run scripts as `.ts` files directly with Node 24 or later.
+- Run scripts that load node-pty with `ELECTRON_RUN_AS_NODE=1 electron <file>.ts`.
+- Format and lint the code with Biome. Run `pnpm check` before each commit.
+
 When you edit existing text, check that it conforms. If it does not conform, correct it.
 
 # Test sessions
