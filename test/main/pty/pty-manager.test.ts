@@ -99,6 +99,82 @@ describe('PtyManager', () => {
     m.open('v1', [], size)
     expect(fakes[0].kill).toHaveBeenCalledWith('SIGHUP')
     expect(fakes).toHaveLength(2)
+    expect(m.write('v1', 'x')).toBe(true)
+    expect(fakes[1].write).toHaveBeenCalledWith('x')
+    expect(fakes[0].write).not.toHaveBeenCalled()
+  })
+
+  test('data from the old PTY of a view does not go to onData', () => {
+    const m = new PtyManager(spawn, '/bin/claude')
+    const cb = vi.fn()
+    m.onData(cb)
+    m.open('v1', [], size)
+    m.open('v1', [], size)
+    fakes[0].emitData('old')
+    expect(cb).not.toHaveBeenCalled()
+    fakes[1].emitData('new')
+    expect(cb).toHaveBeenCalledWith('v1', 'new')
+  })
+
+  test('exit of the old PTY of a view does not remove the new PTY', () => {
+    const m = new PtyManager(spawn, '/bin/claude')
+    const cb = vi.fn()
+    m.onExit(cb)
+    m.open('v1', [], size)
+    m.open('v1', [], size)
+    fakes[0].emitExit({ exitCode: 0 })
+    expect(cb).not.toHaveBeenCalled()
+    expect(m.write('v1', 'x')).toBe(true)
+    expect(fakes[1].write).toHaveBeenCalledWith('x')
+  })
+
+  test('data and exit after close do not go to the callbacks', () => {
+    const m = new PtyManager(spawn, '/bin/claude')
+    const dataCb = vi.fn()
+    const exitCb = vi.fn()
+    m.onData(dataCb)
+    m.onExit(exitCb)
+    m.open('v1', [], size)
+    m.close('v1')
+    fakes[0].emitData('late')
+    fakes[0].emitExit({ exitCode: 0 })
+    expect(dataCb).not.toHaveBeenCalled()
+    expect(exitCb).not.toHaveBeenCalled()
+  })
+
+  test('closeAll kills each PTY and removes all views', () => {
+    const m = new PtyManager(spawn, '/bin/claude')
+    m.open('v1', [], size)
+    m.open('v2', [], size)
+    m.open('v3', [], size)
+    m.closeAll()
+    for (const f of fakes) expect(f.kill).toHaveBeenCalledWith('SIGHUP')
+    expect(m.write('v1', 'x')).toBe(false)
+    expect(m.write('v2', 'x')).toBe(false)
+    expect(m.write('v3', 'x')).toBe(false)
+  })
+
+  test('closeAll kills the other PTYs when one kill throws', () => {
+    const m = new PtyManager(spawn, '/bin/claude')
+    m.open('v1', [], size)
+    m.open('v2', [], size)
+    fakes[0].kill.mockImplementation(() => {
+      throw new Error('kill failed')
+    })
+    expect(() => m.closeAll()).not.toThrow()
+    expect(fakes[1].kill).toHaveBeenCalledWith('SIGHUP')
+    expect(m.write('v1', 'x')).toBe(false)
+    expect(m.write('v2', 'x')).toBe(false)
+  })
+
+  test('close with a signal that is not SIGHUP or SIGTERM kills with SIGHUP', () => {
+    const m = new PtyManager(spawn, '/bin/claude')
+    for (const [i, signal] of ['SIGFOO', 'SIGKILL', '', 9 as unknown as string].entries()) {
+      m.open(`v${i}`, [], size)
+      m.close(`v${i}`, signal)
+      expect(fakes[i].kill).toHaveBeenCalledWith('SIGHUP')
+      expect(m.write(`v${i}`, 'x')).toBe(false)
+    }
   })
 
   test('resize ignores a size below 1', () => {

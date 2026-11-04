@@ -1,16 +1,29 @@
 import { resolve } from 'path'
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import { createRunClaude, execFile, resolveClaudePath } from './claude/cli'
 import { listAgents } from './claude/agents'
 import { canOpenPty, canRunClaude, canSignal } from './claude/guard'
 import { PtyManager } from './pty/pty-manager'
 import { nodePtySpawn } from './pty/node-pty-spawn'
+import { PageScope } from './pty/page-scope'
 
 const ALLOWED_SIGNALS = ['SIGTERM', 'SIGHUP', 'SIGINT']
 
 let registered = false
 let currentWindow: BrowserWindow | null = null
 let managerPromise: Promise<PtyManager | null> | null = null
+// The manager after the promise resolves. A PTY can exist only after this time.
+let liveManager: PtyManager | null = null
+// All PTYs belong to the page that the current window shows.
+const page = new PageScope(() => liveManager?.closeAll())
+
+// Return true if the sender is the page of the current window and that page did not end.
+function isLivePage(sender: WebContents, token: number): boolean {
+  if (!page.isCurrent(token) || sender.isDestroyed()) return false
+  return (
+    currentWindow !== null && !currentWindow.isDestroyed() && sender === currentWindow.webContents
+  )
+}
 
 // Send an event to the current window. Do nothing if no window is open.
 function send(channel: string, ...args: unknown[]): void {
@@ -28,10 +41,11 @@ export function registerIpc(): void {
   const claudePath = resolveClaudePath(execFile)
   managerPromise = claudePath.then((path) => {
     if (!path) return null
-    const manager = new PtyManager(nodePtySpawn, path)
-    manager.onData((viewId, chunk) => send('pty:data', viewId, chunk))
-    manager.onExit((viewId, exitCode, signal) => send('pty:exit', viewId, exitCode, signal))
-    return manager
+    const m = new PtyManager(nodePtySpawn, path)
+    m.onData((viewId, chunk) => send('pty:data', viewId, chunk))
+    m.onExit((viewId, exitCode, signal) => send('pty:exit', viewId, exitCode, signal))
+    liveManager = m
+    return m
   })
   const getManager = (): Promise<PtyManager | null> => managerPromise as Promise<PtyManager | null>
 
@@ -68,11 +82,13 @@ export function registerIpc(): void {
   ipcMain.handle(
     'pty:open',
     async (
-      _e,
+      e,
       viewId: string,
       args: string[],
       opts: { cwd: string; cols: number; rows: number }
     ) => {
+      // Get the page token before the first wait.
+      const token = page.token()
       const manager = await getManager()
       if (!manager) throw new Error('claude not found')
       // Open a PTY only for a test session. Read the session list for an attach.
@@ -83,6 +99,10 @@ export function registerIpc(): void {
           : []
       if (!canOpenPty(entries, args)) {
         throw new Error('refused: not an allowed attach or start of a test session')
+      }
+      // The page can end during the waits above. Then no page owns the PTY, so do not open it.
+      if (!isLivePage(e.sender, token)) {
+        throw new Error('refused: the page that asked for the PTY is gone')
       }
       return manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
     }
@@ -100,11 +120,21 @@ export function registerIpc(): void {
 }
 
 // Make a window the target of pty:data and pty:exit.
+// A reload or a renderer crash does not run the cleanup code of the page.
+// The main process must close the PTYs of the old page.
+// It closes all PTYs when a new page loads and when the renderer stops.
 // When the window closes, close all PTYs and clear the window reference.
 export function attachWindow(win: BrowserWindow): void {
   currentWindow = win
+  win.webContents.on('did-navigate', () => page.end())
+  win.webContents.on('render-process-gone', () => page.end())
   win.on('closed', () => {
     if (currentWindow === win) currentWindow = null
-    void managerPromise?.then((manager) => manager?.closeAll())
+    page.end()
   })
+}
+
+// Close all PTYs. Call it when the app quits.
+export function closeAllPtys(): void {
+  page.end()
 }

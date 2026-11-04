@@ -15,6 +15,8 @@ export type SpawnFn = (
   opts: { cwd: string; cols: number; rows: number; env: Record<string, string> }
 ) => PtyProcess
 
+const CLOSE_SIGNALS = ['SIGHUP', 'SIGTERM']
+
 // PtyManager starts and controls one PTY for each view.
 // It runs only the one program that the caller gives to the constructor.
 export class PtyManager {
@@ -59,11 +61,19 @@ export class PtyManager {
     proc.resize(cols, rows)
   }
 
-  close(viewId: string, signal = 'SIGHUP'): void {
+  // Remove the PTY of the view, then kill it.
+  // close accepts only SIGHUP and SIGTERM. Any other value gives SIGHUP.
+  // node-pty ignores an unknown signal name, so a bad name must not get to kill.
+  close(viewId: string, signal?: string): void {
     const proc = this.ptys.get(viewId)
     if (!proc) return
     this.ptys.delete(viewId)
-    proc.kill(signal)
+    const sig = signal !== undefined && CLOSE_SIGNALS.includes(signal) ? signal : 'SIGHUP'
+    try {
+      proc.kill(sig)
+    } catch {
+      // The process can be gone already. closeAll must go on to the next PTY.
+    }
   }
 
   closeAll(): void {
