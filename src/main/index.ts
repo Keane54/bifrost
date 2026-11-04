@@ -16,7 +16,7 @@ function createWindow(): void {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
       // The preload uses only contextBridge and ipcRenderer, so it works in the sandbox.
       sandbox: true,
     },
@@ -38,7 +38,7 @@ function createWindow(): void {
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(import.meta.dirname, '../renderer/index.html'))
   }
 }
 
