@@ -68,10 +68,30 @@ test('planInstall never saves the wrapper as the original', () => {
   expect(planInstall(installed, undefined).original).toBeNull()
 })
 
-test('planInstall keeps a saved original when the current statusLine differs', () => {
-  const other = { command: 'echo other', type: 'command' }
-  expect(planInstall({ statusLine: other }, MINE).original).toEqual(MINE)
-  expect(planInstall({ statusLine: other }, null).original).toBeNull()
+test('planInstall saves the new statusLine when it is not the wrapper', () => {
+  const NEW = { command: 'sh new.sh', type: 'command' }
+  expect(planInstall({ statusLine: NEW }, MINE).original).toEqual(NEW)
+})
+
+test.each([
+  [{ hooks: 'x' }],
+  [{ hooks: [] }],
+  [{ hooks: null }],
+  [{ hooks: { Stop: {} } }],
+  [{ statusLine: 'sh x.sh' }],
+  [{ statusLine: { type: 'command' } }],
+])('planInstall throws for unexpected types in %j', settings => {
+  expect(() => planInstall(settings, undefined)).toThrow(/unexpected/i)
+})
+
+test('planUninstall and checkInstall do not throw for unexpected types', () => {
+  const bad = { hooks: 'x', statusLine: 'y' }
+  expect(planUninstall(bad, null)).toEqual(bad)
+  expect(checkInstall(bad).statusLineInstalled).toBe(false)
+})
+
+test('planUninstall keeps an empty event array and hooks of the user', () => {
+  expect(planUninstall({ hooks: { Stop: [] } }, null)).toEqual({ hooks: { Stop: [] } })
 })
 
 test('planInstall does not change its input', () => {

@@ -66,6 +66,13 @@ export function planInstall(
   const changes: string[] = []
 
   // Hooks. Add one entry for each row that is missing.
+  if (next.hooks !== undefined && !isObject(next.hooks)) {
+    throw new Error('Unexpected type for the key hooks. Expect an object.')
+  }
+  const current = next.statusLine
+  if (current !== undefined && !(isObject(current) && typeof current.command === 'string')) {
+    throw new Error('Unexpected type for the key statusLine. Expect an object with a command.')
+  }
   const hooks: Loose = isObject(next.hooks) ? next.hooks : {}
   for (const row of HOOK_ROWS) {
     if (hasRow(hooks, row)) continue
@@ -73,7 +80,10 @@ export function planInstall(
     if (row.matcher !== undefined) entry.matcher = row.matcher
     entry.hooks = [{ command: HOOK_COMMAND, type: 'command' }]
     const existing = hooks[row.event]
-    hooks[row.event] = Array.isArray(existing) ? [...existing, entry] : [entry]
+    if (existing !== undefined && !Array.isArray(existing)) {
+      throw new Error(`Unexpected type for the key hooks.${row.event}. Expect an array.`)
+    }
+    hooks[row.event] = existing === undefined ? [entry] : [...existing, entry]
     changes.push(
       row.matcher === undefined
         ? `Add the hook for ${row.event}.`
@@ -83,14 +93,12 @@ export function planInstall(
   if (changes.length > 0) next.hooks = hooks
 
   // Statusline. Never save the wrapper as the original.
-  const current = next.statusLine
+  // A statusLine that is not the wrapper is the original. Use the saved one only for the wrapper.
   let original: StatusLineSetting | null
-  if (savedOriginal !== undefined) {
-    original = savedOriginal
-  } else if (isObject(current) && !isWrapper(current)) {
+  if (isObject(current) && !isWrapper(current)) {
     original = structuredClone(current) as unknown as StatusLineSetting
   } else {
-    original = null
+    original = savedOriginal ?? null
   }
 
   if (!isWrapper(current)) {
@@ -124,16 +132,19 @@ export function planUninstall(
     for (const [event, entries] of Object.entries(hooks)) {
       if (!Array.isArray(entries)) continue
       const kept: unknown[] = []
+      let removed = false
       for (const entry of entries) {
         if (!entryHasBifrostHook(entry)) {
           kept.push(entry)
           continue
         }
         touched = true
+        removed = true
         const entryObject = entry as Loose
         const rest = (entryObject.hooks as unknown[]).filter(hook => !isBifrostHook(hook))
         if (rest.length > 0) kept.push({ ...entryObject, hooks: rest })
       }
+      if (!removed) continue
       if (kept.length > 0) hooks[event] = kept
       else delete hooks[event]
     }
