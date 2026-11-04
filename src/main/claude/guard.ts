@@ -10,40 +10,92 @@ export function canSignal(entries: AgentEntry[], pid: number): boolean {
   return matches.length === 1 && matches[0].name.startsWith(TEST_PREFIX)
 }
 
-const RESUME_FLAGS = ['-r', '--resume', '-c', '--continue']
+// The guard accepts only these flags. Each flag takes one value in the next arg.
+const VALUE_FLAGS = ['--model', '--name', '--permission-mode']
 
-// Return true if the args name one test session and cannot reach another.
-// Only one --name is allowed. Resume and continue flags are not allowed.
-function hasSafeTestName(args: string[]): boolean {
-  if (args.some((a) => RESUME_FLAGS.includes(a))) return false
-  if (
-    args.some(
-      (a) => a.startsWith('--name=') || a.startsWith('--resume=') || a.startsWith('--continue=')
-    )
-  )
-    return false
-  const names = args.map((a, i) => (a === '--name' ? i : -1)).filter((i) => i >= 0)
-  if (names.length !== 1) return false
-  const value = args[names[0] + 1]
-  return typeof value === 'string' && value.startsWith(TEST_PREFIX)
+// Claude Code reads these words as subcommands. A flag value must not be one of them.
+const VERBS = [
+  'logs',
+  'attach',
+  'stop',
+  'kill',
+  'respawn',
+  'rm',
+  'agents',
+  'update',
+  'mcp',
+  'plugin',
+  'doctor',
+  'install',
+  'config'
+]
+
+// A model or permission mode value is one word of letters, digits and . _ : [ ] -.
+// It starts with a letter or a digit, so it cannot be a flag.
+const SAFE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]*$/
+
+function isSafeValue(value: string): boolean {
+  return SAFE_VALUE.test(value) && !VERBS.includes(value)
+}
+
+// A prompt does not start with a dash, so claude cannot read it as a flag.
+// A prompt has a space between two words, so claude cannot read it as a subcommand.
+function isPrompt(arg: string): boolean {
+  return !arg.startsWith('-') && /\s/.test(arg.trim())
+}
+
+// Return true only if the args start one test session and do nothing else.
+// The args must be the allowed flags with their values, in any order.
+// Each flag can occur one time. --name is necessary and must be a test name.
+// If bg is true, --bg must be the first arg.
+// If prompt is true, the last arg can be one prompt.
+function isTestStart(args: unknown, rules: { bg: boolean; prompt: boolean }): boolean {
+  if (!Array.isArray(args) || !args.every((a) => typeof a === 'string')) return false
+  let i = 0
+  if (rules.bg) {
+    if (args[0] !== '--bg') return false
+    i = 1
+  }
+  const seen: string[] = []
+  while (i < args.length) {
+    const arg = args[i]
+    if (VALUE_FLAGS.includes(arg)) {
+      if (seen.includes(arg)) return false
+      seen.push(arg)
+      const value: string | undefined = args[i + 1]
+      if (value === undefined) return false
+      const ok = arg === '--name' ? value.startsWith(TEST_PREFIX) : isSafeValue(value)
+      if (!ok) return false
+      i += 2
+    } else {
+      // Any other arg must be the prompt, and the prompt must be the last arg.
+      if (!rules.prompt || i !== args.length - 1 || !isPrompt(arg)) return false
+      i += 1
+    }
+  }
+  return seen.includes('--name')
 }
 
 // Decide if the main process may open a PTY with these args.
-// Allowed: attach to one test session, or an interactive start of a test session.
+// Allowed: "attach <target>" for one test session, or an interactive start of a test session.
+// The interactive start accepts only --model, --name and --permission-mode. It has no prompt.
 export function canOpenPty(entries: AgentEntry[], args: string[]): boolean {
+  if (!Array.isArray(args)) return false
   if (args[0] === 'attach') {
     if (args.length !== 2) return false
     const target = args[1]
+    if (typeof target !== 'string' || target === '') return false
     const matches = entries.filter(
       (e) => e.id === target || e.name === target || e.sessionId === target
     )
     return matches.length === 1 && matches[0].name.startsWith(TEST_PREFIX)
   }
-  return hasSafeTestName(args)
+  return isTestStart(args, { bg: false, prompt: false })
 }
 
 // Decide if the main process may run claude with these args.
 // Allowed: a background start of a test session. Nothing else.
+// The start accepts --bg first, then --model, --name and --permission-mode, then one prompt.
 export function canRunClaude(args: string[]): boolean {
-  return args[0] === '--bg' && hasSafeTestName(args)
+  return isTestStart(args, { bg: true, prompt: true })
 }

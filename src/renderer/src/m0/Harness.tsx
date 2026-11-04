@@ -158,6 +158,11 @@ export function Harness(): React.JSX.Element {
       setRunOutput('Refused: the prompt must not start with "-".')
       return
     }
+    // claude can read a one-word prompt as a subcommand. The main process refuses it.
+    if (prompt !== '' && !/\s/.test(prompt.trim())) {
+      setRunOutput('Refused: the prompt must have two or more words.')
+      return
+    }
     const name = TEST_PREFIX + suffix.trim()
     const extra = extraArgs.split(' ').filter((a) => a !== '')
     const args = ['--bg', '--model', 'haiku', '--name', name, ...extra]
@@ -296,7 +301,7 @@ export function Harness(): React.JSX.Element {
           onChange={(ev) => setSuffix(ev.target.value)}
         />{' '}
         <input
-          placeholder="extra args (split on spaces)"
+          placeholder="extra args, for example --permission-mode plan"
           size={28}
           value={extraArgs}
           onChange={(ev) => setExtraArgs(ev.target.value)}

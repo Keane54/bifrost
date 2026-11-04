@@ -45,7 +45,9 @@ export function registerIpc(): void {
     const path = await claudePath
     if (!path) return { code: 127, stdout: '', stderr: 'claude not found' }
     // Run only a background start of a test session. Never stop or remove a session.
-    if (!canRunClaude(args)) return { code: 126, stdout: '', stderr: 'not a test session' }
+    if (!canRunClaude(args)) {
+      return { code: 126, stdout: '', stderr: 'refused: not an allowed start of a test session' }
+    }
     // A relative cwd starts at the working directory of the app, as in pty:open.
     return createRunClaude(execFile, path)(args, { cwd: resolve(process.cwd(), cwd) })
   })
@@ -79,7 +81,9 @@ export function registerIpc(): void {
         args[0] === 'attach' && path
           ? (await listAgents(createRunClaude(execFile, path))).entries
           : []
-      if (!canOpenPty(entries, args)) throw new Error('not a test session')
+      if (!canOpenPty(entries, args)) {
+        throw new Error('refused: not an allowed attach or start of a test session')
+      }
       return manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
     }
   )
