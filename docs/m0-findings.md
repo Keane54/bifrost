@@ -4,7 +4,26 @@ The M0 experiment agent ran these tests with scripts on 2026-11-04, from 15:47 t
 
 ## Summary
 
-To do (Task 8)
+| Q | Verdict | Result |
+|---|---|---|
+| 1 | Confirmed | xterm.js shows the Claude Code UI with truecolor and mouse input. The user checked the colours by eye. |
+| 2 | Confirmed, with an open item | The statusline shows in an attached session, but late. Warp shows it at once. Bifrost reads its data through the wrapper, not the screen. M1 investigates the delay. |
+| 3 | Confirmed, with a limit | Two clients of one session work. All clients of one session share one size. |
+| 4 | Confirmed | To detach, end the attach process (SIGHUP). The left arrow key opens the agent view of all sessions. |
+| 5 | Confirmed | Bracketed paste, then CR, sends text with more than one line. A new attach is ready after about 2 s. |
+| 6 | Confirmed | SIGTERM ends an idle interactive session in less than 1 s. The process walk finds the terminal app. |
+| 7 | Confirmed | `claude --bg --resume` keeps the session ID and the conversation. |
+| 8 | Changed | `status` is `busy`, `idle` or `waiting`. `waiting` comes with `waitingFor`. `state` is not reliable. |
+| 9 | Changed | The idle stop after 1 hour did not occur in 75 minutes. |
+| 10 | Changed | Exit code 0 is not proof of a start. `--bg` refuses a directory that is not trusted. Trust is kept for each git root. The worktree flag is not tested. |
+| 11 | Confirmed | `/rename` changes the name in less than 4 s. |
+| 12 | Changed | The minimum Claude Code version is 2.1.281, for the trust error of `--bg`. |
+
+Other facts:
+
+- The first `claude --bg` or `claude agents` starts the shared background service. All later background sessions get the environment of that first caller.
+- A new background entry has no `pid` and no `status` for about 2.5 s. The parser in `src/main/claude/agents.ts` skips it during that time.
+- After `claude stop` or a service stop, an `--all` entry has no `pid` and no `status`. Its name can be missing.
 
 ## How to read this file
 
