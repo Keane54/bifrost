@@ -139,6 +139,8 @@ Context isolation is on. The preload script supplies a typed API. The renderer h
 | `~/.bifrost/events/` | The event directory. Bifrost deletes each file after it reads it. |
 | `~/.bifrost/sessions/<session-id>/status.json` | The status file of the session. |
 | `~/.bifrost/statusline-original.json` | Your statusLine setting from before the install. |
+| `~/.bifrost/active` | Exists while Bifrost runs. The scripts do their work only when it exists. |
+| `~/.bifrost/sessions/<session-id>/quiet` | Bifrost makes this file for each owned session. The wrapper then does not run your statusLine command. |
 | `~/.bifrost/backups/` | Copies of `settings.json` from before each change. |
 | `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities and panel positions. |
 
@@ -178,13 +180,16 @@ The installer adds one hook entry for each row below. All entries run the same s
 Rules for the hook script:
 
 - The script is POSIX `sh`. It does not need `jq`, Node or Python.
-- The script writes its stdin to a new file in the event directory.
-- The file name starts with the time.
-- The script writes to a temporary name first.
-- The script then moves the file to its final name. Bifrost never reads a partial file.
+- If the file `~/.bifrost/active` does not exist, the script exits at once. Bifrost makes this file at start and deletes it when it quits. So no event files collect while Bifrost is closed.
+- The script writes its stdin with one `cat` to a new file in the event directory. The file name is `<parent PID>-<PID>.json`. Bifrost sorts the files by their change time.
+- The cost of the script does not grow with the size of its input. A tool event can carry 500 KB.
+- Bifrost does not use a partial file. A file that is not valid JSON and is younger than 5 seconds stays for the next read. Bifrost deletes an older one.
+- At start, Bifrost deletes event files older than 60 seconds and does not read them.
 - The script never writes to stdout. Claude Code adds hook stdout to the context for some events.
+- The script makes its files with mode 0600 (`umask 077`), because the files hold tool input and output.
 - The script always exits with code 0.
 - The script must finish in less than 50 ms.
+- The hooks are not `async`. An async hook can write its file after the file of a later event, and the box rules need the correct order.
 
 M1 measures the cost of the `PostToolUse` hook. If the cost is too high, Bifrost uses the busy status from `claude agents --json`.
 
@@ -208,7 +213,9 @@ The status file supplies these values: model, context %, cost, session name and 
 
 Rules for the wrapper:
 
-- Claude Code runs the wrapper for each session again and again, for example each second. So the wrapper uses shell builtins. It starts only `mv`, and `mkdir` for a new session.
+- Claude Code runs the wrapper for each session again and again, for example each second. So the wrapper starts few programs: `cat` one time to read stdin and `mv` one time to write the status file. It starts `mkdir` only for a new session.
+- If the file `~/.bifrost/active` does not exist, the wrapper only runs your original command. It does steps 1 to 5 only while Bifrost runs.
+- The wrapper makes its files with mode 0600 (`umask 077`).
 - Chat windows in Bifrost show no statusline row. The Overview, the Selected Item panel and the global panels show the data (section 20).
 - Sessions in a terminal app, for example Warp, keep your statusline.
 
@@ -244,6 +251,7 @@ Box rules:
 7. External sessions also get boxes, because the hooks are global.
 8. Parked sessions never get a box.
 9. A red box also clears when `status` is no longer `waiting`. Another client can answer a prompt. Examples are the agent view, a terminal and a phone.
+10. A `status` sample clears a box only after a sample confirmed that box. `idle` confirms a yellow box and an error box. `waiting` confirms a red prompt box. The reason: Claude Code can report `busy` while the Stop hooks run, and an interactive session can report `idle` or `busy` at a prompt. Hook events clear a box at all times.
 
 ## 8. User interface
 
@@ -744,7 +752,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 
 - The tools are pnpm, electron-vite, TypeScript 5.9, React, Biome, `@xterm/xterm`, `node-pty` and electron-builder.
 - Biome replaces ESLint and Prettier.
-- M1 keeps TypeScript 5.9. TypeScript 7.0.2 failed `pnpm typecheck`: `tsconfig.web.json` uses `baseUrl`, and TypeScript 7 removed it (TS5102). Bifrost tries TypeScript 7 again after that config change.
+- M1 keeps TypeScript 5.9. TypeScript 7.0.2 failed `pnpm typecheck`: `tsconfig.web.json` uses `baseUrl`, and TypeScript 7 removed it (TS5102 and TS5090). To try TypeScript 7 again, remove `baseUrl` and set the `paths` value to `./src/renderer/src/*`.
 - `package.json` has `"engines": { "node": ">=24" }`.
 - Scripts are ESM TypeScript files. Node runs them directly.
 - Scripts that load `node-pty` run with `ELECTRON_RUN_AS_NODE=1 electron <file>.ts`.
