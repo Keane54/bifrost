@@ -1,5 +1,5 @@
 // M0 question 5: type into a session through a hidden attach.
-// Usage: q5-hidden-typing.cjs <short id of a bifrost-test- session>
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/q5-hidden-typing.ts <short id of a bifrost-test- session>
 // The script attaches and measures the time to the first output and to ready.
 // It sends five inputs:
 //   A: text, a 300 ms gap, then Enter.
@@ -8,14 +8,12 @@
 //   D: text and Enter in one write.
 //   E: two lines with CR between them and no bracketed paste.
 // Then it reads the transcript and opens a second attach to look at the conversation.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type -- CommonJS script for Node. */
-const L = require('./lib.cjs')
+import * as L from './lib.ts'
 const { TestPty, log, sleep, writeOut } = L
 
 ;(async () => {
   const id = process.argv[2]
-  if (!id) throw new Error('usage: q5-hidden-typing.cjs <short id>')
+  if (!id) throw new Error('usage: q5-hidden-typing.ts <short id>')
   const R = {}
   const entry = await L.assertTestTarget({ id })
   const before = L.transcriptMessages(entry.sessionId)

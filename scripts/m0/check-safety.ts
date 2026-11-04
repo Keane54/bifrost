@@ -2,9 +2,7 @@
 // This script only reads "claude agents --json". It sends nothing to a session.
 // It tries each non-test entry, the reserved session and a missing id.
 // Each try must throw a SafetyError.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type -- CommonJS script for Node. */
-const { listAgents, assertTestTarget, SafetyError, log } = require('./lib.cjs')
+import { listAgents, assertTestTarget, SafetyError, log } from './lib.ts'
 
 async function expectRefusal(target) {
   try {

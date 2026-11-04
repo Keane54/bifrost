@@ -1,5 +1,5 @@
 // M0 question 6: find the signal that ends an interactive session cleanly.
-// Usage: q6-take-control.cjs [SIGTERM] [SIGHUP] [SIGINT2]
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/q6-take-control.ts [SIGTERM] [SIGHUP] [SIGINT2]
 // For each signal the script starts an interactive test session in a PTY,
 // "claude --model haiku --name bifrost-test-ext-<signal>", in .m0-sandbox.
 // It types "Remember the word FALCON. Reply with OK." and waits for the reply.
@@ -8,9 +8,7 @@
 // The script records if the process ends in 5 seconds, the exit code or signal,
 // the last screen lines, and the transcript after the end.
 // If the process does not end, the next signal goes to the same session.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type -- CommonJS script for Node. */
-const L = require('./lib.cjs')
+import * as L from './lib.ts'
 const { TestPty, log, sleep, writeOut, stripAnsi } = L
 
 const ENV_NOTE = 'cleanEnv(): no CLAUDECODE, CLAUDE_CODE_*, TERM_PROGRAM*, TERM_SESSION_ID, WARP_*'

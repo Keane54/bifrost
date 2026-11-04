@@ -1,11 +1,9 @@
 // Find the terminal app of a process from its parent processes.
-// Usage: terminal-of.cjs <pid> [<pid> ...]
-//    or: terminal-of.cjs --interactive   (all interactive entries of "claude agents --json")
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/terminal-of.ts <pid> [<pid> ...]
+//    or: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/terminal-of.ts --interactive   (all interactive entries of "claude agents --json")
 // The script only runs "ps". It sends nothing to any process.
 // The terminal app is the first parent whose path contains ".app/".
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type -- CommonJS script for Node. */
-const { spawnSync } = require('child_process')
+import { spawnSync } from 'node:child_process'
 
 function ps(pid, fields) {
   const r = spawnSync('ps', ['-o', fields, '-p', String(pid)], { encoding: 'utf8' })
@@ -34,20 +32,19 @@ function terminalOf(pid) {
   return { pid: Number(pid), app: name, appPath: app ? app.comm : null, steps }
 }
 
-module.exports = { chain, terminalOf }
+export { chain, terminalOf }
 
-if (require.main === module) {
-  let pids = process.argv.slice(2)
+if (import.meta.main) {
+  const pids = process.argv.slice(2)
   if (pids[0] === '--interactive') {
-    const { listAgents } = require('./lib.cjs')
-    listAgents().then((list) => {
-      for (const e of list.filter((x) => x.kind === 'interactive')) {
-        const t = terminalOf(e.pid)
-        console.log(
-          JSON.stringify({ pid: e.pid, app: t.app, appPath: t.appPath, depth: t.steps.length })
-        )
-      }
-    })
+    const { listAgents } = await import('./lib.ts')
+    const list = await listAgents()
+    for (const e of list.filter(x => x.kind === 'interactive')) {
+      const t = terminalOf(e.pid)
+      console.log(
+        JSON.stringify({ pid: e.pid, app: t.app, appPath: t.appPath, depth: t.steps.length })
+      )
+    }
   } else {
     for (const p of pids) console.log(JSON.stringify(terminalOf(p), null, 1))
   }

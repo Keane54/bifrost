@@ -1,17 +1,15 @@
 // Start one background test session and record its first seconds.
-// Usage: start-bg.cjs <suffix> <prompt> [extra claude args...]
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/start-bg.ts <suffix> <prompt> [extra claude args...]
 // The session name is "bifrost-test-<suffix>". The model is haiku.
 // The directory is .m0-sandbox. The script prints the exact stdout and stderr.
 // Then it polls "claude agents --json" and records each change of the entry,
 // until the status is not busy and the state is "done", or until 90 seconds.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script for Node. */
-const { startBg, watchEntry, writeOut, log } = require('./lib.cjs')
+import { startBg, watchEntry, writeOut, log } from './lib.ts'
 
 ;(async () => {
   const [suffix, prompt, ...extra] = process.argv.slice(2)
   if (!suffix) {
-    console.error('usage: start-bg.cjs <suffix> <prompt> [extra args...]')
+    console.error('usage: start-bg.ts <suffix> <prompt> [extra args...]')
     process.exit(2)
   }
   const r = await startBg(suffix, prompt, extra)

@@ -1,13 +1,11 @@
 // Stop and remove the background test sessions that these scripts started.
-// Usage: cleanup.cjs [--dry-run]
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/cleanup.ts [--dry-run]
 // The script reads the list of started sessions in M0_OUT/started.jsonl.
 // It acts only on an entry of "claude agents --json --all" whose name starts
 // with "bifrost-test-" and whose id or sessionId is in that list.
 // assertTestTarget checks each entry again, and it refuses bifrost-test-idle.
 // At the end the script prints every bifrost-test- entry that is left.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script for Node. */
-const L = require('./lib.cjs')
+import * as L from './lib.ts'
 const { log, writeOut } = L
 
 ;(async () => {

@@ -1,16 +1,14 @@
 // M0 question 11: check that /rename exists and changes the name in "claude agents --json".
-// Usage: q11-rename.cjs <short id of a bifrost-test- session> <new suffix>
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/q11-rename.ts <short id of a bifrost-test- session> <new suffix>
 // The new name is "bifrost-test-<new suffix>", so the session stays a test session.
 // The script attaches, types "/rename <new name>" and Enter, and reads the name
 // after 4 seconds. Then it polls for 15 more seconds and records the screen.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script for Node. */
-const L = require('./lib.cjs')
+import * as L from './lib.ts'
 const { TestPty, log, sleep, writeOut } = L
 
 ;(async () => {
   const [id, suffix] = process.argv.slice(2)
-  if (!id || !suffix) throw new Error('usage: q11-rename.cjs <short id> <new suffix>')
+  if (!id || !suffix) throw new Error('usage: q11-rename.ts <short id> <new suffix>')
   const newName = L.TEST_PREFIX + suffix
   const R = { id, newName }
   const P = await TestPty.attach({ id })

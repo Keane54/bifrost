@@ -5,18 +5,19 @@
 // whose name starts with "bifrost-test-".
 // The check refuses bifrost-test-idle. The controller owns that session.
 // Run the scripts with Electron as Node, because node-pty uses the Electron ABI:
-//   ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/<name>.cjs
+//   ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/<name>.ts
 // Set M0_OUT to a directory for the raw output. The default is a temp directory.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type, no-control-regex -- CommonJS script for Node. The regexes match escape sequences. */
 
-const fs = require('fs')
-const os = require('os')
-const path = require('path')
-const { execFile } = require('child_process')
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { execFile } from 'node:child_process'
+import { createRequire } from 'node:module'
 
+// node-pty and xterm.js load as CommonJS.
+const require = createRequire(import.meta.url)
 const CLAUDE = process.env.M0_CLAUDE || path.join(os.homedir(), '.local', 'bin', 'claude')
-const REPO = path.resolve(__dirname, '..', '..')
+const REPO = path.resolve(import.meta.dirname, '..', '..')
 const SANDBOX = path.join(REPO, '.m0-sandbox')
 const TEST_PREFIX = 'bifrost-test-'
 // The controller owns these sessions. The scripts never touch them.
@@ -599,7 +600,7 @@ class TestPty {
   }
 }
 
-module.exports = {
+export {
   CLAUDE,
   REPO,
   SANDBOX,

@@ -1,13 +1,11 @@
 // M0 questions 1 and 2: render an attached session through node-pty and xterm.js.
-// Usage: q1-render.cjs <short id of a bifrost-test- session> [--skip-prompts]
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/q1-render.ts <short id of a bifrost-test- session> [--skip-prompts]
 // With --skip-prompts the script types nothing. It only attaches, resizes and scrolls.
 // The script attaches at 120 x 32 and records the escape sequences.
 // It looks for the statusline text on the screen.
 // It types two prompts, sends mouse wheel events and resizes the PTY.
 // At the end it sends SIGHUP to its own attach client and reads the session status.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type, no-control-regex -- CommonJS script for Node. The regexes match escape sequences. */
-const L = require('./lib.cjs')
+import * as L from './lib.ts'
 const { TestPty, log, sleep, writeOut, analyseSequences, stripAnsi } = L
 
 // Count the colour modes of the cells on the screen.
@@ -73,7 +71,7 @@ async function resizeStep(p, cols, rows, name) {
 
 ;(async () => {
   const id = process.argv[2]
-  if (!id) throw new Error('usage: q1-render.cjs <short id>')
+  if (!id) throw new Error('usage: q1-render.ts <short id>')
   const result = {}
   const p = await TestPty.attach({ id })
   const ready = await p.waitQuiet(1500, 30000)

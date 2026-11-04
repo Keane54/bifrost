@@ -1,17 +1,15 @@
 // M0 question 7: resume an ended interactive test session in the background.
-// Usage: q7-resume.cjs <sessionId>
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/q7-resume.ts <sessionId>
 // The sessionId must belong to a test session that these scripts started.
 // The script runs "claude --bg --resume <sessionId>" in .m0-sandbox.
 // It records the stdout and the new entry: id, sessionId, kind and name.
 // Then it attaches, asks "Which word did I ask you to remember?" and reads the reply.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script for Node. */
-const L = require('./lib.cjs')
+import * as L from './lib.ts'
 const { TestPty, log, sleep, writeOut } = L
 
 ;(async () => {
   const sessionId = process.argv[2]
-  if (!sessionId) throw new Error('usage: q7-resume.cjs <sessionId>')
+  if (!sessionId) throw new Error('usage: q7-resume.ts <sessionId>')
   const R = { sessionId }
   // A second resume of a running session starts a copy. So use an active entry if one exists.
   const active = (await L.listAgents()).filter((e) => e.sessionId === sessionId)

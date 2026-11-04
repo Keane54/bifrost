@@ -1,14 +1,13 @@
 // M0 questions 3 and 4: two attach clients on one session, and the detach methods.
-// Usage: q3-two-clients.cjs <short id of a bifrost-test- session>
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/q3-two-clients.ts <short id of a bifrost-test- session>
 // Client A attaches. Then client B attaches to the same session.
 // B types a prompt. The script records what each client shows.
 // B ends with SIGHUP. A gets the ← key, then SIGTERM.
 // After the ← key the script locks all input to A, because the agent view
 // lists every session on this Mac. Client C tests Ctrl+Z.
 // After each step the script reads the session entry.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type -- CommonJS script for Node. */
-const L = require('./lib.cjs')
+import { spawnSync } from 'node:child_process'
+import * as L from './lib.ts'
 const { TestPty, log, sleep, writeOut } = L
 
 async function entryOf(id) {
@@ -16,7 +15,7 @@ async function entryOf(id) {
 }
 
 function procState(pid) {
-  const r = require('child_process').spawnSync('ps', ['-o', 'stat=,comm=', '-p', String(pid)], {
+  const r = spawnSync('ps', ['-o', 'stat=,comm=', '-p', String(pid)], {
     encoding: 'utf8'
   })
   return r.stdout.trim() || '(no process)'
@@ -24,7 +23,7 @@ function procState(pid) {
 
 ;(async () => {
   const id = process.argv[2]
-  if (!id) throw new Error('usage: q3-two-clients.cjs <short id>')
+  if (!id) throw new Error('usage: q3-two-clients.ts <short id>')
   const R = { steps: [] }
   const step = async (name, extra = {}) => {
     const s = { name, at: new Date().toISOString(), session: await entryOf(id), ...extra }

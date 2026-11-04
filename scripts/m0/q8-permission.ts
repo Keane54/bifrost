@@ -1,18 +1,16 @@
 // M0 question 8: record the status and state while a session waits for permission.
-// Usage: q8-permission.cjs <suffix> <prompt> [extra claude args...]
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/q8-permission.ts <suffix> <prompt> [extra claude args...]
 // The script starts "bifrost-test-<suffix>" in the background and polls
 // "claude agents --json" every 400 ms for 90 seconds, or until the status stays
 // the same for 8 seconds after the first busy.
 // Then it attaches without input, saves the screen, and detaches with SIGHUP.
 // The script never answers a permission prompt.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS script for Node. */
-const L = require('./lib.cjs')
+import * as L from './lib.ts'
 const { TestPty, log, sleep, writeOut } = L
 
 ;(async () => {
   const [suffix, prompt, ...extra] = process.argv.slice(2)
-  if (!suffix || !prompt) throw new Error('usage: q8-permission.cjs <suffix> <prompt> [args...]')
+  if (!suffix || !prompt) throw new Error('usage: q8-permission.ts <suffix> <prompt> [args...]')
   const R = { suffix, prompt, extra }
   const r = await L.startBg(suffix, prompt, extra)
   R.start = { code: r.code, stdout: r.stdout, stderr: r.stderr, id: r.id }

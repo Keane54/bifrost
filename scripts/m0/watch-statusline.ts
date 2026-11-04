@@ -1,6 +1,6 @@
 // M0 question 2: measure when the statusline first shows in an attached session.
-// Usage: watch-statusline.cjs <short id of a bifrost-test- session> [seconds]
-//    or: watch-statusline.cjs --start <suffix> [seconds]
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/watch-statusline.ts <short id of a bifrost-test- session> [seconds]
+//    or: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/watch-statusline.ts --start <suffix> [seconds]
 // With --nudge the script resizes the PTY to 100 x 30 and back to 120 x 32
 // when the statusline does not show after 10 seconds.
 // With --start the script first starts the test session "bifrost-test-<suffix>".
@@ -9,9 +9,7 @@
 // The statusline counts as shown when a row below the prompt box has text
 // that is not the mode footer, or when the screen has "% ctx" or "healthy".
 // Without --prompt the script types nothing.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type -- CommonJS script for Node. */
-const L = require('./lib.cjs')
+import * as L from './lib.ts'
 const { TestPty, log, sleep, writeOut } = L
 
 function statuslineRows(lines) {
@@ -40,7 +38,7 @@ function statuslineRows(lines) {
     id = r.id
     seconds = Number(process.argv[4] || 120)
   }
-  if (!id) throw new Error('usage: watch-statusline.cjs <short id> [seconds]')
+  if (!id) throw new Error('usage: watch-statusline.ts <short id> [seconds]')
   const e = await L.assertTestTarget({ id })
   const P = await TestPty.attach({ id })
   const R = { id, sessionStartedAt: e.startedAt, attachAt: P.t0, samples: [] }

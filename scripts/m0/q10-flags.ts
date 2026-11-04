@@ -1,5 +1,5 @@
 // M0 question 10: check which flags "claude --bg" accepts.
-// Usage: q10-flags.cjs [flags] [flags-bad] [wt]   (no argument runs all three steps)
+// Usage: ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/q10-flags.ts [flags] [flags-bad] [wt]   (no argument runs all three steps)
 // The script starts these background test sessions in .m0-sandbox:
 //   bifrost-test-flags      --permission-mode plan
 //   bifrost-test-flags-bad  --permission-mode bogus (to see the error form)
@@ -8,12 +8,10 @@
 // bifrost-test-wt2. Each start has the first prompt "Reply with the word READY."
 // For each start it records the exit code, stdout, stderr and the entry.
 // It attaches without input to read the mode line, then detaches with SIGHUP.
-'use strict'
-/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type -- CommonJS script for Node. */
-const fs = require('fs')
-const path = require('path')
-const { spawnSync } = require('child_process')
-const L = require('./lib.cjs')
+import fs from 'node:fs'
+import path from 'node:path'
+import { spawnSync } from 'node:child_process'
+import * as L from './lib.ts'
 const { TestPty, log, sleep, writeOut } = L
 
 const PROMPT = 'Reply with the word READY.'
