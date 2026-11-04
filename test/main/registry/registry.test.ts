@@ -204,6 +204,41 @@ describe('kind and leave rules', () => {
     r.applyAgents([bg({ status: 'busy' })], 600)
     expect(r.rows()[0].state).toBe('working')
   })
+
+  test('a sample that started before a SessionEnd does not clear the parked state', () => {
+    const r = registry()
+    r.applyAgents([bg()], 1000)
+    r.applyEvents([ev('SessionEnd', 's1', 2500)], 2500)
+    r.applyAgents([bg()], 2000)
+    expect(r.rows()[0].state).toBe('parked')
+    r.applyAgents([bg()], 3000)
+    expect(r.rows()[0].state).toBe('idle')
+  })
+
+  test('a sample that started before the list parked the session does not clear it', () => {
+    const r = registry()
+    r.markStarted('s1')
+    r.applyAgents([], 2500)
+    r.applyAgents([bg()], 2000)
+    expect(r.rows()[0].state).toBe('parked')
+    r.applyAgents([bg()], 3000)
+    expect(r.rows()[0].state).toBe('idle')
+  })
+
+  test('an interactive entry in --all is not parked', () => {
+    const ended = bg({
+      id: undefined,
+      kind: 'interactive',
+      name: 'warp',
+      pid: undefined,
+      status: '',
+    })
+    const r = registry()
+    r.applyAgents([{ ...ended, pid: 7, status: 'idle' }], 100)
+    r.applyAgents([], 200)
+    r.applyAllAgents([ended])
+    expect(r.rows()).toEqual([])
+  })
 })
 
 describe('names', () => {
@@ -265,6 +300,32 @@ describe('store', () => {
     r.applyAllAgents([bg({ name: 'beta', pid: undefined, status: '' })])
     expect(r.storeChanged()).toBe(true)
     expect(r.store().names).toEqual({ s1: 'beta' })
+  })
+
+  test('applyAllAgents removes the name of a session that ended', () => {
+    const r = registry()
+    r.applyAgents([bg({ id: undefined, kind: 'interactive', name: 'warp' })], 100)
+    expect(r.store().names).toEqual({ s1: 'warp' })
+    expect(r.storeChanged()).toBe(true)
+    r.applyAgents([], 200)
+    expect(r.storeChanged()).toBe(false)
+    r.applyAllAgents([])
+    expect(r.store().names).toEqual({})
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('applyAllAgents keeps the names of active, --all and started sessions', () => {
+    const r = registry({ names: { s1: 'one', s2: 'two', s3: 'three' }, started: ['s3'] })
+    r.applyAgents([bg({ name: 'one' })], 100)
+    r.applyAllAgents([bg({ name: '', pid: undefined, sessionId: 's2', status: '' })])
+    expect(r.store().names).toEqual({ s1: 'one', s2: 'two', s3: 'three' })
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('applyAllAgents does not keep the name of an interactive entry', () => {
+    const r = registry({ names: { s1: 'warp' }, started: [] })
+    r.applyAllAgents([bg({ kind: 'interactive', name: 'warp', pid: undefined, status: '' })])
+    expect(r.store().names).toEqual({})
   })
 
   test('the caller cannot change the registry through the store or a row', () => {

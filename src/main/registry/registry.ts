@@ -31,8 +31,10 @@ interface Session {
   status: string
   waitingFor?: string
   startedAt: number
-  // The time of the last hook event. 0 when no event came.
+  // The time of the last hook event. The value is 0 if no event came.
   lastEventAt: number
+  // The time of the last park. A SessionEnd event or a list sample gives this time.
+  parkedAt: number
   machine: MachineState
 }
 
@@ -99,9 +101,11 @@ export class SessionRegistry {
       this.keepName(entry)
       const s = this.sessions.get(entry.sessionId) ?? this.add(entry.sessionId)
       // Without hooks, only the session list can clear the parked state.
-      // An entry without a pid has no process yet, or no process after a stop.
-      // So only an entry with a pid clears the parked state.
-      if (s.machine.state === 'parked' && entry.pid !== undefined) {
+      // An entry without a pid has no process.
+      // This occurs for a short time after a start or a stop.
+      // A sample that started before the park is too old. It cannot clear the parked state.
+      const restarted = entry.pid !== undefined && sampledAt > s.parkedAt
+      if (s.machine.state === 'parked' && restarted) {
         s.machine = onHookEvent(s.machine, {
           at: sampledAt,
           name: 'SessionStart',
@@ -116,16 +120,20 @@ export class SessionRegistry {
       })
     }
     for (const id of this.active) {
-      if (!ids.has(id)) this.leave(id)
+      if (!ids.has(id)) this.leave(id, sampledAt)
     }
     this.active = ids
-    this.parkStarted()
+    this.parkStarted(sampledAt)
   }
 
   // Apply the output of "claude agents --json --all".
+  // Call it only after a poll that did not fail.
   applyAllAgents(entries: AgentEntry[]): void {
-    this.all = new Set(entries.map(entry => entry.sessionId))
-    for (const entry of entries) {
+    // An interactive session that ended must not come back as a parked row.
+    // So the registry uses only the background entries.
+    const owned = entries.filter(entry => entry.kind === 'background')
+    this.all = new Set(owned.map(entry => entry.sessionId))
+    for (const entry of owned) {
       this.keepName(entry)
       // An entry with a pid has a process. The active list gives its data.
       if (entry.pid !== undefined || this.active.has(entry.sessionId)) continue
@@ -135,9 +143,15 @@ export class SessionRegistry {
     }
     // A parked session that left --all goes away, if Bifrost did not start it.
     for (const s of this.sessions.values()) {
-      const id = s.sessionId
-      if (s.machine.state !== 'parked' || this.active.has(id)) continue
-      if (!this.all.has(id) && !this.started.has(id)) this.sessions.delete(id)
+      if (s.machine.state === 'parked' && !this.known(s.sessionId)) {
+        this.sessions.delete(s.sessionId)
+      }
+    }
+    // Remove the names of sessions that left all lists. This limits the size of the store.
+    for (const id of this.names.keys()) {
+      if (this.known(id)) continue
+      this.names.delete(id)
+      this.changed = true
     }
   }
 
@@ -186,7 +200,8 @@ export class SessionRegistry {
     return this.sorted().map(s => this.toRow(s))
   }
 
-  // Return each cwd of the rows one time. An empty cwd is not a directory, so the list omits it.
+  // Return each cwd of the rows one time.
+  // An empty cwd is not a directory. The list does not contain an empty cwd.
   cwds(): string[] {
     const cwds = new Set(this.sorted().map(s => s.cwd))
     cwds.delete('')
@@ -212,6 +227,7 @@ export class SessionRegistry {
       kind: 'owned',
       lastEventAt: 0,
       machine: INITIAL_STATE,
+      parkedAt: Number.NEGATIVE_INFINITY,
       sessionId,
       startedAt: 0,
       status: '',
@@ -226,6 +242,7 @@ export class SessionRegistry {
   private applyEvent(s: Session, ev: HookEvent): void {
     s.machine = onHookEvent(s.machine, ev)
     s.lastEventAt = Math.max(s.lastEventAt, ev.at)
+    if (ev.name === 'SessionEnd') s.parkedAt = Math.max(s.parkedAt, ev.at)
   }
 
   private dropOldEvents(now: number): void {
@@ -242,23 +259,32 @@ export class SessionRegistry {
   // Apply the rules for a session that left the active list.
   // An owned session stays as a parked row if it is in --all or if Bifrost started it.
   // All other sessions go away.
-  private leave(sessionId: string): void {
+  private leave(sessionId: string, sampledAt: number): void {
     const s = this.sessions.get(sessionId)
     if (!s) return
     const keep = this.all.has(sessionId) || this.started.has(sessionId)
-    if (s.kind === 'owned' && keep) this.park(s)
+    if (s.kind === 'owned' && keep) this.park(s, sampledAt)
     else this.sessions.delete(sessionId)
   }
 
   // A session that Bifrost started and that is not active is parked.
-  private parkStarted(): void {
+  private parkStarted(sampledAt: number): void {
     for (const id of this.started) {
-      if (!this.active.has(id) && !this.sessions.has(id)) this.park(this.add(id))
+      if (!this.active.has(id) && !this.sessions.has(id)) this.park(this.add(id), sampledAt)
     }
   }
 
-  // Park a session. It has no process, so the values from the active list do not apply.
-  private park(s: Session): void {
+  // Return true if the session is in the active list, in the --all list or in the started list.
+  private known(sessionId: string): boolean {
+    return this.active.has(sessionId) || this.all.has(sessionId) || this.started.has(sessionId)
+  }
+
+  // Park a session. A parked session has no process.
+  // Remove the values that came from the active list.
+  // A park from the --all list keeps the old park time. Only one list poll runs at a time.
+  // So the next active sample is newer than the --all list.
+  private park(s: Session, at?: number): void {
+    if (at !== undefined) s.parkedAt = Math.max(s.parkedAt, at)
     s.machine = onParked(s.machine)
     s.pid = undefined
     s.status = ''
