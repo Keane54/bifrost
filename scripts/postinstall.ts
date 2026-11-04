@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-function run(command, args) {
+function run(command: string, args: string[]): void {
   execFileSync(command, args, { stdio: 'inherit' })
 }
 
