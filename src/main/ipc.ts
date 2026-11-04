@@ -1,14 +1,32 @@
-import { resolve } from 'node:path'
-import { type BrowserWindow, ipcMain, type WebContents } from 'electron'
-import { listAgents } from './claude/agents'
-import { createRunClaude, execFile, resolveClaudePath } from './claude/cli'
-import { canOpenPty, canRunClaude, canSignal } from './claude/guard'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { app, type BrowserWindow, ipcMain, type WebContents } from 'electron'
+import type { ClaudeVersion } from '../shared/types'
+import { type AgentList, listAgents } from './claude/agents'
+import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
+import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
 import { loadLoginEnv } from './env/login-env'
+import {
+  defaultPaths,
+  type IntegrationPaths,
+  install,
+  integrationStatus,
+  previewInstall,
+  uninstall,
+} from './integration/integration'
+import { canAttach } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
 import { PtyManager } from './pty/pty-manager'
+import { drainEventDir } from './registry/event-dir'
+import { readBranch } from './registry/git-branch'
+import { SessionRegistry } from './registry/registry'
+import { RegistryService, type ServiceDeps } from './registry/service'
+import { readStatusFiles } from './registry/status-file'
+import { loadStore, saveStore } from './registry/store-file'
 
-const ALLOWED_SIGNALS = ['SIGTERM', 'SIGHUP', 'SIGINT']
+// A yellow box changes to red after 10 minutes.
+const ESCALATION_MS = 600_000
 
 let registered = false
 let currentWindow: BrowserWindow | null = null
@@ -18,6 +36,9 @@ let managerPromise: Promise<PtyManager | null> | null = null
 let liveManager: PtyManager | null = null
 // All PTYs belong to the page that the current window shows.
 const page = new PageScope(() => liveManager?.closeAll())
+// The main process sets liveService when the store loads.
+let liveService: RegistryService | null = null
+let serviceStopped = false
 
 // Return true if the sender is the page of the current window and that page did not end.
 // The check compares the webContents IDs, not the objects.
@@ -33,6 +54,39 @@ function send(channel: string, ...args: unknown[]): void {
     currentWindow.webContents.send(channel, ...args)
 }
 
+// Load the store, then start the registry service.
+// The service sends each update of the rows to the current window.
+async function startService(
+  run: Promise<RunClaude | null>,
+  paths: IntegrationPaths,
+): Promise<RegistryService> {
+  const storeFile = join(app.getPath('userData'), 'registry.json')
+  const list = async (all: boolean): Promise<AgentList> => {
+    const runClaude = await run
+    if (!runClaude) return { entries: [], error: 'claude not found' }
+    return listAgents(runClaude, { all })
+  }
+  const deps: ServiceDeps = {
+    drainEvents: () => drainEventDir(join(paths.bifrostHome, 'events')),
+    listActive: () => list(false),
+    listAll: () => list(true),
+    now: () => Date.now(),
+    readBranch: cwd => readBranch(execFile, cwd),
+    readStatus: () => readStatusFiles(join(paths.bifrostHome, 'sessions')),
+    saveStore: store => saveStore(storeFile, store),
+  }
+  const store = await loadStore(storeFile)
+  const service = new RegistryService(
+    new SessionRegistry({ escalationMs: ESCALATION_MS, store }),
+    deps,
+  )
+  service.onUpdate((rows, error) => send('registry:update', rows, error))
+  liveService = service
+  // The app can quit before the store loads. Then do not start the service.
+  if (!serviceStopped) service.start()
+  return service
+}
+
 // Register all IPC handlers one time for the app process.
 // Call it before any window loads a page. A second call does nothing.
 // The main process finds the claude path one time. The renderer cannot set it.
@@ -44,6 +98,9 @@ export function registerIpc(): void {
   // Start the login-shell env one time. Every claude run and every PTY uses it.
   // process.execPath runs as Node when ELECTRON_RUN_AS_NODE is 1.
   const loginEnv = loadLoginEnv(execFile, { execPath: process.execPath, fallback: process.env })
+  const run = Promise.all([claudePath, loginEnv]).then(([path, env]) =>
+    path ? createRunClaude(execFile, path, env) : null,
+  )
   managerPromise = Promise.all([claudePath, loginEnv]).then(([path, env]) => {
     if (!path) return null
     const m = new PtyManager(nodePtySpawn, path, env)
@@ -53,38 +110,25 @@ export function registerIpc(): void {
     return m
   })
   const getManager = (): Promise<PtyManager | null> => managerPromise as Promise<PtyManager | null>
+  const paths = defaultPaths(homedir())
+  const service = startService(run, paths)
 
   ipcMain.handle('claude:path', () => claudePath)
-  ipcMain.handle('agents:list', async (_e, all?: boolean) => {
-    const path = await claudePath
-    if (!path) return { entries: [], error: 'claude not found' }
-    return listAgents(createRunClaude(execFile, path, await loginEnv), { all: all === true })
+  ipcMain.handle('claude:version', async (): Promise<ClaudeVersion> => {
+    const runClaude = await run
+    if (!runClaude) return { minimum: MIN_CLAUDE_VERSION, ok: false, version: null }
+    return checkClaudeVersion(runClaude)
   })
-  ipcMain.handle('claude:run', async (_e, args: string[], cwd: string) => {
-    const path = await claudePath
-    if (!path) return { code: 127, stderr: 'claude not found', stdout: '' }
-    // Run only a background start of a test session. Never stop or remove a session.
-    if (!canRunClaude(args)) {
-      return { code: 126, stderr: 'refused: not an allowed start of a test session', stdout: '' }
-    }
-    // A relative cwd starts at the working directory of the app, as in pty:open.
-    const run = createRunClaude(execFile, path, await loginEnv)
-    return run(args, { cwd: resolve(process.cwd(), cwd) })
+  ipcMain.handle('registry:rows', async () => (await service).rows())
+  ipcMain.handle('registry:ack', async (_e, sessionId: unknown) => {
+    if (typeof sessionId === 'string') (await service).acknowledge(sessionId)
   })
-  // Send a signal only to a test session. Any other signal or PID gives false.
-  ipcMain.handle('proc:signal', async (_e, pid: number, signal: string) => {
-    if (!ALLOWED_SIGNALS.includes(signal)) return false
-    const path = await claudePath
-    if (!path) return false
-    const list = await listAgents(createRunClaude(execFile, path, await loginEnv))
-    if (!canSignal(list.entries, pid)) return false
-    try {
-      process.kill(pid, signal as NodeJS.Signals)
-      return true
-    } catch {
-      return false
-    }
-  })
+  ipcMain.handle('integration:status', () => integrationStatus(paths))
+  // These three handlers reject for a settings file that is not valid.
+  // The renderer gets the message of the Error as the rejection.
+  ipcMain.handle('integration:preview', () => previewInstall(paths, new Date()))
+  ipcMain.handle('integration:install', () => install(paths, new Date()))
+  ipcMain.handle('integration:uninstall', () => uninstall(paths, new Date()))
   ipcMain.handle(
     'pty:open',
     async (
@@ -97,14 +141,9 @@ export function registerIpc(): void {
       const token = page.token()
       const manager = await getManager()
       if (!manager) throw new Error('claude not found')
-      // Open a PTY only for a test session. Read the session list for an attach.
-      const path = await claudePath
-      const entries =
-        args[0] === 'attach' && path
-          ? (await listAgents(createRunClaude(execFile, path, await loginEnv))).entries
-          : []
-      if (!canOpenPty(entries, args)) {
-        throw new Error('refused: not an allowed attach or start of a test session')
+      // Open a PTY only for an attach to an owned session that is not parked.
+      if (!canAttach((await service).rows(), args)) {
+        throw new Error('refused: not an attach to an owned session that is not parked')
       }
       // The page can end during the waits above. Then no page owns the PTY, so do not open it.
       if (!isLivePage(e.sender, token)) {
@@ -125,7 +164,7 @@ export function registerIpc(): void {
   })
 }
 
-// Make a window the target of pty:data and pty:exit.
+// Make a window the target of pty:data, pty:exit and registry:update.
 // A reload or a renderer crash does not run the cleanup code of the page.
 // The main process must close the PTYs of the old page.
 // It closes all PTYs when a new page loads and when the renderer stops.
@@ -143,4 +182,10 @@ export function attachWindow(win: BrowserWindow): void {
 // Close all PTYs. Call it when the app quits.
 export function closeAllPtys(): void {
   page.end()
+}
+
+// Stop the registry service. Call it when the app quits.
+export function stopRegistry(): void {
+  serviceStopped = true
+  liveService?.stop()
 }

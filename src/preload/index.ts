@@ -1,6 +1,20 @@
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from 'electron'
 import type { BifrostApi } from '../shared/api'
 
+// Electron adds this text to the message of an Error from a handler in the main process.
+const REMOTE_PREFIX = /^Error invoking remote method '[^']*': (?:\w*Error: )?/
+
+// Call a handler in the main process.
+// If the handler fails, reject with an Error that has only the message of the failure.
+async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+  try {
+    return await ipcRenderer.invoke(channel, ...args)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(message.replace(REMOTE_PREFIX, ''))
+  }
+}
+
 // Subscribe to one channel. The returned function removes only this listener.
 function subscribe(channel: string, handler: (...args: never[]) => void): () => void {
   const wrapper = (_event: IpcRendererEvent, ...args: unknown[]): void =>
@@ -12,17 +26,26 @@ function subscribe(channel: string, handler: (...args: never[]) => void): () => 
 }
 
 const api: BifrostApi = {
-  agents: { list: all => ipcRenderer.invoke('agents:list', all) },
-  claude: { run: (args, cwd) => ipcRenderer.invoke('claude:run', args, cwd) },
-  claudePath: () => ipcRenderer.invoke('claude:path'),
-  proc: { signal: (pid, signal) => ipcRenderer.invoke('proc:signal', pid, signal) },
+  claudePath: () => invoke('claude:path'),
+  claudeVersion: () => invoke('claude:version'),
+  integration: {
+    install: () => invoke('integration:install'),
+    preview: () => invoke('integration:preview'),
+    status: () => invoke('integration:status'),
+    uninstall: () => invoke('integration:uninstall'),
+  },
   pty: {
-    close: (viewId, signal) => ipcRenderer.invoke('pty:close', viewId, signal),
+    close: (viewId, signal) => invoke('pty:close', viewId, signal),
     onData: cb => subscribe('pty:data', cb),
     onExit: cb => subscribe('pty:exit', cb),
-    open: (viewId, args, opts) => ipcRenderer.invoke('pty:open', viewId, args, opts),
-    resize: (viewId, cols, rows) => ipcRenderer.invoke('pty:resize', viewId, cols, rows),
-    write: (viewId, data) => ipcRenderer.invoke('pty:write', viewId, data),
+    open: (viewId, args, opts) => invoke('pty:open', viewId, args, opts),
+    resize: (viewId, cols, rows) => invoke('pty:resize', viewId, cols, rows),
+    write: (viewId, data) => invoke('pty:write', viewId, data),
+  },
+  registry: {
+    acknowledge: sessionId => invoke('registry:ack', sessionId),
+    onUpdate: cb => subscribe('registry:update', cb),
+    rows: () => invoke('registry:rows'),
   },
 }
 

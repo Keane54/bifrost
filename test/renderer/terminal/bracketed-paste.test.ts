@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { isSendKey, sendBody } from '../../../src/renderer/src/m0/send-box'
+import { isSendKey, sendBody } from '../../../src/renderer/src/terminal/bracketed-paste'
 
 test('sendBody with bracketed paste puts the lines between the markers, with CR line breaks', () => {
   expect(sendBody('line one\nline two', true)).toBe('\x1b[200~line one\rline two\x1b[201~\r')

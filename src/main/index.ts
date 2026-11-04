@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { app, BrowserWindow, shell } from 'electron'
 import icon from '../../resources/icon.png?asset'
-import { attachWindow, closeAllPtys, registerIpc } from './ipc'
+import { attachWindow, closeAllPtys, registerIpc, stopRegistry } from './ipc'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -72,6 +72,8 @@ app.on('window-all-closed', () => {
 })
 
 // Close all PTYs before the app quits. Then no attach client stays alive after Bifrost.
+// Stop the registry service. Then no poll starts after this time.
 app.on('will-quit', () => {
   closeAllPtys()
+  stopRegistry()
 })
