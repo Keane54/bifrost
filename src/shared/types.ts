@@ -14,3 +14,11 @@ export interface InstallPreview {
   backupPath: string | null
   originalCommand: string | null
 }
+
+export interface ClaudeVersion {
+  // The version that claude reports, or null when it did not report one.
+  version: string | null
+  // True when the version is at least the minimum.
+  ok: boolean
+  minimum: string
+}
