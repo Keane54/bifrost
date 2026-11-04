@@ -15,7 +15,8 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      // The preload uses only contextBridge and ipcRenderer, so it works in the sandbox.
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false
     }
