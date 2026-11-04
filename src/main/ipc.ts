@@ -68,11 +68,8 @@ export function registerIpc(): void {
       return { code: 126, stderr: 'refused: not an allowed start of a test session', stdout: '' }
     }
     // A relative cwd starts at the working directory of the app, as in pty:open.
-    return createRunClaude(
-      execFile,
-      path,
-      await loginEnv,
-    )(args, { cwd: resolve(process.cwd(), cwd) })
+    const run = createRunClaude(execFile, path, await loginEnv)
+    return run(args, { cwd: resolve(process.cwd(), cwd) })
   })
   // Send a signal only to a test session. Any other signal or PID gives false.
   ipcMain.handle('proc:signal', async (_e, pid: number, signal: string) => {

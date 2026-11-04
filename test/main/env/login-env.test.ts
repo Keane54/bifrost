@@ -36,3 +36,16 @@ test('loadLoginEnv falls back to its own env when the shell fails', async () => 
     PATH: '/fb',
   })
 })
+
+test('parseLoginEnvOutput returns null for a value that is not a string or for no PATH', () => {
+  for (const json of ['{"PATH":1}', '{}', '{"HOME":"/h"}']) {
+    expect(parseLoginEnvOutput(`${ENV_MARKER}${json}${ENV_MARKER}`)).toBeNull()
+  }
+})
+
+test('loadLoginEnv falls back when the shell output has no markers', async () => {
+  const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: 'banner only' })
+  expect(
+    await loadLoginEnv(exec, { execPath: '/E', fallback: { A: undefined, PATH: '/fb' } }),
+  ).toEqual({ PATH: '/fb' })
+})

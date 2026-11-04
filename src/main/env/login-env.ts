@@ -23,6 +23,7 @@ function stringValues(source: NodeJS.ProcessEnv): Record<string, string> {
 
 // Read the JSON between the first two markers.
 // Return null if a marker is missing, the JSON is bad, or the JSON is not an object.
+// Return null also if a value is not a string, or if the env has no PATH.
 export function parseLoginEnvOutput(stdout: string): Record<string, string> | null {
   const start = stdout.indexOf(ENV_MARKER)
   if (start === -1) return null
@@ -32,7 +33,13 @@ export function parseLoginEnvOutput(stdout: string): Record<string, string> | nu
   try {
     const parsed: unknown = JSON.parse(stdout.slice(from, end))
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
-    return stringValues(parsed as NodeJS.ProcessEnv)
+    const env: Record<string, string> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value !== 'string') return null
+      env[key] = value
+    }
+    // An env without PATH is not usable.
+    return typeof env.PATH === 'string' ? env : null
   } catch {
     return null
   }
