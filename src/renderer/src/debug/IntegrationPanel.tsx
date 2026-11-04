@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { InstallPreview, IntegrationStatus } from '../../../shared/types'
 
 function describe(status: IntegrationStatus): string {
@@ -20,6 +20,7 @@ export default function IntegrationPanel(): React.JSX.Element {
   const [preview, setPreview] = useState<InstallPreview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const running = useRef(false)
 
   useEffect(() => {
     window.bifrost.integration
@@ -29,14 +30,20 @@ export default function IntegrationPanel(): React.JSX.Element {
   }, [])
 
   // Run one action. The three buttons stay off until it ends.
+  // The ref stops a second action before the next render disables the buttons.
+  // Each action clears the old preview. Install needs a new preview each time.
   async function run(action: () => Promise<void>): Promise<void> {
+    if (running.current) return
+    running.current = true
     setBusy(true)
     setError(null)
+    setPreview(null)
     try {
       await action()
     } catch (err) {
       setError(message(err))
     } finally {
+      running.current = false
       setBusy(false)
     }
   }

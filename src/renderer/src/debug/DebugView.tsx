@@ -18,29 +18,43 @@ function boxClass(row: SessionRow): string {
   return classes.join(' ')
 }
 
-function firstLine(text: string | undefined): string {
-  return text?.split('\n')[0] ?? ''
+// The first line that has text. Trim spaces and carriage returns.
+function firstLine(text: string | null | undefined): string {
+  if (text == null) return ''
+  return (
+    text
+      .split('\n')
+      .map(line => line.trim())
+      .find(line => line !== '') ?? ''
+  )
+}
+
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 // A plain view of the session rows and the integration controls.
 export default function DebugView(): React.JSX.Element {
   const [version, setVersion] = useState<ClaudeVersion | null>(null)
   const [rows, setRows] = useState<SessionRow[]>([])
+  const [versionError, setVersionError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
     let active = true
+    let updated = false
     window.bifrost
       .claudeVersion()
       .then(v => active && setVersion(v))
-      .catch(() => {})
-    // One call at mount. The first update arrives after the first poll.
+      .catch(err => active && setVersionError(message(err)))
+    // One call at mount. An update that arrived first is newer, so keep it.
     window.bifrost.registry
       .rows()
-      .then(r => active && setRows(r))
+      .then(r => active && !updated && setRows(r))
       .catch(() => {})
     const unsubscribe = window.bifrost.registry.onUpdate((r, e) => {
+      updated = true
       setRows(r)
       setError(e)
     })
@@ -59,7 +73,12 @@ export default function DebugView(): React.JSX.Element {
   return (
     <div className='debug'>
       <div>
-        Claude Code version: {version ? (version.version ?? 'unknown') : 'loading'}
+        Claude Code version:{' '}
+        {version
+          ? (version.version ?? 'unknown')
+          : versionError
+            ? `error (${versionError})`
+            : 'loading'}
         {version && !version.ok && (
           <span className='debug-warn'>
             {' '}
@@ -92,7 +111,11 @@ export default function DebugView(): React.JSX.Element {
           {rows.map(row => (
             <tr
               key={row.sessionId}
-              onClick={() => void window.bifrost.registry.acknowledge(row.sessionId)}
+              onClick={() =>
+                window.bifrost.registry
+                  .acknowledge(row.sessionId)
+                  .catch(err => setError(message(err)))
+              }
             >
               <td>
                 <div className={boxClass(row)} />
@@ -103,8 +126,8 @@ export default function DebugView(): React.JSX.Element {
               <td>{row.status}</td>
               <td>{row.waitingFor ?? ''}</td>
               <td>{row.model ?? ''}</td>
-              <td>{row.contextPercent === undefined ? '' : `${row.contextPercent}%`}</td>
-              <td>{row.costUsd === undefined ? '' : `$${row.costUsd.toFixed(2)}`}</td>
+              <td>{row.contextPercent != null ? `${row.contextPercent}%` : ''}</td>
+              <td>{row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : ''}</td>
               <td>{row.branch ?? ''}</td>
               <td>{age(row.lastActivity, now)}</td>
               <td className='msg'>{firstLine(row.lastMessage)}</td>
