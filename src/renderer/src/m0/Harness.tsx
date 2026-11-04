@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AgentEntry } from '../../../main/claude/agents'
 import { TEST_PREFIX } from '../../../main/claude/guard'
 import { TerminalView } from '../terminal/TerminalView'
+import { isSendKey, sendBody } from './send-box'
 
 // Temporary M0 harness. The user uses it by hand to answer the claude attach questions.
 // The main process also checks every signal. The checks here protect the UI.
@@ -45,10 +46,13 @@ export function Harness(): React.JSX.Element {
   const [runOutput, setRunOutput] = useState('')
   const [log, setLog] = useState('')
   const counter = useRef(0)
+  // viewsRef always holds the current views. A callback reads it after an await.
   const viewsRef = useRef<View[]>([])
-  useEffect(() => {
-    viewsRef.current = views
-  }, [views])
+  const updateViews = (change: (vs: View[]) => View[]): void => {
+    viewsRef.current = change(viewsRef.current)
+    setViews(viewsRef.current)
+  }
+  const isOpenView = (viewId: string): boolean => viewsRef.current.some((x) => x.viewId === viewId)
 
   // Poll the session list every 2 seconds. Skip a tick if the last call is not done.
   useEffect(() => {
@@ -86,13 +90,13 @@ export function Harness(): React.JSX.Element {
 
   const nextId = (prefix: string): string => `${prefix}-${++counter.current}`
 
-  const addView = (v: View): void => setViews((vs) => [...vs, v])
+  const addView = (v: View): void => updateViews((vs) => [...vs, v])
 
   // Remove a view. A TerminalView closes its own PTY when it unmounts.
   // A hidden attach has no TerminalView, so close its PTY here.
   const removeView = (v: View, signal?: string): void => {
     if (v.hidden || signal) void window.bifrost.pty.close(v.viewId, signal)
-    setViews((vs) => vs.filter((x) => x.viewId !== v.viewId))
+    updateViews((vs) => vs.filter((x) => x.viewId !== v.viewId))
   }
 
   const openView = (e: AgentEntry, hidden: boolean): void => {
@@ -110,8 +114,21 @@ export function Harness(): React.JSX.Element {
     if (hidden) {
       window.bifrost.pty
         .open(viewId, args, { cwd: SANDBOX, cols: 80, rows: 24 })
-        .then((pid) => setLog(`Hidden attach ${viewId} opened. PID ${pid}.`))
-        .catch((err: unknown) => setLog(`Hidden attach failed: ${String(err)}`))
+        .then((pid) => {
+          // the user can remove the view while the PTY opens. Then close the new PTY.
+          // Otherwise an extra attach client stays alive with no view.
+          if (!isOpenView(viewId)) {
+            void window.bifrost.pty.close(viewId)
+            setLog(`Hidden attach ${viewId} was removed before it opened. Closed PID ${pid}.`)
+            return
+          }
+          setLog(`Hidden attach ${viewId} opened. PID ${pid}.`)
+        })
+        .catch((err: unknown) => {
+          // A failed open has no PTY. Remove its row.
+          updateViews((vs) => vs.filter((x) => x.viewId !== viewId))
+          setLog(`Hidden attach ${viewId} failed: ${String(err)}`)
+        })
     }
   }
 
@@ -149,8 +166,7 @@ export function Harness(): React.JSX.Element {
   }
 
   const sendBox = (): void => {
-    const body = paste ? `\x1b[200~${sendText}\x1b[201~` : sendText
-    void writeTo(sendTarget.trim(), body + '\r')
+    void writeTo(sendTarget.trim(), sendBody(sendText, paste))
   }
 
   const startTest = async (): Promise<void> => {
@@ -176,7 +192,7 @@ export function Harness(): React.JSX.Element {
     }
   }
 
-  const startExternal = useCallback((): void => {
+  const startExternal = (): void => {
     addView({
       viewId: nextId('ext'),
       target: TEST_PREFIX + 'ext',
@@ -185,7 +201,7 @@ export function Harness(): React.JSX.Element {
       args: ['--model', 'haiku', '--name', TEST_PREFIX + 'ext'],
       cwd: SANDBOX
     })
-  }, [])
+  }
 
   const testViews = views.filter((v) => v.isTest)
 
@@ -279,11 +295,23 @@ export function Harness(): React.JSX.Element {
             <option key={v.viewId} value={v.viewId} />
           ))}
         </datalist>{' '}
-        <input
-          placeholder="text"
-          size={40}
+        <textarea
+          placeholder="text: Enter sends, Shift+Enter adds a line"
+          rows={3}
+          cols={48}
+          style={{ verticalAlign: 'top' }}
           value={sendText}
           onChange={(ev) => setSendText(ev.target.value)}
+          onKeyDown={(ev) => {
+            const key = {
+              key: ev.key,
+              shiftKey: ev.shiftKey,
+              isComposing: ev.nativeEvent.isComposing
+            }
+            if (!isSendKey(key)) return
+            ev.preventDefault()
+            sendBox()
+          }}
         />{' '}
         <label>
           <input type="checkbox" checked={paste} onChange={(ev) => setPaste(ev.target.checked)} />{' '}
