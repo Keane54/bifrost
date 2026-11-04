@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { registerIpc } from './ipc'
+import { attachWindow, registerIpc } from './ipc'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -21,7 +21,7 @@ function createWindow(): void {
     }
   })
 
-  registerIpc(mainWindow).catch((error) => console.error('registerIpc failed', error))
+  attachWindow(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
@@ -50,6 +50,9 @@ app.whenReady().then(() => {
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
+
+  // Register the IPC handlers before any window loads a page.
+  registerIpc()
 
   createWindow()
 
