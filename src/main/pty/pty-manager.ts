@@ -1,0 +1,83 @@
+export interface PtyProcess {
+  pid: number
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  kill(signal?: string): void
+  onData(cb: (chunk: string) => void): void
+  onExit(cb: (e: { exitCode: number; signal?: number }) => void): void
+}
+
+export type SpawnFn = (
+  file: string,
+  args: string[],
+  opts: { cwd: string; cols: number; rows: number; env: Record<string, string> }
+) => PtyProcess
+
+// PtyManager starts and controls one PTY for each view.
+// It runs only the one program that the caller gives to the constructor.
+export class PtyManager {
+  private readonly ptys = new Map<string, PtyProcess>()
+  private dataCb: (viewId: string, chunk: string) => void = () => {}
+  private exitCb: (viewId: string, exitCode: number, signal?: number) => void = () => {}
+
+  constructor(
+    private readonly spawn: SpawnFn,
+    private readonly file: string
+  ) {}
+
+  open(viewId: string, args: string[], opts: { cwd: string; cols: number; rows: number }): number {
+    // A view ID has one PTY only. Close the old PTY first.
+    this.close(viewId)
+    const env: Record<string, string> = {}
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) env[key] = value
+    }
+    env.TERM = 'xterm-256color'
+    env.COLORTERM = 'truecolor'
+    const proc = this.spawn(this.file, args, { ...opts, env })
+    this.ptys.set(viewId, proc)
+    proc.onData((chunk) => {
+      // Ignore data from a PTY that this view no longer uses.
+      if (this.ptys.get(viewId) === proc) this.dataCb(viewId, chunk)
+    })
+    proc.onExit((e) => {
+      // An old PTY must not remove the new PTY of the same view.
+      if (this.ptys.get(viewId) !== proc) return
+      this.ptys.delete(viewId)
+      this.exitCb(viewId, e.exitCode, e.signal)
+    })
+    return proc.pid
+  }
+
+  write(viewId: string, data: string): boolean {
+    const proc = this.ptys.get(viewId)
+    if (!proc) return false
+    proc.write(data)
+    return true
+  }
+
+  resize(viewId: string, cols: number, rows: number): void {
+    const proc = this.ptys.get(viewId)
+    if (!proc || cols < 1 || rows < 1) return
+    proc.resize(cols, rows)
+  }
+
+  close(viewId: string, signal = 'SIGHUP'): void {
+    const proc = this.ptys.get(viewId)
+    if (!proc) return
+    this.ptys.delete(viewId)
+    proc.kill(signal)
+  }
+
+  closeAll(): void {
+    for (const viewId of [...this.ptys.keys()]) this.close(viewId)
+  }
+
+  onData(cb: (viewId: string, chunk: string) => void): void {
+    this.dataCb = cb
+  }
+
+  onExit(cb: (viewId: string, exitCode: number, signal?: number) => void): void {
+    this.exitCb = cb
+  }
+}
