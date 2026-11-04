@@ -1,6 +1,8 @@
-// The app shows only a heading until the debug view comes.
+import DebugView from './debug/DebugView'
+
+// The app shows the debug view until the real panels come in M2 and M3.
 function App(): React.JSX.Element {
-  return <h1>Bifrost</h1>
+  return <DebugView />
 }
 
 export default App
