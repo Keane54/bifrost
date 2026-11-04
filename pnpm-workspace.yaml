@@ -3,3 +3,4 @@ allowBuilds:
   esbuild: true
   node-pty: true
   electron-winstaller: false
+  lefthook: true

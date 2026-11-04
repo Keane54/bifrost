@@ -23,6 +23,7 @@ Core rules of the specification:
 - Run scripts as `.ts` files directly with Node 24 or later.
 - Run scripts that load node-pty with `ELECTRON_RUN_AS_NODE=1 electron <file>.ts`.
 - Format and lint the code with Biome. Run `pnpm check` before each commit.
+- Wrap commit body lines at 100 characters. commitlint refuses longer lines.
 
 When you edit existing text, check that it conforms. If it does not conform, correct it.
 
