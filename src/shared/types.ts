@@ -22,3 +22,9 @@ export interface ClaudeVersion {
   ok: boolean
   minimum: string
 }
+
+// The state of one session row.
+export type SessionState = 'working' | 'needs-you' | 'error' | 'idle' | 'parked'
+
+// The EVE-style box of a row. Yellow: Claude finished. Red: Claude needs the user.
+export type Box = 'none' | 'yellow' | 'red'
