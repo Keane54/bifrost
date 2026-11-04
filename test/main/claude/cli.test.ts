@@ -1,7 +1,30 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
-import { resolveClaudePath } from '../../../src/main/claude/cli'
+import { createRunClaude, resolveClaudePath } from '../../../src/main/claude/cli'
+
+test('createRunClaude runs claude with the cwd and the clean child env', async () => {
+  vi.stubEnv('CLAUDECODE', '1')
+  vi.stubEnv('CLAUDE_CODE_SESSION_KIND', 'bash')
+  vi.stubEnv('TERM_PROGRAM', 'WarpTerminal')
+  vi.stubEnv('HOME', '/Users/test')
+  try {
+    const exec = vi.fn().mockResolvedValue({ code: 0, stdout: '', stderr: '' })
+    await createRunClaude(exec, '/bin/claude')(['agents', '--json'], { cwd: '/tmp' })
+    expect(exec).toHaveBeenCalledWith(
+      '/bin/claude',
+      ['agents', '--json'],
+      expect.objectContaining({ cwd: '/tmp' })
+    )
+    const env = exec.mock.calls[0][2].env
+    expect(env).not.toHaveProperty('CLAUDECODE')
+    expect(env).not.toHaveProperty('CLAUDE_CODE_SESSION_KIND')
+    expect(env).not.toHaveProperty('TERM_PROGRAM')
+    expect(env.HOME).toBe('/Users/test')
+  } finally {
+    vi.unstubAllEnvs()
+  }
+})
 
 test('resolveClaudePath asks an interactive login shell for the path', async () => {
   const exec = vi.fn().mockResolvedValue({ code: 0, stdout: '/Users/test/.local/bin/claude\n', stderr: '' })

@@ -2,24 +2,31 @@ import { execFile as nodeExecFile } from 'node:child_process'
 import { accessSync, constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { childEnv } from '../child-env'
 
 export type ExecResult = { code: number; stdout: string; stderr: string }
 export type ExecFn = (
   file: string,
   args: string[],
-  opts?: { cwd?: string; timeoutMs?: number }
+  opts?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> }
 ) => Promise<ExecResult>
 
 const DEFAULT_TIMEOUT_MS = 10000
 
 // Run a program. This function never rejects.
 // A spawn error, a timeout or a non-zero exit all give an ExecResult.
+// Without opts.env, the program gets the env of the app.
 export const execFile: ExecFn = (file, args, opts) =>
   new Promise((resolve) => {
     nodeExecFile(
       file,
       args,
-      { cwd: opts?.cwd, timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS, encoding: 'utf8' },
+      {
+        cwd: opts?.cwd,
+        env: opts?.env,
+        timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        encoding: 'utf8'
+      },
       (error, stdout, stderr) => {
         if (!error) {
           resolve({ code: 0, stdout, stderr })
@@ -74,6 +81,9 @@ export type RunClaude = (
   opts?: { cwd?: string; timeoutMs?: number }
 ) => Promise<ExecResult>
 
+// Each claude run gets the clean child env.
+// A claude run has no TTY, so the env does not set TERM or COLORTERM.
 export function createRunClaude(exec: ExecFn, claudePath: string): RunClaude {
-  return (args, opts) => exec(claudePath, args, opts)
+  return (args, opts) =>
+    exec(claudePath, args, { ...opts, env: childEnv(process.env, { pty: false }) })
 }

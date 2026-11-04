@@ -55,6 +55,25 @@ describe('PtyManager', () => {
     )
   })
 
+  test('open gives the PTY the clean child env', () => {
+    vi.stubEnv('CLAUDECODE', '1')
+    vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli')
+    vi.stubEnv('TERM_PROGRAM', 'WarpTerminal')
+    vi.stubEnv('WARP_IS_LOCAL_SHELL_SESSION', '1')
+    vi.stubEnv('HOME', '/Users/test')
+    try {
+      new PtyManager(spawn, '/bin/claude').open('v1', [], size)
+      const env = spawn.mock.calls[0][2].env
+      expect(env).not.toHaveProperty('CLAUDECODE')
+      expect(env).not.toHaveProperty('CLAUDE_CODE_ENTRYPOINT')
+      expect(env).not.toHaveProperty('TERM_PROGRAM')
+      expect(env).not.toHaveProperty('WARP_IS_LOCAL_SHELL_SESSION')
+      expect(env.HOME).toBe('/Users/test')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   test('data from the PTY goes to onData with the view ID', () => {
     const m = new PtyManager(spawn, '/bin/claude')
     const cb = vi.fn()

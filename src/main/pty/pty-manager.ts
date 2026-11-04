@@ -1,3 +1,5 @@
+import { childEnv } from '../child-env'
+
 export interface PtyProcess {
   pid: number
   write(data: string): void
@@ -28,12 +30,7 @@ export class PtyManager {
   open(viewId: string, args: string[], opts: { cwd: string; cols: number; rows: number }): number {
     // A view ID has one PTY only. Close the old PTY first.
     this.close(viewId)
-    const env: Record<string, string> = {}
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined) env[key] = value
-    }
-    env.TERM = 'xterm-256color'
-    env.COLORTERM = 'truecolor'
+    const env = childEnv(process.env, { pty: true })
     const proc = this.spawn(this.file, args, { ...opts, env })
     this.ptys.set(viewId, proc)
     proc.onData((chunk) => {
