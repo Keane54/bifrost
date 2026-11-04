@@ -63,7 +63,7 @@ export class PtyManager {
 
   // Remove the PTY of the view, then kill it.
   // close accepts only SIGHUP and SIGTERM. Any other value gives SIGHUP.
-  // node-pty ignores an unknown signal name, so a bad name must not get to kill.
+  // For an unknown signal name, node-pty ignores the error and the PTY stays alive.
   close(viewId: string, signal?: string): void {
     const proc = this.ptys.get(viewId)
     if (!proc) return

@@ -12,17 +12,18 @@ const ALLOWED_SIGNALS = ['SIGTERM', 'SIGHUP', 'SIGINT']
 let registered = false
 let currentWindow: BrowserWindow | null = null
 let managerPromise: Promise<PtyManager | null> | null = null
-// The manager after the promise resolves. A PTY can exist only after this time.
+// The main process sets liveManager when managerPromise resolves.
+// A PTY cannot exist before this time.
 let liveManager: PtyManager | null = null
 // All PTYs belong to the page that the current window shows.
 const page = new PageScope(() => liveManager?.closeAll())
 
 // Return true if the sender is the page of the current window and that page did not end.
+// The check compares the webContents IDs, not the objects.
 function isLivePage(sender: WebContents, token: number): boolean {
   if (!page.isCurrent(token) || sender.isDestroyed()) return false
-  return (
-    currentWindow !== null && !currentWindow.isDestroyed() && sender === currentWindow.webContents
-  )
+  if (currentWindow === null || currentWindow.isDestroyed()) return false
+  return sender.id === currentWindow.webContents.id
 }
 
 // Send an event to the current window. Do nothing if no window is open.

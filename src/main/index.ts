@@ -71,7 +71,7 @@ app.on('window-all-closed', () => {
   }
 })
 
-// Close all PTYs before the app quits. No claude process must stay alive after Bifrost.
+// Close all PTYs before the app quits. Then no attach client stays alive after Bifrost.
 app.on('will-quit', () => {
   closeAllPtys()
 })

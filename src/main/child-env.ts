@@ -1,6 +1,7 @@
 // The child processes must not see the terminal or the Claude Code session that started Bifrost.
 // Claude Code changes its behavior when it sees these variables.
-// From Finder, these variables are not set. The child env must be the same in development.
+// When Bifrost starts from Finder, its env does not have these variables.
+// The child env must be the same in development.
 const REMOVED_KEYS = ['CLAUDECODE', 'TERM_PROGRAM', 'TERM_PROGRAM_VERSION', 'TERM_SESSION_ID']
 const REMOVED_PREFIXES = ['CLAUDE_CODE_', 'WARP_']
 
