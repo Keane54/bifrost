@@ -19,7 +19,7 @@ export const INITIAL_STATE: MachineState = {
 }
 
 // An idle sample counts only when it starts this long after the red box.
-// An older poll can finish after the prompt and report a stale idle.
+// An older poll can finish after the prompt and report an idle that is no longer true.
 export const STATUS_GRACE_MS = 1000
 
 // Return the state with no box. Keep the last message.
@@ -43,6 +43,12 @@ function withBox(
   return next
 }
 
+// Return the red prompt box. A repeated prompt event keeps the box, its time and its flash state.
+function promptBox(s: MachineState, at: number): MachineState {
+  if (s.box === 'red' && s.redReason === 'prompt') return s
+  return withBox(s, 'needs-you', 'red', at, 'prompt')
+}
+
 export function onHookEvent(s: MachineState, ev: HookEvent): MachineState {
   if (ev.name === 'SessionStart') return withoutBox(s, 'idle')
   // A parked session leaves the parked state only on SessionStart.
@@ -52,13 +58,11 @@ export function onHookEvent(s: MachineState, ev: HookEvent): MachineState {
     case 'PostToolUse':
       return withoutBox(s, 'working')
     case 'PreToolUse':
-      return ev.toolName === 'AskUserQuestion' ? withBox(s, 'needs-you', 'red', ev.at, 'prompt') : s
+      return ev.toolName === 'AskUserQuestion' ? promptBox(s, ev.at) : s
     case 'PermissionRequest':
-      return withBox(s, 'needs-you', 'red', ev.at, 'prompt')
+      return promptBox(s, ev.at)
     case 'Notification':
-      return ev.notificationType === 'permission_prompt'
-        ? withBox(s, 'needs-you', 'red', ev.at, 'prompt')
-        : s
+      return ev.notificationType === 'permission_prompt' ? promptBox(s, ev.at) : s
     case 'Stop': {
       const next = withBox(s, 'needs-you', 'yellow', ev.at)
       if (ev.lastAssistantMessage !== undefined) next.lastMessage = ev.lastAssistantMessage
@@ -78,11 +82,14 @@ export function onStatus(
   sample: { status: string; waitingFor?: string; sampledAt: number },
 ): MachineState {
   if (s.state === 'parked') return s
+  // A sample that is not newer than the box comes from a poll that started before the box.
+  const old = s.boxSince !== null && sample.sampledAt <= s.boxSince
   switch (sample.status) {
     case 'busy':
+      if (old) return s
       return withoutBox(s, 'working')
     case 'waiting':
-      if (!sample.waitingFor) return s
+      if (!sample.waitingFor || old) return s
       // A red prompt box exists already. Keep its time.
       if (s.box === 'red' && s.redReason === 'prompt') return s
       return withBox(s, 'needs-you', 'red', sample.sampledAt, 'prompt')
