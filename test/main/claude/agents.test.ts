@@ -45,3 +45,19 @@ test('listAgents returns stderr as the error when the exit code is not 0', async
   const run = vi.fn().mockResolvedValue({ code: 1, stderr: 'boom', stdout: '' })
   expect(await listAgents(run)).toEqual({ entries: [], error: 'boom' })
 })
+test('parseAgents keeps an entry without pid', () => {
+  const r = parseAgents('[{"sessionId":"s1","name":"n","kind":"background","id":"aa"}]')
+  expect(r.entries).toHaveLength(1)
+  expect(r.entries[0]).toMatchObject({ id: 'aa', sessionId: 's1', status: '' })
+  expect(r.entries[0].pid).toBeUndefined()
+})
+test('parseAgents reads waitingFor', () => {
+  const r = parseAgents(
+    '[{"sessionId":"s1","pid":5,"status":"waiting","waitingFor":"permission prompt"}]',
+  )
+  expect(r.entries[0].waitingFor).toBe('permission prompt')
+})
+test('parseAgents does not copy state', () => {
+  const r = parseAgents('[{"sessionId":"s1","pid":5,"status":"idle","state":"done"}]')
+  expect('state' in r.entries[0]).toBe(false)
+})

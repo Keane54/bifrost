@@ -36,7 +36,7 @@ export function Harness(): React.JSX.Element {
   const [listError, setListError] = useState<string | undefined>()
   const [views, setViews] = useState<View[]>([])
   const [bytes, setBytes] = useState<Record<string, number>>({})
-  const [signalChoice, setSignalChoice] = useState<Record<number, string>>({})
+  const [signalChoice, setSignalChoice] = useState<Record<string, string>>({})
   const [sendTarget, setSendTarget] = useState('')
   const [sendText, setSendText] = useState('')
   const [paste, setPaste] = useState(false)
@@ -159,8 +159,8 @@ export function Harness(): React.JSX.Element {
   }
 
   const sendSignal = async (e: AgentEntry): Promise<void> => {
-    if (!isTestName(e.name)) return
-    const sig = signalChoice[e.pid] ?? SIGNALS[0]
+    if (!isTestName(e.name) || e.pid === undefined) return
+    const sig = signalChoice[e.sessionId] ?? SIGNALS[0]
     const ok = await window.bifrost.proc.signal(e.pid, sig)
     setLog(`Signal ${sig} to PID ${e.pid}: ${ok ? 'sent' : 'refused or failed'}.`)
   }
@@ -264,8 +264,10 @@ export function Harness(): React.JSX.Element {
                   </button>{' '}
                   <select
                     disabled={!ok}
-                    onChange={ev => setSignalChoice(s => ({ ...s, [e.pid]: ev.target.value }))}
-                    value={signalChoice[e.pid] ?? SIGNALS[0]}
+                    onChange={ev =>
+                      setSignalChoice(s => ({ ...s, [e.sessionId]: ev.target.value }))
+                    }
+                    value={signalChoice[e.sessionId] ?? SIGNALS[0]}
                   >
                     {SIGNALS.map(s => (
                       <option key={s}>{s}</option>
