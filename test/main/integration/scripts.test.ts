@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -34,10 +34,12 @@ function runFile(
   file: string,
   stdin: string,
   bifrostHome: string,
+  extraEnv: NodeJS.ProcessEnv = {},
+  shell = 'sh',
 ): Promise<{ code: number | null; stdout: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn('sh', [file], {
-      env: { ...process.env, BIFROST_HOME: bifrostHome },
+    const child = spawn(shell, [file], {
+      env: { ...process.env, BIFROST_HOME: bifrostHome, ...extraEnv },
     })
     let stdout = ''
     child.stdout.on('data', chunk => {
@@ -63,23 +65,27 @@ test('the hook exits 0 and prints nothing when it cannot write', async () => {
   expect(await runSh(HOOK_SCRIPT, '{}', '/dev/null/x')).toMatchObject({ code: 0, stdout: '' })
 })
 
-// Other test files run at the same time and slow the machine.
-// The test runs up to 3 batches of 20 runs and checks the best batch.
-test('the hook takes less than 50 ms on average', async () => {
-  const runs = 20
+// Claude Code runs the hook after every tool call.
+// Each process start can cost 20 to 40 ms on a loaded Mac.
+// So the hook starts at most one other program (mv), plus mkdir when it must.
+// This test gives the hook a PATH with only mv and mkdir.
+// If the hook starts cat or date, the test fails.
+test('the hook works with only mv and mkdir on the PATH', async () => {
+  const bin = join(dir, 'bin')
+  await mkdir(bin)
+  await symlink('/bin/mv', join(bin, 'mv'))
+  await symlink('/bin/mkdir', join(bin, 'mkdir'))
   const file = join(dir, 'hook.sh')
   await writeFile(file, HOOK_SCRIPT)
-  await runFile(file, '{}', home)
-  let best = Number.POSITIVE_INFINITY
-  for (let batch = 0; batch < 3 && best >= 50; batch++) {
-    const start = performance.now()
-    for (let i = 0; i < runs; i++) {
-      await runFile(file, '{"a":1}', home)
-    }
-    best = Math.min(best, (performance.now() - start) / runs)
+  for (const input of ['{"a":1,\n"b":"x\\y"}\n\n{"c":2}\n', '{"a":1}\n{"b":2}']) {
+    const target = join(dir, `home-${input.length}`)
+    const r = await runFile(file, input, target, { PATH: bin }, '/bin/sh')
+    expect(r).toMatchObject({ code: 0, stdout: '' })
+    const files = await readdir(join(target, 'events'))
+    expect(files).toHaveLength(1)
+    expect(files[0]).toMatch(/^\d+-\d+\.json$/)
+    expect(await readFile(join(target, 'events', files[0]), 'utf8')).toBe(input)
   }
-  console.log(`hook average: ${best.toFixed(1)} ms over ${runs} runs`)
-  expect(best).toBeLessThan(50)
 })
 
 test('the wrapper writes status.json and prints the original output', async () => {

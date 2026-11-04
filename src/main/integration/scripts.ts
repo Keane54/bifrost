@@ -3,13 +3,20 @@
 
 export const HOOK_SCRIPT = `#!/bin/sh
 # Bifrost hook. Save the hook event of Claude Code as one file.
+# Claude Code runs this hook after every tool call.
+# Each process start can cost 20 to 40 ms on a loaded Mac.
+# So the script uses shell builtins and starts at most one other program (mv).
+# It starts mkdir only when the events directory is missing.
 # The script prints nothing and always exits 0.
 exec >/dev/null 2>&1
 dir="\${BIFROST_HOME:-$HOME/.bifrost}/events"
 tmp="$dir/.tmp.$$"
 [ -d "$dir" ] || mkdir -p "$dir"
-if cat >"$tmp"; then
-  mv "$tmp" "$dir/$(date +%s)-$$.json" || rm -f "$tmp"
+if {
+  while IFS= read -r line; do printf '%s\\n' "$line"; done
+  [ -z "$line" ] || printf '%s' "$line"
+} >"$tmp"; then
+  mv "$tmp" "$dir/$PPID-$$.json" || rm -f "$tmp"
 else
   rm -f "$tmp"
 fi
