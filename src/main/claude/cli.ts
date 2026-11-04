@@ -16,6 +16,8 @@ const DEFAULT_TIMEOUT_MS = 10000
 // Run a program. This function never rejects.
 // A spawn error, a timeout or a non-zero exit all give an ExecResult.
 // Without opts.env, the program gets the env of the app.
+// At the timeout, SIGKILL stops the program. A program can ignore SIGTERM, but not SIGKILL.
+// So a hung program cannot stop a poll.
 export const execFile: ExecFn = (file, args, opts) =>
   new Promise(resolve => {
     nodeExecFile(
@@ -25,6 +27,7 @@ export const execFile: ExecFn = (file, args, opts) =>
         cwd: opts?.cwd,
         encoding: 'utf8',
         env: opts?.env,
+        killSignal: 'SIGKILL',
         timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       },
       (error, stdout, stderr) => {

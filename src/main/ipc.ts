@@ -1,6 +1,12 @@
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { app, type BrowserWindow, ipcMain, type WebContents } from 'electron'
+import {
+  app,
+  type BrowserWindow,
+  type IpcMainInvokeEvent,
+  ipcMain,
+  type WebContents,
+} from 'electron'
 import type { ClaudeVersion } from '../shared/types'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
@@ -14,6 +20,7 @@ import {
   previewInstall,
   uninstall,
 } from './integration/integration'
+import { createSerialRunner } from './integration/serial'
 import { canAttach } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
@@ -23,7 +30,7 @@ import { readBranch } from './registry/git-branch'
 import { SessionRegistry } from './registry/registry'
 import { RegistryService, type ServiceDeps } from './registry/service'
 import { readStatusFiles } from './registry/status-file'
-import { loadStore, saveStore } from './registry/store-file'
+import { openStore } from './registry/store-file'
 
 // A yellow box changes to red after 10 minutes.
 const ESCALATION_MS = 600_000
@@ -48,6 +55,15 @@ function isLivePage(sender: WebContents, token: number): boolean {
   return sender.id === currentWindow.webContents.id
 }
 
+// Run a call only when the sender is the page that the current window shows now.
+// Another webContents must not read or change the integration of the user.
+function fromPage<T>(e: IpcMainInvokeEvent, fn: () => Promise<T>): Promise<T> {
+  if (!isLivePage(e.sender, page.token())) {
+    return Promise.reject(new Error('refused: not the Bifrost page'))
+  }
+  return fn()
+}
+
 // Send an event to the current window. Do nothing if no window is open.
 function send(channel: string, ...args: unknown[]): void {
   if (currentWindow && !currentWindow.isDestroyed())
@@ -56,11 +72,12 @@ function send(channel: string, ...args: unknown[]): void {
 
 // Load the store, then start the registry service.
 // The service sends each update of the rows to the current window.
+// If the store cannot be read, the service runs with an empty store and does not save.
 async function startService(
   run: Promise<RunClaude | null>,
   paths: IntegrationPaths,
 ): Promise<RegistryService> {
-  const storeFile = join(app.getPath('userData'), 'registry.json')
+  const opened = await openStore(join(app.getPath('userData'), 'registry.json'))
   const list = async (all: boolean): Promise<AgentList> => {
     const runClaude = await run
     if (!runClaude) return { entries: [], error: 'claude not found' }
@@ -73,11 +90,10 @@ async function startService(
     now: () => Date.now(),
     readBranch: cwd => readBranch(execFile, cwd),
     readStatus: () => readStatusFiles(join(paths.bifrostHome, 'sessions')),
-    saveStore: store => saveStore(storeFile, store),
+    saveStore: store => opened.save(store),
   }
-  const store = await loadStore(storeFile)
   const service = new RegistryService(
-    new SessionRegistry({ escalationMs: ESCALATION_MS, store }),
+    new SessionRegistry({ escalationMs: ESCALATION_MS, store: opened.store }),
     deps,
   )
   service.onUpdate((rows, error) => send('registry:update', rows, error))
@@ -123,12 +139,20 @@ export function registerIpc(): void {
   ipcMain.handle('registry:ack', async (_e, sessionId: unknown) => {
     if (typeof sessionId === 'string') (await service).acknowledge(sessionId)
   })
-  ipcMain.handle('integration:status', () => integrationStatus(paths))
-  // These three handlers reject for a settings file that is not valid.
+  // Only one of preview, install and uninstall runs at a time. A second call rejects.
+  // These three handlers also reject for a settings file that is not valid.
   // The renderer gets the message of the Error as the rejection.
-  ipcMain.handle('integration:preview', () => previewInstall(paths, new Date()))
-  ipcMain.handle('integration:install', () => install(paths, new Date()))
-  ipcMain.handle('integration:uninstall', () => uninstall(paths, new Date()))
+  const integration = createSerialRunner()
+  ipcMain.handle('integration:status', e => fromPage(e, () => integrationStatus(paths)))
+  ipcMain.handle('integration:preview', e =>
+    fromPage(e, () => integration.run(() => previewInstall(paths, new Date()))),
+  )
+  ipcMain.handle('integration:install', e =>
+    fromPage(e, () => integration.run(() => install(paths, new Date()))),
+  )
+  ipcMain.handle('integration:uninstall', e =>
+    fromPage(e, () => integration.run(() => uninstall(paths, new Date()))),
+  )
   ipcMain.handle(
     'pty:open',
     async (

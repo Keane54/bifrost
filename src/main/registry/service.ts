@@ -39,8 +39,14 @@ export class RegistryService {
   // The two list polls wait in this queue.
   // So only one "claude agents --json" process runs at a time.
   private queue: Promise<void> = Promise.resolve()
-  // The saves wait in this queue. So the last save writes the newest store.
-  private saves: Promise<void> = Promise.resolve()
+  // True while a save runs. Only one save runs at a time.
+  private saving = false
+  // True when the store changed after the start of the last save, or when that save failed.
+  private storeToSave = false
+  // True after a failed save, until a save is good again.
+  private saveFailed = false
+  // False until the first active poll ends. No update goes out before that time.
+  private ready = false
   private started = false
   private stopped = false
   // The error of the last active poll. A good poll sets it to null.
@@ -61,8 +67,9 @@ export class RegistryService {
   ) {}
 
   // Start all loops. A second call does nothing.
-  // The --all loop and the branch loop start after the end of the first active poll.
-  // So the registry has the active list before the first --all list.
+  // The --all loop, the branch loop and the tick loop start after the end of the first
+  // active poll. So the registry has the active list before the first --all list,
+  // and the first tick uses real rows.
   start(): void {
     if (this.started || this.stopped) return
     this.started = true
@@ -73,11 +80,11 @@ export class RegistryService {
       () => {
         this.loop(t.allMs, () => this.queued(() => this.pollAll()))
         this.loop(t.branchMs, () => this.readBranches())
+        this.loop(t.tickMs, async () => this.tick())
       },
     )
     this.loop(t.eventsMs, () => this.drainEvents())
     this.loop(t.statusMs, () => this.readStatus())
-    this.loop(t.tickMs, async () => this.tick())
   }
 
   // Stop all loops. A result that comes after this call has no effect.
@@ -149,6 +156,8 @@ export class RegistryService {
       this.registry.applyAgents(list.entries, sampledAt)
       this.error = null
     }
+    // The first update holds the rows or the error of the first active poll.
+    this.ready = true
     this.changed()
   }
 
@@ -193,7 +202,9 @@ export class RegistryService {
   // Call this after each change to the data.
   private changed(): void {
     if (this.stopped) return
-    if (this.registry.storeChanged()) this.save(this.registry.store())
+    if (this.registry.storeChanged()) this.storeToSave = true
+    this.save()
+    if (!this.ready) return
     if (this.inGap) {
       // The last update went out less than minUpdateGapMs ago.
       // The end of the gap sends this change.
@@ -221,8 +232,30 @@ export class RegistryService {
     for (const cb of this.callbacks) cb(rows, this.error)
   }
 
-  // A failed save does not stop the service. The next change to the store saves all of it.
-  private save(store: RegistryStore): void {
-    this.saves = this.saves.then(() => this.deps.saveStore(store)).catch(() => {})
+  // Save the newest store. Only one save runs at a time.
+  // A change during a save starts the next save when that save ends.
+  // A failed save does not stop the service. The next loop tries the save again.
+  // The log shows only the first failure of a series.
+  private save(): void {
+    if (this.stopped || this.saving || !this.storeToSave) return
+    this.saving = true
+    this.storeToSave = false
+    const store = this.registry.store()
+    // The chain changes a throw in saveStore into a rejection.
+    Promise.resolve()
+      .then(() => this.deps.saveStore(store))
+      .then(
+        () => {
+          this.saving = false
+          this.saveFailed = false
+          this.save()
+        },
+        (error: unknown) => {
+          this.saving = false
+          this.storeToSave = true
+          if (!this.saveFailed) console.error('Bifrost cannot save the registry store.', error)
+          this.saveFailed = true
+        },
+      )
   }
 }

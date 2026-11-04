@@ -10,10 +10,18 @@ function isObject(value: unknown): value is Record<string, unknown> {
 // Read the registry store.
 // A missing file or a file that is not valid JSON gives an empty store.
 // The function removes each value that has the wrong type.
+// Other read errors, for example EACCES or EISDIR, reject.
 export async function loadStore(file: string): Promise<RegistryStore> {
+  let text: string
+  try {
+    text = await readFile(file, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { names: {}, started: [] }
+    throw error
+  }
   let data: unknown
   try {
-    data = JSON.parse(await readFile(file, 'utf8'))
+    data = JSON.parse(text)
   } catch {
     return { names: {}, started: [] }
   }
@@ -42,5 +50,20 @@ export async function saveStore(file: string, store: RegistryStore): Promise<voi
   } catch (error) {
     await rm(temporary, { force: true })
     throw error
+  }
+}
+
+// Load the store for the registry service. Give the save function for the same file.
+// If the store cannot be read, use an empty store and turn saving off.
+// Then the service cannot write over a file that it did not read.
+export async function openStore(
+  file: string,
+  log: (message: string, error: unknown) => void = console.error,
+): Promise<{ store: RegistryStore; save: (store: RegistryStore) => Promise<void> }> {
+  try {
+    return { save: store => saveStore(file, store), store: await loadStore(file) }
+  } catch (error) {
+    log(`Bifrost cannot read ${file}. The registry uses an empty store and does not save.`, error)
+    return { save: async () => {}, store: { names: {}, started: [] } }
   }
 }

@@ -1,7 +1,17 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
-import { createRunClaude, resolveClaudePath } from '../../../src/main/claude/cli'
+import { createRunClaude, execFile, resolveClaudePath } from '../../../src/main/claude/cli'
+
+test('execFile stops a program that ignores SIGTERM at the timeout', async () => {
+  // exec keeps the ignored SIGTERM. So only SIGKILL can stop this sleep.
+  const start = Date.now()
+  const result = await execFile('/bin/sh', ['-c', 'trap "" TERM; exec sleep 5'], {
+    timeoutMs: 200,
+  })
+  expect(Date.now() - start).toBeLessThan(1500)
+  expect(result.code).not.toBe(0)
+})
 
 test('createRunClaude uses the base env without the removed variables', async () => {
   const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '' })

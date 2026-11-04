@@ -250,11 +250,38 @@ describe('list polls', () => {
       throw new Error('spawn failed')
     })
     const { updates } = startService(fakeDeps({ listActive }))
-    // The first update opens a gap. The error goes out at the end of the gap.
-    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.minUpdateGapMs)
-    expect(updates.at(-1)?.error).toBe('spawn failed')
+    // The first update comes after the first active poll. It has the error.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toMatchObject({ error: 'spawn failed', rows: [] })
     await vi.advanceTimersByTimeAsync(SERVICE_TIMING.activeMs)
     expect(listActive).toHaveBeenCalledTimes(2)
+  })
+
+  test('the first update holds the rows of the first active poll', async () => {
+    const deps = fakeDeps({
+      listActive: vi.fn(async () => resolveLater(1000, { entries: [bg()] })),
+      readStatus: async () => new Map([['s1', { model: 'Opus', updatedAt: 1 }]]),
+    })
+    const { updates } = startService(deps)
+    await vi.advanceTimersByTimeAsync(999)
+    expect(updates).toEqual([])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(updates).toHaveLength(1)
+    expect(updates[0].rows).toMatchObject([{ model: 'Opus', sessionId: 's1' }])
+  })
+
+  test('the tick loop starts after the first active poll', async () => {
+    const registry = newRegistry()
+    const tick = vi.spyOn(registry, 'tick')
+    const listActive = vi.fn(async () => resolveLater(3000, empty()))
+    startService(fakeDeps({ listActive }), registry)
+    await vi.advanceTimersByTimeAsync(2999)
+    expect(tick).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(tick).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.tickMs)
+    expect(tick).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -313,6 +340,42 @@ describe('updates and the store', () => {
     expect(saveStore).toHaveBeenCalledWith({ names: { s1: 'alpha' }, started: [] })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(saveStore).toHaveBeenCalledTimes(1)
+  })
+
+  test('a failed save is logged and the next loop saves again', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const saveStore = vi
+      .fn<ServiceDeps['saveStore']>()
+      .mockRejectedValueOnce(new Error('disk full'))
+      .mockResolvedValue(undefined)
+    startService(fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(saveStore.mock.calls.length).toBeGreaterThanOrEqual(1)
+    expect(error).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.tickMs)
+    expect(saveStore).toHaveBeenCalledTimes(2)
+    expect(saveStore).toHaveBeenLastCalledWith({ names: { s1: 'alpha' }, started: [] })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(saveStore).toHaveBeenCalledTimes(2)
+    expect(error).toHaveBeenCalledTimes(1)
+    error.mockRestore()
+  })
+
+  test('a store change during a save goes out in the next save', async () => {
+    const saveStore = vi.fn(async () => resolveLater(3000, undefined))
+    const listActive = vi
+      .fn<() => Promise<AgentList>>()
+      .mockResolvedValueOnce({ entries: [bg()] })
+      .mockResolvedValue({ entries: [bg({ name: 'beta' })] })
+    // No other loop calls for a save at 3000 ms. The next active poll is at 4000 ms.
+    const timing = { ...SERVICE_TIMING, statusMs: 60_000, tickMs: 60_000 }
+    startService(fakeDeps({ listActive, saveStore }), newRegistry(), timing)
+    // The first save runs from 0 ms to 3000 ms. The name changes at 2000 ms.
+    await vi.advanceTimersByTimeAsync(2999)
+    expect(saveStore).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(saveStore).toHaveBeenCalledTimes(2)
+    expect(saveStore).toHaveBeenLastCalledWith({ names: { s1: 'beta' }, started: [] })
   })
 
   test('stop clears every timer and ignores the results that come later', async () => {

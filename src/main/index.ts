@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import icon from '../../resources/icon.png?asset'
 import { attachWindow, closeAllPtys, registerIpc, stopRegistry } from './ipc'
 
@@ -28,10 +28,13 @@ function createWindow(): void {
     mainWindow.show()
   })
 
-  mainWindow.webContents.setWindowOpenHandler(details => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
+  // The window shows only the Bifrost page. A link or a script cannot open another page in it.
+  // A reload of the same URL stays possible, because Vite reloads the page in development.
+  // The page also cannot open a new window.
+  mainWindow.webContents.on('will-navigate', e => {
+    if (e.url !== mainWindow.webContents.getURL()) e.preventDefault()
   })
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   // In development, electron-vite gives a URL with hot reload.
   // In production, the app loads the built HTML file.

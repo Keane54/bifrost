@@ -1,8 +1,8 @@
-import { mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'vitest'
-import { loadStore, saveStore } from '../../../src/main/registry/store-file'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { loadStore, openStore, saveStore } from '../../../src/main/registry/store-file'
 
 let dir: string
 
@@ -57,4 +57,34 @@ test('saveStore makes the directory and leaves no temporary file', async () => {
   await saveStore(file, { names: { s1: 'alpha' }, started: [] })
   expect(await readdir(join(dir, 'user-data'))).toEqual(['registry.json'])
   expect((await stat(file)).mode & 0o777).toBe(0o600)
+})
+
+test('loadStore rejects for a file that it cannot read', async () => {
+  const file = join(dir, 'registry.json')
+  await mkdir(file)
+  await expect(loadStore(file)).rejects.toThrow(/EISDIR/)
+})
+
+test('openStore loads the file and saves to it', async () => {
+  const file = join(dir, 'registry.json')
+  await saveStore(file, { names: { s1: 'alpha' }, started: [] })
+  const log = vi.fn()
+  const opened = await openStore(file, log)
+  expect(opened.store).toEqual({ names: { s1: 'alpha' }, started: [] })
+  await opened.save({ names: { s2: 'beta' }, started: ['s2'] })
+  expect(await loadStore(file)).toEqual({ names: { s2: 'beta' }, started: ['s2'] })
+  expect(log).not.toHaveBeenCalled()
+})
+
+test('openStore uses an empty store and does not save when it cannot read the file', async () => {
+  const file = join(dir, 'registry.json')
+  await mkdir(file)
+  const log = vi.fn()
+  const opened = await openStore(file, log)
+  expect(opened.store).toEqual({ names: {}, started: [] })
+  expect(log).toHaveBeenCalledTimes(1)
+  await opened.save({ names: { s1: 'alpha' }, started: [] })
+  expect((await stat(file)).isDirectory()).toBe(true)
+  expect(await readdir(file)).toEqual([])
+  expect(await readdir(dir)).toEqual(['registry.json'])
 })
