@@ -720,15 +720,15 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | TanStack Hotkeys (beta) | Key map, hold-key-and-click, key editor in Settings | M3 to M5 |
 | lucide-react | Icons | M3 |
 | Zustand | Only if renderer state grows beyond React state. Decide in M2. | M2 |
-| Zod | Only if hand-written checks of IPC arguments and CLI output become too large. Decide in M1. | M1 |
-| lefthook and commitlint | Commit message checks | M1 |
+| Zod | Not used. The hand-written checks stay small (M1). | M1 |
+| lefthook and commitlint | Commit message checks. Added in M1. | M1 |
 | Playwright for Electron | Smoke test | M5 |
 
 ### 14.1 Now
 
 - The tools are pnpm, electron-vite, TypeScript 5.9, React, Biome, `@xterm/xterm`, `node-pty` and electron-builder.
 - Biome replaces ESLint and Prettier.
-- M0 keeps TypeScript 5.9. M1 decides on TypeScript 7, as in Overseer and Herald.
+- M1 keeps TypeScript 5.9. TypeScript 7.0.2 failed `pnpm typecheck`: `tsconfig.web.json` uses `baseUrl`, and TypeScript 7 removed it (TS5102). Bifrost tries TypeScript 7 again after that config change.
 - `package.json` has `"engines": { "node": ">=24" }`.
 - Scripts are ESM TypeScript files. Node runs them directly.
 - Scripts that load `node-pty` run with `ELECTRON_RUN_AS_NODE=1 electron <file>.ts`.
