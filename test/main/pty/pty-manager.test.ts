@@ -27,7 +27,7 @@ class FakePty implements PtyProcess {
 
 let fakes: FakePty[]
 let spawn: ReturnType<typeof vi.fn<SpawnFn>>
-const size = { cwd: '/tmp', cols: 100, rows: 30 }
+const size = { cols: 100, cwd: '/tmp', rows: 30 }
 
 beforeEach(() => {
   fakes = []
@@ -47,11 +47,11 @@ describe('PtyManager', () => {
       '/bin/claude',
       ['attach', 'abc'],
       expect.objectContaining({
-        cwd: '/tmp',
         cols: 100,
+        cwd: '/tmp',
+        env: expect.objectContaining({ COLORTERM: 'truecolor', TERM: 'xterm-256color' }),
         rows: 30,
-        env: expect.objectContaining({ TERM: 'xterm-256color', COLORTERM: 'truecolor' })
-      })
+      }),
     )
   })
 

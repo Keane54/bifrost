@@ -12,7 +12,7 @@ export interface BifrostApi {
     open(
       viewId: string,
       args: string[],
-      opts: { cwd: string; cols: number; rows: number }
+      opts: { cwd: string; cols: number; rows: number },
     ): Promise<number>
     write(viewId: string, data: string): Promise<boolean>
     resize(viewId: string, cols: number, rows: number): Promise<void>

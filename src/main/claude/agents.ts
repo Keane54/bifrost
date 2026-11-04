@@ -18,13 +18,13 @@ function toEntry(raw: unknown): AgentEntry | null {
   if (typeof r.pid !== 'number' || typeof r.sessionId !== 'string' || r.sessionId === '')
     return null
   const entry: AgentEntry = {
-    pid: r.pid,
     cwd: typeof r.cwd === 'string' ? r.cwd : '',
     kind: typeof r.kind === 'string' ? r.kind : '',
-    startedAt: typeof r.startedAt === 'number' ? r.startedAt : 0,
-    sessionId: r.sessionId,
     name: typeof r.name === 'string' ? r.name : '',
-    status: typeof r.status === 'string' ? r.status : ''
+    pid: r.pid,
+    sessionId: r.sessionId,
+    startedAt: typeof r.startedAt === 'number' ? r.startedAt : 0,
+    status: typeof r.status === 'string' ? r.status : '',
   }
   if (typeof r.id === 'string') entry.id = r.id
   return entry
@@ -36,7 +36,7 @@ function toEntry(raw: unknown): AgentEntry | null {
 export function parseAgents(stdout: string): AgentList {
   if (stdout.trim() === '') return { entries: [], error: 'empty output' }
   const lines = stdout.split('\n')
-  const start = lines.findIndex((line) => line.startsWith('['))
+  const start = lines.findIndex(line => line.startsWith('['))
   if (start === -1) return { entries: [], error: 'parse error: no JSON array in output' }
   let data: unknown
   try {

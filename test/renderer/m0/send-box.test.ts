@@ -12,8 +12,8 @@ test('sendBody without bracketed paste sends the text as typed and then CR', () 
 })
 
 test('isSendKey: Enter sends, Shift+Enter and composition do not', () => {
-  expect(isSendKey({ key: 'Enter', shiftKey: false, isComposing: false })).toBe(true)
-  expect(isSendKey({ key: 'Enter', shiftKey: true, isComposing: false })).toBe(false)
-  expect(isSendKey({ key: 'Enter', shiftKey: false, isComposing: true })).toBe(false)
-  expect(isSendKey({ key: 'a', shiftKey: false, isComposing: false })).toBe(false)
+  expect(isSendKey({ isComposing: false, key: 'Enter', shiftKey: false })).toBe(true)
+  expect(isSendKey({ isComposing: false, key: 'Enter', shiftKey: true })).toBe(false)
+  expect(isSendKey({ isComposing: true, key: 'Enter', shiftKey: false })).toBe(false)
+  expect(isSendKey({ isComposing: false, key: 'a', shiftKey: false })).toBe(false)
 })

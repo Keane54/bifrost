@@ -8,15 +8,16 @@
 // After each step the script reads the session entry.
 import { spawnSync } from 'node:child_process'
 import * as L from './lib.ts'
+
 const { TestPty, log, sleep, writeOut } = L
 
 async function entryOf(id) {
-  return (await L.listAgents()).find((x) => x.id === id) || null
+  return (await L.listAgents()).find(x => x.id === id) || null
 }
 
 function procState(pid) {
   const r = spawnSync('ps', ['-o', 'stat=,comm=', '-p', String(pid)], {
-    encoding: 'utf8'
+    encoding: 'utf8',
   })
   return r.stdout.trim() || '(no process)'
 }
@@ -26,13 +27,13 @@ function procState(pid) {
   if (!id) throw new Error('usage: q3-two-clients.ts <short id>')
   const R = { steps: [] }
   const step = async (name, extra = {}) => {
-    const s = { name, at: new Date().toISOString(), session: await entryOf(id), ...extra }
+    const s = { at: new Date().toISOString(), name, session: await entryOf(id), ...extra }
     R.steps.push(s)
     log(`step ${name}:`, {
-      status: s.session && s.session.status,
-      state: s.session && s.session.state,
-      pid: s.session && s.session.pid,
-      ...extra
+      pid: s.session?.pid,
+      state: s.session?.state,
+      status: s.session?.status,
+      ...extra,
     })
   }
 
@@ -52,7 +53,7 @@ function procState(pid) {
   await step('B attached', {
     aAlive: !A.exitInfo,
     aBytesAfterB: A.since(aMark).length,
-    aExit: A.exitInfo
+    aExit: A.exitInfo,
   })
 
   // B types a prompt. Does A show the turn too?
@@ -67,13 +68,13 @@ function procState(pid) {
   await A.save('q3-A-after-turn')
   await B.save('q3-B-after-turn')
   await step('B typed', {
-    turn: R.turn.trace,
     aAlive: !A.exitInfo,
     aBytes: A.since(aMark2).length,
-    bBytes: B.since(bMark2).length,
+    aShowsPrompt: /Reply with TWO/.test(aScreen),
     aShowsTwo: /⏺\s*TWO/.test(aScreen),
+    bBytes: B.since(bMark2).length,
     bShowsTwo: /⏺\s*TWO/.test(bScreen),
-    aShowsPrompt: /Reply with TWO/.test(aScreen)
+    turn: R.turn.trace,
   })
 
   // Size conflict: resize B only. Does A get a redraw at the new width?
@@ -83,7 +84,7 @@ function procState(pid) {
   await A.waitQuiet(500, 5000, false)
   const aRule = Math.max(
     0,
-    ...(await A.screenLines()).map((l) => (l.match(/─{4,}/) || [''])[0].length)
+    ...(await A.screenLines()).map(l => (l.match(/─{4,}/) || [''])[0].length),
   )
   await A.save('q3-A-after-B-resize')
   await B.save('q3-B-after-resize')
@@ -96,7 +97,7 @@ function procState(pid) {
   B.closeAttach('SIGHUP')
   const bExit = await Promise.race([B.exited, sleep(5000).then(() => null)])
   await sleep(1000)
-  await step('B closed with SIGHUP', { bExit, aAlive: !A.exitInfo })
+  await step('B closed with SIGHUP', { aAlive: !A.exitInfo, bExit })
 
   // Question 4, method 2: the ← key on an empty prompt in A.
   const left = A.modes().applicationCursorKeysMode ? '\x1bOD' : '\x1b[D'
@@ -108,12 +109,12 @@ function procState(pid) {
   writeOut('q3-A-after-left.screen.txt', aAfterLeft.join('\n'))
   writeOut('q3-A-after-left.raw', A.since(aMark4))
   await step('A got the left arrow', {
-    key: JSON.stringify(left),
     aAlive: !A.exitInfo,
-    aProc: procState(A.pty.pid),
     aBytes: A.since(aMark4).length,
+    aProc: procState(A.pty.pid),
     aShowsAgentView: /agents?|sessions?/i.test(aAfterLeft.join('\n')),
-    aTopLines: aAfterLeft.slice(0, 3).map((l) => l.slice(0, 60))
+    aTopLines: aAfterLeft.slice(0, 3).map(l => l.slice(0, 60)),
+    key: JSON.stringify(left),
   })
 
   // Question 4, method 3: end A with SIGTERM.
@@ -134,10 +135,10 @@ function procState(pid) {
   writeOut('q3-C-after-ctrlz.screen.txt', cAfter.join('\n'))
   await step('C got Ctrl+Z', {
     cAlive: !C.exitInfo,
+    cBytes: C.since(cMark).length,
     cExit: C.exitInfo,
     cProc: procState(C.pty.pid),
-    cBytes: C.since(cMark).length,
-    cTail: L.stripAnsi(C.since(cMark)).slice(-300)
+    cTail: L.stripAnsi(C.since(cMark)).slice(-300),
   })
   if (!C.exitInfo) {
     C.closeAttach('SIGCONT')
@@ -149,7 +150,7 @@ function procState(pid) {
   writeOut('q3-result.json', R)
   log('saved q3-result.json')
   process.exit(0)
-})().catch((e) => {
+})().catch(e => {
   console.error(e)
   process.exit(1)
 })

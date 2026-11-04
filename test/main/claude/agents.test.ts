@@ -9,10 +9,15 @@ test('parseAgents reads all entries from the fixture', () => {
   const r = parseAgents(fixture)
   expect(r.error).toBeUndefined()
   expect(r.entries).toHaveLength(2)
-  expect(r.entries[1]).toMatchObject({ pid: 26100, kind: 'background', status: 'busy', id: '6df6c51a' })
+  expect(r.entries[1]).toMatchObject({
+    id: '6df6c51a',
+    kind: 'background',
+    pid: 26100,
+    status: 'busy',
+  })
 })
 test('parseAgents ignores text before the JSON array', () => {
-  expect(parseAgents('Update available: 2.1.400\n' + fixture).entries).toHaveLength(2)
+  expect(parseAgents(`Update available: 2.1.400\n${fixture}`).entries).toHaveLength(2)
 })
 test('parseAgents returns an error for empty output', () => {
   expect(parseAgents('')).toEqual({ entries: [], error: 'empty output' })
@@ -23,15 +28,20 @@ test('parseAgents returns an error for text that is not JSON', () => {
   expect(r.error).toMatch(/parse/)
 })
 test('parseAgents skips an entry without sessionId and keeps the others', () => {
-  const data = JSON.parse(fixture); delete data[0].sessionId
+  const data = JSON.parse(fixture)
+  delete data[0].sessionId
   expect(parseAgents(JSON.stringify(data)).entries.map(e => e.name)).toEqual(['beta-24'])
 })
 test('listAgents adds --all only when asked', async () => {
-  const run = vi.fn().mockResolvedValue({ code: 0, stdout: '[]', stderr: '' })
-  await listAgents(run); await listAgents(run, { all: true })
-  expect(run.mock.calls.map(c => c[0])).toEqual([['agents', '--json'], ['agents', '--json', '--all']])
+  const run = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '[]' })
+  await listAgents(run)
+  await listAgents(run, { all: true })
+  expect(run.mock.calls.map(c => c[0])).toEqual([
+    ['agents', '--json'],
+    ['agents', '--json', '--all'],
+  ])
 })
 test('listAgents returns stderr as the error when the exit code is not 0', async () => {
-  const run = vi.fn().mockResolvedValue({ code: 1, stdout: '', stderr: 'boom' })
+  const run = vi.fn().mockResolvedValue({ code: 1, stderr: 'boom', stdout: '' })
   expect(await listAgents(run)).toEqual({ entries: [], error: 'boom' })
 })

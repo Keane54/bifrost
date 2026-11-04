@@ -8,7 +8,7 @@ export type ExecResult = { code: number; stdout: string; stderr: string }
 export type ExecFn = (
   file: string,
   args: string[],
-  opts?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> }
+  opts?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> },
 ) => Promise<ExecResult>
 
 const DEFAULT_TIMEOUT_MS = 10000
@@ -17,29 +17,29 @@ const DEFAULT_TIMEOUT_MS = 10000
 // A spawn error, a timeout or a non-zero exit all give an ExecResult.
 // Without opts.env, the program gets the env of the app.
 export const execFile: ExecFn = (file, args, opts) =>
-  new Promise((resolve) => {
+  new Promise(resolve => {
     nodeExecFile(
       file,
       args,
       {
         cwd: opts?.cwd,
+        encoding: 'utf8',
         env: opts?.env,
         timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-        encoding: 'utf8'
       },
       (error, stdout, stderr) => {
         if (!error) {
-          resolve({ code: 0, stdout, stderr })
+          resolve({ code: 0, stderr, stdout })
           return
         }
         const code = (error as NodeJS.ErrnoException).code
         if (typeof code === 'number') {
-          resolve({ code, stdout, stderr })
+          resolve({ code, stderr, stdout })
           return
         }
         // No exit code: the program did not start, or a signal ended it.
-        resolve({ code: 1, stdout, stderr: stderr || error.message })
-      }
+        resolve({ code: 1, stderr: stderr || error.message, stdout })
+      },
     )
   })
 
@@ -59,7 +59,7 @@ function defaultIsExecutable(path: string): boolean {
 export async function resolveClaudePath(
   exec: ExecFn,
   shell?: string,
-  isExecutable: (path: string) => boolean = defaultIsExecutable
+  isExecutable: (path: string) => boolean = defaultIsExecutable,
 ): Promise<string | null> {
   const sh = shell ?? process.env.SHELL ?? '/bin/zsh'
   const result = await exec(sh, ['-lic', 'command -v claude'], { timeoutMs: 5000 })
@@ -71,14 +71,14 @@ export async function resolveClaudePath(
   const fallbacks = [
     join(homedir(), '.local/bin/claude'),
     '/opt/homebrew/bin/claude',
-    '/usr/local/bin/claude'
+    '/usr/local/bin/claude',
   ]
-  return fallbacks.find((p) => isExecutable(p)) ?? null
+  return fallbacks.find(p => isExecutable(p)) ?? null
 }
 
 export type RunClaude = (
   args: string[],
-  opts?: { cwd?: string; timeoutMs?: number }
+  opts?: { cwd?: string; timeoutMs?: number },
 ) => Promise<ExecResult>
 
 // Each claude run gets the clean child env.

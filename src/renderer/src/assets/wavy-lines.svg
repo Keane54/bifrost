@@ -1,11 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1422 800" opacity="0.3">
+<svg opacity="0.3" viewBox="0 0 1422 800" xmlns="http://www.w3.org/2000/svg" >
+  <title>Wavy lines</title>
   <defs>
-    <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="oooscillate-grad">
-      <stop stop-color="hsl(206, 75%, 49%)" stop-opacity="1" offset="0%"></stop>
-      <stop stop-color="hsl(331, 90%, 56%)" stop-opacity="1" offset="100%"></stop>
+    <linearGradient id="oooscillate-grad" x1="50%" x2="50%" y1="0%" y2="100%" >
+      <stop offset="0%" stop-color="hsl(206, 75%, 49%)" stop-opacity="1" ></stop>
+      <stop offset="100%" stop-color="hsl(331, 90%, 56%)" stop-opacity="1" ></stop>
     </linearGradient>
   </defs>
-  <g stroke-width="1" stroke="url(#oooscillate-grad)" fill="none" stroke-linecap="round">
+  <g fill="none" stroke="url(#oooscillate-grad)" stroke-linecap="round" stroke-width="1" >
     <path d="M 0 448 Q 355.5 -100 711 400 Q 1066.5 900 1422 448" opacity="0.05"></path>
     <path d="M 0 420 Q 355.5 -100 711 400 Q 1066.5 900 1422 420" opacity="0.11"></path>
     <path d="M 0 392 Q 355.5 -100 711 400 Q 1066.5 900 1422 392" opacity="0.18"></path>

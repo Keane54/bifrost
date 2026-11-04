@@ -19,7 +19,7 @@ function chain(pid) {
     if (!line.trim()) break
     const m = /^\s*(\d+)\s+(.*)$/.exec(line)
     if (!m) break
-    out.push({ pid: p, ppid: Number(m[1]), comm: m[2] })
+    out.push({ comm: m[2], pid: p, ppid: Number(m[1]) })
     p = Number(m[1])
   }
   return out
@@ -27,9 +27,9 @@ function chain(pid) {
 
 function terminalOf(pid) {
   const steps = chain(pid)
-  const app = steps.find((s) => s.comm.includes('.app/'))
+  const app = steps.find(s => s.comm.includes('.app/'))
   const name = app ? /([^/]+)\.app\//.exec(app.comm)[1] : null
-  return { pid: Number(pid), app: name, appPath: app ? app.comm : null, steps }
+  return { app: name, appPath: app ? app.comm : null, pid: Number(pid), steps }
 }
 
 export { chain, terminalOf }
@@ -42,7 +42,7 @@ if (import.meta.main) {
     for (const e of list.filter(x => x.kind === 'interactive')) {
       const t = terminalOf(e.pid)
       console.log(
-        JSON.stringify({ pid: e.pid, app: t.app, appPath: t.appPath, depth: t.steps.length })
+        JSON.stringify({ app: t.app, appPath: t.appPath, depth: t.steps.length, pid: e.pid }),
       )
     }
   } else {

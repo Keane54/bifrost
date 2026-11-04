@@ -4,32 +4,32 @@ import { canOpenPty, canRunClaude, canSignal } from '../../../src/main/claude/gu
 
 function entry(over: Partial<AgentEntry>): AgentEntry {
   return {
-    pid: 1,
     cwd: '/tmp',
     kind: 'background',
-    startedAt: 0,
-    sessionId: 's',
     name: 'x',
+    pid: 1,
+    sessionId: 's',
+    startedAt: 0,
     status: 'idle',
-    ...over
+    ...over,
   }
 }
 
 test('canSignal allows a test session', () => {
-  expect(canSignal([entry({ pid: 5, name: 'bifrost-test-ext' })], 5)).toBe(true)
+  expect(canSignal([entry({ name: 'bifrost-test-ext', pid: 5 })], 5)).toBe(true)
 })
 test('canSignal refuses a real session', () => {
-  expect(canSignal([entry({ pid: 5, name: 'herald-d8' })], 5)).toBe(false)
+  expect(canSignal([entry({ name: 'herald-d8', pid: 5 })], 5)).toBe(false)
 })
 test('canSignal refuses a PID that is not in the list', () => {
-  expect(canSignal([entry({ pid: 5, name: 'bifrost-test-ext' })], 6)).toBe(false)
+  expect(canSignal([entry({ name: 'bifrost-test-ext', pid: 5 })], 6)).toBe(false)
 })
 
 const ENTRIES = [
-  entry({ pid: 5, name: 'bifrost-test-a', id: 'aaaa1111', sessionId: 'sess-a' }),
-  entry({ pid: 6, name: 'herald-d8', id: 'bbbb2222', sessionId: 'sess-b' }),
-  entry({ pid: 7, name: 'dup', id: 'cccc3333', sessionId: 'sess-c' }),
-  entry({ pid: 8, name: 'bifrost-test-dup', id: 'cccc3333', sessionId: 'sess-d' })
+  entry({ id: 'aaaa1111', name: 'bifrost-test-a', pid: 5, sessionId: 'sess-a' }),
+  entry({ id: 'bbbb2222', name: 'herald-d8', pid: 6, sessionId: 'sess-b' }),
+  entry({ id: 'cccc3333', name: 'dup', pid: 7, sessionId: 'sess-c' }),
+  entry({ id: 'cccc3333', name: 'bifrost-test-dup', pid: 8, sessionId: 'sess-d' }),
 ]
 
 // The real ID of a session that is not a test session.
@@ -61,9 +61,9 @@ describe('canOpenPty: attach', () => {
   })
   test('refuses an attach target that is not a string or is empty', () => {
     // An entry with no id field has the id undefined.
-    const noIds = [entry({ pid: 9, name: 'bifrost-test-noid', sessionId: 'sess-n' })]
+    const noIds = [entry({ name: 'bifrost-test-noid', pid: 9, sessionId: 'sess-n' })]
     expect(canOpenPty(noIds, ['attach', undefined as unknown as string])).toBe(false)
-    const emptyName = [entry({ pid: 9, name: '', sessionId: 'sess-e' })]
+    const emptyName = [entry({ name: '', pid: 9, sessionId: 'sess-e' })]
     expect(canOpenPty(emptyName, ['attach', ''])).toBe(false)
   })
 })

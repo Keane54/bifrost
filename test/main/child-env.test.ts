@@ -3,24 +3,24 @@ import { childEnv } from '../../src/main/child-env'
 
 // An env as Bifrost gets it when a Claude Code Bash tool in Warp runs "pnpm dev".
 const SOURCE: NodeJS.ProcessEnv = {
-  HOME: '/Users/test',
-  PATH: '/usr/bin:/bin',
-  USER: 'test',
-  SHELL: '/bin/zsh',
-  LANG: 'en_GB.UTF-8',
-  TERM: 'dumb',
-  CLAUDE_CONFIG_DIR: '/Users/test/.claude',
   ANTHROPIC_MODEL: 'haiku',
-  CLAUDECODE: '1',
-  CLAUDE_CODE_ENTRYPOINT: 'cli',
   CLAUDE_CODE_CHILD_SESSION: '1',
+  CLAUDE_CODE_ENTRYPOINT: 'cli',
   CLAUDE_CODE_SESSION_KIND: 'bash',
+  CLAUDE_CONFIG_DIR: '/Users/test/.claude',
+  CLAUDECODE: '1',
+  HOME: '/Users/test',
+  LANG: 'en_GB.UTF-8',
+  PATH: '/usr/bin:/bin',
+  SHELL: '/bin/zsh',
+  TERM: 'dumb',
   TERM_PROGRAM: 'WarpTerminal',
   TERM_PROGRAM_VERSION: 'v0.2026',
   TERM_SESSION_ID: 'abc',
-  WARP_IS_LOCAL_SHELL_SESSION: '1',
+  UNSET: undefined,
+  USER: 'test',
   WARP_HONOR_PS1: '0',
-  UNSET: undefined
+  WARP_IS_LOCAL_SHELL_SESSION: '1',
 }
 
 const REMOVED = [
@@ -32,7 +32,7 @@ const REMOVED = [
   'TERM_PROGRAM_VERSION',
   'TERM_SESSION_ID',
   'WARP_IS_LOCAL_SHELL_SESSION',
-  'WARP_HONOR_PS1'
+  'WARP_HONOR_PS1',
 ]
 
 test('childEnv removes the Claude Code, terminal program and Warp variables', () => {
@@ -45,14 +45,14 @@ test('childEnv removes the Claude Code, terminal program and Warp variables', ()
 test('childEnv keeps all other variables and drops undefined values', () => {
   const env = childEnv(SOURCE, { pty: false })
   expect(env).toEqual({
-    HOME: '/Users/test',
-    PATH: '/usr/bin:/bin',
-    USER: 'test',
-    SHELL: '/bin/zsh',
-    LANG: 'en_GB.UTF-8',
-    TERM: 'dumb',
+    ANTHROPIC_MODEL: 'haiku',
     CLAUDE_CONFIG_DIR: '/Users/test/.claude',
-    ANTHROPIC_MODEL: 'haiku'
+    HOME: '/Users/test',
+    LANG: 'en_GB.UTF-8',
+    PATH: '/usr/bin:/bin',
+    SHELL: '/bin/zsh',
+    TERM: 'dumb',
+    USER: 'test',
   })
 })
 

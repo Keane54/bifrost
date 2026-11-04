@@ -4,6 +4,7 @@
 // The script attaches, types "/rename <new name>" and Enter, and reads the name
 // after 4 seconds. Then it polls for 15 more seconds and records the screen.
 import * as L from './lib.ts'
+
 const { TestPty, log, sleep, writeOut } = L
 
 ;(async () => {
@@ -18,29 +19,29 @@ const { TestPty, log, sleep, writeOut } = L
   await P.typeLine(`/rename ${newName}`, 500)
   const t = Date.now()
   await sleep(4000)
-  const e4 = (await L.listAgents()).find((x) => x.id === id)
-  R.nameAfter4s = e4 && e4.name
+  const e4 = (await L.listAgents()).find(x => x.id === id)
+  R.nameAfter4s = e4?.name
   log(`name after 4 s: ${R.nameAfter4s}`)
   R.poll = []
   while (Date.now() - t < 19000 && (!R.poll.length || R.poll[R.poll.length - 1].name !== newName)) {
-    const e = (await L.listAgents()).find((x) => x.id === id)
-    R.poll.push({ ms: Date.now() - t, name: e && e.name })
+    const e = (await L.listAgents()).find(x => x.id === id)
+    R.poll.push({ ms: Date.now() - t, name: e?.name })
     await sleep(1000)
   }
   await P.waitQuiet(1000, 10000, false)
   const lines = await P.screenLines()
   await P.save('q11-rename')
-  R.screenTail = lines.filter((l) => l.trim()).slice(-8)
+  R.screenTail = lines.filter(l => l.trim()).slice(-8)
   R.output = L.stripAnsi(P.since(mark)).replace(/\s+/g, ' ').slice(-400)
   P.lock('close')
   P.closeAttach('SIGHUP')
   await Promise.race([P.exited, sleep(5000)])
-  R.entryAfter = (await L.listAgents()).find((x) => x.id === id) || null
+  R.entryAfter = (await L.listAgents()).find(x => x.id === id) || null
   if (R.entryAfter && R.entryAfter.name === newName) L.registerStarted(R.entryAfter, 'rename')
   writeOut('q11-result.json', R)
-  log('result:', { before: R.nameBefore, after4s: R.nameAfter4s, poll: R.poll, tail: R.screenTail })
+  log('result:', { after4s: R.nameAfter4s, before: R.nameBefore, poll: R.poll, tail: R.screenTail })
   process.exit(0)
-})().catch((e) => {
+})().catch(e => {
   console.error(e)
   process.exit(1)
 })

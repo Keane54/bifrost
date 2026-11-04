@@ -6,7 +6,7 @@ export const TEST_PREFIX = 'bifrost-test-'
 // Return true only if exactly one entry has this PID
 // and the name of that entry starts with TEST_PREFIX.
 export function canSignal(entries: AgentEntry[], pid: number): boolean {
-  const matches = entries.filter((e) => e.pid === pid)
+  const matches = entries.filter(e => e.pid === pid)
   return matches.length === 1 && matches[0].name.startsWith(TEST_PREFIX)
 }
 
@@ -27,7 +27,7 @@ const VERBS = [
   'plugin',
   'doctor',
   'install',
-  'config'
+  'config',
 ]
 
 // A model or permission mode value is one word of letters, digits and . _ : [ ] -.
@@ -50,7 +50,7 @@ function isPrompt(arg: string): boolean {
 // If bg is true, --bg must be the first arg.
 // If prompt is true, the last arg can be one prompt.
 function isTestStart(args: unknown, rules: { bg: boolean; prompt: boolean }): boolean {
-  if (!Array.isArray(args) || !args.every((a) => typeof a === 'string')) return false
+  if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) return false
   let i = 0
   if (rules.bg) {
     if (args[0] !== '--bg') return false
@@ -86,7 +86,7 @@ export function canOpenPty(entries: AgentEntry[], args: string[]): boolean {
     const target = args[1]
     if (typeof target !== 'string' || target === '') return false
     const matches = entries.filter(
-      (e) => e.id === target || e.name === target || e.sessionId === target
+      e => e.id === target || e.name === target || e.sessionId === target,
     )
     return matches.length === 1 && matches[0].name.startsWith(TEST_PREFIX)
   }

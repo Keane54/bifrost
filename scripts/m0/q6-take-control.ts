@@ -9,6 +9,7 @@
 // the last screen lines, and the transcript after the end.
 // If the process does not end, the next signal goes to the same session.
 import * as L from './lib.ts'
+
 const { TestPty, log, sleep, writeOut, stripAnsi } = L
 
 const ENV_NOTE = 'cleanEnv(): no CLAUDECODE, CLAUDE_CODE_*, TERM_PROGRAM*, TERM_SESSION_ID, WARP_*'
@@ -18,7 +19,7 @@ async function startExt(suffix) {
   const ready = await X.waitQuiet(1500, 60000)
   if (X.trustPrompt) throw new Error('trust prompt shown: stop')
   const name = `bifrost-test-${suffix}`
-  const w = await L.watchEntry({ name }, (e) => typeof e.pid === 'number', { timeout: 20000 })
+  const w = await L.watchEntry({ name }, e => typeof e.pid === 'number', { timeout: 20000 })
   if (!w.ok) throw new Error(`${name} did not show in claude agents --json`)
   const e = w.entry
   if (e.pid !== X.pty.pid) log(`note: entry pid ${e.pid} is not the PTY pid ${X.pty.pid}`)
@@ -26,23 +27,23 @@ async function startExt(suffix) {
   const lines = await X.screenLines()
   writeOut(`q6-${suffix}-ready.screen.txt`, lines.join('\n'))
   const info = {
-    name,
-    ptyPid: X.pty.pid,
+    bottomLines: lines.slice(-6),
     entry: e,
     firstOutputMs: X.firstOutputMs,
+    name,
+    ptyPid: X.pty.pid,
     ready,
     registeredAfterMs: w.ms,
     statuslineShown: /% ctx|healthy/.test(lines.join('\n')),
-    bottomLines: lines.slice(-6)
   }
   log(`started ${name}:`, info)
-  return { X, info }
+  return { info, X }
 }
 
 async function run(signalSpec, current) {
   const res = { signal: signalSpec }
-  let X
-  let info
+  let X: L.TestPty
+  let info: { name: string; entry: { pid: number } }
   if (current && !current.X.exitInfo) {
     ;({ X, info } = current)
     res.reusedSession = info.name
@@ -53,7 +54,7 @@ async function run(signalSpec, current) {
     await X.typeLine('Remember the word FALCON. Reply with OK.')
     res.turn = await L.waitTurn({ pid: info.entry.pid }, { timeout: 90000 })
     await X.waitQuiet(1500, 15000, false)
-    res.screenBefore = (await X.screenLines()).filter((l) => l.trim()).slice(-10)
+    res.screenBefore = (await X.screenLines()).filter(l => l.trim()).slice(-10)
     log('turn:', res.turn.trace)
   }
   const pid = info.entry.pid
@@ -67,11 +68,11 @@ async function run(signalSpec, current) {
     if (X.exitInfo) break
     try {
       await L.signalTestPid(pid, sigs[i])
-      res.sent.push({ sig: sigs[i], ms: Date.now() - t })
+      res.sent.push({ ms: Date.now() - t, sig: sigs[i] })
     } catch (err) {
       // The safety check refuses a PID that left the list. That is a correct end.
       if (!(err instanceof L.SafetyError)) throw err
-      res.sent.push({ sig: sigs[i], refused: err.message })
+      res.sent.push({ refused: err.message, sig: sigs[i] })
       break
     }
   }
@@ -81,25 +82,25 @@ async function run(signalSpec, current) {
   res.msToExit = ex ? Date.now() - t : null
   await sleep(300)
   const lines = await X.screenLines()
-  res.lastScreenLines = lines.filter((l) => l.trim()).slice(-8)
+  res.lastScreenLines = lines.filter(l => l.trim()).slice(-8)
   res.outputAfterSignal = stripAnsi(X.since(mark)).replace(/\s+/g, ' ').trim().slice(-600)
   res.bufferAfter = X.bufferType()
   writeOut(`q6-${signalSpec}.raw`, X.since(mark))
   writeOut(`q6-${signalSpec}.screen.txt`, lines.join('\n'))
   if (ex) {
     await sleep(1500)
-    const still = (await L.listAgents()).filter((e) => e.sessionId === info.entry.sessionId)
+    const still = (await L.listAgents()).filter(e => e.sessionId === info.entry.sessionId)
     res.entryAfterExit = still
     const tr = L.transcriptMessages(info.entry.sessionId)
     res.transcript = tr && {
       file: tr.file,
-      messages: tr.messages.filter((m) => !m.meta).map((m) => `${m.type}: ${m.text.slice(0, 80)}`),
-      hasFalcon: tr.messages.some((m) => m.type === 'user' && /FALCON/.test(m.text)),
-      hasOk: tr.messages.some((m) => m.type === 'assistant' && /OK/.test(m.text))
+      hasFalcon: tr.messages.some(m => m.type === 'user' && /FALCON/.test(m.text)),
+      hasOk: tr.messages.some(m => m.type === 'assistant' && /OK/.test(m.text)),
+      messages: tr.messages.filter(m => !m.meta).map(m => `${m.type}: ${m.text.slice(0, 80)}`),
     }
   }
   log(`${signalSpec}:`, { endedIn5s: res.endedIn5s, exit: res.exit, last: res.lastScreenLines })
-  return { res, current: { X, info } }
+  return { current: { info, X }, res }
 }
 
 ;(async () => {
@@ -121,7 +122,7 @@ async function run(signalSpec, current) {
   writeOut(`q6-result-${order.join('-')}.json`, R)
   log(`saved q6-result-${order.join('-')}.json`)
   process.exit(0)
-})().catch((e) => {
+})().catch(e => {
   console.error(e)
   process.exit(1)
 })

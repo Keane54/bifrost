@@ -9,6 +9,7 @@
 //   E: two lines with CR between them and no bracketed paste.
 // Then it reads the transcript and opens a second attach to look at the conversation.
 import * as L from './lib.ts'
+
 const { TestPty, log, sleep, writeOut } = L
 
 ;(async () => {
@@ -23,10 +24,10 @@ const { TestPty, log, sleep, writeOut } = L
   const H = await TestPty.attach({ id })
   const ready = await H.waitQuiet(1500, 30000)
   R.hidden = {
+    includingSafetyCheckMs: Date.now() - t,
     spawnToFirstOutputMs: H.firstOutputMs,
     spawnToLastOutputMs: ready.readyMs,
     spawnToReadyDetectedMs: Date.now() - H.t0,
-    includingSafetyCheckMs: Date.now() - t
   }
   log('hidden attach:', R.hidden)
 
@@ -38,11 +39,11 @@ const { TestPty, log, sleep, writeOut } = L
     const lines = await H.screenLines()
     writeOut(`q5-${label}.screen.txt`, lines.join('\n'))
     R[label] = {
-      turn: r.ok,
       by: r.by,
-      trace: r.trace,
       bytes: H.since(m).length,
-      promptRow: lines.filter((l) => l.startsWith('❯')).slice(-1)[0]
+      promptRow: lines.filter(l => l.startsWith('❯')).slice(-1)[0],
+      trace: r.trace,
+      turn: r.ok,
     }
     log(`input ${label}:`, R[label])
     return r
@@ -68,7 +69,7 @@ const { TestPty, log, sleep, writeOut } = L
   // E can leave text in the prompt. Submit it, so that the transcript shows it.
   await sleep(1000)
   const eLines = await H.screenLines()
-  if (eLines.some((l) => /❯\s*solo two/.test(l))) {
+  if (eLines.some(l => /❯\s*solo two/.test(l))) {
     R.E_left_in_prompt = true
     await turn('E-enter', () => H.write('\r'))
   }
@@ -76,12 +77,12 @@ const { TestPty, log, sleep, writeOut } = L
   // Read the new messages of the transcript.
   await sleep(1500)
   const after = L.transcriptMessages(entry.sessionId)
-  R.transcriptFile = after && after.file
+  R.transcriptFile = after?.file
   R.newMessages = after
     ? after.messages
         .slice(startCount)
-        .filter((m) => !m.meta)
-        .map((m) => ({ type: m.type, text: m.text }))
+        .filter(m => !m.meta)
+        .map(m => ({ text: m.text, type: m.type }))
     : null
   log('new transcript messages:', R.newMessages)
 
@@ -95,11 +96,11 @@ const { TestPty, log, sleep, writeOut } = L
     P.closeAttach('SIGHUP')
     await Promise.race([P.exited, sleep(5000)])
   }
-  R.sessionAfter = (await L.listAgents()).find((x) => x.id === id) || null
+  R.sessionAfter = (await L.listAgents()).find(x => x.id === id) || null
   writeOut('q5-result.json', R)
   log('saved q5-result.json')
   process.exit(0)
-})().catch((e) => {
+})().catch(e => {
   console.error(e)
   process.exit(1)
 })

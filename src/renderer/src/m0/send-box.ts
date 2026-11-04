@@ -6,8 +6,8 @@ const PASTE_END = '\x1b[201~'
 // xterm.js changes each line break in a paste to CR, so this function does the same.
 // Without bracketed paste, the text goes as typed. Each line break stays LF.
 export function sendBody(text: string, paste: boolean): string {
-  if (!paste) return text + '\r'
-  return PASTE_START + text.replace(/\r?\n/g, '\r') + PASTE_END + '\r'
+  if (!paste) return `${text}\r`
+  return `${PASTE_START + text.replace(/\r?\n/g, '\r') + PASTE_END}\r`
 }
 
 // Enter sends the text. Shift+Enter adds a line break.

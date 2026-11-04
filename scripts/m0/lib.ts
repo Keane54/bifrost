@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noControlCharactersInRegex: The regexes match terminal escape sequences.
 // Shared helpers for the M0 experiments.
 // The scripts start Claude Code test sessions and drive them through node-pty.
 // Every action on a session goes through assertTestTarget first.
@@ -8,11 +9,11 @@
 //   ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/<name>.ts
 // Set M0_OUT to a directory for the raw output. The default is a temp directory.
 
+import { execFile } from 'node:child_process'
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
-import { execFile } from 'node:child_process'
-import { createRequire } from 'node:module'
 
 // node-pty and xterm.js load as CommonJS.
 const require = createRequire(import.meta.url)
@@ -33,10 +34,10 @@ const FORBIDDEN_FLAG =
   /^(-r|--resume|-c|--continue|--session-id|--fork-session|--from-pr|--teleport|--cloud|-n|--name|--model)(=|$)/
 
 const T0 = Date.now()
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 function log(...parts) {
-  const text = parts.map((p) => (typeof p === 'string' ? p : JSON.stringify(p))).join(' ')
+  const text = parts.map(p => (typeof p === 'string' ? p : JSON.stringify(p))).join(' ')
   const line = `[${((Date.now() - T0) / 1000).toFixed(1)}s] ${text}`
   console.log(line)
   fs.appendFileSync(path.join(OUT, 'm0.log'), `${new Date().toISOString()} ${line}\n`)
@@ -64,29 +65,29 @@ function cleanEnv() {
 
 // Run claude without a terminal. The result never throws.
 function runClaude(args, opts = {}) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const start = Date.now()
     execFile(
       CLAUDE,
       args,
       {
         cwd: opts.cwd || SANDBOX,
-        env: cleanEnv(),
         encoding: 'utf8',
+        env: cleanEnv(),
+        maxBuffer: 16 << 20,
         timeout: opts.timeout || 30000,
-        maxBuffer: 16 << 20
       },
       (err, stdout, stderr) => {
         resolve({
           args,
           code: err ? (typeof err.code === 'number' ? err.code : null) : 0,
-          signal: (err && err.signal) || null,
           error: err && typeof err.code !== 'number' ? err.message : undefined,
-          stdout: stdout || '',
+          ms: Date.now() - start,
+          signal: err?.signal || null,
           stderr: stderr || '',
-          ms: Date.now() - start
+          stdout: stdout || '',
         })
-      }
+      },
     )
   })
 }
@@ -96,11 +97,11 @@ const seenValues = new Set()
 function recordValues(list, all) {
   for (const e of list) {
     const rec = {
-      kind: e.kind,
-      status: e.status,
-      state: e.state,
+      all: !!all,
       keys: Object.keys(e).sort().join(','),
-      all: !!all
+      kind: e.kind,
+      state: e.state,
+      status: e.status,
     }
     const key = JSON.stringify(rec)
     if (seenValues.has(key)) continue
@@ -108,7 +109,7 @@ function recordValues(list, all) {
     const name = typeof e.name === 'string' && e.name.startsWith(TEST_PREFIX) ? e.name : '(other)'
     fs.appendFileSync(
       path.join(OUT, 'values.jsonl'),
-      JSON.stringify({ at: new Date().toISOString(), name, ...rec }) + '\n'
+      `${JSON.stringify({ at: new Date().toISOString(), name, ...rec })}\n`,
     )
   }
 }
@@ -116,11 +117,11 @@ function recordValues(list, all) {
 // Read "claude agents --json". The JSON array starts at the first line with "[".
 async function listAgents({ all = false } = {}) {
   const r = await runClaude(all ? ['agents', '--json', '--all'] : ['agents', '--json'], {
-    timeout: 20000
+    timeout: 20000,
   })
   if (r.code !== 0) throw new Error(`claude agents exited ${r.code}: ${r.stderr.trim()}`)
   const lines = r.stdout.split('\n')
-  const i = lines.findIndex((l) => l.startsWith('['))
+  const i = lines.findIndex(l => l.startsWith('['))
   if (i < 0) throw new Error('claude agents printed no JSON array')
   const list = JSON.parse(lines.slice(i).join('\n'))
   recordValues(list, all)
@@ -131,11 +132,11 @@ async function listAgents({ all = false } = {}) {
 // target has exactly one of: id, pid, sessionId, name.
 // It returns the one matching entry, or it throws a SafetyError.
 async function assertTestTarget(target, { all = false } = {}) {
-  const keys = ['id', 'pid', 'sessionId', 'name'].filter((k) => target && target[k] !== undefined)
+  const keys = ['id', 'pid', 'sessionId', 'name'].filter(k => target && target[k] !== undefined)
   if (keys.length !== 1) throw new SafetyError(`bad target ${JSON.stringify(target)}`)
   const k = keys[0]
   const list = await listAgents({ all })
-  const matches = list.filter((e) => e[k] === target[k])
+  const matches = list.filter(e => e[k] === target[k])
   if (matches.length !== 1) {
     throw new SafetyError(`need 1 entry with ${k}=${target[k]}, found ${matches.length}`)
   }
@@ -155,14 +156,14 @@ async function assertTestTarget(target, { all = false } = {}) {
 function registerStarted(entry, via) {
   const rec = {
     at: new Date().toISOString(),
-    via,
     id: entry.id,
-    name: entry.name,
-    sessionId: entry.sessionId,
     kind: entry.kind,
-    pid: entry.pid
+    name: entry.name,
+    pid: entry.pid,
+    sessionId: entry.sessionId,
+    via,
   }
-  fs.appendFileSync(path.join(OUT, 'started.jsonl'), JSON.stringify(rec) + '\n')
+  fs.appendFileSync(path.join(OUT, 'started.jsonl'), `${JSON.stringify(rec)}\n`)
 }
 
 function readStarted() {
@@ -172,7 +173,7 @@ function readStarted() {
     .readFileSync(file, 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map((l) => JSON.parse(l))
+    .map(l => JSON.parse(l))
 }
 
 // Wait until an entry that matches sel exists and pred(entry) is true.
@@ -183,22 +184,22 @@ async function watchEntry(sel, pred, { timeout = 30000, interval = 500, all = fa
   const trace = []
   while (Date.now() - start < timeout) {
     const list = await listAgents({ all })
-    const e = list.find((x) => x[k] === sel[k])
+    const e = list.find(x => x[k] === sel[k])
     const sig = e
       ? JSON.stringify({
           keys: Object.keys(e).join(','),
-          status: e.status,
+          pid: e.pid,
           state: e.state,
-          pid: e.pid
+          status: e.status,
         })
       : 'absent'
     if (!trace.length || trace[trace.length - 1].sig !== sig) {
-      trace.push({ ms: Date.now() - start, sig, entry: e || null })
+      trace.push({ entry: e || null, ms: Date.now() - start, sig })
     }
-    if (e && pred(e)) return { ok: true, ms: Date.now() - start, entry: e, trace }
+    if (e && pred(e)) return { entry: e, ms: Date.now() - start, ok: true, trace }
     await sleep(interval)
   }
-  return { ok: false, ms: Date.now() - start, entry: null, trace }
+  return { entry: null, ms: Date.now() - start, ok: false, trace }
 }
 
 // Wait for one turn: the status goes to busy, then away from busy.
@@ -212,20 +213,20 @@ async function waitTurn(sel, { timeout = 90000, interval = 600, done } = {}) {
   let last = null
   while (Date.now() - start < timeout) {
     const list = await listAgents()
-    const e = list.find((x) => x[k] === sel[k])
+    const e = list.find(x => x[k] === sel[k])
     last = e || null
     const s = e ? `${e.status}/${e.state || '-'}` : 'absent'
     if (!trace.length || trace[trace.length - 1].s !== s) trace.push({ ms: Date.now() - start, s })
     if (e && e.status === 'busy') sawBusy = true
     if (e && sawBusy && e.status !== 'busy') {
-      return { ok: true, by: 'status', ms: Date.now() - start, trace, entry: e }
+      return { by: 'status', entry: e, ms: Date.now() - start, ok: true, trace }
     }
     if (e && e.status !== 'busy' && done && (await done())) {
-      return { ok: true, by: 'check', ms: Date.now() - start, trace, entry: e }
+      return { by: 'check', entry: e, ms: Date.now() - start, ok: true, trace }
     }
     await sleep(interval)
   }
-  return { ok: false, by: 'timeout', ms: Date.now() - start, trace, entry: last }
+  return { by: 'timeout', entry: last, ms: Date.now() - start, ok: false, trace }
 }
 
 // Start a background test session in the sandbox.
@@ -246,14 +247,14 @@ async function startBg(suffix, prompt, extra = []) {
   r.name = name
   log(`start ${name}: exit ${r.code} id ${r.id} (${r.ms} ms)`)
   if (r.id) {
-    const w = await watchEntry({ id: r.id }, (e) => typeof e.sessionId === 'string', {
+    const w = await watchEntry({ id: r.id }, e => typeof e.sessionId === 'string', {
+      interval: 300,
       timeout: 15000,
-      interval: 300
     })
     if (w.entry && w.entry.name === name) registerStarted(w.entry, 'startBg')
     else {
       // A start can fail after the exit code 0. Then the entry is only in --all.
-      const failed = (await listAgents({ all: true })).find((e) => e.id === r.id)
+      const failed = (await listAgents({ all: true })).find(e => e.id === r.id)
       if (failed && failed.name === name) registerStarted(failed, 'startBg-all')
       log(`warning: no active entry with name ${name} for id ${r.id}`)
     }
@@ -265,16 +266,16 @@ async function startBg(suffix, prompt, extra = []) {
 // The sessionId must come from a test entry that these scripts started.
 // No active entry with a different name may use the same sessionId.
 async function resumeBg(sessionId, extra = []) {
-  const started = readStarted().filter((s) => s.sessionId === sessionId)
-  if (!started.length || !started.every((s) => s.name.startsWith(TEST_PREFIX))) {
+  const started = readStarted().filter(s => s.sessionId === sessionId)
+  if (!started.length || !started.every(s => s.name.startsWith(TEST_PREFIX))) {
     throw new SafetyError(`refused: ${sessionId} is not a test session that these scripts started`)
   }
-  const active = (await listAgents()).filter((e) => e.sessionId === sessionId)
-  if (active.some((e) => !String(e.name).startsWith(TEST_PREFIX))) {
+  const active = (await listAgents()).filter(e => e.sessionId === sessionId)
+  if (active.some(e => !String(e.name).startsWith(TEST_PREFIX))) {
     throw new SafetyError(`refused: an active non-test entry uses ${sessionId}`)
   }
   const file = findTranscript(sessionId)
-  if (!file || !file.includes('m0-sandbox')) {
+  if (!file?.includes('m0-sandbox')) {
     throw new SafetyError(`refused: no sandbox transcript for ${sessionId}`)
   }
   for (const a of extra) if (FORBIDDEN_FLAG.test(a)) throw new SafetyError(`refused flag ${a}`)
@@ -327,31 +328,32 @@ function transcriptMessages(sessionId) {
   const out = []
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     if (!line.trim()) continue
-    let j
+    // JSON.parse returns any, so j has the same type.
+    let j: ReturnType<typeof JSON.parse>
     try {
       j = JSON.parse(line)
     } catch {
       continue
     }
     if (j.type !== 'user' && j.type !== 'assistant') continue
-    const c = j.message && j.message.content
+    const c = j.message?.content
     let text = ''
     if (typeof c === 'string') text = c
     else if (Array.isArray(c)) {
       text = c
-        .map((p) =>
+        .map(p =>
           p.type === 'text'
             ? p.text
             : p.type === 'tool_use'
               ? `[tool_use ${p.name}]`
               : p.type === 'tool_result'
                 ? '[tool_result]'
-                : ''
+                : '',
         )
         .filter(Boolean)
         .join(' ')
     }
-    out.push({ type: j.type, text, meta: !!j.isMeta, ts: j.timestamp, sessionId: j.sessionId })
+    out.push({ meta: !!j.isMeta, sessionId: j.sessionId, text, ts: j.timestamp, type: j.type })
   }
   return { file, messages: out }
 }
@@ -368,7 +370,7 @@ function stripAnsi(s) {
 
 // Count the escape sequences that matter for xterm.js.
 function analyseSequences(raw) {
-  const count = (re) => (raw.match(re) || []).length
+  const count = re => (raw.match(re) || []).length
   const modes = {}
   for (const m of raw.matchAll(/\x1b\[\?([\d;]+)([hl])/g)) {
     for (const n of m[1].split(';')) modes[`?${n}${m[2]}`] = (modes[`?${n}${m[2]}`] || 0) + 1
@@ -381,31 +383,31 @@ function analyseSequences(raw) {
     csi[k] = (csi[k] || 0) + 1
   }
   return {
-    bytes: raw.length,
-    sgr256: count(/\x1b\[[\d;:]*[34]8[;:]5[;:]\d+/g),
-    sgrTruecolor: count(/\x1b\[[\d;:]*[34]8[;:]2[;:]+\d+[;:]\d+[;:]\d+/g),
-    sgrBasic16: count(/\x1b\[(?:\d+;)*(?:3[0-7]|4[0-7]|9[0-7]|10[0-7])m/g),
-    altScreenOn: modes['?1049h'] || 0,
     altScreenOff: modes['?1049l'] || 0,
+    altScreenOn: modes['?1049h'] || 0,
+    bytes: raw.length,
     clearScreen: count(/\x1b\[2J/g),
     clearScrollback: count(/\x1b\[3J/g),
-    syncOutput: { begin: modes['?2026h'] || 0, end: modes['?2026l'] || 0 },
+    csiFinals: csi,
+    hyperlinks: count(/\x1b\]8;/g),
+    kittyKeyboard: { pop: count(/\x1b\[<\d*u/g), push: count(/\x1b\[>\d+u/g) },
+    modifyOtherKeys: count(/\x1b\[>4;\d*m/g),
+    osc,
+    privateModes: modes,
     queries: {
+      cursorPos: count(/\x1b\[6n/g),
       DA1: count(/\x1b\[0?c/g),
       DA2: count(/\x1b\[>0?c/g),
-      XTVERSION: count(/\x1b\[>0?q/g),
-      cursorPos: count(/\x1b\[6n/g),
+      decrqm: count(/\x1b\[\?\d+\$p/g),
       kittyKeyboardQuery: count(/\x1b\[\?u/g),
       oscColourQuery: count(/\x1b\]1[01];\?/g),
-      decrqm: count(/\x1b\[\?\d+\$p/g)
+      XTVERSION: count(/\x1b\[>0?q/g),
     },
-    kittyKeyboard: { push: count(/\x1b\[>\d+u/g), pop: count(/\x1b\[<\d*u/g) },
-    modifyOtherKeys: count(/\x1b\[>4;\d*m/g),
-    hyperlinks: count(/\x1b\]8;/g),
+    sgr256: count(/\x1b\[[\d;:]*[34]8[;:]5[;:]\d+/g),
+    sgrBasic16: count(/\x1b\[(?:\d+;)*(?:3[0-7]|4[0-7]|9[0-7]|10[0-7])m/g),
+    sgrTruecolor: count(/\x1b\[[\d;:]*[34]8[;:]2[;:]+\d+[;:]\d+[;:]\d+/g),
+    syncOutput: { begin: modes['?2026h'] || 0, end: modes['?2026l'] || 0 },
     title: count(/\x1b\][02];/g),
-    privateModes: modes,
-    osc,
-    csiFinals: csi
   }
 }
 
@@ -418,8 +420,8 @@ class TestPty {
     if (!e.id) throw new SafetyError(`${e.name} has no short id`)
     const p = new TestPty(['attach', e.id], {
       ...opts,
+      check: { id: e.id },
       label: `attach ${e.id}`,
-      check: { id: e.id }
     })
     p.entry = e
     return p
@@ -431,7 +433,7 @@ class TestPty {
     if (RESERVED_NAMES.has(name)) throw new SafetyError(`refused: ${name} is reserved`)
     for (const a of extra) if (FORBIDDEN_FLAG.test(a)) throw new SafetyError(`refused flag ${a}`)
     const args = ['--model', 'haiku', '--name', name, ...extra]
-    return new TestPty(args, { ...opts, label: `interactive ${name}`, check: { name } })
+    return new TestPty(args, { ...opts, check: { name }, label: `interactive ${name}` })
   }
 
   constructor(args, { label, check, cols = COLS, rows = ROWS }) {
@@ -449,27 +451,27 @@ class TestPty {
     this.replies = []
     this.firstOutputMs = null
     this.exitInfo = null
-    this.term = new Terminal({ cols, rows, allowProposedApi: true, scrollback: 2000 })
+    this.term = new Terminal({ allowProposedApi: true, cols, rows, scrollback: 2000 })
     this.t0 = Date.now()
     this.lastDataAt = this.t0
     this.pty = pty.spawn(CLAUDE, args, {
-      name: 'xterm-256color',
       cols,
-      rows,
       cwd: SANDBOX,
-      env: cleanEnv()
+      env: cleanEnv(),
+      name: 'xterm-256color',
+      rows,
     })
     log(`pty ${label}: spawned pid ${this.pty.pid} args ${JSON.stringify(args)}`)
-    this.term.onData((d) => {
-      this.replies.push({ ms: Date.now() - this.t0, d })
+    this.term.onData(d => {
+      this.replies.push({ d, ms: Date.now() - this.t0 })
       if (!this.locked && !this.exitInfo) this.pty.write(d)
     })
-    this.pty.onData((d) => {
+    this.pty.onData(d => {
       const now = Date.now()
       if (this.firstOutputMs === null) this.firstOutputMs = now - this.t0
       this.lastDataAt = now
       this.raw += d
-      this.chunks.push({ ms: now - this.t0, len: d.length })
+      this.chunks.push({ len: d.length, ms: now - this.t0 })
       this.term.write(d)
       if (
         !this.trustPrompt &&
@@ -480,8 +482,8 @@ class TestPty {
         log(`STOP: ${label} shows a trust prompt. Input is locked.`)
       }
     })
-    this.exited = new Promise((resolve) => {
-      this.pty.onExit((ev) => {
+    this.exited = new Promise(resolve => {
+      this.pty.onExit(ev => {
         this.exitInfo = { ...ev, ms: Date.now() - this.t0 }
         log(`pty ${label}: exit ${JSON.stringify(this.exitInfo)}`)
         resolve(this.exitInfo)
@@ -542,7 +544,7 @@ class TestPty {
   }
 
   async flush() {
-    await new Promise((r) => this.term.write('', r))
+    await new Promise(r => this.term.write('', r))
   }
 
   // Wait until the output is quiet for quietMs. The quiet time starts at the call
@@ -577,11 +579,11 @@ class TestPty {
   async waitScreen(re, timeout = 30000) {
     const start = Date.now()
     while (Date.now() - start < timeout) {
-      if (re.test(await this.screenText())) return { ok: true, ms: Date.now() - start }
+      if (re.test(await this.screenText())) return { ms: Date.now() - start, ok: true }
       if (this.exitInfo) break
       await sleep(200)
     }
-    return { ok: false, ms: Date.now() - start }
+    return { ms: Date.now() - start, ok: false }
   }
 
   bufferType() {
@@ -601,34 +603,34 @@ class TestPty {
 }
 
 export {
-  CLAUDE,
-  REPO,
-  SANDBOX,
-  TEST_PREFIX,
-  COLS,
-  ROWS,
-  OUT,
-  SafetyError,
-  sleep,
-  log,
-  writeOut,
-  cleanEnv,
-  runClaude,
-  listAgents,
-  assertTestTarget,
-  registerStarted,
-  readStarted,
-  watchEntry,
-  waitTurn,
-  startBg,
-  resumeBg,
-  stopTest,
-  rmTest,
-  logsTest,
-  signalTestPid,
-  findTranscript,
-  transcriptMessages,
-  stripAnsi,
   analyseSequences,
-  TestPty
+  assertTestTarget,
+  CLAUDE,
+  COLS,
+  cleanEnv,
+  findTranscript,
+  listAgents,
+  log,
+  logsTest,
+  OUT,
+  REPO,
+  ROWS,
+  readStarted,
+  registerStarted,
+  resumeBg,
+  rmTest,
+  runClaude,
+  SANDBOX,
+  SafetyError,
+  signalTestPid,
+  sleep,
+  startBg,
+  stopTest,
+  stripAnsi,
+  TEST_PREFIX,
+  TestPty,
+  transcriptMessages,
+  waitTurn,
+  watchEntry,
+  writeOut,
 }

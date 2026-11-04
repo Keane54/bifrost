@@ -8,27 +8,29 @@
 // bifrost-test-wt2. Each start has the first prompt "Reply with the word READY."
 // For each start it records the exit code, stdout, stderr and the entry.
 // It attaches without input to read the mode line, then detaches with SIGHUP.
+
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
 import * as L from './lib.ts'
+
 const { TestPty, log, sleep, writeOut } = L
 
 const PROMPT = 'Reply with the word READY.'
 
 async function tryStart(suffix, extra) {
   const r = await L.startBg(suffix, PROMPT, extra)
-  const res = { suffix, extra, code: r.code, stdout: r.stdout, stderr: r.stderr, id: r.id }
+  const res = { code: r.code, extra, id: r.id, stderr: r.stderr, stdout: r.stdout, suffix }
   if (r.id) {
     const w = await L.watchEntry(
       { id: r.id },
-      (e) => typeof e.pid === 'number' && e.status && e.status !== 'busy' && e.state !== 'working',
-      { timeout: suffix.endsWith('bad') ? 20000 : 90000, interval: 500 }
+      e => typeof e.pid === 'number' && e.status && e.status !== 'busy' && e.state !== 'working',
+      { interval: 500, timeout: suffix.endsWith('bad') ? 20000 : 90000 },
     )
     res.entry = w.entry
-    res.trace = w.trace.map((t) => ({ ms: t.ms, sig: t.sig }))
+    res.trace = w.trace.map(t => ({ ms: t.ms, sig: t.sig }))
     if (!w.ok) {
-      const all = (await L.listAgents({ all: true })).filter((e) => e.id === r.id)
+      const all = (await L.listAgents({ all: true })).filter(e => e.id === r.id)
       res.allEntry = all
       log(`start ${suffix}: no active entry. agents --all:`, all)
       writeOut(`q10-${suffix}.json`, res)
@@ -39,8 +41,8 @@ async function tryStart(suffix, extra) {
     P.lock('look only')
     const lines = await P.screenLines()
     await P.save(`q10-${suffix}`)
-    res.footer = lines.filter((l) => l.trim()).slice(-3)
-    res.banner = lines.filter((l) => /Claude Code|Haiku|~\//.test(l)).slice(0, 3)
+    res.footer = lines.filter(l => l.trim()).slice(-3)
+    res.banner = lines.filter(l => /Claude Code|Haiku|~\//.test(l)).slice(0, 3)
     res.planMode = /plan mode on/i.test(lines.join('\n'))
     P.closeAttach('SIGHUP')
     await Promise.race([P.exited, sleep(5000)])
@@ -48,23 +50,23 @@ async function tryStart(suffix, extra) {
   writeOut(`q10-${suffix}.json`, res)
   log(`start ${suffix}:`, {
     code: res.code,
-    stdout: res.stdout,
+    cwd: res.entry?.cwd,
+    footer: res.footer,
     stderr: res.stderr,
-    cwd: res.entry && res.entry.cwd,
-    footer: res.footer
+    stdout: res.stdout,
   })
   return res
 }
 
 function git(args) {
   const r = spawnSync('git', args, { cwd: L.SANDBOX, encoding: 'utf8', env: L.cleanEnv() })
-  return { args: args.join(' '), code: r.status, stdout: r.stdout, stderr: r.stderr }
+  return { args: args.join(' '), code: r.status, stderr: r.stderr, stdout: r.stdout }
 }
 
 ;(async () => {
   const R = { help: null, runs: [] }
   const help = await L.runClaude(['--help'], { timeout: 20000 })
-  R.help = help.stdout.split('\n').filter((l) => /worktree/i.test(l))
+  R.help = help.stdout.split('\n').filter(l => /worktree/i.test(l))
   log('help lines with "worktree":', R.help)
 
   const steps = process.argv.slice(2).length ? process.argv.slice(2) : ['flags', 'flags-bad', 'wt']
@@ -90,7 +92,7 @@ function git(args) {
   log('git worktree list:', R.worktreeList.stdout)
   writeOut('q10-result.json', R)
   process.exit(0)
-})().catch((e) => {
+})().catch(e => {
   console.error(e)
   process.exit(1)
 })

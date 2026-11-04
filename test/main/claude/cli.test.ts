@@ -9,12 +9,12 @@ test('createRunClaude runs claude with the cwd and the clean child env', async (
   vi.stubEnv('TERM_PROGRAM', 'WarpTerminal')
   vi.stubEnv('HOME', '/Users/test')
   try {
-    const exec = vi.fn().mockResolvedValue({ code: 0, stdout: '', stderr: '' })
+    const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '' })
     await createRunClaude(exec, '/bin/claude')(['agents', '--json'], { cwd: '/tmp' })
     expect(exec).toHaveBeenCalledWith(
       '/bin/claude',
       ['agents', '--json'],
-      expect.objectContaining({ cwd: '/tmp' })
+      expect.objectContaining({ cwd: '/tmp' }),
     )
     const env = exec.mock.calls[0][2].env
     expect(env).not.toHaveProperty('CLAUDECODE')
@@ -27,21 +27,25 @@ test('createRunClaude runs claude with the cwd and the clean child env', async (
 })
 
 test('resolveClaudePath asks an interactive login shell for the path', async () => {
-  const exec = vi.fn().mockResolvedValue({ code: 0, stdout: '/Users/test/.local/bin/claude\n', stderr: '' })
+  const exec = vi
+    .fn()
+    .mockResolvedValue({ code: 0, stderr: '', stdout: '/Users/test/.local/bin/claude\n' })
   expect(await resolveClaudePath(exec, '/bin/zsh')).toBe('/Users/test/.local/bin/claude')
   expect(exec).toHaveBeenCalledWith('/bin/zsh', ['-lic', 'command -v claude'], expect.anything())
 })
 test('resolveClaudePath returns null when the shell and the fallback paths do not find claude', async () => {
-  const exec = vi.fn().mockResolvedValue({ code: 1, stdout: '', stderr: '' })
+  const exec = vi.fn().mockResolvedValue({ code: 1, stderr: '', stdout: '' })
   expect(await resolveClaudePath(exec, '/bin/zsh', () => false)).toBeNull()
 })
 test('resolveClaudePath uses the first executable fallback path when the shell fails', async () => {
-  const exec = vi.fn().mockResolvedValue({ code: 1, stdout: '', stderr: '' })
+  const exec = vi.fn().mockResolvedValue({ code: 1, stderr: '', stdout: '' })
   const local = join(homedir(), '.local/bin/claude')
-  expect(await resolveClaudePath(exec, '/bin/zsh', (p) => p === local)).toBe(local)
+  expect(await resolveClaudePath(exec, '/bin/zsh', p => p === local)).toBe(local)
 })
 test('resolveClaudePath does not check the fallback paths when the shell finds claude', async () => {
-  const exec = vi.fn().mockResolvedValue({ code: 0, stdout: '/Users/test/.local/bin/claude\n', stderr: '' })
+  const exec = vi
+    .fn()
+    .mockResolvedValue({ code: 0, stderr: '', stdout: '/Users/test/.local/bin/claude\n' })
   const isExecutable = vi.fn().mockReturnValue(true)
   await resolveClaudePath(exec, '/bin/zsh', isExecutable)
   expect(isExecutable).not.toHaveBeenCalled()

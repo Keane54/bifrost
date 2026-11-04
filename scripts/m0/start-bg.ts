@@ -4,7 +4,7 @@
 // The directory is .m0-sandbox. The script prints the exact stdout and stderr.
 // Then it polls "claude agents --json" and records each change of the entry,
 // until the status is not busy and the state is "done", or until 90 seconds.
-import { startBg, watchEntry, writeOut, log } from './lib.ts'
+import { log, startBg, watchEntry, writeOut } from './lib.ts'
 
 ;(async () => {
   const [suffix, prompt, ...extra] = process.argv.slice(2)
@@ -20,11 +20,11 @@ import { startBg, watchEntry, writeOut, log } from './lib.ts'
     let sawBusy = false
     const w = await watchEntry(
       { id: r.id },
-      (e) => {
+      e => {
         if (e.status === 'busy') sawBusy = true
         return typeof e.pid === 'number' && e.status !== 'busy' && e.state === 'done'
       },
-      { timeout: 90000, interval: 400 }
+      { interval: 400, timeout: 90000 },
     )
     result.watch = { ...w, sawBusy }
     for (const t of w.trace) log(`+${t.ms} ms ${t.sig}`)

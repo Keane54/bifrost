@@ -23,7 +23,7 @@ test('an open that waits across a reload sees that its page is gone', async () =
   const page = new PageScope(() => {})
   const token = page.token()
   let release = (): void => {}
-  const wait = new Promise<void>((r) => (release = r))
+  const wait = new Promise<void>(r => (release = r))
   const open = wait.then(() => page.isCurrent(token))
   page.end()
   release()

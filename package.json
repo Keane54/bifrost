@@ -1,29 +1,5 @@
 {
-  "name": "bifrost",
-  "version": "1.0.0",
-  "description": "A macOS app that lists and controls local Claude Code sessions.",
-  "main": "./out/main/index.js",
   "author": "Bifrost",
-  "scripts": {
-    "format": "biome format",
-    "lint": "biome lint",
-    "check": "biome check",
-    "format:write": "biome format --write",
-    "lint:write": "biome lint --write",
-    "check:write": "biome check --write",
-    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
-    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
-    "start": "electron-vite preview",
-    "dev": "electron-vite dev",
-    "build": "pnpm run typecheck && electron-vite build",
-    "postinstall": "node scripts/postinstall.ts",
-    "build:unpack": "pnpm run build && electron-builder --dir",
-    "build:win": "pnpm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux",
-    "test": "vitest run"
-  },
   "dependencies": {
     "@electron-toolkit/preload": "3.0.2",
     "@electron-toolkit/utils": "4.0.0",
@@ -32,6 +8,7 @@
     "@xterm/xterm": "6.0.0",
     "node-pty": "1.1.0"
   },
+  "description": "A macOS app that lists and controls local Claude Code sessions.",
   "devDependencies": {
     "@biomejs/biome": "2.5.13",
     "@electron-toolkit/tsconfig": "2.0.0",
@@ -48,11 +25,34 @@
     "vite": "8.3.4",
     "vitest": "5.1.0"
   },
-  "productName": "Bifrost",
-  "private": true,
-  "license": "UNLICENSED",
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@12.3.4"
+  "license": "UNLICENSED",
+  "main": "./out/main/index.js",
+  "name": "bifrost",
+  "packageManager": "pnpm@12.3.4",
+  "private": true,
+  "productName": "Bifrost",
+  "scripts": {
+    "build": "pnpm run typecheck && electron-vite build",
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:unpack": "pnpm run build && electron-builder --dir",
+    "build:win": "pnpm run build && electron-builder --win",
+    "check": "biome check",
+    "check:write": "biome check --write",
+    "dev": "electron-vite dev",
+    "format": "biome format",
+    "format:write": "biome format --write",
+    "lint": "biome lint",
+    "lint:write": "biome lint --write",
+    "postinstall": "node scripts/postinstall.ts",
+    "start": "electron-vite preview",
+    "test": "vitest run",
+    "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false"
+  },
+  "version": "1.0.0"
 }

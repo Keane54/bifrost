@@ -24,12 +24,12 @@ type View = {
 const isTestName = (name: string): boolean => name.startsWith(TEST_PREFIX)
 
 const th: React.CSSProperties = {
-  textAlign: 'left',
+  borderBottom: '1px solid #345',
   padding: '2px 8px',
-  borderBottom: '1px solid #345'
+  textAlign: 'left',
 }
 const td: React.CSSProperties = { padding: '2px 8px', whiteSpace: 'nowrap' }
-const box: React.CSSProperties = { border: '1px solid #345', padding: 8, margin: '8px 0' }
+const box: React.CSSProperties = { border: '1px solid #345', margin: '8px 0', padding: 8 }
 
 export function Harness(): React.JSX.Element {
   const [entries, setEntries] = useState<AgentEntry[]>([])
@@ -52,7 +52,7 @@ export function Harness(): React.JSX.Element {
     viewsRef.current = change(viewsRef.current)
     setViews(viewsRef.current)
   }
-  const isOpenView = (viewId: string): boolean => viewsRef.current.some((x) => x.viewId === viewId)
+  const isOpenView = (viewId: string): boolean => viewsRef.current.some(x => x.viewId === viewId)
 
   // Poll the session list every 2 seconds. Skip a tick if the last call is not done.
   useEffect(() => {
@@ -83,38 +83,38 @@ export function Harness(): React.JSX.Element {
   // Count the bytes that each hidden attach gets.
   useEffect(() => {
     return window.bifrost.pty.onData((viewId, chunk) => {
-      if (!viewsRef.current.some((v) => v.hidden && v.viewId === viewId)) return
-      setBytes((b) => ({ ...b, [viewId]: (b[viewId] ?? 0) + chunk.length }))
+      if (!viewsRef.current.some(v => v.hidden && v.viewId === viewId)) return
+      setBytes(b => ({ ...b, [viewId]: (b[viewId] ?? 0) + chunk.length }))
     })
   }, [])
 
   const nextId = (prefix: string): string => `${prefix}-${++counter.current}`
 
-  const addView = (v: View): void => updateViews((vs) => [...vs, v])
+  const addView = (v: View): void => updateViews(vs => [...vs, v])
 
   // Remove a view. A TerminalView closes its own PTY when it unmounts.
   // A hidden attach has no TerminalView, so close its PTY here.
   const removeView = (v: View, signal?: string): void => {
     if (v.hidden || signal) void window.bifrost.pty.close(v.viewId, signal)
-    updateViews((vs) => vs.filter((x) => x.viewId !== v.viewId))
+    updateViews(vs => vs.filter(x => x.viewId !== v.viewId))
   }
 
   const openView = (e: AgentEntry, hidden: boolean): void => {
     const args = ['attach', e.id ?? e.name]
     const viewId = nextId(hidden ? 'hidden' : 'view')
     const v: View = {
-      viewId,
-      target: e.name,
+      args,
+      cwd: SANDBOX,
       hidden,
       isTest: isTestName(e.name),
-      args,
-      cwd: SANDBOX
+      target: e.name,
+      viewId,
     }
     addView(v)
     if (hidden) {
       window.bifrost.pty
-        .open(viewId, args, { cwd: SANDBOX, cols: 80, rows: 24 })
-        .then((pid) => {
+        .open(viewId, args, { cols: 80, cwd: SANDBOX, rows: 24 })
+        .then(pid => {
           // the user can remove the view while the PTY opens. Then close the new PTY.
           // Otherwise an extra attach client stays alive with no view.
           if (!isOpenView(viewId)) {
@@ -126,7 +126,7 @@ export function Harness(): React.JSX.Element {
         })
         .catch((err: unknown) => {
           // A failed open has no PTY. Remove its row.
-          updateViews((vs) => vs.filter((x) => x.viewId !== viewId))
+          updateViews(vs => vs.filter(x => x.viewId !== viewId))
           setLog(`Hidden attach ${viewId} failed: ${String(err)}`)
         })
     }
@@ -135,14 +135,14 @@ export function Harness(): React.JSX.Element {
   // Close the views of one test session with a signal.
   const closeRow = (e: AgentEntry, signal: string): void => {
     if (!isTestName(e.name)) return
-    const mine = views.filter((v) => v.target === e.name && v.isTest)
-    mine.forEach((v) => removeView(v, signal))
+    const mine = views.filter(v => v.target === e.name && v.isTest)
+    for (const v of mine) removeView(v, signal)
     setLog(`Closed ${mine.length} view(s) of ${e.name} with ${signal}.`)
   }
 
   const writeTo = async (viewId: string, data: string): Promise<void> => {
-    const v = viewsRef.current.find((x) => x.viewId === viewId)
-    if (!v || !v.isTest) {
+    const v = viewsRef.current.find(x => x.viewId === viewId)
+    if (!v?.isTest) {
       setLog(`Refused: ${viewId} is not a view of a test session.`)
       return
     }
@@ -152,7 +152,7 @@ export function Harness(): React.JSX.Element {
 
   const sendLeft = (e: AgentEntry): void => {
     if (!isTestName(e.name)) return
-    const mine = views.filter((v) => v.target === e.name && v.isTest)
+    const mine = views.filter(v => v.target === e.name && v.isTest)
     const last = mine[mine.length - 1]
     if (!last) setLog(`No open view for ${e.name}.`)
     else void writeTo(last.viewId, LEFT_ARROW)
@@ -180,7 +180,7 @@ export function Harness(): React.JSX.Element {
       return
     }
     const name = TEST_PREFIX + suffix.trim()
-    const extra = extraArgs.split(' ').filter((a) => a !== '')
+    const extra = extraArgs.split(' ').filter(a => a !== '')
     const args = ['--bg', '--model', 'haiku', '--name', name, ...extra]
     if (prompt !== '') args.push(prompt)
     setRunOutput('Running...')
@@ -194,29 +194,29 @@ export function Harness(): React.JSX.Element {
 
   const startExternal = (): void => {
     addView({
-      viewId: nextId('ext'),
-      target: TEST_PREFIX + 'ext',
+      args: ['--model', 'haiku', '--name', `${TEST_PREFIX}ext`],
+      cwd: SANDBOX,
       hidden: false,
       isTest: true,
-      args: ['--model', 'haiku', '--name', TEST_PREFIX + 'ext'],
-      cwd: SANDBOX
+      target: `${TEST_PREFIX}ext`,
+      viewId: nextId('ext'),
     })
   }
 
-  const testViews = views.filter((v) => v.isTest)
+  const testViews = views.filter(v => v.isTest)
 
   return (
     <div
       style={{
-        position: 'fixed',
-        inset: 0,
-        overflow: 'auto',
-        padding: 12,
         background: '#0b0f14',
         color: '#d6dde6',
         font: '13px ui-monospace, Menlo, monospace',
+        inset: 0,
+        overflow: 'auto',
+        padding: 12,
+        position: 'fixed',
+        textAlign: 'left',
         userSelect: 'text',
-        textAlign: 'left'
       }}
     >
       <h2 style={{ margin: '0 0 8px' }}>Bifrost M0 harness</h2>
@@ -224,7 +224,7 @@ export function Harness(): React.JSX.Element {
       <table style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            {['name', 'kind', 'status', 'id', 'sessionId', 'pid', 'cwd', 'actions'].map((h) => (
+            {['name', 'kind', 'status', 'id', 'sessionId', 'pid', 'cwd', 'actions'].map(h => (
               <th key={h} style={th}>
                 {h}
               </th>
@@ -232,7 +232,7 @@ export function Harness(): React.JSX.Element {
           </tr>
         </thead>
         <tbody>
-          {entries.map((e) => {
+          {entries.map(e => {
             const ok = isTestName(e.name)
             return (
               <tr key={`${e.pid}-${e.sessionId}`}>
@@ -244,34 +244,34 @@ export function Harness(): React.JSX.Element {
                 <td style={td}>{e.pid}</td>
                 <td style={td}>{e.cwd}</td>
                 <td style={td}>
-                  <button disabled={!ok} onClick={() => openView(e, false)}>
+                  <button disabled={!ok} onClick={() => openView(e, false)} type='button'>
                     View
                   </button>{' '}
-                  <button disabled={!ok} onClick={() => openView(e, false)}>
+                  <button disabled={!ok} onClick={() => openView(e, false)} type='button'>
                     Second view
                   </button>{' '}
-                  <button disabled={!ok} onClick={() => openView(e, true)}>
+                  <button disabled={!ok} onClick={() => openView(e, true)} type='button'>
                     Hidden attach
                   </button>{' '}
-                  <button disabled={!ok} onClick={() => closeRow(e, 'SIGHUP')}>
+                  <button disabled={!ok} onClick={() => closeRow(e, 'SIGHUP')} type='button'>
                     Close SIGHUP
                   </button>{' '}
-                  <button disabled={!ok} onClick={() => closeRow(e, 'SIGTERM')}>
+                  <button disabled={!ok} onClick={() => closeRow(e, 'SIGTERM')} type='button'>
                     Close SIGTERM
                   </button>{' '}
-                  <button disabled={!ok} onClick={() => sendLeft(e)}>
+                  <button disabled={!ok} onClick={() => sendLeft(e)} type='button'>
                     Send ←
                   </button>{' '}
                   <select
-                    value={signalChoice[e.pid] ?? SIGNALS[0]}
                     disabled={!ok}
-                    onChange={(ev) => setSignalChoice((s) => ({ ...s, [e.pid]: ev.target.value }))}
+                    onChange={ev => setSignalChoice(s => ({ ...s, [e.pid]: ev.target.value }))}
+                    value={signalChoice[e.pid] ?? SIGNALS[0]}
                   >
-                    {SIGNALS.map((s) => (
+                    {SIGNALS.map(s => (
                       <option key={s}>{s}</option>
                     ))}
                   </select>{' '}
-                  <button disabled={!ok} onClick={() => void sendSignal(e)}>
+                  <button disabled={!ok} onClick={() => void sendSignal(e)} type='button'>
                     Signal
                   </button>
                 </td>
@@ -280,87 +280,93 @@ export function Harness(): React.JSX.Element {
           })}
         </tbody>
       </table>
-      {log && <div style={{ margin: '8px 0', color: '#9cf' }}>{log}</div>}
+      {log && <div style={{ color: '#9cf', margin: '8px 0' }}>{log}</div>}
 
       <div style={box}>
         <b>Send box</b> (test views only){' '}
         <input
-          list="test-views"
-          placeholder="target view ID"
+          list='test-views'
+          onChange={ev => setSendTarget(ev.target.value)}
+          placeholder='target view ID'
           value={sendTarget}
-          onChange={(ev) => setSendTarget(ev.target.value)}
         />
-        <datalist id="test-views">
-          {testViews.map((v) => (
+        <datalist id='test-views'>
+          {testViews.map(v => (
             <option key={v.viewId} value={v.viewId} />
           ))}
         </datalist>{' '}
         <textarea
-          placeholder="text: Enter sends, Shift+Enter adds a line"
-          rows={3}
           cols={48}
-          style={{ verticalAlign: 'top' }}
-          value={sendText}
-          onChange={(ev) => setSendText(ev.target.value)}
-          onKeyDown={(ev) => {
+          onChange={ev => setSendText(ev.target.value)}
+          onKeyDown={ev => {
             const key = {
+              isComposing: ev.nativeEvent.isComposing,
               key: ev.key,
               shiftKey: ev.shiftKey,
-              isComposing: ev.nativeEvent.isComposing
             }
             if (!isSendKey(key)) return
             ev.preventDefault()
             sendBox()
           }}
+          placeholder='text: Enter sends, Shift+Enter adds a line'
+          rows={3}
+          style={{ verticalAlign: 'top' }}
+          value={sendText}
         />{' '}
         <label>
-          <input type="checkbox" checked={paste} onChange={(ev) => setPaste(ev.target.checked)} />{' '}
+          <input checked={paste} onChange={ev => setPaste(ev.target.checked)} type='checkbox' />{' '}
           Bracketed paste
         </label>{' '}
-        <button onClick={sendBox}>Send</button>
+        <button onClick={sendBox} type='button'>
+          Send
+        </button>
       </div>
 
       <div style={box}>
         <b>Start test session</b> {TEST_PREFIX}
         <input
-          placeholder="suffix"
+          onChange={ev => setSuffix(ev.target.value)}
+          placeholder='suffix'
           size={12}
           value={suffix}
-          onChange={(ev) => setSuffix(ev.target.value)}
         />{' '}
         <input
-          placeholder="extra args, for example --permission-mode plan"
+          onChange={ev => setExtraArgs(ev.target.value)}
+          placeholder='extra args, for example --permission-mode plan'
           size={28}
           value={extraArgs}
-          onChange={(ev) => setExtraArgs(ev.target.value)}
         />{' '}
         <input
-          placeholder="prompt"
+          onChange={ev => setPrompt(ev.target.value)}
+          placeholder='prompt'
           size={40}
           value={prompt}
-          onChange={(ev) => setPrompt(ev.target.value)}
         />{' '}
-        <button disabled={suffix.trim() === ''} onClick={() => void startTest()}>
+        <button disabled={suffix.trim() === ''} onClick={() => void startTest()} type='button'>
           Start test session
         </button>
         {runOutput && <pre style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap' }}>{runOutput}</pre>}
       </div>
 
       <div style={box}>
-        <button onClick={startExternal}>Start external session</button>
+        <button onClick={startExternal} type='button'>
+          Start external session
+        </button>
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {views.map((v) => (
+        {views.map(v => (
           <div key={v.viewId} style={{ border: '1px solid #345', width: 640 }}>
-            <div style={{ padding: '2px 6px', background: '#16202b' }}>
+            <div style={{ background: '#16202b', padding: '2px 6px' }}>
               {v.viewId} | {v.target} | {v.args.join(' ')}
               {v.hidden && <span> | hidden, {bytes[v.viewId] ?? 0} bytes</span>}{' '}
-              <button onClick={() => removeView(v)}>Remove</button>
+              <button onClick={() => removeView(v)} type='button'>
+                Remove
+              </button>
             </div>
             {!v.hidden && (
               <div style={{ height: 360 }}>
-                <TerminalView viewId={v.viewId} args={v.args} cwd={v.cwd} />
+                <TerminalView args={v.args} cwd={v.cwd} viewId={v.viewId} />
               </div>
             )}
           </div>

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
-import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
+import { Terminal } from '@xterm/xterm'
+import { useEffect, useRef } from 'react'
 
 // One terminal. It opens a PTY on mount and closes it on unmount.
 export function TerminalView(props: {
@@ -12,6 +12,8 @@ export function TerminalView(props: {
   const { viewId, args, cwd } = props
   const hostRef = useRef<HTMLDivElement>(null)
 
+  // The view ID, args and cwd are fixed for the life of one view.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the effect must run one time.
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -51,14 +53,14 @@ export function TerminalView(props: {
     const offExit = api.pty.onExit((id, code) => {
       if (id === viewId) term.write(`\r\n[process ended: code ${code}]\r\n`)
     })
-    const input = term.onData((data) => {
+    const input = term.onData(data => {
       if (opened) void api.pty.write(viewId, data)
     })
     const observer = new ResizeObserver(syncSize)
     observer.observe(host)
 
     api.pty
-      .open(viewId, args, { cwd, cols: term.cols, rows: term.rows })
+      .open(viewId, args, { cols: term.cols, cwd, rows: term.rows })
       .then(() => {
         if (disposed) {
           // The view went away while the PTY opened. Close the new PTY.
@@ -84,9 +86,7 @@ export function TerminalView(props: {
       fit.dispose()
       term.dispose()
     }
-    // The view ID, args and cwd are fixed for the life of one view.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return <div ref={hostRef} style={{ width: '100%', height: '100%' }} />
+  return <div ref={hostRef} style={{ height: '100%', width: '100%' }} />
 }

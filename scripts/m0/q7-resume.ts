@@ -5,6 +5,7 @@
 // It records the stdout and the new entry: id, sessionId, kind and name.
 // Then it attaches, asks "Which word did I ask you to remember?" and reads the reply.
 import * as L from './lib.ts'
+
 const { TestPty, log, sleep, writeOut } = L
 
 ;(async () => {
@@ -12,27 +13,27 @@ const { TestPty, log, sleep, writeOut } = L
   if (!sessionId) throw new Error('usage: q7-resume.ts <sessionId>')
   const R = { sessionId }
   // A second resume of a running session starts a copy. So use an active entry if one exists.
-  const active = (await L.listAgents()).filter((e) => e.sessionId === sessionId)
-  let r
+  const active = (await L.listAgents()).filter(e => e.sessionId === sessionId)
+  let r: { id: string | null; [key: string]: unknown }
   if (active.length === 1 && active[0].name.startsWith(L.TEST_PREFIX)) {
     r = { id: active[0].id, note: 'already resumed by an earlier run; no new resume' }
     R.resume = r
   } else {
     r = await L.resumeBg(sessionId)
-    R.resume = { code: r.code, stdout: r.stdout, stderr: r.stderr, id: r.id, ms: r.ms }
+    R.resume = { code: r.code, id: r.id, ms: r.ms, stderr: r.stderr, stdout: r.stdout }
   }
   log('resume:', R.resume)
   if (!r.id) throw new Error('no short id in the resume output')
   const w = await L.watchEntry(
     { id: r.id },
-    (e) => typeof e.pid === 'number' && e.status !== 'busy',
-    { timeout: 60000, interval: 400 }
+    e => typeof e.pid === 'number' && e.status !== 'busy',
+    { interval: 400, timeout: 60000 },
   )
   R.entry = w.entry
-  R.trace = w.trace.map((t) => ({ ms: t.ms, sig: t.sig }))
+  R.trace = w.trace.map(t => ({ ms: t.ms, sig: t.sig }))
   R.sameSessionId = !!w.entry && w.entry.sessionId === sessionId
   log('entry:', w.entry, 'same sessionId:', R.sameSessionId)
-  if (w.entry && w.entry.name.startsWith(L.TEST_PREFIX)) L.registerStarted(w.entry, 'resumeBg')
+  if (w.entry?.name.startsWith(L.TEST_PREFIX)) L.registerStarted(w.entry, 'resumeBg')
 
   const P = await TestPty.attach({ id: r.id })
   await P.waitQuiet(1500, 30000)
@@ -46,18 +47,18 @@ const { TestPty, log, sleep, writeOut } = L
   R.transcript = tr && {
     file: tr.file,
     messages: tr.messages
-      .filter((m) => !m.meta && m.text)
-      .map((m) => `${m.type}: ${m.text.slice(0, 80)}`)
+      .filter(m => !m.meta && m.text)
+      .map(m => `${m.type}: ${m.text.slice(0, 80)}`),
   }
-  R.lastAssistant = tr && tr.messages.filter((m) => m.type === 'assistant' && m.text).slice(-1)[0]
+  R.lastAssistant = tr?.messages.filter(m => m.type === 'assistant' && m.text).slice(-1)[0]
   log('reply:', R.lastAssistant, 'screen has FALCON reply:', R.screenHasFalconReply)
   P.lock('close')
   P.closeAttach('SIGHUP')
   await Promise.race([P.exited, sleep(5000)])
-  R.entryAfter = (await L.listAgents()).filter((e) => e.sessionId === sessionId)
+  R.entryAfter = (await L.listAgents()).filter(e => e.sessionId === sessionId)
   writeOut(`q7-result-${sessionId.slice(0, 8)}.json`, R)
   process.exit(0)
-})().catch((e) => {
+})().catch(e => {
   console.error(e)
   process.exit(1)
 })

@@ -10,6 +10,7 @@
 // that is not the mode footer, or when the screen has "% ctx" or "healthy".
 // Without --prompt the script types nothing.
 import * as L from './lib.ts'
+
 const { TestPty, log, sleep, writeOut } = L
 
 function statuslineRows(lines) {
@@ -22,10 +23,10 @@ function statuslineRows(lines) {
   return lines
     .slice(last + 1)
     .filter(
-      (l) =>
+      l =>
         l.trim() &&
         !/^\s*[⠀\s]*$/.test(l) &&
-        !/auto mode on|for shortcuts|plan mode on|accept edits/.test(l)
+        !/auto mode on|for shortcuts|plan mode on|accept edits/.test(l),
     )
 }
 
@@ -41,7 +42,7 @@ function statuslineRows(lines) {
   if (!id) throw new Error('usage: watch-statusline.ts <short id> [seconds]')
   const e = await L.assertTestTarget({ id })
   const P = await TestPty.attach({ id })
-  const R = { id, sessionStartedAt: e.startedAt, attachAt: P.t0, samples: [] }
+  const R = { attachAt: P.t0, id, samples: [], sessionStartedAt: e.startedAt }
   let shownAt = null
   let nudged = false
   const pi = process.argv.indexOf('--prompt')
@@ -57,7 +58,7 @@ function statuslineRows(lines) {
       writeOut(`statusline-${id}-first.screen.txt`, text)
       log(
         `statusline shown ${shownAt - P.t0} ms after attach, ${shownAt - e.startedAt} ms after start:`,
-        rows
+        rows,
       )
       break
     }
@@ -90,7 +91,7 @@ function statuslineRows(lines) {
   await Promise.race([P.exited, sleep(5000)])
   writeOut(`statusline-${id}.json`, R)
   process.exit(0)
-})().catch((err) => {
+})().catch(err => {
   console.error(err)
   process.exit(1)
 })

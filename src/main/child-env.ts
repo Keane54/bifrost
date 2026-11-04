@@ -6,7 +6,7 @@ const REMOVED_KEYS = ['CLAUDECODE', 'TERM_PROGRAM', 'TERM_PROGRAM_VERSION', 'TER
 const REMOVED_PREFIXES = ['CLAUDE_CODE_', 'WARP_']
 
 function isRemoved(key: string): boolean {
-  return REMOVED_KEYS.includes(key) || REMOVED_PREFIXES.some((p) => key.startsWith(p))
+  return REMOVED_KEYS.includes(key) || REMOVED_PREFIXES.some(p => key.startsWith(p))
 }
 
 // Make the env for a child process from the source env.
@@ -15,7 +15,7 @@ function isRemoved(key: string): boolean {
 // The function does not change the source env.
 export function childEnv(
   source: NodeJS.ProcessEnv,
-  opts: { pty: boolean }
+  opts: { pty: boolean },
 ): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(source)) {

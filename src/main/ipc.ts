@@ -1,11 +1,11 @@
-import { resolve } from 'path'
-import { BrowserWindow, ipcMain, type WebContents } from 'electron'
-import { createRunClaude, execFile, resolveClaudePath } from './claude/cli'
+import { resolve } from 'node:path'
+import { type BrowserWindow, ipcMain, type WebContents } from 'electron'
 import { listAgents } from './claude/agents'
+import { createRunClaude, execFile, resolveClaudePath } from './claude/cli'
 import { canOpenPty, canRunClaude, canSignal } from './claude/guard'
-import { PtyManager } from './pty/pty-manager'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
+import { PtyManager } from './pty/pty-manager'
 
 const ALLOWED_SIGNALS = ['SIGTERM', 'SIGHUP', 'SIGINT']
 
@@ -40,7 +40,7 @@ export function registerIpc(): void {
   registered = true
 
   const claudePath = resolveClaudePath(execFile)
-  managerPromise = claudePath.then((path) => {
+  managerPromise = claudePath.then(path => {
     if (!path) return null
     const m = new PtyManager(nodePtySpawn, path)
     m.onData((viewId, chunk) => send('pty:data', viewId, chunk))
@@ -58,10 +58,10 @@ export function registerIpc(): void {
   })
   ipcMain.handle('claude:run', async (_e, args: string[], cwd: string) => {
     const path = await claudePath
-    if (!path) return { code: 127, stdout: '', stderr: 'claude not found' }
+    if (!path) return { code: 127, stderr: 'claude not found', stdout: '' }
     // Run only a background start of a test session. Never stop or remove a session.
     if (!canRunClaude(args)) {
-      return { code: 126, stdout: '', stderr: 'refused: not an allowed start of a test session' }
+      return { code: 126, stderr: 'refused: not an allowed start of a test session', stdout: '' }
     }
     // A relative cwd starts at the working directory of the app, as in pty:open.
     return createRunClaude(execFile, path)(args, { cwd: resolve(process.cwd(), cwd) })
@@ -86,7 +86,7 @@ export function registerIpc(): void {
       e,
       viewId: string,
       args: string[],
-      opts: { cwd: string; cols: number; rows: number }
+      opts: { cwd: string; cols: number; rows: number },
     ) => {
       // Get the page token before the first wait.
       const token = page.token()
@@ -106,7 +106,7 @@ export function registerIpc(): void {
         throw new Error('refused: the page that asked for the PTY is gone')
       }
       return manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
-    }
+    },
   )
   ipcMain.handle('pty:write', async (_e, viewId: string, data: string) => {
     const manager = await getManager()

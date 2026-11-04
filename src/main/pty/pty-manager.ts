@@ -12,7 +12,7 @@ export interface PtyProcess {
 export type SpawnFn = (
   file: string,
   args: string[],
-  opts: { cwd: string; cols: number; rows: number; env: Record<string, string> }
+  opts: { cwd: string; cols: number; rows: number; env: Record<string, string> },
 ) => PtyProcess
 
 const CLOSE_SIGNALS = ['SIGHUP', 'SIGTERM']
@@ -26,7 +26,7 @@ export class PtyManager {
 
   constructor(
     private readonly spawn: SpawnFn,
-    private readonly file: string
+    private readonly file: string,
   ) {}
 
   open(viewId: string, args: string[], opts: { cwd: string; cols: number; rows: number }): number {
@@ -35,11 +35,11 @@ export class PtyManager {
     const env = childEnv(process.env, { pty: true })
     const proc = this.spawn(this.file, args, { ...opts, env })
     this.ptys.set(viewId, proc)
-    proc.onData((chunk) => {
+    proc.onData(chunk => {
       // Ignore data from a PTY that this view no longer uses.
       if (this.ptys.get(viewId) === proc) this.dataCb(viewId, chunk)
     })
-    proc.onExit((e) => {
+    proc.onExit(e => {
       // An old PTY must not remove the new PTY of the same view.
       if (this.ptys.get(viewId) !== proc) return
       this.ptys.delete(viewId)

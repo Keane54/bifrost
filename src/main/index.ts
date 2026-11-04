@@ -1,25 +1,25 @@
-import { app, shell, BrowserWindow } from 'electron'
-import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { join } from 'node:path'
+import { electronApp, is, optimizer } from '@electron-toolkit/utils'
+import { app, BrowserWindow, shell } from 'electron'
 import icon from '../../resources/icon.png?asset'
 import { attachWindow, closeAllPtys, registerIpc } from './ipc'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
+    autoHideMenuBar: true,
+    backgroundColor: '#0b0f14',
+    height: 900,
+    show: false,
     title: 'Bifrost',
     width: 1440,
-    height: 900,
-    backgroundColor: '#0b0f14',
-    show: false,
-    autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
       preload: join(__dirname, '../preload/index.js'),
       // The preload uses only contextBridge and ipcRenderer, so it works in the sandbox.
       sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false
-    }
+    },
   })
 
   attachWindow(mainWindow)
@@ -28,15 +28,15 @@ function createWindow(): void {
     mainWindow.show()
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
+  mainWindow.webContents.setWindowOpenHandler(details => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
 
   // In development, electron-vite gives a URL with hot reload.
   // In production, the app loads the built HTML file.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
@@ -58,7 +58,7 @@ app.whenReady().then(() => {
   createWindow()
 
   // On macOS, a click on the Dock icon opens a window if none is open.
-  app.on('activate', function () {
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })

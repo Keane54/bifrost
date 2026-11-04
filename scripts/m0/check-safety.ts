@@ -2,7 +2,7 @@
 // This script only reads "claude agents --json". It sends nothing to a session.
 // It tries each non-test entry, the reserved session and a missing id.
 // Each try must throw a SafetyError.
-import { listAgents, assertTestTarget, SafetyError, log } from './lib.ts'
+import { assertTestTarget, listAgents, log, SafetyError } from './lib.ts'
 
 async function expectRefusal(target) {
   try {
