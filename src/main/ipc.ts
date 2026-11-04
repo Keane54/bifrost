@@ -2,7 +2,7 @@ import { resolve } from 'path'
 import { BrowserWindow, ipcMain } from 'electron'
 import { createRunClaude, execFile, resolveClaudePath } from './claude/cli'
 import { listAgents } from './claude/agents'
-import { canSignal } from './claude/guard'
+import { canOpenPty, canRunClaude, canSignal } from './claude/guard'
 import { PtyManager } from './pty/pty-manager'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 
@@ -44,6 +44,8 @@ export function registerIpc(): void {
   ipcMain.handle('claude:run', async (_e, args: string[], cwd: string) => {
     const path = await claudePath
     if (!path) return { code: 127, stdout: '', stderr: 'claude not found' }
+    // Run only a background start of a test session. Never stop or remove a session.
+    if (!canRunClaude(args)) return { code: 126, stdout: '', stderr: 'not a test session' }
     // A relative cwd starts at the working directory of the app, as in pty:open.
     return createRunClaude(execFile, path)(args, { cwd: resolve(process.cwd(), cwd) })
   })
@@ -71,6 +73,13 @@ export function registerIpc(): void {
     ) => {
       const manager = await getManager()
       if (!manager) throw new Error('claude not found')
+      // Open a PTY only for a test session. Read the session list for an attach.
+      const path = await claudePath
+      const entries =
+        args[0] === 'attach' && path
+          ? (await listAgents(createRunClaude(execFile, path))).entries
+          : []
+      if (!canOpenPty(entries, args)) throw new Error('not a test session')
       return manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
     }
   )

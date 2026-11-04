@@ -15,7 +15,8 @@ export type AgentList = { entries: AgentEntry[]; error?: string }
 function toEntry(raw: unknown): AgentEntry | null {
   if (typeof raw !== 'object' || raw === null) return null
   const r = raw as Record<string, unknown>
-  if (typeof r.pid !== 'number' || typeof r.sessionId !== 'string' || r.sessionId === '') return null
+  if (typeof r.pid !== 'number' || typeof r.sessionId !== 'string' || r.sessionId === '')
+    return null
   const entry: AgentEntry = {
     pid: r.pid,
     cwd: typeof r.cwd === 'string' ? r.cwd : '',

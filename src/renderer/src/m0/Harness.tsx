@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentEntry } from '../../../main/claude/agents'
+import { TEST_PREFIX } from '../../../main/claude/guard'
 import { TerminalView } from '../terminal/TerminalView'
 
 // Temporary M0 harness. The user uses it by hand to answer the claude attach questions.
 // The main process also checks every signal. The checks here protect the UI.
 
-const TEST_PREFIX = 'bifrost-test-'
 const SANDBOX = '.m0-sandbox'
 const SIGNALS = ['SIGTERM', 'SIGHUP', 'SIGINT']
 const LEFT_ARROW = '\x1b[D'
@@ -154,6 +154,10 @@ export function Harness(): React.JSX.Element {
   }
 
   const startTest = async (): Promise<void> => {
+    if (prompt.startsWith('-')) {
+      setRunOutput('Refused: the prompt must not start with "-".')
+      return
+    }
     const name = TEST_PREFIX + suffix.trim()
     const extra = extraArgs.split(' ').filter((a) => a !== '')
     const args = ['--bg', '--model', 'haiku', '--name', name, ...extra]
@@ -219,9 +223,15 @@ export function Harness(): React.JSX.Element {
                 <td style={td}>{e.pid}</td>
                 <td style={td}>{e.cwd}</td>
                 <td style={td}>
-                  <button onClick={() => openView(e, false)}>View</button>{' '}
-                  <button onClick={() => openView(e, false)}>Second view</button>{' '}
-                  <button onClick={() => openView(e, true)}>Hidden attach</button>{' '}
+                  <button disabled={!ok} onClick={() => openView(e, false)}>
+                    View
+                  </button>{' '}
+                  <button disabled={!ok} onClick={() => openView(e, false)}>
+                    Second view
+                  </button>{' '}
+                  <button disabled={!ok} onClick={() => openView(e, true)}>
+                    Hidden attach
+                  </button>{' '}
                   <button disabled={!ok} onClick={() => closeRow(e, 'SIGHUP')}>
                     Close SIGHUP
                   </button>{' '}
