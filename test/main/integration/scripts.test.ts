@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 import { HOOK_SCRIPT, statuslineScript } from '../../../src/main/integration/scripts'
+import { runSh } from '../../helpers/run-sh'
 
 const UUID = '1db8945b-137c-4d57-aaf4-01435209b6e7'
 
@@ -19,16 +20,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(dir, { force: true, recursive: true })
 })
-
-async function runSh(
-  text: string,
-  stdin: string,
-  bifrostHome: string,
-): Promise<{ code: number | null; stdout: string }> {
-  const file = join(dir, 'script.sh')
-  await writeFile(file, text)
-  return runFile(file, stdin, bifrostHome)
-}
 
 function runFile(
   file: string,
