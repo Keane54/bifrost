@@ -391,6 +391,14 @@ Send box rules:
 - Visible chat windows use the WebGL renderer.
 - A chat window in a back tab, or a minimised chat window, releases its WebGL context.
 
+Size rule (the user approved this on 2026-11-04; M3 builds it):
+
+- A session has one terminal size for all its clients. The last resize from any client sets it (M0 question 3).
+- Only the chat window that has focus sends a resize to the session.
+- A chat window with a different size from the session zooms the terminal to fit. The layout stays correct.
+- A resize in a terminal app, for example Warp, also sets the size. Bifrost then zooms its chat window to that size.
+- M3 starts with a test: can Bifrost learn the size that a different client set?
+
 ### 8.6 Show Info
 
 Show Info shows these values for one session:
