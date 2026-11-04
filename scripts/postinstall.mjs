@@ -1,5 +1,6 @@
 // This script runs after "pnpm install".
-// It makes the Electron binary, rebuilds native modules and fixes node-pty.
+// It downloads the Electron binary. It rebuilds the native modules for Electron.
+// It makes the node-pty helper programs executable.
 import { execFileSync } from 'node:child_process'
 import { chmodSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
