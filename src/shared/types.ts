@@ -1,7 +1,7 @@
 // Types that the main process and the renderer share.
 
 export interface IntegrationStatus {
-  // True when no hook is missing, the wrapper is set and both scripts exist.
+  // True when no hook is missing, Bifrost set the wrapper and both scripts exist.
   installed: boolean
   missingHooks: string[]
   statusLineInstalled: boolean

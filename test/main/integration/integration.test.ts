@@ -1,5 +1,16 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  readlink,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -143,4 +154,60 @@ test('previewInstall writes nothing', async () => {
   expect(p.changes.length).toBeGreaterThan(0)
   expect(p.backupPath).toBe(join(home, 'backups/settings-20261104T153000Z.json'))
   expect(existsSync(home)).toBe(false)
+})
+
+test('a settings file with bytes that are not valid UTF-8 makes install reject', async () => {
+  const bytes = Buffer.from([0x7b, 0x22, 0x61, 0x22, 0x3a, 0x22, 0xe9, 0x22, 0x7d])
+  await writeFile(paths.claudeSettings, bytes)
+  await expect(install(paths, NOW)).rejects.toThrow(/not valid (JSON|UTF-8)/)
+  expect((await readFile(paths.claudeSettings)).equals(bytes)).toBe(true)
+  expect(existsSync(home)).toBe(false)
+})
+
+test('a symlinked settings file stays a symlink and the target gets the new content', async () => {
+  const target = join(dir, 'real-settings.json')
+  await writeFile(target, '{"model":"x"}')
+  await symlink(target, paths.claudeSettings)
+  await install(paths, NOW)
+  expect(await readlink(paths.claudeSettings)).toBe(target)
+  expect(JSON.parse(await readFile(target, 'utf8'))).toMatchObject({ model: 'x' })
+  expect(JSON.parse(await readFile(target, 'utf8')).hooks).toBeDefined()
+})
+
+test('the settings file keeps mode 0600 and the backup has mode 0600', async () => {
+  await writeFile(paths.claudeSettings, '{"model":"x"}')
+  await chmod(paths.claudeSettings, 0o600)
+  await install(paths, NOW)
+  expect((await stat(paths.claudeSettings)).mode & 0o777).toBe(0o600)
+  const backup = join(home, 'backups/settings-20261104T153000Z.json')
+  expect((await stat(backup)).mode & 0o777).toBe(0o600)
+  expect((await stat(join(home, 'statusline-original.json'))).mode & 0o777).toBe(0o600)
+})
+
+test('the backup holds the exact old bytes', async () => {
+  const bytes = Buffer.from('{"a":"b"}\n')
+  await writeFile(paths.claudeSettings, bytes)
+  await install(paths, NOW)
+  const backup = await readFile(join(home, 'backups/settings-20261104T153000Z.json'))
+  expect(backup.equals(bytes)).toBe(true)
+})
+
+test('two backups in the same second get a number and the first stays', async () => {
+  await writeFile(paths.claudeSettings, '{"model":"x"}')
+  await install(paths, NOW)
+  await uninstall(paths, NOW)
+  const first = join(home, 'backups/settings-20261104T153000Z.json')
+  expect(await readFile(first, 'utf8')).toBe('{"model":"x"}')
+  expect(existsSync(join(home, 'backups/settings-20261104T153000Z-1.json'))).toBe(true)
+})
+
+test('install refuses when the settings file changes before the final rename', async () => {
+  await writeFile(paths.claudeSettings, '{"model":"x"}')
+  await expect(
+    install(paths, NOW, {
+      beforeSettingsRename: () => writeFile(paths.claudeSettings, '{"model":"y"}'),
+    }),
+  ).rejects.toThrow(/changed/)
+  expect(await readFile(paths.claudeSettings, 'utf8')).toBe('{"model":"y"}')
+  expect((await readdir(join(dir, 'claude'))).filter(f => f.endsWith('.tmp'))).toEqual([])
 })
