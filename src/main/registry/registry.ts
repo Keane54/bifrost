@@ -99,7 +99,9 @@ export class SessionRegistry {
       this.keepName(entry)
       const s = this.sessions.get(entry.sessionId) ?? this.add(entry.sessionId)
       // Without hooks, only the session list can clear the parked state.
-      if (s.machine.state === 'parked') {
+      // An entry without a pid has no process yet, or no process after a stop.
+      // So only an entry with a pid clears the parked state.
+      if (s.machine.state === 'parked' && entry.pid !== undefined) {
         s.machine = onHookEvent(s.machine, {
           at: sampledAt,
           name: 'SessionStart',

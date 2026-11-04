@@ -186,6 +186,24 @@ describe('kind and leave rules', () => {
     r.applyAgents([bg({ status: 'busy' })], 200)
     expect(r.rows()[0].state).toBe('working')
   })
+
+  test('a parked session stays parked while its active entry has no pid', () => {
+    // After a stop, the active list can show the entry without a pid for a short time.
+    const r = registry()
+    r.markStarted('s1')
+    r.applyAgents([bg()], 100)
+    r.applyEvents([ev('SessionEnd', 's1', 150)], 150)
+    r.applyAgents([bg({ pid: undefined, status: '' })], 200)
+    expect(r.rows()[0].state).toBe('parked')
+    r.applyAgents([], 300)
+    expect(r.rows()[0].state).toBe('parked')
+    r.applyAgents([bg({ pid: undefined, status: '' })], 400)
+    expect(r.rows()[0].state).toBe('parked')
+    r.applyAgents([bg()], 500)
+    expect(r.rows()[0]).toMatchObject({ pid: 5, state: 'idle' })
+    r.applyAgents([bg({ status: 'busy' })], 600)
+    expect(r.rows()[0].state).toBe('working')
+  })
 })
 
 describe('names', () => {
