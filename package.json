@@ -9,13 +9,13 @@
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
-    "postinstall": "install-electron && electron-builder install-app-deps",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
+    "build": "pnpm run typecheck && electron-vite build",
+    "postinstall": "node scripts/postinstall.mjs",
+    "build:unpack": "pnpm run build && electron-builder --dir",
+    "build:win": "pnpm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "test": "vitest run"
@@ -52,5 +52,6 @@
   },
   "productName": "Bifrost",
   "private": true,
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@12.3.4"
 }
