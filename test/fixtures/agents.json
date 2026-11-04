@@ -1,0 +1,6 @@
+[
+  { "pid": 16162, "cwd": "/Users/test/Developer/alpha", "kind": "interactive", "startedAt": 1793696309901,
+    "sessionId": "6fbb3984-0577-4bbb-83a3-001285414f93", "name": "alpha-20", "status": "idle" },
+  { "pid": 26100, "cwd": "/Users/test/Developer/beta", "kind": "background", "startedAt": 1793782666603,
+    "sessionId": "6df6c51a-76d6-4042-8979-34fb97655792", "name": "beta-24", "status": "busy", "id": "6df6c51a" }
+]
