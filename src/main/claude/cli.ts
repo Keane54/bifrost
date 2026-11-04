@@ -81,9 +81,13 @@ export type RunClaude = (
   opts?: { cwd?: string; timeoutMs?: number },
 ) => Promise<ExecResult>
 
-// Each claude run gets the clean child env.
+// Each claude run gets the clean child env, made from baseEnv.
+// baseEnv is the login-shell env.
 // A claude run has no TTY, so the env does not set TERM or COLORTERM.
-export function createRunClaude(exec: ExecFn, claudePath: string): RunClaude {
-  return (args, opts) =>
-    exec(claudePath, args, { ...opts, env: childEnv(process.env, { pty: false }) })
+export function createRunClaude(
+  exec: ExecFn,
+  claudePath: string,
+  baseEnv: NodeJS.ProcessEnv,
+): RunClaude {
+  return (args, opts) => exec(claudePath, args, { ...opts, env: childEnv(baseEnv, { pty: false }) })
 }

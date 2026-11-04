@@ -3,6 +3,7 @@ import { type BrowserWindow, ipcMain, type WebContents } from 'electron'
 import { listAgents } from './claude/agents'
 import { createRunClaude, execFile, resolveClaudePath } from './claude/cli'
 import { canOpenPty, canRunClaude, canSignal } from './claude/guard'
+import { loadLoginEnv } from './env/login-env'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
 import { PtyManager } from './pty/pty-manager'
@@ -40,9 +41,12 @@ export function registerIpc(): void {
   registered = true
 
   const claudePath = resolveClaudePath(execFile)
-  managerPromise = claudePath.then(path => {
+  // Start the login-shell env one time. Every claude run and every PTY uses it.
+  // process.execPath runs as Node when ELECTRON_RUN_AS_NODE is 1.
+  const loginEnv = loadLoginEnv(execFile, { execPath: process.execPath, fallback: process.env })
+  managerPromise = Promise.all([claudePath, loginEnv]).then(([path, env]) => {
     if (!path) return null
-    const m = new PtyManager(nodePtySpawn, path)
+    const m = new PtyManager(nodePtySpawn, path, env)
     m.onData((viewId, chunk) => send('pty:data', viewId, chunk))
     m.onExit((viewId, exitCode, signal) => send('pty:exit', viewId, exitCode, signal))
     liveManager = m
@@ -54,7 +58,7 @@ export function registerIpc(): void {
   ipcMain.handle('agents:list', async (_e, all?: boolean) => {
     const path = await claudePath
     if (!path) return { entries: [], error: 'claude not found' }
-    return listAgents(createRunClaude(execFile, path), { all: all === true })
+    return listAgents(createRunClaude(execFile, path, await loginEnv), { all: all === true })
   })
   ipcMain.handle('claude:run', async (_e, args: string[], cwd: string) => {
     const path = await claudePath
@@ -64,14 +68,18 @@ export function registerIpc(): void {
       return { code: 126, stderr: 'refused: not an allowed start of a test session', stdout: '' }
     }
     // A relative cwd starts at the working directory of the app, as in pty:open.
-    return createRunClaude(execFile, path)(args, { cwd: resolve(process.cwd(), cwd) })
+    return createRunClaude(
+      execFile,
+      path,
+      await loginEnv,
+    )(args, { cwd: resolve(process.cwd(), cwd) })
   })
   // Send a signal only to a test session. Any other signal or PID gives false.
   ipcMain.handle('proc:signal', async (_e, pid: number, signal: string) => {
     if (!ALLOWED_SIGNALS.includes(signal)) return false
     const path = await claudePath
     if (!path) return false
-    const list = await listAgents(createRunClaude(execFile, path))
+    const list = await listAgents(createRunClaude(execFile, path, await loginEnv))
     if (!canSignal(list.entries, pid)) return false
     try {
       process.kill(pid, signal as NodeJS.Signals)
@@ -96,7 +104,7 @@ export function registerIpc(): void {
       const path = await claudePath
       const entries =
         args[0] === 'attach' && path
-          ? (await listAgents(createRunClaude(execFile, path))).entries
+          ? (await listAgents(createRunClaude(execFile, path, await loginEnv))).entries
           : []
       if (!canOpenPty(entries, args)) {
         throw new Error('refused: not an allowed attach or start of a test session')

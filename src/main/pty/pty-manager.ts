@@ -19,6 +19,7 @@ const CLOSE_SIGNALS = ['SIGHUP', 'SIGTERM']
 
 // PtyManager starts and controls one PTY for each view.
 // It runs only the one program that the caller gives to the constructor.
+// Each PTY gets the clean child env, made from baseEnv (the login-shell env).
 export class PtyManager {
   private readonly ptys = new Map<string, PtyProcess>()
   private dataCb: (viewId: string, chunk: string) => void = () => {}
@@ -27,12 +28,13 @@ export class PtyManager {
   constructor(
     private readonly spawn: SpawnFn,
     private readonly file: string,
+    private readonly baseEnv: NodeJS.ProcessEnv,
   ) {}
 
   open(viewId: string, args: string[], opts: { cwd: string; cols: number; rows: number }): number {
     // A view ID has one PTY only. Close the old PTY first.
     this.close(viewId)
-    const env = childEnv(process.env, { pty: true })
+    const env = childEnv(this.baseEnv, { pty: true })
     const proc = this.spawn(this.file, args, { ...opts, env })
     this.ptys.set(viewId, proc)
     proc.onData(chunk => {

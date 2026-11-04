@@ -3,27 +3,20 @@ import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { createRunClaude, resolveClaudePath } from '../../../src/main/claude/cli'
 
-test('createRunClaude runs claude with the cwd and the clean child env', async () => {
-  vi.stubEnv('CLAUDECODE', '1')
-  vi.stubEnv('CLAUDE_CODE_SESSION_KIND', 'bash')
-  vi.stubEnv('TERM_PROGRAM', 'WarpTerminal')
-  vi.stubEnv('HOME', '/Users/test')
-  try {
-    const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '' })
-    await createRunClaude(exec, '/bin/claude')(['agents', '--json'], { cwd: '/tmp' })
-    expect(exec).toHaveBeenCalledWith(
-      '/bin/claude',
-      ['agents', '--json'],
-      expect.objectContaining({ cwd: '/tmp' }),
-    )
-    const env = exec.mock.calls[0][2].env
-    expect(env).not.toHaveProperty('CLAUDECODE')
-    expect(env).not.toHaveProperty('CLAUDE_CODE_SESSION_KIND')
-    expect(env).not.toHaveProperty('TERM_PROGRAM')
-    expect(env.HOME).toBe('/Users/test')
-  } finally {
-    vi.unstubAllEnvs()
-  }
+test('createRunClaude uses the base env without the removed variables', async () => {
+  const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '' })
+  await createRunClaude(exec, '/c', { CLAUDECODE: '1', PATH: '/login' })(['--version'])
+  expect(exec.mock.calls[0][2].env).toEqual({ PATH: '/login' })
+})
+
+test('createRunClaude passes the args and the cwd to exec', async () => {
+  const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '' })
+  await createRunClaude(exec, '/bin/claude', {})(['agents', '--json'], { cwd: '/tmp' })
+  expect(exec).toHaveBeenCalledWith(
+    '/bin/claude',
+    ['agents', '--json'],
+    expect.objectContaining({ cwd: '/tmp' }),
+  )
 })
 
 test('resolveClaudePath asks an interactive login shell for the path', async () => {
