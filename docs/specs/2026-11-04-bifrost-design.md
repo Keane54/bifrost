@@ -198,12 +198,19 @@ The wrapper does these steps:
 2. Find the `session_id` with a strict UUID pattern.
 3. Write the JSON to a temporary file.
 4. Move the temporary file to the status file.
-5. Run your original statusLine command with the same stdin.
-6. Send the output of your command to stdout without changes.
+5. If the session directory has the file `quiet`, stop. Bifrost writes this file for each owned session.
+6. Run your original statusLine command with the same stdin.
+7. Send the output of your command to stdout without changes.
 
 If you had no statusLine command, the wrapper writes nothing to stdout. The installer keeps your `refreshInterval` and `padding` values.
 
 The status file supplies these values: model, context %, cost, session name and rate limits.
+
+Rules for the wrapper:
+
+- Claude Code runs the wrapper for each session again and again, for example each second. So the wrapper uses shell builtins. It starts only `mv`, and `mkdir` for a new session.
+- Chat windows in Bifrost show no statusline row. The Overview, the Selected Item panel and the global panels show the data (section 20).
+- Sessions in a terminal app, for example Warp, keep your statusline.
 
 ### 6.4 Git branch
 
@@ -296,6 +303,7 @@ Bifrost uses its own window manager, because the snap and stack rules are specif
 | Show Info | All details of one session. |
 | Event log | All hook events, with their times. |
 | Usage HUD | The 5-hour and 7-day rate limits. |
+| Service status | The status of Claude, GitHub and Sentry. |
 
 ### 8.3 Overview
 
@@ -388,6 +396,7 @@ Send box rules:
 - Bifrost sends the replies of the xterm.js terminal to the PTY.
 - Bifrost never sends the ← key.
 - If the user opens the agent view in a chat window, Bifrost detects it and attaches to the session again.
+- The chat window shows no statusline row (section 6.3).
 - Visible chat windows use the WebGL renderer.
 - A chat window in a back tab, or a minimised chat window, releases its WebGL context.
 
@@ -448,6 +457,13 @@ Dialog rules:
 - One file holds all colour tokens.
 - Yellow, red and grey have fixed meanings: yellow box, red box and parked session.
 - The terminal font is a setting.
+
+### 8.11 Service status
+
+- The Service status panel shows the status of Claude, GitHub and Sentry. `claude-statusline` checks the same services.
+- Bifrost checks each status page one time each minute. One check serves all sessions.
+- An outage shows the service name, the incident name and the impact: minor, major or critical.
+- The panel does not use yellow, red or grey for an outage, because these colours have fixed meanings (section 8.10).
 
 ## 9. Actions and keys
 
@@ -769,7 +785,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | M2 - Window manager | Panels, drag, resize, snap, stacks, position memory, layouts, display modes. | All panel functions in section 8.1 work. |
 | M3 - Core panels | Overview (with the visual layout of section 8.3), Selected Item, right-click menu, chat windows. | You can select, open and use sessions. |
 | M4 - Actions | Send box, slash commands, stop, delete, new session, Take control, parked sessions, Resume all. | All actions in section 9.1 work. |
-| M5 - Finish | Keys, label toggle, alerts, Show Info, Event log, Usage HUD, theme, DMG. | You install the DMG on your Mac and use Bifrost. |
+| M5 - Finish | Keys, label toggle, alerts, Show Info, Event log, Usage HUD, Service status, theme, DMG. | You install the DMG on your Mac and use Bifrost. |
 
 ## 17. Questions for M0
 
@@ -821,3 +837,11 @@ The user approved these changes on 2026-11-04. The M0 findings are in `docs/m0-f
 13. Part N, 2026-11-04: Take control uses SIGTERM and finds the session by `sessionId` (section 9.2).
 14. Part O, 2026-11-04: Bifrost runs `claude` with the login-shell environment (section 6.5).
 15. Part P, 2026-11-04: The minimum Claude Code version is 2.1.281 (section 11.5).
+
+## 20. Decisions after M1
+
+The user gave these directions on 2026-11-04:
+
+1. Chat windows show no statusline. The wrapper does not run your statusLine command for owned sessions (section 6.3). The reason is the cost: with 10 sessions, each statusline starts many processes each second.
+2. Data that is the same for all sessions goes in separate panels: the Usage HUD and the Service status panel (sections 8.8 and 8.11).
+3. Data for one session goes in the Overview and the Selected Item panel (sections 8.3 and 8.4).
