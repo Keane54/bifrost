@@ -100,7 +100,7 @@ export default function IntegrationPanel(): React.JSX.Element {
     })
 
   return (
-    <div className='h-full select-text overflow-auto p-3 font-mono text-[13px] leading-[1.4]'>
+    <div className='select-text p-3 font-mono text-[13px] leading-[1.4]'>
       <VersionLine />
       <div>{status ? describe(status) : 'Status: loading.'}</div>
       {status?.error && <div className='whitespace-pre-wrap text-box-red'>{status.error}</div>}

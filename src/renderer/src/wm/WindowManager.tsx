@@ -1,8 +1,5 @@
 import {
-  createContext,
-  type Dispatch,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -11,33 +8,34 @@ import {
   useState,
 } from 'react'
 import { cx } from '../lib/cx'
+import { LayoutsContext, type WmControls, WmControlsContext, WmStateContext } from './context'
 import Frame, { type DragMode } from './Frame'
-import { type Guide, moveRect, type Rect, resizeRect } from './geometry'
-import { EMPTY_STORE, parseUiStore, toSnapshot, type UiStore } from './layout'
-import SideBar from './SideBar'
 import {
-  DEFAULT_SIZES,
-  initialState,
-  topFrame,
-  type WmAction,
-  type WmState,
-  wmReducer,
-} from './state'
-
-export interface WmContextValue {
-  state: WmState
-  dispatch: Dispatch<WmAction>
-}
-
-export const WmContext = createContext<WmContextValue | null>(null)
-
-export function useWm(): WmContextValue {
-  const value = useContext(WmContext)
-  if (!value) throw new Error('useWm needs a WindowManager.')
-  return value
-}
+  type Edge,
+  type Guide,
+  moveRect,
+  type Point,
+  type Rect,
+  resizeRect,
+  titleBar,
+} from './geometry'
+import { titleBarAt, tornOut } from './hit'
+import {
+  deleteLayout,
+  EMPTY_STORE,
+  MAX_NAME,
+  parseUiStore,
+  saveLayout,
+  toSnapshot,
+  type UiStore,
+} from './layout'
+import SideBar from './SideBar'
+import { DEFAULT_SIZES, initialState, topFrame, type WmState, wmReducer } from './state'
 
 const SAVE_DELAY_MS = 500
+// When a tab leaves its stack, the top left corner of the new frame is 60 pixels left of
+// the pointer and 14 pixels above it.
+const TEAR_OFFSET: Point = { x: 60, y: 14 }
 // The default layout: an Overview at the top left, and the Selected Item at the right of it.
 const GAP = 16
 const OVERVIEW_RECT: Rect = { h: 360, w: 760, x: 16, y: 16 }
@@ -48,7 +46,7 @@ const SELECTED_RECT: Rect = {
 }
 
 // The number in a frame ID "f<n>". The DOM keeps the frames in this order.
-// Thus a focus does not move a DOM node. A move of a node can end its pointer capture.
+// So a focus does not move a DOM node. A move of a node can end its pointer capture.
 function frameNumber(id: string): number {
   return Number(id.slice(1))
 }
@@ -57,9 +55,26 @@ function sameGuides(a: Guide[], b: Guide[]): boolean {
   return a.length === b.length && a.every((g, i) => g.axis === b[i]?.axis && g.at === b[i]?.at)
 }
 
+function sameRect(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
+}
+
+// The rects of the visible frames. The excluded frame does not count.
+function visibleRects(state: WmState, excludeId?: string): Rect[] {
+  return state.frames.filter(f => f.id !== excludeId && !f.minimised).map(f => f.rect)
+}
+
 interface Drag {
+  // The frame that the drag moves. A tear-out changes it to the new frame.
   frameId: string
   end(applyLast: boolean): void
+}
+
+// The rect of the dragged frame during a drag. The reducer gets the rect when the drag ends.
+// So the state does not change at each drag step, and its users do not render.
+interface Live {
+  frameId: string
+  rect: Rect
 }
 
 interface Start {
@@ -77,11 +92,16 @@ export default function WindowManager(): React.JSX.Element {
   const [state, dispatch] = useReducer(wmReducer, { h: 0, w: 0 }, initialState)
   const [guides, setGuides] = useState<Guide[]>([])
   const [dragging, setDragging] = useState(false)
+  const [live, setLive] = useState<Live | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [layoutNames, setLayoutNames] = useState<readonly string[]>([])
   const areaRef = useRef<HTMLDivElement>(null)
   const stateRef = useRef(state)
   const storeRef = useRef<UiStore>(EMPTY_STORE)
   const start = useRef<Start>({ canSave: false, done: false, sized: false, store: null })
   const saveOn = useRef(false)
+  // True when the state or the store changed after the last save.
+  const dirty = useRef(false)
   const saveTimer = useRef<number | undefined>(undefined)
   const drag = useRef<Drag | null>(null)
 
@@ -90,18 +110,37 @@ export default function WindowManager(): React.JSX.Element {
     stateRef.current = state
   }, [state])
 
+  // Send the store with the current layout now, if it has a change.
+  const saveNow = useCallback(() => {
+    window.clearTimeout(saveTimer.current)
+    saveTimer.current = undefined
+    if (!saveOn.current || !dirty.current) return
+    dirty.current = false
+    const store: UiStore = { ...storeRef.current, current: toSnapshot(stateRef.current) }
+    storeRef.current = store
+    window.bifrost.ui
+      .save(store)
+      .catch(err => console.error('Bifrost cannot save the UI state.', err))
+  }, [])
+
   // Save 500 ms after the last change. During a drag, wait for the drag to end.
   const scheduleSave = useCallback(() => {
     window.clearTimeout(saveTimer.current)
-    if (!saveOn.current || drag.current) return
-    saveTimer.current = window.setTimeout(() => {
-      const store: UiStore = { ...storeRef.current, current: toSnapshot(stateRef.current) }
-      storeRef.current = store
-      window.bifrost.ui
-        .save(store)
-        .catch(err => console.error('Bifrost cannot save the UI state.', err))
-    }, SAVE_DELAY_MS)
-  }, [])
+    saveTimer.current = undefined
+    if (!saveOn.current || !dirty.current || drag.current) return
+    saveTimer.current = window.setTimeout(saveNow, SAVE_DELAY_MS)
+  }, [saveNow])
+
+  // Keep a changed store, show its layout names and save it.
+  const setStore = useCallback(
+    (next: UiStore) => {
+      storeRef.current = next
+      setLayoutNames(next.layouts.map(l => l.name))
+      dirty.current = true
+      scheduleSave()
+    },
+    [scheduleSave],
+  )
 
   // Apply the saved layout, or the default layout, when the load ended and the area has a size.
   // Before this, a frame rect would clamp to a size of 0.
@@ -110,6 +149,7 @@ export default function WindowManager(): React.JSX.Element {
     if (s.done || !s.sized || !s.store) return
     s.done = true
     storeRef.current = s.store
+    setLayoutNames(s.store.layouts.map(l => l.name))
     const snapshot = s.store.current
     if (snapshot) {
       dispatch({ frames: snapshot.frames, memory: snapshot.memory, type: 'load' })
@@ -166,18 +206,29 @@ export default function WindowManager(): React.JSX.Element {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: each change of the state starts the save timer again.
   useEffect(() => {
+    dirty.current = true
     scheduleSave()
   }, [state, scheduleSave])
+
+  // When the page closes or reloads, send the pending save at once. The timer would not run.
+  useEffect(() => {
+    window.addEventListener('beforeunload', saveNow)
+    window.addEventListener('pagehide', saveNow)
+    return () => {
+      window.removeEventListener('beforeunload', saveNow)
+      window.removeEventListener('pagehide', saveNow)
+    }
+  }, [saveNow])
 
   // The menu item Close Panel (Cmd+W) closes the active panel.
   useEffect(() => window.bifrost.wm.onClosePanel(() => dispatch({ type: 'closeActive' })), [])
 
-  // A drag ends when its frame closes or goes to the side bar.
+  // A drag ends when its frame closes, goes to the side bar or becomes locked.
   useEffect(() => {
     const current = drag.current
-    if (current && !state.frames.some(f => f.id === current.frameId && !f.minimised)) {
-      current.end(false)
-    }
+    if (!current) return
+    const frame = state.frames.find(f => f.id === current.frameId)
+    if (!frame || frame.minimised || frame.locked) current.end(false)
   }, [state.frames])
 
   useEffect(
@@ -188,135 +239,272 @@ export default function WindowManager(): React.JSX.Element {
     [],
   )
 
-  // Start a move or a resize. The element that got the pointer down captures the pointer.
+  // Start a move, a resize or a press on a tab of a stack.
+  // A move or a resize captures the pointer on the element that got the pointer down.
+  // A tab press captures the pointer on the title bar only when the tab tears out.
+  // The listeners are on the window. So the drag can end when its capture element leaves the page.
   const beginDrag = useCallback(
     (e: React.PointerEvent<HTMLElement>, frameId: string, mode: DragMode) => {
       if (drag.current) return
+      const area = areaRef.current
       const current = stateRef.current
       const frame = current.frames.find(f => f.id === frameId)
-      if (!frame || frame.locked || frame.minimised) return
+      if (!area || !frame || frame.locked || frame.minimised) return
       const el = e.currentTarget
       const pointerId = e.pointerId
-      try {
-        el.setPointerCapture(pointerId)
-      } catch {
-        return
-      }
+      const origin = area.getBoundingClientRect()
+      // A press on a tab of a stack waits for a tear-out. A drag of the only tab is a move.
+      const tab = typeof mode === 'object' && frame.panels.length > 1 ? mode.tab : null
+      const edge: Edge | null = typeof mode === 'string' && mode !== 'move' ? mode : null
+      const handle: Drag = { end, frameId }
 
-      const startX = e.clientX
-      const startY = e.clientY
-      const startRect = frame.rect
-      const bounds = current.bounds
-      const others = current.frames.filter(f => f.id !== frameId && !f.minimised).map(f => f.rect)
-      let dx = 0
-      let dy = 0
+      let id = frameId
+      let pressing = tab !== null
+      let startX = e.clientX
+      let startY = e.clientY
+      let startRect = frame.rect
+      let others = visibleRects(current, frameId)
+      // The last pointer position, in client coordinates.
+      let x = e.clientX
+      let y = e.clientY
       let moved = false
       let raf = 0
       let ended = false
+      // The rect that the frame shows now. It is null until the first step.
+      let drawn: Rect | null = null
 
-      // Use the start rect and the total delta, not the last rect. Thus the snap is stable.
-      const apply = (): void => {
+      function capture(): boolean {
+        try {
+          el.setPointerCapture(pointerId)
+          return true
+        } catch {
+          return false
+        }
+      }
+      // The pointer in the coordinates of the panel area.
+      function pointer(): Point {
+        return { x: x - origin.left, y: y - origin.top }
+      }
+      // Use the start rect and the total delta, not the last rect. So the snap is stable.
+      function compute(): { rect: Rect; guides: Guide[] } {
+        const bounds = stateRef.current.bounds
+        const dx = x - startX
+        const dy = y - startY
+        return edge
+          ? resizeRect(startRect, edge, dx, dy, others, bounds)
+          : moveRect(startRect, dx, dy, others, bounds)
+      }
+      // A move that ends on the title bar of a different frame stacks the two frames.
+      function stackTarget(): string | null {
+        if (edge || !moved) return null
+        return titleBarAt(stateRef.current.frames, pointer(), id)?.id ?? null
+      }
+      // Draw one step. The reducer gets the rect only when the drag ends.
+      function draw(): void {
         raf = 0
-        const result =
-          mode === 'move'
-            ? moveRect(startRect, dx, dy, others, bounds)
-            : resizeRect(startRect, mode, dx, dy, others, bounds)
-        dispatch({ frameId, rect: result.rect, type: 'setRect' })
+        const result = compute()
+        const step: Live = { frameId: id, rect: result.rect }
+        drawn = step.rect
+        setLive(prev =>
+          prev?.frameId === step.frameId && sameRect(prev.rect, step.rect) ? prev : step,
+        )
         setGuides(prev => (sameGuides(prev, result.guides) ? prev : result.guides))
+        setDropTarget(stackTarget())
       }
-      const track = (ev: PointerEvent): void => {
-        dx = ev.clientX - startX
-        dy = ev.clientY - startY
-        if (dx !== 0 || dy !== 0) moved = true
+      // The tab went more than TEAR_DISTANCE from the title bar. It leaves the stack as a new frame.
+      // Then the same drag moves the new frame.
+      function tearOut(panelId: string): void {
+        const s = stateRef.current
+        const source = s.frames.find(f => f.id === frameId)
+        // The reducer refuses these cases. Then the state does not change, so end the drag here.
+        if (
+          !source ||
+          source.locked ||
+          source.panels.length < 2 ||
+          !source.panels.includes(panelId)
+        ) {
+          end(false)
+          return
+        }
+        const p = pointer()
+        if (!tornOut(titleBar(source.rect), p)) return
+        // The title bar of the source frame stays on the page, so it keeps the capture.
+        if (!capture()) {
+          end(false)
+          return
+        }
+        const rect: Rect = { ...source.rect, x: p.x - TEAR_OFFSET.x, y: p.y - TEAR_OFFSET.y }
+        // The reducer gives the new frame the ID f<nextFrame>.
+        id = `f${s.nextFrame}`
+        handle.frameId = id
+        dispatch({ panelId, rect, type: 'unstack' })
+        pressing = false
+        startRect = rect
+        startX = x
+        startY = y
+        // The new frame is not in s, so all visible frames are the others.
+        others = visibleRects(s)
+        moved = true
       }
-      // Dispatch at most one time for each animation frame.
-      const onMove = (ev: PointerEvent): void => {
+      function onMove(ev: PointerEvent): void {
         if (ev.pointerId !== pointerId) return
-        track(ev)
-        if (moved && raf === 0) raf = requestAnimationFrame(apply)
+        // No button is down. So Bifrost did not get the pointer up. End the drag.
+        if (ev.buttons === 0) {
+          end(false)
+          return
+        }
+        x = ev.clientX
+        y = ev.clientY
+        if (pressing) {
+          if (tab !== null) tearOut(tab)
+          return
+        }
+        if (x !== startX || y !== startY) moved = true
+        // Draw at most one time for each animation frame.
+        if (moved && raf === 0) raf = requestAnimationFrame(draw)
       }
-      const onUp = (ev: PointerEvent): void => {
+      function onUp(ev: PointerEvent): void {
         if (ev.pointerId !== pointerId) return
-        track(ev)
+        x = ev.clientX
+        y = ev.clientY
+        if (!pressing && (x !== startX || y !== startY)) moved = true
         end(true)
       }
-      const onCancel = (ev: PointerEvent): void => {
+      function onCancel(ev: PointerEvent): void {
         if (ev.pointerId === pointerId) end(false)
       }
-      // A pointer up puts the frame at the last pointer position.
-      // A cancel or a lost capture keeps the frame where it was last drawn.
+      // A pointer up puts the frame at the last pointer position, or stacks it on a title bar.
+      // A cancel, a lost capture or a lost pointer up keeps the frame where it was last drawn.
+      // A tab press that ends before a tear-out changes nothing. The click activates the tab.
       function end(applyLast: boolean): void {
         if (ended) return
         ended = true
-        el.removeEventListener('pointermove', onMove)
-        el.removeEventListener('pointerup', onUp)
-        el.removeEventListener('pointercancel', onCancel)
-        el.removeEventListener('lostpointercapture', onCancel)
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onCancel)
+        window.removeEventListener('lostpointercapture', onCancel)
         if (raf !== 0) cancelAnimationFrame(raf)
         raf = 0
-        if (applyLast && moved) apply()
+        let target: string | null = null
+        if (applyLast && moved && !pressing) {
+          drawn = compute().rect
+          target = stackTarget()
+        }
         if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId)
         drag.current = null
+        if (target) dispatch({ frameId: id, targetId: target, type: 'stack' })
+        else if (drawn) dispatch({ frameId: id, rect: drawn, type: 'setRect' })
+        setLive(null)
         setGuides([])
+        setDropTarget(null)
         setDragging(false)
         scheduleSave()
       }
 
-      el.addEventListener('pointermove', onMove)
-      el.addEventListener('pointerup', onUp)
-      el.addEventListener('pointercancel', onCancel)
-      el.addEventListener('lostpointercapture', onCancel)
-      drag.current = { end, frameId }
+      if (!pressing && !capture()) return
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onCancel)
+      window.addEventListener('lostpointercapture', onCancel)
+      drag.current = handle
       window.clearTimeout(saveTimer.current)
       setDragging(true)
     },
     [scheduleSave],
   )
 
-  const value = useMemo(() => ({ dispatch, state }), [state])
+  // The functions for the side bar and the menus. This value does not change.
+  const controls = useMemo<WmControls>(
+    () => ({
+      deleteLayout: name => setStore(deleteLayout(storeRef.current, name)),
+      dispatch,
+      loadLayout: name => {
+        const item = storeRef.current.layouts.find(l => l.name === name)
+        if (!item) return
+        dispatch({ frames: item.snapshot.frames, memory: item.snapshot.memory, type: 'load' })
+      },
+      saveLayout: name => {
+        const store = storeRef.current
+        const next = saveLayout(store, name, toSnapshot(stateRef.current))
+        if (next !== store) {
+          setStore(next)
+          return 'saved'
+        }
+        // saveLayout refuses a name that is not correct, or a new name when the list is full.
+        const length = name.trim().length
+        return length < 1 || length > MAX_NAME ? 'name' : 'full'
+      },
+    }),
+    [setStore],
+  )
   const order = useMemo(
     () => [...state.frames].sort((a, b) => frameNumber(a.id) - frameNumber(b.id)),
     [state.frames],
   )
   const topId = topFrame(state)?.id
   const guideZ = state.frames.length
+  const dropFrame = dropTarget ? state.frames.find(f => f.id === dropTarget) : undefined
+  const dropBar = dropFrame ? titleBar(dropFrame.rect) : null
 
   return (
-    <WmContext value={value}>
-      <div className='flex h-full w-full'>
-        <SideBar />
-        <div
-          className={cx('relative min-w-0 flex-1 overflow-hidden', dragging && 'select-none')}
-          data-panel-area={true}
-          ref={areaRef}
-        >
-          {order.map(frame => (
-            <Frame
-              dispatch={dispatch}
-              frame={frame}
-              key={frame.id}
-              onDrag={beginDrag}
-              top={frame.id === topId}
-              z={state.frames.indexOf(frame)}
-            />
-          ))}
-          {guides.map(g => (
+    <WmControlsContext value={controls}>
+      <WmStateContext value={state}>
+        <LayoutsContext value={layoutNames}>
+          <div className='flex h-full w-full'>
+            <SideBar />
+            {/* The area keeps the z-order of its frames inside it. So a popover can be above them. */}
             <div
               className={cx(
-                'pointer-events-none absolute bg-snap',
-                g.axis === 'x' ? 'inset-y-0 w-px' : 'inset-x-0 h-px',
+                'relative isolate min-w-0 flex-1 overflow-hidden',
+                dragging && 'select-none',
               )}
-              data-guide={g.axis}
-              key={`${g.axis}:${g.at}`}
-              style={
-                g.axis === 'x'
-                  ? { left: Math.min(g.at, state.bounds.w - 1), zIndex: guideZ }
-                  : { top: Math.min(g.at, state.bounds.h - 1), zIndex: guideZ }
-              }
-            />
-          ))}
-        </div>
-      </div>
-    </WmContext>
+              data-panel-area={true}
+              ref={areaRef}
+            >
+              {order.map(frame => (
+                <Frame
+                  dispatch={dispatch}
+                  frame={live?.frameId === frame.id ? { ...frame, rect: live.rect } : frame}
+                  key={frame.id}
+                  onDrag={beginDrag}
+                  top={frame.id === topId}
+                  z={state.frames.indexOf(frame)}
+                />
+              ))}
+              {guides.map(g => (
+                <div
+                  className={cx(
+                    'pointer-events-none absolute bg-snap',
+                    g.axis === 'x' ? 'inset-y-0 w-px' : 'inset-x-0 h-px',
+                  )}
+                  data-guide={g.axis}
+                  key={`${g.axis}:${g.at}`}
+                  style={
+                    g.axis === 'x'
+                      ? { left: Math.min(g.at, state.bounds.w - 1), zIndex: guideZ }
+                      : { top: Math.min(g.at, state.bounds.h - 1), zIndex: guideZ }
+                  }
+                />
+              ))}
+              {/* The title bar where a drop stacks the dragged frame. The outline is above all
+                  frames, because the dragged frame covers the title bar. */}
+              {dropBar && dropFrame && (
+                <div
+                  className='pointer-events-none absolute rounded-t-md bg-accent/15 outline-2 outline-accent -outline-offset-2'
+                  data-drop-target={dropFrame.id}
+                  style={{
+                    height: dropBar.h,
+                    left: dropBar.x,
+                    top: dropBar.y,
+                    width: dropBar.w,
+                    zIndex: guideZ,
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </LayoutsContext>
+      </WmStateContext>
+    </WmControlsContext>
   )
 }

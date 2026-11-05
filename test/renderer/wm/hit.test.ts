@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Rect } from '../../../src/renderer/src/wm/geometry'
-import { frameAt, titleBarAt } from '../../../src/renderer/src/wm/hit'
+import { frameAt, TEAR_DISTANCE, titleBarAt, tornOut } from '../../../src/renderer/src/wm/hit'
 import type { Frame } from '../../../src/renderer/src/wm/state'
 
 function frame(id: string, rect: Rect, minimised = false): Frame {
@@ -61,5 +61,33 @@ describe('wm hit tests', () => {
     expect(titleBarAt([target, lower, dragged], { x: 20, y: 10 }, 'f3')).toBeUndefined()
     // The same frames in the other z-order: f1 is on top, so its title bar has the point.
     expect(titleBarAt([lower, target, dragged], { x: 20, y: 10 }, 'f3')?.id).toBe('f1')
+  })
+
+  // The title bar of a frame at x 100, y 50. Its edges are x 100 and 400, y 50 and 78.
+  const bar: Rect = { h: 28, w: 300, x: 100, y: 50 }
+
+  it('tornOut is false inside the title bar and at 12 pixels', () => {
+    expect(TEAR_DISTANCE).toBe(12)
+    expect(tornOut(bar, { x: 150, y: 60 })).toBe(false)
+    expect(tornOut(bar, { x: 100, y: 50 })).toBe(false)
+    expect(tornOut(bar, { x: 399, y: 77 })).toBe(false)
+    // 12 pixels above, below, left and right of the edges.
+    expect(tornOut(bar, { x: 150, y: 38 })).toBe(false)
+    expect(tornOut(bar, { x: 150, y: 90 })).toBe(false)
+    expect(tornOut(bar, { x: 88, y: 60 })).toBe(false)
+    expect(tornOut(bar, { x: 412, y: 60 })).toBe(false)
+    // 12 pixels from two edges at the same time.
+    expect(tornOut(bar, { x: 88, y: 38 })).toBe(false)
+    expect(tornOut(bar, { x: 412, y: 90 })).toBe(false)
+  })
+
+  it('tornOut is true at 13 pixels above, below, left or right', () => {
+    expect(tornOut(bar, { x: 150, y: 37 })).toBe(true)
+    expect(tornOut(bar, { x: 150, y: 91 })).toBe(true)
+    expect(tornOut(bar, { x: 87, y: 60 })).toBe(true)
+    expect(tornOut(bar, { x: 413, y: 60 })).toBe(true)
+    // Far away on one axis and inside on the other axis.
+    expect(tornOut(bar, { x: 250, y: 500 })).toBe(true)
+    expect(tornOut(bar, { x: -300, y: 60 })).toBe(true)
   })
 })

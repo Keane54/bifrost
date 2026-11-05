@@ -1,7 +1,9 @@
+import { memo } from 'react'
 import { cx } from '../lib/cx'
 import { panelTitle } from '../panels/panels'
+import { useWmControls, useWmState } from './context'
+import LayoutMenu from './LayoutMenu'
 import { type Frame, frameOf, panelKind, type WmState } from './state'
-import { useWm } from './WindowManager'
 
 const MAX_OVERVIEW = 99
 
@@ -50,8 +52,10 @@ function SideButton(props: {
 }
 
 // The thin bar on the left edge: one button for each panel type, then the minimised frames.
-export default function SideBar(): React.JSX.Element {
-  const { state, dispatch } = useWm()
+// The Layouts button is at the bottom.
+function SideBar(): React.JSX.Element {
+  const state = useWmState()
+  const { dispatch } = useWmControls()
   const open = (panelId: string): void => dispatch({ panelId, type: 'open' })
   const free = freeOverview(state)
   const minimised = state.frames.filter(f => f.minimised)
@@ -92,6 +96,11 @@ export default function SideBar(): React.JSX.Element {
           )
         })}
       </div>
+      <LayoutMenu className={BUTTON} />
     </nav>
   )
 }
+
+// The side bar has no props. It renders only when a context value changes.
+// A drag step changes no context value, so the side bar does not render at each step.
+export default memo(SideBar)

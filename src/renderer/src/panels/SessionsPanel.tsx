@@ -46,7 +46,7 @@ export default function SessionsPanel(): React.JSX.Element {
   }, [])
 
   return (
-    <div className='h-full select-text overflow-auto p-2 font-mono text-[13px] leading-[1.4]'>
+    <div className='select-text p-2 font-mono text-[13px] leading-[1.4]'>
       {error && <div className='whitespace-pre-wrap text-box-red'>{error}</div>}
       <table className='w-full border-collapse'>
         <thead>
