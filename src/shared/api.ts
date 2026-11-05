@@ -1,3 +1,4 @@
+import type { DirInfo, NewSessionSpec } from './new-session'
 import type {
   ClaudeVersion,
   DisplayMode,
@@ -6,6 +7,7 @@ import type {
   Priority,
   ProjectApp,
   ProjectAppId,
+  ResumeAllResult,
   SessionRow,
   TermSize,
 } from './types'
@@ -44,6 +46,27 @@ export interface BifrostApi {
     send(sessionId: string, text: string): Promise<void>
     // Send one Esc to the session. A second Interrupt within 1.5 s has no effect.
     interrupt(sessionId: string): Promise<void>
+  }
+  // The session commands. The main process finds the row and makes the claude arguments.
+  // Each call rejects with the reason, for example for a refused row or a failed claude command.
+  // One action at a time runs for each session.
+  sessions: {
+    // Run "claude --bg" in the directory. This resolves when the entry of the session shows.
+    create(spec: NewSessionSpec): Promise<{ sessionId: string }>
+    // Run "claude stop". Only for an owned session that runs.
+    stop(sessionId: string): Promise<void>
+    // Delete the session. Pass true only after the user accepted the confirmation.
+    // The main process refuses a delete without it.
+    remove(sessionId: string, confirmed: true): Promise<void>
+    // Run "claude --bg --resume". Only for a parked session.
+    resume(sessionId: string): Promise<void>
+    resumeAll(): Promise<ResumeAllResult>
+    // End the process of an external session and resume it in the background (spec 9.2).
+    takeControl(sessionId: string): Promise<{ sessionId: string }>
+    // What the main process finds at an absolute path.
+    dirInfo(dir: string): Promise<DirInfo>
+    // Show the directory picker. This resolves with null after a cancel.
+    pickDirectory(defaultPath: string | null): Promise<string | null>
   }
   integration: {
     status(): Promise<IntegrationStatus>

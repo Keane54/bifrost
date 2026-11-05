@@ -78,6 +78,13 @@ export interface SessionRow {
   terminalApp?: string
 }
 
+// The result of Resume all. resumed counts the sessions whose entry showed.
+// Each failure has the row name and the reason.
+export interface ResumeAllResult {
+  resumed: number
+  failed: { name: string; error: string }[]
+}
+
 // How the Bifrost window shows on the screen.
 // borderless is the simple full screen of macOS. fullscreen is the native full screen.
 export type DisplayMode = 'window' | 'borderless' | 'fullscreen'

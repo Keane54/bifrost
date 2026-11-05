@@ -1,19 +1,23 @@
-import { access } from 'node:fs/promises'
+import { access, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   app,
   type BrowserWindow,
   clipboard,
+  dialog,
   type IpcMainInvokeEvent,
   ipcMain,
+  type OpenDialogOptions,
   type WebContents,
 } from 'electron'
+import type { DirInfo } from '../shared/new-session'
 import { isPriority } from '../shared/priority'
 import type { ClaudeVersion, DisplayMode } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
 import { createActions } from './actions/actions'
 import { findProjectApps } from './actions/project-apps'
+import { createSessionActions } from './actions/session-actions'
 import { hasLeftKey, SessionInput } from './actions/session-input'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
@@ -100,6 +104,40 @@ function fromPage<T>(e: IpcMainInvokeEvent, fn: () => Promise<T>): Promise<T> {
     return Promise.reject(new Error('refused: not the Bifrost page'))
   }
   return fn()
+}
+
+// True when the process exists. Signal 0 only checks the process. It sends no signal.
+// EPERM: the process exists and belongs to another user. Another error also gives true,
+// so Take control does not start a copy of a session that can still run.
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH'
+  }
+}
+
+// The executable path of a process, or null when ps cannot read it.
+async function processName(pid: number): Promise<string | null> {
+  const result = await execFile('/bin/ps', ['-o', 'comm=', '-p', String(pid)], { timeoutMs: 2000 })
+  const name = result.stdout.trim()
+  return result.code === 0 && name !== '' ? name : null
+}
+
+// What is at the path, and for a directory, whether it is in a git repository.
+async function dirInfo(dir: string): Promise<DirInfo> {
+  let kind: DirInfo['kind']
+  try {
+    kind = (await stat(dir)).isDirectory() ? 'dir' : 'other'
+  } catch {
+    return { git: false, kind: 'missing' }
+  }
+  if (kind !== 'dir') return { git: false, kind }
+  const result = await execFile('git', ['-C', dir, 'rev-parse', '--show-toplevel'], {
+    timeoutMs: 2000,
+  })
+  return { git: result.code === 0, kind }
 }
 
 // The mode controller of the current window. index.ts sets it.
@@ -282,6 +320,53 @@ export function registerIpc(): void {
   )
   ipcMain.handle('actions:copy-session-id', (e, sessionId: unknown) =>
     fromPage(e, () => actions.copySessionId(sessionId)),
+  )
+  // The session commands. The renderer sends session IDs and the New session values only.
+  // The main process finds the row, the PID and the directory, and makes the claude arguments.
+  // SIGTERM goes only to the process of an external session in Take control (D6).
+  const sessions = createSessionActions({
+    dirInfo,
+    forget: id => liveService?.forget(id),
+    isAlive,
+    markStarted: id => liveService?.markStarted(id),
+    markStopped: id => liveService?.markStopped(id),
+    processName,
+    rows: () => liveService?.rows() ?? [],
+    run: () => run,
+    signal: (pid, signal) => {
+      process.kill(pid, signal)
+    },
+    waitForRow: async (match, timeoutMs) => (await service).waitForRow(match, timeoutMs),
+  })
+  ipcMain.handle('sessions:create', (e, spec: unknown) => fromPage(e, () => sessions.create(spec)))
+  ipcMain.handle('sessions:stop', (e, sessionId: unknown) =>
+    fromPage(e, () => sessions.stop(sessionId)),
+  )
+  ipcMain.handle('sessions:remove', (e, sessionId: unknown, confirmed: unknown) =>
+    fromPage(e, () => sessions.remove(sessionId, confirmed)),
+  )
+  ipcMain.handle('sessions:resume', (e, sessionId: unknown) =>
+    fromPage(e, () => sessions.resume(sessionId)),
+  )
+  ipcMain.handle('sessions:resume-all', e => fromPage(e, () => sessions.resumeAll()))
+  ipcMain.handle('sessions:take-control', (e, sessionId: unknown) =>
+    fromPage(e, () => sessions.takeControl(sessionId)),
+  )
+  ipcMain.handle('sessions:dir-info', (e, dir: unknown) => fromPage(e, () => sessions.dirInfo(dir)))
+  // The picker starts at the directory from the renderer when it is absolute, else at home.
+  ipcMain.handle('sessions:pick-directory', (e, defaultPath: unknown) =>
+    fromPage(e, async () => {
+      const options: OpenDialogOptions = {
+        defaultPath:
+          typeof defaultPath === 'string' && defaultPath.startsWith('/') ? defaultPath : homedir(),
+        properties: ['openDirectory', 'createDirectory'],
+      }
+      const win = currentWindow && !currentWindow.isDestroyed() ? currentWindow : null
+      const result = await (win
+        ? dialog.showOpenDialog(win, options)
+        : dialog.showOpenDialog(options))
+      return result.canceled ? null : (result.filePaths[0] ?? null)
+    }),
   )
   // Only one of preview, install and uninstall runs at a time. A second call rejects.
   // These three handlers also reject for a settings file that is not valid.

@@ -65,6 +65,16 @@ const api: BifrostApi = {
     rows: () => invoke('registry:rows'),
     setPriority: (sessionId, priority) => invoke('registry:set-priority', sessionId, priority),
   },
+  sessions: {
+    create: spec => invoke('sessions:create', spec),
+    dirInfo: dir => invoke('sessions:dir-info', dir),
+    pickDirectory: defaultPath => invoke('sessions:pick-directory', defaultPath),
+    remove: (sessionId, confirmed) => invoke('sessions:remove', sessionId, confirmed),
+    resume: sessionId => invoke('sessions:resume', sessionId),
+    resumeAll: () => invoke('sessions:resume-all'),
+    stop: sessionId => invoke('sessions:stop', sessionId),
+    takeControl: sessionId => invoke('sessions:take-control', sessionId),
+  },
   ui: {
     load: () => invoke('ui:load'),
     save: data => invoke('ui:save', data),
