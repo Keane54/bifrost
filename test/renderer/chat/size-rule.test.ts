@@ -60,7 +60,10 @@ describe('decideSize', () => {
     expect(decideSize({ ...base, now: 10_100 })).toEqual({ send: null, term: A })
     expect(decideSize({ ...base, now: 10_101 })).toEqual({ send: null, term: C })
     // The same size as the send is not an old read.
-    expect(decideSize({ ...base, now: 10_000, session: A }).term).toEqual(A)
+    expect(decideSize({ ...base, now: 10_000, session: A, term: B })).toEqual({
+      send: null,
+      term: A,
+    })
   })
 
   it('without a session size the terminal keeps its size', () => {
@@ -75,6 +78,19 @@ describe('fitScale', () => {
     expect(fitScale({ h: 300, w: 400 }, { h: 600, w: 800 })).toBe(1)
     expect(fitScale({ h: 300, w: 400 }, null)).toBe(1)
     expect(fitScale({ h: 0, w: 400 }, { h: 600, w: 800 })).toBe(1)
+  })
+
+  it('always gives a finite number from 0.1 to 1', () => {
+    const screen = { h: 500, w: 1000 }
+    expect(fitScale(screen, { h: 0, w: 0 })).toBe(0.1)
+    expect(fitScale(screen, { h: 500, w: 0 })).toBe(0.1)
+    expect(fitScale(screen, { h: 1, w: 1 })).toBe(0.1)
+    expect(fitScale(screen, { h: 500, w: -5 })).toBe(1)
+    expect(fitScale(screen, { h: Number.NaN, w: 500 })).toBe(1)
+    expect(fitScale(screen, { h: 500, w: Number.POSITIVE_INFINITY })).toBe(1)
+    expect(fitScale({ h: Number.NaN, w: 1000 }, { h: 500, w: 500 })).toBe(1)
+    expect(fitScale({ h: 500, w: -1 }, { h: 500, w: 500 })).toBe(1)
+    expect(fitScale({ h: 500, w: Number.POSITIVE_INFINITY }, { h: 500, w: 500 })).toBe(1)
   })
 })
 

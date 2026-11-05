@@ -75,6 +75,25 @@ describe('webglPlan', () => {
   })
 })
 
+describe('webglPlan with a focused window', () => {
+  const ids = Array.from({ length: 14 }, (_, i) => `s${i}`)
+
+  it('loads the focused window first when the limit cuts', () => {
+    expect(webglPlan(ids, [], MAX_WEBGL, 's13').load).toEqual(['s13', ...ids.slice(0, 11)])
+  })
+
+  it('releases a loaded window for the focused one when all 12 are loaded', () => {
+    const loaded = ids.slice(0, MAX_WEBGL)
+    const plan = webglPlan(ids, loaded, MAX_WEBGL, 's13')
+    expect(plan).toEqual({ load: ['s13'], release: ['s11'] })
+  })
+
+  it('changes nothing when the focused window is loaded', () => {
+    const loaded = ids.slice(0, MAX_WEBGL)
+    expect(webglPlan(ids, loaded, MAX_WEBGL, 's0')).toEqual({ load: [], release: [] })
+  })
+})
+
 describe('attachTarget', () => {
   it('waits for the session list', () => {
     expect(attachTarget(undefined, false)).toEqual({ ok: false, reason: R.REASON_WAIT_LIST })

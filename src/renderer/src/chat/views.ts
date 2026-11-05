@@ -54,10 +54,13 @@ export function chatViews(state: Pick<WmState, 'frames'>): Map<string, ChatView>
 
 export const MAX_WEBGL = 12
 
+// The focused window gets WebGL first. When the limit cuts, it takes the place of
+// the last window that would load, or else of the last loaded window.
 export function webglPlan(
   visible: string[],
   loaded: string[],
   max = MAX_WEBGL,
+  focused: string | null = null,
 ): { load: string[]; release: string[] } {
   const release = loaded.filter(id => !visible.includes(id))
   const kept = loaded.filter(id => visible.includes(id))
@@ -65,6 +68,17 @@ export function webglPlan(
   for (const id of visible) {
     if (kept.length + load.length >= max) break
     if (!loaded.includes(id) && !load.includes(id)) load.push(id)
+  }
+  if (focused !== null && visible.includes(focused) && !loaded.includes(focused)) {
+    if (!load.includes(focused) && kept.length + load.length >= max) {
+      if (load.length > 0) {
+        load.pop()
+      } else {
+        const out = [...kept].reverse().find(id => id !== focused)
+        if (out !== undefined) release.push(out)
+      }
+      load.unshift(focused)
+    }
   }
   return { load, release }
 }

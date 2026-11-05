@@ -48,10 +48,19 @@ export function decideSize(input: SizeInput): SizeDecision {
   return { send: null, term }
 }
 
-// The zoom of an unfocused window. It never goes above 1.
+export const MIN_SCALE = 0.1
+
+function usable(n: number): boolean {
+  return Number.isFinite(n) && n > 0
+}
+
+// The zoom of an unfocused window. It is always a finite number from MIN_SCALE to 1.
+// A value that makes no sense gives 1. A panel of size 0 gives MIN_SCALE.
 export function fitScale(screen: Px, panel: Px | null): number {
-  if (!panel || screen.w === 0 || screen.h === 0) return 1
-  return Math.min(1, panel.w / screen.w, panel.h / screen.h)
+  if (!panel || !usable(screen.w) || !usable(screen.h)) return 1
+  if (!Number.isFinite(panel.w) || !Number.isFinite(panel.h) || panel.w < 0 || panel.h < 0) return 1
+  const scale = Math.min(1, panel.w / screen.w, panel.h / screen.h)
+  return Math.max(MIN_SCALE, scale)
 }
 
 // The size for a new terminal.
