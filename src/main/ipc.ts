@@ -41,6 +41,7 @@ import { PENDING_EVENT_MS, SessionRegistry } from './registry/registry'
 import { RegistryService, type ServiceDeps } from './registry/service'
 import { cleanStatusTemps, readStatusFiles, STATUS_TEMP_MAX_AGE_MS } from './registry/status-file'
 import { openStore } from './registry/store-file'
+import { readProcessTable } from './registry/terminal-app'
 import { openUiStore } from './store/ui-store'
 import type { ModeController } from './window/display-mode'
 import { isDisplayMode } from './window/window-state'
@@ -156,6 +157,7 @@ async function startService(
     listAll: () => list(true),
     now,
     readBranch: cwd => readBranch(execFile, cwd),
+    readProcessTable: () => readProcessTable(execFile),
     readStatus: () => readStatusFiles(sessionsDir),
     saveStore: store => opened.save(store),
   }

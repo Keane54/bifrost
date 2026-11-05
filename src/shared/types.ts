@@ -72,6 +72,10 @@ export interface SessionRow {
   costUsd?: number
   branch?: string
   priority?: Priority
+  // True for a parked row that Resume all resumes.
+  resumable?: true
+  // The name of the terminal app of an external row.
+  terminalApp?: string
 }
 
 // How the Bifrost window shows on the screen.

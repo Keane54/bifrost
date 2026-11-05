@@ -11,9 +11,12 @@ import {
   onTick,
 } from './state-machine'
 import type { StatusData } from './status-file'
+import type { TerminalApp } from './terminal-app'
 
 // The data that the registry saves between runs of Bifrost.
 export interface RegistryStore {
+  // The sessions that ran in the last run. Resume all uses them.
+  lastActive: string[]
   names: Record<string, string>
   started: string[]
   priorities: Record<string, Priority>
@@ -21,6 +24,9 @@ export interface RegistryStore {
 
 // A hook event for an unknown session waits this long for the session to show.
 export const PENDING_EVENT_MS = 60_000
+
+// A session that is not active stays in lastActive this long, in milliseconds.
+export const LAST_ACTIVE_GRACE_MS = 60_000
 
 // The data that the registry keeps for one session.
 interface Session {
@@ -82,6 +88,14 @@ export class SessionRegistry {
   private readonly names: Map<string, string>
   private readonly started: Set<string>
   private readonly priorities: Map<string, Priority>
+  // The sessions with a process in the last samples. The store keeps them.
+  private readonly lastActive: Set<string>
+  // The sessions of lastActive at the start. Resume all can resume them. Not saved.
+  private readonly resumable: Set<string>
+  // The sample time when a session of lastActive was first not active.
+  private readonly inactiveSince = new Map<string, number>()
+  // The terminal app for each PID. null means that the PID has no app.
+  private readonly terminals = new Map<number, TerminalApp | null>()
   private changed = false
   private readonly sessions = new Map<string, Session>()
   // The session ids of the last active list and of the last --all list.
@@ -92,15 +106,19 @@ export class SessionRegistry {
   private status = new Map<string, StatusData>()
   private readonly branches = new Map<string, string>()
 
-  // A store without priorities (from an older version) is valid.
+  // A store without priorities or lastActive (from an older version) is valid.
   constructor(opts: {
-    store: Omit<RegistryStore, 'priorities'> & Partial<Pick<RegistryStore, 'priorities'>>
+    store: Omit<RegistryStore, 'priorities' | 'lastActive'> &
+      Partial<Pick<RegistryStore, 'priorities' | 'lastActive'>>
     escalationMs: number
   }) {
     this.escalationMs = opts.escalationMs
     this.names = new Map(Object.entries(opts.store.names))
     this.started = new Set(opts.store.started)
     this.priorities = new Map(Object.entries(opts.store.priorities ?? {}) as [string, Priority][])
+    const last = opts.store.lastActive ?? []
+    this.lastActive = new Set(last)
+    this.resumable = new Set(last)
   }
 
   // Apply the output of "claude agents --json". sampledAt is the time when the poll started.
@@ -136,6 +154,25 @@ export class SessionRegistry {
     }
     this.active = ids
     this.parkStarted(sampledAt)
+    this.trackLastActive(entries, sampledAt)
+  }
+
+  // A background entry with a pid is active. The other sessions of lastActive start a grace time.
+  private trackLastActive(entries: AgentEntry[], sampledAt: number): void {
+    const running = new Set<string>()
+    for (const entry of entries) {
+      if (entry.kind !== 'background' || entry.pid === undefined) continue
+      running.add(entry.sessionId)
+      if (!this.lastActive.has(entry.sessionId)) {
+        this.lastActive.add(entry.sessionId)
+        this.changed = true
+      }
+      this.resumable.delete(entry.sessionId)
+      this.inactiveSince.delete(entry.sessionId)
+    }
+    for (const id of this.lastActive) {
+      if (!running.has(id) && !this.inactiveSince.has(id)) this.inactiveSince.set(id, sampledAt)
+    }
   }
 
   // Apply the output of "claude agents --json --all".
@@ -194,6 +231,59 @@ export class SessionRegistry {
     else this.branches.set(cwd, branch)
   }
 
+  // Remove a session and all values that the registry keeps for it.
+  forget(sessionId: string): void {
+    this.sessions.delete(sessionId)
+    this.pending = this.pending.filter(ev => ev.sessionId !== sessionId)
+    this.active.delete(sessionId)
+    this.all.delete(sessionId)
+    this.resumable.delete(sessionId)
+    this.inactiveSince.delete(sessionId)
+    const removed = [
+      this.started.delete(sessionId),
+      this.names.delete(sessionId),
+      this.priorities.delete(sessionId),
+      this.lastActive.delete(sessionId),
+    ]
+    if (removed.some(Boolean)) this.changed = true
+  }
+
+  // A stopped session is no candidate for Resume all.
+  markStopped(sessionId: string): void {
+    if (this.lastActive.delete(sessionId)) this.changed = true
+    this.resumable.delete(sessionId)
+    this.inactiveSince.delete(sessionId)
+  }
+
+  // Merge the terminal apps by PID. Remove the PIDs that no external row has.
+  applyTerminals(apps: Map<number, TerminalApp | null>): void {
+    for (const [pid, app] of apps) this.terminals.set(pid, app)
+    const pids = new Set<number>()
+    for (const s of this.sessions.values()) {
+      if (s.kind === 'external' && s.pid !== undefined) pids.add(s.pid)
+    }
+    for (const pid of this.terminals.keys()) {
+      if (!pids.has(pid)) this.terminals.delete(pid)
+    }
+  }
+
+  // Return the PIDs of the running external rows that have no terminal entry.
+  pidsWithoutTerminal(): number[] {
+    const pids: number[] = []
+    for (const s of this.sorted()) {
+      if (s.kind !== 'external' || s.machine.state === 'parked') continue
+      if (s.pid !== undefined && !this.terminals.has(s.pid)) pids.push(s.pid)
+    }
+    return pids
+  }
+
+  // Return the terminal app of an external session, or undefined.
+  terminalOf(sessionId: string): TerminalApp | undefined {
+    const s = this.sessions.get(sessionId)
+    if (s?.kind !== 'external' || s.pid === undefined) return undefined
+    return this.terminals.get(s.pid) ?? undefined
+  }
+
   // Record a session that Bifrost started.
   markStarted(sessionId: string): void {
     if (this.started.has(sessionId)) return
@@ -206,6 +296,13 @@ export class SessionRegistry {
       s.machine = onTick(s.machine, now, this.escalationMs)
     }
     this.dropOldEvents(now)
+    for (const id of this.lastActive) {
+      const since = this.inactiveSince.get(id)
+      if (since === undefined || now - since < LAST_ACTIVE_GRACE_MS) continue
+      this.lastActive.delete(id)
+      this.inactiveSince.delete(id)
+      this.changed = true
+    }
   }
 
   acknowledge(sessionId: string): void {
@@ -242,6 +339,7 @@ export class SessionRegistry {
   // Return a copy of the store.
   store(): RegistryStore {
     return {
+      lastActive: [...this.lastActive],
       names: Object.fromEntries(this.names),
       priorities: Object.fromEntries(this.priorities),
       started: [...this.started],
@@ -293,13 +391,13 @@ export class SessionRegistry {
   }
 
   // Apply the rules for a session that left the active list.
-  // An owned session stays as a parked row if it is in --all or if Bifrost started it.
-  // All other sessions go away.
+  // A session that Bifrost started stays as a parked row, whatever its kind.
+  // An owned session in --all also stays. All other sessions go away.
   private leave(sessionId: string, sampledAt: number): void {
     const s = this.sessions.get(sessionId)
     if (!s) return
-    const keep = this.all.has(sessionId) || this.started.has(sessionId)
-    if (s.kind === 'owned' && keep) this.park(s, sampledAt)
+    const keep = (s.kind === 'owned' && this.all.has(sessionId)) || this.started.has(sessionId)
+    if (keep) this.park(s, sampledAt)
     else this.sessions.delete(sessionId)
   }
 
@@ -360,6 +458,11 @@ export class SessionRegistry {
     if (branch !== undefined) row.branch = branch
     const priority = this.priorities.get(s.sessionId)
     if (priority !== undefined) row.priority = priority
+    if (m.state === 'parked' && this.resumable.has(s.sessionId)) row.resumable = true
+    if (s.kind === 'external' && s.pid !== undefined) {
+      const app = this.terminals.get(s.pid)
+      if (app) row.terminalApp = app.name
+    }
     return row
   }
 }

@@ -3,6 +3,7 @@ import type { AgentList } from '../claude/agents'
 import type { HookEvent } from './hook-event'
 import type { RegistryStore, SessionRegistry } from './registry'
 import type { StatusData } from './status-file'
+import { type ProcessTable, type TerminalApp, terminalAppOf } from './terminal-app'
 
 // The service reads all data and does all writes through these functions.
 export interface ServiceDeps {
@@ -11,6 +12,7 @@ export interface ServiceDeps {
   drainEvents(): Promise<{ events: HookEvent[]; errors: number }>
   readStatus(): Promise<Map<string, StatusData>>
   readBranch(cwd: string): Promise<string | null>
+  readProcessTable(): Promise<ProcessTable | null>
   saveStore(store: RegistryStore): Promise<void>
   now(): number
 }
@@ -26,6 +28,13 @@ export const SERVICE_TIMING = {
   tickMs: 1000,
 }
 
+interface RowWaiter {
+  match: (row: SessionRow) => boolean
+  resolve: (row: SessionRow) => void
+  reject: (error: Error) => void
+  timer: ReturnType<typeof setTimeout>
+}
+
 type UpdateCallback = (rows: SessionRow[], error: string | null) => void
 
 function messageOf(error: unknown): string {
@@ -36,6 +45,9 @@ function messageOf(error: unknown): string {
 export class RegistryService {
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
   private readonly callbacks: UpdateCallback[] = []
+  private waiters: RowWaiter[] = []
+  // True while a process table read runs.
+  private readingTable = false
   // The two list polls wait in this queue.
   // So only one "claude agents --json" process runs at a time.
   private queue: Promise<void> = Promise.resolve()
@@ -92,6 +104,46 @@ export class RegistryService {
     this.stopped = true
     for (const timer of this.timers) clearTimeout(timer)
     this.timers.clear()
+    const waiters = this.waiters
+    this.waiters = []
+    for (const w of waiters) {
+      clearTimeout(w.timer)
+      w.reject(new Error('stopped'))
+    }
+  }
+
+  // Resolve with the first row that matches. Check the rows now and after each change.
+  // Reject with "timeout" after timeoutMs, and with "stopped" when the service stops.
+  waitForRow(match: (row: SessionRow) => boolean, timeoutMs: number): Promise<SessionRow> {
+    if (this.stopped) return Promise.reject(new Error('stopped'))
+    const found = this.registry.rows().find(match)
+    if (found) return Promise.resolve(found)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.waiters = this.waiters.filter(w => w.timer !== timer)
+        reject(new Error('timeout'))
+      }, timeoutMs)
+      this.waiters.push({ match, reject, resolve, timer })
+    })
+  }
+
+  forget(sessionId: string): void {
+    this.registry.forget(sessionId)
+    this.changed()
+  }
+
+  markStarted(sessionId: string): void {
+    this.registry.markStarted(sessionId)
+    this.changed()
+  }
+
+  markStopped(sessionId: string): void {
+    this.registry.markStopped(sessionId)
+    this.changed()
+  }
+
+  terminalOf(sessionId: string): TerminalApp | undefined {
+    return this.registry.terminalOf(sessionId)
   }
 
   onUpdate(cb: UpdateCallback): void {
@@ -162,10 +214,33 @@ export class RegistryService {
     } else {
       this.registry.applyAgents(list.entries, sampledAt)
       this.error = null
+      if (this.registry.pidsWithoutTerminal().length > 0 && !this.readingTable) {
+        void this.readTerminals()
+      }
     }
     // The first update holds the rows or the error of the first active poll.
     this.ready = true
     this.changed()
+  }
+
+  // Read the process table one time. Give the terminal apps of the new external PIDs to the registry.
+  // A failed read changes nothing. The next active poll tries again.
+  private async readTerminals(): Promise<void> {
+    this.readingTable = true
+    try {
+      const table = await this.deps.readProcessTable()
+      if (this.stopped || table === null) return
+      const apps = new Map<number, TerminalApp | null>()
+      for (const pid of this.registry.pidsWithoutTerminal()) {
+        apps.set(pid, terminalAppOf(table, pid))
+      }
+      this.registry.applyTerminals(apps)
+      this.changed()
+    } catch {
+      // The next active poll tries again.
+    } finally {
+      this.readingTable = false
+    }
   }
 
   private async pollAll(): Promise<void> {
@@ -211,6 +286,7 @@ export class RegistryService {
     if (this.stopped) return
     if (this.registry.storeChanged()) this.storeToSave = true
     this.save()
+    this.checkWaiters()
     if (!this.ready) return
     if (this.inGap) {
       // The last update went out less than minUpdateGapMs ago.
@@ -219,6 +295,19 @@ export class RegistryService {
       return
     }
     this.send()
+  }
+
+  // Resolve each waiter whose row exists. This runs before the update gap.
+  private checkWaiters(): void {
+    if (this.waiters.length === 0) return
+    const rows = this.registry.rows()
+    this.waiters = this.waiters.filter(w => {
+      const row = rows.find(w.match)
+      if (!row) return true
+      clearTimeout(w.timer)
+      w.resolve(row)
+      return false
+    })
   }
 
   // Send the rows and the error if they changed after the last update.

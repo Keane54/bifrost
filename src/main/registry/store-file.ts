@@ -11,6 +11,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 // Read the registry store.
 // A missing file or a file that is not valid JSON gives an empty store.
 // A file without priorities (from M1) gives no priorities.
+// A file without lastActive (from M3) gives an empty list.
 // The function removes each value that has the wrong type.
 // Other read errors, for example EACCES or EISDIR, reject.
 export async function loadStore(file: string): Promise<RegistryStore> {
@@ -19,16 +20,16 @@ export async function loadStore(file: string): Promise<RegistryStore> {
     text = await readFile(file, 'utf8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-      return { names: {}, priorities: {}, started: [] }
+      return { lastActive: [], names: {}, priorities: {}, started: [] }
     throw error
   }
   let data: unknown
   try {
     data = JSON.parse(text)
   } catch {
-    return { names: {}, priorities: {}, started: [] }
+    return { lastActive: [], names: {}, priorities: {}, started: [] }
   }
-  if (!isObject(data)) return { names: {}, priorities: {}, started: [] }
+  if (!isObject(data)) return { lastActive: [], names: {}, priorities: {}, started: [] }
   const names = isObject(data.names)
     ? Object.fromEntries(
         Object.entries(data.names).filter((pair): pair is [string, string] => {
@@ -46,7 +47,10 @@ export async function loadStore(file: string): Promise<RegistryStore> {
         }),
       )
     : {}
-  return { names, priorities, started }
+  const lastActive = Array.isArray(data.lastActive)
+    ? [...new Set(data.lastActive.filter((id): id is string => typeof id === 'string'))]
+    : []
+  return { lastActive, names, priorities, started }
 }
 
 // Write the store to a temporary name in the same directory. Then rename the file.
@@ -67,6 +71,9 @@ export async function openStore(
     return { save: store => saveStore(file, store), store: await loadStore(file) }
   } catch (error) {
     log(`Bifrost cannot read ${file}. The registry uses an empty store and does not save.`, error)
-    return { save: async () => {}, store: { names: {}, priorities: {}, started: [] } }
+    return {
+      save: async () => {},
+      store: { lastActive: [], names: {}, priorities: {}, started: [] },
+    }
   }
 }

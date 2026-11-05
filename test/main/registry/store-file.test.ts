@@ -15,7 +15,7 @@ afterEach(async () => {
 })
 
 test('loadStore returns an empty store for a missing or bad file', async () => {
-  const emptyStore = { names: {}, priorities: {}, started: [] }
+  const emptyStore = { lastActive: [], names: {}, priorities: {}, started: [] }
   expect(await loadStore(join(dir, 'missing.json'))).toEqual(emptyStore)
 
   const bad = join(dir, 'bad.json')
@@ -38,27 +38,37 @@ test('loadStore removes the values that have the wrong type', async () => {
       started: ['s1', 4, null],
     }),
   )
-  expect(await loadStore(file)).toEqual({ names: { s1: 'alpha' }, priorities: {}, started: ['s1'] })
+  expect(await loadStore(file)).toEqual({
+    lastActive: [],
+    names: { s1: 'alpha' },
+    priorities: {},
+    started: ['s1'],
+  })
 
   await writeFile(file, JSON.stringify({ names: ['x'], priorities: {}, started: 'x' }))
-  expect(await loadStore(file)).toEqual({ names: {}, priorities: {}, started: [] })
+  expect(await loadStore(file)).toEqual({ lastActive: [], names: {}, priorities: {}, started: [] })
 })
 
 test('saveStore then loadStore gives the same store', async () => {
   const file = join(dir, 'registry.json')
-  const store = { names: { s1: 'alpha', s2: 'beta' }, priorities: {}, started: ['s2'] }
+  const store = {
+    lastActive: [],
+    names: { s1: 'alpha', s2: 'beta' },
+    priorities: {},
+    started: ['s2'],
+  }
   await saveStore(file, store)
   expect(await loadStore(file)).toEqual(store)
 
-  const next = { names: { s3: 'gamma' }, priorities: {}, started: [] }
+  const next = { lastActive: [], names: { s3: 'gamma' }, priorities: {}, started: [] }
   await saveStore(file, next)
   expect(await loadStore(file)).toEqual(next)
 })
 
 test('saveStore makes the directory and leaves no temporary file', async () => {
   const file = join(dir, 'user-data', 'registry.json')
-  await saveStore(file, { names: {}, priorities: {}, started: [] })
-  await saveStore(file, { names: { s1: 'alpha' }, priorities: {}, started: [] })
+  await saveStore(file, { lastActive: [], names: {}, priorities: {}, started: [] })
+  await saveStore(file, { lastActive: [], names: { s1: 'alpha' }, priorities: {}, started: [] })
   expect(await readdir(join(dir, 'user-data'))).toEqual(['registry.json'])
   expect((await stat(file)).mode & 0o777).toBe(0o600)
 })
@@ -71,12 +81,22 @@ test('loadStore rejects for a file that it cannot read', async () => {
 
 test('openStore loads the file and saves to it', async () => {
   const file = join(dir, 'registry.json')
-  await saveStore(file, { names: { s1: 'alpha' }, priorities: {}, started: [] })
+  await saveStore(file, { lastActive: [], names: { s1: 'alpha' }, priorities: {}, started: [] })
   const log = vi.fn()
   const opened = await openStore(file, log)
-  expect(opened.store).toEqual({ names: { s1: 'alpha' }, priorities: {}, started: [] })
-  await opened.save({ names: { s2: 'beta' }, priorities: {}, started: ['s2'] })
-  expect(await loadStore(file)).toEqual({ names: { s2: 'beta' }, priorities: {}, started: ['s2'] })
+  expect(opened.store).toEqual({
+    lastActive: [],
+    names: { s1: 'alpha' },
+    priorities: {},
+    started: [],
+  })
+  await opened.save({ lastActive: [], names: { s2: 'beta' }, priorities: {}, started: ['s2'] })
+  expect(await loadStore(file)).toEqual({
+    lastActive: [],
+    names: { s2: 'beta' },
+    priorities: {},
+    started: ['s2'],
+  })
   expect(log).not.toHaveBeenCalled()
 })
 
@@ -85,9 +105,9 @@ test('openStore uses an empty store and does not save when it cannot read the fi
   await mkdir(file)
   const log = vi.fn()
   const opened = await openStore(file, log)
-  expect(opened.store).toEqual({ names: {}, priorities: {}, started: [] })
+  expect(opened.store).toEqual({ lastActive: [], names: {}, priorities: {}, started: [] })
   expect(log).toHaveBeenCalledTimes(1)
-  await opened.save({ names: { s1: 'alpha' }, priorities: {}, started: [] })
+  await opened.save({ lastActive: [], names: { s1: 'alpha' }, priorities: {}, started: [] })
   expect((await stat(file)).isDirectory()).toBe(true)
   expect(await readdir(file)).toEqual([])
   expect(await readdir(dir)).toEqual(['registry.json'])
@@ -96,7 +116,12 @@ test('openStore uses an empty store and does not save when it cannot read the fi
 test('loadStore reads an M1 file without priorities', async () => {
   const file = join(dir, 'registry.json')
   await writeFile(file, JSON.stringify({ names: { a: 'x' }, started: [] }))
-  expect(await loadStore(file)).toEqual({ names: { a: 'x' }, priorities: {}, started: [] })
+  expect(await loadStore(file)).toEqual({
+    lastActive: [],
+    names: { a: 'x' },
+    priorities: {},
+    started: [],
+  })
 })
 
 test('loadStore drops bad priorities', async () => {
@@ -104,4 +129,21 @@ test('loadStore drops bad priorities', async () => {
   const priorities = { a: 3, b: 7, c: '2', d: 1.5 }
   await writeFile(file, JSON.stringify({ names: {}, priorities, started: [] }))
   expect((await loadStore(file)).priorities).toEqual({ a: 3 })
+})
+
+test('loadStore reads a file without lastActive', async () => {
+  const file = join(dir, 'registry.json')
+  await writeFile(file, JSON.stringify({ names: { a: 'x' }, priorities: { a: 2 }, started: [] }))
+  expect(await loadStore(file)).toEqual({
+    lastActive: [],
+    names: { a: 'x' },
+    priorities: { a: 2 },
+    started: [],
+  })
+})
+
+test('loadStore keeps only strings in lastActive, each one time', async () => {
+  const file = join(dir, 'registry.json')
+  await writeFile(file, JSON.stringify({ lastActive: ['a', 3, 'a', null, 'b'] }))
+  expect((await loadStore(file)).lastActive).toEqual(['a', 'b'])
 })

@@ -7,6 +7,7 @@ import {
   type ServiceDeps,
 } from '../../../src/main/registry/service'
 import type { StatusData } from '../../../src/main/registry/status-file'
+import { parseProcessTable } from '../../../src/main/registry/terminal-app'
 import type { SessionRow } from '../../../src/shared/types'
 
 const START = 1_000_000
@@ -36,14 +37,16 @@ function fakeDeps(o: Partial<ServiceDeps> = {}): ServiceDeps {
     listAll: vi.fn(async () => empty()),
     now: () => Date.now(),
     readBranch: vi.fn(async () => 'main'),
+    readProcessTable: vi.fn(async () => null),
     readStatus: vi.fn(async () => new Map<string, StatusData>()),
     saveStore: vi.fn(async () => {}),
     ...o,
   }
 }
 
-const newRegistry = (store: RegistryStore = { names: {}, priorities: {}, started: [] }) =>
-  new SessionRegistry({ escalationMs: 600_000, store })
+const newRegistry = (
+  store: RegistryStore = { lastActive: [], names: {}, priorities: {}, started: [] },
+) => new SessionRegistry({ escalationMs: 600_000, store })
 
 interface Update {
   at: number
@@ -351,7 +354,12 @@ describe('updates and the store', () => {
     startService(fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }))
     await vi.advanceTimersByTimeAsync(0)
     expect(saveStore).toHaveBeenCalledTimes(1)
-    expect(saveStore).toHaveBeenCalledWith({ names: { s1: 'alpha' }, priorities: {}, started: [] })
+    expect(saveStore).toHaveBeenCalledWith({
+      lastActive: ['s1'],
+      names: { s1: 'alpha' },
+      priorities: {},
+      started: [],
+    })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(saveStore).toHaveBeenCalledTimes(1)
   })
@@ -369,6 +377,7 @@ describe('updates and the store', () => {
     await vi.advanceTimersByTimeAsync(SERVICE_TIMING.tickMs)
     expect(saveStore).toHaveBeenCalledTimes(2)
     expect(saveStore).toHaveBeenLastCalledWith({
+      lastActive: ['s1'],
       names: { s1: 'alpha' },
       priorities: {},
       started: [],
@@ -394,6 +403,7 @@ describe('updates and the store', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(saveStore).toHaveBeenCalledTimes(2)
     expect(saveStore).toHaveBeenLastCalledWith({
+      lastActive: ['s1'],
       names: { s1: 'beta' },
       priorities: {},
       started: [],
@@ -413,5 +423,70 @@ describe('updates and the store', () => {
     expect(listActive).toHaveBeenCalledTimes(1)
     expect(apply).not.toHaveBeenCalled()
     expect(updates.length).toBe(count)
+  })
+})
+
+describe('M4 registry service', () => {
+  const ext = (): AgentEntry =>
+    bg({ id: undefined, kind: 'interactive', name: '', pid: 931, sessionId: 'e1' })
+
+  test('waitForRow resolves with the first matching row', async () => {
+    const listActive = vi
+      .fn<() => Promise<AgentList>>()
+      .mockResolvedValueOnce({ entries: [] })
+      .mockResolvedValue({ entries: [bg()] })
+    const { service } = startService(fakeDeps({ listActive }))
+    await vi.advanceTimersByTimeAsync(0)
+    const wait = service.waitForRow(row => row.sessionId === 's1', 10_000)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect((await wait).sessionId).toBe('s1')
+  })
+
+  test('waitForRow rejects with timeout', async () => {
+    const { service } = startService(fakeDeps())
+    const wait = service.waitForRow(() => false, 500)
+    const caught = wait.catch((e: Error) => e.message)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(await caught).toBe('timeout')
+  })
+
+  test('waitForRow rejects when the service stops', async () => {
+    const { service } = startService(fakeDeps())
+    const caught = service.waitForRow(() => false, 10_000).catch((e: Error) => e.message)
+    service.stop()
+    expect(await caught).toBe('stopped')
+  })
+
+  test('the service reads the process table one time for a new external PID', async () => {
+    const readProcessTable = vi.fn(async () =>
+      parseProcessTable('931 866 -zsh\n866 1 /Applications/Warp.app/Contents/MacOS/stable'),
+    )
+    const deps = fakeDeps({ listActive: async () => ({ entries: [ext()] }), readProcessTable })
+    const { service } = startService(deps)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(readProcessTable).toHaveBeenCalledTimes(1)
+    expect(service.rows()[0].terminalApp).toBe('Warp')
+    expect(service.terminalOf('e1')?.bundle).toBe('/Applications/Warp.app')
+  })
+
+  test('forget, markStarted and markStopped save the store and send an update', async () => {
+    const saveStore = vi.fn(async () => {})
+    const { service, updates } = startService(
+      fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }),
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    saveStore.mockClear()
+    service.markStarted('s1')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(saveStore.mock.calls.at(-1)?.[0]).toMatchObject({ started: ['s1'] })
+    service.markStopped('s1')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(saveStore.mock.calls.at(-1)?.[0]).toMatchObject({ lastActive: [] })
+    const count = updates.length
+    service.forget('s1')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(saveStore.mock.calls.at(-1)?.[0]).toMatchObject({ started: [] })
+    expect(updates.length).toBeGreaterThan(count)
+    expect(updates.at(-1)?.rows).toEqual([])
   })
 })

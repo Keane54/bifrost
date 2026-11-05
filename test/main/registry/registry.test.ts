@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import type { AgentEntry } from '../../../src/main/claude/agents'
 import type { HookEvent, HookEventName } from '../../../src/main/registry/hook-event'
 import {
+  LAST_ACTIVE_GRACE_MS,
   PENDING_EVENT_MS,
   type RegistryStore,
   SessionRegistry,
@@ -25,14 +26,15 @@ const ev = (name: HookEventName, sessionId: string, at: number): HookEvent => ({
   sessionId,
 })
 
-const registry = (store: RegistryStore = { names: {}, priorities: {}, started: [] }) =>
-  new SessionRegistry({ escalationMs: 600_000, store })
+const registry = (
+  store: RegistryStore = { lastActive: [], names: {}, priorities: {}, started: [] },
+) => new SessionRegistry({ escalationMs: 600_000, store })
 
 describe('brief', () => {
   test('a background entry is an owned row', () => {
     const r = new SessionRegistry({
       escalationMs: 600_000,
-      store: { names: {}, priorities: {}, started: [] },
+      store: { lastActive: [], names: {}, priorities: {}, started: [] },
     })
     r.applyAgents([bg()], 100)
     expect(r.rows()[0]).toMatchObject({
@@ -70,7 +72,7 @@ describe('brief', () => {
   })
 
   test('a started session that is not active and not in --all is parked', () => {
-    const r = registry({ names: { s9: 'nine' }, priorities: {}, started: [] })
+    const r = registry({ lastActive: [], names: { s9: 'nine' }, priorities: {}, started: [] })
     r.markStarted('s9')
     r.applyAgents([], 100)
     r.applyAllAgents([])
@@ -281,14 +283,14 @@ describe('names', () => {
   })
 
   test('the stored name comes before the status file name', () => {
-    const r = registry({ names: { s1: 'stored' }, priorities: {}, started: [] })
+    const r = registry({ lastActive: [], names: { s1: 'stored' }, priorities: {}, started: [] })
     r.applyAgents([bg({ name: '' })], 100)
     r.applyStatusFiles(new Map([['s1', { sessionName: 'from-status', updatedAt: 50 }]]))
     expect(r.rows()[0].name).toBe('stored')
   })
 
   test('a new entry name replaces the stored name', () => {
-    const r = registry({ names: { s1: 'old' }, priorities: {}, started: [] })
+    const r = registry({ lastActive: [], names: { s1: 'old' }, priorities: {}, started: [] })
     r.applyAgents([bg({ name: 'new' })], 100)
     expect(r.rows()[0].name).toBe('new')
     expect(r.store().names).toEqual({ s1: 'new' })
@@ -315,7 +317,12 @@ describe('store', () => {
     expect(r.storeChanged()).toBe(true)
     r.markStarted('s1')
     expect(r.storeChanged()).toBe(false)
-    expect(r.store()).toEqual({ names: { s1: 'alpha' }, priorities: {}, started: ['s1'] })
+    expect(r.store()).toEqual({
+      lastActive: ['s1'],
+      names: { s1: 'alpha' },
+      priorities: {},
+      started: ['s1'],
+    })
   })
 
   test('a name from --all goes into the store', () => {
@@ -339,6 +346,7 @@ describe('store', () => {
 
   test('applyAllAgents keeps the names of active, --all and started sessions', () => {
     const r = registry({
+      lastActive: ['s1'],
       names: { s1: 'one', s2: 'two', s3: 'three' },
       priorities: {},
       started: ['s3'],
@@ -350,20 +358,30 @@ describe('store', () => {
   })
 
   test('applyAllAgents does not keep the name of an interactive entry', () => {
-    const r = registry({ names: { s1: 'warp' }, priorities: {}, started: [] })
+    const r = registry({ lastActive: [], names: { s1: 'warp' }, priorities: {}, started: [] })
     r.applyAllAgents([bg({ kind: 'interactive', name: 'warp', pid: undefined, status: '' })])
     expect(r.store().names).toEqual({})
   })
 
   test('the caller cannot change the registry through the store or a row', () => {
-    const input: RegistryStore = { names: { s1: 'alpha' }, priorities: {}, started: [] }
+    const input: RegistryStore = {
+      lastActive: [],
+      names: { s1: 'alpha' },
+      priorities: {},
+      started: [],
+    }
     const r = registry(input)
     input.names.s1 = 'changed'
     input.started.push('s7')
     const copy = r.store()
     copy.names.s1 = 'changed'
     copy.started.push('s8')
-    expect(r.store()).toEqual({ names: { s1: 'alpha' }, priorities: {}, started: [] })
+    expect(r.store()).toEqual({
+      lastActive: [],
+      names: { s1: 'alpha' },
+      priorities: {},
+      started: [],
+    })
 
     r.applyAgents([bg({ name: '' })], 100)
     const row = r.rows()[0]
@@ -497,7 +515,7 @@ describe('priority', () => {
   })
 
   test('setPriority null removes the priority from the row and the store', () => {
-    const r = registry({ names: {}, priorities: { s1: 3 }, started: [] })
+    const r = registry({ lastActive: [], names: {}, priorities: { s1: 3 }, started: [] })
     r.applyAgents([bg()], 100)
     expect(r.rows()[0].priority).toBe(3)
     r.storeChanged()
@@ -545,5 +563,111 @@ describe('priority', () => {
     r.applyAllAgents([])
     expect(r.store().priorities).toEqual({})
     expect(r.storeChanged()).toBe(true)
+  })
+})
+
+describe('forget, lastActive and terminals', () => {
+  const ext = (o: Partial<AgentEntry> = {}) =>
+    bg({ id: undefined, kind: 'interactive', name: '', pid: 931, sessionId: 'e1', ...o })
+  const warp = { bundle: '/Applications/Warp.app', name: 'Warp' }
+
+  test('forget removes the row and all stored values of the session', () => {
+    const r = registry()
+    r.markStarted('s1')
+    r.applyAgents([bg()], 100)
+    r.setPriority('s1', 2)
+    r.storeChanged()
+    r.forget('s1')
+    expect(r.rows().map(row => row.sessionId)).toEqual([])
+    const store = r.store()
+    expect(store.started).toEqual([])
+    expect(store.lastActive).toEqual([])
+    expect(store.names).toEqual({})
+    expect(store.priorities).toEqual({})
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('lastActive gets an owned session with a PID', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    expect(r.store().lastActive).toEqual(['s1'])
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('lastActive does not get an external session or an entry without a PID', () => {
+    const r = registry()
+    r.applyAgents([ext(), bg({ pid: undefined, sessionId: 's2', status: '' })], 100)
+    expect(r.store().lastActive).toEqual([])
+  })
+
+  test('lastActive keeps a session that parked less than 60 s ago', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyAgents([], 1000)
+    r.tick(1000 + LAST_ACTIVE_GRACE_MS - 1)
+    expect(r.store().lastActive).toEqual(['s1'])
+    r.tick(1000 + LAST_ACTIVE_GRACE_MS)
+    expect(r.store().lastActive).toEqual([])
+  })
+
+  test('markStopped removes the session from lastActive at once', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.storeChanged()
+    r.markStopped('s1')
+    expect(r.store().lastActive).toEqual([])
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('the loaded lastActive gives the resumable rows', () => {
+    const r = registry({ lastActive: ['s1'], names: {}, priorities: {}, started: [] })
+    r.applyAgents([], 1000)
+    r.applyAllAgents([bg({ pid: undefined, status: '' })])
+    expect(r.rows()[0]).toMatchObject({ resumable: true, state: 'parked' })
+    r.tick(1000 + LAST_ACTIVE_GRACE_MS)
+    expect(r.store().lastActive).toEqual([])
+    expect(r.rows()[0].resumable).toBe(true)
+  })
+
+  test('a resumable session that runs again is no longer resumable', () => {
+    const r = registry({ lastActive: ['s1'], names: {}, priorities: {}, started: [] })
+    r.applyAgents([bg()], 1000)
+    r.applyAgents([], 2000)
+    r.applyAllAgents([bg({ pid: undefined, status: '' })])
+    expect(r.rows()[0].state).toBe('parked')
+    expect(r.rows()[0].resumable).toBeUndefined()
+  })
+
+  test('a started external session parks when its process ends', () => {
+    const r = registry()
+    r.markStarted('e1')
+    r.applyAgents([ext({ cwd: '/p' })], 100)
+    r.applyAgents([], 200)
+    expect(r.rows()[0]).toMatchObject({ cwd: '/p', kind: 'external', state: 'parked' })
+  })
+
+  test('an external session that Bifrost did not start goes away', () => {
+    const r = registry()
+    r.applyAgents([ext()], 100)
+    r.applyAgents([], 200)
+    r.applyAllAgents([])
+    expect(r.rows()).toEqual([])
+  })
+
+  test('the row of an external session gets the terminal app name', () => {
+    const r = registry()
+    r.applyAgents([ext()], 100)
+    r.applyTerminals(new Map([[931, warp]]))
+    expect(r.rows()[0].terminalApp).toBe('Warp')
+    expect(r.terminalOf('e1')).toEqual(warp)
+  })
+
+  test('pidsWithoutTerminal lists external PIDs without a cache entry', () => {
+    const r = registry()
+    r.applyAgents([ext(), bg()], 100)
+    expect(r.pidsWithoutTerminal()).toEqual([931])
+    r.applyTerminals(new Map([[931, null]]))
+    expect(r.pidsWithoutTerminal()).toEqual([])
+    expect(r.rows().find(row => row.sessionId === 'e1')?.terminalApp).toBeUndefined()
   })
 })
