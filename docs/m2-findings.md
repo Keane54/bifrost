@@ -55,12 +55,11 @@ The Mac screen was locked during the full run (`CGSSessionScreenIsLocked` = 1). 
    4. Push Cmd+Ctrl+F again. Make sure that Bifrost goes back to Borderless.
    5. Enter Fullscreen with the green button. Leave it with Esc. Make sure that the View menu shows the correct mode.
    6. Quit Bifrost in Fullscreen. Read the `mode` in `~/Library/Application Support/Bifrost/window-state.json`. The Task 7 review asks if this value is `fullscreen` or `window`.
-2. Decide the fix for D1.
-3. Decide if O2 and O3 are correct behaviour. If they are, add a rule to spec 8.1.
-4. Decide if O1 and O5 need a change.
-5. The run made `window-state.json` (it did not exist before). It now has the bounds 36, 33, 1440, 889 and the mode `window`.
-6. The run wrote 20 test layouts to `ui-state.json`. After the last quit, the run put back the copy of `ui-state.json` from before the run. So your layout is the same as before.
-7. The permission system refused nothing. The locked screen stopped 3 actions: native full screen, the window list of System Events and `activate`.
+   7. Put a panel near the right edge in Window mode. Quit. Start in Fullscreen, then go back to Window. Make sure that the panel is at its old position (final review Important 1, fixed in 7116bbc).
+2. The M2 fix wave fixed D1, O1, O2 and O5 (commits 109b8a8 to 222b9f0). O3 changed: a panel that moves into a smaller window goes back to its saved position when the window gets larger. O4 stays: Cmd+Ctrl+F in Borderless gives Window when native full screen fails.
+3. The run made `window-state.json` (it did not exist before). It now has the bounds 36, 33, 1440, 889 and the mode `window`.
+4. The run wrote 20 test layouts to `ui-state.json`. After the last quit, the run put back the copy of `ui-state.json` from before the run. So your layout is the same as before.
+5. The permission system refused nothing. The locked screen stopped 3 actions: native full screen, the window list of System Events and `activate`.
 
 ## 1. Move, resize, snap and guide line
 
