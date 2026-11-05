@@ -80,7 +80,7 @@ describe('friendly errors', () => {
       'Claude Code took too long to delete this session. Check the worktree, then delete again.',
     )
     expect(friendlyError('refused: the worktree has uncommitted changes')).toBe(
-      'Claude Code kept this session, because its worktree has changes that are not committed. Open the worktree, commit or discard them, then delete again.',
+      "This worktree has changes that aren't committed, so Claude Code won't delete it. Open the worktree, commit or discard them, then delete again.",
     )
   })
 

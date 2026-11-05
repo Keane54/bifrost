@@ -83,7 +83,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the worktree changed after the check':
     'The worktree changed after the check. Check it again, then delete.',
   'refused: the worktree has uncommitted changes':
-    'Claude Code kept this session, because its worktree has changes that are not committed. Open the worktree, commit or discard them, then delete again.',
+    "This worktree has changes that aren't committed, so Claude Code won't delete it. Open the worktree, commit or discard them, then delete again.",
   'refused: the worktree option is off': "The worktree option isn't available.",
   'refused: unknown app': "Bifrost doesn't know that app.",
   'refused: unknown model': "Bifrost doesn't know that model.",
