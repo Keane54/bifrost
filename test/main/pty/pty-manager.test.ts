@@ -197,6 +197,22 @@ describe('PtyManager', () => {
     expect(m.write('v1', 'x')).toBe(true)
     expect(fakes[0].write).toHaveBeenCalledWith('x')
   })
+
+  test('has gives true for an open view and false after close and after exit', () => {
+    const m = new PtyManager(spawn, '/bin/claude', {})
+    expect(m.has('v1')).toBe(false)
+    m.open('v1', [], size)
+    m.open('v2', [], size)
+    expect(m.has('v1')).toBe(true)
+    expect(m.has('v2')).toBe(true)
+    m.close('v1')
+    expect(m.has('v1')).toBe(false)
+    fakes[1].emitExit({ exitCode: 0 })
+    expect(m.has('v2')).toBe(false)
+    m.open('v3', [], size)
+    m.closeAll()
+    expect(m.has('v3')).toBe(false)
+  })
 })
 
 describe('PtyManager onClose', () => {

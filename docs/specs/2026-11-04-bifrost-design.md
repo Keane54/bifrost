@@ -396,7 +396,7 @@ Send box rules:
 - A hidden attach is ready when its output is quiet for 1.5 seconds.
 - Bifrost never sends CR to an empty prompt.
 - One attach PTY serves each session.
-- A hidden attach uses the size of the last chat window of that session. All clients of one session share one size.
+- A hidden attach opens at the current size of the session (the M3 method). An attach sets the size of the session for all clients (M3 finding). If Bifrost cannot read the size, it sends nothing.
 - If the session has a red box, Bifrost blocks the send. Typed text can answer a prompt by accident.
 - The block message is "Answer the prompt in the chat window first."
 - The send box is not available for external sessions or parked sessions.

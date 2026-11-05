@@ -51,6 +51,11 @@ export class PtyManager {
     return proc.pid
   }
 
+  // True when the view has a PTY. A close and an exit remove the PTY of the view.
+  has(viewId: string): boolean {
+    return this.ptys.has(viewId)
+  }
+
   write(viewId: string, data: string): boolean {
     const proc = this.ptys.get(viewId)
     if (!proc) return false

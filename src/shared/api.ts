@@ -37,6 +37,14 @@ export interface BifrostApi {
     // Copy the full session ID to the clipboard.
     copySessionId(sessionId: string): Promise<void>
   }
+  input: {
+    // Type the text into the session: a message, or a slash command when it starts with "/".
+    // The main process writes into the open chat window, or else through a hidden attach.
+    // This rejects with the reason, for example for a red box or an empty text.
+    send(sessionId: string, text: string): Promise<void>
+    // Send one Esc to the session. A second Interrupt within 1.5 s has no effect.
+    interrupt(sessionId: string): Promise<void>
+  }
   integration: {
     status(): Promise<IntegrationStatus>
     preview(): Promise<InstallPreview>
@@ -62,8 +70,8 @@ export interface BifrostApi {
     onClosePanel(cb: () => void): () => void
   }
   pty: {
-    // The main process opens a PTY only for "attach <short id>".
-    // The session must be owned and not parked.
+    // The main process opens a PTY only for a chat view and "attach <short id>".
+    // The session must be owned and not parked, and it must be the session of the view.
     open(
       viewId: string,
       args: string[],
@@ -79,5 +87,8 @@ export interface BifrostApi {
     onSize(cb: (viewId: string, size: TermSize) => void): () => void
     // The size of the session TTY, or null when the row is not owned or has no PID.
     sessionSize(sessionId: string): Promise<TermSize | null>
+    // Tell the main process that the chat window shows the agent view (true) or not (false).
+    // While a chat window shows the agent view, input.send to that session rejects.
+    setBlocked(viewId: string, blocked: boolean): Promise<void>
   }
 }

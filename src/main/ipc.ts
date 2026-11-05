@@ -13,6 +13,7 @@ import { isPriority } from '../shared/priority'
 import type { ClaudeVersion, DisplayMode } from '../shared/types'
 import { createActions } from './actions/actions'
 import { findProjectApps } from './actions/project-apps'
+import { CHAT_VIEW, SessionInput } from './actions/session-input'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
@@ -188,25 +189,38 @@ export function registerIpc(): void {
   const run = Promise.all([claudePath, loginEnv]).then(([path, env]) =>
     path ? createRunClaude(execFile, path, env) : null,
   )
+  const getManager = (): Promise<PtyManager | null> => managerPromise as Promise<PtyManager | null>
+  // All text and keys that Bifrost types into a session go through this object (D1).
+  // A hidden attach opens at the current size of the session (M3).
+  const input = new SessionInput({
+    pty: getManager,
+    readSize: pid => readSessionSize(execFile, pid),
+    rows: () => liveService?.rows() ?? [],
+  })
   managerPromise = Promise.all([claudePath, loginEnv]).then(([path, env]) => {
     if (!path) return null
     const m = new PtyManager(nodePtySpawn, path, env)
     m.onData((viewId, chunk) => {
-      send('pty:data', viewId, chunk)
+      input.data(viewId)
+      // Only the main process uses the hidden send views. Their output stays here.
+      if (CHAT_VIEW.test(viewId)) send('pty:data', viewId, chunk)
       // A full redraw follows a resize by any client (M0 question 1). So read the size.
       // A sequence split over two chunks is missed. The next redraw or the open recovers it.
       if (chunk.includes(FULL_REDRAW)) sizeWatcher.poke(viewId)
     })
     // close, closeAll and a replacing open do not run the exit callback. So forget here too.
-    m.onClose(viewId => sizeWatcher.forget(viewId))
+    m.onClose(viewId => {
+      sizeWatcher.forget(viewId)
+      input.ended(viewId)
+    })
     m.onExit((viewId, exitCode, signal) => {
       sizeWatcher.forget(viewId)
-      send('pty:exit', viewId, exitCode, signal)
+      input.ended(viewId)
+      if (CHAT_VIEW.test(viewId)) send('pty:exit', viewId, exitCode, signal)
     })
     liveManager = m
     return m
   })
-  const getManager = (): Promise<PtyManager | null> => managerPromise as Promise<PtyManager | null>
   const paths = defaultPaths(homedir())
   const service = startService(run, paths)
   // The UI store opens one time. The handlers use the same store.
@@ -280,42 +294,82 @@ export function registerIpc(): void {
   ipcMain.handle('integration:uninstall', e =>
     fromPage(e, () => integration.run(() => uninstall(paths, new Date()))),
   )
+  // The renderer can open, write, resize and close only chat views.
+  // Only the main process uses send views (D1).
+  const isChatView = (viewId: unknown): viewId is string =>
+    typeof viewId === 'string' && CHAT_VIEW.test(viewId)
+  // Open a PTY only for an attach to an owned session that is not parked.
+  // The attach must be for the session of the chat view, so input to the view reaches that session.
+  // Return the reason of a refusal, or null.
+  const refuseAttach = async (sessionId: string, args: string[]): Promise<string | null> => {
+    const rows = (await service).rows()
+    if (!canAttach(rows, args)) {
+      return 'refused: not an attach to an owned session that is not parked'
+    }
+    if (rows.find(r => r.sessionId === sessionId)?.shortId !== args[1]) {
+      return 'refused: the attach is not for the session of the chat view'
+    }
+    return null
+  }
   ipcMain.handle(
     'pty:open',
     async (
       e,
-      viewId: string,
+      viewId: unknown,
       args: string[],
       opts: { cwd: string; cols: number; rows: number },
     ) => {
+      if (!isChatView(viewId)) throw new Error('refused: not a chat view')
+      // A chat view ID is "chat:" and the session ID.
+      const sessionId = viewId.slice('chat:'.length)
       // Get the page token before the first wait.
       const token = page.token()
       const manager = await getManager()
       if (!manager) throw new Error('claude not found')
-      // Open a PTY only for an attach to an owned session that is not parked.
-      if (!canAttach((await service).rows(), args)) {
-        throw new Error('refused: not an attach to an owned session that is not parked')
-      }
+      const refused = await refuseAttach(sessionId, args)
+      if (refused) throw new Error(refused)
+      // One attach serves each session. Wait until a hidden send of this session ends (D1).
+      await input.idle(sessionId)
+      // The rows can change during the wait. Check them again.
+      const refusedLater = await refuseAttach(sessionId, args)
+      if (refusedLater) throw new Error(refusedLater)
       // The page can end during the waits above. Then no page owns the PTY, so do not open it.
       if (!isLivePage(e.sender, token)) {
         throw new Error('refused: the page that asked for the PTY is gone')
       }
       const pid = manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
-      if (chatSessionOf(viewId) !== null) sizeWatcher.poke(viewId)
+      input.opened(viewId)
+      sizeWatcher.poke(viewId)
       return pid
     },
   )
-  ipcMain.handle('pty:write', async (_e, viewId: string, data: string) => {
+  ipcMain.handle('pty:write', async (_e, viewId: unknown, data: unknown) => {
+    if (!isChatView(viewId) || typeof data !== 'string') return false
     const manager = await getManager()
     return manager ? manager.write(viewId, data) : false
   })
-  ipcMain.handle('pty:resize', async (_e, viewId: string, cols: number, rows: number) => {
+  ipcMain.handle('pty:resize', async (_e, viewId: unknown, cols: number, rows: number) => {
+    if (!isChatView(viewId)) return
     ;(await getManager())?.resize(viewId, cols, rows)
   })
-  ipcMain.handle('pty:close', async (_e, viewId: string, signal?: string) => {
+  ipcMain.handle('pty:close', async (_e, viewId: unknown, signal?: string) => {
+    if (!isChatView(viewId)) return
     sizeWatcher.forget(viewId)
+    input.ended(viewId)
     ;(await getManager())?.close(viewId, signal)
   })
+  // The renderer reports the agent view of a chat window. Then a send to it rejects.
+  ipcMain.handle('pty:set-blocked', (e, viewId: unknown, blocked: unknown) =>
+    fromPage(e, async () => input.setBlocked(viewId, blocked)),
+  )
+  // The renderer sends the session ID and the text only. The main process finds the row,
+  // checks it and the red box, and writes into the chat PTY or a hidden attach.
+  ipcMain.handle('input:send', (e, sessionId: unknown, text: unknown) =>
+    fromPage(e, () => input.send(sessionId, text)),
+  )
+  ipcMain.handle('input:interrupt', (e, sessionId: unknown) =>
+    fromPage(e, () => input.interrupt(sessionId)),
+  )
   // The size of the session TTY. The row must be owned and have a PID. Bifrost only reads it.
   ipcMain.handle('pty:session-size', (e, sessionId: unknown) =>
     fromPage(e, async () => {

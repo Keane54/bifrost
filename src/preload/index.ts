@@ -38,6 +38,10 @@ const api: BifrostApi = {
     onChange: cb => subscribe('display:changed', cb),
     set: mode => invoke('display:set', mode),
   },
+  input: {
+    interrupt: sessionId => invoke('input:interrupt', sessionId),
+    send: (sessionId, text) => invoke('input:send', sessionId, text),
+  },
   integration: {
     install: () => invoke('integration:install'),
     preview: () => invoke('integration:preview'),
@@ -52,6 +56,7 @@ const api: BifrostApi = {
     open: (viewId, args, opts) => invoke('pty:open', viewId, args, opts),
     resize: (viewId, cols, rows) => invoke('pty:resize', viewId, cols, rows),
     sessionSize: sessionId => invoke('pty:session-size', sessionId),
+    setBlocked: (viewId, blocked) => invoke('pty:set-blocked', viewId, blocked),
     write: (viewId, data) => invoke('pty:write', viewId, data),
   },
   registry: {
