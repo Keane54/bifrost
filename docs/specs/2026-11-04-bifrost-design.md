@@ -336,7 +336,7 @@ Columns:
 
 | Column | Source |
 |---|---|
-| Kind icon | `kind`. External rows show the icon of their terminal app. |
+| Kind icon | `kind`. External rows show the icon of their terminal app (for example Warp or Terminal). An external row with an unknown terminal app shows a `>_` icon. A session that Bifrost started or controls shows the Bifrost logo (a placeholder mark until the logo exists) (user decision, 2026-11-05). |
 | Name | `name`, or `session_name` from the status file. |
 | Priority | Bifrost. Values 1 to 5, or none. Each value has a colour. |
 | State | The state machine (section 7). |
@@ -470,13 +470,15 @@ Dialog rules:
 ### 8.10 Theme
 
 - The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur.
-- The accent colour is a light cyan, as in EVE. Bifrost uses the accent on few elements. The top border of each panel is a 1 px cyan line. The focused panel has the full line and a cyan gradient over the top 10 px of its title bar. Other panels have a dim line and no gradient. A click on a button, a tab or a row gives a short cyan tint with low opacity.
+- The accent colour is a light cyan, as in EVE. Bifrost uses the accent on few elements. The top border of each panel is a 1 px cyan line. The focused panel has the full line and a cyan glow above its top edge only. Other panels have a dim line and no glow. A click on a button, a tab or a row gives a short cyan tint with low opacity.
+- The focused panel is less transparent than the other panels, so it stands out, as in EVE. The background, the border and the glow change in 250 ms when the focus moves (user decision, 2026-11-05).
 - A selected row gets a light, low-opacity cyan background, so it differs from a neutral row. A tab in a panel stack is white with a white underline when it is active. An Overview tab keeps its own text colour (section 8.3), and the active Overview tab has an underline in that colour, as in EVE.
 - All corners are square, as in EVE: panels, buttons, menus, tooltips, checkboxes, tabs and dots. Square corners leave no gap between panels that snap together (user decision, 2026-11-05).
 - The UI font is Geist Mono (OFL licence), bundled with the app (user decision, 2026-11-05). All interface text uses it, also the Overview rows. The chat terminals keep their own font setting (section 12).
 - Bifrost uses its own icons and fonts. It does not copy EVE art, icons or fonts.
 - One file holds all colour tokens.
-- Yellow, red and grey have fixed meanings: yellow box, red box and parked session.
+- Yellow, red and grey have fixed meanings for the boxes and the icon: yellow box, red box and parked session. The watch colours can use shades of red and yellow, but only as a translucent row background (section 8.12).
+- The Overview uses no purple for now. The user keeps purple for a later feature (fleets, as in EVE) (user decision, 2026-11-05).
 - The terminal font is a setting.
 
 ### 8.12 Watchlist
@@ -484,7 +486,7 @@ Dialog rules:
 The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you want to track.
 
 - "Add to watchlist" in the right-click menu and on the Selected Item panel adds a session. You select a colour in a submenu.
-- The colours are orange, green, lime, cyan, blue, purple, pink and white. Yellow and red are not watch colours, because they mean the boxes.
+- The colours follow the EVE standings colours: dark red, red, amber, yellow, green, light blue, dark blue and white. Light blue and dark blue are like good and excellent standing in EVE. The colours show only as a translucent row background, so a solid yellow or red box stays clear (user decision, 2026-11-05). A saved colour from before this change maps to the nearest new colour.
 - The Watchlist panel shows one row for each watched session: the icon with its box, the name and the state. The row background has the watch colour, translucent.
 - You drag a row up or down to change the order. The order is your priority. The list shows no numbers.
 - A click selects the session. A double-click opens its chat window. The right-click menu has "Change colour" and "Remove from watchlist".
