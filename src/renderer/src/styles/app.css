@@ -10,6 +10,9 @@
   --panel-alpha: 0.85;
   --color-bg: #0a0a0a;
   --color-panel: rgb(16 16 16 / var(--panel-alpha));
+  /* The focused (top) panel is less transparent, so that it stands out from the others.
+     The Settings transparency still applies. The alpha stops at 1. */
+  --color-panel-focus: rgb(16 16 16 / calc(var(--panel-alpha) + 0.1));
   --color-panel-edge: rgb(255 255 255 / 0.1);
   --color-title: #2a2a2a;
   --color-section: #232323;

@@ -35,6 +35,7 @@ const TOKENS = [
   'snap',
   'accent',
   'accent-glow',
+  'panel-focus',
 ]
 
 // The class parts that can use the light cyan accent (spec 8.10): the top border of a frame,
@@ -44,7 +45,7 @@ const ACCENT_CLASSES = [
   /^border-t-accent$/,
   /^--color-accent-glow$/,
   /^border-t-accent\/35$/,
-  /^shadow-\[0_0_14px_1px_var\(--color-accent-glow\)\]'?$/,
+  /^shadow-\[0_-6px_12px_-6px_var\(--color-accent-glow\)\]'?$/,
   /^(?:[a-z-]+:)*active:bg-accent\/12$/,
 ]
 const PRESS = /(?:^|\s|')(?:[a-z-]+:)*active:bg-accent\/12(?:\s|'|$)/
@@ -89,8 +90,16 @@ describe('theme', () => {
     for (const part of ['border-t-accent', 'border-t-accent/35']) {
       expect(accentParts(frame)).toContain(part)
     }
-    // The glow is a shadow outside the frame edge.
-    expect(frame).toContain('shadow-[0_0_14px_1px_var(--color-accent-glow)]')
+    // The glow is a shadow above the top edge only (user decision, 2026-11-05).
+    expect(frame).toContain('shadow-[0_-6px_12px_-6px_var(--color-accent-glow)]')
+  })
+
+  it('makes the top frame less transparent, with a 250 ms change', () => {
+    expect(CSS).toContain('--color-panel-focus: rgb(16 16 16 / calc(var(--panel-alpha) + 0.1));')
+    const frame = source('wm/Frame.tsx')
+    expect(frame).toMatch(/border-t-accent bg-panel-focus /)
+    expect(frame).toMatch(/border-t-accent\/35 bg-panel'/)
+    expect(frame).toContain('transition-[background-color,border-color,box-shadow] duration-250')
   })
 
   it.each([

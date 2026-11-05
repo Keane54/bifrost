@@ -85,14 +85,16 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
 
   // Only the background is translucent (bg-panel and --panel-alpha). Text and content stay solid.
   // The top edge is a 1 px cyan line. The top frame shows the full line, other frames a dim line.
+  // The top frame is less transparent and has a cyan glow above its top edge only. The background,
+  // the border and the glow change in 250 ms, so that a focus change does not look abrupt.
   return (
     <div
       className={cx(
-        'absolute flex-col overflow-hidden border bg-panel backdrop-blur-md',
+        'absolute flex-col overflow-hidden border backdrop-blur-md transition-[background-color,border-color,box-shadow] duration-250 ease-out',
         frame.minimised ? 'hidden' : 'flex',
         top
-          ? 'border-text-strong/30 border-t-accent shadow-[0_0_14px_1px_var(--color-accent-glow)]'
-          : 'border-panel-edge border-t-accent/35',
+          ? 'border-text-strong/30 border-t-accent bg-panel-focus shadow-[0_-6px_12px_-6px_var(--color-accent-glow)]'
+          : 'border-panel-edge border-t-accent/35 bg-panel',
       )}
       data-frame-id={id}
       onPointerDownCapture={() => dispatch({ frameId: id, type: 'focus' })}
@@ -104,7 +106,6 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
         zIndex: z,
       }}
     >
-      {/* Only the top frame has the glow. It is a shadow outside the frame edge, not inside. */}
       <div
         className={cx('flex shrink-0 touch-none select-none items-center gap-1 bg-title pr-3 pl-1')}
         data-title-bar={true}
