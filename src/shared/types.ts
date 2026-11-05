@@ -25,6 +25,12 @@ export interface ClaudeVersion {
   minimum: string
 }
 
+// The size of a terminal in cells.
+export interface TermSize {
+  cols: number
+  rows: number
+}
+
 // The state of one session row.
 export type SessionState = 'working' | 'needs-you' | 'error' | 'idle' | 'parked'
 

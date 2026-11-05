@@ -68,7 +68,7 @@ export function frameOf(state: WmState, panelId: string): Frame | undefined {
   return state.frames.find(f => f.panels.includes(panelId))
 }
 
-export function topFrame(state: WmState): Frame | undefined {
+export function topFrame(state: Pick<WmState, 'frames'>): Frame | undefined {
   for (let i = state.frames.length - 1; i >= 0; i--) {
     const frame = state.frames[i]
     if (frame && !frame.minimised) return frame
