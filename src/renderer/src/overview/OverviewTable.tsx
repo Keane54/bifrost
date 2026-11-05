@@ -229,7 +229,7 @@ export default function OverviewTable({
               return (
                 <tr
                   className={cx(
-                    'h-[18px]',
+                    'h-[22px]',
                     id === selectedId ? 'bg-select' : open.has(id) ? 'bg-hover' : 'hover:bg-hover',
                     row.state === 'parked' && 'text-parked',
                   )}

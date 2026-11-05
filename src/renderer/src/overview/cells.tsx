@@ -60,7 +60,7 @@ export function CellContent({
 }): React.ReactNode {
   switch (column) {
     case 'kind':
-      return <SessionIcon row={row} size={20} />
+      return <SessionIcon row={row} size={18} />
     case 'name':
       return row.name
     case 'priority':

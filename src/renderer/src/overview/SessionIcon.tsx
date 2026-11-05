@@ -45,7 +45,7 @@ export function SessionIcon({ row, size }: { row: SessionRow; size: number }): R
       style={{ height: size, width: size }}
       title={KIND_TITLE[kind]}
     >
-      <Glyph aria-hidden={true} className={colour} size={Math.round(size * 0.6)} />
+      <Glyph aria-hidden={true} className={colour} size={Math.round((size * 2) / 3)} />
       {row.box !== 'none' &&
         CORNERS.map(corner => (
           <span

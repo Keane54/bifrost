@@ -42,7 +42,7 @@ export const DEFAULT_WIDTHS: Record<ColumnId, number> = {
   branch: 110,
   context: 70,
   cost: 60,
-  kind: 24,
+  kind: 28,
   model: 90,
   name: 150,
   priority: 56,
