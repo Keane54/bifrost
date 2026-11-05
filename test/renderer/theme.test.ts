@@ -120,6 +120,17 @@ describe('theme', () => {
     expect(body).toBe('outline: 1px solid var(--color-accent); outline-offset: 0;')
   })
 
+  // The rule is in the base layer, so a utility like outline-none wins over it. So a focusable
+  // field, the check box and the select button must not set their own outline.
+  it('lets fields and the check box use the one focus ring', () => {
+    const own = FILES.filter(f =>
+      /border-panel-edge bg-bg[^']*outline-none|group-focus-visible:outline/.test(f.text),
+    )
+    expect(own.map(f => f.path)).toEqual([])
+    expect(source('overview/OverviewSettingsPanel.tsx')).not.toMatch(/h-6[^']*outline-none/)
+    expect(source('lib/CheckBox.tsx')).not.toMatch(/\boutline-none\b/)
+  })
+
   it('makes the top frame less transparent, with a 250 ms change', () => {
     expect(CSS).toContain('--color-panel-focus: rgb(8 8 8 / calc(var(--panel-alpha) + 0.1));')
     const frame = source('wm/Frame.tsx')

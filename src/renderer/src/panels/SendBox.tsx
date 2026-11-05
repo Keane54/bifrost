@@ -116,7 +116,7 @@ export default function SendBox({ row }: { row: SessionRow }): React.JSX.Element
     <div className='flex flex-col gap-1' data-send-box={true}>
       <textarea
         aria-label={actionLabel('send-message', ctx.labels)}
-        className='min-w-0 resize-none border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30 disabled:opacity-40'
+        className='min-w-0 resize-none border border-panel-edge bg-bg px-2 py-1 text-text focus:border-text-strong/30 disabled:opacity-40'
         disabled={!state.enabled}
         onChange={e => {
           setDraft(sessionId, e.target.value)

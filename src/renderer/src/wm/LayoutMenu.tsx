@@ -50,7 +50,7 @@ function LayoutPopover(props: {
       <form className='flex gap-2' onSubmit={onSubmit}>
         <input
           aria-label='Layout name'
-          className='min-w-0 flex-1 border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30'
+          className='min-w-0 flex-1 border border-panel-edge bg-bg px-2 py-1 text-text focus:border-text-strong/30'
           onChange={e => {
             setName(e.target.value)
             setMessage(null)

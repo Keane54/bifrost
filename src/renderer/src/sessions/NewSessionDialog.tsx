@@ -20,14 +20,14 @@ import { errorMessage } from '../lib/error-message'
 import { useWmControls } from '../wm/context'
 import { recentDirectories, rememberSession } from './history'
 import { useHistory } from './history-context'
-import { formReducer, initialForm, toSpec, worktreeState } from './new-session-form'
+import { formReducer, initialForm, isAbsoluteDir, toSpec, worktreeState } from './new-session-form'
 
 // The folder check starts this long after the last change of the folder.
 const DIR_CHECK_MS = 300
 const STARTING = 'Starting the session...'
 
 const FIELD =
-  'min-w-0 border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30 disabled:opacity-40'
+  'min-w-0 border border-panel-edge bg-bg px-2 py-1 text-text focus:border-text-strong/30 disabled:opacity-40'
 const LABEL = 'flex flex-col gap-1 text-text-dim text-xs'
 
 // 4 hex characters for the default name.
@@ -68,10 +68,10 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
   useEffect(() => {
     setInfo(null)
     setCheckFailed(false)
-    if (!form.cwd.startsWith('/')) return
+    if (!isAbsoluteDir(form.cwd)) return
     let active = true
     const timer = window.setTimeout(() => {
-      window.bifrost.sessions.dirInfo(form.cwd).then(
+      window.bifrost.sessions.dirInfo(form.cwd.trim()).then(
         result => {
           if (active) setInfo(result)
         },

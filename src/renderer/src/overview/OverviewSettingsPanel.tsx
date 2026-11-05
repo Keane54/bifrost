@@ -319,7 +319,7 @@ function TabSelect({
     >
       <Select.Trigger
         aria-label='Tab'
-        className='flex h-6 min-w-0 flex-1 items-center justify-between gap-2 border border-panel-edge bg-bg px-2 text-xs outline-none hover:border-text-strong/30 focus-visible:border-text-strong/30 active:bg-accent/12 data-popup-open:border-text-strong/30'
+        className='flex h-6 min-w-0 flex-1 items-center justify-between gap-2 border border-panel-edge bg-bg px-2 text-xs hover:border-text-strong/30 focus-visible:border-text-strong/30 active:bg-accent/12 data-popup-open:border-text-strong/30'
       >
         <Select.Value className={cx('truncate', TAB_TEXT[tab.color])} />
         <Select.Icon className='flex text-text-dim'>

@@ -106,6 +106,12 @@ export function toSpec(
   })
 }
 
+// True when the folder, after the trim, starts with "/". The folder check and the worktree
+// reason use this rule.
+export function isAbsoluteDir(cwd: string): boolean {
+  return cwd.trim().startsWith('/')
+}
+
 // Tell if the worktree option works for the folder. No check runs for a folder that does not
 // start with "/". For that folder, the reason is the same as the reason of the start button.
 export function worktreeState(
@@ -115,7 +121,7 @@ export function worktreeState(
   cwd?: string,
 ): ActionState {
   if (!worktreeOk) return { enabled: false, reason: REASON_WORKTREE_OFF }
-  if (cwd !== undefined && !cwd.trim().startsWith('/')) {
+  if (cwd !== undefined && !isAbsoluteDir(cwd)) {
     return { enabled: false, reason: REASON_NO_FOLDER }
   }
   if (checkFailed) return { enabled: false, reason: REASON_DIR_CHECK_FAILED }

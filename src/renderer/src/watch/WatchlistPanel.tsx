@@ -126,16 +126,22 @@ export default function WatchlistPanel(): React.JSX.Element {
       end()
       if (!started) return
       // The release still comes. Its click must not select the row, as for a drop.
-      window.addEventListener(
-        'pointerup',
-        () => {
-          noClick.current = true
-          window.setTimeout(() => {
-            noClick.current = false
-          }, 0)
-        },
-        { once: true },
-      )
+      // A pointer cancel ends the wait too. Both paths remove both listeners.
+      const clear = (): void => {
+        window.removeEventListener('pointerup', onRelease)
+        window.removeEventListener('pointercancel', clear)
+        if (stop.current === clear) stop.current = null
+      }
+      const onRelease = (): void => {
+        clear()
+        noClick.current = true
+        window.setTimeout(() => {
+          noClick.current = false
+        }, 0)
+      }
+      window.addEventListener('pointerup', onRelease)
+      window.addEventListener('pointercancel', clear)
+      stop.current = clear
     }
     const end = (): void => {
       window.removeEventListener('pointermove', onMove)

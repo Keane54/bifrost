@@ -29,7 +29,7 @@ function NameField(props: { name: string; onSave(name: string): void }): React.J
     <label className='flex flex-col gap-1'>
       <span>Tab set name</span>
       <input
-        className='border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30'
+        className='border border-panel-edge bg-bg px-2 py-1 text-text focus:border-text-strong/30'
         maxLength={MAX_SET_NAME}
         onChange={e => setDraft(e.target.value)}
         onKeyDown={e => {

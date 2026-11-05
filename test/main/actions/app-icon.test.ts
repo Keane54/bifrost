@@ -7,32 +7,35 @@ const image = (url: string | null): IconImage => ({
 })
 
 describe('appIcon', () => {
-  it('asks getFileIcon with the normal size first', async () => {
+  it('asks for the thumbnail of the bundle first', async () => {
     const fileIcon = vi.fn(async () => image('data:file'))
     const thumbnail = vi.fn(async () => image('data:thumb'))
-    expect(await appIcon('/Applications/Warp.app', { fileIcon, thumbnail })).toBe('data:file')
-    expect(fileIcon).toHaveBeenCalledWith('/Applications/Warp.app', 'normal')
-    expect(thumbnail).not.toHaveBeenCalled()
+    expect(await appIcon('/Applications/Warp.app', { fileIcon, thumbnail })).toBe('data:thumb')
+    expect(thumbnail).toHaveBeenCalledWith('/Applications/Warp.app', APP_ICON_SIZE, APP_ICON_SIZE)
+    expect(fileIcon).not.toHaveBeenCalled()
   })
 
-  it('falls back to the thumbnail when getFileIcon gives an empty image or fails', async () => {
-    const thumbnail = vi.fn(async () => image('data:thumb'))
-    const empty = await appIcon('/a.app', { fileIcon: async () => image(null), thumbnail })
-    expect(empty).toBe('data:thumb')
-    expect(thumbnail).toHaveBeenCalledWith('/a.app', APP_ICON_SIZE, APP_ICON_SIZE)
+  it('falls back to getFileIcon (normal size) when the thumbnail is empty or fails', async () => {
+    const fileIcon = vi.fn(async () => image('data:file'))
+    const empty = await appIcon('/a.app', { fileIcon, thumbnail: async () => image(null) })
+    expect(empty).toBe('data:file')
+    expect(fileIcon).toHaveBeenCalledWith('/a.app', 'normal')
     const failed = await appIcon('/a.app', {
-      fileIcon: async () => {
-        throw new Error('no icon')
+      fileIcon,
+      thumbnail: async () => {
+        throw new Error('no thumbnail')
       },
-      thumbnail,
     })
-    expect(failed).toBe('data:thumb')
+    expect(failed).toBe('data:file')
   })
 
   it('gives null when both methods give nothing', async () => {
     const fail = async (): Promise<IconImage> => {
       throw new Error('no')
     }
+    expect(await appIcon('/a.app', { fileIcon: fail, thumbnail: async () => image(null) })).toBe(
+      null,
+    )
     expect(await appIcon('/a.app', { fileIcon: async () => image(null), thumbnail: fail })).toBe(
       null,
     )

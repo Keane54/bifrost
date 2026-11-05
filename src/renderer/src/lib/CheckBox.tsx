@@ -7,9 +7,9 @@ import { Check } from 'lucide-react'
 import type { Ref } from 'react'
 
 const CHECKBOX =
-  'group flex min-w-0 flex-1 items-center gap-2 outline-none not-data-disabled:active:bg-accent/12'
+  'group flex min-w-0 flex-1 items-center gap-2 not-data-disabled:active:bg-accent/12'
 const BOX =
-  'flex size-3.5 shrink-0 items-center justify-center border border-text-dim bg-bg text-text-strong group-focus-visible:outline-1 group-focus-visible:outline-text-strong group-data-checked:border-text group-data-disabled:opacity-40'
+  'flex size-3.5 shrink-0 items-center justify-center border border-text-dim bg-bg text-text-strong group-data-checked:border-text group-data-disabled:opacity-40'
 
 export function CheckBox(props: {
   checked: boolean

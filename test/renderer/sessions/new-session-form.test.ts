@@ -3,6 +3,7 @@ import { EMPTY_HISTORY } from '../../../src/renderer/src/sessions/history'
 import {
   formReducer,
   initialForm,
+  isAbsoluteDir,
   REASON_DIR_CHECK,
   REASON_DIR_CHECK_FAILED,
   REASON_DIR_MISSING,
@@ -106,5 +107,13 @@ describe('new session form', () => {
     expect(worktreeState(null, true, false, '/p/app').reason).toBe(REASON_DIR_CHECK)
     expect(worktreeState(null, true, false, ' /p/app').reason).toBe(REASON_DIR_CHECK)
     expect(worktreeState(null, false, false, 'relative').reason).toBe(REASON_WORKTREE_OFF)
+  })
+
+  // The folder check effect and worktreeState must use the same rule (review minor 2).
+  it('isAbsoluteDir trims the folder before it looks for the leading slash', () => {
+    expect(isAbsoluteDir('/p/app')).toBe(true)
+    expect(isAbsoluteDir(' /p/app')).toBe(true)
+    expect(isAbsoluteDir('relative/path')).toBe(false)
+    expect(isAbsoluteDir('  ')).toBe(false)
   })
 })

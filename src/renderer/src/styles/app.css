@@ -105,7 +105,8 @@
   }
 
   /* A focus ring is a square 1 px accent outline with no offset (spec 8.10). It is in the base
-     layer. So a class like outline-none on an element with its own focus style still wins. */
+     layer. So a menu or a popup with outline-none shows no ring. A field, a button and a check
+     box set no outline of their own, so they all show this ring. */
   :focus-visible {
     outline: 1px solid var(--color-accent);
     outline-offset: 0;

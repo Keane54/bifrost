@@ -69,7 +69,7 @@ export default function RenameDialog({
           <form className='flex flex-col gap-2' onSubmit={onSubmit}>
             <input
               aria-label='Session name'
-              className='min-w-0 border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30'
+              className='min-w-0 border border-panel-edge bg-bg px-2 py-1 text-text focus:border-text-strong/30'
               maxLength={MAX_RENAME}
               onChange={e => {
                 setName(e.target.value)
