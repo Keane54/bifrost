@@ -24,6 +24,7 @@ import {
   RESIZE_DEBOUNCE_MS,
 } from './size-rule'
 import { type AttachTarget, attachTarget, type ChatView, chatPanelId, HIDDEN_VIEW } from './views'
+import { addedContexts, releaseWebgl, type WebglContext } from './webgl-release'
 
 const GIVE_UP_TEXT =
   'The agent view opened 3 times in 60 seconds. Close this window and open it again.'
@@ -65,6 +66,8 @@ export class ChatTerminal {
   private readonly screenObserver: ResizeObserver
   private screen: HTMLElement | null = null
   private webgl: WebglAddon | null = null
+  // The WebGL contexts of the loaded addon. A release loses them at once.
+  private webglContexts: WebglContext[] = []
   private webglBroken = false
 
   private target: AttachTarget = attachTarget(undefined, false)
@@ -199,8 +202,7 @@ export class ChatTerminal {
   setWebgl(on: boolean): void {
     if (this.disposed) return
     if (!on) {
-      this.webgl?.dispose()
-      this.webgl = null
+      this.unloadWebgl()
       return
     }
     if (this.webgl || this.webglBroken) return
@@ -210,11 +212,13 @@ export class ChatTerminal {
       const loaded = addon
       loaded.onContextLoss(() => {
         this.webglBroken = true
-        loaded.dispose()
-        if (this.webgl === loaded) this.webgl = null
+        if (this.webgl === loaded) this.unloadWebgl()
+        else loaded.dispose()
       })
+      const before = this.canvases()
       this.term.loadAddon(loaded)
       this.webgl = loaded
+      this.webglContexts = addedContexts(before, this.canvases())
     } catch (err) {
       // WebGL failed. xterm.js keeps the DOM renderer.
       this.webglBroken = true
@@ -225,6 +229,20 @@ export class ChatTerminal {
         // The addon did not start. Nothing is left to release.
       }
     }
+  }
+
+  // Lose the WebGL context at once, then dispose the addon. The DOM renderer takes its place.
+  private unloadWebgl(): void {
+    const addon = this.webgl
+    if (!addon) return
+    const contexts = this.webglContexts
+    this.webgl = null
+    this.webglContexts = []
+    releaseWebgl(contexts, () => addon.dispose())
+  }
+
+  private canvases(): HTMLCanvasElement[] {
+    return Array.from(this.host.querySelectorAll('canvas'))
   }
 
   write(chunk: string): void {
@@ -260,9 +278,11 @@ export class ChatTerminal {
       console.error('Bifrost cannot close the attach of a chat window.', err)
     })
     this.screenObserver.disconnect()
+    const contexts = this.webglContexts
     this.webgl = null
-    // This also disposes the addons.
-    this.term.dispose()
+    this.webglContexts = []
+    // The terminal dispose also disposes the addons. So the WebGL context is lost before it.
+    releaseWebgl(contexts, () => this.term.dispose())
     this.element.remove()
   }
 
