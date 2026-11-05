@@ -15,6 +15,8 @@ import { createModeController } from './window/display-mode'
 import { openWindowStateStore, restoreBounds } from './window/window-state'
 
 const DEFAULT_SIZE = { height: 900, width: 1440 }
+// The smallest window. A smaller window would show the panels too small to use.
+const MIN_WINDOW = { minHeight: 500, minWidth: 800 }
 // Bifrost saves the bounds 500 ms after the last move or resize.
 const BOUNDS_DELAY_MS = 500
 
@@ -27,6 +29,7 @@ async function createWindow(): Promise<void> {
     autoHideMenuBar: true,
     // This colour must match --color-bg in src/renderer/src/styles/app.css.
     backgroundColor: '#0a0d12',
+    ...MIN_WINDOW,
     show: false,
     title: 'Bifrost',
     ...restoreBounds(store.state.bounds, workAreas, DEFAULT_SIZE),

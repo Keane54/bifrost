@@ -86,6 +86,12 @@ export function clampRect(r: Rect, bounds: Size, min: Size = MIN_SIZE): Rect {
   })
 }
 
+// The rect that the screen shows for a saved rect in the current area.
+// The saved rect does not change. So a panel goes back to its saved rect when the area grows again.
+export function shownRect(rect: Rect, bounds: Size): Rect {
+  return clampRect(rect, bounds, MIN_SIZE)
+}
+
 export function centreRect(size: Size, bounds: Size): Rect {
   return round({
     h: size.h,

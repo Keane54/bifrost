@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { centreRect } from '../../../src/renderer/src/wm/geometry'
+import { centreRect, type Rect, shownRect } from '../../../src/renderer/src/wm/geometry'
+import { toSnapshot } from '../../../src/renderer/src/wm/layout'
 import {
   DEFAULT_SIZES,
   frameOf,
   initialState,
   panelKind,
+  shownFrames,
   topFrame,
   type WmAction,
   type WmState,
@@ -204,17 +206,58 @@ describe('wm state', () => {
     expect(at(0.456)).toBe(0.46)
   })
 
-  it('bounds clamps all frames into a smaller window', () => {
-    let s = run([open('overview:1'), open('integration')])
-    s = run([{ bounds: { h: 400, w: 600 }, type: 'bounds' }], s)
+  it('bounds keeps the saved rects and shows each frame inside a smaller window', () => {
+    const before = run([open('overview:1'), open('integration')])
+    const s = run([{ bounds: { h: 400, w: 600 }, type: 'bounds' }], before)
     expect(s.bounds).toEqual({ h: 400, w: 600 })
+    expect(s.frames.map(f => f.rect)).toEqual(before.frames.map(f => f.rect))
     for (const f of s.frames) {
-      expect(f.rect.x + f.rect.w).toBeLessThanOrEqual(600)
-      expect(f.rect.y + f.rect.h).toBeLessThanOrEqual(400)
+      const shown = shownRect(f.rect, s.bounds)
+      expect(shown.x).toBeGreaterThanOrEqual(0)
+      expect(shown.y).toBeGreaterThanOrEqual(0)
+      expect(shown.x + shown.w).toBeLessThanOrEqual(600)
+      expect(shown.y + shown.h).toBeLessThanOrEqual(400)
     }
   })
 
-  it('load replaces the frames, drops invalid and repeated panels, and clamps', () => {
+  it('a layout from a 1440 x 900 area shows inside 800 x 500 and goes back in 1440 x 900', () => {
+    const large = { h: 900, w: 1440 }
+    const small = { h: 500, w: 800 }
+    const saved: Rect[] = [
+      { h: 360, w: 760, x: 16, y: 16 },
+      { h: 356, w: 420, x: 1004, y: 528 },
+      { h: 900, w: 1440, x: 0, y: 0 },
+    ]
+    const frames = saved.map((rect, i) => ({
+      active: `overview:${i + 1}`,
+      locked: false,
+      minimised: false,
+      opacity: 1,
+      panels: [`overview:${i + 1}`],
+      rect,
+    }))
+    let s = run([{ frames, memory: {}, type: 'load' }], initialState(small))
+    expect(s.frames.map(f => f.rect)).toEqual(saved)
+    for (const f of shownFrames(s)) {
+      expect(f.rect.x + f.rect.w).toBeLessThanOrEqual(small.w)
+      expect(f.rect.y + f.rect.h).toBeLessThanOrEqual(small.h)
+    }
+    expect(shownFrames(s).map(f => f.rect)).not.toEqual(saved)
+    // The save keeps the saved rects, not the shown rects.
+    expect(toSnapshot(s).frames.map(f => f.rect)).toEqual(saved)
+    s = run([{ bounds: large, type: 'bounds' }], s)
+    expect(shownFrames(s).map(f => f.rect)).toEqual(saved)
+  })
+
+  it('shownFrames keeps the frame objects whose rects fit the area', () => {
+    let s = run([open('overview:1'), open('integration')])
+    s = run([{ frameId: 'f2', rect: { h: 300, w: 400, x: 700, y: 400 }, type: 'setRect' }], s)
+    const shown = shownFrames(run([{ bounds: { h: 600, w: 1000 }, type: 'bounds' }], s))
+    expect(shown[0]).toBe(s.frames[0])
+    expect(shown[1]?.rect).toEqual({ h: 300, w: 400, x: 600, y: 300 })
+  })
+
+  it('load replaces the frames, drops invalid and repeated panels, and keeps the rects', () => {
     const base = run([open('integration')])
     const r = { h: 300, w: 400, x: 5000, y: 5000 }
     const mk = (panels: string[], active: string) => ({
@@ -238,7 +281,8 @@ describe('wm state', () => {
     })
     expect(s.frames.map(f => f.id)).toEqual(['f2', 'f3'])
     expect(s.frames[0]).toMatchObject({ active: 'overview:1', panels: ['overview:1'] })
-    expect(s.frames[0]?.rect).toEqual({ h: 300, w: 400, x: 800, y: 500 })
+    expect(s.frames[0]?.rect).toEqual(r)
+    expect(shownFrames(s)[0]?.rect).toEqual({ h: 300, w: 400, x: 800, y: 500 })
     expect(s.frames[1]?.panels).toEqual(['overview:2', 'selected-item'])
     expect(s.memory).toEqual(memory)
     expect(s.nextFrame).toBe(4)

@@ -17,6 +17,7 @@ import {
   type Point,
   type Rect,
   resizeRect,
+  shownRect,
   titleBar,
 } from './geometry'
 import { titleBarAt, tornOut } from './hit'
@@ -30,7 +31,14 @@ import {
   type UiStore,
 } from './layout'
 import SideBar from './SideBar'
-import { DEFAULT_SIZES, initialState, topFrame, type WmState, wmReducer } from './state'
+import {
+  DEFAULT_SIZES,
+  initialState,
+  shownFrames,
+  topFrame,
+  type WmState,
+  wmReducer,
+} from './state'
 
 const SAVE_DELAY_MS = 500
 // When a tab leaves its stack, the top left corner of the new frame is 60 pixels left of
@@ -59,9 +67,11 @@ function sameRect(a: Rect, b: Rect): boolean {
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
 }
 
-// The rects of the visible frames. The excluded frame does not count.
+// The shown rects of the visible frames. The excluded frame does not count.
 function visibleRects(state: WmState, excludeId?: string): Rect[] {
-  return state.frames.filter(f => f.id !== excludeId && !f.minimised).map(f => f.rect)
+  return shownFrames(state)
+    .filter(f => f.id !== excludeId && !f.minimised)
+    .map(f => f.rect)
 }
 
 interface Drag {
@@ -143,7 +153,7 @@ export default function WindowManager(): React.JSX.Element {
   )
 
   // Apply the saved layout, or the default layout, when the load ended and the area has a size.
-  // Before this, a frame rect would clamp to a size of 0.
+  // Before this, a new frame would get a size of 0.
   const tryStart = useCallback(() => {
     const s = start.current
     if (s.done || !s.sized || !s.store) return
@@ -170,8 +180,8 @@ export default function WindowManager(): React.JSX.Element {
     const measure = (): void => {
       const box = area.getBoundingClientRect()
       const bounds = { h: Math.floor(box.height), w: Math.floor(box.width) }
-      // An area with no size would clamp each frame to a size of 0. Then the save
-      // would write that layout. So Bifrost ignores an area with no size.
+      // In an area with no size, each frame would show with a size of 0, and a new frame
+      // would get a size of 0. So Bifrost ignores an area with no size.
       if (bounds.w <= 0 || bounds.h <= 0) return
       dispatch({ bounds, type: 'bounds' })
       start.current.sized = true
@@ -262,7 +272,8 @@ export default function WindowManager(): React.JSX.Element {
       let pressing = tab !== null
       let startX = e.clientX
       let startY = e.clientY
-      let startRect = frame.rect
+      // The drag starts from the rect that the screen shows.
+      let startRect = shownRect(frame.rect, current.bounds)
       let others = visibleRects(current, frameId)
       // The last pointer position, in client coordinates.
       let x = e.clientX
@@ -297,7 +308,7 @@ export default function WindowManager(): React.JSX.Element {
       // A move that ends on the title bar of a different frame stacks the two frames.
       function stackTarget(): string | null {
         if (edge || !moved) return null
-        return titleBarAt(stateRef.current.frames, pointer(), id)?.id ?? null
+        return titleBarAt(shownFrames(stateRef.current), pointer(), id)?.id ?? null
       }
       // Draw one step. The reducer gets the rect only when the drag ends.
       function draw(): void {
@@ -327,13 +338,14 @@ export default function WindowManager(): React.JSX.Element {
           return
         }
         const p = pointer()
-        if (!tornOut(titleBar(source.rect), p)) return
+        const sourceRect = shownRect(source.rect, s.bounds)
+        if (!tornOut(titleBar(sourceRect), p)) return
         // The title bar of the source frame stays on the page, so it keeps the capture.
         if (!capture()) {
           end(false)
           return
         }
-        const rect: Rect = { ...source.rect, x: p.x - TEAR_OFFSET.x, y: p.y - TEAR_OFFSET.y }
+        const rect: Rect = { ...sourceRect, x: p.x - TEAR_OFFSET.x, y: p.y - TEAR_OFFSET.y }
         // The reducer gives the new frame the ID f<nextFrame>.
         id = `f${s.nextFrame}`
         handle.frameId = id
@@ -437,13 +449,16 @@ export default function WindowManager(): React.JSX.Element {
     }),
     [setStore],
   )
+  // The frames with the rects that the screen shows. The state keeps the rects that the user set.
+  const { bounds, frames } = state
+  const shown = useMemo(() => shownFrames({ bounds, frames }), [bounds, frames])
   const order = useMemo(
-    () => [...state.frames].sort((a, b) => frameNumber(a.id) - frameNumber(b.id)),
-    [state.frames],
+    () => [...shown].sort((a, b) => frameNumber(a.id) - frameNumber(b.id)),
+    [shown],
   )
   const topId = topFrame(state)?.id
-  const guideZ = state.frames.length
-  const dropFrame = dropTarget ? state.frames.find(f => f.id === dropTarget) : undefined
+  const guideZ = shown.length
+  const dropFrame = dropTarget ? shown.find(f => f.id === dropTarget) : undefined
   const dropBar = dropFrame ? titleBar(dropFrame.rect) : null
 
   return (
@@ -468,7 +483,7 @@ export default function WindowManager(): React.JSX.Element {
                   key={frame.id}
                   onDrag={beginDrag}
                   top={frame.id === topId}
-                  z={state.frames.indexOf(frame)}
+                  z={shown.indexOf(frame)}
                 />
               ))}
               {guides.map(g => (
@@ -481,8 +496,8 @@ export default function WindowManager(): React.JSX.Element {
                   key={`${g.axis}:${g.at}`}
                   style={
                     g.axis === 'x'
-                      ? { left: Math.min(g.at, state.bounds.w - 1), zIndex: guideZ }
-                      : { top: Math.min(g.at, state.bounds.h - 1), zIndex: guideZ }
+                      ? { left: Math.min(g.at, bounds.w - 1), zIndex: guideZ }
+                      : { top: Math.min(g.at, bounds.h - 1), zIndex: guideZ }
                   }
                 />
               ))}

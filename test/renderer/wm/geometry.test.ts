@@ -3,8 +3,10 @@ import {
   centreRect,
   clampRect,
   contains,
+  MIN_SIZE,
   moveRect,
   resizeRect,
+  shownRect,
   titleBar,
 } from '../../../src/renderer/src/wm/geometry'
 
@@ -257,6 +259,25 @@ describe('clampRect', () => {
       x: 900,
       y: 0,
     })
+  })
+})
+
+describe('shownRect', () => {
+  it('keeps a rect that fits the area', () => {
+    const r = { h: 300, w: 400, x: 700, y: 400 }
+    expect(shownRect(r, bounds)).toEqual(r)
+  })
+
+  it('moves and shrinks a saved rect into a smaller area and keeps the minimum size', () => {
+    const area = { h: 500, w: 800 }
+    expect(shownRect({ h: 356, w: 420, x: 1052, y: 526 }, area)).toEqual({
+      h: 356,
+      w: 420,
+      x: 380,
+      y: 144,
+    })
+    expect(shownRect({ h: 900, w: 1440, x: 0, y: 0 }, area)).toEqual({ h: 500, w: 800, x: 0, y: 0 })
+    expect(shownRect({ h: 10, w: 10, x: 5, y: 5 }, area)).toEqual({ ...MIN_SIZE, x: 5, y: 5 })
   })
 })
 

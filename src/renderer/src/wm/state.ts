@@ -1,5 +1,5 @@
 // The state of the window manager. A pure reducer keeps the frames, the stacks and the memory.
-import { centreRect, clampRect, MIN_SIZE, type Rect, type Size } from './geometry'
+import { centreRect, clampRect, MIN_SIZE, type Rect, type Size, shownRect } from './geometry'
 
 export type PanelKind = 'overview' | 'selected-item' | 'integration' | 'chat'
 
@@ -14,6 +14,7 @@ export interface Frame {
   id: string
   panels: string[]
   active: string
+  // The rect that the user set. The screen shows shownRect(rect, bounds).
   rect: Rect
   minimised: boolean
   locked: boolean
@@ -70,6 +71,15 @@ export function topFrame(state: WmState): Frame | undefined {
     if (frame && !frame.minimised) return frame
   }
   return undefined
+}
+
+// The frames as the screen shows them, with each rect inside the current bounds.
+// A frame whose rect fits keeps its object.
+export function shownFrames(state: Pick<WmState, 'bounds' | 'frames'>): Frame[] {
+  return state.frames.map(f => {
+    const rect = shownRect(f.rect, state.bounds)
+    return sameRect(rect, f.rect) ? f : { ...f, rect }
+  })
 }
 
 function sameRect(a: Rect, b: Rect): boolean {
@@ -199,7 +209,8 @@ function load(state: WmState, input: Omit<Frame, 'id'>[], memory: Record<string,
       minimised: item.minimised === true,
       opacity: Number.isFinite(item.opacity) ? clampOpacity(item.opacity) : 1,
       panels,
-      rect: clampRect(item.rect, state.bounds, MIN_SIZE),
+      // Keep the rect as saved. The screen shows it inside the current bounds.
+      rect: { ...item.rect },
     })
     nextFrame += 1
   }
@@ -264,11 +275,8 @@ export function wmReducer(state: WmState, action: WmAction): WmState {
       if (!bounds || !Number.isFinite(bounds.w) || !Number.isFinite(bounds.h)) return state
       if (bounds.w < 1 || bounds.h < 1) return state
       if (bounds.w === state.bounds.w && bounds.h === state.bounds.h) return state
-      const frames = state.frames.map(f => {
-        const rect = clampRect(f.rect, bounds, MIN_SIZE)
-        return sameRect(rect, f.rect) ? f : { ...f, rect }
-      })
-      return { ...state, bounds, frames }
+      // The frame rects do not change. A smaller area changes only the shown rects.
+      return { ...state, bounds }
     }
     case 'load':
       return load(state, action.frames, action.memory)
