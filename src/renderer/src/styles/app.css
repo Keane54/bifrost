@@ -14,8 +14,29 @@
   --color-box-red: #e0473e;
   --color-parked: #6b7280;
 
+  /* The text colours of the Overview tabs. None is yellow, red or grey (spec 8.10). */
+  --color-tab-1: #7cc4d6;
+  --color-tab-2: #d68fc0;
+  --color-tab-3: #86c48f;
+  --color-tab-4: #a993e0;
+  --color-tab-5: #6f9fe6;
+  --color-tab-6: #9fd0c0;
+
+  /* The colours of the priorities 1 to 5. */
+  --color-prio-1: #e46ad8;
+  --color-prio-2: #a77bf3;
+  --color-prio-3: #5b9cf2;
+  --color-prio-4: #3fbfb0;
+  --color-prio-5: #7fc77a;
+
+  /* The backgrounds of the Overview rows. */
+  --color-row-hover: rgb(120 160 190 / 0.08);
+  --color-row-selected: rgb(95 179 201 / 0.28);
+  --color-row-open: rgb(95 179 201 / 0.12);
+
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
+  --font-narrow: "SF Compact Text", "SF Compact", -apple-system, system-ui, sans-serif;
 
   --animate-box-flash: box-flash 1s ease-in-out infinite;
 
@@ -41,5 +62,10 @@
     background: var(--color-bg);
     color: var(--color-text);
     font-family: var(--font-ui);
+  }
+
+  /* The app has its own stacking context. So the menus and tooltips in body are above it. */
+  #root {
+    isolation: isolate;
   }
 }

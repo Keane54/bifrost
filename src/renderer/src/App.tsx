@@ -1,12 +1,16 @@
+import { Tooltip } from '@base-ui/react/tooltip'
 import { RegistryProvider } from './data/registry'
 import WindowManager from './wm/WindowManager'
 
 // The app: one registry subscription, and the window manager with all panels.
+// All tooltips share one delay of 300 ms.
 function App(): React.JSX.Element {
   return (
-    <RegistryProvider>
-      <WindowManager />
-    </RegistryProvider>
+    <Tooltip.Provider delay={300}>
+      <RegistryProvider>
+        <WindowManager />
+      </RegistryProvider>
+    </Tooltip.Provider>
   )
 }
 

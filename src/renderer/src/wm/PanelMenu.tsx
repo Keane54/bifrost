@@ -1,7 +1,9 @@
-import { type Dispatch, type RefObject, useEffect, useRef } from 'react'
+import { type Dispatch, type RefObject, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { MAX_SET_NAME } from '../overview/config'
+import { useOverview } from '../overview/overviews-context'
 import { useDismiss } from './popover'
-import type { Frame, WmAction } from './state'
+import { type Frame, panelKind, type WmAction } from './state'
 
 // The screen position of the menu button. The menu opens below the button, at its right edge.
 export interface Anchor {
@@ -19,7 +21,44 @@ export interface PanelMenuProps {
 
 const GAP = 4
 
+// The field shows the saved name again after each change of the name.
+function NameField(props: { name: string; onSave(name: string): void }): React.JSX.Element {
+  const [draft, setDraft] = useState(props.name)
+  return (
+    <label className='flex flex-col gap-1'>
+      <span>Tab set name</span>
+      <input
+        className='rounded border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-accent'
+        maxLength={MAX_SET_NAME}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => {
+          if (e.key !== 'Enter') return
+          e.preventDefault()
+          props.onSave(draft)
+          // The reducer refuses an empty name. Then the field shows the saved name.
+          setDraft(props.name)
+        }}
+        type='text'
+        value={draft}
+      />
+    </label>
+  )
+}
+
+// Enter saves the name of the tab set of an Overview.
+function SetNameField({ panelId }: { panelId: string }): React.JSX.Element {
+  const { config, update } = useOverview(panelId)
+  return (
+    <NameField
+      key={config.name}
+      name={config.name}
+      onSave={name => update({ name, type: 'rename' })}
+    />
+  )
+}
+
 // The menu of one frame: an opacity slider and a Lock checkbox.
+// For an Overview, the menu also has the name of the tab set.
 // The menu is in document.body. So the opacity and the clip of the frame do not apply to it.
 export default function PanelMenu({
   frame,
@@ -76,6 +115,7 @@ export default function PanelMenu({
         />
         Lock
       </label>
+      {panelKind(frame.active) === 'overview' && <SetNameField panelId={frame.active} />}
     </div>,
     document.body,
   )

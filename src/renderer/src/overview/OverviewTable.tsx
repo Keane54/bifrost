@@ -1,0 +1,244 @@
+// The header and the rows of the active Overview tab.
+// TanStack Table keeps the column order, the visibility, the widths, the resize and the sort mark.
+// viewRows filters and sorts the rows (D5). So the table has no sorted row model.
+import {
+  type ColumnSizingState,
+  columnOrderingFeature,
+  columnResizingFeature,
+  columnSizingFeature,
+  columnVisibilityFeature,
+  createColumnHelper,
+  functionalUpdate,
+  rowSortingFeature,
+  tableFeatures,
+  type Updater,
+  useTable,
+} from '@tanstack/react-table'
+import { useMemo, useRef, useState } from 'react'
+import type { SessionRow } from '../../../shared/types'
+import { chatPanelId, openChatIds } from '../chat/views'
+import { useRegistry } from '../data/registry'
+import { cx } from '../lib/cx'
+import { useNow } from '../lib/use-now'
+import { useWmControls, useWmState } from '../wm/context'
+import { CellContent } from './cells'
+import {
+  COLUMN_IDS,
+  COLUMN_LABELS,
+  type ColumnId,
+  DEFAULT_WIDTHS,
+  isColumnId,
+  MAX_WIDTH,
+  MIN_WIDTH,
+} from './columns'
+import type { OverviewAction, OverviewTab } from './config'
+import { viewRows } from './rows'
+import { dropBefore, toTableState, widthsFromSizing } from './table-state'
+
+const features = tableFeatures({
+  columnOrderingFeature,
+  columnResizingFeature,
+  columnSizingFeature,
+  columnVisibilityFeature,
+  rowSortingFeature,
+})
+
+const helper = createColumnHelper<typeof features, SessionRow>()
+
+// One display column for each column ID. The cells come from CellContent.
+const columns = helper.columns(
+  COLUMN_IDS.map(id =>
+    helper.display({
+      header: COLUMN_LABELS[id],
+      id,
+      maxSize: MAX_WIDTH,
+      minSize: MIN_WIDTH,
+      size: DEFAULT_WIDTHS[id],
+    }),
+  ),
+)
+
+const DRAG_TYPE = 'application/x-bifrost-column'
+const STICKY = 'sticky top-0 z-10 bg-panel p-0'
+const CELL = 'overflow-hidden text-clip whitespace-nowrap px-1 py-0'
+
+function columnOf(id: string): ColumnId {
+  return isColumnId(id) ? id : 'name'
+}
+
+export default function OverviewTable({
+  tab,
+  update,
+}: {
+  tab: OverviewTab
+  update(action: OverviewAction): void
+}): React.JSX.Element {
+  const { rows, selectedId, select } = useRegistry()
+  const { frames } = useWmState()
+  const { dispatch } = useWmControls()
+  const now = useNow()
+  const data = useMemo(() => viewRows(rows, tab), [rows, tab])
+  const state = useMemo(() => toTableState(tab), [tab])
+  const open = useMemo(() => new Set(openChatIds(frames)), [frames])
+  // The header that a drag started on, and the header under the pointer.
+  const dragged = useRef<ColumnId | null>(null)
+  const [dropTarget, setDropTarget] = useState<ColumnId | null>(null)
+
+  // A resize step gives an updater. Keep only the widths that changed and save them in the tab.
+  function onColumnSizingChange(updater: Updater<ColumnSizingState>): void {
+    const current: ColumnSizingState = state.columnSizing
+    const next = functionalUpdate(updater, current)
+    const changed: ColumnSizingState = {}
+    for (const [id, width] of Object.entries(next)) {
+      if (width !== current[id]) changed[id] = width
+    }
+    update({ tabId: tab.id, type: 'setWidths', widths: widthsFromSizing(changed) })
+  }
+
+  const table = useTable({
+    columnResizeMode: 'onChange',
+    columns,
+    data,
+    features,
+    getRowId: row => row.sessionId,
+    manualSorting: true,
+    onColumnSizingChange,
+    state,
+  })
+
+  function endDrag(): void {
+    dragged.current = null
+    setDropTarget(null)
+  }
+
+  function drop(target: ColumnId): void {
+    const from = dragged.current
+    endDrag()
+    if (from === null) return
+    const move = dropBefore(tab.columns, from, target)
+    if (move) update({ before: move.before, column: from, tabId: tab.id, type: 'moveColumn' })
+  }
+
+  // A double-click opens the chat window of an owned row that is not parked.
+  // Task 9 replaces this with the Open action.
+  function openRow(row: SessionRow): void {
+    select(row.sessionId)
+    if (row.kind !== 'owned' || row.state === 'parked') return
+    dispatch({ panelId: chatPanelId(row.sessionId), type: 'open' })
+  }
+
+  const headers = table.getHeaderGroups()[0]?.headers ?? []
+  const viewed = table.getRowModel().rows
+
+  return (
+    <div className='min-h-0 flex-1 select-none overflow-auto'>
+      {/* The last column has no width. It takes the free space, so the rows fill the panel. */}
+      <table className='table-fixed' style={{ minWidth: '100%', width: table.getTotalSize() }}>
+        <thead>
+          <tr className='h-[18px]'>
+            {headers.map(header => {
+              const id = columnOf(header.column.id)
+              const sorted = header.column.getIsSorted()
+              const resize = header.getResizeHandler()
+              return (
+                <th
+                  aria-sort={
+                    sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : undefined
+                  }
+                  className={cx(
+                    STICKY,
+                    'text-left font-normal',
+                    dropTarget === id && 'outline-1 outline-accent -outline-offset-1',
+                  )}
+                  data-column-id={id}
+                  key={header.id}
+                  onDragLeave={() => setDropTarget(prev => (prev === id ? null : prev))}
+                  onDragOver={e => {
+                    const from = dragged.current
+                    if (from === null || from === id) return
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                    setDropTarget(id)
+                  }}
+                  onDrop={e => {
+                    e.preventDefault()
+                    drop(id)
+                  }}
+                  style={{ width: header.getSize() }}
+                >
+                  <button
+                    aria-label={COLUMN_LABELS[id] || 'Kind'}
+                    className='flex h-[18px] w-full items-center gap-1 overflow-hidden whitespace-nowrap px-1 text-[11px] text-text-dim hover:text-text'
+                    draggable={id !== 'kind'}
+                    onClick={() => update({ column: id, tabId: tab.id, type: 'sortBy' })}
+                    onDragEnd={endDrag}
+                    onDragStart={e => {
+                      dragged.current = id
+                      e.dataTransfer.effectAllowed = 'move'
+                      // Not text/plain, so a drop on a text field does not insert the label.
+                      e.dataTransfer.setData(DRAG_TYPE, id)
+                    }}
+                    type='button'
+                  >
+                    {COLUMN_LABELS[id]}
+                    {sorted && <span className='text-[8px]'>{sorted === 'desc' ? '▼' : '▲'}</span>}
+                  </button>
+                  {/* Not in the button, so a drag on it resizes and does not move the column. */}
+                  <div
+                    aria-hidden={true}
+                    className={cx(
+                      'absolute top-0 right-0 h-full w-1 cursor-col-resize touch-none hover:bg-accent/40',
+                      header.column.getIsResizing() && 'bg-accent/60',
+                    )}
+                    data-resize-handle={true}
+                    onMouseDown={resize}
+                    onTouchStart={resize}
+                  />
+                </th>
+              )
+            })}
+            <th className={STICKY} />
+          </tr>
+        </thead>
+        <tbody className='font-narrow text-xs'>
+          {viewed.map(item => {
+            const row = item.original
+            const id = row.sessionId
+            return (
+              <tr
+                className={cx(
+                  'h-[18px]',
+                  id === selectedId
+                    ? 'bg-row-selected'
+                    : open.has(id)
+                      ? 'bg-row-open'
+                      : 'hover:bg-row-hover',
+                  row.state === 'parked' && 'text-parked',
+                )}
+                data-session-id={id}
+                key={item.id}
+                onClick={() => select(id)}
+                onDoubleClick={() => openRow(row)}
+              >
+                {item.getVisibleCells().map(cell => {
+                  const column = columnOf(cell.column.id)
+                  return (
+                    <td
+                      className={CELL}
+                      key={cell.id}
+                      title={column === 'project' ? row.cwd : undefined}
+                    >
+                      <CellContent column={column} now={now} row={row} />
+                    </td>
+                  )
+                })}
+                <td />
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      {viewed.length === 0 && <p className='px-2 py-0.5 text-text-dim text-xs'>No sessions.</p>}
+    </div>
+  )
+}

@@ -741,10 +741,10 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | Biome | Lint and format | M0 fix wave |
 | Vitest | Unit tests | M0 |
 | Tailwind CSS v4 | All styles. Bifrost has its own theme and tokens. It does not copy styles from other projects. Version 4.3.3 with `@tailwindcss/vite`. | M2 |
-| Base UI | The right-click menu with submenus, dialogs and tooltips | M3 |
-| TanStack Table | Overview columns, sort, column order and resize for each tab | M3 |
+| Base UI | The right-click menu with submenus, dialogs and tooltips. Version 1.9.0. | M3 |
+| TanStack Table | Overview columns, sort, column order and resize for each tab. Version 9.3.1. | M3 |
 | TanStack Hotkeys (beta) | Key map, hold-key-and-click, key editor in Settings | M3 to M5 |
-| lucide-react | Icons | M3 |
+| lucide-react | Icons. Version 1.61.0. | M3 |
 | Zustand | Not used. A reducer keeps the window manager state (M2). | M2 |
 | Zod | Not used. The hand-written checks stay small (M1). | M1 |
 | lefthook and commitlint | Commit message checks. Added in M1. | M1 |

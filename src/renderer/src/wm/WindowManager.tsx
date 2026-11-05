@@ -8,6 +8,8 @@ import {
   useState,
 } from 'react'
 import { cx } from '../lib/cx'
+import { overviewsReducer } from '../overview/config'
+import { OverviewsProvider } from '../overview/overviews-context'
 import { LayoutsContext, type WmControls, WmControlsContext, WmStateContext } from './context'
 import Frame, { type DragMode } from './Frame'
 import {
@@ -97,6 +99,8 @@ interface Start {
 // The panel area with its frames, and the side bar. It owns the state of the window manager.
 export default function WindowManager(): React.JSX.Element {
   const [state, dispatch] = useReducer(wmReducer, { h: 0, w: 0 }, initialState)
+  // The config of each Overview panel (D1). The store saves it with the layout.
+  const [overviews, dispatchOverviews] = useReducer(overviewsReducer, EMPTY_STORE.overviews)
   const [guides, setGuides] = useState<Guide[]>([])
   const [dragging, setDragging] = useState(false)
   const [live, setLive] = useState<Live | null>(null)
@@ -104,6 +108,7 @@ export default function WindowManager(): React.JSX.Element {
   const [layoutNames, setLayoutNames] = useState<readonly string[]>([])
   const areaRef = useRef<HTMLDivElement>(null)
   const stateRef = useRef(state)
+  const overviewsRef = useRef(overviews)
   const storeRef = useRef<UiStore>(EMPTY_STORE)
   const start = useRef<Start>({ canSave: false, done: false, sized: false, store: null })
   const saveOn = useRef(false)
@@ -117,13 +122,21 @@ export default function WindowManager(): React.JSX.Element {
     stateRef.current = state
   }, [state])
 
-  // Send the store with the current layout now, if it has a change.
+  useLayoutEffect(() => {
+    overviewsRef.current = overviews
+  }, [overviews])
+
+  // Send the store with the current layout and the Overview configs now, if it has a change.
   const saveNow = useCallback(() => {
     window.clearTimeout(saveTimer.current)
     saveTimer.current = undefined
     if (!saveOn.current || !dirty.current) return
     dirty.current = false
-    const store: UiStore = { ...storeRef.current, current: toSnapshot(stateRef.current) }
+    const store: UiStore = {
+      ...storeRef.current,
+      current: toSnapshot(stateRef.current),
+      overviews: overviewsRef.current,
+    }
     storeRef.current = store
     window.bifrost.ui
       .save(store)
@@ -157,6 +170,9 @@ export default function WindowManager(): React.JSX.Element {
     s.done = true
     storeRef.current = s.store
     setLayoutNames(s.store.layouts.map(l => l.name))
+    // Set the ref now too. So a save before the next render does not write an empty list.
+    overviewsRef.current = s.store.overviews
+    dispatchOverviews({ overviews: s.store.overviews, type: 'load' })
     const snapshot = s.store.current
     if (snapshot) {
       dispatch({ frames: snapshot.frames, memory: snapshot.memory, type: 'load' })
@@ -216,6 +232,12 @@ export default function WindowManager(): React.JSX.Element {
     dirty.current = true
     scheduleSave()
   }, [state, scheduleSave])
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each change of the Overview configs starts the save timer again.
+  useEffect(() => {
+    dirty.current = true
+    scheduleSave()
+  }, [overviews, scheduleSave])
 
   // When the page closes or reloads, send the pending save at once. The timer would not run.
   useEffect(() => {
@@ -471,58 +493,61 @@ export default function WindowManager(): React.JSX.Element {
         <LayoutsContext value={layoutNames}>
           <div className='flex h-full w-full'>
             <SideBar />
-            {/* The area keeps the z-order of its frames inside it. So a popover can be above them.
-                A text selection cannot start on the empty area. The panel content allows it.
-                During a drag or a resize, no part of the area allows a selection. */}
-            <div
-              className={cx(
-                'relative isolate min-w-0 flex-1 select-none overflow-hidden',
-                dragging && '**:select-none',
-              )}
-              data-panel-area={true}
-              ref={areaRef}
-            >
-              {order.map(frame => (
-                <Frame
-                  dispatch={dispatch}
-                  frame={live?.frameId === frame.id ? { ...frame, rect: live.rect } : frame}
-                  key={frame.id}
-                  onDrag={beginDrag}
-                  top={frame.id === topId}
-                  z={shown.indexOf(frame)}
-                />
-              ))}
-              {guides.map(g => (
-                <div
-                  className={cx(
-                    'pointer-events-none absolute bg-snap',
-                    g.axis === 'x' ? 'inset-y-0 w-px' : 'inset-x-0 h-px',
-                  )}
-                  data-guide={g.axis}
-                  key={`${g.axis}:${g.at}`}
-                  style={
-                    g.axis === 'x'
-                      ? { left: Math.min(g.at, bounds.w - 1), zIndex: guideZ }
-                      : { top: Math.min(g.at, bounds.h - 1), zIndex: guideZ }
-                  }
-                />
-              ))}
-              {/* The title bar where a drop stacks the dragged frame. The outline is above all
+            {/* The Overview panels, the frame titles and the frame menus read the configs. */}
+            <OverviewsProvider dispatch={dispatchOverviews} state={overviews}>
+              {/* The area keeps the z-order of its frames inside it. So a popover can be above
+                  them. A text selection cannot start on the empty area. The panel content allows
+                  it. During a drag or a resize, no part of the area allows a selection. */}
+              <div
+                className={cx(
+                  'relative isolate min-w-0 flex-1 select-none overflow-hidden',
+                  dragging && '**:select-none',
+                )}
+                data-panel-area={true}
+                ref={areaRef}
+              >
+                {order.map(frame => (
+                  <Frame
+                    dispatch={dispatch}
+                    frame={live?.frameId === frame.id ? { ...frame, rect: live.rect } : frame}
+                    key={frame.id}
+                    onDrag={beginDrag}
+                    top={frame.id === topId}
+                    z={shown.indexOf(frame)}
+                  />
+                ))}
+                {guides.map(g => (
+                  <div
+                    className={cx(
+                      'pointer-events-none absolute bg-snap',
+                      g.axis === 'x' ? 'inset-y-0 w-px' : 'inset-x-0 h-px',
+                    )}
+                    data-guide={g.axis}
+                    key={`${g.axis}:${g.at}`}
+                    style={
+                      g.axis === 'x'
+                        ? { left: Math.min(g.at, bounds.w - 1), zIndex: guideZ }
+                        : { top: Math.min(g.at, bounds.h - 1), zIndex: guideZ }
+                    }
+                  />
+                ))}
+                {/* The title bar where a drop stacks the dragged frame. The outline is above all
                   frames, because the dragged frame covers the title bar. */}
-              {dropBar && dropFrame && (
-                <div
-                  className='pointer-events-none absolute rounded-t-md bg-accent/15 outline-2 outline-accent -outline-offset-2'
-                  data-drop-target={dropFrame.id}
-                  style={{
-                    height: dropBar.h,
-                    left: dropBar.x,
-                    top: dropBar.y,
-                    width: dropBar.w,
-                    zIndex: guideZ,
-                  }}
-                />
-              )}
-            </div>
+                {dropBar && dropFrame && (
+                  <div
+                    className='pointer-events-none absolute rounded-t-md bg-accent/15 outline-2 outline-accent -outline-offset-2'
+                    data-drop-target={dropFrame.id}
+                    style={{
+                      height: dropBar.h,
+                      left: dropBar.x,
+                      top: dropBar.y,
+                      width: dropBar.w,
+                      zIndex: guideZ,
+                    }}
+                  />
+                )}
+              </div>
+            </OverviewsProvider>
           </div>
         </LayoutsContext>
       </WmStateContext>

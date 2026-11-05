@@ -1,6 +1,6 @@
 import { type Dispatch, memo, useCallback, useRef, useState } from 'react'
 import { cx } from '../lib/cx'
-import { PanelContent, panelTitle } from '../panels/panels'
+import { PanelContent, PanelTitle } from '../panels/panels'
 import { type Edge, TITLE_H } from './geometry'
 import PanelMenu, { type Anchor } from './PanelMenu'
 import type { Frame, WmAction } from './state'
@@ -124,7 +124,7 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
                   role='tab'
                   type='button'
                 >
-                  {panelTitle(panelId)}
+                  <PanelTitle panelId={panelId} />
                 </button>
               )
             })}
@@ -132,7 +132,7 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
         ) : (
           <div className='flex min-w-0 flex-1 items-center'>
             <div className='truncate px-2 text-text text-xs' data-panel-id={frame.active}>
-              {panelTitle(frame.active)}
+              <PanelTitle panelId={frame.active} />
             </div>
           </div>
         )}

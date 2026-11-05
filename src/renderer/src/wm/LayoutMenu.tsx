@@ -1,3 +1,4 @@
+import { LayoutGrid } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { cx } from '../lib/cx'
 import { useLayouts, useWmControls } from './context'
@@ -114,7 +115,7 @@ export default function LayoutMenu(props: { className: string }): React.JSX.Elem
         title='Layouts'
         type='button'
       >
-        L
+        <LayoutGrid aria-hidden={true} size={16} />
       </button>
       {open && <LayoutPopover button={button} onClose={close} />}
     </div>

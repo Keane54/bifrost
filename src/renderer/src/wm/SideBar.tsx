@@ -1,4 +1,6 @@
+import { Crosshair, List, ListPlus, type LucideIcon, Plug } from 'lucide-react'
 import { memo } from 'react'
+import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { panelTitle } from '../panels/panels'
 import { useWmControls, useWmState } from './context'
@@ -33,10 +35,11 @@ function freeOverview(state: WmState): string | undefined {
 
 function SideButton(props: {
   label: string
-  glyph: string
+  icon: LucideIcon
   disabled?: boolean
   onClick(): void
 }): React.JSX.Element {
+  const Icon = props.icon
   return (
     <button
       aria-label={props.label}
@@ -46,7 +49,7 @@ function SideButton(props: {
       title={props.label}
       type='button'
     >
-      {props.glyph}
+      <Icon aria-hidden={true} size={16} />
     </button>
   )
 }
@@ -56,6 +59,7 @@ function SideButton(props: {
 function SideBar(): React.JSX.Element {
   const state = useWmState()
   const { dispatch } = useWmControls()
+  const { rows } = useRegistry()
   const open = (panelId: string): void => dispatch({ panelId, type: 'open' })
   const free = freeOverview(state)
   const minimised = state.frames.filter(f => f.minimised)
@@ -66,22 +70,22 @@ function SideBar(): React.JSX.Element {
       className='flex w-10 shrink-0 select-none flex-col items-center gap-1 border-panel-edge border-r bg-title py-2'
     >
       <SideButton
-        glyph='O'
+        icon={List}
         label='Overview'
         onClick={() => open(topOverview(state.frames) ?? 'overview:1')}
       />
       <SideButton
         disabled={free === undefined}
-        glyph='O+'
+        icon={ListPlus}
         label='New Overview'
         onClick={() => free && open(free)}
       />
-      <SideButton glyph='S' label='Selected Item' onClick={() => open('selected-item')} />
-      <SideButton glyph='I' label='Integration' onClick={() => open('integration')} />
+      <SideButton icon={Crosshair} label='Selected Item' onClick={() => open('selected-item')} />
+      <SideButton icon={Plug} label='Integration' onClick={() => open('integration')} />
       {minimised.length > 0 && <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />}
       <div className='flex min-h-0 flex-col items-center gap-1 overflow-y-auto'>
         {minimised.map(frame => {
-          const title = panelTitle(frame.active)
+          const title = panelTitle(frame.active, rows)
           return (
             <button
               aria-label={`Restore ${title}`}
