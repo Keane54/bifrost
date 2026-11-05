@@ -15,6 +15,12 @@ function sourceFiles(dir: string): string[] {
 
 const FILES = sourceFiles(SRC).map(path => ({ path, text: readFileSync(path, 'utf8') }))
 
+function source(name: string): string {
+  const file = FILES.find(f => f.path.endsWith(name))
+  if (!file) throw new Error(`No source file ${name}`)
+  return file.text
+}
+
 const TOKENS = [
   'bg',
   'panel',
@@ -27,15 +33,40 @@ const TOKENS = [
   'select',
   'hover',
   'snap',
+  'accent',
+  'accent-glow',
 ]
+
+// The class parts that can use the light cyan accent (spec 8.10): the top border of a frame,
+// its glow, and the press feedback of an active: state. The selected row gets the accent
+// through the --color-select token in app.css.
+const ACCENT_CLASSES = [
+  /^border-t-accent$/,
+  /^border-t-accent\/35$/,
+  /^from-accent-glow$/,
+  /^(?:[a-z-]+:)*active:bg-accent\/12$/,
+]
+const PRESS = /(?:^|\s|')(?:[a-z-]+:)*active:bg-accent\/12(?:\s|'|$)/
+
+// The words that contain the part "accent", for example a class or a token name.
+function accentParts(text: string): string[] {
+  return text.match(/[\w:/.[\]-]*accent[\w:/.[\]-]*/gi) ?? []
+}
 
 describe('theme', () => {
   it.each(TOKENS)('defines --color-%s', token => {
     expect(CSS).toMatch(new RegExp(`--color-${token}:`))
   })
 
-  it('has no accent token', () => {
-    expect(CSS).not.toContain('--color-accent')
+  it('defines the light cyan accent and its glow', () => {
+    expect(CSS).toContain('--color-accent: #8fdcec;')
+    expect(CSS).toContain('--color-accent-glow: rgb(143 220 236 / 0.35);')
+  })
+
+  it('gives the selected row the accent at 15%', () => {
+    expect(CSS).toContain(
+      '--color-select: color-mix(in oklab, var(--color-accent) 15%, transparent);',
+    )
   })
 
   it('has no hex colour or rgb( in a .ts or .tsx file', () => {
@@ -43,8 +74,37 @@ describe('theme', () => {
     expect(bad).toEqual([])
   })
 
-  it('has no accent class in any file', () => {
-    const bad = FILES.filter(f => /accent/i.test(f.text)).map(f => f.path)
+  it('uses the accent class part only for the top border, the glow and active: states', () => {
+    const bad = FILES.flatMap(f =>
+      accentParts(f.text)
+        .filter(part => !ACCENT_CLASSES.some(allowed => allowed.test(part)))
+        .map(part => `${f.path}: ${part}`),
+    )
+    expect(bad).toEqual([])
+  })
+
+  it('gives the frame the cyan top border and the glow', () => {
+    const frame = source('wm/Frame.tsx')
+    for (const part of ['border-t-accent', 'border-t-accent/35', 'from-accent-glow']) {
+      expect(accentParts(frame)).toContain(part)
+    }
+  })
+
+  it.each([
+    'wm/Frame.tsx',
+    'wm/SideBar.tsx',
+    'wm/LayoutMenu.tsx',
+    'lib/menu.tsx',
+    'actions/ActionButton.tsx',
+    'overview/OverviewTabs.tsx',
+    'overview/OverviewTable.tsx',
+    'panels/IntegrationPanel.tsx',
+  ])('%s gives a cyan tint on a press', name => {
+    expect(source(name)).toMatch(PRESS)
+  })
+
+  it('keeps the hover neutral: no variant uses bg-select', () => {
+    const bad = FILES.filter(f => /[\w-]+:bg-select\b/.test(f.text)).map(f => f.path)
     expect(bad).toEqual([])
   })
 })

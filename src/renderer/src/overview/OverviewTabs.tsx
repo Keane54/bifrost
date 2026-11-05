@@ -155,7 +155,7 @@ function TabItem(props: {
         ) : (
           <button
             aria-selected={active}
-            className='whitespace-nowrap px-2 font-medium text-xs'
+            className='whitespace-nowrap px-2 font-medium text-xs active:bg-accent/12'
             onClick={() => update({ tabId: tab.id, type: 'activate' })}
             role='tab'
             type='button'
@@ -268,7 +268,7 @@ export default function OverviewTabs({
       <Tip label={full ? REASON_MAX_TABS : 'Add tab'}>
         <Button
           aria-label='Add tab'
-          className='flex w-6 shrink-0 items-center justify-center text-text-dim hover:text-text data-disabled:opacity-40 data-disabled:hover:text-text-dim'
+          className='flex w-6 shrink-0 items-center justify-center text-text-dim hover:text-text not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:text-text-dim'
           disabled={full}
           focusableWhenDisabled={true}
           onClick={() => update({ type: 'addTab' })}

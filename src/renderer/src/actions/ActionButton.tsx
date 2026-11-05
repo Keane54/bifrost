@@ -28,7 +28,8 @@ const ICONS: Partial<Record<ActionId, LucideIcon>> = {
 }
 
 // A disabled button shows darker and faded. It keeps the focus and the tooltip.
-// A click on it has no effect (spec 9.1).
+// A click on it has no effect (spec 9.1). A press on a button that is not disabled gives a short
+// cyan tint (spec 8.10).
 export default function ActionButton({
   action,
   sessionId,
@@ -49,7 +50,7 @@ export default function ActionButton({
     <Tip label={buttonTip(action, state, ctx.labels)}>
       <Button
         aria-label={actionLabel(action, ctx.labels)}
-        className='flex size-6 shrink-0 items-center justify-center rounded text-text hover:bg-hover data-disabled:opacity-40 data-disabled:hover:bg-transparent'
+        className='flex size-6 shrink-0 items-center justify-center rounded text-text hover:bg-hover not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
         data-action={action}
         disabled={!state.enabled}
         focusableWhenDisabled={true}

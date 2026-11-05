@@ -188,7 +188,7 @@ export default function OverviewTable({
                   >
                     <button
                       aria-label={COLUMN_LABELS[id] || 'Kind'}
-                      className='flex h-[18px] w-full items-center gap-1 overflow-hidden whitespace-nowrap px-1 text-[11px] text-text-dim hover:text-text'
+                      className='flex h-[18px] w-full items-center gap-1 overflow-hidden whitespace-nowrap px-1 text-[11px] text-text-dim hover:text-text active:bg-accent/12'
                       draggable={id !== 'kind'}
                       onClick={() => update({ column: id, tabId: tab.id, type: 'sortBy' })}
                       onDragEnd={endDrag}
@@ -229,7 +229,9 @@ export default function OverviewTable({
               return (
                 <tr
                   className={cx(
-                    'h-[22px]',
+                    // The selected row is a light cyan. A hover stays neutral. A press gives a
+                    // short cyan tint (spec 8.10).
+                    'h-[22px] active:bg-accent/12',
                     id === selectedId ? 'bg-select' : open.has(id) ? 'bg-hover' : 'hover:bg-hover',
                     row.state === 'parked' && 'text-parked',
                   )}

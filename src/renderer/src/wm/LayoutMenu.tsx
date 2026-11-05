@@ -8,8 +8,9 @@ import { useDismiss } from './popover'
 const NAME_MESSAGE = `Use 1 to ${MAX_NAME} characters.`
 const FULL_MESSAGE = `Delete a layout first. The limit is ${MAX_LAYOUTS}.`
 
+// A press gives a short cyan tint. A hover stays neutral (spec 8.10).
 const SMALL_BUTTON =
-  'shrink-0 rounded border border-panel-edge px-2 py-0.5 text-text-dim hover:bg-panel hover:text-text'
+  'shrink-0 rounded border border-panel-edge px-2 py-0.5 text-text-dim hover:bg-panel hover:text-text active:bg-accent/12'
 
 function LayoutPopover(props: {
   button: RefObject<HTMLButtonElement | null>

@@ -35,8 +35,9 @@ const EDGES = Object.keys(HANDLES) as Edge[]
 const Content = memo(PanelContent)
 
 // The buttons are above the resize handles, so a click near a corner hits the button.
+// A press gives a short cyan tint. A hover stays neutral (spec 8.10).
 const BUTTON =
-  'relative z-10 flex size-6 shrink-0 items-center justify-center rounded text-text-dim hover:bg-panel hover:text-text disabled:opacity-40 disabled:hover:bg-transparent'
+  'relative z-10 flex size-6 shrink-0 items-center justify-center rounded text-text-dim hover:bg-panel hover:text-text enabled:active:bg-accent/12 disabled:opacity-40 disabled:hover:bg-transparent'
 
 function LockGlyph(): React.JSX.Element {
   return (
@@ -82,12 +83,13 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
   }
 
   // Only the background is translucent (bg-panel and --panel-alpha). Text and content stay solid.
+  // The top edge is a 1 px cyan line. The top frame shows the full line, other frames a dim line.
   return (
     <div
       className={cx(
         'absolute flex-col overflow-hidden rounded-md border bg-panel backdrop-blur-md',
         frame.minimised ? 'hidden' : 'flex',
-        top ? 'border-text-strong/30' : 'border-panel-edge',
+        top ? 'border-text-strong/30 border-t-accent' : 'border-panel-edge border-t-accent/35',
       )}
       data-frame-id={id}
       onPointerDownCapture={() => dispatch({ frameId: id, type: 'focus' })}
@@ -99,8 +101,12 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
         zIndex: z,
       }}
     >
+      {/* Only the top frame has the glow: a cyan gradient over the top 10 px of the title bar. */}
       <div
-        className='flex shrink-0 touch-none select-none items-center gap-1 bg-title pr-3 pl-1'
+        className={cx(
+          'flex shrink-0 touch-none select-none items-center gap-1 bg-title pr-3 pl-1',
+          top && 'bg-linear-to-b from-accent-glow to-[10px] to-transparent',
+        )}
         data-title-bar={true}
         onPointerDown={onTitleDown}
         style={{ height: TITLE_H }}
@@ -113,7 +119,7 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
                 <button
                   aria-selected={active}
                   className={cx(
-                    'min-w-0 truncate border-b-2 px-2 text-xs',
+                    'min-w-0 truncate border-b-2 px-2 text-xs active:bg-accent/12',
                     active
                       ? 'border-text-strong text-text-strong'
                       : 'border-transparent text-text-dim hover:text-text',

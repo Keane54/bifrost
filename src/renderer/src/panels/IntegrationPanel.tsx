@@ -12,8 +12,9 @@ function describe(status: IntegrationStatus): string {
   return `Not installed. Missing: ${missing.join('; ') || 'unknown'}.`
 }
 
+// A press gives a short cyan tint. A disabled button gets no tint.
 const BUTTON =
-  'mt-1 mr-2 mb-1 rounded border border-panel-edge px-2 py-0.5 hover:bg-title disabled:opacity-40'
+  'mt-1 mr-2 mb-1 rounded border border-panel-edge px-2 py-0.5 hover:bg-title enabled:active:bg-accent/12 disabled:opacity-40'
 
 // The version of Claude Code, and a warning when it is below the minimum.
 function VersionLine(): React.JSX.Element {

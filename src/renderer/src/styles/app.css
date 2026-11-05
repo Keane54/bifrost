@@ -16,7 +16,11 @@
   --color-text: #d2d2d2;
   --color-text-dim: #8a8a8a;
   --color-text-strong: #ffffff;
-  --color-select: rgb(255 255 255 / 0.1);
+  /* The light cyan accent, used sparingly (spec 8.10): the top border of each panel, its glow
+     and the tint of a press. The selected row uses it at 15%. A hover stays neutral. */
+  --color-accent: #8fdcec;
+  --color-accent-glow: rgb(143 220 236 / 0.35);
+  --color-select: color-mix(in oklab, var(--color-accent) 15%, transparent);
   --color-hover: rgb(255 255 255 / 0.05);
   --color-snap: #bdbdbd;
   --color-box-yellow: #e2b93b;
