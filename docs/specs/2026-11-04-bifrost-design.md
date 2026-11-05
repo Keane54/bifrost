@@ -416,7 +416,7 @@ Size rule (the user approved this on 2026-11-04; M3 builds it):
 - Only the chat window that has focus sends a resize to the session.
 - A chat window with a different size from the session zooms the terminal to fit. The layout stays correct.
 - A resize in a terminal app, for example Warp, also sets the size. Bifrost then zooms its chat window to that size.
-- M3 starts with a test: can Bifrost learn the size that a different client set?
+- M3 test (2026-11-05): yes. Bifrost reads the size from the TTY of the session process (`ps -o tty=`, then `stty -f /dev/<tty> size`) within 80 ms of a resize. A new attach also sets the session size. See `docs/m3-findings.md`.
 
 ### 8.6 Show Info
 
