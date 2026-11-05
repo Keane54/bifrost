@@ -149,8 +149,9 @@ function showWindow(): void {
 function startApp(): void {
   // macOS adds its own item "Enter Full Screen" to a menu with the name View.
   // Bifrost has its own Fullscreen item there. So stop the macOS item before the menu is set.
+  // registerDefaults does not save the value. So other Electron apps keep their setting.
   if (process.platform === 'darwin') {
-    systemPreferences.setUserDefault('NSFullScreenMenuItemEverywhere', 'boolean', false)
+    systemPreferences.registerDefaults({ NSFullScreenMenuItemEverywhere: false })
   }
 
   // A second start of Bifrost shows the window of this instance.
