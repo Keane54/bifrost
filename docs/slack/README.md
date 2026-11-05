@@ -96,17 +96,41 @@ User events: `message.channels`, `message.groups`, `message.im`, `message.mpim`.
 
 ## Give Bifrost to colleagues
 
-These facts set the method:
+The full research, with a source for each fact, is in `.superpowers/research-slack-distribution.md` (not in git).
+
+Two Slack facts set the method:
 
 - The rate limits apply for each app. All users of one app share them.
-- Socket Mode gives each event to only one open connection of the app. Two people can run Bifrost on one app. Then the events of one person can go to the Bifrost of the other person. That is a privacy fault. So two people must never share one Socket Mode app.
+- Socket Mode gives each event to only one open connection of the app. So two people must never share the Socket Mode token of one app. The events of one person could go to the Bifrost of the other person.
 
-The options:
+How other products do it:
 
-| Option | How | Good | Bad |
-|---|---|---|---|
-| A. One app for each person (recommended for a small team) | Each person makes their own Bifrost app from this manifest, and pastes the two tokens into Bifrost Settings. | Private events, full rate limits for each person, no server. | Each app needs an admin approval. A Free workspace allows only 10 apps. Setup takes about 5 minutes for each person. |
-| B. One company app with a relay server (for many users) | The company runs one small server. It gets the Slack events over HTTP and sends each event only to the Bifrost of its user. Bifrost has a "Connect Slack" button (an OAuth sign-in with PKCE, which Slack supports for desktop apps since 30 March 2026). | One approval, one click for each user. | A server to run and secure. All users share one set of rate limits. PKCE tokens rotate, and the refresh token expires after 30 days without use. |
-| C. One company app without Socket Mode | Each Bifrost signs in with PKCE and polls the history. | No server. | All users share 50+ history requests each minute, so it works for a few users only. |
+| Product type | Method |
+|---|---|
+| Linear, Notion, GitHub, Zendesk | One app. An admin installs it one time. Each user connects. The vendor server gets the Slack events over HTTP and routes them. |
+| Raycast | One app with a sign-in for each user. It reads messages only when the user opens a command. No live messages. |
+| Ferdium, Franz, Rambox, Station | The Slack web client in a webview. No app and no API. |
+| Beeper, Texts.com | The browser login token. Slack does not support this method. Bifrost does not use it. |
+| Older clients | The RTM API. New apps cannot use it. Classic apps stop on 16 November 2026. |
 
-Bifrost does not support other companies' workspaces. That needs the Slack Marketplace review.
+The plan for Bifrost:
+
+| Stage | Method | Users |
+|---|---|---|
+| 1 (M6) | One company app. The user signs in. Live messages come over Socket Mode. | The user only. Do not give the app-level token to a second person. |
+| 2 (later) | The same company app. Each user clicks "Connect Slack" (OAuth with PKCE). A small company relay server gets the Events API over HTTP. It checks `apps.event.authorizations.list` and sends each event only to the Bifrost of the users who can see it. Each Mac reads history and sends messages with its own user token. | All staff. The admin approves the app one time. |
+
+Notes for stage 2:
+
+- Cost: a small server, under about USD 20 each month, plus the build work.
+- Risk: a fault in the event filter can show a private message to the wrong person. The filter needs strong tests.
+- At 200 users, the history load at the start of the day reaches the shared Tier 3 limit. The relay or the clients need a load limit.
+- Test first: PKCE with user events, the authorizations for private channels, DMs and group DMs, and the stop of events when a user leaves a private channel.
+
+Methods that do not work:
+
+- Polling with no server: all staff share 50 history requests each minute. At 50 users, a panel updates every 8 minutes.
+- Socket Mode in each Bifrost with one shared app-level token: a privacy fault.
+- Browser session tokens: not supported by Slack.
+
+Outside the company: the Slack Marketplace rejects third-party Slack clients. An unlisted app gets 1 history request each minute. So Bifrost stays a company tool for Slack. Get a legal review before any other plan.
