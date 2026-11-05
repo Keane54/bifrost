@@ -287,3 +287,29 @@ Changes to the plan method:
 - Decide the Add button of the Selected Item panel. It adds the row in orange with no colour choice. Spec 8.12 says that you select a colour in a submenu.
 - Release a drag outside the window with a real mouse. The agent used CDP mouse events.
 - The dev app made `quiet` folders in `~/.bifrost/sessions` for 9 test session IDs and an empty `~/.bifrost/run` folder. The agent left them.
+
+## Controller check: `claude rm` of a worktree with a commit (2026-11-05)
+
+The controller ran this check after Task 10, with the test session `bifrost-test-rmx` in `.m0-sandbox`. Claude Code is 2.1.318. The bifrost repository has no remote.
+
+| Step | Command | Result |
+|------|---------|--------|
+| 1. Start | `cl.sh --bg --worktree bifrost-test-rmx --model haiku --name bifrost-test-rmx "Reply with the word READY."` | `backgrounded · abd71478 · bifrost-test-rmx`. The worktree is `.claude/worktrees/bifrost-test-rmx` on branch `worktree-bifrost-test-rmx`. |
+| 2. Commit | `git -C <worktree> commit --allow-empty -m "test: bifrost-test commit"` | Commit `f7698d3`. |
+| 3. Stop | `cl.sh stop abd71478` | Exit code 0. `stopped abd71478`, `worktree retained at <worktree>`. |
+| 4. Entry | `cl.sh agents --json --all` | `cwd` is the start folder `.m0-sandbox`, `state` `done`. The entry has no worktree field. |
+| 5. rm | `cl.sh rm abd71478` | Exit code 1. Stdout (see below). The worktree and the branch stay. |
+| 6. rm with discard | `cl.sh rm abd71478 --discard-unpushed <value from step 5>` | Exit code 0. `removed abd71478` and `worktree: “<worktree>”`. The worktree and the branch are gone. |
+
+The stdout of step 5 (the quotes are U+201C and U+201D, the dash is U+2014):
+
+```
+kept abd71478 — its worktree is still at “/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-rmx”
+  169 unpushed commits on “worktree-bifrost-test-rmx”: f7698d3 “test: bifrost-test commit” and 168 more. They exist on no remote, so deleting the worktree would lose them.
+  push them and run 'claude rm abd71478' again, or discard the worktree and its commits: claude rm abd71478 --discard-unpushed f7698d38614ba22b41f996fab73124361d2fe389@598a160a880168020f78fdeda23f998a
+```
+
+Results:
+- `claude rm` keeps a worktree that has commits on no remote. In a repository with no remote, the count also has the commits of `main`.
+- The value of `--discard-unpushed` is `<40 hex characters>@<32 hex characters>`. It comes only from the refusal text.
+- A stopped session loses its worktree in `claude agents`. Bifrost must remember the worktree while the session runs.
