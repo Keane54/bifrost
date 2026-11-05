@@ -6,6 +6,7 @@ import {
   END_WAIT_MS,
   newSessionArgs,
   RESUME_SETTLE_MS,
+  RM_GRACE_MS,
   RM_TIMEOUT_MS,
   RUN_TIMEOUT_MS,
   type SessionActionDeps,
@@ -479,6 +480,40 @@ describe('remove', () => {
     expect(f.ops('forget')).toEqual([])
   })
 
+  test('remove releases the lock 30 s after the SIGTERM of a claude rm that does not end', async () => {
+    // Node sends SIGTERM at RM_TIMEOUT_MS. Bifrost waits 30 s more and sends no SIGKILL.
+    const GRACE = 30_000
+    f.rows = [parked()]
+    let finish: (result: ExecResult) => void = () => {}
+    f.exec = () =>
+      new Promise<ExecResult>(resolve => {
+        finish = resolve
+      })
+    let outcome: string | null = null
+    actions.remove(S, true).then(
+      () => {
+        outcome = 'resolved'
+      },
+      (error: Error) => {
+        outcome = error.message
+      },
+    )
+    await vi.advanceTimersByTimeAsync(RM_TIMEOUT_MS + GRACE - 1)
+    expect(outcome).toBeNull()
+    await expect(actions.remove(S, true)).rejects.toThrow(LOCKED)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(outcome).toBe('refused: claude rm took too long')
+    expect(RM_GRACE_MS).toBe(GRACE)
+    // A late end of that claude rm changes nothing. The next poll shows the result.
+    finish(OK)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.ops('forget')).toEqual([])
+    // The lock is free again.
+    f.exec = () => OK
+    await actions.remove(S, true)
+    expect(f.ops('forget')).toEqual([`${RM_TIMEOUT_MS + GRACE} forget ${S}`])
+  })
+
   test('remove does not run claude rm after a failed claude stop', async () => {
     f.rows = [row()]
     f.exec = args => (args[0] === 'stop' ? { code: 1, stderr: '', stdout: '' } : OK)
@@ -742,6 +777,19 @@ describe('remove of a worktree that claude rm keeps', () => {
       'refused: claude rm took too long',
     )
     expect(f.ops()).toEqual([runLine(RM), `0 checkWorktree ${WT}`, runLine(DISCARD)])
+  })
+
+  test('remove releases the lock 30 s after the SIGTERM of a discard that does not end', async () => {
+    f.rows = [stoppedRow()]
+    f.exec = args => (args.length === 2 ? KEPT : new Promise<ExecResult>(() => {}))
+    f.check = () => found(0, 0)
+    let outcome: string | null = null
+    actions.remove(S, true, counts(0, 0)).catch((error: Error) => {
+      outcome = error.message
+    })
+    await vi.advanceTimersByTimeAsync(RM_TIMEOUT_MS + 30_000)
+    expect(outcome).toBe('refused: claude rm took too long')
+    expect(f.ops('forget')).toEqual([])
   })
 
   test('remove refuses a worktree with uncommitted changes and tries no discard', async () => {

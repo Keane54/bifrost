@@ -39,8 +39,12 @@ export const END_POLL_MS = 100
 export const RUN_TIMEOUT_MS = 60_000
 // The time limit of claude rm. A discard can delete a large worktree, for example one with
 // node_modules. A SIGKILL at the limit leaves the worktree half deleted (Task 17 bug 1). So
-// claude rm gets SIGTERM at the limit.
+// claude rm gets SIGTERM at the limit, and never SIGKILL.
 export const RM_TIMEOUT_MS = 600_000
+// Node waits for the end of the process after the SIGTERM. Bifrost waits this time more. Then the
+// Delete fails and frees the lock. The process can still end later. The next poll shows the
+// result (controller ruling, Task 18 fix round 1).
+export const RM_GRACE_MS = 30_000
 const RM_OPTS = { killSignal: 'SIGTERM', timeoutMs: RM_TIMEOUT_MS } as const
 // After Take control, the resumed session must still run this time after its process showed.
 // A resume can fail just after the start of its process (Task 10 bug 3).
@@ -267,11 +271,20 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   }
 
   // Run claude rm. A timeout gives REFUSED_RM_SLOW, because the output after SIGTERM is not
-  // complete.
+  // complete. A claude rm that has not ended RM_GRACE_MS after the SIGTERM also gives
+  // REFUSED_RM_SLOW. Bifrost then does not use its result.
   const rm = async (run: RunClaude, args: string[]): Promise<ExecResult> => {
-    const result = await run(args, RM_OPTS)
-    if (result.timedOut === true) throw new Error(REFUSED_RM_SLOW)
-    return result
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const limit = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(REFUSED_RM_SLOW)), RM_TIMEOUT_MS + RM_GRACE_MS)
+    })
+    try {
+      const result = await Promise.race([run(args, RM_OPTS), limit])
+      if (result.timedOut === true) throw new Error(REFUSED_RM_SLOW)
+      return result
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   // Store the worktree that a kept line names, for a row whose worktree Bifrost does not know.

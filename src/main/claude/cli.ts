@@ -27,7 +27,8 @@ const DEFAULT_TIMEOUT_MS = 10000
 // At the timeout, SIGKILL stops the program. A program can ignore SIGTERM, but not SIGKILL.
 // So a hung program cannot stop a poll.
 // opts.killSignal SIGTERM lets the program stop its work cleanly. Use it only for a command
-// that a SIGKILL can leave half done. Node then waits until the program ends.
+// that a SIGKILL can leave half done. Node then waits until the program ends, so the caller
+// must also set its own limit.
 export const execFile: ExecFn = (file, args, opts) =>
   new Promise(resolve => {
     nodeExecFile(

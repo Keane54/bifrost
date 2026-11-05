@@ -114,9 +114,12 @@ export class SessionRegistry {
   private readonly terminals = new Map<number, TerminalApp | null>()
   private changed = false
   private readonly sessions = new Map<string, Session>()
-  // The session ids of the last active list and of the last --all list.
+  // The session ids of the last active list and of the last --all list. The --all set has only
+  // the background entries.
   private active = new Set<string>()
   private all = new Set<string>()
+  // The session ids of the background entries of the last active list.
+  private activeBackground = new Set<string>()
   // Hook events for sessions that did not show yet.
   private pending: HookEvent[] = []
   private status = new Map<string, StatusData>()
@@ -172,6 +175,11 @@ export class SessionRegistry {
       if (!ids.has(id)) this.leave(id, sampledAt)
     }
     this.active = ids
+    this.activeBackground = new Set(
+      entries.filter(entry => entry.kind === 'background').map(entry => entry.sessionId),
+    )
+    // A session in the active list exists. Its count of --all lists without it goes back to 0.
+    for (const id of ids) this.missing.delete(id)
     this.parkStarted(sampledAt)
     this.trackLastActive(entries, sampledAt)
   }
@@ -197,12 +205,19 @@ export class SessionRegistry {
   // Apply the output of "claude agents --json --all".
   // Call it only after a poll that did not fail. complete is false when the parser skipped an
   // entry. Then the list can miss a session that exists.
-  applyAllAgents(entries: AgentEntry[], complete = true): void {
-    this.forgetGone(entries, complete)
+  // Only a list that counts can remove a row or a stored value, through forgetGone. A list counts
+  // when it is complete, not empty, and has each background session of the last active list
+  // (Task 18 fix round 1, M1 and M2). A list that does not count only adds rows and names. Its
+  // background IDs join the IDs of the last --all list, so leave() parks those sessions.
+  applyAllAgents(entries: AgentEntry[], complete: boolean): void {
+    const listed = new Set(entries.map(entry => entry.sessionId))
+    const counts =
+      complete && entries.length > 0 && [...this.activeBackground].every(id => listed.has(id))
     // An interactive session that ended must not come back as a parked row.
     // So the registry uses only the background entries.
     const owned = entries.filter(entry => entry.kind === 'background')
-    this.all = new Set(owned.map(entry => entry.sessionId))
+    const ownedIds = owned.map(entry => entry.sessionId)
+    this.all = counts ? new Set(ownedIds) : new Set([...this.all, ...ownedIds])
     for (const entry of owned) {
       this.keepName(entry)
       // An entry with a pid has a process. The active list gives its data.
@@ -211,34 +226,7 @@ export class SessionRegistry {
       copyEntry(s, entry)
       this.park(s)
     }
-    // A parked session that left --all goes away, if Bifrost did not start it.
-    for (const s of this.sessions.values()) {
-      if (s.machine.state === 'parked' && !this.known(s.sessionId)) {
-        this.sessions.delete(s.sessionId)
-      }
-    }
-    // Remove the names, priorities, watch entries and worktrees of sessions that left all lists.
-    // This limits the size of the store.
-    for (const id of this.names.keys()) {
-      if (this.known(id)) continue
-      this.names.delete(id)
-      this.changed = true
-    }
-    for (const id of this.priorities.keys()) {
-      if (this.known(id)) continue
-      this.priorities.delete(id)
-      this.changed = true
-    }
-    for (const id of this.watched.keys()) {
-      if (this.known(id)) continue
-      this.watched.delete(id)
-      this.changed = true
-    }
-    for (const id of this.worktrees.keys()) {
-      if (this.known(id)) continue
-      this.worktrees.delete(id)
-      this.changed = true
-    }
+    if (counts) this.forgetGone(listed)
   }
 
   // Apply hook events. An event for an unknown session waits until the session shows.
@@ -271,6 +259,7 @@ export class SessionRegistry {
     this.resumable.delete(sessionId)
     this.inactiveSince.delete(sessionId)
     this.missing.delete(sessionId)
+    this.activeBackground.delete(sessionId)
     const removed = [
       this.started.delete(sessionId),
       this.names.delete(sessionId),
@@ -514,29 +503,37 @@ export class SessionRegistry {
     else this.sessions.delete(sessionId)
   }
 
-  // Forget an owned or started session that GONE_LISTS --all lists in a row did not have.
-  // claude rm in a terminal removes a session, but the started list keeps it (Task 17 bug 3).
-  // These sessions are not gone, and their counts go back to 0:
-  // - A session in the active list.
-  // - A session with an entry of any kind in the --all list.
-  // An empty list and a list that is not complete do not count. They do not reset a count.
-  // The service calls applyAllAgents only after a good poll, so a failed read never counts.
-  private forgetGone(entries: AgentEntry[], complete: boolean): void {
-    const listed = new Set(entries.map(entry => entry.sessionId))
-    const candidates = new Set(this.started)
+  // Count each session that a counted --all list does not have. Forget the session after
+  // GONE_LISTS counted lists in a row without it. This is the only forget that an --all list
+  // gives (Task 17 bug 3, Task 18 fix round 1). It also limits the size of the store.
+  // The sessions are the owned rows, the started sessions, and each session with a stored name,
+  // priority, watch colour or worktree.
+  // The count of a session goes back to 0 when the last active list has it, when this list has
+  // its background entry, or when this list has an entry of any kind for a started session.
+  // A failed Take control leaves a started session with an interactive entry (D6).
+  // applyAgents also sets the count of each session in the active list to 0. A list that does not
+  // count does not call this function. So it does not add to a count, and it does not reset one.
+  private forgetGone(listed: Set<string>): void {
+    const ids = new Set([
+      ...this.started,
+      ...this.names.keys(),
+      ...this.priorities.keys(),
+      ...this.watched.keys(),
+      ...this.worktrees.keys(),
+    ])
     for (const s of this.sessions.values()) {
-      if (s.kind === 'owned') candidates.add(s.sessionId)
+      if (s.kind === 'owned') ids.add(s.sessionId)
     }
     for (const id of this.missing.keys()) {
-      if (!candidates.has(id)) this.missing.delete(id)
+      if (!ids.has(id)) this.missing.delete(id)
     }
-    const counts = complete && entries.length > 0
-    for (const id of candidates) {
-      if (listed.has(id) || this.active.has(id)) {
+    for (const id of ids) {
+      const here =
+        this.active.has(id) || this.all.has(id) || (this.started.has(id) && listed.has(id))
+      if (here) {
         this.missing.delete(id)
         continue
       }
-      if (!counts) continue
       const missing = (this.missing.get(id) ?? 0) + 1
       if (missing >= GONE_LISTS) this.forget(id)
       else this.missing.set(id, missing)
@@ -548,11 +545,6 @@ export class SessionRegistry {
     for (const id of this.started) {
       if (!this.active.has(id) && !this.sessions.has(id)) this.park(this.add(id), sampledAt)
     }
-  }
-
-  // Return true if the session is in the active list, in the --all list or in the started list.
-  private known(sessionId: string): boolean {
-    return this.active.has(sessionId) || this.all.has(sessionId) || this.started.has(sessionId)
   }
 
   // Park a session. A parked session has no process.

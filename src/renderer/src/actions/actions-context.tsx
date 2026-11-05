@@ -33,6 +33,7 @@ import {
 } from './action-model'
 import { useConfirm } from './ConfirmDialog'
 import { confirmFor } from './confirm'
+import { createDeleteNotices } from './delete-notice'
 import { friendlyError } from './errors'
 import RenameDialog from './RenameDialog'
 import { type FocusRequest, planRun, type RunPlan } from './run-plan'
@@ -173,8 +174,11 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const notice = noticeLine.text
   const showErrorLine = errorLine.show
   const closeError = errorLine.clear
-  const showNotice = noticeLine.show
-  const hideNotice = noticeLine.hide
+  // show and hide of useTimedMessage do not change. So the first render gives the notices.
+  // While a Delete runs, its notice stays. Another notice shows after the Delete (M5).
+  const [notices] = useState(() =>
+    createDeleteNotices({ hide: noticeLine.hide, show: noticeLine.show }, DELETING_NOTICE),
+  )
   const showError = useCallback(
     (text: string) => showErrorLine(text, { untilHidden: true }),
     [showErrorLine],
@@ -224,8 +228,8 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
 
   // A confirmation could not open, because another dialog is open. The action does not run.
   const onBusy = useCallback(() => {
-    showNotice(DIALOG_BUSY_NOTICE)
-  }, [showNotice])
+    notices.notify(DIALOG_BUSY_NOTICE)
+  }, [notices])
 
   // Close the Rename dialog only when it is still the dialog of this session. A send of an old
   // dialog can end after the user opened Rename for another session.
@@ -259,17 +263,17 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       // The counts of the check that the Delete dialog showed. null when the check failed or
       // found no worktree. Then the main process never discards a worktree that claude rm keeps.
       let seen: SeenCounts | null = null
-      // The notice of a Delete that runs, or null.
-      let deleting: number | null = null
+      // True while the Delete runs after the confirm.
+      let deleting = false
       try {
         if (plan.call === 'remove') {
           // Delete runs the unmerged-work check first (Task 13). A failed check gives null.
           setRunningFor(sessionId, true)
           marked = true
           // The page is not modal during the check. The notice tells the user that it runs.
-          const checking = showNotice(CHECKING_NOTICE, { untilHidden: true })
+          const checking = notices.showUntilHidden(CHECKING_NOTICE)
           const check = await api.sessions.deleteCheck(sessionId).catch(() => null)
-          hideNotice(checking)
+          notices.hide(checking)
           if (check !== null && check.worktree !== null) {
             seen = { changedFiles: check.changedFiles, unmergedCommits: check.unmergedCommits }
           }
@@ -302,7 +306,8 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
             break
           case 'remove':
             if (!confirmed) return
-            deleting = showNotice(DELETING_NOTICE, { untilHidden: true })
+            notices.startDelete()
+            deleting = true
             await api.sessions.remove(sessionId, true, seen)
             break
           case 'resume':
@@ -315,7 +320,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           }
           case 'open-in-terminal': {
             const result = await api.actions.openInTerminal(sessionId)
-            if (result.notice !== null) showNotice(result.notice)
+            if (result.notice !== null) notices.notify(result.notice)
             break
           }
           case 'set-priority':
@@ -356,11 +361,11 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       } catch (err) {
         fail(err)
       } finally {
-        if (deleting !== null) hideNotice(deleting)
+        if (deleting) notices.endDelete()
         if (marked) setRunningFor(sessionId, false)
       }
     },
-    [chats, confirm, dispatch, fail, hideNotice, onBusy, select, setRunningFor, showNotice],
+    [chats, confirm, dispatch, fail, notices, onBusy, select, setRunningFor],
   )
 
   const run = useCallback(
@@ -419,7 +424,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       window.bifrost.sessions
         .resumeAll()
         .then(result => {
-          showNotice(resumedNotice(result.resumed))
+          notices.notify(resumedNotice(result.resumed))
           if (result.failed.length > 0) {
             showError(result.failed.map(f => `${f.name}: ${friendlyError(f.error)}`).join('; '))
           }
@@ -429,7 +434,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           setResumeAllRunning(false)
         })
     },
-    [fail, showError, showNotice],
+    [fail, notices, showError],
   )
 
   const value = useMemo<ActionsValue>(

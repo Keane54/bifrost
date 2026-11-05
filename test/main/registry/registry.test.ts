@@ -20,6 +20,9 @@ const bg = (o: Partial<AgentEntry> = {}): AgentEntry => ({
   ...o,
 })
 
+// Another parked session. A --all list with it is not empty, so the list counts for a forget.
+const another = bg({ id: 'cc', name: 'gamma', pid: undefined, sessionId: 'o2', status: '' })
+
 const ev = (name: HookEventName, sessionId: string, at: number): HookEvent => ({
   at,
   name,
@@ -66,7 +69,7 @@ describe('brief', () => {
     const r = registry()
     r.applyAgents([bg()], 100)
     r.applyAgents([], 200)
-    r.applyAllAgents([bg({ name: '', pid: undefined, status: '' })])
+    r.applyAllAgents([bg({ name: '', pid: undefined, status: '' })], true)
     expect(r.rows()).toHaveLength(1)
     expect(r.rows()[0]).toMatchObject({ box: 'none', name: 'alpha', state: 'parked' })
   })
@@ -81,7 +84,7 @@ describe('brief', () => {
     })
     r.markStarted('s9')
     r.applyAgents([], 100)
-    r.applyAllAgents([])
+    r.applyAllAgents([], true)
     expect(r.rows()).toHaveLength(1)
     expect(r.rows()[0]).toMatchObject({
       box: 'none',
@@ -176,7 +179,7 @@ describe('kind and leave rules', () => {
 
   test('an owned session that leaves the active list and is in --all is parked', () => {
     const r = registry()
-    r.applyAllAgents([bg()])
+    r.applyAllAgents([bg()], true)
     r.applyAgents([bg({ status: 'busy' })], 100)
     r.applyAgents([], 200)
     expect(r.rows()[0]).toMatchObject({ state: 'parked', status: '' })
@@ -191,12 +194,14 @@ describe('kind and leave rules', () => {
     expect(r.rows()).toEqual([])
   })
 
-  test('a parked session goes away when it leaves --all and Bifrost did not start it', () => {
+  test('a parked session that Bifrost did not start goes away after two --all lists without it', () => {
     const r = registry()
-    r.applyAllAgents([bg({ pid: undefined, status: '' })])
+    r.applyAllAgents([bg({ pid: undefined, status: '' })], true)
     expect(r.rows()).toHaveLength(1)
-    r.applyAllAgents([])
-    expect(r.rows()).toEqual([])
+    r.applyAllAgents([another], true)
+    expect(r.rows().map(row => row.sessionId)).toEqual(['o2', 's1'])
+    r.applyAllAgents([another], true)
+    expect(r.rows().map(row => row.sessionId)).toEqual(['o2'])
   })
 
   test('a parked session that shows in the active list again leaves the parked state', () => {
@@ -267,7 +272,7 @@ describe('kind and leave rules', () => {
     const r = registry()
     r.applyAgents([{ ...ended, pid: 7, status: 'idle' }], 100)
     r.applyAgents([], 200)
-    r.applyAllAgents([ended])
+    r.applyAllAgents([ended], true)
     expect(r.rows()).toEqual([])
   })
 })
@@ -347,7 +352,7 @@ describe('store', () => {
 
   test('a name from --all goes into the store', () => {
     const r = registry()
-    r.applyAllAgents([bg({ name: 'beta', pid: undefined, status: '' })])
+    r.applyAllAgents([bg({ name: 'beta', pid: undefined, status: '' })], true)
     expect(r.storeChanged()).toBe(true)
     expect(r.store().names).toEqual({ s1: 'beta' })
   })
@@ -359,8 +364,11 @@ describe('store', () => {
     expect(r.storeChanged()).toBe(true)
     r.applyAgents([], 200)
     expect(r.storeChanged()).toBe(false)
-    r.applyAllAgents([])
-    expect(r.store().names).toEqual({})
+    r.applyAllAgents([another], true)
+    expect(r.store().names).toEqual({ o2: 'gamma', s1: 'warp' })
+    r.storeChanged()
+    r.applyAllAgents([another], true)
+    expect(r.store().names).toEqual({ o2: 'gamma' })
     expect(r.storeChanged()).toBe(true)
   })
 
@@ -373,7 +381,11 @@ describe('store', () => {
       watch: [],
     })
     r.applyAgents([bg({ name: 'one' })], 100)
-    r.applyAllAgents([bg({ name: '', pid: undefined, sessionId: 's2', status: '' })])
+    // The list has the active session s1, so it counts.
+    r.applyAllAgents(
+      [bg({ name: 'one' }), bg({ name: '', pid: undefined, sessionId: 's2', status: '' })],
+      true,
+    )
     expect(r.store().names).toEqual({ s1: 'one', s2: 'two', s3: 'three' })
     expect(r.storeChanged()).toBe(false)
   })
@@ -386,7 +398,10 @@ describe('store', () => {
       started: [],
       watch: [],
     })
-    r.applyAllAgents([bg({ kind: 'interactive', name: 'warp', pid: undefined, status: '' })])
+    const ended = bg({ kind: 'interactive', name: 'warp', pid: undefined, status: '' })
+    r.applyAllAgents([ended], true)
+    expect(r.store().names).toEqual({ s1: 'warp' })
+    r.applyAllAgents([ended], true)
     expect(r.store().names).toEqual({})
   })
 
@@ -524,7 +539,7 @@ describe('pending events', () => {
   test('a pending event goes to a session that shows in --all, before it is parked', () => {
     const r = registry()
     r.applyEvents([ev('SessionStart', 's1', 10), ev('Stop', 's1', 20)], 20)
-    r.applyAllAgents([bg({ pid: undefined, status: '' })])
+    r.applyAllAgents([bg({ pid: undefined, status: '' })], true)
     expect(r.rows()[0]).toMatchObject({ box: 'none', lastActivity: 20, state: 'parked' })
   })
 
@@ -579,7 +594,7 @@ describe('priority', () => {
     const r = registry()
     r.applyAgents([bg()], 100)
     r.setPriority('s1', 4)
-    r.applyAllAgents([bg()])
+    r.applyAllAgents([bg()], true)
     r.applyAgents([], 200)
     expect(r.rows()[0]).toMatchObject({ priority: 4, state: 'parked' })
   })
@@ -590,7 +605,9 @@ describe('priority', () => {
     r.setPriority('s1', 1)
     r.applyAgents([], 200)
     r.storeChanged()
-    r.applyAllAgents([])
+    r.applyAllAgents([another], true)
+    expect(r.store().priorities).toEqual({ s1: 1 })
+    r.applyAllAgents([another], true)
     expect(r.store().priorities).toEqual({})
     expect(r.storeChanged()).toBe(true)
   })
@@ -652,7 +669,7 @@ describe('forget, lastActive and terminals', () => {
   test('the loaded lastActive gives the resumable rows', () => {
     const r = registry({ lastActive: ['s1'], names: {}, priorities: {}, started: [], watch: [] })
     r.applyAgents([], 1000)
-    r.applyAllAgents([bg({ pid: undefined, status: '' })])
+    r.applyAllAgents([bg({ pid: undefined, status: '' })], true)
     expect(r.rows()[0]).toMatchObject({ resumable: true, state: 'parked' })
     r.tick(1000 + LAST_ACTIVE_GRACE_MS)
     expect(r.store().lastActive).toEqual([])
@@ -663,7 +680,7 @@ describe('forget, lastActive and terminals', () => {
     const r = registry({ lastActive: ['s1'], names: {}, priorities: {}, started: [], watch: [] })
     r.applyAgents([bg()], 1000)
     r.applyAgents([], 2000)
-    r.applyAllAgents([bg({ pid: undefined, status: '' })])
+    r.applyAllAgents([bg({ pid: undefined, status: '' })], true)
     expect(r.rows()[0].state).toBe('parked')
     expect(r.rows()[0].resumable).toBeUndefined()
   })
@@ -680,7 +697,7 @@ describe('forget, lastActive and terminals', () => {
     const r = registry()
     r.applyAgents([ext()], 100)
     r.applyAgents([], 200)
-    r.applyAllAgents([])
+    r.applyAllAgents([], true)
     expect(r.rows()).toEqual([])
   })
 
@@ -827,7 +844,9 @@ describe('watchlist', () => {
     r.watchAdd('s1', 'dark-blue')
     r.storeChanged()
     r.applyAgents([], 200)
-    r.applyAllAgents([])
+    r.applyAllAgents([another], true)
+    expect(r.store().watch).toEqual([{ colour: 'dark-blue', sessionId: 's1' }])
+    r.applyAllAgents([another], true)
     expect(r.store().watch).toEqual([])
     expect(r.storeChanged()).toBe(true)
   })
@@ -864,7 +883,7 @@ describe('worktrees', () => {
     r.applyAgents([bg({ cwd: '/r' })], 100)
     expect(r.rows()[0].worktree).toBeUndefined()
     // An entry with a worktree cwd and no pid is parked.
-    r.applyAllAgents([inWorktree({ pid: undefined, sessionId: 's2', status: '' })])
+    r.applyAllAgents([inWorktree({ pid: undefined, sessionId: 's2', status: '' })], true)
     expect(r.rows().find(row => row.sessionId === 's2')?.state).toBe('parked')
     expect(r.store().worktrees).toEqual([])
   })
@@ -883,7 +902,7 @@ describe('worktrees', () => {
   test('rememberWorktree stores a worktree root for a known session only', () => {
     const r = registry()
     r.markStarted('s1')
-    r.applyAllAgents([stopped()])
+    r.applyAllAgents([stopped()], true)
     r.storeChanged()
     // A path that is not a worktree root, and an unknown session, change nothing.
     for (const path of [`${WT}/src`, '/r', 'r/.claude/worktrees/a', `${WT}/`]) {
@@ -904,7 +923,7 @@ describe('worktrees', () => {
     r.markStarted('s1')
     r.applyAgents([inWorktree()], 100)
     r.applyAgents([], 200)
-    r.applyAllAgents([stopped()])
+    r.applyAllAgents([stopped()], true)
     const row = r.rows()[0]
     expect(row).toMatchObject({ cwd: '/r', state: 'parked', worktree: WT })
     expect(r.store().worktrees).toEqual([{ path: WT, sessionId: 's1' }])
@@ -915,7 +934,7 @@ describe('worktrees', () => {
     r.applyAgents([inWorktree(), bg({ cwd: '/q', sessionId: 's2', startedAt: 2 })], 100)
     expect(r.cwds()).toEqual([`${WT}/src`, '/q'])
     r.applyAgents([bg({ cwd: '/q', sessionId: 's2', startedAt: 2 })], 200)
-    r.applyAllAgents([stopped(), bg({ cwd: '/q', sessionId: 's2', startedAt: 2 })])
+    r.applyAllAgents([stopped(), bg({ cwd: '/q', sessionId: 's2', startedAt: 2 })], true)
     expect(r.cwds()).toEqual([WT, '/q'])
     r.applyBranch(WT, 'worktree-fix-a')
     r.applyBranch('/r', 'main')
@@ -928,7 +947,9 @@ describe('worktrees', () => {
     expect(r.store().worktrees).toHaveLength(1)
     r.storeChanged()
     r.applyAgents([], 200)
-    r.applyAllAgents([])
+    r.applyAllAgents([another], true)
+    expect(r.store().worktrees).toHaveLength(1)
+    r.applyAllAgents([another], true)
     expect(r.store().worktrees).toEqual([])
     expect(r.storeChanged()).toBe(true)
   })
@@ -951,7 +972,7 @@ describe('worktrees', () => {
       watch: [],
       worktrees: [{ path: WT, sessionId: 's1' }],
     })
-    r.applyAllAgents([stopped()])
+    r.applyAllAgents([stopped()], true)
     expect(r.rows()[0]).toMatchObject({ cwd: '/r', worktree: WT })
     const old = new SessionRegistry({
       escalationMs: 600_000,
@@ -983,11 +1004,11 @@ describe('a session that is gone (Task 17 bug 3)', () => {
   test('a started session that two --all lists in a row do not have is forgotten', () => {
     const r = withGone()
     expect(ids(r)).toEqual(['s9'])
-    r.applyAllAgents([other])
+    r.applyAllAgents([other], true)
     expect(ids(r)).toEqual(['s9', 'o1'])
     expect(r.store().started).toEqual(['s9'])
     r.storeChanged()
-    r.applyAllAgents([other])
+    r.applyAllAgents([other], true)
     expect(ids(r)).toEqual(['o1'])
     expect(r.store()).toEqual({
       lastActive: [],
@@ -1006,12 +1027,12 @@ describe('a session that is gone (Task 17 bug 3)', () => {
   test('a session that comes back resets the count', () => {
     const r = withGone()
     const back = bg({ id: 'a9', pid: undefined, sessionId: 's9', status: '' })
-    r.applyAllAgents([other])
-    r.applyAllAgents([other, back])
-    r.applyAllAgents([other])
+    r.applyAllAgents([other], true)
+    r.applyAllAgents([other, back], true)
+    r.applyAllAgents([other], true)
     expect(ids(r)).toContain('s9')
     expect(r.store().started).toEqual(['s9'])
-    r.applyAllAgents([other])
+    r.applyAllAgents([other], true)
     expect(ids(r)).not.toContain('s9')
   })
 
@@ -1020,7 +1041,7 @@ describe('a session that is gone (Task 17 bug 3)', () => {
     const r = withGone()
     for (const at of [200, 300, 400]) {
       r.applyAgents([bg({ sessionId: 's9' })], at)
-      r.applyAllAgents([other])
+      r.applyAllAgents([other], true)
     }
     expect(ids(r)).toContain('s9')
     expect(r.store().started).toEqual(['s9'])
@@ -1036,28 +1057,28 @@ describe('a session that is gone (Task 17 bug 3)', () => {
       sessionId: 's9',
       status: '',
     })
-    for (let i = 0; i < 3; i++) r.applyAllAgents([other, ended])
+    for (let i = 0; i < 3; i++) r.applyAllAgents([other, ended], true)
     expect(ids(r)).toContain('s9')
     expect(r.store().watch).toEqual([{ colour: 'amber', sessionId: 's9' }])
   })
 
   test('an empty --all list and a list with a skipped entry do not count', () => {
     const r = withGone()
-    r.applyAllAgents([other])
-    r.applyAllAgents([])
+    r.applyAllAgents([other], true)
+    r.applyAllAgents([], true)
     r.applyAllAgents([other], false)
     r.applyAllAgents([], false)
     expect(ids(r)).toContain('s9')
     expect(r.store().started).toEqual(['s9'])
     expect(r.store().worktrees).toEqual([{ path: WT, sessionId: 's9' }])
     // These lists do not stop the count either. The next good list is the second one in a row.
-    r.applyAllAgents([other])
+    r.applyAllAgents([other], true)
     expect(ids(r)).not.toContain('s9')
   })
 
   test('one --all list without the session does not forget it', () => {
     const r = withGone()
-    r.applyAllAgents([other])
+    r.applyAllAgents([other], true)
     r.applyAgents([], 200)
     r.tick(300)
     expect(r.rows().find(row => row.sessionId === 's9')).toMatchObject({
@@ -1069,14 +1090,124 @@ describe('a session that is gone (Task 17 bug 3)', () => {
     })
   })
 
+  test('an --all list without a background session of the active list does not count', () => {
+    // A list that misses a session that runs is not complete, or Claude Code filtered it.
+    const r = withGone()
+    const running = bg({ id: 'r1', name: 'run', sessionId: 'r1' })
+    r.applyAgents([running], 200)
+    for (let i = 0; i < 3; i++) r.applyAllAgents([other], true)
+    expect(ids(r)).toContain('s9')
+    expect(r.store().started).toEqual(['s9'])
+    // An entry of any kind for the running session makes the list complete.
+    r.applyAllAgents([other, running], true)
+    expect(ids(r)).toContain('s9')
+    r.applyAllAgents([other, { ...running, kind: 'interactive' }], true)
+    expect(ids(r)).not.toContain('s9')
+  })
+
+  test('a list that does not count does not reset a count', () => {
+    const r = withGone()
+    const listed = bg({ id: 'a9', pid: undefined, sessionId: 's9', status: '' })
+    r.applyAllAgents([other], true)
+    // A partial list, and a list that misses a running session, have s9. They do not reset it.
+    r.applyAllAgents([other, listed], false)
+    r.applyAgents([bg({ id: 'r1', sessionId: 'r1' })], 200)
+    r.applyAllAgents([other, listed], true)
+    r.applyAgents([], 300)
+    expect(ids(r)).toContain('s9')
+    r.applyAllAgents([other], true)
+    expect(ids(r)).not.toContain('s9')
+  })
+
+  test('an active list that has the session resets its count', () => {
+    const r = withGone()
+    r.applyAllAgents([other], true)
+    // s9 runs for a short time between two --all lists.
+    r.applyAgents([bg({ sessionId: 's9' })], 200)
+    r.applyAgents([], 300)
+    r.applyAllAgents([other], true)
+    expect(ids(r)).toContain('s9')
+    r.applyAllAgents([other], true)
+    expect(ids(r)).not.toContain('s9')
+  })
+
   test('a forget by Delete also clears the count', () => {
     const r = withGone()
-    r.applyAllAgents([other])
+    r.applyAllAgents([other], true)
     r.forget('s9')
     // The same ID again starts with no count.
     r.markStarted('s9')
     r.applyAgents([], 200)
-    r.applyAllAgents([other])
+    r.applyAllAgents([other], true)
     expect(ids(r)).toContain('s9')
+  })
+})
+
+describe('one rule for all forgets (Task 18 fix round 1, M2)', () => {
+  const WT = '/r/.claude/worktrees/kept'
+  // An owned session that Bifrost did not start. It is parked, and it has all stored values.
+  const withParked = () => {
+    const r = registry()
+    r.applyAllAgents([bg({ pid: undefined, status: '' })], true)
+    r.setPriority('s1', 3)
+    r.watchAdd('s1', 'green')
+    r.rememberWorktree('s1', WT)
+    return r
+  }
+  const kept = (r: SessionRegistry) => {
+    expect(r.rows().find(row => row.sessionId === 's1')).toMatchObject({
+      name: 'alpha',
+      priority: 3,
+      state: 'parked',
+      watch: { colour: 'green', order: 0 },
+      worktree: WT,
+    })
+    const store = r.store()
+    expect(store.names.s1).toBe('alpha')
+    expect(store.priorities.s1).toBe(3)
+    expect(store.watch).toEqual([{ colour: 'green', sessionId: 's1' }])
+    expect(store.worktrees).toEqual([{ path: WT, sessionId: 's1' }])
+  }
+
+  test('an empty --all list removes nothing', () => {
+    const r = withParked()
+    for (let i = 0; i < 3; i++) r.applyAllAgents([], true)
+    kept(r)
+  })
+
+  test('a partial --all list removes nothing', () => {
+    const r = withParked()
+    for (let i = 0; i < 3; i++) r.applyAllAgents([another], false)
+    kept(r)
+    for (let i = 0; i < 3; i++) r.applyAllAgents([], false)
+    kept(r)
+  })
+
+  test('an --all list that misses a running session removes nothing', () => {
+    const r = withParked()
+    r.applyAgents([bg({ id: 'r1', sessionId: 'r1' })], 100)
+    for (let i = 0; i < 3; i++) r.applyAllAgents([another], true)
+    kept(r)
+  })
+
+  test('one counted --all list without the session removes nothing', () => {
+    const r = withParked()
+    r.applyAllAgents([another], true)
+    kept(r)
+    r.applyAllAgents([another], true)
+    expect(r.rows().map(row => row.sessionId)).toEqual(['o2'])
+    expect(r.store()).toMatchObject({ priorities: {}, watch: [], worktrees: [] })
+    expect(r.store().names).toEqual({ o2: 'gamma' })
+  })
+
+  test('a list that does not count does not make a stopped session go away', () => {
+    // The session ran and was in the last counted list. Then a list that does not count came.
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyAllAgents([bg()], true)
+    r.applyAllAgents([], true)
+    r.applyAllAgents([another], false)
+    r.applyAgents([], 200)
+    expect(r.rows().find(row => row.sessionId === 's1')).toMatchObject({ state: 'parked' })
   })
 })
