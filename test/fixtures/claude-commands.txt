@@ -1,0 +1,38 @@
+# The top-level commands and aliases of Claude Code 2.1.318, in the "Commands:" form of
+# "claude --help". The implementer did not run claude. The names come from the command
+# definitions in ~/.local/share/claude/versions/2.1.318, read as text with grep on 2026-11-05.
+# This list also has the hidden commands. It has only names and arguments, no descriptions.
+# The output of "cl.sh --help" can replace this file. The parser reads the lines after
+# "Commands:" that start with two spaces and a name. A "|" separates a name and its aliases.
+Commands:
+  agents
+  attach <id|name>
+  auth
+  auto-mode
+  design-login
+  doctor
+  drop-worktree-registrations
+  edit-chrome-settings
+  edit-hook
+  edit-memory-settings
+  edit-permission-rules
+  edit-sandbox-settings
+  edit-skill-overrides
+  gateway
+  import [source]
+  import-conversations <exportPath>
+  install [target]
+  logs <id|name>
+  mcp
+  plugin|plugins
+  project
+  purge [path]
+  remote-control|rc
+  respawn [id]
+  rm <id>
+  sandbox
+  setup-token
+  stop|kill <id>
+  ultrareview [target]
+  update|upgrade
+  help [command]

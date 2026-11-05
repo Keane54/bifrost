@@ -5,14 +5,18 @@
 import {
   checkNewSessionSpec,
   type DirInfo,
+  isClaudeCommand,
   type NewSessionSpec,
   PERMISSION_MODES,
+  REASON_PROMPT_FLAG,
+  REASON_PROMPT_IS_COMMAND,
   worktreeName,
 } from '../../shared/new-session'
 import type { ResumeAllResult, SessionRow } from '../../shared/types'
 import type { ExecResult, RunClaude } from '../claude/cli'
 import { UUID_PATTERN } from '../integration/scripts'
 import { failure, isTrustError, parseShortId, SHORT_ID, trustMessage } from './claude-output'
+import { isSafePid } from './process-info'
 
 // The time that Bifrost waits for the entry of a started session.
 export const START_TIMEOUT_MS = 30_000
@@ -22,6 +26,11 @@ export const END_POLL_MS = 100
 // The time limit of each claude command.
 export const RUN_TIMEOUT_MS = 60_000
 
+// Each new session gets a statusLine command that prints nothing (controller ruling, O4).
+// So the chat window does not show the statusline of the user. A resume keeps the setting.
+// This is one argument. No shell reads it.
+export const NO_STATUSLINE_SETTINGS = '{"statusLine":{"type":"command","command":"true"}}'
+
 const UUID = new RegExp(UUID_PATTERN)
 
 const NO_CLAUDE = 'claude not found'
@@ -30,6 +39,9 @@ const REFUSED_BAD_ID = 'refused: bad session ID'
 const REFUSED_LOCKED = 'refused: an action on this session runs'
 const REFUSED_RESUME_ALL = 'refused: Resume all runs'
 const REFUSED_NOT_CONFIRMED = 'refused: Delete needs a confirmation'
+const REFUSED_TAKE_NOT_CONFIRMED = 'refused: Take control needs a confirmation'
+const REFUSED_NO_SHORT_ID = 'refused: the session runs and has no short ID'
+const REFUSED_BAD_PID = 'refused: bad process ID'
 const REFUSED_STOP = 'refused: only an owned session that runs'
 const REFUSED_DELETE_EXTERNAL = 'refused: Bifrost does not delete an external session'
 const REFUSED_NOT_PARKED = 'refused: the session is not parked'
@@ -42,6 +54,8 @@ const REFUSED_CHANGED = 'refused: the session process changed'
 const REASON_NO_DIR = 'The directory does not exist.'
 const REASON_NO_GIT = 'The directory is not in a git repository.'
 const REASON_NO_SHORT_ID = 'claude --bg did not give a session ID.'
+const REASON_CREATING = 'A new session is already starting. Please wait.'
+const REASON_NO_CWD = 'Bifrost does not know the project directory of this session.'
 const REASON_NOT_RESUMED = 'The session did not start again in 30 seconds.'
 const REASON_NOT_ENDED =
   'The session process did not end in 5 seconds. Bifrost did not start a copy of the session.'
@@ -72,18 +86,23 @@ export interface SessionActions {
   remove(sessionId: unknown, confirmed: unknown): Promise<void>
   resume(sessionId: unknown): Promise<void>
   resumeAll(): Promise<ResumeAllResult>
-  takeControl(sessionId: unknown): Promise<{ sessionId: string }>
+  // confirmed must be true, as for remove. Take control ends a terminal process.
+  takeControl(sessionId: unknown, confirmed: unknown): Promise<{ sessionId: string }>
   dirInfo(dir: unknown): Promise<DirInfo>
 }
 
 // The arguments of "claude --bg" for the New session values.
 // The prompt is last, because "--worktree" takes an optional value.
 // The permission mode must be in the list. So Bifrost never passes bypassPermissions.
+// The prompt cannot start with "-" or be only a command name, so it cannot change the command.
+// checkNewSessionSpec refuses these values first. These checks stop a caller that skips it.
 export function newSessionArgs(spec: NewSessionSpec): string[] {
   if (spec.permissionMode !== '' && !PERMISSION_MODES.includes(spec.permissionMode)) {
     throw new Error('refused: unknown permission mode')
   }
-  const args = ['--bg']
+  if (spec.prompt.trimStart().startsWith('-')) throw new Error(REASON_PROMPT_FLAG)
+  if (isClaudeCommand(spec.prompt)) throw new Error(REASON_PROMPT_IS_COMMAND)
+  const args = ['--bg', '--settings', NO_STATUSLINE_SETTINGS]
   if (spec.worktree) args.push('--worktree', worktreeName(spec.name))
   if (spec.model !== '') args.push('--model', spec.model)
   if (spec.permissionMode !== '') args.push('--permission-mode', spec.permissionMode)
@@ -136,6 +155,8 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   // The sessions that have a running action. One action at a time runs for each session (D3).
   const busy = new Set<string>()
   let resumingAll = false
+  // True while a New session start runs. A double click must not start two sessions.
+  let creating = false
 
   const claude = async (): Promise<RunClaude> => {
     const run = await deps.run()
@@ -180,6 +201,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   }
 
   const checkProjectDir = async (cwd: string): Promise<void> => {
+    if (cwd === '') throw new Error(REASON_NO_CWD)
     if (!cwd.startsWith('/') || (await deps.dirInfo(cwd)).kind !== 'dir') {
       throw new Error(`The project directory ${cwd} does not exist.`)
     }
@@ -212,33 +234,43 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     }
   }
 
+  // Check the New session values, run "claude --bg" and wait for the entry of the session.
+  const startNew = async (input: unknown): Promise<{ sessionId: string }> => {
+    const checked = checkNewSessionSpec(input)
+    if (!checked.ok) throw new Error(checked.reason)
+    const spec = checked.spec
+    const dir = await deps.dirInfo(spec.cwd)
+    if (dir.kind !== 'dir') throw new Error(REASON_NO_DIR)
+    if (spec.worktree && !dir.git) throw new Error(REASON_NO_GIT)
+    const run = await claude()
+    const result = await start(run, newSessionArgs(spec), spec.cwd, 'claude --bg')
+    const id = parseShortId(result.stdout)
+    if (id === null) throw new Error(REASON_NO_SHORT_ID)
+    let row: SessionRow
+    try {
+      row = await deps.waitForRow(
+        r => r.shortId === id && r.kind === 'owned' && r.state !== 'parked' && r.pid !== undefined,
+        START_TIMEOUT_MS,
+      )
+    } catch (error) {
+      if (messageOf(error) !== TIMEOUT) throw error
+      throw new Error(
+        `The session ${id} did not start in 30 seconds. Run claude logs ${id} to see the cause.`,
+      )
+    }
+    deps.markStarted(row.sessionId)
+    return { sessionId: row.sessionId }
+  }
+
   return {
     async create(input) {
-      const checked = checkNewSessionSpec(input)
-      if (!checked.ok) throw new Error(checked.reason)
-      const spec = checked.spec
-      const dir = await deps.dirInfo(spec.cwd)
-      if (dir.kind !== 'dir') throw new Error(REASON_NO_DIR)
-      if (spec.worktree && !dir.git) throw new Error(REASON_NO_GIT)
-      const run = await claude()
-      const result = await start(run, newSessionArgs(spec), spec.cwd, 'claude --bg')
-      const id = parseShortId(result.stdout)
-      if (id === null) throw new Error(REASON_NO_SHORT_ID)
-      let row: SessionRow
+      if (creating) throw new Error(REASON_CREATING)
+      creating = true
       try {
-        row = await deps.waitForRow(
-          r =>
-            r.shortId === id && r.kind === 'owned' && r.state !== 'parked' && r.pid !== undefined,
-          START_TIMEOUT_MS,
-        )
-      } catch (error) {
-        if (messageOf(error) !== TIMEOUT) throw error
-        throw new Error(
-          `The session ${id} did not start in 30 seconds. Run claude logs ${id} to see the cause.`,
-        )
+        return await startNew(input)
+      } finally {
+        creating = false
       }
-      deps.markStarted(row.sessionId)
-      return { sessionId: row.sessionId }
     },
 
     async dirInfo(dir) {
@@ -247,12 +279,17 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     },
 
     // Delete runs claude stop for a session that runs, then claude rm, then forgets the session.
-    // A row without a short ID is only removed from Bifrost (D5).
+    // A parked row without a short ID is only removed from Bifrost (D5). Bifrost refuses a
+    // session that runs and has no short ID. Bifrost cannot stop it, and the next sample
+    // shows it again.
     async remove(sessionId, confirmed) {
       if (confirmed !== true) throw new Error(REFUSED_NOT_CONFIRMED)
       return locked(sessionId, async row => {
         if (row.kind === 'external' && row.state !== 'parked') {
           throw new Error(REFUSED_DELETE_EXTERNAL)
+        }
+        if (row.shortId === undefined && row.state !== 'parked') {
+          throw new Error(REFUSED_NO_SHORT_ID)
         }
         if (row.shortId !== undefined) {
           const shortId = shortIdOf(row)
@@ -335,12 +372,16 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
 
     // Spec 9.2. SIGTERM goes only to the process of this external session, after the claude
     // name check (D6). If the process does not end in 5 seconds, Bifrost starts no copy.
-    async takeControl(sessionId) {
+    // The renderer sets confirmed only after the user accepts the confirmation of spec 9.2.
+    async takeControl(sessionId, confirmed) {
+      if (confirmed !== true) throw new Error(REFUSED_TAKE_NOT_CONFIRMED)
       return locked(sessionId, async row => {
         checkTakeControl(row)
         checkSessionId(row)
         const pid = row.pid
         if (pid === undefined) throw new Error(REFUSED_NO_PID)
+        // The PID 0 or -1 signals a group of processes. The PID 1 is launchd.
+        if (!isSafePid(pid)) throw new Error(REFUSED_BAD_PID)
         const cwd = row.cwd
         await checkProjectDir(cwd)
         // Find claude before the signal. Without claude, Bifrost cannot resume the session.

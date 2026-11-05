@@ -73,7 +73,7 @@ const api: BifrostApi = {
     resume: sessionId => invoke('sessions:resume', sessionId),
     resumeAll: () => invoke('sessions:resume-all'),
     stop: sessionId => invoke('sessions:stop', sessionId),
-    takeControl: sessionId => invoke('sessions:take-control', sessionId),
+    takeControl: (sessionId, confirmed) => invoke('sessions:take-control', sessionId, confirmed),
   },
   ui: {
     load: () => invoke('ui:load'),

@@ -62,7 +62,9 @@ export interface BifrostApi {
     resume(sessionId: string): Promise<void>
     resumeAll(): Promise<ResumeAllResult>
     // End the process of an external session and resume it in the background (spec 9.2).
-    takeControl(sessionId: string): Promise<{ sessionId: string }>
+    // Pass true only after the user accepted the confirmation. The main process refuses
+    // a call without it.
+    takeControl(sessionId: string, confirmed: true): Promise<{ sessionId: string }>
     // What the main process finds at an absolute path.
     dirInfo(dir: string): Promise<DirInfo>
     // Show the directory picker. This resolves with null after a cancel.

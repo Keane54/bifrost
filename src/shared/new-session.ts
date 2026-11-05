@@ -29,6 +29,61 @@ export const MAX_NAME = 64
 // The maximum length of a worktree name. Claude Code adds "worktree-" to it for the branch name.
 const MAX_WORKTREE_NAME = 40
 
+// The top-level commands and aliases of claude, also the hidden ones, and "help".
+// The prompt is the last argument of "claude --bg". claude reads a prompt that is only
+// one of these names as that command, for example "update" (Task 4 review).
+// test/fixtures/claude-commands.txt holds the names of Claude Code 2.1.318. The list also
+// keeps "config" and "migrate-installer" from older versions. An extra name only refuses
+// a one-word prompt, so the list can have more names than claude.
+export const CLAUDE_COMMANDS: readonly string[] = Object.freeze([
+  'agents',
+  'attach',
+  'auth',
+  'auto-mode',
+  'config',
+  'design-login',
+  'doctor',
+  'drop-worktree-registrations',
+  'edit-chrome-settings',
+  'edit-hook',
+  'edit-memory-settings',
+  'edit-permission-rules',
+  'edit-sandbox-settings',
+  'edit-skill-overrides',
+  'gateway',
+  'help',
+  'import',
+  'import-conversations',
+  'install',
+  'kill',
+  'logs',
+  'mcp',
+  'migrate-installer',
+  'plugin',
+  'plugins',
+  'project',
+  'purge',
+  'rc',
+  'remote-control',
+  'respawn',
+  'rm',
+  'sandbox',
+  'setup-token',
+  'stop',
+  'ultrareview',
+  'update',
+  'upgrade',
+])
+
+export const REASON_PROMPT_IS_COMMAND =
+  'That prompt is also a Claude command name. Add a few more words.'
+export const REASON_PROMPT_FLAG = 'The first prompt cannot start with "-".'
+
+// True when the text, after the trim, is a claude command name.
+export function isClaudeCommand(text: string): boolean {
+  return CLAUDE_COMMANDS.includes(text.trim())
+}
+
 export interface NewSessionSpec {
   cwd: string
   name: string
@@ -60,7 +115,7 @@ function trimDir(path: string): string {
 
 // Check the values of the dialog. The first failure gives the reason.
 // The result holds the clean values. A name or a prompt cannot start with "-",
-// because claude then reads it as a flag.
+// because claude then reads it as a flag. A prompt cannot be only a command name.
 export function checkNewSessionSpec(input: unknown): SpecCheck {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return refuse(BAD_DATA)
   const v = input as Record<string, unknown>
@@ -83,7 +138,8 @@ export function checkNewSessionSpec(input: unknown): SpecCheck {
   if (typeof v.prompt !== 'string') return refuse(BAD_DATA)
   const prompt = cleanText(v.prompt).trim()
   if (prompt.length > MAX_TEXT) return refuse(REASON_TOO_LONG)
-  if (prompt.startsWith('-')) return refuse('The first prompt cannot start with "-".')
+  if (prompt.startsWith('-')) return refuse(REASON_PROMPT_FLAG)
+  if (isClaudeCommand(prompt)) return refuse(REASON_PROMPT_IS_COMMAND)
   if (typeof v.worktree !== 'boolean') return refuse(BAD_DATA)
   if (v.worktree && !WORKTREE_OK) return refuse('refused: the worktree option is off')
   return {

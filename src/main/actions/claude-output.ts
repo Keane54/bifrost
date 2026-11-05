@@ -28,9 +28,18 @@ export function trustMessage(dir: string): string {
   return `This directory is not trusted. Run claude in ${dir} one time and accept the trust prompt. Then try again.`
 }
 
+// The first start of the background service writes this line to stderr (M0, M4 Task 1).
+// It is not an error.
+const SERVICE_BANNER = /^Starting background service/
+
 // The text of a failed claude command: the stderr, else the stdout, else the exit code.
+// The stderr does not count when it has only the start line of the background service.
 export function failure(result: ExecResult, what: string): string {
-  const text =
-    result.stderr.trim() || result.stdout.trim() || `${what} failed with code ${result.code}`
+  const stderr = result.stderr
+    .split('\n')
+    .filter(line => !SERVICE_BANNER.test(line.trim()))
+    .join('\n')
+    .trim()
+  const text = stderr || result.stdout.trim() || `${what} failed with code ${result.code}`
   return text.slice(0, MAX_FAILURE)
 }

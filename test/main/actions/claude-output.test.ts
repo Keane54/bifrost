@@ -54,4 +54,17 @@ describe('claude output', () => {
     )
     expect(failure({ code: 1, stderr: 'e'.repeat(400), stdout: '' }, 'x')).toBe('e'.repeat(300))
   })
+
+  test('failure does not give only the start banner of the background service', () => {
+    const banner = 'Starting background service…'
+    expect(failure({ code: 1, stderr: `${banner}\n`, stdout: 'real error' }, 'claude --bg')).toBe(
+      'real error',
+    )
+    expect(failure({ code: 1, stderr: `${banner}\nboom\n`, stdout: 'x' }, 'claude --bg')).toBe(
+      'boom',
+    )
+    expect(failure({ code: 4, stderr: banner, stdout: '' }, 'claude --bg')).toBe(
+      'claude --bg failed with code 4',
+    )
+  })
 })

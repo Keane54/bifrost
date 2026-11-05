@@ -11,11 +11,11 @@ import {
   type OpenDialogOptions,
   type WebContents,
 } from 'electron'
-import type { DirInfo } from '../shared/new-session'
 import { isPriority } from '../shared/priority'
 import type { ClaudeVersion, DisplayMode } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
 import { createActions } from './actions/actions'
+import { dirInfo, isAlive, processName, sendSignal } from './actions/process-info'
 import { findProjectApps } from './actions/project-apps'
 import { createSessionActions } from './actions/session-actions'
 import { hasLeftKey, SessionInput } from './actions/session-input'
@@ -104,40 +104,6 @@ function fromPage<T>(e: IpcMainInvokeEvent, fn: () => Promise<T>): Promise<T> {
     return Promise.reject(new Error('refused: not the Bifrost page'))
   }
   return fn()
-}
-
-// True when the process exists. Signal 0 only checks the process. It sends no signal.
-// EPERM: the process exists and belongs to another user. Another error also gives true,
-// so Take control does not start a copy of a session that can still run.
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== 'ESRCH'
-  }
-}
-
-// The executable path of a process, or null when ps cannot read it.
-async function processName(pid: number): Promise<string | null> {
-  const result = await execFile('/bin/ps', ['-o', 'comm=', '-p', String(pid)], { timeoutMs: 2000 })
-  const name = result.stdout.trim()
-  return result.code === 0 && name !== '' ? name : null
-}
-
-// What is at the path, and for a directory, whether it is in a git repository.
-async function dirInfo(dir: string): Promise<DirInfo> {
-  let kind: DirInfo['kind']
-  try {
-    kind = (await stat(dir)).isDirectory() ? 'dir' : 'other'
-  } catch {
-    return { git: false, kind: 'missing' }
-  }
-  if (kind !== 'dir') return { git: false, kind }
-  const result = await execFile('git', ['-C', dir, 'rev-parse', '--show-toplevel'], {
-    timeoutMs: 2000,
-  })
-  return { git: result.code === 0, kind }
 }
 
 // The mode controller of the current window. index.ts sets it.
@@ -324,18 +290,20 @@ export function registerIpc(): void {
   // The session commands. The renderer sends session IDs and the New session values only.
   // The main process finds the row, the PID and the directory, and makes the claude arguments.
   // SIGTERM goes only to the process of an external session in Take control (D6).
+  // process-info refuses a PID that is not an integer above 1, before each kill.
+  const kill = (pid: number, signal: string | number): void => {
+    process.kill(pid, signal)
+  }
   const sessions = createSessionActions({
-    dirInfo,
+    dirInfo: dir => dirInfo(execFile, stat, dir),
     forget: id => liveService?.forget(id),
-    isAlive,
+    isAlive: pid => isAlive(kill, pid),
     markStarted: id => liveService?.markStarted(id),
     markStopped: id => liveService?.markStopped(id),
-    processName,
+    processName: pid => processName(execFile, pid),
     rows: () => liveService?.rows() ?? [],
     run: () => run,
-    signal: (pid, signal) => {
-      process.kill(pid, signal)
-    },
+    signal: (pid, signal) => sendSignal(kill, pid, signal),
     waitForRow: async (match, timeoutMs) => (await service).waitForRow(match, timeoutMs),
   })
   ipcMain.handle('sessions:create', (e, spec: unknown) => fromPage(e, () => sessions.create(spec)))
@@ -349,8 +317,8 @@ export function registerIpc(): void {
     fromPage(e, () => sessions.resume(sessionId)),
   )
   ipcMain.handle('sessions:resume-all', e => fromPage(e, () => sessions.resumeAll()))
-  ipcMain.handle('sessions:take-control', (e, sessionId: unknown) =>
-    fromPage(e, () => sessions.takeControl(sessionId)),
+  ipcMain.handle('sessions:take-control', (e, sessionId: unknown, confirmed: unknown) =>
+    fromPage(e, () => sessions.takeControl(sessionId, confirmed)),
   )
   ipcMain.handle('sessions:dir-info', (e, dir: unknown) => fromPage(e, () => sessions.dirInfo(dir)))
   // The picker starts at the directory from the renderer when it is absolute, else at home.

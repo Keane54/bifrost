@@ -10,7 +10,11 @@ import {
   START_TIMEOUT_MS,
 } from '../../../src/main/actions/session-actions'
 import type { ExecResult } from '../../../src/main/claude/cli'
-import type { DirInfo, NewSessionSpec } from '../../../src/shared/new-session'
+import {
+  type DirInfo,
+  type NewSessionSpec,
+  REASON_PROMPT_IS_COMMAND,
+} from '../../../src/shared/new-session'
 import type { SessionRow } from '../../../src/shared/types'
 
 const S = 'f3a9c2d1-4b5e-4c6d-8e7f-0a1b2c3d4e5f'
@@ -32,6 +36,8 @@ const NOT_ENDED =
   'The session process did not end in 5 seconds. Bifrost did not start a copy of the session.'
 const NOT_RESUMED = 'The session did not start again in 30 seconds.'
 const RUN_OPTS = { timeoutMs: RUN_TIMEOUT_MS }
+// The statusline override of each new session, as one argument (controller ruling).
+const SETTINGS = ['--settings', '{"statusLine":{"type":"command","command":"true"}}']
 const IN_P = { cwd: '/p', timeoutMs: RUN_TIMEOUT_MS }
 
 const row = (o: Partial<SessionRow> = {}): SessionRow => ({
@@ -167,6 +173,7 @@ describe('newSessionArgs', () => {
       ),
     ).toEqual([
       '--bg',
+      ...SETTINGS,
       '--worktree',
       'n1',
       '--model',
@@ -177,9 +184,15 @@ describe('newSessionArgs', () => {
       'n1',
       'Reply',
     ])
-    expect(newSessionArgs(newSpec({ model: '', name: 'n1' }))).toEqual(['--bg', '--name', 'n1'])
+    expect(newSessionArgs(newSpec({ model: '', name: 'n1' }))).toEqual([
+      '--bg',
+      ...SETTINGS,
+      '--name',
+      'n1',
+    ])
     expect(newSessionArgs(newSpec({ model: '', name: 'My Name', worktree: true }))).toEqual([
       '--bg',
+      ...SETTINGS,
       '--worktree',
       'my-name',
       '--name',
@@ -190,6 +203,26 @@ describe('newSessionArgs', () => {
   test('newSessionArgs never passes a permission mode outside the list', () => {
     expect(() => newSessionArgs(newSpec({ permissionMode: 'bypassPermissions' }))).toThrow(
       'refused: unknown permission mode',
+    )
+  })
+
+  test('newSessionArgs gives the statusline override as one argument', () => {
+    const args = newSessionArgs(newSpec({ name: 'n1', prompt: 'Reply' }))
+    const at = args.indexOf('--settings')
+    expect(at).toBeGreaterThan(0)
+    expect(JSON.parse(args[at + 1])).toEqual({ statusLine: { command: 'true', type: 'command' } })
+    expect(args.filter(arg => arg === '--settings')).toHaveLength(1)
+  })
+
+  test('newSessionArgs never passes a command name or a flag as the prompt', () => {
+    for (const prompt of ['update', ' help ', 'stop', 'migrate-installer']) {
+      expect(() => newSessionArgs(newSpec({ prompt })), prompt).toThrow(REASON_PROMPT_IS_COMMAND)
+    }
+    expect(() => newSessionArgs(newSpec({ prompt: '-p' }))).toThrow(
+      'The first prompt cannot start with "-".',
+    )
+    expect(newSessionArgs(newSpec({ name: 'n1', prompt: 'update the docs' })).at(-1)).toBe(
+      'update the docs',
     )
   })
 })
@@ -212,6 +245,7 @@ describe('create', () => {
       '0 dirInfo /p',
       `0 run ${JSON.stringify([
         '--bg',
+        ...SETTINGS,
         '--model',
         'haiku',
         '--permission-mode',
@@ -273,7 +307,27 @@ describe('create', () => {
       actions.create({ ...newSpec(), permissionMode: 'bypassPermissions' }),
     ).rejects.toThrow('refused: unknown permission mode')
     await expect(actions.create(null)).rejects.toThrow('refused: bad new session data')
+    await expect(actions.create(newSpec({ prompt: 'update' }))).rejects.toThrow(
+      REASON_PROMPT_IS_COMMAND,
+    )
     expect(f.log).toEqual([])
+  })
+
+  test('only one New session starts at a time', async () => {
+    f.exec = f.slow(1000, STARTED)
+    f.appear = [row({ shortId: NEW_SHORT })]
+    const first = actions.create(newSpec())
+    await expect(actions.create(newSpec())).rejects.toThrow(
+      'A new session is already starting. Please wait.',
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    await expect(first).resolves.toEqual({ sessionId: S })
+    // A failed start also frees the lock.
+    f.exec = () => ({ code: 1, stderr: 'boom', stdout: '' })
+    await expect(actions.create(newSpec())).rejects.toThrow('boom')
+    f.exec = () => STARTED
+    await expect(actions.create(newSpec())).resolves.toEqual({ sessionId: S })
+    expect(f.ops('run')).toHaveLength(3)
   })
 
   test('create gives the claude failure, a missing short ID and a missing claude', async () => {
@@ -355,6 +409,15 @@ describe('remove', () => {
     expect(f.ops()).toEqual([`0 forget ${S}`])
   })
 
+  test('remove refuses a session that runs and has no short ID', async () => {
+    // Bifrost cannot stop it. A forget alone gives the row again at the next sample.
+    f.rows = [row({ shortId: undefined })]
+    await expect(actions.remove(S, true)).rejects.toThrow(
+      'refused: the session runs and has no short ID',
+    )
+    expect(f.log).toEqual([])
+  })
+
   test('remove does not forget after a failed claude rm', async () => {
     f.rows = [parked()]
     f.exec = () => ({ code: 1, stderr: 'rm failed', stdout: '' })
@@ -418,7 +481,9 @@ describe('resume', () => {
 
   test('resume refuses a missing directory and a bad session ID', async () => {
     f.rows = [parked({ cwd: '' })]
-    await expect(actions.resume(S)).rejects.toThrow('The project directory  does not exist.')
+    await expect(actions.resume(S)).rejects.toThrow(
+      'Bifrost does not know the project directory of this session.',
+    )
     f.rows = [parked()]
     f.dir = { git: false, kind: 'missing' }
     await expect(actions.resume(S)).rejects.toThrow('The project directory /p does not exist.')
@@ -566,7 +631,7 @@ describe('takeControl', () => {
     f.rows = [external()]
     f.alive = () => Date.now() - f.base < 300
     f.appear = [external({ pid: 5151 }), row({ pid: 5151 })]
-    const done = actions.takeControl(S)
+    const done = actions.takeControl(S, true)
     await vi.advanceTimersByTimeAsync(300)
     await expect(done).resolves.toEqual({ sessionId: S })
     expect(f.ops()).toEqual([
@@ -586,7 +651,7 @@ describe('takeControl', () => {
   test('takeControl accepts a yellow box', async () => {
     f.rows = [external({ box: 'yellow', state: 'needs-you', status: 'waiting' })]
     f.appear = [row()]
-    await expect(actions.takeControl(S)).resolves.toEqual({ sessionId: S })
+    await expect(actions.takeControl(S, true)).resolves.toEqual({ sessionId: S })
     expect(f.ops('signal')).toEqual(['0 signal 4242 SIGTERM'])
   })
 
@@ -594,7 +659,7 @@ describe('takeControl', () => {
     f.rows = [external()]
     f.alive = () => true
     let settled = false
-    const done = actions.takeControl(S).finally(() => {
+    const done = actions.takeControl(S, true).finally(() => {
       settled = true
     })
     const check = expect(done).rejects.toThrow(NOT_ENDED)
@@ -621,26 +686,34 @@ describe('takeControl', () => {
       [[external({ pid: undefined })], 'refused: the session has no process ID'],
       [[external({ sessionId: 'abc' })], 'refused: bad session ID'],
       [[external({ cwd: 'p' })], 'The project directory p does not exist.'],
+      [[external({ cwd: '' })], 'Bifrost does not know the project directory of this session.'],
+      // 0 and -1 signal a process group or all processes of the user. 1 is launchd.
+      [[external({ pid: 0 })], 'refused: bad process ID'],
+      [[external({ pid: -1 })], 'refused: bad process ID'],
+      [[external({ pid: 1 })], 'refused: bad process ID'],
+      [[external({ pid: 1.5 })], 'refused: bad process ID'],
     ]
     for (const [rows, reason] of cases) {
       f.rows = rows
-      await expect(actions.takeControl(rows[0].sessionId)).rejects.toThrow(reason)
+      await expect(actions.takeControl(rows[0].sessionId, true)).rejects.toThrow(reason)
     }
     f.rows = [external()]
-    await expect(actions.takeControl(S2)).rejects.toThrow('refused: unknown session')
-    await expect(actions.takeControl(null)).rejects.toThrow('refused: unknown session')
+    await expect(actions.takeControl(S2, true)).rejects.toThrow('refused: unknown session')
+    await expect(actions.takeControl(null, true)).rejects.toThrow('refused: unknown session')
     for (const name of ['/usr/bin/node', 'claude-helper', '/x/claude/node', '', null]) {
       f.name = name
-      await expect(actions.takeControl(S)).rejects.toThrow(
+      await expect(actions.takeControl(S, true)).rejects.toThrow(
         'refused: process 4242 is not a claude process',
       )
     }
     f.name = 'claude'
     f.dir = { git: false, kind: 'missing' }
-    await expect(actions.takeControl(S)).rejects.toThrow('The project directory /p does not exist.')
+    await expect(actions.takeControl(S, true)).rejects.toThrow(
+      'The project directory /p does not exist.',
+    )
     f.dir = { git: false, kind: 'dir' }
     f.claude = false
-    await expect(actions.takeControl(S)).rejects.toThrow('claude not found')
+    await expect(actions.takeControl(S, true)).rejects.toThrow('claude not found')
     expect(f.ops('signal', 'markStarted', 'run')).toEqual([])
   })
 
@@ -650,31 +723,62 @@ describe('takeControl', () => {
     f.onProcessName = () => {
       f.rows = [external({ pid: 5151 })]
     }
-    await expect(actions.takeControl(S)).rejects.toThrow('refused: the session process changed')
+    await expect(actions.takeControl(S, true)).rejects.toThrow(
+      'refused: the session process changed',
+    )
     // An owned row has the same PID.
     f.onProcessName = () => {}
     f.rows = [external(), row({ sessionId: S2 })]
-    await expect(actions.takeControl(S)).rejects.toThrow('refused: the session process changed')
+    await expect(actions.takeControl(S, true)).rejects.toThrow(
+      'refused: the session process changed',
+    )
     // The session starts to work during the name read.
     f.rows = [external()]
     f.onProcessName = () => {
       f.rows = [external({ state: 'working', status: 'busy' })]
     }
-    await expect(actions.takeControl(S)).rejects.toThrow('refused: the session is working')
+    await expect(actions.takeControl(S, true)).rejects.toThrow('refused: the session is working')
     // The row goes away during the name read.
     f.rows = [external()]
     f.onProcessName = () => {
       f.rows = []
     }
-    await expect(actions.takeControl(S)).rejects.toThrow('refused: the session process changed')
+    await expect(actions.takeControl(S, true)).rejects.toThrow(
+      'refused: the session process changed',
+    )
     expect(f.ops('signal')).toEqual([])
   })
 
   test('takeControl marks the session as started when the resume fails', async () => {
     f.rows = [external()]
     f.exec = () => ({ code: 1, stderr: 'resume failed', stdout: '' })
-    await expect(actions.takeControl(S)).rejects.toThrow('resume failed')
+    await expect(actions.takeControl(S, true)).rejects.toThrow('resume failed')
     expect(f.ops('signal', 'markStarted')).toEqual(['0 signal 4242 SIGTERM', `0 markStarted ${S}`])
+  })
+
+  test('takeControl needs the confirmation', async () => {
+    f.rows = [external()]
+    for (const confirmed of [undefined, false, 'true', 1]) {
+      await expect(actions.takeControl(S, confirmed)).rejects.toThrow(
+        'refused: Take control needs a confirmation',
+      )
+    }
+    expect(f.log).toEqual([])
+    // A refused call does not hold the lock.
+    f.appear = [row()]
+    await expect(actions.takeControl(S, true)).resolves.toEqual({ sessionId: S })
+  })
+
+  test('resume, Resume all and Take control pass no extra flags', async () => {
+    // A resume with a new flag starts a copy with a new session ID (controller ruling).
+    f.appear = [row()]
+    f.rows = [parked({ resumable: true })]
+    await actions.resume(S)
+    await actions.resumeAll()
+    f.rows = [external()]
+    await actions.takeControl(S, true)
+    const runs = f.ops('run').map(line => line.split(' ')[2])
+    expect(runs).toEqual(Array(3).fill(JSON.stringify(['--bg', '--resume', S])))
   })
 })
 
