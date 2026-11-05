@@ -1,4 +1,5 @@
-// Run the actions of M3 for a session, and give the context that the action model needs.
+// Run the actions of a session and the actions that need no row (spec 9.1, 9.2).
+// It also gives the context that the action model needs.
 import {
   createContext,
   useCallback,
@@ -10,44 +11,91 @@ import {
   useState,
 } from 'react'
 import { isPriority } from '../../../shared/priority'
-import type { ProjectApp, ProjectAppId } from '../../../shared/types'
+import type { ProjectApp, ProjectAppId, SessionRow } from '../../../shared/types'
+import { useChats } from '../chat/chat-terminals'
 import { chatPanelId } from '../chat/views'
 import { useRegistry } from '../data/registry'
 import { errorMessage } from '../lib/error-message'
+import { DEFAULT_SLASH_FAVOURITES, rememberSlash } from '../sessions/history'
+import { useHistory } from '../sessions/history-context'
 import { useWmControls, useWmState } from '../wm/context'
 import { frameOf, type WmState } from '../wm/state'
 import {
   type ActionContext,
   type ActionId,
-  actionStateFor,
+  type GlobalActionId,
+  type GlobalContext,
+  globalActionState,
   type LabelSet,
   type MenuArg,
 } from './action-model'
+import { useConfirm } from './ConfirmDialog'
+import { confirmFor } from './confirm'
+import { friendlyError } from './errors'
+import RenameDialog from './RenameDialog'
+import { planRun, type RunPlan } from './run-plan'
 
 // The Labels setting comes in M5 (spec 9.1). Until then, Bifrost uses the plain labels.
 export const LABELS: LabelSet = 'plain'
 
-// An error of an action shows for 5 seconds.
-const ERROR_MS = 5000
+// An error or a notice of an action shows for 5 seconds.
+const MESSAGE_MS = 5000
+
+// The slash favourites are the spec default list until Settings (M5, D8).
+const SLASH_FAVOURITES: string[] = [...DEFAULT_SLASH_FAVOURITES]
+
+// A rename command does not go into the recent slash commands.
+// A click on it in the submenu would give its name to another session.
+const RENAME_COMMAND = /^\/rename(?:\s|$)/
+
+export interface FocusRequest {
+  sessionId: string
+  text: '' | '/'
+  // A new number for each request. So the same request twice also focuses the send box.
+  n: number
+}
 
 export interface ActionsValue {
   run(id: ActionId, sessionId: string, arg?: MenuArg): void
+  runGlobal(id: GlobalActionId): void
+  // Type the text into the session. The promise rejects with the message of the failure.
+  send(sessionId: string, text: string): Promise<void>
   contextFor(sessionId: string): ActionContext
-  // The message of the last failed action, or null.
+  globalContext(): GlobalContext
+  // The message of the last failed action, or null. It is the text for the user.
   error: string | null
+  // A message for the user after an action, or null.
+  notice: string | null
+  // The send box of this session takes the focus.
+  focusRequest: FocusRequest | null
 }
+
+type CallPlan = Extract<RunPlan, { kind: 'call' }>
 
 const ActionsContext = createContext<ActionsValue | null>(null)
 
-function contextOf(sessionId: string, state: WmState, apps: ProjectApp[]): ActionContext {
-  // Task 8 gives the real values of running and the slash lists.
+function contextOf(
+  sessionId: string,
+  state: WmState,
+  apps: ProjectApp[],
+  running: boolean,
+  slashRecent: string[],
+): ActionContext {
   return {
     apps,
     chatOpen: frameOf(state, chatPanelId(sessionId)) !== undefined,
     labels: LABELS,
-    running: false,
-    slashFavourites: [],
-    slashRecent: [],
+    running,
+    slashFavourites: SLASH_FAVOURITES,
+    slashRecent,
+  }
+}
+
+function globalOf(rows: SessionRow[], resumeAllRunning: boolean): GlobalContext {
+  return {
+    labels: LABELS,
+    resumable: rows.filter(r => r.resumable).length,
+    resumeAllRunning,
   }
 }
 
@@ -55,20 +103,50 @@ function isAppId(arg: MenuArg | undefined, apps: ProjectApp[]): arg is ProjectAp
   return typeof arg === 'string' && apps.some(app => app.id === arg)
 }
 
-// It must be inside the providers of the registry and of the window manager.
+function resumedNotice(n: number): string {
+  return n === 1 ? 'Resumed 1 session.' : `Resumed ${n} sessions.`
+}
+
+// A message that shows for MESSAGE_MS. A new message replaces the last one and shows for the
+// full time.
+function useTimedMessage(): [string | null, (text: string) => void] {
+  const [text, setText] = useState<string | null>(null)
+  const timer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const show = useCallback((next: string) => {
+    window.clearTimeout(timer.current)
+    setText(next)
+    timer.current = window.setTimeout(() => setText(null), MESSAGE_MS)
+  }, [])
+  return [text, show]
+}
+
+// It must be inside the providers of the registry, the window manager, the history, the
+// confirmation dialog and the chat terminals.
 export function ActionsProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const state = useWmState()
   const { dispatch } = useWmControls()
-  const { rows } = useRegistry()
+  const { rows, select, selectedId } = useRegistry()
+  const { history, update: updateHistory } = useHistory()
+  const confirm = useConfirm()
+  const chats = useChats()
   const [apps, setApps] = useState<ProjectApp[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const errorTimer = useRef<number | undefined>(undefined)
+  const [error, showError] = useTimedMessage()
+  const [notice, showNotice] = useTimedMessage()
+  // The session IDs with a call that did not end. The ref has the value at once.
+  const [running, setRunning] = useState<ReadonlySet<string>>(() => new Set())
+  const runningRef = useRef<ReadonlySet<string>>(running)
+  const [resumeAllRunning, setResumeAllRunning] = useState(false)
+  const resumeAllRef = useRef(false)
+  const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null)
+  const focusCount = useRef(0)
+  const [renameFor, setRenameFor] = useState<string | null>(null)
   // run reads the data of the last render from this ref. So it checks the current row.
-  const latest = useRef({ apps, rows, state })
+  const latest = useRef({ apps, history, rows, selectedId, state })
 
   useLayoutEffect(() => {
-    latest.current = { apps, rows, state }
-  }, [apps, rows, state])
+    latest.current = { apps, history, rows, selectedId, state }
+  }, [apps, history, rows, selectedId, state])
 
   // One call at mount. The list stays empty until the call resolves.
   useEffect(() => {
@@ -84,55 +162,221 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     }
   }, [])
 
-  useEffect(() => () => window.clearTimeout(errorTimer.current), [])
+  const fail = useCallback(
+    (err: unknown) => showError(friendlyError(errorMessage(err))),
+    [showError],
+  )
 
-  // A new error replaces the last error. It shows for the full time.
-  const fail = useCallback((err: unknown) => {
-    window.clearTimeout(errorTimer.current)
-    setError(errorMessage(err))
-    errorTimer.current = window.setTimeout(() => setError(null), ERROR_MS)
+  const setRunningFor = useCallback((sessionId: string, on: boolean) => {
+    const next = new Set(runningRef.current)
+    if (on) next.add(sessionId)
+    else next.delete(sessionId)
+    runningRef.current = next
+    setRunning(next)
   }, [])
+
+  const send = useCallback(
+    async (sessionId: string, text: string): Promise<void> => {
+      await window.bifrost.input.send(sessionId, text)
+      // rememberSlash keeps only a slash command. Other text gives the same history.
+      if (!RENAME_COMMAND.test(text.trim())) updateHistory(h => rememberSlash(h, text))
+    },
+    [updateHistory],
+  )
+
+  // Run one API call. Take control and Delete pass true only after the confirm click.
+  const runCall = useCallback(
+    async (plan: CallPlan, row: SessionRow, arg: MenuArg | undefined): Promise<void> => {
+      const api = window.bifrost
+      const sessionId = row.sessionId
+      // True only after a click on the confirm button of the dialog.
+      let confirmed = false
+      let marked = false
+      try {
+        if (plan.call === 'remove') {
+          // Delete runs the unmerged-work check first (Task 13). A failed check gives null.
+          setRunningFor(sessionId, true)
+          marked = true
+          const check = await api.sessions.deleteCheck(sessionId).catch(() => null)
+          const now = latest.current.rows.find(r => r.sessionId === sessionId) ?? row
+          const text = confirmFor('delete', now, LABELS, check)
+          if (text === null) return
+          confirmed = await confirm(text, {
+            // The main process finds the folder from the row. The page sends no path.
+            onOpenFolder: () => {
+              api.sessions.openWorktree(sessionId).catch(fail)
+            },
+          })
+          if (!confirmed) return
+        } else if (plan.confirm !== null) {
+          confirmed = await confirm(plan.confirm)
+          if (!confirmed) return
+        }
+        if (!marked) {
+          setRunningFor(sessionId, true)
+          marked = true
+        }
+        let resultId = sessionId
+        switch (plan.call) {
+          case 'interrupt':
+            await api.input.interrupt(sessionId)
+            break
+          case 'stop':
+            await api.sessions.stop(sessionId)
+            break
+          case 'remove':
+            if (!confirmed) return
+            await api.sessions.remove(sessionId, true)
+            break
+          case 'resume':
+            await api.sessions.resume(sessionId)
+            break
+          case 'take-control': {
+            if (!confirmed) return
+            resultId = (await api.sessions.takeControl(sessionId, true)).sessionId
+            break
+          }
+          case 'open-in-terminal': {
+            const result = await api.actions.openInTerminal(sessionId)
+            if (result.notice !== null) showNotice(result.notice)
+            break
+          }
+          case 'set-priority':
+            if (arg === null || isPriority(arg)) await api.registry.setPriority(sessionId, arg)
+            break
+          case 'copy-id':
+            await api.actions.copySessionId(sessionId)
+            break
+          case 'open-project':
+            if (isAppId(arg, latest.current.apps)) await api.actions.openProject(sessionId, arg)
+            break
+        }
+        switch (plan.after) {
+          case 'open-chat':
+            select(resultId)
+            dispatch({ panelId: chatPanelId(resultId), type: 'open' })
+            break
+          case 'close-chat':
+            dispatch({ panelId: chatPanelId(sessionId), type: 'close' })
+            if (latest.current.selectedId === sessionId) select(null)
+            break
+          case 'restart-chat':
+            chats.get(sessionId)?.restart()
+            break
+          case 'none':
+            break
+        }
+      } catch (err) {
+        fail(err)
+      } finally {
+        if (marked) setRunningFor(sessionId, false)
+      }
+    },
+    [chats, confirm, dispatch, fail, select, setRunningFor, showNotice],
+  )
 
   const run = useCallback(
     (id: ActionId, sessionId: string, arg?: MenuArg) => {
       const now = latest.current
       const row = now.rows.find(r => r.sessionId === sessionId)
-      // A disabled action has no effect. The row can change after the menu opens.
-      if (!actionStateFor(id, row, contextOf(sessionId, now.state, now.apps)).enabled) return
-      let call: Promise<void> | undefined
-      switch (id) {
+      const ctx = contextOf(
+        sessionId,
+        now.state,
+        now.apps,
+        runningRef.current.has(sessionId),
+        now.history.recentSlash,
+      )
+      // A disabled action gives none. The row can change after the menu opens.
+      const plan = planRun(id, row, ctx, arg)
+      switch (plan.kind) {
+        case 'none':
+          break
         // The window manager focuses an open chat window, or opens a new one (spec 9.1).
-        case 'open':
+        case 'open-chat':
           dispatch({ panelId: chatPanelId(sessionId), type: 'open' })
           break
-        case 'close-window':
+        case 'close-chat':
           dispatch({ panelId: chatPanelId(sessionId), type: 'close' })
           break
-        case 'set-priority':
-          if (arg === null || isPriority(arg)) {
-            call = window.bifrost.registry.setPriority(sessionId, arg)
-          }
+        case 'focus-send':
+          select(sessionId)
+          dispatch({ panelId: 'selected-item', type: 'open' })
+          focusCount.current += 1
+          setFocusRequest({ n: focusCount.current, sessionId, text: plan.text })
           break
-        case 'copy-id':
-          call = window.bifrost.actions.copySessionId(sessionId)
+        case 'send':
+          send(sessionId, plan.text).catch(fail)
           break
-        case 'open-project':
-          if (isAppId(arg, now.apps)) call = window.bifrost.actions.openProject(sessionId, arg)
+        case 'rename':
+          setRenameFor(sessionId)
           break
-        default:
-          // The other actions come in M4 and M5. The action model disables them.
+        case 'call':
+          if (row) void runCall(plan, row, arg)
           break
       }
-      call?.catch(fail)
     },
-    [dispatch, fail],
+    [dispatch, fail, runCall, select, send],
+  )
+
+  const runGlobal = useCallback(
+    (id: GlobalActionId) => {
+      // New session comes in Task 9.
+      if (id !== 'resume-all') return
+      const ctx = globalOf(latest.current.rows, resumeAllRef.current)
+      if (!globalActionState('resume-all', ctx).enabled) return
+      resumeAllRef.current = true
+      setResumeAllRunning(true)
+      window.bifrost.sessions
+        .resumeAll()
+        .then(result => {
+          showNotice(resumedNotice(result.resumed))
+          if (result.failed.length > 0) {
+            showError(result.failed.map(f => `${f.name}: ${friendlyError(f.error)}`).join('; '))
+          }
+        }, fail)
+        .finally(() => {
+          resumeAllRef.current = false
+          setResumeAllRunning(false)
+        })
+    },
+    [fail, showError, showNotice],
   )
 
   const value = useMemo<ActionsValue>(
-    () => ({ contextFor: sessionId => contextOf(sessionId, state, apps), error, run }),
-    [apps, error, run, state],
+    () => ({
+      contextFor: sessionId =>
+        contextOf(sessionId, state, apps, running.has(sessionId), history.recentSlash),
+      error,
+      focusRequest,
+      globalContext: () => globalOf(rows, resumeAllRunning),
+      notice,
+      run,
+      runGlobal,
+      send,
+    }),
+    [
+      apps,
+      error,
+      focusRequest,
+      history.recentSlash,
+      notice,
+      resumeAllRunning,
+      rows,
+      run,
+      runGlobal,
+      running,
+      send,
+      state,
+    ],
   )
-  return <ActionsContext value={value}>{children}</ActionsContext>
+  return (
+    <ActionsContext value={value}>
+      {children}
+      {renameFor !== null && (
+        <RenameDialog key={renameFor} onClose={() => setRenameFor(null)} sessionId={renameFor} />
+      )}
+    </ActionsContext>
+  )
 }
 
 export function useActions(): ActionsValue {

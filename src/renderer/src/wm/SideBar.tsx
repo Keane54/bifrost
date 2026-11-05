@@ -1,7 +1,16 @@
-import { Crosshair, List, ListPlus, type LucideIcon, Plug } from 'lucide-react'
+import { Button } from '@base-ui/react/button'
+import { Crosshair, List, ListPlus, type LucideIcon, Plug, RotateCcw } from 'lucide-react'
 import { memo } from 'react'
+import {
+  actionLabel,
+  buttonTip,
+  type GlobalActionId,
+  globalActionState,
+} from '../actions/action-model'
+import { useActions } from '../actions/actions-context'
 import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
+import { Tip } from '../lib/menu'
 import { panelTitle } from '../panels/panels'
 import { useWmControls, useWmState } from './context'
 import LayoutMenu from './LayoutMenu'
@@ -55,8 +64,31 @@ function SideButton(props: {
   )
 }
 
-// The thin bar on the left edge: one button for each panel type, then the minimised frames.
-// The Layouts button is at the bottom.
+// A button for an action that needs no row (D8). A disabled button shows darker and faded.
+// It keeps the focus and the tooltip with the reason. A click on it has no effect (spec 9.1).
+function GlobalButton(props: { action: GlobalActionId; icon: LucideIcon }): React.JSX.Element {
+  const { globalContext, runGlobal } = useActions()
+  const ctx = globalContext()
+  const state = globalActionState(props.action, ctx)
+  const Icon = props.icon
+  return (
+    <Tip label={buttonTip(props.action, state, ctx.labels)} side='right'>
+      <Button
+        aria-label={actionLabel(props.action, ctx.labels)}
+        className='flex h-8 w-8 shrink-0 items-center justify-center text-text-dim text-xs hover:bg-panel hover:text-text not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
+        data-global-action={props.action}
+        disabled={!state.enabled}
+        focusableWhenDisabled={true}
+        onClick={() => runGlobal(props.action)}
+      >
+        <Icon aria-hidden={true} size={15} />
+      </Button>
+    </Tip>
+  )
+}
+
+// The thin bar on the left edge: one button for each panel type, the actions that need no row,
+// then the minimised frames. The Layouts button is at the bottom.
 function SideBar(): React.JSX.Element {
   const state = useWmState()
   const { dispatch } = useWmControls()
@@ -83,6 +115,8 @@ function SideBar(): React.JSX.Element {
       />
       <SideButton icon={Crosshair} label='Selected Item' onClick={() => open('selected-item')} />
       <SideButton icon={Plug} label='Integration' onClick={() => open('integration')} />
+      <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />
+      <GlobalButton action='resume-all' icon={RotateCcw} />
       {minimised.length > 0 && <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />}
       <div className='flex min-h-0 flex-col items-center gap-1 overflow-y-auto'>
         {minimised.map(frame => {

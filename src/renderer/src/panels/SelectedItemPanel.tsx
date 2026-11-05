@@ -3,11 +3,9 @@ import type { SessionRow } from '../../../shared/types'
 import ActionButton from '../actions/ActionButton'
 import { SELECTED_ITEM_ACTIONS } from '../actions/action-model'
 import { useActions } from '../actions/actions-context'
-import { comesIn } from '../actions/reasons'
 import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
-import { ErrorLine } from '../lib/ErrorLine'
-import { Tip } from '../lib/menu'
+import { ErrorLine, NoticeLine } from '../lib/ErrorLine'
 import { PRIO_TEXT, TONE_TEXT } from '../overview/cells'
 import {
   barFill,
@@ -19,6 +17,7 @@ import {
   stateTone,
 } from '../overview/format'
 import { SessionIcon } from '../overview/SessionIcon'
+import SendBox from './SendBox'
 
 const LABEL = 'text-text-dim'
 
@@ -81,31 +80,20 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
           {lines.join('\n')}
         </p>
       )}
-      {/* 6. The send box comes in M4. The field ignores the pointer.
-          The wrapper gets the pointer and shows the tooltip. */}
-      <Tip label={comesIn(4)}>
-        <div className='flex' data-send-box={true}>
-          <textarea
-            aria-label='Send message'
-            className='pointer-events-none min-w-0 flex-1 resize-none border border-panel-edge bg-bg px-2 py-1 text-text opacity-40'
-            disabled={true}
-            placeholder='Send message'
-            rows={3}
-          />
-        </div>
-      </Tip>
+      {/* 6. The send box. */}
+      <SendBox row={row} />
     </div>
   )
 }
 
 export default function SelectedItemPanel(): React.JSX.Element {
   const { rows, selectedId } = useRegistry()
-  const { error } = useActions()
+  const { error, notice } = useActions()
   const row = selectedId === null ? undefined : rows.find(r => r.sessionId === selectedId)
 
   return (
     // The frame content area scrolls. The panel is at least as high as the area.
-    // So the error line is at the bottom.
+    // So the notice line and the error line are at the bottom.
     <div className='flex min-h-full min-w-0 flex-col' data-selected-item={row?.sessionId ?? ''}>
       <div className='flex-1'>
         {row ? (
@@ -114,6 +102,7 @@ export default function SelectedItemPanel(): React.JSX.Element {
           <p className='p-3 text-[13px] text-text-dim'>No session selected.</p>
         )}
       </div>
+      <NoticeLine message={notice} />
       <ErrorLine message={error} />
     </div>
   )

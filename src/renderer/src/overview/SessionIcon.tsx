@@ -3,6 +3,7 @@
 import { Hexagon, SquareTerminal } from 'lucide-react'
 import type { SessionRow } from '../../../shared/types'
 import { cx } from '../lib/cx'
+import { useTerminalIcon } from '../lib/use-terminal-icon'
 import { iconKind, projectColourIndex, projectKey } from './session-icon'
 
 // Tailwind finds only full class names in the source. So this lookup holds full names.
@@ -33,19 +34,35 @@ const CORNERS = [
 ]
 
 // The side is size px. Each arm of a bracket is 30% of the side.
+// An external row with a known terminal app shows the icon of the app (D7). While the icon
+// loads, and for an app without an icon, the row shows the terminal glyph.
 export function SessionIcon({ row, size }: { row: SessionRow; size: number }): React.JSX.Element {
   const kind = iconKind(row)
+  const appIcon = useTerminalIcon(row)
   const Glyph = kind === 'external' ? SquareTerminal : Hexagon
   const colour =
     kind === 'parked' ? 'text-parked' : PROJECT_TEXT[projectColourIndex(projectKey(row.cwd)) - 1]
   const arm = `${size * 0.3}px`
+  const glyphSize = Math.round((size * 2) / 3)
   return (
     <span
       className='relative inline-flex shrink-0 items-center justify-center'
       style={{ height: size, width: size }}
       title={KIND_TITLE[kind]}
     >
-      <Glyph aria-hidden={true} className={colour} size={Math.round((size * 2) / 3)} />
+      {kind === 'external' && appIcon !== null ? (
+        <img
+          alt=''
+          data-terminal-icon={row.terminalApp}
+          draggable={false}
+          height={glyphSize}
+          src={appIcon}
+          title={row.terminalApp}
+          width={glyphSize}
+        />
+      ) : (
+        <Glyph aria-hidden={true} className={colour} size={glyphSize} />
+      )}
       {row.box !== 'none' &&
         CORNERS.map(corner => (
           <span

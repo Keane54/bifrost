@@ -286,6 +286,26 @@ export class ChatTerminal {
     this.element.remove()
   }
 
+  // Attach again after a Resume. A terminal that did not end does nothing.
+  // The attach follows the rule of setRow: it waits for a row that can attach.
+  restart(): void {
+    if (this.disposed || !this.ended) return
+    this.ended = false
+    this.term.reset()
+    this.maybeAttach()
+    this.showNote()
+  }
+
+  // Block or free the keys of the window. The main process also refuses a send to the session
+  // while the window shows the agent view (D1).
+  private setInputBlocked(blocked: boolean): void {
+    if (this.inputBlocked === blocked) return
+    this.inputBlocked = blocked
+    this.deps.pty.setBlocked(this.viewId, blocked).catch(err => {
+      console.warn('Bifrost cannot report the agent view of a chat window.', this.viewId, err)
+    })
+  }
+
   private input(data: string): void {
     if (!this.attached || this.inputBlocked) return
     const attach = this.attachCount
@@ -379,7 +399,7 @@ export class ChatTerminal {
         this.attached = true
         this.attachCount += 1
         // A reattach after the agent view blocked the input. The new attach unblocks it.
-        this.inputBlocked = false
+        this.setInputBlocked(false)
         this.showNote()
         // The panel can change during the open. A send waits for the attach.
         this.updateSize()
@@ -511,13 +531,13 @@ export class ChatTerminal {
       // The agent view closed while the reattach waited for the row. Input starts again.
       if (this.agentWaiting) {
         this.agentWaiting = false
-        this.inputBlocked = false
+        this.setInputBlocked(false)
         this.showNote()
       }
       return
     }
     // Input stops at once.
-    this.inputBlocked = true
+    this.setInputBlocked(true)
     const history = this.deps.history
     const now = Date.now()
     history.times = recentAttaches(history.times, now)

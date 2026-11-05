@@ -1,6 +1,7 @@
 // The entries of the right-click menu of a row (spec 9.5). They go in a ContextMenu.Popup.
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { Check, ChevronRight } from 'lucide-react'
+import { Fragment } from 'react'
 import { isPriority } from '../../../shared/priority'
 import { cx } from '../lib/cx'
 import { MENU_ITEM, MENU_POPUP, MENU_SEPARATOR, Tip } from '../lib/menu'
@@ -96,14 +97,16 @@ function Submenu({ entry, onRun }: { entry: SubmenuEntry; onRun: Run }): React.J
               <PriorityItems items={entry.items} onRun={onRun} />
             ) : (
               entry.items.map(item => (
-                <ContextMenu.Item
-                  className={MENU_ITEM}
-                  data-arg={item.key}
-                  key={item.key}
-                  onClick={() => onRun(entry.action, item.arg)}
-                >
-                  {item.label}
-                </ContextMenu.Item>
+                <Fragment key={item.key}>
+                  {item.separatorBefore && <ContextMenu.Separator className={MENU_SEPARATOR} />}
+                  <ContextMenu.Item
+                    className={MENU_ITEM}
+                    data-arg={item.key}
+                    onClick={() => onRun(entry.action, item.arg)}
+                  >
+                    {item.label}
+                  </ContextMenu.Item>
+                </Fragment>
               ))
             )}
           </ContextMenu.Popup>

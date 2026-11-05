@@ -12,3 +12,18 @@ export function ErrorLine({ message }: { message: string | null }): React.JSX.El
     </p>
   )
 }
+
+// One line at the bottom of a panel that shows a notice of an action. A null message shows
+// nothing.
+export function NoticeLine({ message }: { message: string | null }): React.JSX.Element | null {
+  if (message === null) return null
+  return (
+    <p
+      className='shrink-0 truncate border-panel-edge border-t px-2 text-text-dim text-xs'
+      data-notice-line={true}
+      title={message}
+    >
+      {message}
+    </p>
+  )
+}
