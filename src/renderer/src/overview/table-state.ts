@@ -1,12 +1,5 @@
-// The TanStack Table state of one Overview tab, and the widths back from the table.
-import {
-  COLUMN_IDS,
-  type ColumnId,
-  DEFAULT_WIDTHS,
-  isColumnId,
-  MAX_WIDTH,
-  MIN_WIDTH,
-} from './columns'
+// The TanStack Table state of one Overview tab, the drop place of a header and the resize zone.
+import { COLUMN_IDS, type ColumnId, DEFAULT_WIDTHS } from './columns'
 import type { OverviewTab } from './config'
 
 export interface TableState {
@@ -42,18 +35,6 @@ export function dropBefore(
   if (from === 'kind' || from === to || fromIndex < 0 || toIndex < 0) return null
   if (fromIndex > toIndex) return { before: to }
   return { before: columns[toIndex + 1] ?? null }
-}
-
-// Keep the widths of known columns only. Each width is a whole number from MIN_WIDTH to MAX_WIDTH.
-export function widthsFromSizing(
-  sizing: Record<string, number>,
-): Partial<Record<ColumnId, number>> {
-  const widths: Partial<Record<ColumnId, number>> = {}
-  for (const [key, value] of Object.entries(sizing)) {
-    if (!isColumnId(key) || typeof value !== 'number' || !Number.isFinite(value)) continue
-    widths[key] = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(value)))
-  }
-  return widths
 }
 
 // The resize handle is this wide (px) at the right edge of a header cell.

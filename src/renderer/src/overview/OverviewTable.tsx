@@ -1,5 +1,6 @@
 // The header and the rows of the active Overview tab.
-// TanStack Table keeps the column order, the visibility, the widths, the resize and the sort mark.
+// TanStack Table keeps the column order, the visibility, the widths and the sort mark.
+// The resize handle of each header has its own pointer handling. It changes only its own column.
 // viewRows filters and sorts the rows (D5). So the table has no sorted row model.
 // A right-click on a row opens the row menu (spec 9.5). It does not change the selection (D6).
 import { ContextMenu } from '@base-ui/react/context-menu'

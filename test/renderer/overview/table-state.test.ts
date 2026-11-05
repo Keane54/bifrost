@@ -6,7 +6,6 @@ import {
   inResizeZone,
   RESIZE_ZONE,
   toTableState,
-  widthsFromSizing,
 } from '../../../src/renderer/src/overview/table-state'
 
 function tabWith(over: Partial<OverviewTab>): OverviewTab {
@@ -82,19 +81,5 @@ describe('overview table state', () => {
     expect(inResizeZone(200 - RESIZE_ZONE, 200)).toBe(true)
     expect(inResizeZone(200 - RESIZE_ZONE - 1, 200)).toBe(false)
     expect(inResizeZone(201, 200)).toBe(false)
-  })
-
-  it('widthsFromSizing drops unknown IDs, rounds and clamps', () => {
-    expect(
-      widthsFromSizing({
-        activity: 99.5,
-        bogus: 50,
-        branch: 900,
-        cost: 10,
-        model: Number.NaN,
-        name: 200.4,
-      }),
-    ).toEqual({ activity: 100, branch: 600, cost: 24, name: 200 })
-    expect(widthsFromSizing({})).toEqual({})
   })
 })
