@@ -466,7 +466,7 @@ Dialog rules:
 
 - The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur.
 - The accent colour is a light cyan, used sparingly, as in EVE. The top border of each panel is a 1 px cyan line with a soft glow into the title bar; the focused panel has the full glow, other panels a dim line. A click on a button, tab or row gives a short, low-opacity cyan tint.
-- A selected row gets a light neutral highlight, not cyan. The active tab has white text and a white underline.
+- A selected row gets a light, low-opacity cyan background, so it differs from a neutral row. The active tab has white text and a white underline.
 - The UI font is Saira Semi Condensed (OFL licence), bundled with the app. Shentox needs a paid licence, so Bifrost does not use it now.
 - Bifrost uses its own icons and fonts. It does not copy EVE art, icons or fonts.
 - One file holds all colour tokens.
