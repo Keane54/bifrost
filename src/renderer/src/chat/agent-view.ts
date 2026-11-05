@@ -17,9 +17,19 @@ function isFooterLine(line: string): boolean {
   return match !== null && match.index === 0
 }
 
+// A border of the prompt box or a rule line: only box-drawing characters and spaces.
+const BORDER = /^[\s─-╿]*[─-╿][\s─-╿]*$/
+
+// In the agent view, the footer is the last non-empty line. A footer line with a border after it
+// is in the prompt box. A paste of more than one line puts the footer on a continuation line.
+// That line starts with spaces only, so the start rule of isFooterLine does not refuse it.
 export function isAgentView(lines: string[]): boolean {
-  const tail = lines.filter(line => line.trim() !== '').slice(-FOOTER_LINES)
-  return tail.some(isFooterLine) && lines.some(line => AGENT_VIEW_COUNTS.test(line))
+  const filled = lines.filter(line => line.trim() !== '')
+  const start = Math.max(0, filled.length - FOOTER_LINES)
+  const footer = filled.some(
+    (line, i) => i >= start && isFooterLine(line) && !filled.slice(i + 1).some(l => BORDER.test(l)),
+  )
+  return footer && lines.some(line => AGENT_VIEW_COUNTS.test(line))
 }
 
 // One row of the terminal screen. A wrapped row continues the row above it.

@@ -36,6 +36,29 @@ describe('isAgentView', () => {
     expect(isAgentView(lines)).toBe(false)
   })
 
+  // A paste of two lines: the counts line on the prompt line, the footer on the next line.
+  it('is false for a two-line paste in a prompt box', () => {
+    const box = ['hello', '╭───────╮', `│ > ${COUNTS} │`, `│   ${FOOTER} │`, '╰───────╯']
+    expect(isAgentView([...box, '  ? for shortcuts'])).toBe(false)
+    expect(isAgentView(box)).toBe(false)
+  })
+
+  it('is false for a two-line paste in a prompt with rules', () => {
+    const rules = ['hello', '─────────', `> ${COUNTS}`, `  ${FOOTER}`, '─────────']
+    expect(isAgentView([...rules, '  ? for shortcuts'])).toBe(false)
+    expect(isAgentView(rules)).toBe(false)
+  })
+
+  it('is false when an empty line of the prompt box comes after the footer', () => {
+    const lines = [COUNTS, '╭───────╮', `│ ${FOOTER} │`, '│       │', '╰───────╯']
+    expect(isAgentView(lines)).toBe(false)
+  })
+
+  it('is false for a paste with the footer first and the counts line next', () => {
+    const lines = ['╭───────╮', `│ > ${FOOTER} │`, `│   ${COUNTS} │`, '╰───────╯']
+    expect(isAgentView(lines)).toBe(false)
+  })
+
   it('is true when box characters frame the footer line', () => {
     expect(isAgentView([COUNTS, `│ ${FOOTER} │`])).toBe(true)
   })
