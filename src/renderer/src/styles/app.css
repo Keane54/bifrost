@@ -30,16 +30,23 @@
   --color-box-red: #f5766d;
   --color-parked: #6b7280;
 
-  /* The text colours of the Overview tabs. None is yellow, red or grey (spec 8.10). */
+  /* The text colours of the Overview tabs. The first six are the automatic colours. You choose the
+     others. No token comes near the box colours (spec 8.10). */
   --color-tab-1: #7cc4d6;
   --color-tab-2: #8fb8e8;
   --color-tab-3: #86c48f;
   --color-tab-4: #5fb3a1;
   --color-tab-5: #6f9fe6;
   --color-tab-6: #9fd0c0;
+  --color-tab-7: #e0443c;
+  --color-tab-8: #d4730a;
+  --color-tab-9: #fde68a;
+  --color-tab-10: #a3e635;
+  --color-tab-11: #f2f2f2;
+  --color-tab-12: #7dd3fc;
 
   /* The colours of the priorities 1 to 5. */
-  --color-prio-1: #f59e0b;
+  --color-prio-1: #d4730a;
   --color-prio-2: #93c5fd;
   --color-prio-3: #5b9cf2;
   --color-prio-4: #3fbfb0;
@@ -58,7 +65,7 @@
   /* The colours of a watched session. The row background uses them at 12%. */
   --color-watch-dark-red: #7f1d1d;
   --color-watch-red: #dc2626;
-  --color-watch-amber: #f59e0b;
+  --color-watch-amber: #d4730a;
   --color-watch-yellow: #fef08a;
   --color-watch-green: #22c55e;
   --color-watch-light-blue: #7dd3fc;

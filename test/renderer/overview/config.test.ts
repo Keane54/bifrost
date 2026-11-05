@@ -10,6 +10,7 @@ import {
   overviewsReducer,
   parseOverviewConfig,
   parseOverviews,
+  TAB_COLOURS,
 } from '../../../src/renderer/src/overview/config'
 
 const base = (): OverviewConfig => defaultOverviewConfig()
@@ -476,5 +477,55 @@ describe('overview config', () => {
       watchedOnly: false,
     }
     expect(overviewReducer(c, { filter: same, tabId: 't2', type: 'setFilter' })).toBe(c)
+  })
+
+  it('parseTab keeps a saved colour and refuses 12', () => {
+    const colourOf = (color: unknown, index: number): number | undefined => {
+      const tabs = Array.from({ length: index }, (_, i) => ({ id: `t${i + 1}`, name: `T${i + 1}` }))
+      const saved = {
+        active: 't1',
+        name: 'X',
+        nextTab: 20,
+        tabs: [...tabs, { color, id: 't19', name: 'Last' }],
+      }
+      return parseOverviewConfig(saved)?.tabs[index]?.color
+    }
+    expect(TAB_COLOURS).toBe(12)
+    for (const color of [0, 5, 11]) expect(colourOf(color, 1)).toBe(color)
+    for (const color of [12, -1, 1.5, '3']) expect(colourOf(color, 8)).toBe(8 % 6)
+  })
+
+  it('addTab cycles through the first six colours', () => {
+    let c = base()
+    c = { ...c, nextTab: 7, tabs: c.tabs.slice(0, 1) }
+    c = overviewReducer(c, { type: 'addTab' })
+    expect(c.tabs.at(-1)).toMatchObject({ color: 0, id: 't7' })
+    c = { ...c, nextTab: 13, tabs: c.tabs.slice(0, 1) }
+    c = overviewReducer(c, { type: 'addTab' })
+    expect(c.tabs.at(-1)).toMatchObject({ color: 0, id: 't13' })
+  })
+
+  it('setTabColour sets the colour of one tab', () => {
+    const c = base()
+    const next = overviewReducer(c, { color: 11, tabId: 't2', type: 'setTabColour' })
+    expect(next.tabs.map(t => t.color)).toEqual(c.tabs.map(t => (t.id === 't2' ? 11 : t.color)))
+    expect(overviewReducer(next, { color: 11, tabId: 't2', type: 'setTabColour' })).toBe(next)
+  })
+
+  it('setTabColour ignores a bad colour or an unknown tab', () => {
+    const c = base()
+    for (const color of [12, -1, 2.5, Number.NaN]) {
+      expect(overviewReducer(c, { color, tabId: 't1', type: 'setTabColour' })).toBe(c)
+    }
+    expect(overviewReducer(c, { color: 3, tabId: 'none', type: 'setTabColour' })).toBe(c)
+  })
+
+  it('resetTab keeps the colour', () => {
+    let c = overviewReducer(base(), { color: 8, tabId: 't1', type: 'setTabColour' })
+    c = overviewReducer(c, { column: 'cost', tabId: 't1', type: 'toggleColumn' })
+    const reset = overviewReducer(c, { tabId: 't1', type: 'resetTab' })
+    expect(reset).not.toBe(c)
+    expect(reset.tabs[0]?.color).toBe(8)
+    expect(reset.tabs[0]?.columns).toEqual(base().tabs[0]?.columns)
   })
 })

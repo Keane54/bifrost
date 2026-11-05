@@ -5,7 +5,7 @@
 import type { SessionKind, SessionState } from '../../../shared/types'
 import type { Point, Rect } from '../wm/geometry'
 import { COLUMN_LABELS, type ColumnId } from './columns'
-import { KINDS, type OverviewConfig, overviewReducer, STATES } from './config'
+import { KINDS, type OverviewConfig, overviewReducer, STATES, TAB_COLOURS } from './config'
 import type { TabFilter } from './rows'
 
 export interface ColumnRow {
@@ -129,4 +129,12 @@ export function dropTarget(
   const before = order[at] ?? null
   // Before the dragged row itself is the same place as before the row after it.
   return before === draggedId ? (order[at + 1] ?? null) : before
+}
+
+// The colour that an arrow key chooses in the Colour row. Left and right wrap at the ends.
+// Another key gives the same colour.
+export function nextColour(current: number, key: string): number {
+  if (key === 'ArrowRight') return (current + 1) % TAB_COLOURS
+  if (key === 'ArrowLeft') return (current + TAB_COLOURS - 1) % TAB_COLOURS
+  return current
 }

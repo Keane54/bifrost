@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { TAB_COLOUR_NAMES, TAB_SWATCH, TAB_TEXT } from '../../../src/renderer/src/overview/cells'
 import { COLUMN_IDS, type ColumnId } from '../../../src/renderer/src/overview/columns'
 import {
   defaultOverviewConfig,
@@ -13,6 +14,7 @@ import {
   dropTarget,
   inDropArea,
   moveColumn,
+  nextColour,
   resetTab,
   setBoxOnly,
   showKind,
@@ -257,5 +259,37 @@ describe('dropTarget', () => {
     ])
     const same = dropTarget(order0, 'state', order0.indexOf('state'), true)
     expect(moveColumn(c, 't1', 'state', same)).toBe(c)
+  })
+
+  it('the Colour row has 12 colours in order, with a text class and a swatch class for each', () => {
+    expect(TAB_COLOUR_NAMES).toEqual([
+      'Cyan',
+      'Light blue',
+      'Green',
+      'Teal',
+      'Blue',
+      'Mint',
+      'Red',
+      'Amber',
+      'Yellow',
+      'Lime',
+      'White',
+      'Sky blue',
+    ])
+    expect(TAB_TEXT).toHaveLength(12)
+    expect(TAB_SWATCH).toEqual(Array.from({ length: 12 }, (_, i) => `bg-tab-${i + 1}`))
+    expect(TAB_TEXT[11]).toBe('text-tab-12')
+  })
+
+  it('nextColour moves with the arrow keys and wraps at the ends', () => {
+    expect(nextColour(11, 'ArrowRight')).toBe(0)
+    expect(nextColour(0, 'ArrowLeft')).toBe(11)
+    expect(nextColour(3, 'ArrowRight')).toBe(4)
+    expect(nextColour(3, 'ArrowLeft')).toBe(2)
+    expect(TAB_COLOUR_NAMES[nextColour(TAB_COLOUR_NAMES.indexOf('Sky blue'), 'ArrowRight')]).toBe(
+      'Cyan',
+    )
+    expect(nextColour(3, 'Enter')).toBe(3)
+    expect(nextColour(3, 'ArrowUp')).toBe(3)
   })
 })

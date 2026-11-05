@@ -13,7 +13,7 @@ import {
 import { SessionIcon } from './SessionIcon'
 
 // Tailwind finds only full class names in the source. So these lookups hold full names.
-// The index is the colour of the tab (0 to 5).
+// The index is the colour of the tab (0 to 11).
 export const TAB_TEXT: string[] = [
   'text-tab-1',
   'text-tab-2',
@@ -21,6 +21,44 @@ export const TAB_TEXT: string[] = [
   'text-tab-4',
   'text-tab-5',
   'text-tab-6',
+  'text-tab-7',
+  'text-tab-8',
+  'text-tab-9',
+  'text-tab-10',
+  'text-tab-11',
+  'text-tab-12',
+]
+
+// The swatch of a tab colour in Overview Settings.
+export const TAB_SWATCH: string[] = [
+  'bg-tab-1',
+  'bg-tab-2',
+  'bg-tab-3',
+  'bg-tab-4',
+  'bg-tab-5',
+  'bg-tab-6',
+  'bg-tab-7',
+  'bg-tab-8',
+  'bg-tab-9',
+  'bg-tab-10',
+  'bg-tab-11',
+  'bg-tab-12',
+]
+
+// The names of the tab colours, in the order of the index.
+export const TAB_COLOUR_NAMES: readonly string[] = [
+  'Cyan',
+  'Light blue',
+  'Green',
+  'Teal',
+  'Blue',
+  'Mint',
+  'Red',
+  'Amber',
+  'Yellow',
+  'Lime',
+  'White',
+  'Sky blue',
 ]
 
 export const PRIO_TEXT: Record<Priority, string> = {

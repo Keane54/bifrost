@@ -37,7 +37,9 @@ export interface OverviewConfig {
 export const MAX_TABS = 12
 export const MAX_TAB_NAME = 24
 export const MAX_SET_NAME = 40
-export const TAB_COLOURS = 6
+// The colours that a user can choose for a tab. The first DEFAULT_TAB_COLOURS are automatic.
+export const TAB_COLOURS = 12
+export const DEFAULT_TAB_COLOURS = 6
 
 // The states and the kinds of a tab filter, in the order of the filter lists.
 export const STATES: readonly SessionState[] = ['working', 'needs-you', 'error', 'idle', 'parked']
@@ -46,7 +48,7 @@ const LIVE: SessionState[] = ['working', 'needs-you', 'error', 'idle']
 // A tab ID has at most 4 digits, so the counter stays a safe whole number.
 const TAB_ID = /^t\d{1,4}$/
 const MAX_TAB_NUMBER = 9999
-// The tab colour of the Watched tab (an index of TAB_COLOURS).
+// The tab colour of the Watched tab (an index of the first DEFAULT_TAB_COLOURS).
 const WATCHED_COLOUR = 5
 const NAME_SORT: SortSpec = { column: 'name', desc: false }
 
@@ -195,7 +197,7 @@ function parseTab(value: unknown, index: number): OverviewTab | null {
     value.color >= 0 &&
     value.color < TAB_COLOURS
       ? value.color
-      : index % TAB_COLOURS
+      : index % DEFAULT_TAB_COLOURS
   const columns = parseColumns(value.columns)
   // Default columns for a damaged list keep the default order, as in a new tab.
   const order = parseOrder(value.order, Array.isArray(value.columns) ? columns : [])
@@ -264,6 +266,7 @@ export type OverviewAction =
   | { type: 'toggleColumn'; tabId: string; column: ColumnId }
   | { type: 'moveColumn'; tabId: string; column: ColumnId; before: ColumnId | null }
   | { type: 'resetTab'; tabId: string }
+  | { type: 'setTabColour'; tabId: string; color: number }
   | { type: 'setWidths'; tabId: string; widths: Partial<Record<ColumnId, number>> }
   | { type: 'sortBy'; tabId: string; column: ColumnId }
   | { type: 'rename'; name: string }
@@ -303,7 +306,7 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
       if (n > MAX_TAB_NUMBER || config.tabs.some(t => t.id === `t${n}`)) return config
       const added: OverviewTab = {
         ...tab(1, `Tab ${n}`, filterOf(LIVE)),
-        color: (n - 1) % TAB_COLOURS,
+        color: (n - 1) % DEFAULT_TAB_COLOURS,
         id: `t${n}`,
       }
       return { ...config, active: added.id, nextTab: n + 1, tabs: [...config.tabs, added] }
@@ -389,6 +392,11 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
           widths: {},
         })
       })
+    case 'setTabColour': {
+      const { color } = action
+      if (!Number.isInteger(color) || color < 0 || color >= TAB_COLOURS) return config
+      return withTab(config, action.tabId, t => (t.color === color ? t : { ...t, color }))
+    }
     case 'setWidths':
       return withTab(config, action.tabId, t => {
         const widths = { ...t.widths }

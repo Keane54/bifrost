@@ -17,7 +17,7 @@ import { useWmState } from '../wm/context'
 import type { Point } from '../wm/geometry'
 import { movedToStack } from '../wm/hit'
 import { frameOf, settingsOverviewId } from '../wm/state'
-import { TAB_TEXT } from './cells'
+import { TAB_COLOUR_NAMES, TAB_SWATCH, TAB_TEXT } from './cells'
 import { type ColumnId, isColumnId } from './columns'
 import { activeTab, KINDS, type OverviewConfig, type OverviewTab, STATES } from './config'
 import { stateLabel } from './format'
@@ -27,6 +27,7 @@ import {
   dropTarget,
   inDropArea,
   moveColumn,
+  nextColour,
   resetTab,
   setBoxOnly,
   setWatchedOnly,
@@ -352,6 +353,53 @@ function TabSelect({
   )
 }
 
+// The colour of the tab text. The row is a radio group. The arrow keys move the choice and the
+// focus.
+function ColourRow({
+  color,
+  onChoose,
+}: {
+  color: number
+  onChoose(color: number): void
+}): React.JSX.Element {
+  const buttons = useRef<(HTMLButtonElement | null)[]>([])
+  return (
+    <div className='flex items-start gap-2 px-2 pb-1'>
+      <span className='pt-0.5 text-text-dim'>Colour</span>
+      <div aria-label='Tab colour' className='flex flex-wrap gap-1.5 pt-0.5' role='radiogroup'>
+        {TAB_COLOUR_NAMES.map((name, i) => (
+          // biome-ignore lint/a11y/useSemanticElements: a swatch is a square button, not a radio input.
+          <button
+            aria-checked={i === color}
+            aria-label={name}
+            className={cx(
+              'size-3.5 active:opacity-70',
+              TAB_SWATCH[i],
+              i === color && 'outline outline-1 outline-text-strong',
+            )}
+            key={name}
+            onClick={() => onChoose(i)}
+            onKeyDown={event => {
+              const next = nextColour(i, event.key)
+              if (next === i) return
+              event.preventDefault()
+              onChoose(next)
+              buttons.current[next]?.focus()
+            }}
+            ref={node => {
+              buttons.current[i] = node
+            }}
+            role='radio'
+            tabIndex={i === color ? 0 : -1}
+            title={name}
+            type='button'
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function OverviewSettingsPanel({ panelId }: { panelId: string }): React.JSX.Element {
   const overviewId = settingsOverviewId(panelId)
   const { config, edit, update } = useOverview(overviewId)
@@ -383,6 +431,10 @@ export default function OverviewSettingsPanel({ panelId }: { panelId: string }):
           tab={tab}
         />
       </div>
+      <ColourRow
+        color={tab.color}
+        onChoose={color => update({ color, tabId: tab.id, type: 'setTabColour' })}
+      />
       <div className='flex border-panel-edge border-b px-1' role='tablist'>
         {PAGES.map(p => (
           <button

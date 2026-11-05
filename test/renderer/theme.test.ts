@@ -51,6 +51,27 @@ function luminance(colour: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
+// The sRGB to OKLab conversion of Bjorn Ottosson.
+function oklab(colour: string): [number, number, number] {
+  const [r, g, b] = rgb(colour).map(c => {
+    const v = c / 255
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+  })
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ]
+}
+
+function distance(a: string, b: string): number {
+  const [x, y] = [oklab(a), oklab(b)]
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2])
+}
+
 function contrast(a: string, b: string): number {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
   return (hi + 0.05) / (lo + 0.05)
@@ -248,7 +269,7 @@ describe('theme', () => {
     const tokens = [
       ...CSS.matchAll(/--color-((?:project|tab|watch|prio)-[\w-]+):\s*(#[0-9a-fA-F]{6})/g),
     ]
-    expect(tokens.length).toBeGreaterThanOrEqual(27)
+    expect(tokens.length).toBeGreaterThanOrEqual(33)
     const bad = tokens
       .filter(([, , hex]) => {
         const hue = hsl(hex).h
@@ -306,5 +327,32 @@ describe('theme', () => {
   it('shows the stripe in the Overview and in the Watchlist panel', () => {
     expect(source('overview/OverviewTable.tsx')).toContain('WATCH_STRIPE[row.watch.colour]')
     expect(source('watch/WatchlistPanel.tsx')).toContain('WATCH_SWATCH[row.watch.colour]')
+  })
+
+  // the user, 2026-11-05: reds, ambers and yellows can be Overview colours. The box red and the box
+  // yellow stay reserved shades.
+  it('each Overview colour differs clearly from the box colours', () => {
+    const tokens = [
+      ...CSS.matchAll(/--color-((?:tab|prio|project|watch)-[\w-]+):\s*(#[0-9a-fA-F]{6})/g),
+    ]
+    const bad = tokens.flatMap(([, name, value]) =>
+      ['box-red', 'box-yellow']
+        .map(box => ({ box, d: distance(value, token(box)) }))
+        .filter(({ d }) => d < 0.1)
+        .map(({ box, d }) => `${name} to ${box}: ${d.toFixed(3)}`),
+    )
+    expect(bad).toEqual([])
+  })
+
+  it('each tab colour is readable on both panels', () => {
+    for (let i = 1; i <= 12; i++) {
+      for (const panel of PANELS) {
+        expect(contrast(token(`tab-${i}`), panel), `tab-${i} on ${panel}`).toBeGreaterThanOrEqual(4)
+      }
+    }
+  })
+
+  it('defines 12 tab colours', () => {
+    for (let i = 1; i <= 12; i++) expect(CSS).toMatch(new RegExp(`--color-tab-${i}:`))
   })
 })

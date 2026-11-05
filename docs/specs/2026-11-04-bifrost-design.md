@@ -323,7 +323,7 @@ Visual layout:
 The Overview uses the layout of the EVE Overview, with Bifrost colours, icons and fonts. The reference image is `docs/reference/overview-reference.png`.
 
 - The title bar shows "Overview" and the name of the tab set. A menu button and a minimise button are on the right.
-- A row of tabs is below the title bar. Each tab has its own text colour.
+- A row of tabs is below the title bar. Each tab has its own text colour. You can choose the text colour of each tab from 12 colours in Overview Settings.
 - A line shows the active tab. A "+" button adds a tab.
 - The column headers are small and grey. The sort column shows ▲ or ▼.
 - The rows are dense and use the UI font (section 8.10). Text that is too long is cut off. It does not wrap.
@@ -477,7 +477,7 @@ Dialog rules:
 - The UI font is Geist Mono (OFL licence), bundled with the app (user decision, 2026-11-05). All interface text uses it, also the Overview rows. The chat terminals keep their own font setting (section 12).
 - Bifrost uses its own icons and fonts. It does not copy EVE art, icons or fonts.
 - One file holds all colour tokens.
-- Yellow, red and grey have fixed meanings for the boxes and the icon: yellow box, red box and parked session. The watch colours can use shades of red and yellow, but only as a translucent row background (section 8.12).
+- The box yellow, the box red and the parked grey are reserved shades. Other Overview colours can be red, amber or yellow. Each of them differs clearly from the box shades (OKLab distance 0.10 or more). A test checks this.
 - The Overview uses no purple for now. The user keeps purple for a later feature (fleets, as in EVE) (user decision, 2026-11-05).
 - The terminal font is a setting.
 
@@ -921,3 +921,4 @@ The user made decisions 1 to 3. The controller made the others during M4. The M4
 8. Bifrost forgets a session that is gone from Claude Code only after two good `--all` lists in a row without it. A good list is complete, is not empty, has each background session of the active list, and has a background entry while Bifrost knows a parked owned session. A failed read never counts.
 9. The terminal icon is the thumbnail of the app bundle, then the file icon of the system.
 10. The Watched tab has the id `t0`, so a tab that the user adds can never get the same id. It is the third tab. A saved Overview keeps its tabs. The filter "Only watched sessions" makes such a tab.
+11. You can choose the text colour of each Overview tab from 12 colours. Red, amber and yellow are normal Overview colours, but the box red and the box yellow stay reserved shades. Each other colour has an OKLab distance of 0.10 or more from them, so the amber is darker. The project icon colours stay blue and green. A new tab cycles through the first six colours only (user decision, 2026-11-05).
