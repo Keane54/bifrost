@@ -63,6 +63,16 @@ describe('layout', () => {
     expect(parsed.layouts.map(l => l.name)).toEqual(['a'])
   })
 
+  it('parseUiStore keeps a valid history', () => {
+    const history = {
+      model: 'opus',
+      permissionMode: 'plan',
+      recentDirs: ['/a'],
+      recentSlash: ['/compact'],
+    }
+    expect(parseUiStore({ history, version: 1 }).history).toEqual(history)
+  })
+
   it('parseUiStore drops bad rects, invalid panel IDs and empty frames', () => {
     const parsed = parseUiStore({
       current: {

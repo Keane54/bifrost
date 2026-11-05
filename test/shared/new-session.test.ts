@@ -9,7 +9,11 @@ import {
   MAX_NAME,
   MODEL_CHOICES,
   PERMISSION_MODES,
+  REASON_DIR_CHECK,
+  REASON_DIR_MISSING,
+  REASON_NO_GIT,
   REASON_PROMPT_IS_COMMAND,
+  REASON_WORKTREE_OFF,
   WORKTREE_OK,
   worktreeName,
 } from '../../src/shared/new-session'
@@ -175,5 +179,18 @@ describe('new session values', () => {
     expect(worktreeName('..a//b..')).toBe('a-b')
     expect(worktreeName(`${'a'.repeat(39)} b`)).toBe('a'.repeat(39))
     expect(worktreeName('x'.repeat(50))).toBe('x'.repeat(40))
+  })
+})
+
+describe('in-app texts', () => {
+  test('the shared texts are plain English with the word folder', () => {
+    expect(REASON_WORKTREE_OFF).toBe(
+      "Worktrees don't work with background sessions in this version of Claude Code.",
+    )
+    expect(REASON_DIR_CHECK).toBe('Checking the folder...')
+    expect(REASON_DIR_MISSING).toBe("This folder doesn't exist.")
+    expect(REASON_NO_GIT).toBe("This folder isn't in a git repository, so it can't use a worktree.")
+    const empty = checkNewSessionSpec({ cwd: '' })
+    expect(empty).toEqual({ ok: false, reason: 'Choose a project folder.' })
   })
 })

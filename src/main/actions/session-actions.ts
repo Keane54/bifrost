@@ -203,7 +203,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   const checkProjectDir = async (cwd: string): Promise<void> => {
     if (cwd === '') throw new Error(REASON_NO_CWD)
     if (!cwd.startsWith('/') || (await deps.dirInfo(cwd)).kind !== 'dir') {
-      throw new Error(`The project directory ${cwd} does not exist.`)
+      throw new Error(`The folder ${cwd} doesn't exist.`)
     }
   }
 

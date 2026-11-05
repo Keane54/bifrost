@@ -486,7 +486,7 @@ describe('resume', () => {
     )
     f.rows = [parked()]
     f.dir = { git: false, kind: 'missing' }
-    await expect(actions.resume(S)).rejects.toThrow('The project directory /p does not exist.')
+    await expect(actions.resume(S)).rejects.toThrow("The folder /p doesn't exist.")
     f.dir = { git: false, kind: 'dir' }
     f.rows = [parked({ sessionId: 'abc' })]
     await expect(actions.resume('abc')).rejects.toThrow('refused: bad session ID')
@@ -551,7 +551,7 @@ describe('resumeAll', () => {
     await vi.advanceTimersByTimeAsync(START_TIMEOUT_MS)
     await expect(done).resolves.toEqual({
       failed: [
-        { error: 'The project directory /gone does not exist.', name: 'a1' },
+        { error: "The folder /gone doesn't exist.", name: 'a1' },
         { error: trustMessage('/p'), name: 'a2' },
         { error: NOT_RESUMED, name: 'a3' },
       ],
@@ -685,7 +685,7 @@ describe('takeControl', () => {
       [[external({ state: 'parked' })], 'refused: only an external session'],
       [[external({ pid: undefined })], 'refused: the session has no process ID'],
       [[external({ sessionId: 'abc' })], 'refused: bad session ID'],
-      [[external({ cwd: 'p' })], 'The project directory p does not exist.'],
+      [[external({ cwd: 'p' })], "The folder p doesn't exist."],
       [[external({ cwd: '' })], "Bifrost doesn't know the project folder of this session."],
       // 0 and -1 signal a process group or all processes of the user. 1 is launchd.
       [[external({ pid: 0 })], 'refused: bad process ID'],
@@ -708,9 +708,7 @@ describe('takeControl', () => {
     }
     f.name = 'claude'
     f.dir = { git: false, kind: 'missing' }
-    await expect(actions.takeControl(S, true)).rejects.toThrow(
-      'The project directory /p does not exist.',
-    )
+    await expect(actions.takeControl(S, true)).rejects.toThrow("The folder /p doesn't exist.")
     f.dir = { git: false, kind: 'dir' }
     f.claude = false
     await expect(actions.takeControl(S, true)).rejects.toThrow('claude not found')

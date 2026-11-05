@@ -50,6 +50,15 @@ describe('history', () => {
     expect(parseHistory({ recentDirs: many, recentSlash: many }).recentSlash).toHaveLength(8)
   })
 
+  it('parseHistory handles a carriage return, the length limit and lists that are not arrays', () => {
+    const at200 = `/${'x'.repeat(199)}`
+    const parsed = parseHistory({
+      recentSlash: ['/a\rb', at200, `${at200}x`],
+    })
+    expect(parsed.recentSlash).toEqual([at200])
+    expect(parseHistory({ recentDirs: 'x', recentSlash: {} })).toEqual(EMPTY_HISTORY)
+  })
+
   it('rememberSession puts the directory first, keeps 10, and keeps the model and the mode', () => {
     let h = EMPTY_HISTORY
     for (let i = 0; i < 12; i++) h = rememberSession(h, { ...spec, cwd: `/d${i}` })
@@ -71,9 +80,14 @@ describe('history', () => {
   })
 
   it('rememberSlash ignores text that is not a slash command', () => {
-    for (const text of ['hello', '', '/a\nb', `/${'x'.repeat(200)}`]) {
+    for (const text of ['hello', '', '/a\nb', '/a\rb', `/${'x'.repeat(200)}`]) {
       expect(rememberSlash(EMPTY_HISTORY, text)).toBe(EMPTY_HISTORY)
     }
+  })
+
+  it('rememberSlash keeps a command of 200 characters', () => {
+    const at200 = `/${'x'.repeat(199)}`
+    expect(rememberSlash(EMPTY_HISTORY, at200).recentSlash).toEqual([at200])
   })
 
   it('recentDirectories adds the project directories of the rows without the worktree tail', () => {
