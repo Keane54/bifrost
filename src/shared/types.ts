@@ -35,6 +35,9 @@ export type Box = 'none' | 'yellow' | 'red'
 export type SessionKind = 'owned' | 'external'
 
 // One row of the session list. The main process sends rows to the renderer.
+// The priority of a session. 1 is the highest.
+export type Priority = 1 | 2 | 3 | 4 | 5
+
 export interface SessionRow {
   sessionId: string
   shortId?: string
@@ -56,6 +59,7 @@ export interface SessionRow {
   contextPercent?: number
   costUsd?: number
   branch?: string
+  priority?: Priority
 }
 
 // How the Bifrost window shows on the screen.

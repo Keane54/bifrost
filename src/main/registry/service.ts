@@ -1,4 +1,4 @@
-import type { SessionRow } from '../../shared/types'
+import type { Priority, SessionRow } from '../../shared/types'
 import type { AgentList } from '../claude/agents'
 import type { HookEvent } from './hook-event'
 import type { RegistryStore, SessionRegistry } from './registry'
@@ -101,6 +101,13 @@ export class RegistryService {
   acknowledge(sessionId: string): void {
     this.registry.acknowledge(sessionId)
     this.changed()
+  }
+
+  // Set the priority of a session. Return false for an unknown session.
+  setPriority(sessionId: string, priority: Priority | null): boolean {
+    const known = this.registry.setPriority(sessionId, priority)
+    if (known) this.changed()
+    return known
   }
 
   rows(): SessionRow[] {

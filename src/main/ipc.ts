@@ -7,6 +7,7 @@ import {
   ipcMain,
   type WebContents,
 } from 'electron'
+import { isPriority } from '../shared/priority'
 import type { ClaudeVersion, DisplayMode } from '../shared/types'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
@@ -199,6 +200,16 @@ export function registerIpc(): void {
   ipcMain.handle('registry:ack', async (_e, sessionId: unknown) => {
     if (typeof sessionId === 'string') (await service).acknowledge(sessionId)
   })
+  ipcMain.handle('registry:set-priority', (e, sessionId: unknown, priority: unknown) =>
+    fromPage(e, async () => {
+      if (typeof sessionId !== 'string' || (priority !== null && !isPriority(priority))) {
+        throw new Error('refused: bad priority')
+      }
+      if (!(await service).setPriority(sessionId, priority)) {
+        throw new Error('refused: unknown session')
+      }
+    }),
+  )
   // Only one of preview, install and uninstall runs at a time. A second call rejects.
   // These three handlers also reject for a settings file that is not valid.
   // The renderer gets the message of the Error as the rejection.

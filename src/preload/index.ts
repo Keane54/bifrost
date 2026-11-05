@@ -51,6 +51,7 @@ const api: BifrostApi = {
     acknowledge: sessionId => invoke('registry:ack', sessionId),
     onUpdate: cb => subscribe('registry:update', cb),
     rows: () => invoke('registry:rows'),
+    setPriority: (sessionId, priority) => invoke('registry:set-priority', sessionId, priority),
   },
   ui: {
     load: () => invoke('ui:load'),

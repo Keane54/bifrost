@@ -3,6 +3,7 @@ import type {
   DisplayMode,
   InstallPreview,
   IntegrationStatus,
+  Priority,
   SessionRow,
 } from './types'
 
@@ -16,6 +17,9 @@ export interface BifrostApi {
     rows(): Promise<SessionRow[]>
     // Stop the flash of the box of the session.
     acknowledge(sessionId: string): Promise<void>
+    // Set the priority of the session. null removes it.
+    // This rejects for a bad priority and for an unknown session.
+    setPriority(sessionId: string, priority: Priority | null): Promise<void>
     // The main process sends a maximum of 4 updates each second.
     // The error is the error of the last poll of the session list, or null.
     // The returned function removes only this listener.

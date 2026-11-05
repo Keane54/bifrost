@@ -15,7 +15,7 @@ afterEach(async () => {
 })
 
 test('loadStore returns an empty store for a missing or bad file', async () => {
-  const emptyStore = { names: {}, started: [] }
+  const emptyStore = { names: {}, priorities: {}, started: [] }
   expect(await loadStore(join(dir, 'missing.json'))).toEqual(emptyStore)
 
   const bad = join(dir, 'bad.json')
@@ -32,29 +32,33 @@ test('loadStore removes the values that have the wrong type', async () => {
   const file = join(dir, 'registry.json')
   await writeFile(
     file,
-    JSON.stringify({ names: { s1: 'alpha', s2: 7, s3: null }, started: ['s1', 4, null] }),
+    JSON.stringify({
+      names: { s1: 'alpha', s2: 7, s3: null },
+      priorities: {},
+      started: ['s1', 4, null],
+    }),
   )
-  expect(await loadStore(file)).toEqual({ names: { s1: 'alpha' }, started: ['s1'] })
+  expect(await loadStore(file)).toEqual({ names: { s1: 'alpha' }, priorities: {}, started: ['s1'] })
 
-  await writeFile(file, JSON.stringify({ names: ['x'], started: 'x' }))
-  expect(await loadStore(file)).toEqual({ names: {}, started: [] })
+  await writeFile(file, JSON.stringify({ names: ['x'], priorities: {}, started: 'x' }))
+  expect(await loadStore(file)).toEqual({ names: {}, priorities: {}, started: [] })
 })
 
 test('saveStore then loadStore gives the same store', async () => {
   const file = join(dir, 'registry.json')
-  const store = { names: { s1: 'alpha', s2: 'beta' }, started: ['s2'] }
+  const store = { names: { s1: 'alpha', s2: 'beta' }, priorities: {}, started: ['s2'] }
   await saveStore(file, store)
   expect(await loadStore(file)).toEqual(store)
 
-  const next = { names: { s3: 'gamma' }, started: [] }
+  const next = { names: { s3: 'gamma' }, priorities: {}, started: [] }
   await saveStore(file, next)
   expect(await loadStore(file)).toEqual(next)
 })
 
 test('saveStore makes the directory and leaves no temporary file', async () => {
   const file = join(dir, 'user-data', 'registry.json')
-  await saveStore(file, { names: {}, started: [] })
-  await saveStore(file, { names: { s1: 'alpha' }, started: [] })
+  await saveStore(file, { names: {}, priorities: {}, started: [] })
+  await saveStore(file, { names: { s1: 'alpha' }, priorities: {}, started: [] })
   expect(await readdir(join(dir, 'user-data'))).toEqual(['registry.json'])
   expect((await stat(file)).mode & 0o777).toBe(0o600)
 })
@@ -67,12 +71,12 @@ test('loadStore rejects for a file that it cannot read', async () => {
 
 test('openStore loads the file and saves to it', async () => {
   const file = join(dir, 'registry.json')
-  await saveStore(file, { names: { s1: 'alpha' }, started: [] })
+  await saveStore(file, { names: { s1: 'alpha' }, priorities: {}, started: [] })
   const log = vi.fn()
   const opened = await openStore(file, log)
-  expect(opened.store).toEqual({ names: { s1: 'alpha' }, started: [] })
-  await opened.save({ names: { s2: 'beta' }, started: ['s2'] })
-  expect(await loadStore(file)).toEqual({ names: { s2: 'beta' }, started: ['s2'] })
+  expect(opened.store).toEqual({ names: { s1: 'alpha' }, priorities: {}, started: [] })
+  await opened.save({ names: { s2: 'beta' }, priorities: {}, started: ['s2'] })
+  expect(await loadStore(file)).toEqual({ names: { s2: 'beta' }, priorities: {}, started: ['s2'] })
   expect(log).not.toHaveBeenCalled()
 })
 
@@ -81,10 +85,23 @@ test('openStore uses an empty store and does not save when it cannot read the fi
   await mkdir(file)
   const log = vi.fn()
   const opened = await openStore(file, log)
-  expect(opened.store).toEqual({ names: {}, started: [] })
+  expect(opened.store).toEqual({ names: {}, priorities: {}, started: [] })
   expect(log).toHaveBeenCalledTimes(1)
-  await opened.save({ names: { s1: 'alpha' }, started: [] })
+  await opened.save({ names: { s1: 'alpha' }, priorities: {}, started: [] })
   expect((await stat(file)).isDirectory()).toBe(true)
   expect(await readdir(file)).toEqual([])
   expect(await readdir(dir)).toEqual(['registry.json'])
+})
+
+test('loadStore reads an M1 file without priorities', async () => {
+  const file = join(dir, 'registry.json')
+  await writeFile(file, JSON.stringify({ names: { a: 'x' }, started: [] }))
+  expect(await loadStore(file)).toEqual({ names: { a: 'x' }, priorities: {}, started: [] })
+})
+
+test('loadStore drops bad priorities', async () => {
+  const file = join(dir, 'registry.json')
+  const priorities = { a: 3, b: 7, c: '2', d: 1.5 }
+  await writeFile(file, JSON.stringify({ names: {}, priorities, started: [] }))
+  expect((await loadStore(file)).priorities).toEqual({ a: 3 })
 })

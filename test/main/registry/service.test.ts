@@ -42,7 +42,7 @@ function fakeDeps(o: Partial<ServiceDeps> = {}): ServiceDeps {
   }
 }
 
-const newRegistry = (store: RegistryStore = { names: {}, started: [] }) =>
+const newRegistry = (store: RegistryStore = { names: {}, priorities: {}, started: [] }) =>
   new SessionRegistry({ escalationMs: 600_000, store })
 
 interface Update {
@@ -332,12 +332,26 @@ describe('updates and the store', () => {
     expect(updates.at(-1)?.rows[0]).toMatchObject({ box: 'yellow', flashing: false })
   })
 
+  test('setPriority sends an update and saves the store', async () => {
+    const saveStore = vi.fn(async () => {})
+    const { service, updates } = startService(
+      fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }),
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    saveStore.mockClear()
+    expect(service.setPriority('s1', 2)).toBe(true)
+    expect(updates.at(-1)?.rows[0].priority).toBe(2)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(saveStore).toHaveBeenCalledWith(expect.objectContaining({ priorities: { s1: 2 } }))
+    expect(service.setPriority('nope', 2)).toBe(false)
+  })
+
   test('the service saves the store after a change to the store', async () => {
     const saveStore = vi.fn(async () => {})
     startService(fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }))
     await vi.advanceTimersByTimeAsync(0)
     expect(saveStore).toHaveBeenCalledTimes(1)
-    expect(saveStore).toHaveBeenCalledWith({ names: { s1: 'alpha' }, started: [] })
+    expect(saveStore).toHaveBeenCalledWith({ names: { s1: 'alpha' }, priorities: {}, started: [] })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(saveStore).toHaveBeenCalledTimes(1)
   })
@@ -354,7 +368,11 @@ describe('updates and the store', () => {
     expect(error).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(SERVICE_TIMING.tickMs)
     expect(saveStore).toHaveBeenCalledTimes(2)
-    expect(saveStore).toHaveBeenLastCalledWith({ names: { s1: 'alpha' }, started: [] })
+    expect(saveStore).toHaveBeenLastCalledWith({
+      names: { s1: 'alpha' },
+      priorities: {},
+      started: [],
+    })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(saveStore).toHaveBeenCalledTimes(2)
     expect(error).toHaveBeenCalledTimes(1)
@@ -375,7 +393,11 @@ describe('updates and the store', () => {
     expect(saveStore).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(1)
     expect(saveStore).toHaveBeenCalledTimes(2)
-    expect(saveStore).toHaveBeenLastCalledWith({ names: { s1: 'beta' }, started: [] })
+    expect(saveStore).toHaveBeenLastCalledWith({
+      names: { s1: 'beta' },
+      priorities: {},
+      started: [],
+    })
   })
 
   test('stop clears every timer and ignores the results that come later', async () => {

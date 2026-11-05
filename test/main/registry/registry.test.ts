@@ -25,12 +25,15 @@ const ev = (name: HookEventName, sessionId: string, at: number): HookEvent => ({
   sessionId,
 })
 
-const registry = (store: RegistryStore = { names: {}, started: [] }) =>
+const registry = (store: RegistryStore = { names: {}, priorities: {}, started: [] }) =>
   new SessionRegistry({ escalationMs: 600_000, store })
 
 describe('brief', () => {
   test('a background entry is an owned row', () => {
-    const r = new SessionRegistry({ escalationMs: 600_000, store: { names: {}, started: [] } })
+    const r = new SessionRegistry({
+      escalationMs: 600_000,
+      store: { names: {}, priorities: {}, started: [] },
+    })
     r.applyAgents([bg()], 100)
     expect(r.rows()[0]).toMatchObject({
       kind: 'owned',
@@ -67,7 +70,7 @@ describe('brief', () => {
   })
 
   test('a started session that is not active and not in --all is parked', () => {
-    const r = registry({ names: { s9: 'nine' }, started: [] })
+    const r = registry({ names: { s9: 'nine' }, priorities: {}, started: [] })
     r.markStarted('s9')
     r.applyAgents([], 100)
     r.applyAllAgents([])
@@ -258,14 +261,14 @@ describe('names', () => {
   })
 
   test('the stored name comes before the status file name', () => {
-    const r = registry({ names: { s1: 'stored' }, started: [] })
+    const r = registry({ names: { s1: 'stored' }, priorities: {}, started: [] })
     r.applyAgents([bg({ name: '' })], 100)
     r.applyStatusFiles(new Map([['s1', { sessionName: 'from-status', updatedAt: 50 }]]))
     expect(r.rows()[0].name).toBe('stored')
   })
 
   test('a new entry name replaces the stored name', () => {
-    const r = registry({ names: { s1: 'old' }, started: [] })
+    const r = registry({ names: { s1: 'old' }, priorities: {}, started: [] })
     r.applyAgents([bg({ name: 'new' })], 100)
     expect(r.rows()[0].name).toBe('new')
     expect(r.store().names).toEqual({ s1: 'new' })
@@ -292,7 +295,7 @@ describe('store', () => {
     expect(r.storeChanged()).toBe(true)
     r.markStarted('s1')
     expect(r.storeChanged()).toBe(false)
-    expect(r.store()).toEqual({ names: { s1: 'alpha' }, started: ['s1'] })
+    expect(r.store()).toEqual({ names: { s1: 'alpha' }, priorities: {}, started: ['s1'] })
   })
 
   test('a name from --all goes into the store', () => {
@@ -315,7 +318,11 @@ describe('store', () => {
   })
 
   test('applyAllAgents keeps the names of active, --all and started sessions', () => {
-    const r = registry({ names: { s1: 'one', s2: 'two', s3: 'three' }, started: ['s3'] })
+    const r = registry({
+      names: { s1: 'one', s2: 'two', s3: 'three' },
+      priorities: {},
+      started: ['s3'],
+    })
     r.applyAgents([bg({ name: 'one' })], 100)
     r.applyAllAgents([bg({ name: '', pid: undefined, sessionId: 's2', status: '' })])
     expect(r.store().names).toEqual({ s1: 'one', s2: 'two', s3: 'three' })
@@ -323,20 +330,20 @@ describe('store', () => {
   })
 
   test('applyAllAgents does not keep the name of an interactive entry', () => {
-    const r = registry({ names: { s1: 'warp' }, started: [] })
+    const r = registry({ names: { s1: 'warp' }, priorities: {}, started: [] })
     r.applyAllAgents([bg({ kind: 'interactive', name: 'warp', pid: undefined, status: '' })])
     expect(r.store().names).toEqual({})
   })
 
   test('the caller cannot change the registry through the store or a row', () => {
-    const input: RegistryStore = { names: { s1: 'alpha' }, started: [] }
+    const input: RegistryStore = { names: { s1: 'alpha' }, priorities: {}, started: [] }
     const r = registry(input)
     input.names.s1 = 'changed'
     input.started.push('s7')
     const copy = r.store()
     copy.names.s1 = 'changed'
     copy.started.push('s8')
-    expect(r.store()).toEqual({ names: { s1: 'alpha' }, started: [] })
+    expect(r.store()).toEqual({ names: { s1: 'alpha' }, priorities: {}, started: [] })
 
     r.applyAgents([bg({ name: '' })], 100)
     const row = r.rows()[0]
@@ -433,5 +440,68 @@ describe('pending events', () => {
 
   test('PENDING_EVENT_MS is 60 s', () => {
     expect(PENDING_EVENT_MS).toBe(60_000)
+  })
+})
+
+describe('priority', () => {
+  test('setPriority puts the priority in the row and in the store', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.storeChanged()
+    expect(r.setPriority('s1', 2)).toBe(true)
+    expect(r.rows()[0].priority).toBe(2)
+    expect(r.store().priorities).toEqual({ s1: 2 })
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('setPriority null removes the priority from the row and the store', () => {
+    const r = registry({ names: {}, priorities: { s1: 3 }, started: [] })
+    r.applyAgents([bg()], 100)
+    expect(r.rows()[0].priority).toBe(3)
+    r.storeChanged()
+    expect(r.setPriority('s1', null)).toBe(true)
+    expect(r.rows()[0]).not.toHaveProperty('priority')
+    expect(r.store().priorities).toEqual({})
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('setPriority of the same value does not change the store', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.setPriority('s1', 2)
+    r.storeChanged()
+    expect(r.setPriority('s1', 2)).toBe(true)
+    expect(r.storeChanged()).toBe(false)
+    r.setPriority('s1', null)
+    r.storeChanged()
+    expect(r.setPriority('s1', null)).toBe(true)
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('setPriority refuses an unknown session', () => {
+    const r = registry()
+    expect(r.setPriority('nope', 1)).toBe(false)
+    expect(r.store().priorities).toEqual({})
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('a priority stays when the session parks', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.setPriority('s1', 4)
+    r.applyAllAgents([bg()])
+    r.applyAgents([], 200)
+    expect(r.rows()[0]).toMatchObject({ priority: 4, state: 'parked' })
+  })
+
+  test('applyAllAgents removes the priority of a session that left all lists', () => {
+    const r = registry()
+    r.applyAgents([bg({ id: undefined, kind: 'interactive' })], 100)
+    r.setPriority('s1', 1)
+    r.applyAgents([], 200)
+    r.storeChanged()
+    r.applyAllAgents([])
+    expect(r.store().priorities).toEqual({})
+    expect(r.storeChanged()).toBe(true)
   })
 })

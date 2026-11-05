@@ -1,4 +1,4 @@
-import type { SessionKind, SessionRow } from '../../shared/types'
+import type { Priority, SessionKind, SessionRow } from '../../shared/types'
 import type { AgentEntry } from '../claude/agents'
 import type { HookEvent } from './hook-event'
 import {
@@ -16,6 +16,7 @@ import type { StatusData } from './status-file'
 export interface RegistryStore {
   names: Record<string, string>
   started: string[]
+  priorities: Record<string, Priority>
 }
 
 // A hook event for an unknown session waits this long for the session to show.
@@ -78,6 +79,7 @@ export class SessionRegistry {
   private readonly escalationMs: number
   private readonly names: Map<string, string>
   private readonly started: Set<string>
+  private readonly priorities: Map<string, Priority>
   private changed = false
   private readonly sessions = new Map<string, Session>()
   // The session ids of the last active list and of the last --all list.
@@ -88,10 +90,15 @@ export class SessionRegistry {
   private status = new Map<string, StatusData>()
   private readonly branches = new Map<string, string>()
 
-  constructor(opts: { store: RegistryStore; escalationMs: number }) {
+  // A store without priorities (from an older version) is valid.
+  constructor(opts: {
+    store: Omit<RegistryStore, 'priorities'> & Partial<Pick<RegistryStore, 'priorities'>>
+    escalationMs: number
+  }) {
     this.escalationMs = opts.escalationMs
     this.names = new Map(Object.entries(opts.store.names))
     this.started = new Set(opts.store.started)
+    this.priorities = new Map(Object.entries(opts.store.priorities ?? {}) as [string, Priority][])
   }
 
   // Apply the output of "claude agents --json". sampledAt is the time when the poll started.
@@ -147,10 +154,16 @@ export class SessionRegistry {
         this.sessions.delete(s.sessionId)
       }
     }
-    // Remove the names of sessions that left all lists. This limits the size of the store.
+    // Remove the names and priorities of sessions that left all lists.
+    // This limits the size of the store.
     for (const id of this.names.keys()) {
       if (this.known(id)) continue
       this.names.delete(id)
+      this.changed = true
+    }
+    for (const id of this.priorities.keys()) {
+      if (this.known(id)) continue
+      this.priorities.delete(id)
       this.changed = true
     }
   }
@@ -195,6 +208,19 @@ export class SessionRegistry {
     if (s) s.machine = onAcknowledge(s.machine)
   }
 
+  // Set the priority of a session. null removes it.
+  // Return false for a session that the registry does not know.
+  setPriority(sessionId: string, priority: Priority | null): boolean {
+    if (!this.sessions.has(sessionId)) return false
+    if (priority === null) {
+      if (this.priorities.delete(sessionId)) this.changed = true
+    } else if (this.priorities.get(sessionId) !== priority) {
+      this.priorities.set(sessionId, priority)
+      this.changed = true
+    }
+    return true
+  }
+
   // Return new row objects, sorted by startedAt, then by sessionId.
   rows(): SessionRow[] {
     return this.sorted().map(s => this.toRow(s))
@@ -210,7 +236,11 @@ export class SessionRegistry {
 
   // Return a copy of the store.
   store(): RegistryStore {
-    return { names: Object.fromEntries(this.names), started: [...this.started] }
+    return {
+      names: Object.fromEntries(this.names),
+      priorities: Object.fromEntries(this.priorities),
+      started: [...this.started],
+    }
   }
 
   // Return true one time after a change to the store. Then return false until the next change.
@@ -320,6 +350,8 @@ export class SessionRegistry {
     if (status?.costUsd !== undefined) row.costUsd = status.costUsd
     const branch = this.branches.get(s.cwd)
     if (branch !== undefined) row.branch = branch
+    const priority = this.priorities.get(s.sessionId)
+    if (priority !== undefined) row.priority = priority
     return row
   }
 }
