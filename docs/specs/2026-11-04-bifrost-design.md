@@ -901,3 +901,23 @@ The user gave these directions after he used the M2 build:
 8. The Overview menu opens an Overview Settings panel with column checkboxes and filters. The default columns are fewer (section 8.3).
 9. Settings has an Interface scale from 80% to 150% for different screen resolutions (section 12). It comes in M5a.
 10. No element has rounded corners (section 8.10).
+
+## 22. Decisions in M4 (2026-11-05)
+
+The user made decisions 1 to 3. The controller made the others during M4. The M4 ledger and `docs/m4-findings.md` give the reasons.
+
+1. A session that Bifrost starts gets the flag that turns its statusline off only when the Bifrost statusline wrapper is not installed. With the wrapper, the `quiet` file hides the statusline in chat windows, and Bifrost still gets the status data (section 6.3).
+2. A watched row has a soft tint and a 3 px stripe in the full watch colour at its left edge. The yellow box and the red box keep a contrast of 3:1 or more on each watched row, also when it is selected or under the pointer. The watch red and yellow are a different shade from the box colours. The red box is `#f5766d`.
+3. The focused panel is darker than the other panels. Its glow is above the top edge only. The change takes 250 ms.
+4. Text that users read in the app says "folder", not "directory". An error stays until the user closes it. A notice goes away after 5 s. The notice "Deleting the session..." stays while a Delete runs.
+5. Only a prompt box blocks Send message, Run slash command and Rename. Take control is blocked by each red box (section 9.2). An Interrupt cancels a send that waits in the queue, then sends the Esc at once.
+6. Delete of a worktree session:
+   1. The dialog shows the result of a check for unmerged commits and changed files. With unmerged work or a failed check, the confirm needs a second click.
+   2. Before the stop of a running session, Bifrost checks the worktree again. Tracked changes stop the Delete, because `claude rm` keeps such a worktree.
+   3. When `claude rm` keeps the worktree for commits on no remote, Bifrost runs `claude rm <id> --discard-unpushed <value>`. This happens only when the dialog showed a real check of the same worktree, the kept text names this session and this worktree, the value names the current HEAD, and a check after the stop shows no more commits or changes than the dialog showed.
+   4. `claude rm` gets 10 minutes. Then Bifrost sends SIGTERM and waits 30 s more. It never sends SIGKILL to `claude rm`.
+   5. Bifrost remembers the worktree root of a session while it runs, because a stopped session reports its start folder.
+7. Take control refuses a session with no user message in its transcript, because the resume of such a session fails. After the resume, Bifrost waits 3 s to see that the session runs.
+8. Bifrost forgets a session that is gone from Claude Code only after two good `--all` lists in a row without it. A good list is complete, is not empty, has each background session of the active list, and has a background entry while Bifrost knows a parked owned session. A failed read never counts.
+9. The terminal icon is the thumbnail of the app bundle, then the file icon of the system.
+10. The Watched tab has the id `t0`, so a tab that the user adds can never get the same id. It is the third tab. A saved Overview keeps its tabs. The filter "Only watched sessions" makes such a tab.
