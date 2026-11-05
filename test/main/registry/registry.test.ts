@@ -104,6 +104,26 @@ describe('brief', () => {
     expect(other.rows()[0].box).toBe('none')
   })
 
+  test('a new status from the poll sets lastActivity to the sample time', () => {
+    const r = registry()
+    r.applyAgents([bg({ status: 'idle' })], 100)
+    expect(r.rows()[0].lastActivity).toBe(1)
+    r.applyAgents([bg({ status: 'busy' })], 200)
+    expect(r.rows()[0].lastActivity).toBe(200)
+    r.applyAgents([bg({ status: 'busy' })], 300)
+    expect(r.rows()[0].lastActivity).toBe(200)
+    r.applyAgents([bg({ status: 'idle' })], 400)
+    expect(r.rows()[0].lastActivity).toBe(400)
+  })
+
+  test('a later hook event or status file still wins over an older status change', () => {
+    const r = registry()
+    r.applyAgents([bg({ status: 'idle' })], 100)
+    r.applyAgents([bg({ status: 'busy' })], 200)
+    r.applyEvents([ev('Stop', 's1', 250)], 250)
+    expect(r.rows()[0].lastActivity).toBe(250)
+  })
+
   test('status data and the branch go on the row', () => {
     const r = registry()
     r.applyAgents([bg()], 100)

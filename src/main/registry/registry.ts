@@ -34,6 +34,8 @@ interface Session {
   startedAt: number
   // The time of the last hook event. The value is 0 if no event came.
   lastEventAt: number
+  // The sample time of the last status change that the registry saw. The value is 0 if none.
+  statusChangedAt: number
   // The time of the last park. A SessionEnd event or a list sample gives this time.
   parkedAt: number
   machine: MachineState
@@ -106,7 +108,10 @@ export class SessionRegistry {
     const ids = new Set(entries.map(entry => entry.sessionId))
     for (const entry of entries) {
       this.keepName(entry)
-      const s = this.sessions.get(entry.sessionId) ?? this.add(entry.sessionId)
+      const known = this.sessions.get(entry.sessionId)
+      const s = known ?? this.add(entry.sessionId)
+      // A new status is activity. The first sample of a session is not a change.
+      if (known && known.status !== entry.status) s.statusChangedAt = sampledAt
       // Without hooks, only the session list can clear the parked state.
       // An entry without a pid has no process.
       // This occurs for a short time after a start or a stop.
@@ -261,6 +266,7 @@ export class SessionRegistry {
       sessionId,
       startedAt: 0,
       status: '',
+      statusChangedAt: 0,
     }
     this.sessions.set(sessionId, s)
     const waiting = this.pending.filter(ev => ev.sessionId === sessionId)
@@ -334,7 +340,7 @@ export class SessionRegistry {
       cwd: s.cwd,
       flashing: m.box !== 'none' && !m.acknowledged,
       kind: s.kind,
-      lastActivity: Math.max(s.startedAt, s.lastEventAt, status?.updatedAt ?? 0),
+      lastActivity: Math.max(s.startedAt, s.lastEventAt, s.statusChangedAt, status?.updatedAt ?? 0),
       name: rowName(s.sessionId, this.names.get(s.sessionId), status?.sessionName, s.shortId),
       sessionId: s.sessionId,
       startedAt: s.startedAt,
