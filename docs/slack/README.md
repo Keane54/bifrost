@@ -125,7 +125,10 @@ Notes for stage 2:
 - Cost: a small server, under about USD 20 each month, plus the build work.
 - Risk: a fault in the event filter can show a private message to the wrong person. The filter needs strong tests.
 - At 200 users, the history load at the start of the day reaches the shared Tier 3 limit. The relay or the clients need a load limit.
-- Test first: PKCE with user events, the authorizations for private channels, DMs and group DMs, and the stop of events when a user leaves a private channel.
+- Test these first:
+  - PKCE with user events.
+  - The authorizations for private channels, DMs and group DMs.
+  - The stop of events when a user leaves a private channel.
 
 Methods that do not work:
 
