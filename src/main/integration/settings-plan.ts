@@ -58,10 +58,14 @@ function isWrapper(statusLine: unknown): boolean {
   return isObject(statusLine) && statusLine.command === STATUSLINE_COMMAND
 }
 
+// Plan the install. savedOriginal is the content of statusline-original.json.
+// undefined means that the file is missing or not valid.
+// original is undefined only when the statusLine is the wrapper and savedOriginal is undefined.
+// Then nobody knows the command of the user, and the caller must refuse.
 export function planInstall(
   settings: ClaudeSettings,
   savedOriginal: StatusLineSetting | null | undefined,
-): { next: ClaudeSettings; original: StatusLineSetting | null; changes: string[] } {
+): { next: ClaudeSettings; original: StatusLineSetting | null | undefined; changes: string[] } {
   const next: ClaudeSettings = structuredClone(settings)
   const changes: string[] = []
 
@@ -93,13 +97,14 @@ export function planInstall(
   if (changes.length > 0) next.hooks = hooks
 
   // Statusline. Never save the wrapper as the original.
-  // A statusLine that is not the wrapper is the original. Use the saved one only for the wrapper.
-  let original: StatusLineSetting | null
-  if (isObject(current) && !isWrapper(current)) {
-    original = structuredClone(current) as unknown as StatusLineSetting
-  } else {
-    original = savedOriginal ?? null
-  }
+  // When the statusLine is the wrapper, the saved original is the original.
+  // A statusLine that is not the wrapper is the original. Then the saved original is old.
+  // With no statusLine, the original is null. The saved original is old here too.
+  const original: StatusLineSetting | null | undefined = isWrapper(current)
+    ? savedOriginal
+    : isObject(current)
+      ? (structuredClone(current) as unknown as StatusLineSetting)
+      : null
 
   if (!isWrapper(current)) {
     const wrapper: StatusLineSetting = { command: STATUSLINE_COMMAND, type: 'command' }

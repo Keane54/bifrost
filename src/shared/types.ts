@@ -1,11 +1,13 @@
 // Types that the main process and the renderer share.
 
 export interface IntegrationStatus {
-  // True when no hook is missing, Bifrost set the wrapper and both scripts exist.
+  // True when no hook is missing, Bifrost set the wrapper and both scripts are current.
   installed: boolean
   missingHooks: string[]
   statusLineInstalled: boolean
   scriptsPresent: boolean
+  // True when both scripts have the text that an install writes now.
+  scriptsCurrent: boolean
   error?: string
 }
 

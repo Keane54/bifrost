@@ -62,15 +62,26 @@ test('planInstall saves the user statusLine and keeps refreshInterval and paddin
   })
 })
 
+// Changed for review I5 and M1: a wrapper with a missing saved original gives undefined, not null.
+// The caller refuses on undefined.
 test('planInstall never saves the wrapper as the original', () => {
   const installed = planInstall({ statusLine: MINE }, undefined).next
   expect(planInstall(installed, MINE).original).toEqual(MINE)
-  expect(planInstall(installed, undefined).original).toBeNull()
+  expect(planInstall(installed, null).original).toBeNull()
+  expect(planInstall(installed, undefined).original).toBeUndefined()
 })
 
 test('planInstall saves the new statusLine when it is not the wrapper', () => {
   const NEW = { command: 'sh new.sh', type: 'command' }
   expect(planInstall({ statusLine: NEW }, MINE).original).toEqual(NEW)
+  expect(planInstall({ statusLine: NEW }, undefined).original).toEqual(NEW)
+})
+
+test('planInstall ignores the saved original when the settings have no statusLine', () => {
+  const p = planInstall({}, MINE)
+  expect(p.original).toBeNull()
+  expect(p.next.statusLine).toEqual({ command: STATUSLINE_COMMAND, type: 'command' })
+  expect(planInstall({}, undefined).original).toBeNull()
 })
 
 test.each([

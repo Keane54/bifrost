@@ -4,7 +4,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
+import { mkdir, open, readdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { InstallPreview, IntegrationStatus } from '../../shared/types'
 import { HOOK_SCRIPT, statuslineScript } from './scripts'
@@ -201,6 +201,40 @@ function backupPathFor(files: Files, now: Date): string {
   return candidate
 }
 
+// The name of a backup that backupPathFor gives: settings-<time>.json or settings-<time>-<n>.json.
+const BACKUP_NAME = /^settings-(\d{8}T\d{6}Z)(?:-(\d+))?\.json$/
+
+// Return the path of the newest backup, or null when no backup exists.
+// The time in the name gives the order. The number gives the order in the same second.
+async function newestBackup(files: Files): Promise<string | null> {
+  let names: string[]
+  try {
+    names = await readdir(files.backups)
+  } catch {
+    return null
+  }
+  let best: { name: string; time: string; n: number } | null = null
+  for (const name of names) {
+    const match = BACKUP_NAME.exec(name)
+    if (!match) continue
+    const time = match[1]
+    const n = match[2] === undefined ? 0 : Number(match[2])
+    if (best === null || time > best.time || (time === best.time && n > best.n)) {
+      best = { n, name, time }
+    }
+  }
+  return best === null ? null : join(files.backups, best.name)
+}
+
+// The statusLine is the wrapper, but statusline-original.json is missing or not valid.
+// Bifrost cannot know the command of the user. So it refuses and names the newest backup.
+async function missingOriginalError(files: Files): Promise<Error> {
+  const backup = (await newestBackup(files)) ?? 'no backup found'
+  return new Error(
+    `Bifrost cannot find your original statusLine setting. Restore it from the newest backup: ${backup}.`,
+  )
+}
+
 function scriptTexts(original: StatusLineSetting | null): { hook: string; statusline: string } {
   return { hook: HOOK_SCRIPT, statusline: statuslineScript(original?.command ?? null) }
 }
@@ -217,10 +251,12 @@ function isWrapperNow(settings: ClaudeSettings): boolean {
   return checkInstall(settings).statusLineInstalled
 }
 
+// The preview refuses in the same cases as the install. Then the user sees the reason first.
 export async function previewInstall(paths: IntegrationPaths, now: Date): Promise<InstallPreview> {
   const files = filesOf(paths)
   const { settings, bytes } = await readSettings(paths.claudeSettings)
   const plan = planInstall(settings, await readSavedOriginal(files.original))
+  if (plan.original === undefined) throw await missingOriginalError(files)
   const changes = plan.changes.length > 0
   return {
     backupPath: bytes !== null && changes ? backupPathFor(files, now) : null,
@@ -239,19 +275,22 @@ export async function install(
   const saved = await readSavedOriginal(files.original)
   // This call can throw. If it throws, Bifrost writes nothing.
   const plan = planInstall(settings, saved)
+  // A Repair without the saved original would lose the command of the user. Write nothing.
+  const original = plan.original
+  if (original === undefined) throw await missingOriginalError(files)
 
   const settingsChange = plan.changes.length > 0
-  if (settingsChange || !(await scriptsCurrent(files, plan.original))) {
+  if (settingsChange || !(await scriptsCurrent(files, original))) {
     const staged = settingsChange
       ? await stageSettings(paths.claudeSettings, plan.next, bytes, hooks)
       : null
     try {
       if (bytes !== null && settingsChange) await writeAtomic(backupPathFor(files, now), bytes)
-      const texts = scriptTexts(plan.original)
+      const texts = scriptTexts(original)
       await writeAtomic(files.hook, texts.hook, 0o755)
       await writeAtomic(files.statusline, texts.statusline, 0o755)
       if (!isWrapperNow(settings)) {
-        await writeAtomic(files.original, `${JSON.stringify(plan.original)}\n`)
+        await writeAtomic(files.original, `${JSON.stringify(original)}\n`)
       }
     } catch (error) {
       await staged?.discard()
@@ -270,6 +309,8 @@ export async function uninstall(
   const files = filesOf(paths)
   const { settings, bytes } = await readSettings(paths.claudeSettings)
   const saved = await readSavedOriginal(files.original)
+  // Without the saved original, the uninstall would delete the statusLine of the user. Write nothing.
+  if (isWrapperNow(settings) && saved === undefined) throw await missingOriginalError(files)
   const next = planUninstall(settings, saved ?? null)
   // Keep statusline-original.json. A later install overwrites it when it must.
   if (bytes !== null && JSON.stringify(next) !== JSON.stringify(settings)) {
@@ -285,15 +326,22 @@ export async function uninstall(
   return integrationStatus(paths)
 }
 
+// The scripts are current when their text is the text that an install writes now.
+// An install with older scripts, or with a missing saved original, is not current.
+// Then the status is not "installed", and Settings shows the Repair button.
 export async function integrationStatus(paths: IntegrationPaths): Promise<IntegrationStatus> {
   const files = filesOf(paths)
   const scriptsPresent = existsSync(files.hook) && existsSync(files.statusline)
   try {
     const { settings } = await readSettings(paths.claudeSettings)
     const check = checkInstall(settings)
+    const saved = await readSavedOriginal(files.original)
+    const current = scriptsPresent && saved !== undefined && (await scriptsCurrent(files, saved))
     return {
-      installed: check.missingHooks.length === 0 && check.statusLineInstalled && scriptsPresent,
+      installed:
+        check.missingHooks.length === 0 && check.statusLineInstalled && scriptsPresent && current,
       missingHooks: check.missingHooks,
+      scriptsCurrent: current,
       scriptsPresent,
       statusLineInstalled: check.statusLineInstalled,
     }
@@ -302,6 +350,7 @@ export async function integrationStatus(paths: IntegrationPaths): Promise<Integr
       error: error instanceof Error ? error.message : String(error),
       installed: false,
       missingHooks: [],
+      scriptsCurrent: false,
       scriptsPresent,
       statusLineInstalled: false,
     }

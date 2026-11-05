@@ -7,6 +7,7 @@ function describe(status: IntegrationStatus): string {
   if (status.missingHooks.length > 0) missing.push(`hooks: ${status.missingHooks.join(', ')}`)
   if (!status.statusLineInstalled) missing.push('status line wrapper')
   if (!status.scriptsPresent) missing.push('scripts')
+  else if (!status.scriptsCurrent) missing.push('current scripts (install again to repair)')
   return `Not installed. Missing: ${missing.join('; ') || 'unknown'}.`
 }
 

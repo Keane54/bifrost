@@ -211,3 +211,165 @@ test('install refuses when the settings file changes before the final rename', a
   expect(await readFile(paths.claudeSettings, 'utf8')).toBe('{"model":"y"}')
   expect((await readdir(join(dir, 'claude'))).filter(f => f.endsWith('.tmp'))).toEqual([])
 })
+
+const ORIG = { command: "printf 'ORIG'", padding: 0, refreshInterval: 1, type: 'command' }
+const MISSING = 'Bifrost cannot find your original statusLine setting.'
+
+async function readJson(file: string): Promise<Record<string, unknown>> {
+  return JSON.parse(await readFile(file, 'utf8'))
+}
+
+test('install, uninstall, a removed statusLine, install and uninstall give no statusLine', async () => {
+  await writeFile(paths.claudeSettings, JSON.stringify({ model: 'x', statusLine: ORIG }))
+  await install(paths, NOW)
+  await uninstall(paths, NOW)
+  expect(await readJson(paths.claudeSettings)).toEqual({ model: 'x', statusLine: ORIG })
+  await writeFile(paths.claudeSettings, JSON.stringify({ model: 'x' }))
+  await install(paths, NOW)
+  expect(await readJson(join(home, 'statusline-original.json'))).toBeNull()
+  const script = await readFile(join(home, 'bin/bifrost-statusline'), 'utf8')
+  expect((await runSh(script, '{}', home)).stdout).toBe('')
+  await uninstall(paths, NOW)
+  expect(await readJson(paths.claudeSettings)).toEqual({ model: 'x' })
+})
+
+test('uninstall refuses with a missing saved original and names the newest backup', async () => {
+  await writeFile(paths.claudeSettings, JSON.stringify({ statusLine: ORIG }))
+  await install(paths, NOW)
+  const backups = join(home, 'backups')
+  for (const name of [
+    'settings-20261104T153000Z-2.json',
+    'settings-20261104T153000Z-10.json',
+    'settings-20261103T235959Z-99.json',
+    'notes.txt',
+  ]) {
+    await writeFile(join(backups, name), '{}')
+  }
+  await rm(join(home, 'statusline-original.json'))
+  const before = await readFile(paths.claudeSettings)
+  const count = (await readdir(backups)).length
+  await expect(uninstall(paths, NOW)).rejects.toThrow(
+    `${MISSING} Restore it from the newest backup: ${join(backups, 'settings-20261104T153000Z-10.json')}.`,
+  )
+  expect((await readFile(paths.claudeSettings)).equals(before)).toBe(true)
+  expect(await readdir(backups)).toHaveLength(count)
+})
+
+test('uninstall refuses with a saved original that is not valid', async () => {
+  await writeFile(paths.claudeSettings, JSON.stringify({ statusLine: ORIG }))
+  await install(paths, NOW)
+  await writeFile(join(home, 'statusline-original.json'), '{ not json')
+  const before = await readFile(paths.claudeSettings)
+  await expect(uninstall(paths, NOW)).rejects.toThrow(MISSING)
+  expect((await readFile(paths.claudeSettings)).equals(before)).toBe(true)
+})
+
+test('the refusal says no backup found when no backup exists', async () => {
+  await install(paths, NOW)
+  expect(existsSync(join(home, 'backups'))).toBe(false)
+  await rm(join(home, 'statusline-original.json'))
+  await expect(uninstall(paths, NOW)).rejects.toThrow(
+    `${MISSING} Restore it from the newest backup: no backup found.`,
+  )
+})
+
+test('Repair refuses with a missing saved original and changes nothing', async () => {
+  await writeFile(paths.claudeSettings, JSON.stringify({ statusLine: ORIG }))
+  await install(paths, NOW)
+  await rm(join(home, 'statusline-original.json'))
+  // A missing hook needs a Repair.
+  const s = await readJson(paths.claudeSettings)
+  delete (s.hooks as Record<string, unknown>).Stop
+  await writeFile(paths.claudeSettings, JSON.stringify(s))
+  const before = await readFile(paths.claudeSettings)
+  const script = await readFile(join(home, 'bin/bifrost-statusline'), 'utf8')
+  await expect(previewInstall(paths, NOW)).rejects.toThrow(MISSING)
+  await expect(install(paths, NOW)).rejects.toThrow(MISSING)
+  expect((await readFile(paths.claudeSettings)).equals(before)).toBe(true)
+  expect(await readFile(join(home, 'bin/bifrost-statusline'), 'utf8')).toBe(script)
+  expect(existsSync(join(home, 'statusline-original.json'))).toBe(false)
+  expect(await readdir(join(home, 'backups'))).toHaveLength(1)
+})
+
+test('uninstall works with a missing saved original when the statusLine is not the wrapper', async () => {
+  const NEW = { command: "printf 'NEW'", type: 'command' }
+  await install(paths, NOW)
+  await rm(join(home, 'statusline-original.json'))
+  const s = await readJson(paths.claudeSettings)
+  await writeFile(paths.claudeSettings, JSON.stringify({ ...s, statusLine: NEW }))
+  await uninstall(paths, NOW)
+  expect(await readJson(paths.claudeSettings)).toEqual({ statusLine: NEW })
+})
+
+test('install and uninstall refuse an empty settings file as not valid JSON', async () => {
+  await writeFile(paths.claudeSettings, '')
+  await expect(install(paths, NOW)).rejects.toThrow(/not valid JSON/)
+  await expect(uninstall(paths, NOW)).rejects.toThrow(/not valid JSON/)
+  expect(await readFile(paths.claudeSettings, 'utf8')).toBe('')
+  expect(existsSync(home)).toBe(false)
+  expect((await integrationStatus(paths)).error).toMatch(/not valid JSON/)
+})
+
+test('Repair after the statusline installer replaced the wrapper keeps the new statusLine', async () => {
+  await writeFile(paths.claudeSettings, JSON.stringify({ model: 'x', statusLine: ORIG }))
+  await install(paths, NOW)
+  // The claude-statusline installer writes its own block over the wrapper.
+  const NEW = { command: "printf 'NEW'", refreshInterval: 10, type: 'command' }
+  const s = await readJson(paths.claudeSettings)
+  await writeFile(paths.claudeSettings, JSON.stringify({ ...s, statusLine: NEW }))
+  expect(await integrationStatus(paths)).toMatchObject({
+    installed: false,
+    statusLineInstalled: false,
+  })
+  const repaired = await install(paths, new Date('2026-11-04T16:00:00Z'))
+  expect(repaired.installed).toBe(true)
+  expect(await readJson(join(home, 'statusline-original.json'))).toEqual(NEW)
+  expect((await readJson(paths.claudeSettings)).statusLine).toEqual({
+    command: '~/.bifrost/bin/bifrost-statusline',
+    refreshInterval: 10,
+    type: 'command',
+  })
+  const script = await readFile(join(home, 'bin/bifrost-statusline'), 'utf8')
+  expect((await runSh(script, '{}', home)).stdout).toBe('NEW')
+  await uninstall(paths, new Date('2026-11-04T16:30:00Z'))
+  expect(await readJson(paths.claudeSettings)).toEqual({ model: 'x', statusLine: NEW })
+})
+
+test('uninstall refuses when the settings file changes before the final rename', async () => {
+  await writeFile(paths.claudeSettings, JSON.stringify({ statusLine: ORIG }))
+  await install(paths, NOW)
+  const changed = '{"model":"y"}'
+  await expect(
+    uninstall(paths, NOW, { beforeSettingsRename: () => writeFile(paths.claudeSettings, changed) }),
+  ).rejects.toThrow(/changed/)
+  expect(await readFile(paths.claudeSettings, 'utf8')).toBe(changed)
+  expect((await readdir(join(dir, 'claude'))).filter(f => f.endsWith('.tmp'))).toEqual([])
+})
+
+test('an install with old scripts is not installed, and a Repair makes it current', async () => {
+  await writeFile(paths.claudeSettings, JSON.stringify({ statusLine: ORIG }))
+  await install(paths, NOW)
+  expect(await integrationStatus(paths)).toMatchObject({ installed: true, scriptsCurrent: true })
+  for (const name of ['bifrost-hook', 'bifrost-statusline']) {
+    const file = join(home, 'bin', name)
+    const text = await readFile(file, 'utf8')
+    await writeFile(file, '#!/bin/sh\n# An older script.\nexit 0\n')
+    expect(await integrationStatus(paths)).toMatchObject({
+      installed: false,
+      scriptsCurrent: false,
+      scriptsPresent: true,
+    })
+    const repaired = await install(paths, new Date('2026-11-04T16:00:00Z'))
+    expect(repaired).toMatchObject({ installed: true, scriptsCurrent: true })
+    expect(await readFile(file, 'utf8')).toBe(text)
+  }
+  // The scripts changed, but the settings did not. So no new backup.
+  expect(await readdir(join(home, 'backups'))).toHaveLength(1)
+})
+
+test('an install with a missing saved original is not installed', async () => {
+  await writeFile(paths.claudeSettings, JSON.stringify({ statusLine: ORIG }))
+  await install(paths, NOW)
+  await rm(join(home, 'statusline-original.json'))
+  expect(await integrationStatus(paths)).toMatchObject({ installed: false, scriptsCurrent: false })
+})
