@@ -469,7 +469,7 @@ Dialog rules:
 
 - The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur.
 - The accent colour is a light cyan, used sparingly, as in EVE. The top border of each panel is a 1 px cyan line with a soft glow into the title bar; the focused panel has the full glow, other panels a dim line. A click on a button, tab or row gives a short, low-opacity cyan tint.
-- A selected row gets a light, low-opacity cyan background, so it differs from a neutral row. The active tab has white text and a white underline.
+- A selected row gets a light, low-opacity cyan background, so it differs from a neutral row. A tab in a panel stack is white with a white underline when it is active. An Overview tab keeps its own text colour (section 8.3), and the active Overview tab has an underline in that colour, as in EVE.
 - All corners are square, as in EVE: panels, buttons, menus, tooltips, checkboxes, tabs and dots. Square corners leave no gap between panels that snap together (user decision, 2026-11-05).
 - The UI font is Geist Mono (OFL licence), bundled with the app (user decision, 2026-11-05). All interface text uses it, also the Overview rows. The chat terminals keep their own font setting (section 12).
 - Bifrost uses its own icons and fonts. It does not copy EVE art, icons or fonts.
