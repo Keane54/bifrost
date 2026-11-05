@@ -111,10 +111,10 @@ describe('overview settings model', () => {
     expect(moveColumn(c, 'nope', 'name', null)).toBe(c)
   })
 
-  it('resetTab gives the tab its default columns and filter, and keeps the widths and the sort', () => {
+  it('resetTab gives the tab its default columns, filter and widths, and keeps the sort', () => {
     let c = overviewReducer(base(), { column: 'activity', tabId: 't2', type: 'sortBy' })
     c = overviewReducer(c, { tabId: 't2', type: 'setWidths', widths: { name: 200 } })
-    const before = tabOf(c, 't2')
+    const before = { ...tabOf(c, 't2'), widths: {} }
     let changed = moveColumn(toggleColumn(c, 't2', 'branch'), 't2', 'activity', 'name')
     changed = setBoxOnly(
       showKind(showState(changed, 't2', 'parked', true), 't2', 'external', false),
@@ -124,7 +124,7 @@ describe('overview settings model', () => {
     const reset = resetTab(changed, 't2')
     expect(tabOf(reset, 't2')).toEqual(before)
     expect(tabOf(reset, 't2').sort).toEqual({ column: 'activity', desc: true })
-    expect(tabOf(reset, 't2').widths).toEqual({ name: 200 })
+    expect(tabOf(reset, 't2').widths).toEqual({})
     expect(reset.tabs[0]).toBe(changed.tabs[0])
   })
 

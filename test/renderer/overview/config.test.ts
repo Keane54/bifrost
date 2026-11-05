@@ -232,6 +232,26 @@ describe('overview config', () => {
     expect(reset.tabs[0]?.sort).toEqual({ column: 'name', desc: false })
   })
 
+  it('resetTab clears the widths of a tab and of no other tab', () => {
+    const c = overviewReducer(
+      overviewReducer(base(), { tabId: 't1', type: 'setWidths', widths: { name: 207 } }),
+      { tabId: 't2', type: 'setWidths', widths: { project: 90 } },
+    )
+    const reset = overviewReducer(c, { tabId: 't1', type: 'resetTab' })
+    expect(reset.tabs[0]?.widths).toEqual({})
+    expect(reset.tabs[1]).toBe(c.tabs[1])
+  })
+
+  it('setWidths for one column leaves the other widths unchanged', () => {
+    let c = overviewReducer(base(), {
+      tabId: 't1',
+      type: 'setWidths',
+      widths: { name: 207, project: 150 },
+    })
+    c = overviewReducer(c, { tabId: 't1', type: 'setWidths', widths: { name: 230 } })
+    expect(c.tabs[0]?.widths).toEqual({ name: 230, project: 150 })
+  })
+
   it('parseOverviewConfig moves the sort of a saved tab off a hidden column', () => {
     const c = parseOverviewConfig({
       tabs: [

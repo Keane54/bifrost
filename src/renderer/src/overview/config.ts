@@ -354,12 +354,14 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
       })
     }
     case 'resetTab':
-      // The widths do not change. The sort changes only when the reset hides the sort column.
+      // The reset also restores the default widths. The sort changes only when the reset hides
+      // the sort column.
       return withTab(config, action.tabId, t => {
         const filter = defaultFilter(t.id)
         const same =
           sameList(t.columns, DEFAULT_COLUMNS) &&
           sameList(t.order, COLUMN_IDS) &&
+          Object.keys(t.widths).length === 0 &&
           sameFilter(t.filter, filter)
         if (same) return t
         return withVisibleSort({
@@ -367,6 +369,7 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
           columns: [...DEFAULT_COLUMNS],
           filter,
           order: [...COLUMN_IDS],
+          widths: {},
         })
       })
     case 'setWidths':
