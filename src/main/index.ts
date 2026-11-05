@@ -45,38 +45,69 @@ function createWindow(): void {
   }
 }
 
-// Electron fires this event when it is ready to create windows.
-app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.electron')
-
-  // F12 opens DevTools in development.
-  // In production, the app ignores Command + R.
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
-
-  // Register the IPC handlers before any window loads a page.
-  registerIpc()
-
-  createWindow()
-
-  // On macOS, a click on the Dock icon opens a window if none is open.
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
-
-// On macOS, the app stays active after the last window closes.
-// The user quits the app with Command + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+// Show and focus the window of this instance. Open a window if none is open.
+function showWindow(): void {
+  if (!app.isReady()) return
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) {
+    createWindow()
+    return
   }
-})
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
 
-// Close all PTYs before the app quits. Then no attach client stays alive after Bifrost.
-// Stop the registry service. Then no poll starts after this time.
-app.on('will-quit', () => {
-  closeAllPtys()
-  stopRegistry()
-})
+// Start the app. Only the first instance calls this function.
+function startApp(): void {
+  // A second start of Bifrost shows the window of this instance.
+  app.on('second-instance', () => showWindow())
+
+  // Electron fires this event when it is ready to create windows.
+  app.whenReady().then(() => {
+    electronApp.setAppUserModelId('com.electron')
+
+    // F12 opens DevTools in development.
+    // In production, the app ignores Command + R.
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    // Register the IPC handlers before any window loads a page.
+    // This also makes the active marker file and starts the registry service.
+    registerIpc()
+
+    createWindow()
+
+    // On macOS, a click on the Dock icon opens a window if none is open.
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+
+  // On macOS, the app stays active after the last window closes.
+  // The user quits the app with Command + Q.
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit()
+    }
+  })
+
+  // Close all PTYs before the app quits. Then no attach client stays alive after Bifrost.
+  // Stop the registry service. Then no poll starts after this time.
+  // This also deletes the active marker file. Then the scripts stop their work.
+  app.on('will-quit', () => {
+    closeAllPtys()
+    stopRegistry()
+  })
+}
+
+// Only one Bifrost runs at a time. Two instances would each read only some of the event files,
+// and both could change the settings file.
+// A second instance quits at once. It registers no IPC, makes no marker file and starts no service.
+// So it cannot delete the marker file of the first instance when it quits.
+if (app.requestSingleInstanceLock()) {
+  startApp()
+} else {
+  app.quit()
+}
