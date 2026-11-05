@@ -24,6 +24,7 @@ export class PtyManager {
   private readonly ptys = new Map<string, PtyProcess>()
   private dataCb: (viewId: string, chunk: string) => void = () => {}
   private exitCb: (viewId: string, exitCode: number, signal?: number) => void = () => {}
+  private closeCb: (viewId: string) => void = () => {}
 
   constructor(
     private readonly spawn: SpawnFn,
@@ -70,6 +71,9 @@ export class PtyManager {
     const proc = this.ptys.get(viewId)
     if (!proc) return
     this.ptys.delete(viewId)
+    // The exit callback does not run after a close. So this callback tells that the PTY ended.
+    // It also runs for closeAll and for an open that replaces a PTY.
+    this.closeCb(viewId)
     const sig = signal !== undefined && CLOSE_SIGNALS.includes(signal) ? signal : 'SIGHUP'
     try {
       proc.kill(sig)
@@ -88,5 +92,10 @@ export class PtyManager {
 
   onExit(cb: (viewId: string, exitCode: number, signal?: number) => void): void {
     this.exitCb = cb
+  }
+
+  // Runs each time close removes a PTY, before the kill.
+  onClose(cb: (viewId: string) => void): void {
+    this.closeCb = cb
   }
 }

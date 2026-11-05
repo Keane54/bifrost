@@ -131,6 +131,21 @@ describe('SessionSizeWatcher', () => {
     expect(read).toHaveBeenCalledTimes(2)
   })
 
+  it('forget clears the last size and the timer, so a new page gets the size again', async () => {
+    const read = vi.fn().mockResolvedValue(S1)
+    const emit = vi.fn()
+    const w = new SessionSizeWatcher({ emit, pidOf: () => 5, read }, 150)
+    w.poke('chat:a')
+    await vi.advanceTimersByTimeAsync(200)
+    w.poke('chat:a')
+    w.forget('chat:a')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(read).toHaveBeenCalledTimes(1)
+    w.poke('chat:a')
+    await vi.advanceTimersByTimeAsync(200)
+    expect(emit).toHaveBeenCalledTimes(2)
+  })
+
   it('runs one read at a time for a view', async () => {
     let release: (s: typeof S1) => void = () => {}
     const read = vi

@@ -198,3 +198,36 @@ describe('PtyManager', () => {
     expect(fakes[0].write).toHaveBeenCalledWith('x')
   })
 })
+
+describe('PtyManager onClose', () => {
+  const make = () => {
+    const m = new PtyManager(spawn, 'claude', {})
+    const closed: string[] = []
+    m.onClose(v => closed.push(v))
+    return { closed, m }
+  }
+
+  test('close reports the view', () => {
+    const { closed, m } = make()
+    m.open('chat:a', ['attach', 'x'], size)
+    m.close('chat:a')
+    expect(closed).toEqual(['chat:a'])
+    m.close('chat:a')
+    expect(closed).toEqual(['chat:a'])
+  })
+
+  test('closeAll reports every view', () => {
+    const { closed, m } = make()
+    m.open('chat:a', ['attach', 'x'], size)
+    m.open('chat:b', ['attach', 'y'], size)
+    m.closeAll()
+    expect(closed.sort()).toEqual(['chat:a', 'chat:b'])
+  })
+
+  test('an open that replaces a PTY reports the view', () => {
+    const { closed, m } = make()
+    m.open('chat:a', ['attach', 'x'], size)
+    m.open('chat:a', ['attach', 'x'], size)
+    expect(closed).toEqual(['chat:a'])
+  })
+})

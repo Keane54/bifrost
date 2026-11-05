@@ -105,6 +105,7 @@ export class SessionSizeWatcher {
     try {
       const size = await this.deps.read(pid)
       // forget removes the state. Then the result is old.
+      // A null read keeps the last size. The renderer keeps the old size after the session ends.
       if (this.views.get(viewId) !== state || !size) return
       const last = state.last
       if (last && last.cols === size.cols && last.rows === size.rows) return

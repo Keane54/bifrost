@@ -67,7 +67,7 @@ function pidOfView(viewId: string): number | undefined {
 
 function pidOfSession(sessionId: string): number | undefined {
   const row = liveService?.rows().find(r => r.sessionId === sessionId)
-  return row && row.kind === 'owned' ? row.pid : undefined
+  return row && row.kind === 'owned' && row.state !== 'parked' ? row.pid : undefined
 }
 
 // Reads the session size after a redraw. It sends the size to the page when it changes.
@@ -194,8 +194,11 @@ export function registerIpc(): void {
     m.onData((viewId, chunk) => {
       send('pty:data', viewId, chunk)
       // A full redraw follows a resize by any client (M0 question 1). So read the size.
+      // A sequence split over two chunks is missed. The next redraw or the open recovers it.
       if (chunk.includes(FULL_REDRAW)) sizeWatcher.poke(viewId)
     })
+    // close, closeAll and a replacing open do not run the exit callback. So forget here too.
+    m.onClose(viewId => sizeWatcher.forget(viewId))
     m.onExit((viewId, exitCode, signal) => {
       sizeWatcher.forget(viewId)
       send('pty:exit', viewId, exitCode, signal)
@@ -298,7 +301,7 @@ export function registerIpc(): void {
         throw new Error('refused: the page that asked for the PTY is gone')
       }
       const pid = manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
-      sizeWatcher.poke(viewId)
+      if (chatSessionOf(viewId) !== null) sizeWatcher.poke(viewId)
       return pid
     },
   )
