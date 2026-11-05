@@ -4,6 +4,8 @@ import type {
   InstallPreview,
   IntegrationStatus,
   Priority,
+  ProjectApp,
+  ProjectAppId,
   SessionRow,
 } from './types'
 
@@ -24,6 +26,15 @@ export interface BifrostApi {
     // The error is the error of the last poll of the session list, or null.
     // The returned function removes only this listener.
     onUpdate(cb: (rows: SessionRow[], error: string | null) => void): () => void
+  }
+  actions: {
+    // The installed apps that can open a project. The list has no paths.
+    apps(): Promise<ProjectApp[]>
+    // Open the project directory of the session in the app. The main process finds both.
+    // This rejects for an unknown session, an unknown app and a failed open.
+    openProject(sessionId: string, appId: ProjectAppId): Promise<void>
+    // Copy the full session ID to the clipboard.
+    copySessionId(sessionId: string): Promise<void>
   }
   integration: {
     status(): Promise<IntegrationStatus>

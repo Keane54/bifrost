@@ -1,14 +1,18 @@
+import { access } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   app,
   type BrowserWindow,
+  clipboard,
   type IpcMainInvokeEvent,
   ipcMain,
   type WebContents,
 } from 'electron'
 import { isPriority } from '../shared/priority'
 import type { ClaudeVersion, DisplayMode } from '../shared/types'
+import { createActions } from './actions/actions'
+import { findProjectApps } from './actions/project-apps'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
@@ -209,6 +213,25 @@ export function registerIpc(): void {
         throw new Error('refused: unknown session')
       }
     }),
+  )
+  // The renderer sends IDs only. The main process finds the row, the path and the app.
+  const exists = (path: string): Promise<boolean> =>
+    access(path).then(
+      () => true,
+      () => false,
+    )
+  const actions = createActions({
+    apps: () => findProjectApps(homedir(), exists),
+    exec: execFile,
+    rows: () => liveService?.rows() ?? [],
+    writeClipboard: text => clipboard.writeText(text),
+  })
+  ipcMain.handle('actions:apps', e => fromPage(e, () => actions.listApps()))
+  ipcMain.handle('actions:open-project', (e, sessionId: unknown, appId: unknown) =>
+    fromPage(e, () => actions.openProject(sessionId, appId)),
+  )
+  ipcMain.handle('actions:copy-session-id', (e, sessionId: unknown) =>
+    fromPage(e, () => actions.copySessionId(sessionId)),
   )
   // Only one of preview, install and uninstall runs at a time. A second call rejects.
   // These three handlers also reject for a settings file that is not valid.

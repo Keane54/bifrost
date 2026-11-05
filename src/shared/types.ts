@@ -65,3 +65,11 @@ export interface SessionRow {
 // How the Bifrost window shows on the screen.
 // borderless is the simple full screen of macOS. fullscreen is the native full screen.
 export type DisplayMode = 'window' | 'borderless' | 'fullscreen'
+
+// An app that can open the project directory of a session.
+export type ProjectAppId = 'finder' | 'vscode' | 'zed' | 'warp' | 'ghostty' | 'iterm2' | 'terminal'
+
+export interface ProjectApp {
+  id: ProjectAppId
+  label: string
+}

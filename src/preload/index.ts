@@ -26,6 +26,11 @@ function subscribe(channel: string, handler: (...args: never[]) => void): () => 
 }
 
 const api: BifrostApi = {
+  actions: {
+    apps: () => invoke('actions:apps'),
+    copySessionId: sessionId => invoke('actions:copy-session-id', sessionId),
+    openProject: (sessionId, appId) => invoke('actions:open-project', sessionId, appId),
+  },
   claudePath: () => invoke('claude:path'),
   claudeVersion: () => invoke('claude:version'),
   display: {
