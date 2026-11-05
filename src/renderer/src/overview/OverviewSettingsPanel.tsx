@@ -44,9 +44,9 @@ const KIND_LABELS: Record<SessionKind, string> = { external: 'External', owned: 
 // The checkbox is the box and its name. A click on the name also changes the box.
 // The box is small and dark, with a check mark. A disabled box is faded (spec 9.1).
 const CHECKBOX =
-  'group flex min-w-0 flex-1 items-center gap-2 rounded-sm outline-none not-data-disabled:active:bg-accent/12'
+  'group flex min-w-0 flex-1 items-center gap-2 outline-none not-data-disabled:active:bg-accent/12'
 const BOX =
-  'flex size-3.5 shrink-0 items-center justify-center rounded-sm border border-text-dim bg-bg text-text-strong group-focus-visible:outline-1 group-focus-visible:outline-text-strong group-data-checked:border-text group-data-disabled:opacity-40'
+  'flex size-3.5 shrink-0 items-center justify-center border border-text-dim bg-bg text-text-strong group-focus-visible:outline-1 group-focus-visible:outline-text-strong group-data-checked:border-text group-data-disabled:opacity-40'
 
 function CheckBox(props: {
   checked: boolean
@@ -324,7 +324,7 @@ function TabSelect({
     >
       <Select.Trigger
         aria-label='Tab'
-        className='flex h-6 min-w-0 flex-1 items-center justify-between gap-2 rounded border border-panel-edge bg-bg px-2 text-xs outline-none hover:border-text-strong/30 focus-visible:border-text-strong/30 active:bg-accent/12 data-popup-open:border-text-strong/30'
+        className='flex h-6 min-w-0 flex-1 items-center justify-between gap-2 border border-panel-edge bg-bg px-2 text-xs outline-none hover:border-text-strong/30 focus-visible:border-text-strong/30 active:bg-accent/12 data-popup-open:border-text-strong/30'
       >
         <Select.Value className={cx('truncate', TAB_TEXT[tab.color])} />
         <Select.Icon className='flex text-text-dim'>
@@ -407,7 +407,7 @@ export default function OverviewSettingsPanel({ panelId }: { panelId: string }):
       <div className='flex justify-end border-panel-edge border-t p-2'>
         <Tip label={isDefault ? REASON_DEFAULT_TAB : null}>
           <Button
-            className='rounded border border-panel-edge px-2 py-0.5 text-text hover:bg-hover not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
+            className='border border-panel-edge px-2 py-0.5 text-text hover:bg-hover not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
             disabled={isDefault}
             focusableWhenDisabled={true}
             onClick={() => edit(c => resetTab(c, tab.id))}

@@ -64,7 +64,7 @@ function PriorityItems({ items, onRun }: { items: SubItem[]; onRun: Run }): Reac
           </span>
           <span
             aria-hidden={true}
-            className={cx('size-2 shrink-0 rounded-sm', isPriority(item.arg) && PRIO_BG[item.arg])}
+            className={cx('size-2 shrink-0', isPriority(item.arg) && PRIO_BG[item.arg])}
           />
           {item.label}
         </ContextMenu.RadioItem>

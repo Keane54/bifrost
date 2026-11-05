@@ -41,17 +41,19 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   state: 'State',
 }
 
+// Geist Mono is 0.6 em wide: 7.2 px a character at 12 px. A width holds the normal content of its
+// column (a name of 24 characters, a project of two path parts) and its header.
 export const DEFAULT_WIDTHS: Record<ColumnId, number> = {
-  activity: 84,
-  branch: 110,
-  context: 70,
+  activity: 112,
+  branch: 130,
+  context: 84,
   cost: 60,
   kind: 28,
   model: 90,
-  name: 150,
-  priority: 56,
-  project: 130,
-  state: 76,
+  name: 184,
+  priority: 76,
+  project: 160,
+  state: 84,
 }
 
 export const MIN_WIDTH = 24

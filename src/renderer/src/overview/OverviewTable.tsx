@@ -222,7 +222,7 @@ export default function OverviewTable({
               <th className={STICKY} />
             </tr>
           </thead>
-          <tbody className='font-narrow text-xs'>
+          <tbody className='text-xs'>
             {viewed.map(item => {
               const row = item.original
               const id = row.sessionId

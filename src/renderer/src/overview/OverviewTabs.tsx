@@ -85,7 +85,7 @@ function TabNameInput(props: { name: string; onDone(name: string | null): void }
   return (
     <input
       aria-label='Tab name'
-      className='w-32 min-w-0 self-center rounded-sm bg-bg px-1 text-xs outline-1 outline-current'
+      className='w-32 min-w-0 self-center bg-bg px-1 text-xs outline-1 outline-current'
       maxLength={MAX_TAB_NAME}
       onBlur={() => finish(value)}
       onChange={e => setValue(e.target.value)}

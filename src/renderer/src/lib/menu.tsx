@@ -2,7 +2,7 @@
 import { Tooltip } from '@base-ui/react/tooltip'
 
 export const MENU_POPUP =
-  'min-w-36 rounded-md border border-panel-edge bg-title py-1 text-text text-xs outline-none backdrop-blur-md'
+  'min-w-36 border border-panel-edge bg-title py-1 text-text text-xs outline-none backdrop-blur-md'
 // The highlight of an item stays neutral. A press on an item that is not disabled gives a short
 // cyan tint (spec 8.10). The tint has the data-highlighted variant first, so that its CSS rule
 // comes after the rule of the highlight. A pressed item always has the highlight.
@@ -29,7 +29,7 @@ export function Tip({
       <Tooltip.Trigger render={children} />
       <Tooltip.Portal>
         <Tooltip.Positioner className='pointer-events-none z-50' side={side} sideOffset={6}>
-          <Tooltip.Popup className='whitespace-pre-line rounded border border-panel-edge bg-title px-2 py-1 text-text text-xs'>
+          <Tooltip.Popup className='whitespace-pre-line border border-panel-edge bg-title px-2 py-1 text-text text-xs'>
             {label}
           </Tooltip.Popup>
         </Tooltip.Positioner>

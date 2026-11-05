@@ -10,7 +10,7 @@ const FULL_MESSAGE = `Delete a layout first. The limit is ${MAX_LAYOUTS}.`
 
 // A press gives a short cyan tint. A hover stays neutral (spec 8.10).
 const SMALL_BUTTON =
-  'shrink-0 rounded border border-panel-edge px-2 py-0.5 text-text-dim hover:bg-panel hover:text-text active:bg-accent/12'
+  'shrink-0 border border-panel-edge px-2 py-0.5 text-text-dim hover:bg-panel hover:text-text active:bg-accent/12'
 
 function LayoutPopover(props: {
   button: RefObject<HTMLButtonElement | null>
@@ -43,14 +43,14 @@ function LayoutPopover(props: {
   return (
     <div
       aria-label='Layouts'
-      className='absolute bottom-0 left-full z-10 ml-2 flex w-64 select-text flex-col gap-2 rounded-md border border-panel-edge bg-title p-3 text-text text-xs'
+      className='absolute bottom-0 left-full z-10 ml-2 flex w-64 select-text flex-col gap-2 border border-panel-edge bg-title p-3 text-text text-xs'
       ref={ref}
       role='dialog'
     >
       <form className='flex gap-2' onSubmit={onSubmit}>
         <input
           aria-label='Layout name'
-          className='min-w-0 flex-1 rounded border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30'
+          className='min-w-0 flex-1 border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30'
           onChange={e => {
             setName(e.target.value)
             setMessage(null)

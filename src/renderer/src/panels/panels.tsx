@@ -61,7 +61,7 @@ function ChatTitle({ panelId }: { panelId: string }): React.JSX.Element {
       {row && <SessionIcon row={row} size={16} />}
       {row && (
         <span
-          className={cx('size-1.5 shrink-0 rounded-full bg-current', TONE_TEXT[stateTone(row)])}
+          className={cx('size-1.5 shrink-0 bg-current', TONE_TEXT[stateTone(row)])}
           data-state-dot={row.state}
           title={stateLabel(row.state)}
         />

@@ -1,3 +1,4 @@
+import { EllipsisVertical } from 'lucide-react'
 import { type Dispatch, memo, useCallback, useRef, useState } from 'react'
 import { cx } from '../lib/cx'
 import { PanelContent, PanelTitle, panelScrolls } from '../panels/panels'
@@ -37,7 +38,7 @@ const Content = memo(PanelContent)
 // The buttons are above the resize handles, so a click near a corner hits the button.
 // A press gives a short cyan tint. A hover stays neutral (spec 8.10).
 const BUTTON =
-  'relative z-10 flex size-6 shrink-0 items-center justify-center rounded text-text-dim hover:bg-panel hover:text-text enabled:active:bg-accent/12 disabled:opacity-40 disabled:hover:bg-transparent'
+  'relative z-10 flex size-6 shrink-0 items-center justify-center text-text-dim hover:bg-panel hover:text-text enabled:active:bg-accent/12 disabled:opacity-40 disabled:hover:bg-transparent'
 
 function LockGlyph(): React.JSX.Element {
   return (
@@ -87,7 +88,7 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
   return (
     <div
       className={cx(
-        'absolute flex-col overflow-hidden rounded-md border bg-panel backdrop-blur-md',
+        'absolute flex-col overflow-hidden border bg-panel backdrop-blur-md',
         frame.minimised ? 'hidden' : 'flex',
         top ? 'border-text-strong/30 border-t-accent' : 'border-panel-edge border-t-accent/35',
       )}
@@ -153,7 +154,7 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
           title='Panel menu'
           type='button'
         >
-          ⋯
+          <EllipsisVertical aria-hidden='true' className='size-4' />
         </button>
         <button
           aria-label='Minimise'

@@ -107,4 +107,22 @@ describe('theme', () => {
     const bad = FILES.filter(f => /[\w-]+:bg-select\b/.test(f.text)).map(f => f.path)
     expect(bad).toEqual([])
   })
+
+  it('uses square corners: no rounded class and no border-radius style', () => {
+    const bad = FILES.filter(f =>
+      /\brounded\b|rounded-[a-z0-9]+|border-radius|borderRadius/.test(f.text),
+    )
+    expect(bad.map(f => f.path)).toEqual([])
+  })
+
+  it('sets every --radius-* token to 0', () => {
+    const tokens = [...CSS.matchAll(/--radius-[\w-]+:\s*([^;]+);/g)]
+    expect(tokens.length).toBeGreaterThan(0)
+    for (const token of tokens) expect(token[1].trim()).toBe('0')
+  })
+
+  it('uses Geist Mono as the UI font', () => {
+    expect(CSS).toContain('--font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;')
+    expect(CSS).not.toMatch(/saira|font-narrow/i)
+  })
 })

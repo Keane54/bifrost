@@ -11,7 +11,7 @@ const MAX_OVERVIEW = 99
 
 // A press gives a short cyan tint. A hover stays neutral (spec 8.10).
 const BUTTON =
-  'flex w-8 shrink-0 items-center justify-center rounded text-text-dim text-xs hover:bg-panel hover:text-text enabled:active:bg-accent/12 disabled:opacity-40 disabled:hover:bg-transparent'
+  'flex w-8 shrink-0 items-center justify-center text-text-dim text-xs hover:bg-panel hover:text-text enabled:active:bg-accent/12 disabled:opacity-40 disabled:hover:bg-transparent'
 
 // The Overview to focus: the top visible frame with an Overview first, then a minimised one.
 // In a frame, the active panel wins over the other tabs.

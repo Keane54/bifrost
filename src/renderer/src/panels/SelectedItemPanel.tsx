@@ -87,7 +87,7 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
         <div className='flex' data-send-box={true}>
           <textarea
             aria-label='Send message'
-            className='pointer-events-none min-w-0 flex-1 resize-none rounded border border-panel-edge bg-bg px-2 py-1 text-text opacity-40'
+            className='pointer-events-none min-w-0 flex-1 resize-none border border-panel-edge bg-bg px-2 py-1 text-text opacity-40'
             disabled={true}
             placeholder='Send message'
             rows={3}

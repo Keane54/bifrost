@@ -326,7 +326,7 @@ The Overview uses the layout of the EVE Overview, with Bifrost colours, icons an
 - A row of tabs is below the title bar. Each tab has its own text colour.
 - A line shows the active tab. A "+" button adds a tab.
 - The column headers are small and grey. The sort column shows ▲ or ▼.
-- The rows are dense and use a narrow font. Text that is too long is cut off. It does not wrap.
+- The rows are dense and use the UI font (section 8.10). Text that is too long is cut off. It does not wrap.
 - The first column shows a small icon. The icon shape shows the kind of the session: one shape for an owned session, the terminal app icon for an external session, and a dim shape for a parked session. The icon colour shows the project: each project gets a fixed colour from a palette without yellow, red and grey.
 - The yellow box and the red box are four corner brackets around the icon, as in EVE. A new box flashes. A yellow box changes to red by the rules of section 7.
 - A row can have a background highlight colour.
@@ -767,7 +767,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | Biome | Lint and format | M0 fix wave |
 | Vitest | Unit tests | M0 |
 | Tailwind CSS v4 | All styles. Bifrost has its own theme and tokens. It does not copy styles from other projects. Version 4.3.3 with `@tailwindcss/vite`. | M2 |
-| `@fontsource/saira-semi-condensed` | The UI font (section 8.10). Version 5.3.0, OFL-1.1 licence. | M3 |
+| `@fontsource/geist-mono` | The UI font (section 8.10). Version 5.3.0, OFL-1.1 licence. | M3 |
 | Base UI | The right-click menu with submenus, dialogs and tooltips. Version 1.9.0. | M3 |
 | TanStack Table | Overview columns, sort, column order and resize for each tab. Version 9.3.1. | M3 |
 | TanStack Hotkeys (beta) | Key map, hold-key-and-click, key editor in Settings | M3 to M5 |

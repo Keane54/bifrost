@@ -50,7 +50,7 @@ export default function ActionButton({
     <Tip label={buttonTip(action, state, ctx.labels)}>
       <Button
         aria-label={actionLabel(action, ctx.labels)}
-        className='flex size-6 shrink-0 items-center justify-center rounded text-text hover:bg-hover not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
+        className='flex size-6 shrink-0 items-center justify-center text-text hover:bg-hover not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
         data-action={action}
         disabled={!state.enabled}
         focusableWhenDisabled={true}

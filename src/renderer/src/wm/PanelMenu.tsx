@@ -28,7 +28,7 @@ function NameField(props: { name: string; onSave(name: string): void }): React.J
     <label className='flex flex-col gap-1'>
       <span>Tab set name</span>
       <input
-        className='rounded border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30'
+        className='border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30'
         maxLength={MAX_SET_NAME}
         onChange={e => setDraft(e.target.value)}
         onKeyDown={e => {
@@ -80,7 +80,7 @@ export default function PanelMenu({
   return createPortal(
     <div
       aria-label='Panel menu'
-      className='fixed z-10 flex w-52 select-none flex-col gap-3 rounded-md border border-panel-edge bg-title p-3 text-text text-xs'
+      className='fixed z-10 flex w-52 select-none flex-col gap-3 border border-panel-edge bg-title p-3 text-text text-xs'
       ref={ref}
       role='dialog'
       style={{
@@ -90,7 +90,7 @@ export default function PanelMenu({
     >
       {overview && (
         <button
-          className='-mx-1 rounded px-1 py-0.5 text-left hover:bg-hover active:bg-accent/12'
+          className='-mx-1 px-1 py-0.5 text-left hover:bg-hover active:bg-accent/12'
           onClick={() => {
             dispatch({ panelId: overviewSettingsId(frame.active), type: 'open' })
             onClose()
