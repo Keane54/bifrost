@@ -397,7 +397,9 @@ Send box rules:
 - Bifrost never sends CR to an empty prompt.
 - One attach PTY serves each session.
 - A hidden attach opens at the current size of the session (the M3 method). An attach sets the size of the session for all clients (M3 finding). If Bifrost cannot read the size, it sends nothing.
-- If the session has a red box, Bifrost blocks the send. Typed text can answer a prompt by accident.
+- If the session has a red box of a prompt (a permission prompt or a question), Bifrost blocks Send message, Run slash command and Rename. Typed text can answer a prompt by accident. An escalated yellow box and an error box do not block, because no prompt shows.
+- Interrupt sends Esc. It does not wait for quiet output, because a working session is never quiet: through a hidden attach, Bifrost sends Esc 300 ms after the first output of the attach.
+- After an Esc, Bifrost waits at least 200 ms before the next write to that session. So the session never gets an Esc and a paste in one chunk.
 - The block message is "Answer the prompt in the chat window first."
 - The send box is not available for external sessions or parked sessions.
 
