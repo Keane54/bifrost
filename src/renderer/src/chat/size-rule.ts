@@ -31,8 +31,8 @@ export interface SizeInput {
 export interface SizeDecision {
   term: TermSize
   send: TermSize | null
-  // Set only when the PTY already has the fit. A resize to the same size gives no SIGWINCH.
-  // So the window sends this size first, then send.
+  // Set only on a focus gain when the PTY already has the fit and the session has another size.
+  // A resize to the same size gives no SIGWINCH. So the window sends this size first, then send.
   bump?: TermSize
 }
 
@@ -46,22 +46,28 @@ function same(a: TermSize | null, b: TermSize | null): boolean {
   return !!a && !!b && a.cols === b.cols && a.rows === b.rows
 }
 
+// A focus gain takes the size back from another client. Each resize gives a full redraw of the
+// session. So the window sends only when the session size is not the fit, or is not known.
+function takeBack(
+  fit: TermSize,
+  session: TermSize | null,
+  lastSent: TermSize | null,
+): SizeDecision {
+  if (same(session, fit)) return { send: null, term: fit }
+  // The PTY has the fit already, so a resize to the fit gives no SIGWINCH. The bump gives one.
+  if (session && same(lastSent, fit)) return { bump: bumpSize(fit), send: fit, term: fit }
+  return { send: fit, term: fit }
+}
+
 export function decideSize(input: SizeInput): SizeDecision {
   const { fit, session, term, lastSent, lastSentAt, now } = input
-  if (input.focused && fit && (input.focusGained || !same(fit, lastSent))) {
-    // The window takes the size back from another client. Its PTY has the fit already, so a
-    // resize to the fit gives no SIGWINCH. The bump gives one.
-    if (input.focusGained && same(fit, lastSent)) {
-      return { bump: bumpSize(fit), send: fit, term: fit }
-    }
-    return { send: fit, term: fit }
-  }
-  if (session) {
-    const recent = lastSentAt !== null && now - lastSentAt <= SESSION_ECHO_MS
-    const oldRead = recent && lastSent !== null && !same(session, lastSent)
-    if (!oldRead) return { send: null, term: session }
-  }
-  return { send: null, term }
+  const recent = lastSentAt !== null && now - lastSentAt <= SESSION_ECHO_MS
+  const oldRead = !!session && recent && lastSent !== null && !same(session, lastSent)
+  // An old read is not the session size. The session gets the sent size soon.
+  const known = oldRead ? null : session
+  if (input.focused && fit && input.focusGained) return takeBack(fit, known, lastSent)
+  if (input.focused && fit && !same(fit, lastSent)) return { send: fit, term: fit }
+  return { send: null, term: known ?? term }
 }
 
 export const MIN_SCALE = 0.1

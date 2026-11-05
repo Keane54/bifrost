@@ -40,15 +40,39 @@ describe('decideSize', () => {
     expect(d).toEqual({ send: A, term: A })
   })
 
-  it('a focus gain with the fit in the PTY sends a different size first', () => {
+  it('a focus gain sends nothing when the session has the fit', () => {
+    const gain = input({ focused: true, focusGained: true, session: A })
+    expect(decideSize({ ...gain, lastSent: A, term: A })).toEqual({ send: null, term: A })
+    expect(decideSize({ ...gain, lastSent: B })).toEqual({ send: null, term: A })
+    expect(decideSize({ ...gain, lastSent: null })).toEqual({ send: null, term: A })
+  })
+
+  it('a focus gain sends the fit once when the session and the PTY have other sizes', () => {
+    const gain = input({ focused: true, focusGained: true, session: C })
+    expect(decideSize({ ...gain, lastSent: B })).toEqual({ send: A, term: A })
+    expect(decideSize({ ...gain, lastSent: null })).toEqual({ send: A, term: A })
+  })
+
+  it('a focus gain with the fit in the PTY and another session size sends a bump first', () => {
     const d = decideSize(input({ focused: true, focusGained: true, lastSent: A, session: B }))
     expect(d).toEqual({ bump: { cols: 100, rows: 29 }, send: A, term: A })
   })
 
-  it('a focus gain with another size in the PTY needs no bump', () => {
-    const d = decideSize(input({ focused: true, focusGained: true, lastSent: B }))
-    expect(d.bump).toBeUndefined()
-    expect(decideSize(input({ focused: true, focusGained: true })).bump).toBeUndefined()
+  it('a focus gain without a session size sends the fit once', () => {
+    const gain = input({ focused: true, focusGained: true, session: null })
+    expect(decideSize({ ...gain, lastSent: A, term: A })).toEqual({ send: A, term: A })
+    expect(decideSize({ ...gain, lastSent: B })).toEqual({ send: A, term: A })
+    expect(decideSize({ ...gain, lastSent: null })).toEqual({ send: A, term: A })
+  })
+
+  it('a focus gain treats an old read of the session size as no size', () => {
+    const gain = input({ focused: true, focusGained: true, lastSent: A, lastSentAt: 9_600 })
+    expect(decideSize({ ...gain, session: C })).toEqual({ send: A, term: A })
+    expect(decideSize({ ...gain, now: 10_101, session: C })).toEqual({
+      bump: { cols: 100, rows: 29 },
+      send: A,
+      term: A,
+    })
   })
 
   it('a fit change without a focus gain needs no bump', () => {
