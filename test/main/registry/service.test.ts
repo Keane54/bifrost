@@ -349,6 +349,59 @@ describe('updates and the store', () => {
     expect(service.setPriority('nope', 2)).toBe(false)
   })
 
+  test('the watch changes send an update and save the store', async () => {
+    const saveStore = vi.fn(async () => {})
+    const entries = [bg(), bg({ id: 'bb', name: 'beta', pid: 6, sessionId: 's2' })]
+    const { service, updates } = startService(
+      fakeDeps({ listActive: async () => ({ entries }), saveStore }),
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    const watchOf = () => saveStore.mock.calls.at(-1)?.[0].watch
+    const rowWatch = (id: string) => updates.at(-1)?.rows.find(r => r.sessionId === id)?.watch
+
+    saveStore.mockClear()
+    expect(service.watchAdd('s1', 'blue')).toBe(true)
+    expect(service.watchAdd('s2', 'green')).toBe(true)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(rowWatch('s1')).toEqual({ colour: 'blue', order: 0 })
+    expect(rowWatch('s2')).toEqual({ colour: 'green', order: 1 })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(watchOf()).toEqual([
+      { colour: 'blue', sessionId: 's1' },
+      { colour: 'green', sessionId: 's2' },
+    ])
+
+    saveStore.mockClear()
+    expect(service.watchColour('s1', 'pink')).toBe(true)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(rowWatch('s1')?.colour).toBe('pink')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(watchOf()?.[0]).toEqual({ colour: 'pink', sessionId: 's1' })
+
+    saveStore.mockClear()
+    expect(service.watchMove('s2', 's1')).toBe(true)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(rowWatch('s2')?.order).toBe(0)
+    expect(rowWatch('s1')?.order).toBe(1)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(watchOf()?.map(w => w.sessionId)).toEqual(['s2', 's1'])
+
+    saveStore.mockClear()
+    expect(service.watchRemove('s2')).toBe(true)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(rowWatch('s2')).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(watchOf()).toEqual([{ colour: 'pink', sessionId: 's1' }])
+
+    saveStore.mockClear()
+    expect(service.watchAdd('nope', 'blue')).toBe(false)
+    expect(service.watchRemove('nope')).toBe(false)
+    expect(service.watchColour('nope', 'blue')).toBe(false)
+    expect(service.watchMove('nope', null)).toBe(false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(saveStore).not.toHaveBeenCalled()
+  })
+
   test('the service saves the store after a change to the store', async () => {
     const saveStore = vi.fn(async () => {})
     startService(fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }))

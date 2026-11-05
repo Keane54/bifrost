@@ -112,7 +112,13 @@ test('openStore loads the file and saves to it', async () => {
     started: [],
     watch: [],
   })
-  await opened.save({ lastActive: [], names: { s2: 'beta' }, priorities: {}, started: ['s2'] })
+  await opened.save({
+    lastActive: [],
+    names: { s2: 'beta' },
+    priorities: {},
+    started: ['s2'],
+    watch: [],
+  })
   expect(await loadStore(file)).toEqual({
     lastActive: [],
     names: { s2: 'beta' },
@@ -219,4 +225,30 @@ test('loadStore drops watch entries with a bad colour, a bad ID or a repeated ID
   ])
   await writeFile(file, JSON.stringify({ names: {}, started: [], watch: 'x' }))
   expect((await loadStore(file)).watch).toEqual([])
+})
+
+test('loadStore keeps a full M3 file that has no watch', async () => {
+  const file = join(dir, 'registry.json')
+  const m3 = {
+    lastActive: ['s1', 's2'],
+    names: { s1: 'alpha', s2: 'beta' },
+    priorities: { s1: 2, s2: 5 },
+    started: ['s1'],
+  }
+  await writeFile(file, JSON.stringify(m3))
+  expect(await loadStore(file)).toEqual({ ...m3, watch: [] })
+})
+
+test('loadStore keeps the other fields when watch is damaged', async () => {
+  const file = join(dir, 'registry.json')
+  const rest = {
+    lastActive: ['s1'],
+    names: { s1: 'alpha' },
+    priorities: { s1: 3 },
+    started: ['s1'],
+  }
+  await writeFile(file, JSON.stringify({ ...rest, watch: 'broken' }))
+  expect(await loadStore(file)).toEqual({ ...rest, watch: [] })
+  await writeFile(file, JSON.stringify({ ...rest, watch: [1, null, { colour: 'red' }, []] }))
+  expect(await loadStore(file)).toEqual({ ...rest, watch: [] })
 })

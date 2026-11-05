@@ -280,7 +280,8 @@ export function registerIpc(): void {
   ): void => {
     ipcMain.handle(channel, (e, a: unknown, b: unknown) =>
       fromPage(e, async () => {
-        if (typeof a !== 'string' || !valid(a, b)) throw new Error(code)
+        if (typeof a !== 'string') throw new Error('refused: bad session ID')
+        if (!valid(a, b)) throw new Error(code)
         if (!change(await service, a, b)) throw new Error('refused: unknown session')
       }),
     )
