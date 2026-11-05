@@ -65,9 +65,9 @@ function confirm(s: MachineState): MachineState {
 }
 
 // Return the red prompt box. A repeated prompt event keeps the box, its time and its flash state.
-// The prompt can be a new prompt. So the box needs a new confirmation.
+// The box keeps its confirmed flag. So a later idle or busy sample can still clear it.
 function promptBox(s: MachineState, at: number): MachineState {
-  if (isPromptBox(s)) return s.confirmed ? { ...s, confirmed: false } : s
+  if (isPromptBox(s)) return s
   return withBox(s, 'needs-you', 'red', at, 'prompt')
 }
 

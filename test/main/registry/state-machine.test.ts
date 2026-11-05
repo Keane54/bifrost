@@ -422,7 +422,7 @@ describe('box confirmation (spec section 7, rule 10)', () => {
     expect(onHookEvent(y, ev('PermissionRequest', 12_000)).confirmed).toBe(false)
   })
 
-  test('a repeated prompt event keeps the time and the flash but needs a new confirmation', () => {
+  test('a repeated prompt event keeps the time, the flash and the confirmed flag', () => {
     const r = onAcknowledge(
       onStatus(onHookEvent(working, ev('PermissionRequest', 20_000)), waiting(20_500)),
     )
@@ -430,8 +430,19 @@ describe('box confirmation (spec section 7, rule 10)', () => {
       r,
       ev('Notification', 21_000, { notificationType: 'permission_prompt' }),
     )
-    expect(again).toEqual({ ...r, confirmed: false })
-    expect(onStatus(again, busy(21_500))).toEqual(again)
+    expect(again).toEqual(r)
+    expect(again.confirmed).toBe(true)
+  })
+
+  test('a Notification after a confirmed prompt keeps the box clearable by idle', () => {
+    const r = onHookEvent(working, ev('PermissionRequest', 20_000))
+    const confirmed = onStatus(r, waiting(20_500))
+    const again = onHookEvent(
+      confirmed,
+      ev('Notification', 21_000, { notificationType: 'permission_prompt' }),
+    )
+    expect(again).toEqual(confirmed)
+    expect(onStatus(again, idle(21_500))).toMatchObject({ box: 'none', state: 'idle' })
   })
 
   test('a sample that is not newer than the box does not confirm it', () => {
