@@ -1,4 +1,10 @@
-import type { ClaudeVersion, InstallPreview, IntegrationStatus, SessionRow } from './types'
+import type {
+  ClaudeVersion,
+  DisplayMode,
+  InstallPreview,
+  IntegrationStatus,
+  SessionRow,
+} from './types'
 
 // The type of window.bifrost. The preload script implements it.
 // When a call fails in the main process, it rejects with an Error.
@@ -27,6 +33,17 @@ export interface BifrostApi {
     load(): Promise<unknown>
     // Rejects when the value is not a plain object or is larger than 1 MB.
     save(data: unknown): Promise<void>
+  }
+  display: {
+    get(): Promise<DisplayMode>
+    // Rejects when the value is not a display mode.
+    set(mode: DisplayMode): Promise<void>
+    // The main process sends the new mode after each change of the real mode.
+    onChange(cb: (mode: DisplayMode) => void): () => void
+  }
+  wm: {
+    // The main process sends this event when the user chooses Close Panel (Cmd+W).
+    onClosePanel(cb: () => void): () => void
   }
   pty: {
     // The main process opens a PTY only for "attach <short id>".

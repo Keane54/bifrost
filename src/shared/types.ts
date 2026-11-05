@@ -57,3 +57,7 @@ export interface SessionRow {
   costUsd?: number
   branch?: string
 }
+
+// How the Bifrost window shows on the screen.
+// borderless is the simple full screen of macOS. fullscreen is the native full screen.
+export type DisplayMode = 'window' | 'borderless' | 'fullscreen'

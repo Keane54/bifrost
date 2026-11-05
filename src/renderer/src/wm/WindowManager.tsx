@@ -169,6 +169,9 @@ export default function WindowManager(): React.JSX.Element {
     scheduleSave()
   }, [state, scheduleSave])
 
+  // The menu item Close Panel (Cmd+W) closes the active panel.
+  useEffect(() => window.bifrost.wm.onClosePanel(() => dispatch({ type: 'closeActive' })), [])
+
   // A drag ends when its frame closes or goes to the side bar.
   useEffect(() => {
     const current = drag.current

@@ -28,6 +28,11 @@ function subscribe(channel: string, handler: (...args: never[]) => void): () => 
 const api: BifrostApi = {
   claudePath: () => invoke('claude:path'),
   claudeVersion: () => invoke('claude:version'),
+  display: {
+    get: () => invoke('display:get'),
+    onChange: cb => subscribe('display:changed', cb),
+    set: mode => invoke('display:set', mode),
+  },
   integration: {
     install: () => invoke('integration:install'),
     preview: () => invoke('integration:preview'),
@@ -50,6 +55,9 @@ const api: BifrostApi = {
   ui: {
     load: () => invoke('ui:load'),
     save: data => invoke('ui:save', data),
+  },
+  wm: {
+    onClosePanel: cb => subscribe('wm:close-panel', cb),
   },
 }
 

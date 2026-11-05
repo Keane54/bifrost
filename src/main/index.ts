@@ -1,18 +1,35 @@
 import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu, screen } from 'electron'
 import icon from '../../resources/icon.png?asset'
-import { attachWindow, closeAllPtys, registerIpc, stopRegistry } from './ipc'
+import {
+  attachWindow,
+  closeAllPtys,
+  registerIpc,
+  send,
+  setModeController,
+  stopRegistry,
+} from './ipc'
+import { buildMenuTemplate } from './menu'
+import { createModeController } from './window/display-mode'
+import { openWindowStateStore, restoreBounds } from './window/window-state'
 
-function createWindow(): void {
+const DEFAULT_SIZE = { height: 900, width: 1440 }
+// Bifrost saves the bounds 500 ms after the last move or resize.
+const BOUNDS_DELAY_MS = 500
+
+async function createWindow(): Promise<void> {
+  const store = await openWindowStateStore(join(app.getPath('userData'), 'window-state.json'))
+  // The app can quit, or another call can open a window, during the wait above.
+  if (BrowserWindow.getAllWindows().length > 0) return
+  const workAreas = screen.getAllDisplays().map(d => d.workArea)
   const mainWindow = new BrowserWindow({
     autoHideMenuBar: true,
     // This colour must match --color-bg in src/renderer/src/styles/app.css.
     backgroundColor: '#0a0d12',
-    height: 900,
     show: false,
     title: 'Bifrost',
-    width: 1440,
+    ...restoreBounds(store.state.bounds, workAreas, DEFAULT_SIZE),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       contextIsolation: true,
@@ -25,8 +42,55 @@ function createWindow(): void {
 
   attachWindow(mainWindow)
 
+  // Build the menu again after each change of the mode, so the radio items show the real mode.
+  const showMenu = (): void => {
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate(
+        buildMenuTemplate({
+          isDev: is.dev,
+          mode: controller.get(),
+          onClosePanel: () => send('wm:close-panel'),
+          onMode: mode => void controller.set(mode),
+          onToggleFullscreen: () => void controller.toggleFullscreen(),
+        }),
+      ),
+    )
+  }
+  const controller = createModeController(mainWindow, mode => {
+    void store.update({ mode }).catch(err => console.error('Bifrost cannot save the mode.', err))
+    send('display:changed', mode)
+    showMenu()
+  })
+  setModeController(controller)
+  showMenu()
+  // The green button and the Esc key change the mode without a call to the controller.
+  mainWindow.on('enter-full-screen', () => controller.sync())
+  mainWindow.on('leave-full-screen', () => controller.sync())
+
+  // Save the bounds of the normal window, not the bounds of a full screen.
+  const saveBounds = (): void => {
+    if (mainWindow.isDestroyed()) return
+    void store
+      .update({ bounds: mainWindow.getNormalBounds() })
+      .catch(err => console.error('Bifrost cannot save the window bounds.', err))
+  }
+  let boundsTimer: NodeJS.Timeout | undefined
+  const saveBoundsLater = (): void => {
+    clearTimeout(boundsTimer)
+    boundsTimer = setTimeout(saveBounds, BOUNDS_DELAY_MS)
+  }
+  mainWindow.on('resize', saveBoundsLater)
+  mainWindow.on('move', saveBoundsLater)
+  mainWindow.on('close', () => {
+    clearTimeout(boundsTimer)
+    saveBounds()
+  })
+  mainWindow.on('closed', () => setModeController(null))
+
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    // Apply the saved mode. The controller saves the mode again when it changes.
+    void controller.set(store.state.mode)
   })
 
   // The window shows only the Bifrost page. A link or a script cannot open another page in it.
@@ -51,7 +115,7 @@ function showWindow(): void {
   if (!app.isReady()) return
   const win = BrowserWindow.getAllWindows()[0]
   if (!win) {
-    createWindow()
+    void createWindow()
     return
   }
   if (win.isMinimized()) win.restore()
@@ -78,11 +142,11 @@ function startApp(): void {
     // This also makes the active marker file and starts the registry service.
     registerIpc()
 
-    createWindow()
+    void createWindow()
 
     // On macOS, a click on the Dock icon opens a window if none is open.
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (BrowserWindow.getAllWindows().length === 0) void createWindow()
     })
   })
 

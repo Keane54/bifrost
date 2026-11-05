@@ -7,7 +7,7 @@ import {
   ipcMain,
   type WebContents,
 } from 'electron'
-import type { ClaudeVersion } from '../shared/types'
+import type { ClaudeVersion, DisplayMode } from '../shared/types'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
@@ -34,6 +34,8 @@ import { RegistryService, type ServiceDeps } from './registry/service'
 import { cleanStatusTemps, readStatusFiles, STATUS_TEMP_MAX_AGE_MS } from './registry/status-file'
 import { openStore } from './registry/store-file'
 import { openUiStore } from './store/ui-store'
+import type { ModeController } from './window/display-mode'
+import { isDisplayMode } from './window/window-state'
 
 // A yellow box changes to red after 10 minutes.
 const ESCALATION_MS = 600_000
@@ -69,8 +71,15 @@ function fromPage<T>(e: IpcMainInvokeEvent, fn: () => Promise<T>): Promise<T> {
   return fn()
 }
 
+// The mode controller of the current window. index.ts sets it.
+let modeController: ModeController | null = null
+
+export function setModeController(controller: ModeController | null): void {
+  modeController = controller
+}
+
 // Send an event to the current window. Do nothing if no window is open.
-function send(channel: string, ...args: unknown[]): void {
+export function send(channel: string, ...args: unknown[]): void {
   if (currentWindow && !currentWindow.isDestroyed())
     currentWindow.webContents.send(channel, ...args)
 }
@@ -167,6 +176,17 @@ export function registerIpc(): void {
   ipcMain.handle('ui:load', e => fromPage(e, async () => (await uiStore).load()))
   ipcMain.handle('ui:save', (e, data: unknown) =>
     fromPage(e, async () => (await uiStore).save(data)),
+  )
+
+  ipcMain.handle('display:get', e =>
+    fromPage(e, async (): Promise<DisplayMode> => modeController?.get() ?? 'window'),
+  )
+  ipcMain.handle('display:set', (e, mode: unknown) =>
+    fromPage(e, async () => {
+      if (!isDisplayMode(mode)) throw new Error('refused: not a display mode')
+      if (!modeController) throw new Error('refused: no window')
+      await modeController.set(mode)
+    }),
   )
 
   ipcMain.handle('claude:path', () => claudePath)
