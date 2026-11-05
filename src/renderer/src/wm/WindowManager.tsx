@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, type LucideIcon } from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -16,12 +17,14 @@ import { LayoutsContext, type WmControls, WmControlsContext, WmStateContext } fr
 import Frame, { type DragMode } from './Frame'
 import {
   type Edge,
-  type Guide,
   moveRect,
   type Point,
   type Rect,
   resizeRect,
+  SNAP_DISTANCE,
+  type SnapMark,
   shownRect,
+  snapMarks,
   titleBar,
 } from './geometry'
 import { movedToStack, tearOutRect, titleBarAt, tornOut } from './hit'
@@ -53,6 +56,14 @@ const SELECTED_RECT: Rect = {
   x: OVERVIEW_RECT.x + OVERVIEW_RECT.w + GAP,
   y: OVERVIEW_RECT.y,
 }
+// The arrow of a snap mark (spec 8.1), and its size in pixels.
+const MARK_SIZE = 10
+const MARK_ARROWS: Record<SnapMark['dir'], LucideIcon> = {
+  down: ChevronDown,
+  left: ChevronLeft,
+  right: ChevronRight,
+  up: ChevronUp,
+}
 
 // The number in a frame ID "f<n>". The DOM keeps the frames in this order.
 // So a focus does not move a DOM node. A move of a node can end its pointer capture.
@@ -60,8 +71,17 @@ function frameNumber(id: string): number {
   return Number(id.slice(1))
 }
 
-function sameGuides(a: Guide[], b: Guide[]): boolean {
-  return a.length === b.length && a.every((g, i) => g.axis === b[i]?.axis && g.at === b[i]?.at)
+function sameMarks(a: SnapMark[], b: SnapMark[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((m, i) => m.dir === b[i]?.dir && m.x === b[i]?.x && m.y === b[i]?.y)
+  )
+}
+
+// The left or top position of a mark arrow: centred on the mark point, and inside the area.
+// So the arrow of a mark on a window edge shows fully.
+function markStart(at: number, areaSize: number): number {
+  return Math.min(Math.max(at - MARK_SIZE / 2, 0), areaSize - MARK_SIZE)
 }
 
 function sameRect(a: Rect, b: Rect): boolean {
@@ -103,7 +123,7 @@ export default function WindowManager(): React.JSX.Element {
   const [state, dispatch] = useReducer(wmReducer, { h: 0, w: 0 }, initialState)
   // The config of each Overview panel (D1). The store saves it with the layout.
   const [overviews, dispatchOverviews] = useReducer(overviewsReducer, EMPTY_STORE.overviews)
-  const [guides, setGuides] = useState<Guide[]>([])
+  const [marks, setMarks] = useState<SnapMark[]>([])
   const [dragging, setDragging] = useState(false)
   const [live, setLive] = useState<Live | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
@@ -321,31 +341,39 @@ export default function WindowManager(): React.JSX.Element {
       function pointer(): Point {
         return { x: x - origin.left, y: y - origin.top }
       }
-      // Use the start rect and the total delta, not the last rect. So the snap is stable.
-      function compute(): { rect: Rect; guides: Guide[] } {
+      // The raw rect follows the pointer with no snap. The snapped rect is the rect that a
+      // release gives (spec 8.1). Use the start rect and the total delta, not the last rect.
+      // So the snap is stable.
+      function compute(): { raw: Rect; snapped: Rect } {
         const bounds = stateRef.current.bounds
         const dx = x - startX
         const dy = y - startY
-        return edge
-          ? resizeRect(startRect, edge, dx, dy, others, bounds)
-          : moveRect(startRect, dx, dy, others, bounds)
+        const place = (snap: number): Rect =>
+          edge
+            ? resizeRect(startRect, edge, dx, dy, others, bounds, snap)
+            : moveRect(startRect, dx, dy, others, bounds, snap)
+        return { raw: place(0), snapped: place(SNAP_DISTANCE) }
       }
       // A move that ends on the title bar of a different frame stacks the two frames.
       function stackTarget(): string | null {
         if (edge || !moved || !farEnough) return null
         return titleBarAt(shownFrames(stateRef.current), pointer(), id)?.id ?? null
       }
-      // Draw one step. The reducer gets the rect only when the drag ends.
+      // Draw one step at the raw rect, with the marks of the snap. The reducer gets the rect
+      // only when the drag ends.
       function draw(): void {
         raf = 0
-        const result = compute()
-        const step: Live = { frameId: id, rect: result.rect }
-        drawn = step.rect
+        const { raw, snapped } = compute()
+        const target = stackTarget()
+        // A drop on a title bar stacks the frame and applies no snap. So no mark shows.
+        const next = target ? [] : snapMarks(raw, snapped, others, stateRef.current.bounds)
+        const step: Live = { frameId: id, rect: raw }
+        drawn = raw
         setLive(prev =>
           prev?.frameId === step.frameId && sameRect(prev.rect, step.rect) ? prev : step,
         )
-        setGuides(prev => (sameGuides(prev, result.guides) ? prev : result.guides))
-        setDropTarget(stackTarget())
+        setMarks(prev => (sameMarks(prev, next) ? prev : next))
+        setDropTarget(target)
       }
       // The tab went more than TEAR_DISTANCE from the title bar. It leaves the stack as a new frame.
       // Then the same drag moves the new frame.
@@ -413,8 +441,10 @@ export default function WindowManager(): React.JSX.Element {
       function onCancel(ev: PointerEvent): void {
         if (ev.pointerId === pointerId) end(false)
       }
-      // A pointer up puts the frame at the last pointer position, or stacks it on a title bar.
+      // A pointer up stacks the frame on a title bar. Or it puts the frame at the last pointer
+      // position, with the snap.
       // A cancel, a lost capture or a lost pointer up keeps the frame where it was last drawn.
+      // It applies no snap.
       // A tab press that ends before a tear-out changes nothing. The click activates the tab.
       function end(applyLast: boolean): void {
         if (ended) return
@@ -427,7 +457,7 @@ export default function WindowManager(): React.JSX.Element {
         raf = 0
         let target: string | null = null
         if (applyLast && moved && !pressing) {
-          drawn = compute().rect
+          drawn = compute().snapped
           target = stackTarget()
         }
         if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId)
@@ -435,7 +465,7 @@ export default function WindowManager(): React.JSX.Element {
         if (target) dispatch({ frameId: id, targetId: target, type: 'stack' })
         else if (drawn) dispatch({ frameId: id, rect: drawn, type: 'setRect' })
         setLive(null)
-        setGuides([])
+        setMarks([])
         setDropTarget(null)
         setDragging(false)
         scheduleSave()
@@ -485,7 +515,8 @@ export default function WindowManager(): React.JSX.Element {
     [shown],
   )
   const topId = topFrame(state)?.id
-  const guideZ = shown.length
+  // The marks and the drop outline are above all frames.
+  const overlayZ = shown.length
   const dropFrame = dropTarget ? shown.find(f => f.id === dropTarget) : undefined
   const dropBar = dropFrame ? titleBar(dropFrame.rect) : null
 
@@ -522,21 +553,27 @@ export default function WindowManager(): React.JSX.Element {
                         z={shown.indexOf(frame)}
                       />
                     ))}
-                    {guides.map(g => (
-                      <div
-                        className={cx(
-                          'pointer-events-none absolute bg-snap',
-                          g.axis === 'x' ? 'inset-y-0 w-px' : 'inset-x-0 h-px',
-                        )}
-                        data-guide={g.axis}
-                        key={`${g.axis}:${g.at}`}
-                        style={
-                          g.axis === 'x'
-                            ? { left: Math.min(g.at, bounds.w - 1), zIndex: guideZ }
-                            : { top: Math.min(g.at, bounds.h - 1), zIndex: guideZ }
-                        }
-                      />
-                    ))}
+                    {/* The arrow marks of the snap that a release applies (spec 8.1). The x mark
+                    has a left or right arrow, and the y mark has an up or down arrow. So the
+                    direction is a unique key. */}
+                    {marks.map(m => {
+                      const Arrow = MARK_ARROWS[m.dir]
+                      return (
+                        <Arrow
+                          aria-hidden={true}
+                          className='pointer-events-none absolute text-snap'
+                          data-snap-mark={m.dir}
+                          key={m.dir}
+                          size={MARK_SIZE}
+                          strokeWidth={3}
+                          style={{
+                            left: markStart(m.x, bounds.w),
+                            top: markStart(m.y, bounds.h),
+                            zIndex: overlayZ,
+                          }}
+                        />
+                      )
+                    })}
                     {/* The title bar where a drop stacks the dragged frame. The outline is above all
                   frames, because the dragged frame covers the title bar. */}
                     {dropBar && dropFrame && (
@@ -548,7 +585,7 @@ export default function WindowManager(): React.JSX.Element {
                           left: dropBar.x,
                           top: dropBar.y,
                           width: dropBar.w,
-                          zIndex: guideZ,
+                          zIndex: overlayZ,
                         }}
                       />
                     )}

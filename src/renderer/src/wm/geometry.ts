@@ -15,20 +15,19 @@ export interface Point {
   y: number
 }
 export type Edge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
-// A vertical line at x, or a horizontal line at y.
-export interface Guide {
-  axis: 'x' | 'y'
-  at: number
+// An arrow mark for one snap (spec 8.1): a point in panel-area coordinates on the snap line,
+// and the direction in which the snap moves the panel edge.
+export interface SnapMark {
+  x: number
+  y: number
+  dir: 'left' | 'right' | 'up' | 'down'
 }
 
 export const SNAP_DISTANCE = 8
 export const MIN_SIZE: Size = { h: 120, w: 200 }
 export const TITLE_H = 28
 
-interface Result {
-  rect: Rect
-  guides: Guide[]
-}
+type Axis = 'x' | 'y'
 
 function clamp(value: number, low: number, high: number): number {
   return Math.min(Math.max(value, low), high)
@@ -50,7 +49,7 @@ function overlaps(aStart: number, aLen: number, bStart: number, bLen: number, sn
 
 // The lines on one axis: the bounds first, then the edges of each other rect that
 // overlaps the moving rect on the other axis.
-function snapLines(axis: 'x' | 'y', r: Rect, others: Rect[], bounds: Size, snap: number) {
+function snapLines(axis: Axis, r: Rect, others: Rect[], bounds: Size, snap: number) {
   const lines = [0, axis === 'x' ? bounds.w : bounds.h]
   for (const o of others) {
     const near =
@@ -108,7 +107,7 @@ export function moveRect(
   others: Rect[],
   bounds: Size,
   snap: number = SNAP_DISTANCE,
-): Result {
+): Rect {
   const raw = { ...start, x: start.x + finite(dx), y: start.y + finite(dy) }
   let { x, y } = raw
 
@@ -117,23 +116,12 @@ export function moveRect(
   const vit = closest([raw.y, raw.y + raw.h], snapLines('y', raw, others, bounds, snap), snap)
   if (vit) y = vit.edge === 0 ? vit.line : vit.line - raw.h
 
-  const rect = round({
+  return round({
     h: raw.h,
     w: raw.w,
     x: clamp(x, 0, Math.max(0, bounds.w - raw.w)),
     y: clamp(y, 0, Math.max(0, bounds.h - raw.h)),
   })
-  // A guide shows only when the final edge lies on the guide line, after the clamp.
-  const guides: Guide[] = []
-  if (hit) {
-    const at = Math.round(hit.line)
-    if ((hit.edge === 0 ? rect.x : rect.x + rect.w) === at) guides.push({ at, axis: 'x' })
-  }
-  if (vit) {
-    const at = Math.round(vit.line)
-    if ((vit.edge === 0 ? rect.y : rect.y + rect.h) === at) guides.push({ at, axis: 'y' })
-  }
-  return { guides, rect }
 }
 
 export function resizeRect(
@@ -145,7 +133,7 @@ export function resizeRect(
   bounds: Size,
   snap: number = SNAP_DISTANCE,
   min: Size = MIN_SIZE,
-): Result {
+): Rect {
   let left = start.x
   let right = start.x + start.w
   let top = start.y
@@ -167,40 +155,101 @@ export function resizeRect(
     x: Math.min(left, right),
     y: Math.min(top, bottom),
   }
-  const guides: Guide[] = []
   const xLines = snapLines('x', raw, others, bounds, snap)
   const yLines = snapLines('y', raw, others, bounds, snap)
 
   // Rule for a start rect closer than min to the bounds: the limit low wins over the limit high,
   // so the minimum size holds and the edge can pass the bounds. The input is a clamped rect,
   // so this case does not occur in normal use.
-  // Snap one moving edge, apply the limits, and keep the guide only if the edge stays on it.
-  function place(value: number, lines: number[], low: number, high: number, axis: 'x' | 'y') {
+  // Snap one moving edge, then apply the limits.
+  function place(value: number, lines: number[], low: number, high: number) {
     const hit = closest([value], lines, snap)
-    const snapped = hit ? hit.line : value
-    const result = clamp(snapped, low, Math.max(low, high))
-    if (hit && result === snapped) guides.push({ at: Math.round(snapped), axis })
-    return result
+    return clamp(hit ? hit.line : value, low, Math.max(low, high))
   }
 
   const moveLeft = edge.includes('w')
   const moveRight = edge.includes('e')
   const moveTop = edge.includes('n')
   const moveBottom = edge.includes('s')
-  if (moveLeft) left = place(left, xLines, 0, right - min.w, 'x')
-  if (moveRight) right = place(right, xLines, left + min.w, bounds.w, 'x')
-  if (moveTop) top = place(top, yLines, 0, bottom - min.h, 'y')
-  if (moveBottom) bottom = place(bottom, yLines, top + min.h, bounds.h, 'y')
+  if (moveLeft) left = place(left, xLines, 0, right - min.w)
+  if (moveRight) right = place(right, xLines, left + min.w, bounds.w)
+  if (moveTop) top = place(top, yLines, 0, bottom - min.h)
+  if (moveBottom) bottom = place(bottom, yLines, top + min.h, bounds.h)
 
   return {
-    guides,
-    rect: {
-      h: Math.round(bottom) - Math.round(top),
-      w: Math.round(right) - Math.round(left),
-      x: Math.round(left),
-      y: Math.round(top),
-    },
+    h: Math.round(bottom) - Math.round(top),
+    w: Math.round(right) - Math.round(left),
+    x: Math.round(left),
+    y: Math.round(top),
   }
+}
+
+// The start and the end of a rect on one axis.
+function extent(r: Rect, axis: Axis): [number, number] {
+  return axis === 'x' ? [r.x, r.x + r.w] : [r.y, r.y + r.h]
+}
+
+// True when the two rects overlap on the axis, or come within SNAP_DISTANCE on it.
+function near(a: Rect, b: Rect, axis: Axis): boolean {
+  const [aStart, aEnd] = extent(a, axis)
+  const [bStart, bEnd] = extent(b, axis)
+  return overlaps(aStart, aEnd - aStart, bStart, bEnd - bStart, SNAP_DISTANCE)
+}
+
+// The mark for one axis, or null when no edge snaps on that axis.
+// An edge snaps when the snapped rect puts it on a line, and the raw rect does not.
+// The start edge comes first. A window edge comes before the edge of another panel.
+function axisMark(
+  axis: Axis,
+  raw: Rect,
+  snapped: Rect,
+  others: Rect[],
+  bounds: Size,
+): SnapMark | null {
+  const cross: Axis = axis === 'x' ? 'y' : 'x'
+  const rawEdges = extent(raw, axis)
+  const snappedEdges = extent(snapped, axis)
+  const [low, high] = extent(snapped, cross)
+  const limit = axis === 'x' ? bounds.w : bounds.h
+  for (const i of [0, 1] as const) {
+    const from = rawEdges[i]
+    const line = snappedEdges[i]
+    if (line === from) continue
+    // For a window edge, the mark is at the middle of the panel edge.
+    let along: number | null = null
+    if (line === 0 || line === limit) along = (low + high) / 2
+    else {
+      // For another panel, the mark is at the middle of the overlap of the two edges.
+      // The snap found that panel from the raw rect. The overlap uses the snapped rect.
+      const other = others.find(
+        o =>
+          extent(o, axis).some(e => Math.round(e) === line) &&
+          (near(raw, o, cross) || near(snapped, o, cross)),
+      )
+      if (other) {
+        const [oLow, oHigh] = extent(other, cross)
+        along = (Math.max(low, oLow) + Math.min(high, oHigh)) / 2
+      }
+    }
+    if (along === null) continue
+    const at = Math.round(along)
+    const forward = line > from
+    if (axis === 'x') return { dir: forward ? 'right' : 'left', x: line, y: at }
+    return { dir: forward ? 'down' : 'up', x: at, y: line }
+  }
+  return null
+}
+
+// The arrow marks of the snap that a release applies (spec 8.1). The raw rect follows the
+// pointer with no snap. The snapped rect is the same drag with the snap. Each axis that
+// snaps gives one mark. The x mark comes first.
+export function snapMarks(raw: Rect, snapped: Rect, others: Rect[], bounds: Size): SnapMark[] {
+  const marks: SnapMark[] = []
+  for (const axis of ['x', 'y'] as const) {
+    const mark = axisMark(axis, raw, snapped, others, bounds)
+    if (mark) marks.push(mark)
+  }
+  return marks
 }
 
 export function contains(r: Rect, p: Point): boolean {
