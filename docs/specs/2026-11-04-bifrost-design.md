@@ -486,7 +486,7 @@ Dialog rules:
 The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you want to track.
 
 - "Add to watchlist" in the right-click menu and on the Selected Item panel adds a session. You select a colour in a submenu.
-- The colours follow the EVE standings colours: dark red, red, amber, yellow, green, light blue, dark blue and white. Light blue and dark blue are like good and excellent standing in EVE. The colours show only as a translucent row background, so a solid yellow or red box stays clear (user decision, 2026-11-05). A saved colour from before this change maps to the nearest new colour.
+- The colours follow the EVE standings colours: dark red, red, amber, yellow, green, light blue, dark blue and white. Light blue and dark blue are like good and excellent standing in EVE. The colours show only as a translucent row background. The watch red and yellow are a different shade from the box colours, and a yellow or red box must stay clearly visible on every watched row, also on a selected one (user decision, 2026-11-05). A saved colour from before this change maps to the nearest new colour.
 - The Watchlist panel shows one row for each watched session: the icon with its box, the name and the state. The row background has the watch colour, translucent.
 - You drag a row up or down to change the order. The order is your priority. The list shows no numbers.
 - A click selects the session. A double-click opens its chat window. The right-click menu has "Change colour" and "Remove from watchlist".
