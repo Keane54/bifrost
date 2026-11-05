@@ -234,6 +234,25 @@ describe('snapMarks', () => {
     ])
   })
 
+  it('moves two marks at one corner apart, each along its own edge', () => {
+    // The right edge snaps to 600 and the bottom edge snaps to 305, at the corner of the other.
+    // Both marks start at x 600, y 305. Each moves 8 along its edge, to the middle of the edge.
+    const other = { h: 100, w: 300, x: 600, y: 305 }
+    const result = move({ h: 200, w: 300, x: 100, y: 100 }, 195, 0, [other])
+    expect(result.snapped).toEqual({ h: 200, w: 300, x: 300, y: 105 })
+    expect(result.marks).toEqual([
+      { dir: 'right', x: 600, y: 297 },
+      { dir: 'down', x: 592, y: 305 },
+    ])
+  })
+
+  it('marks an x snap across a y gap at the middle of the gap', () => {
+    // A resize of the right edge only. The bottom edge at 300 stays 4 from the other at 304.
+    const other = { h: 100, w: 300, x: 600, y: 304 }
+    const result = resize({ h: 200, w: 300, x: 100, y: 100 }, 'e', 195, 0, [other])
+    expect(result.marks).toEqual([{ dir: 'right', x: 600, y: 302 }])
+  })
+
   it('gives no mark when no edge is near a line', () => {
     expect(move({ h: 200, w: 300, x: 100, y: 100 }, 10, 5).marks).toEqual([])
   })

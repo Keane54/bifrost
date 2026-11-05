@@ -26,6 +26,9 @@ export interface SnapMark {
 export const SNAP_DISTANCE = 8
 export const MIN_SIZE: Size = { h: 120, w: 200 }
 export const TITLE_H = 28
+// Two snap marks closer than this on both axes are at one corner. Then each mark moves this
+// distance along its own edge (see snapMarks).
+const CORNER_GAP = 8
 
 type Axis = 'x' | 'y'
 
@@ -220,11 +223,11 @@ function axisMark(
     if (line === 0 || line === limit) along = (low + high) / 2
     else {
       // For another panel, the mark is at the middle of the overlap of the two edges.
-      // The snap found that panel from the raw rect. The overlap uses the snapped rect.
+      // If the two edges have a gap, the mark is at the middle of the gap.
+      // The snap found that panel from the raw rect, so this search uses the raw rect too.
+      // The overlap uses the snapped rect.
       const other = others.find(
-        o =>
-          extent(o, axis).some(e => Math.round(e) === line) &&
-          (near(raw, o, cross) || near(snapped, o, cross)),
+        o => extent(o, axis).some(e => Math.round(e) === line) && near(raw, o, cross),
       )
       if (other) {
         const [oLow, oHigh] = extent(other, cross)
@@ -243,13 +246,17 @@ function axisMark(
 // The arrow marks of the snap that a release applies (spec 8.1). The raw rect follows the
 // pointer with no snap. The snapped rect is the same drag with the snap. Each axis that
 // snaps gives one mark. The x mark comes first.
+// Two marks less than CORNER_GAP apart on both axes are at one corner, and their arrows
+// would cover each other. Then each mark moves CORNER_GAP along its own panel edge, to the
+// middle of that edge.
 export function snapMarks(raw: Rect, snapped: Rect, others: Rect[], bounds: Size): SnapMark[] {
-  const marks: SnapMark[] = []
-  for (const axis of ['x', 'y'] as const) {
-    const mark = axisMark(axis, raw, snapped, others, bounds)
-    if (mark) marks.push(mark)
+  const x = axisMark('x', raw, snapped, others, bounds)
+  const y = axisMark('y', raw, snapped, others, bounds)
+  if (x && y && Math.abs(x.x - y.x) < CORNER_GAP && Math.abs(x.y - y.y) < CORNER_GAP) {
+    x.y += x.y < snapped.y + snapped.h / 2 ? CORNER_GAP : -CORNER_GAP
+    y.x += y.x < snapped.x + snapped.w / 2 ? CORNER_GAP : -CORNER_GAP
   }
-  return marks
+  return [x, y].filter(mark => mark !== null)
 }
 
 export function contains(r: Rect, p: Point): boolean {
