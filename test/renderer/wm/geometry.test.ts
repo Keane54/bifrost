@@ -212,6 +212,7 @@ describe('fixes after review', () => {
     const other = { h: 100, w: 100, x: 405, y: 308 }
     const result = moveRect({ h: 200, w: 300, x: 100, y: 100 }, 305, 0, [other], bounds)
     expect(result.rect.x).toBe(405)
+    expect(result.guides).toContainEqual({ at: 405, axis: 'x' })
     const far = moveRect({ h: 200, w: 300, x: 100, y: 100 }, 305, 0, [{ ...other, y: 309 }], bounds)
     expect(far.rect.x).toBe(405)
     expect(far.guides).toEqual([])

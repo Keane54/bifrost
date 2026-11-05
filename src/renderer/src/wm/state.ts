@@ -45,6 +45,9 @@ export type WmAction =
   | { type: 'bounds'; bounds: Size }
   | { type: 'load'; frames: Omit<Frame, 'id'>[]; memory: Record<string, Rect> }
 
+// A new panel without memory moves this distance down and right while a frame shows its rect.
+const STEP = 24
+
 const OVERVIEW = /^overview:([1-9][0-9]?)$/
 // The same strict form as the main process: 8-4-4-4-12 hex digits.
 const CHAT = /^chat:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -120,6 +123,21 @@ function close(state: WmState, panelId: string): WmState {
   return { ...withFrame(state, { ...frame, ...rest }), memory }
 }
 
+// The first rect from the start rect, in steps of STEP down and right, that no visible frame
+// shows. The steps stop at the edge of the area.
+function freeRect(state: WmState, start: Rect): Rect {
+  const shown = shownFrames(state)
+    .filter(f => !f.minimised)
+    .map(f => f.rect)
+  let rect = start
+  while (shown.some(r => sameRect(r, rect))) {
+    const next = clampRect({ ...rect, x: rect.x + STEP, y: rect.y + STEP }, state.bounds, MIN_SIZE)
+    if (sameRect(next, rect)) break
+    rect = next
+  }
+  return rect
+}
+
 function open(state: WmState, panelId: string): WmState {
   const kind = panelKind(panelId)
   if (!kind) return state
@@ -130,11 +148,13 @@ function open(state: WmState, panelId: string): WmState {
     return withFrameOnTop(state, { ...frame, active: panelId, minimised: false })
   }
   const saved = state.memory[panelId]
-  const rect = clampRect(
-    saved && isRect(saved) ? saved : centreRect(DEFAULT_SIZES[kind], state.bounds),
-    state.bounds,
-    MIN_SIZE,
-  )
+  const rect =
+    saved && isRect(saved)
+      ? clampRect(saved, state.bounds, MIN_SIZE)
+      : freeRect(
+          state,
+          clampRect(centreRect(DEFAULT_SIZES[kind], state.bounds), state.bounds, MIN_SIZE),
+        )
   const created: Frame = {
     active: panelId,
     id: `f${state.nextFrame}`,

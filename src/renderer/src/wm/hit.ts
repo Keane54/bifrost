@@ -4,6 +4,14 @@ import type { Frame } from './state'
 
 // A tab leaves its stack when the pointer goes more than this distance from the title bar.
 export const TEAR_DISTANCE = 12
+// A move can stack its frame only after the pointer went this distance from the drag start.
+// So a small move of a frame whose title bar is on another title bar does not stack the frames.
+export const STACK_DISTANCE = 4
+
+// True when p is STACK_DISTANCE pixels or more from the start point of the drag.
+export function movedToStack(start: Point, p: Point): boolean {
+  return Math.hypot(p.x - start.x, p.y - start.y) >= STACK_DISTANCE
+}
 
 // The top visible frame that contains p. The excluded frame does not count.
 export function frameAt(frames: Frame[], p: Point, excludeId?: string): Frame | undefined {

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Rect } from '../../../src/renderer/src/wm/geometry'
-import { frameAt, TEAR_DISTANCE, titleBarAt, tornOut } from '../../../src/renderer/src/wm/hit'
+import {
+  frameAt,
+  movedToStack,
+  STACK_DISTANCE,
+  TEAR_DISTANCE,
+  titleBarAt,
+  tornOut,
+} from '../../../src/renderer/src/wm/hit'
 import type { Frame } from '../../../src/renderer/src/wm/state'
 
 function frame(id: string, rect: Rect, minimised = false): Frame {
@@ -61,6 +68,23 @@ describe('wm hit tests', () => {
     expect(titleBarAt([target, lower, dragged], { x: 20, y: 10 }, 'f3')).toBeUndefined()
     // The same frames in the other z-order: f1 is on top, so its title bar has the point.
     expect(titleBarAt([lower, target, dragged], { x: 20, y: 10 }, 'f3')?.id).toBe('f1')
+  })
+
+  it('movedToStack is false for a move of less than 4 pixels from the drag start', () => {
+    expect(STACK_DISTANCE).toBe(4)
+    const start = { x: 200, y: 100 }
+    expect(movedToStack(start, start)).toBe(false)
+    expect(movedToStack(start, { x: 201, y: 100 })).toBe(false)
+    expect(movedToStack(start, { x: 197, y: 100 })).toBe(false)
+    expect(movedToStack(start, { x: 202, y: 102 })).toBe(false)
+  })
+
+  it('movedToStack is true for a move of 4 pixels or more from the drag start', () => {
+    const start = { x: 200, y: 100 }
+    expect(movedToStack(start, { x: 204, y: 100 })).toBe(true)
+    expect(movedToStack(start, { x: 200, y: 96 })).toBe(true)
+    expect(movedToStack(start, { x: 197, y: 97 })).toBe(true)
+    expect(movedToStack(start, { x: 900, y: 600 })).toBe(true)
   })
 
   // The title bar of a frame at x 100, y 50. Its edges are x 100 and 400, y 50 and 78.

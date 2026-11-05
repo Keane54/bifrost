@@ -20,7 +20,7 @@ import {
   shownRect,
   titleBar,
 } from './geometry'
-import { titleBarAt, tornOut } from './hit'
+import { movedToStack, titleBarAt, tornOut } from './hit'
 import {
   deleteLayout,
   EMPTY_STORE,
@@ -275,10 +275,14 @@ export default function WindowManager(): React.JSX.Element {
       // The drag starts from the rect that the screen shows.
       let startRect = shownRect(frame.rect, current.bounds)
       let others = visibleRects(current, frameId)
+      // The pointer down position. A tear-out does not change it.
+      const down: Point = { x: e.clientX, y: e.clientY }
       // The last pointer position, in client coordinates.
       let x = e.clientX
       let y = e.clientY
       let moved = false
+      // True after the pointer went STACK_DISTANCE or more from the pointer down position.
+      let farEnough = false
       let raf = 0
       let ended = false
       // The rect that the frame shows now. It is null until the first step.
@@ -307,7 +311,7 @@ export default function WindowManager(): React.JSX.Element {
       }
       // A move that ends on the title bar of a different frame stacks the two frames.
       function stackTarget(): string | null {
-        if (edge || !moved) return null
+        if (edge || !moved || !farEnough) return null
         return titleBarAt(shownFrames(stateRef.current), pointer(), id)?.id ?? null
       }
       // Draw one step. The reducer gets the rect only when the drag ends.
@@ -367,6 +371,7 @@ export default function WindowManager(): React.JSX.Element {
         }
         x = ev.clientX
         y = ev.clientY
+        if (!farEnough) farEnough = movedToStack(down, { x, y })
         if (pressing) {
           if (tab !== null) tearOut(tab)
           return
@@ -379,6 +384,7 @@ export default function WindowManager(): React.JSX.Element {
         if (ev.pointerId !== pointerId) return
         x = ev.clientX
         y = ev.clientY
+        if (!farEnough) farEnough = movedToStack(down, { x, y })
         if (!pressing && (x !== startX || y !== startY)) moved = true
         end(true)
       }

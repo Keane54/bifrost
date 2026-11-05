@@ -6,4 +6,6 @@ import App from './App'
 
 // No StrictMode here. In dev it mounts each TerminalView twice.
 // That would start an extra claude attach for each view.
-createRoot(document.getElementById('root')!).render(<App />)
+const root = document.getElementById('root')
+if (!root) throw new Error('Bifrost cannot start: index.html has no element with the ID root.')
+createRoot(root).render(<App />)

@@ -80,6 +80,32 @@ describe('wm state', () => {
     expect(t.frames[1]?.minimised).toBe(false)
   })
 
+  it('open moves a new panel without memory 24 pixels from a frame with the same rect', () => {
+    const centre = centreRect(DEFAULT_SIZES.overview, bounds)
+    const s = run([open('overview:1'), open('overview:2'), open('overview:3')])
+    expect(s.frames.map(f => f.rect)).toEqual([
+      centre,
+      { ...centre, x: centre.x + 24, y: centre.y + 24 },
+      { ...centre, x: centre.x + 48, y: centre.y + 48 },
+    ])
+    // A minimised frame is not on the screen, so it does not count.
+    const min = run([open('overview:1'), { frameId: 'f1', type: 'minimise' }, open('overview:2')])
+    expect(min.frames[1]?.rect).toEqual(centre)
+    // A saved position from memory does not move.
+    const saved = { ...initialState(bounds), memory: { 'overview:2': centre } }
+    expect(run([open('overview:1'), open('overview:2')], saved).frames[1]?.rect).toEqual(centre)
+  })
+
+  it('open stops the 24 pixel step at the edge of the area', () => {
+    const area = { h: 380, w: 780 }
+    const s = run([open('overview:1'), open('overview:2'), open('overview:3')], initialState(area))
+    expect(s.frames.map(f => f.rect)).toEqual([
+      { h: 360, w: 760, x: 10, y: 10 },
+      { h: 360, w: 760, x: 20, y: 20 },
+      { h: 360, w: 760, x: 20, y: 20 },
+    ])
+  })
+
   it('open ignores an invalid panel ID', () => {
     const s = initialState(bounds)
     expect(wmReducer(s, open('nope'))).toBe(s)
