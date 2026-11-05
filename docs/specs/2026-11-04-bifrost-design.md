@@ -738,7 +738,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | node-pty, `@xterm/xterm` and its fit and WebGL addons | Chat windows | M0 |
 | Biome | Lint and format | M0 fix wave |
 | Vitest | Unit tests | M0 |
-| Tailwind CSS v4 | All styles. Bifrost has its own theme and tokens. It does not copy styles from other projects. | M2 |
+| Tailwind CSS v4 | All styles. Bifrost has its own theme and tokens. It does not copy styles from other projects. Version 4.3.3 with `@tailwindcss/vite`. | M2 |
 | Base UI | The right-click menu with submenus, dialogs and tooltips | M3 |
 | TanStack Table | Overview columns, sort, column order and resize for each tab | M3 |
 | TanStack Hotkeys (beta) | Key map, hold-key-and-click, key editor in Settings | M3 to M5 |

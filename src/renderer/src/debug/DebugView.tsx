@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { ClaudeVersion, SessionRow } from '../../../shared/types'
+import { cx } from '../lib/cx'
 import IntegrationPanel from './IntegrationPanel'
-import './debug.css'
+
+const H2 = 'mt-4 mb-2 text-sm font-bold'
+const CELL = 'border-panel-edge border-b px-2 py-1 text-left whitespace-nowrap'
 
 function age(since: number, now: number): string {
   const s = Math.max(0, Math.floor((now - since) / 1000))
@@ -12,10 +15,12 @@ function age(since: number, now: number): string {
 }
 
 function boxClass(row: SessionRow): string {
-  const classes = ['box']
-  if (row.box !== 'none') classes.push(row.box)
-  if (row.flashing) classes.push('flashing')
-  return classes.join(' ')
+  return cx(
+    'size-2.5 rounded-sm border-2 border-panel-edge',
+    row.box === 'yellow' && 'border-box-yellow bg-box-yellow',
+    row.box === 'red' && 'border-box-red bg-box-red',
+    row.flashing && 'animate-box-flash',
+  )
 }
 
 // The first line that has text. Trim spaces and carriage returns.
@@ -71,7 +76,7 @@ export default function DebugView(): React.JSX.Element {
   }, [])
 
   return (
-    <div className='debug'>
+    <div className='h-full select-text overflow-auto p-4 font-mono text-[13px] leading-[1.4]'>
       <div>
         Claude Code version:{' '}
         {version
@@ -80,36 +85,37 @@ export default function DebugView(): React.JSX.Element {
             ? `error (${versionError})`
             : 'loading'}
         {version && !version.ok && (
-          <span className='debug-warn'>
+          <span className='text-box-yellow'>
             {' '}
             Warning: this version is below the minimum {version.minimum}.
           </span>
         )}
       </div>
-      <h2>Integration</h2>
+      <h2 className={H2}>Integration</h2>
       <IntegrationPanel />
-      <h2>Sessions</h2>
-      {error && <div className='debug-error'>{error}</div>}
-      <table className='debug-table'>
+      <h2 className={H2}>Sessions</h2>
+      {error && <div className='whitespace-pre-wrap text-box-red'>{error}</div>}
+      <table className='w-full border-collapse'>
         <thead>
           <tr>
-            <th>Box</th>
-            <th>Name</th>
-            <th>Kind</th>
-            <th>State</th>
-            <th>Status</th>
-            <th>Waiting for</th>
-            <th>Model</th>
-            <th>Context</th>
-            <th>Cost</th>
-            <th>Branch</th>
-            <th>Age</th>
-            <th>Last message</th>
+            <th className={CELL}>Box</th>
+            <th className={CELL}>Name</th>
+            <th className={CELL}>Kind</th>
+            <th className={CELL}>State</th>
+            <th className={CELL}>Status</th>
+            <th className={CELL}>Waiting for</th>
+            <th className={CELL}>Model</th>
+            <th className={CELL}>Context</th>
+            <th className={CELL}>Cost</th>
+            <th className={CELL}>Branch</th>
+            <th className={CELL}>Age</th>
+            <th className={CELL}>Last message</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(row => (
             <tr
+              className='cursor-pointer hover:bg-panel'
               key={row.sessionId}
               onClick={() =>
                 window.bifrost.registry
@@ -117,20 +123,20 @@ export default function DebugView(): React.JSX.Element {
                   .catch(err => setError(message(err)))
               }
             >
-              <td>
+              <td className={CELL}>
                 <div className={boxClass(row)} />
               </td>
-              <td>{row.name}</td>
-              <td>{row.kind}</td>
-              <td>{row.state}</td>
-              <td>{row.status}</td>
-              <td>{row.waitingFor ?? ''}</td>
-              <td>{row.model ?? ''}</td>
-              <td>{row.contextPercent != null ? `${row.contextPercent}%` : ''}</td>
-              <td>{row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : ''}</td>
-              <td>{row.branch ?? ''}</td>
-              <td>{age(row.lastActivity, now)}</td>
-              <td className='msg'>{firstLine(row.lastMessage)}</td>
+              <td className={CELL}>{row.name}</td>
+              <td className={CELL}>{row.kind}</td>
+              <td className={CELL}>{row.state}</td>
+              <td className={CELL}>{row.status}</td>
+              <td className={CELL}>{row.waitingFor ?? ''}</td>
+              <td className={CELL}>{row.model ?? ''}</td>
+              <td className={CELL}>{row.contextPercent != null ? `${row.contextPercent}%` : ''}</td>
+              <td className={CELL}>{row.costUsd != null ? `$${row.costUsd.toFixed(2)}` : ''}</td>
+              <td className={CELL}>{row.branch ?? ''}</td>
+              <td className={CELL}>{age(row.lastActivity, now)}</td>
+              <td className={cx(CELL, 'whitespace-normal')}>{firstLine(row.lastMessage)}</td>
             </tr>
           ))}
         </tbody>

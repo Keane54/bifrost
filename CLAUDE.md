@@ -22,6 +22,7 @@ Core rules of the specification:
 - Write ESM TypeScript only. Do not write CommonJS.
 - Run scripts as `.ts` files directly with Node 24 or later.
 - Run scripts that load node-pty with `ELECTRON_RUN_AS_NODE=1 electron <file>.ts`.
+- Build each className with cx(). Do not build a className with a template literal.
 - Format and lint the code with Biome. Run `pnpm check` before each commit.
 - Wrap commit body lines at 100 characters. commitlint refuses longer lines.
 

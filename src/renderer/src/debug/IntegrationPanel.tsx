@@ -16,6 +16,8 @@ function message(err: unknown): string {
 }
 
 // The controls for the Claude Code integration.
+const BUTTON = 'mt-1 mr-2 mb-1'
+
 export default function IntegrationPanel(): React.JSX.Element {
   const [status, setStatus] = useState<IntegrationStatus | null>(null)
   const [preview, setPreview] = useState<InstallPreview | null>(null)
@@ -67,21 +69,26 @@ export default function IntegrationPanel(): React.JSX.Element {
     })
 
   return (
-    <div className='debug-panel'>
+    <div className='rounded border border-panel-edge px-3 py-2'>
       <div>{status ? describe(status) : 'Status: loading.'}</div>
-      {status?.error && <div className='debug-error'>{status.error}</div>}
+      {status?.error && <div className='whitespace-pre-wrap text-box-red'>{status.error}</div>}
       <div>
-        <button disabled={busy} onClick={onPreview} type='button'>
+        <button className={BUTTON} disabled={busy} onClick={onPreview} type='button'>
           Preview install
         </button>
-        <button disabled={busy || preview === null} onClick={onInstall} type='button'>
+        <button
+          className={BUTTON}
+          disabled={busy || preview === null}
+          onClick={onInstall}
+          type='button'
+        >
           Install
         </button>
-        <button disabled={busy} onClick={onUninstall} type='button'>
+        <button className={BUTTON} disabled={busy} onClick={onUninstall} type='button'>
           Uninstall
         </button>
       </div>
-      {error && <div className='debug-error'>{error}</div>}
+      {error && <div className='whitespace-pre-wrap text-box-red'>{error}</div>}
       {preview && (
         <div>
           <div>Changes:</div>
@@ -92,7 +99,7 @@ export default function IntegrationPanel(): React.JSX.Element {
           </ul>
           <div>Backup path: {preview.backupPath ?? 'none'}</div>
           <div>Original command:</div>
-          <pre>{preview.originalCommand ?? 'none'}</pre>
+          <pre className='my-1 whitespace-pre-wrap'>{preview.originalCommand ?? 'none'}</pre>
         </div>
       )}
     </div>

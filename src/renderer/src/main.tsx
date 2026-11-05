@@ -1,4 +1,4 @@
-import './assets/main.css'
+import './styles/app.css'
 import '@xterm/xterm/css/xterm.css'
 
 import { createRoot } from 'react-dom/client'

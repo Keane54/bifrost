@@ -9,6 +9,11 @@
       }
     }
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "files": {
     "ignoreUnknown": false,
     "includes": [
@@ -67,7 +72,9 @@
         "useSortedClasses": {
           "fix": "safe",
           "level": "warn",
-          "options": {}
+          "options": {
+            "functions": ["cx"]
+          }
         }
       },
       "preset": "recommended",
