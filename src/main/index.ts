@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { app, BrowserWindow, Menu, screen } from 'electron'
+import { app, BrowserWindow, Menu, screen, systemPreferences } from 'electron'
 import icon from '../../resources/icon.png?asset'
 import {
   attachWindow,
@@ -10,15 +10,36 @@ import {
   setModeController,
   stopRegistry,
 } from './ipc'
-import { buildMenuTemplate } from './menu'
-import { createModeController } from './window/display-mode'
+import { buildMenuTemplate, modeHandlers } from './menu'
+import { createModeController, type ModeController } from './window/display-mode'
 import { openWindowStateStore, restoreBounds } from './window/window-state'
 
 const DEFAULT_SIZE = { height: 900, width: 1440 }
-// The smallest window. A smaller window would show the panels too small to use.
+// The smallest size of the window. In a smaller window, the panels would be too small to use.
 const MIN_WINDOW = { minHeight: 500, minWidth: 800 }
 // Bifrost saves the bounds 500 ms after the last move or resize.
 const BOUNDS_DELAY_MS = 500
+
+// The mode controller of the open window. It is null when no window is open.
+let modeController: ModeController | null = null
+
+// The View items read the controller at each click. So they do nothing while no window is open.
+const viewHandlers = modeHandlers({ controller: () => modeController, rebuild: () => showMenu() })
+
+// Build the app menu from the real mode. Bifrost builds it again after each change of the mode
+// and after each click on a View item. So the radio items show the real mode.
+function showMenu(): void {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      buildMenuTemplate({
+        isDev: is.dev,
+        mode: modeController?.get() ?? 'window',
+        onClosePanel: () => send('wm:close-panel'),
+        ...viewHandlers,
+      }),
+    ),
+  )
+}
 
 async function createWindow(): Promise<void> {
   const store = await openWindowStateStore(join(app.getPath('userData'), 'window-state.json'))
@@ -45,25 +66,12 @@ async function createWindow(): Promise<void> {
 
   attachWindow(mainWindow)
 
-  // Build the menu again after each change of the mode, so the radio items show the real mode.
-  const showMenu = (): void => {
-    Menu.setApplicationMenu(
-      Menu.buildFromTemplate(
-        buildMenuTemplate({
-          isDev: is.dev,
-          mode: controller.get(),
-          onClosePanel: () => send('wm:close-panel'),
-          onMode: mode => void controller.set(mode),
-          onToggleFullscreen: () => void controller.toggleFullscreen(),
-        }),
-      ),
-    )
-  }
   const controller = createModeController(mainWindow, mode => {
     void store.update({ mode }).catch(err => console.error('Bifrost cannot save the mode.', err))
     send('display:changed', mode)
     showMenu()
   })
+  modeController = controller
   setModeController(controller)
   showMenu()
   // The green button and the Esc key change the mode without a call to the controller.
@@ -88,12 +96,18 @@ async function createWindow(): Promise<void> {
     clearTimeout(boundsTimer)
     saveBounds()
   })
-  mainWindow.on('closed', () => setModeController(null))
+  // The menu and the IPC handlers must not use the controller of a closed window.
+  mainWindow.on('closed', () => {
+    if (modeController === controller) modeController = null
+    setModeController(null)
+  })
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
     // Apply the saved mode. The controller saves the mode again when it changes.
-    void controller.set(store.state.mode)
+    controller
+      .set(store.state.mode)
+      .catch(err => console.error('Bifrost cannot apply the saved display mode.', err))
   })
 
   // The window shows only the Bifrost page. A link or a script cannot open another page in it.
@@ -113,12 +127,17 @@ async function createWindow(): Promise<void> {
   }
 }
 
+// Open the window. An error goes to the console.
+function openWindow(): void {
+  createWindow().catch(err => console.error('Bifrost cannot open the window.', err))
+}
+
 // Show and focus the window of this instance. Open a window if none is open.
 function showWindow(): void {
   if (!app.isReady()) return
   const win = BrowserWindow.getAllWindows()[0]
   if (!win) {
-    void createWindow()
+    openWindow()
     return
   }
   if (win.isMinimized()) win.restore()
@@ -128,6 +147,12 @@ function showWindow(): void {
 
 // Start the app. Only the first instance calls this function.
 function startApp(): void {
+  // macOS adds its own item "Enter Full Screen" to a menu with the name View.
+  // Bifrost has its own Fullscreen item there. So stop the macOS item before the menu is set.
+  if (process.platform === 'darwin') {
+    systemPreferences.setUserDefault('NSFullScreenMenuItemEverywhere', 'boolean', false)
+  }
+
   // A second start of Bifrost shows the window of this instance.
   app.on('second-instance', () => showWindow())
 
@@ -145,11 +170,11 @@ function startApp(): void {
     // This also makes the active marker file and starts the registry service.
     registerIpc()
 
-    void createWindow()
+    openWindow()
 
     // On macOS, a click on the Dock icon opens a window if none is open.
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) void createWindow()
+      if (BrowserWindow.getAllWindows().length === 0) openWindow()
     })
   })
 

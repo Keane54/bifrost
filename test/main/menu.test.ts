@@ -1,6 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron'
-import { expect, test, vi } from 'vitest'
-import { buildMenuTemplate } from '../../src/main/menu'
+import { afterEach, expect, test, vi } from 'vitest'
+import { buildMenuTemplate, modeHandlers } from '../../src/main/menu'
+import type { ModeController } from '../../src/main/window/display-mode'
 import type { DisplayMode } from '../../src/shared/types'
 
 function build(
@@ -136,4 +137,79 @@ test('the developer items show only in development', () => {
   expect(labels(false)).not.toContain('toggleDevTools')
   expect(labels(true)).toContain('reload')
   expect(labels(true)).toContain('toggleDevTools')
+})
+
+// A mode controller that records the calls. A change ends when the test resolves it.
+function fakeController(): ModeController & {
+  set: ReturnType<typeof vi.fn>
+  toggleFullscreen: ReturnType<typeof vi.fn>
+} {
+  return {
+    get: () => 'window',
+    set: vi.fn(async () => {}),
+    sync: () => {},
+    toggleFullscreen: vi.fn(async () => {}),
+  }
+}
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+test('a View click calls the controller and builds the menu again after the change', async () => {
+  const controller = fakeController()
+  let finish = (): void => {}
+  controller.set.mockImplementation(() => new Promise<void>(resolve => (finish = resolve)))
+  const rebuild = vi.fn()
+  const handlers = modeHandlers({ controller: () => controller, rebuild })
+  const done = handlers.onMode('borderless')
+  expect(controller.set).toHaveBeenCalledWith('borderless')
+  // macOS moved the check mark at the click. The menu builds again at once.
+  expect(rebuild).toHaveBeenCalledOnce()
+  finish()
+  await done
+  expect(rebuild).toHaveBeenCalledTimes(2)
+  await handlers.onToggleFullscreen()
+  expect(controller.toggleFullscreen).toHaveBeenCalledOnce()
+  expect(rebuild).toHaveBeenCalledTimes(4)
+})
+
+test('a View click that does not change the mode also builds the menu again', async () => {
+  const controller = fakeController()
+  const rebuild = vi.fn()
+  await modeHandlers({ controller: () => controller, rebuild }).onMode('window')
+  expect(controller.set).toHaveBeenCalledWith('window')
+  expect(rebuild).toHaveBeenCalledTimes(2)
+})
+
+test('a failed change goes to the console and does not reject', async () => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const controller = fakeController()
+  controller.set.mockRejectedValue(new Error('Object has been destroyed'))
+  controller.toggleFullscreen.mockRejectedValue(new Error('Object has been destroyed'))
+  const rebuild = vi.fn()
+  const handlers = modeHandlers({ controller: () => controller, rebuild })
+  await expect(handlers.onMode('borderless')).resolves.toBeUndefined()
+  await expect(handlers.onToggleFullscreen()).resolves.toBeUndefined()
+  expect(error).toHaveBeenCalledTimes(2)
+  expect(rebuild).toHaveBeenCalledTimes(4)
+})
+
+test('with no window, a View click calls no controller and only builds the menu again', async () => {
+  const old = fakeController()
+  let current: ModeController | null = old
+  const rebuild = vi.fn()
+  const handlers = modeHandlers({ controller: () => current, rebuild })
+  // The window closes. Then the handlers must not use its controller.
+  current = null
+  await handlers.onMode('borderless')
+  await handlers.onToggleFullscreen()
+  expect(old.set).not.toHaveBeenCalled()
+  expect(old.toggleFullscreen).not.toHaveBeenCalled()
+  expect(rebuild).toHaveBeenCalledTimes(2)
+  // A new window gives a new controller. The handlers use it.
+  const next = fakeController()
+  current = next
+  await handlers.onMode('borderless')
+  expect(next.set).toHaveBeenCalledWith('borderless')
 })
