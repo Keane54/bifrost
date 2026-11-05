@@ -102,6 +102,7 @@ export interface DirInfo {
 // Texts that users read in the app. The main process and the renderer use the same strings.
 export const REASON_WORKTREE_OFF =
   "Worktrees don't work with background sessions in this version of Claude Code."
+export const REASON_NO_FOLDER = 'Choose a project folder.'
 export const REASON_DIR_CHECK = 'Checking the folder...'
 export const REASON_DIR_CHECK_FAILED = "Bifrost couldn't check this folder."
 export const REASON_DIR_MISSING = "This folder doesn't exist."
@@ -128,7 +129,7 @@ export function checkNewSessionSpec(input: unknown): SpecCheck {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return refuse(BAD_DATA)
   const v = input as Record<string, unknown>
   const cwd = typeof v.cwd === 'string' ? trimDir(v.cwd.trim()) : ''
-  if (!cwd.startsWith('/')) return refuse('Choose a project folder.')
+  if (!cwd.startsWith('/')) return refuse(REASON_NO_FOLDER)
   if (typeof v.name !== 'string') return refuse(BAD_DATA)
   const name = cleanText(v.name).trim()
   if (name === '') return refuse('Type a name.')

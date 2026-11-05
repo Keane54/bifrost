@@ -7,6 +7,7 @@ import {
   REASON_DIR_CHECK,
   REASON_DIR_CHECK_FAILED,
   REASON_DIR_MISSING,
+  REASON_NO_FOLDER,
   REASON_NO_GIT,
   REASON_WORKTREE_OFF,
   WORKTREE_OK,
@@ -18,6 +19,7 @@ export {
   REASON_DIR_CHECK,
   REASON_DIR_CHECK_FAILED,
   REASON_DIR_MISSING,
+  REASON_NO_FOLDER,
   REASON_NO_GIT,
   REASON_WORKTREE_OFF,
 }
@@ -104,13 +106,18 @@ export function toSpec(
   })
 }
 
-// Tell if the worktree option works for the folder.
+// Tell if the worktree option works for the folder. No check runs for a folder that does not
+// start with "/". For that folder, the reason is the same as the reason of the start button.
 export function worktreeState(
   info: DirInfo | null,
   worktreeOk: boolean = WORKTREE_OK,
   checkFailed = false,
+  cwd?: string,
 ): ActionState {
   if (!worktreeOk) return { enabled: false, reason: REASON_WORKTREE_OFF }
+  if (cwd !== undefined && !cwd.trim().startsWith('/')) {
+    return { enabled: false, reason: REASON_NO_FOLDER }
+  }
   if (checkFailed) return { enabled: false, reason: REASON_DIR_CHECK_FAILED }
   if (info === null) return { enabled: false, reason: REASON_DIR_CHECK }
   if (info.kind !== 'dir') return { enabled: false, reason: REASON_DIR_MISSING }

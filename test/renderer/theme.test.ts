@@ -102,8 +102,26 @@ describe('theme', () => {
     expect(frame).toContain('shadow-[0_-6px_12px_-6px_var(--color-accent-glow)]')
   })
 
+  // Bug 8: the focused panel must be darker than the others, not lighter.
+  it('makes the focused panel darker than the other panels', () => {
+    expect(CSS).toContain('--color-panel: rgb(24 24 24 / var(--panel-alpha));')
+    const level = (token: string): number => {
+      const match = CSS.match(new RegExp(`--color-${token}: rgb\\((\\d+) `))
+      return Number(match?.[1])
+    }
+    expect(level('panel-focus')).toBeLessThan(level('panel'))
+  })
+
+  // Bug 9: a focus ring is a square 1 px accent outline with no offset (spec 8.10).
+  it('has one focus-visible rule: a 1 px accent outline with no offset', () => {
+    const rules = [...CSS.matchAll(/:focus-visible\s*\{([^}]*)\}/g)]
+    expect(rules).toHaveLength(1)
+    const body = rules[0][1].replace(/\s+/g, ' ').trim()
+    expect(body).toBe('outline: 1px solid var(--color-accent); outline-offset: 0;')
+  })
+
   it('makes the top frame less transparent, with a 250 ms change', () => {
-    expect(CSS).toContain('--color-panel-focus: rgb(16 16 16 / calc(var(--panel-alpha) + 0.1));')
+    expect(CSS).toContain('--color-panel-focus: rgb(8 8 8 / calc(var(--panel-alpha) + 0.1));')
     const frame = source('wm/Frame.tsx')
     expect(frame).toMatch(/border-t-accent bg-panel-focus /)
     expect(frame).toMatch(/border-t-accent\/35 bg-panel'/)

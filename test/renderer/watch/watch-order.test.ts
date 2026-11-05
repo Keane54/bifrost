@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { dropTarget, isMove, watchedRows } from '../../../src/renderer/src/watch/watch-order'
+import {
+  dropTarget,
+  isDragCancel,
+  isMove,
+  shouldMove,
+  watchedRows,
+} from '../../../src/renderer/src/watch/watch-order'
 import { row } from '../overview/fixtures'
 
 const order = ['a', 'b', 'c', 'd']
@@ -71,5 +77,24 @@ describe('isMove', () => {
     for (const half of [true, false]) {
       expect(isMove(order, 'b', dropTarget(order, 'b', 1, half))).toBe(false)
     }
+  })
+})
+
+// Bug 11: Esc during a drag cancels the drag. The release then makes no move call.
+describe('drag cancel', () => {
+  it('isDragCancel is true for Escape only', () => {
+    expect(isDragCancel('Escape')).toBe(true)
+    expect(isDragCancel('Enter')).toBe(false)
+    expect(isDragCancel('a')).toBe(false)
+  })
+
+  it('shouldMove is false for a cancelled drag, also when the order would change', () => {
+    expect(isMove(order, 'a', 'c')).toBe(true)
+    expect(shouldMove(order, 'a', 'c', false)).toBe(true)
+    expect(shouldMove(order, 'a', 'c', true)).toBe(false)
+  })
+
+  it('shouldMove is false for a drop at the place that the row has now', () => {
+    expect(shouldMove(order, 'b', 'c', false)).toBe(false)
   })
 })

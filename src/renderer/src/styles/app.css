@@ -9,10 +9,10 @@
      The Settings row "Panel transparency" (M5a) sets this value on the document root. */
   --panel-alpha: 0.85;
   --color-bg: #0a0a0a;
-  --color-panel: rgb(16 16 16 / var(--panel-alpha));
+  --color-panel: rgb(24 24 24 / var(--panel-alpha));
   /* The focused (top) panel is less transparent, so that it stands out from the others.
      The Settings transparency still applies. The alpha stops at 1. */
-  --color-panel-focus: rgb(16 16 16 / calc(var(--panel-alpha) + 0.1));
+  --color-panel-focus: rgb(8 8 8 / calc(var(--panel-alpha) + 0.1));
   --color-panel-edge: rgb(255 255 255 / 0.1);
   --color-title: #2a2a2a;
   --color-section: #232323;
@@ -102,6 +102,13 @@
     background: var(--color-bg);
     color: var(--color-text);
     font-family: var(--font-ui);
+  }
+
+  /* A focus ring is a square 1 px accent outline with no offset (spec 8.10). It is in the base
+     layer. So a class like outline-none on an element with its own focus style still wins. */
+  :focus-visible {
+    outline: 1px solid var(--color-accent);
+    outline-offset: 0;
   }
 
   /* The app has its own stacking context. So the menus and tooltips in body are above it. */

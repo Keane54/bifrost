@@ -17,7 +17,7 @@ import { stateLabel, stateTone } from '../overview/format'
 import { SessionIcon } from '../overview/SessionIcon'
 import { movedToStack } from '../wm/hit'
 import { WATCH_ROW_BG } from './watch-colours'
-import { dropTarget, isMove, watchedRows } from './watch-order'
+import { dropTarget, isDragCancel, isMove, shouldMove, watchedRows } from './watch-order'
 
 const EMPTY_TEXT =
   'Nothing on your watchlist yet. Right-click a session and choose Add to watchlist.'
@@ -84,6 +84,8 @@ export default function WatchlistPanel(): React.JSX.Element {
     const { pointerId } = e
     const start = { x: e.clientX, y: e.clientY }
     let started = false
+    // True after Esc. The release then makes no move.
+    let cancelled = false
     let before: string | null = null
     const targetAt = (y: number): string | null => {
       const { order, overIndex, upperHalf } = placeAt(list.current, y)
@@ -108,7 +110,7 @@ export default function WatchlistPanel(): React.JSX.Element {
       }, 0)
       const target = targetAt(ev.clientY)
       // A drop at the place that the row has now is not a move. The ref has the current order.
-      if (!isMove(orderRef.current, id, target)) return
+      if (!shouldMove(orderRef.current, id, target, cancelled)) return
       setError(null)
       window.bifrost.registry.watch
         .move(id, target)
@@ -117,16 +119,36 @@ export default function WatchlistPanel(): React.JSX.Element {
     const onCancel = (ev: PointerEvent): void => {
       if (ev.pointerId === pointerId) end()
     }
+    // Esc ends the drag at once. The row and the line go back. The release does nothing.
+    const onKey = (ev: KeyboardEvent): void => {
+      if (!isDragCancel(ev.key)) return
+      cancelled = true
+      end()
+      if (!started) return
+      // The release still comes. Its click must not select the row, as for a drop.
+      window.addEventListener(
+        'pointerup',
+        () => {
+          noClick.current = true
+          window.setTimeout(() => {
+            noClick.current = false
+          }, 0)
+        },
+        { once: true },
+      )
+    }
     const end = (): void => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('keydown', onKey)
       stop.current = null
       setMark(null)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('keydown', onKey)
     stop.current = end
   }
 

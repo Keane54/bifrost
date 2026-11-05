@@ -36,3 +36,18 @@ export function isMove(
   const at = order.indexOf(draggedId)
   return at >= 0 && before !== (order[at + 1] ?? null)
 }
+
+// True for the key that cancels a drag.
+export function isDragCancel(key: string): boolean {
+  return key === 'Escape'
+}
+
+// True when the release of a drag must call the move. A cancelled drag never moves.
+export function shouldMove(
+  order: readonly string[],
+  draggedId: string,
+  before: string | null,
+  cancelled: boolean,
+): boolean {
+  return !cancelled && isMove(order, draggedId, before)
+}

@@ -44,6 +44,8 @@ export function SessionIcon({ row, size }: { row: SessionRow; size: number }): R
     kind === 'parked' ? 'text-parked' : PROJECT_TEXT[projectColourIndex(projectKey(row.cwd)) - 1]
   const arm = `${size * 0.3}px`
   const glyphSize = Math.round((size * 2) / 3)
+  // The app icon is 14 px in the 16 px cell, and fills 7/8 of any other cell.
+  const imageSize = Math.round((size * 7) / 8)
   return (
     <span
       className='relative inline-flex shrink-0 items-center justify-center'
@@ -55,10 +57,10 @@ export function SessionIcon({ row, size }: { row: SessionRow; size: number }): R
           alt=''
           data-terminal-icon={row.terminalApp}
           draggable={false}
-          height={glyphSize}
+          height={imageSize}
           src={appIcon}
           title={row.terminalApp}
-          width={glyphSize}
+          width={imageSize}
         />
       ) : (
         <Glyph aria-hidden={true} className={colour} size={glyphSize} />

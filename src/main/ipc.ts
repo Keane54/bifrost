@@ -8,6 +8,7 @@ import {
   dialog,
   type IpcMainInvokeEvent,
   ipcMain,
+  nativeImage,
   type OpenDialogOptions,
   type WebContents,
 } from 'electron'
@@ -16,6 +17,7 @@ import type { ClaudeVersion, DisplayMode, WatchColour } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
 import { isWatchColour } from '../shared/watch'
 import { createActions } from './actions/actions'
+import { appIcon } from './actions/app-icon'
 import { dirInfo, isAlive, processName, sendSignal } from './actions/process-info'
 import { findProjectApps } from './actions/project-apps'
 import { createSessionActions } from './actions/session-actions'
@@ -336,14 +338,12 @@ export function registerIpc(): void {
     apps: () => findProjectApps(homedir(), exists),
     claudePath: () => claudePath,
     exec: execFile,
-    fileIcon: async path => {
-      try {
-        const image = await app.getFileIcon(path, { size: 'small' })
-        return image.isEmpty() ? null : image.toDataURL()
-      } catch {
-        return null
-      }
-    },
+    fileIcon: path =>
+      appIcon(path, {
+        fileIcon: (file, size) => app.getFileIcon(file, { size }),
+        thumbnail: (file, width, height) =>
+          nativeImage.createThumbnailFromPath(file, { height, width }),
+      }),
     remove: file => rm(file, { force: true }),
     rows: () => liveService?.rows() ?? [],
     runDir,

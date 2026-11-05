@@ -5,6 +5,7 @@ import {
   type ActionId,
   actionStateFor,
   buttonTip,
+  checkedKey,
   globalActionState,
   type MenuEntry,
   rowMenu,
@@ -391,5 +392,24 @@ describe('action model', () => {
     expect(buttonTip('open', actionStateFor('open', parked, ctx()), 'space')).toBe(
       `Warp to\n${R.REASON_PARKED}`,
     )
+  })
+
+  // Bug 4: the colour items use the same check mark rule as Set priority.
+  it('checkedKey gives the key of the checked item, or undefined', () => {
+    expect(
+      checkedKey([
+        { arg: 1, key: '1' },
+        { arg: 2, checked: true, key: '2' },
+      ]),
+    ).toBe('2')
+    expect(checkedKey([{ arg: 1, checked: false, key: '1' }])).toBeUndefined()
+    const watched = row({ sessionId: 'w', watch: { colour: 'cyan', order: 0 } })
+    const change = find(rowMenu(watched, ctx()), 'watch-colour')
+    if (change?.type !== 'submenu') throw new Error('not a submenu')
+    expect(checkedKey(change.items)).toBe('cyan')
+    // A row that is not watched has no colour to mark.
+    const add = find(rowMenu(owned, ctx()), 'watch-add')
+    if (add?.type !== 'submenu') throw new Error('not a submenu')
+    expect(checkedKey(add.items)).toBeUndefined()
   })
 })

@@ -11,6 +11,7 @@ import { WATCH_SWATCH } from '../watch/watch-colours'
 import {
   type ActionId,
   buttonTip,
+  checkedKey,
   type MenuArg,
   type MenuEntry,
   type SubItem,
@@ -41,14 +42,23 @@ function ItemEntry({ entry, onRun }: { entry: ActionEntry; onRun: Run }): React.
   )
 }
 
-// The Set priority items. The current priority has a check mark. None has no swatch.
-function PriorityItems({ items, onRun }: { items: SubItem[]; onRun: Run }): React.JSX.Element {
-  const checked = items.find(item => item.checked)?.key
+// The items of Set priority and Change colour. The current one has a check mark.
+// A priority has a swatch of its colour. None has no swatch. A watch colour has its swatch.
+function CheckedItems({
+  action,
+  items,
+  onRun,
+}: {
+  action: ActionId
+  items: SubItem[]
+  onRun: Run
+}): React.JSX.Element {
+  const checked = checkedKey(items)
   return (
     <ContextMenu.RadioGroup
       onValueChange={key => {
         const item = items.find(i => i.key === key)
-        if (item) onRun('set-priority', item.arg)
+        if (item) onRun(action, item.arg)
       }}
       value={checked}
     >
@@ -67,7 +77,11 @@ function PriorityItems({ items, onRun }: { items: SubItem[]; onRun: Run }): Reac
           </span>
           <span
             aria-hidden={true}
-            className={cx('size-2 shrink-0', isPriority(item.arg) && PRIO_BG[item.arg])}
+            className={cx(
+              'size-2 shrink-0',
+              isPriority(item.arg) && PRIO_BG[item.arg],
+              isWatchColour(item.arg) && WATCH_SWATCH[item.arg],
+            )}
           />
           {item.label}
         </ContextMenu.RadioItem>
@@ -95,8 +109,8 @@ function Submenu({ entry, onRun }: { entry: SubmenuEntry; onRun: Run }): React.J
       <ContextMenu.Portal>
         <ContextMenu.Positioner alignOffset={-5} className='z-50 outline-none'>
           <ContextMenu.Popup className={MENU_POPUP} data-submenu={entry.action}>
-            {entry.action === 'set-priority' ? (
-              <PriorityItems items={entry.items} onRun={onRun} />
+            {entry.action === 'set-priority' || entry.action === 'watch-colour' ? (
+              <CheckedItems action={entry.action} items={entry.items} onRun={onRun} />
             ) : (
               entry.items.map(item => (
                 <Fragment key={item.key}>

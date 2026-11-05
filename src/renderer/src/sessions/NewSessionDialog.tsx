@@ -53,7 +53,16 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
   const startingRef = useRef(false)
   const listId = useId()
   const cwdRef = useRef<HTMLInputElement>(null)
+  // True after a failed start. The Folder field is off while the form is busy. So the focus
+  // moves when the busy state ends.
+  const refocusRef = useRef(false)
   const dirs = recentDirectories(history, rows)
+
+  useEffect(() => {
+    if (busy || !refocusRef.current) return
+    refocusRef.current = false
+    cwdRef.current?.focus()
+  }, [busy])
 
   // Check the folder 300 ms after the last change. A change clears the old result first.
   useEffect(() => {
@@ -77,7 +86,7 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
     }
   }, [form.cwd])
 
-  const worktree = worktreeState(info, undefined, checkFailed)
+  const worktree = worktreeState(info, undefined, checkFailed, form.cwd)
 
   async function submit(): Promise<void> {
     if (busy || startingRef.current) return
@@ -95,6 +104,7 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
     } catch (err) {
       setReason(friendlyError(errorMessage(err)))
       startingRef.current = false
+      refocusRef.current = true
       setBusy(false)
       return
     }

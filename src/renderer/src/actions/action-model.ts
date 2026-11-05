@@ -235,6 +235,12 @@ export const SELECTED_ITEM_ACTIONS: ActionId[] = [
 // The number of recent slash commands in the submenu.
 export const SLASH_MENU_RECENT = 5
 
+// The key of the checked item of a submenu, or undefined. Set priority and the colour items
+// of the watchlist use it for their check mark.
+export function checkedKey(items: readonly SubItem[]): string | undefined {
+  return items.find(item => item.checked)?.key
+}
+
 function subItems(id: ActionId, row: SessionRow, ctx: ActionContext): SubItem[] {
   if (id === 'set-priority') {
     return [

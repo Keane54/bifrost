@@ -6,6 +6,7 @@ import {
   REASON_DIR_CHECK,
   REASON_DIR_CHECK_FAILED,
   REASON_DIR_MISSING,
+  REASON_NO_FOLDER,
   REASON_NO_GIT,
   REASON_WORKTREE_OFF,
   suggestName,
@@ -90,5 +91,20 @@ describe('new session form', () => {
     ]) {
       expect(worktreeState(info, false)).toEqual({ enabled: false, reason: REASON_WORKTREE_OFF })
     }
+  })
+
+  // Bug 6: no folder check runs for a path that does not start with "/". The reason must not
+  // stay "Checking the folder...".
+  it('worktreeState gives the folder reason for a folder that does not start with "/"', () => {
+    expect(REASON_NO_FOLDER).toBe('Choose a project folder.')
+    for (const cwd of ['relative/path', '.m0-sandbox', '', '  ']) {
+      expect(worktreeState(null, true, false, cwd)).toEqual({
+        enabled: false,
+        reason: REASON_NO_FOLDER,
+      })
+    }
+    expect(worktreeState(null, true, false, '/p/app').reason).toBe(REASON_DIR_CHECK)
+    expect(worktreeState(null, true, false, ' /p/app').reason).toBe(REASON_DIR_CHECK)
+    expect(worktreeState(null, false, false, 'relative').reason).toBe(REASON_WORKTREE_OFF)
   })
 })
