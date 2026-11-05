@@ -347,6 +347,8 @@ export class SessionRegistry {
       state: m.state,
       status: s.status,
     }
+    // The input code needs the cause of a red box. Only a prompt box blocks a send.
+    if (m.box === 'red' && m.redReason !== undefined) row.boxReason = m.redReason
     if (s.shortId !== undefined) row.shortId = s.shortId
     if (s.pid !== undefined) row.pid = s.pid
     if (s.waitingFor !== undefined) row.waitingFor = s.waitingFor

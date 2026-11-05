@@ -37,6 +37,10 @@ export type SessionState = 'working' | 'needs-you' | 'error' | 'idle' | 'parked'
 // The box of a row. Yellow: Claude finished. Red: Claude needs the user.
 export type Box = 'none' | 'yellow' | 'red'
 
+// The cause of a red box. prompt: a permission prompt or a question. escalated: an old yellow box.
+// error: a StopFailure event.
+export type BoxReason = 'prompt' | 'escalated' | 'error'
+
 // Owned: the supervisor runs the session in the background. External: a terminal app owns it.
 export type SessionKind = 'owned' | 'external'
 
@@ -55,6 +59,8 @@ export interface SessionRow {
   waitingFor?: string
   state: SessionState
   box: Box
+  // Only for a red box.
+  boxReason?: BoxReason
   boxSince: number | null
   // True when the box is not 'none' and nobody acknowledged it.
   flashing: boolean

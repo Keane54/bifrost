@@ -10,6 +10,7 @@ import {
   PASTE_END,
   PASTE_START,
   planText,
+  promptBlocks,
   REASON_EMPTY,
   REASON_NAME_LONG,
   REASON_NO_NAME,
@@ -80,6 +81,9 @@ describe('planText', () => {
   test('planText refuses text over 20,000 characters', () => {
     expect(planText('a'.repeat(20_000)).ok).toBe(true)
     expect(planText('a'.repeat(20_001))).toEqual({ ok: false, reason: REASON_TOO_LONG })
+    // The limit applies to the text as the user typed it, before the clean-up and the trim.
+    expect(planText(`${'a'.repeat(20_000)} `)).toEqual({ ok: false, reason: REASON_TOO_LONG })
+    expect(planText(' '.repeat(20_001))).toEqual({ ok: false, reason: REASON_TOO_LONG })
     expect(REASON_TOO_LONG).toBe('The text is too long. The maximum is 20,000 characters.')
   })
 
@@ -153,8 +157,22 @@ describe('renameText', () => {
   test('renameText refuses an empty name and a name over 64 characters', () => {
     expect(renameText(' \n\t\x1b ')).toEqual({ ok: false, reason: REASON_NO_NAME })
     expect(renameText('x'.repeat(65))).toEqual({ ok: false, reason: REASON_NAME_LONG })
+    // The 64 character limit applies after the clean-up, so runs of spaces count as one.
+    expect(renameText(`a${' '.repeat(100)}b`)).toEqual({ ok: true, text: '/rename a b' })
+    expect(renameText(' '.repeat(20_001))).toEqual({ ok: false, reason: REASON_NAME_LONG })
     expect(REASON_NO_NAME).toBe('Type a name first.')
     expect(REASON_NAME_LONG).toBe('The name is too long. The maximum is 64 characters.')
+  })
+})
+
+describe('promptBlocks', () => {
+  test('promptBlocks is true only for a red box of a prompt or of no known cause', () => {
+    expect(promptBlocks({ box: 'red', boxReason: 'prompt' })).toBe(true)
+    expect(promptBlocks({ box: 'red' })).toBe(true)
+    expect(promptBlocks({ box: 'red', boxReason: 'escalated' })).toBe(false)
+    expect(promptBlocks({ box: 'red', boxReason: 'error' })).toBe(false)
+    expect(promptBlocks({ box: 'yellow' })).toBe(false)
+    expect(promptBlocks({ box: 'none' })).toBe(false)
   })
 })
 

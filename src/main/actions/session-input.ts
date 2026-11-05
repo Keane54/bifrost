@@ -1,10 +1,20 @@
 // All text and keys that Bifrost types into a session go through this module (D1, spec 8.4).
 // It writes into the open chat PTY of the session, or into a hidden attach that it opens and closes.
 // Input goes only to an owned session that runs, through "attach <short id>".
-import { ESC, INTERRUPT_STEPS, type InputStep, planText, RED_BOX_BLOCK } from '../../shared/input'
+import {
+  ESC,
+  INTERRUPT_STEPS,
+  type InputStep,
+  planText,
+  promptBlocks,
+  RED_BOX_BLOCK,
+} from '../../shared/input'
 import type { SessionRow, TermSize } from '../../shared/types'
+import { CHAT_VIEW } from '../../shared/view-id'
 import { canAttach } from '../pty/can-attach'
 import { QuietWatch } from './quiet-watch'
+
+export { CHAT_VIEW }
 
 // An attach is ready when its output was quiet for this time one time after the open.
 export const READY_QUIET_MS = 1500
@@ -14,9 +24,15 @@ export const READY_TIMEOUT_MS = 15_000
 export const CLOSE_DELAY_MS = 1000
 // Two Esc open the rewind menu. So a second Interrupt within this time has no effect.
 export const INTERRUPT_GAP_MS = 1500
-
-// The same strict form as the renderer: 8-4-4-4-12 hex digits.
-export const CHAT_VIEW = /^chat:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// An Interrupt needs only a connected attach. A working session shows a spinner, so its output
+// never gets quiet. The Esc goes this time after the first output of the attach.
+export const INTERRUPT_CONNECT_MS = 300
+// After an Esc, the next write to the session waits this time.
+// Else the session can read the Esc and the next bytes as one key.
+export const ESC_GAP_MS = 200
+// The left arrow key on an empty prompt opens the agent view. The renderer finds the agent view
+// some time later. A send to that chat window waits this time after a left arrow key.
+export const LEFT_KEY_WAIT_MS = 2000
 
 // The view of the chat window of a session. The renderer opens it.
 export function chatView(sessionId: string): string {
@@ -28,6 +44,11 @@ export function sendView(sessionId: string): string {
   return `send:${sessionId}`
 }
 
+// True when the data from the renderer has the left arrow key (normal or application mode).
+export function hasLeftKey(data: string): boolean {
+  return data.includes('\x1b[D') || data.includes('\x1bOD')
+}
+
 export const REASON_NOT_READY = 'The session did not get ready in 15 seconds. Bifrost sent nothing.'
 export const REASON_ENDED = 'The attach ended before it was ready. Bifrost sent nothing.'
 export const REASON_NO_SIZE =
@@ -37,6 +58,9 @@ export const REASON_AGENT_VIEW =
 export const REASON_CHAT_GONE = 'The chat window closed during the send.'
 // The hidden attach ended after it was ready and before the last write.
 export const REASON_ATTACH_GONE = 'The attach ended during the send.'
+// The row has a new short ID, but the chat window still shows the attach of the old short ID.
+export const REASON_OLD_ATTACH =
+  'The chat window shows an old attach of the session. Close the window and open it again.'
 
 const REFUSED_INPUT = 'refused: bad input'
 const REFUSED_SESSION = 'refused: the session is not an owned session that runs'
@@ -45,6 +69,11 @@ const NO_CLAUDE = 'claude not found'
 
 // A short ID goes into the attach arguments. Accept only 8 hex digits.
 const SHORT_ID = /^[0-9a-f]{8}$/
+
+// The gaps use a clock that only goes forward. A change of the wall clock has no effect.
+function now(): number {
+  return performance.now()
+}
 
 // The part of PtyManager that this module uses.
 export interface InputPty {
@@ -65,9 +94,12 @@ export interface SessionInputDeps {
 type JobKind = 'send' | 'interrupt'
 
 // The ready watch of one open attach. ended is true after the attach ended.
+// shortId is the short ID of the attach. firstAt is the time of the first output.
 interface ViewWatch {
   watch: QuietWatch
   ended: boolean
+  shortId: string
+  firstAt?: number
 }
 
 function sleep(ms: number): Promise<void> {
@@ -80,6 +112,8 @@ export class SessionInput {
   private readonly watches = new Map<string, ViewWatch>()
   // The chat views that show the agent view.
   private readonly blocked = new Set<string>()
+  // The time of the last left arrow key to each chat view.
+  private readonly leftKeyAt = new Map<string, number>()
   // The sessions that have an Interrupt in the queue.
   private readonly interrupting = new Set<string>()
   // The time of the last Esc to each session.
@@ -117,14 +151,17 @@ export class SessionInput {
     }
   }
 
-  // An attach opened for this view. Start a new ready watch and clear the block.
-  opened(viewId: string): void {
-    this.watchView(viewId)
+  // An attach to the short ID opened for this view. Start a new ready watch and clear the block.
+  opened(viewId: string, shortId: string): void {
+    this.watchView(viewId, shortId)
   }
 
   // Each chunk of output of the view feeds its ready watch.
   data(viewId: string): void {
-    this.watches.get(viewId)?.watch.data()
+    const w = this.watches.get(viewId)
+    if (!w) return
+    if (w.firstAt === undefined) w.firstAt = now()
+    w.watch.data()
   }
 
   // The attach of the view ended or closed.
@@ -132,6 +169,7 @@ export class SessionInput {
     const w = this.watches.get(viewId)
     if (w) this.drop(viewId, w)
     this.blocked.delete(viewId)
+    this.leftKeyAt.delete(viewId)
   }
 
   // The renderer reports the agent view of a chat window.
@@ -140,6 +178,11 @@ export class SessionInput {
     if (typeof blocked !== 'boolean') return
     if (blocked) this.blocked.add(viewId)
     else this.blocked.delete(viewId)
+  }
+
+  // The renderer wrote the left arrow key to a chat view.
+  leftKey(viewId: string): void {
+    if (CHAT_VIEW.test(viewId)) this.leftKeyAt.set(viewId, now())
   }
 
   // Run a job after the last job of the session. A failed job does not stop the next job.
@@ -157,12 +200,13 @@ export class SessionInput {
     return run
   }
 
-  private watchView(viewId: string): ViewWatch {
+  private watchView(viewId: string, shortId: string): ViewWatch {
     const old = this.watches.get(viewId)
     if (old) this.drop(viewId, old)
-    const w: ViewWatch = { ended: false, watch: new QuietWatch(READY_QUIET_MS) }
+    const w: ViewWatch = { ended: false, shortId, watch: new QuietWatch(READY_QUIET_MS) }
     this.watches.set(viewId, w)
     this.blocked.delete(viewId)
+    this.leftKeyAt.delete(viewId)
     return w
   }
 
@@ -173,7 +217,7 @@ export class SessionInput {
   }
 
   // The row must be an owned session that runs, with a short ID that "claude attach" accepts.
-  // For a send, a red box blocks the job, because typed text can answer a prompt by accident.
+  // For a send, a prompt box blocks the job, because typed text can answer a prompt by accident.
   private check(sessionId: string, kind: JobKind): SessionRow & { shortId: string } {
     const rows = this.deps.rows()
     const row = rows.find(r => r.sessionId === sessionId)
@@ -182,7 +226,7 @@ export class SessionInput {
       throw new Error(REFUSED_SESSION)
     }
     if (!canAttach(rows, ['attach', shortId])) throw new Error(REFUSED_SESSION)
-    if (kind === 'send' && row.box === 'red') throw new Error(RED_BOX_BLOCK)
+    if (kind === 'send' && promptBlocks(row)) throw new Error(RED_BOX_BLOCK)
     return { ...row, shortId }
   }
 
@@ -194,6 +238,16 @@ export class SessionInput {
     return this.runHidden(pty, sessionId, steps, kind)
   }
 
+  // A send waits until the output of the attach was quiet for 1.5 s.
+  // An Interrupt waits until INTERRUPT_CONNECT_MS after the first output.
+  private async ready(w: ViewWatch, kind: JobKind): Promise<boolean> {
+    if (kind === 'send') return w.watch.wait(READY_TIMEOUT_MS)
+    if (!(await w.watch.waitOutput(READY_TIMEOUT_MS))) return false
+    const rest = (w.firstAt ?? now()) + INTERRUPT_CONNECT_MS - now()
+    if (rest > 0) await sleep(rest)
+    return !w.ended
+  }
+
   // Write into the open chat PTY. Never close it.
   private async runChat(
     pty: InputPty,
@@ -203,9 +257,10 @@ export class SessionInput {
   ): Promise<void> {
     const view = chatView(sessionId)
     if (this.blocked.has(view)) throw new Error(REASON_AGENT_VIEW)
+    // The PTY can close between the close of its watch and the close in the manager.
     const w = this.watches.get(view)
-    if (!w) throw new Error(REASON_NOT_READY)
-    if (!(await w.watch.wait(READY_TIMEOUT_MS))) {
+    if (!w) throw new Error(REASON_CHAT_GONE)
+    if (!(await this.ready(w, kind))) {
       throw new Error(w.ended ? REASON_CHAT_GONE : REASON_NOT_READY)
     }
     await this.writeSteps(pty, sessionId, view, w, steps, kind, REASON_CHAT_GONE)
@@ -229,9 +284,9 @@ export class SessionInput {
     const { shortId } = this.check(sessionId, kind)
     const view = sendView(sessionId)
     pty.open(view, ['attach', shortId], { cols: size.cols, cwd: '/', rows: size.rows })
-    const w = this.watchView(view)
+    const w = this.watchView(view, shortId)
     try {
-      if (!(await w.watch.wait(READY_TIMEOUT_MS))) {
+      if (!(await this.ready(w, kind))) {
         throw new Error(w.ended ? REASON_ENDED : REASON_NOT_READY)
       }
       await this.writeSteps(pty, sessionId, view, w, steps, kind, REASON_ATTACH_GONE)
@@ -242,7 +297,28 @@ export class SessionInput {
     }
   }
 
-  // Each step waits, then writes. Just before each write, check the row, the view and the block.
+  // The time that the next write to the session must wait: the Esc gap, and for a send
+  // the wait after a left arrow key. A value of 0 or less means no wait.
+  private gapRest(sessionId: string, view: string, kind: JobKind): number {
+    const t = now()
+    const esc = (this.lastEsc.get(sessionId) ?? Number.NEGATIVE_INFINITY) + ESC_GAP_MS - t
+    if (kind !== 'send') return esc
+    const left = (this.leftKeyAt.get(view) ?? Number.NEGATIVE_INFINITY) + LEFT_KEY_WAIT_MS - t
+    return Math.max(esc, left)
+  }
+
+  // Wait for the gaps. A new left arrow key during the wait starts the wait again.
+  // After READY_TIMEOUT_MS of waits, the job stops.
+  private async waitGaps(sessionId: string, view: string, kind: JobKind): Promise<void> {
+    const limit = now() + READY_TIMEOUT_MS
+    for (let rest = this.gapRest(sessionId, view, kind); rest > 0; ) {
+      if (now() + rest > limit) throw new Error(REASON_NOT_READY)
+      await sleep(rest)
+      rest = this.gapRest(sessionId, view, kind)
+    }
+  }
+
+  // Each step waits, then writes. Just before each write, check the row, the attach and the block.
   // A prompt can open during a wait. Then the CR does not go, so it cannot answer the prompt.
   private async writeSteps(
     pty: InputPty,
@@ -256,15 +332,19 @@ export class SessionInput {
     for (const step of steps) {
       // A timer of 0 ms waits 1 ms in Node. A step with no delay writes at once after the checks.
       if (step.delayMs > 0) await sleep(step.delayMs)
-      this.check(sessionId, kind)
-      if (w.ended || this.watches.get(view) !== w) throw new Error(gone)
-      if (this.blocked.has(view)) throw new Error(REASON_AGENT_VIEW)
-      if (kind === 'interrupt' && step.data === ESC) {
+      const esc = kind === 'interrupt' && step.data === ESC
+      if (esc) {
         const last = this.lastEsc.get(sessionId)
-        if (last !== undefined && Date.now() - last < INTERRUPT_GAP_MS) return
+        if (last !== undefined && now() - last < INTERRUPT_GAP_MS) return
       }
+      await this.waitGaps(sessionId, view, kind)
+      const row = this.check(sessionId, kind)
+      if (w.ended || this.watches.get(view) !== w) throw new Error(gone)
+      // The attach must be for the short ID of the row now.
+      if (w.shortId !== row.shortId) throw new Error(REASON_OLD_ATTACH)
+      if (this.blocked.has(view)) throw new Error(REASON_AGENT_VIEW)
       if (!pty.write(view, step.data)) throw new Error(gone)
-      if (kind === 'interrupt' && step.data === ESC) this.lastEsc.set(sessionId, Date.now())
+      if (esc) this.lastEsc.set(sessionId, now())
     }
   }
 }

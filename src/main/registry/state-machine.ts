@@ -1,4 +1,4 @@
-import type { Box, SessionState } from '../../shared/types'
+import type { Box, BoxReason, SessionState } from '../../shared/types'
 import type { HookEvent } from './hook-event'
 
 export interface MachineState {
@@ -10,7 +10,7 @@ export interface MachineState {
   // True after a status sample confirmed the current box. False when no box exists.
   // A status sample clears only a confirmed box (spec section 7, rule 10).
   confirmed: boolean
-  redReason?: 'prompt' | 'error' | 'escalated'
+  redReason?: BoxReason
   lastMessage?: string
 }
 

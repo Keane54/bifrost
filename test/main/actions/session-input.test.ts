@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   CHAT_VIEW,
   chatView,
+  hasLeftKey,
   type InputPty,
   REASON_AGENT_VIEW,
+  REASON_ATTACH_GONE,
   REASON_CHAT_GONE,
   REASON_ENDED,
   REASON_NO_SIZE,
   REASON_NOT_READY,
+  REASON_OLD_ATTACH,
   SessionInput,
   sendView,
 } from '../../../src/main/actions/session-input'
@@ -117,7 +120,7 @@ function track(p: Promise<void>): { done: boolean; error: string | undefined; at
 // Open a chat PTY for S and let its output get quiet.
 async function openChat(): Promise<void> {
   pty.views.add(CHAT)
-  input.opened(CHAT)
+  input.opened(CHAT, 'abcd1234')
   input.data(CHAT)
   await vi.advanceTimersByTimeAsync(1500)
   pty.base = Date.now()
@@ -197,7 +200,7 @@ describe('SessionInput send', () => {
   })
 
   test('send refuses a red box before the attach', async () => {
-    rows = [row({ box: 'red', state: 'needs-you' })]
+    rows = [row({ box: 'red', boxReason: 'prompt', state: 'needs-you' })]
     const sent = track(input.send(S, 'Reply with OK'))
     await vi.advanceTimersByTimeAsync(0)
     expect(sent.error).toBe(RED_BOX_BLOCK)
@@ -207,7 +210,7 @@ describe('SessionInput send', () => {
 
   test('send refuses a red box in the chat path', async () => {
     await openChat()
-    rows = [row({ box: 'red', state: 'needs-you' })]
+    rows = [row({ box: 'red', boxReason: 'prompt', state: 'needs-you' })]
     const sent = track(input.send(S, 'Reply with OK'))
     await vi.advanceTimersByTimeAsync(0)
     expect(sent.error).toBe(RED_BOX_BLOCK)
@@ -218,7 +221,7 @@ describe('SessionInput send', () => {
     quietAttach()
     const sent = track(input.send(S, 'Reply with OK'))
     await vi.advanceTimersByTimeAsync(1000)
-    rows = [row({ box: 'red', state: 'needs-you' })]
+    rows = [row({ box: 'red', boxReason: 'prompt', state: 'needs-you' })]
     await vi.advanceTimersByTimeAsync(5000)
     expect(sent).toEqual({ at: 1500, done: true, error: RED_BOX_BLOCK })
     expect(pty.writes()).toEqual([])
@@ -229,7 +232,7 @@ describe('SessionInput send', () => {
     await openChat()
     const sent = track(input.send(S, 'Reply with OK'))
     await vi.advanceTimersByTimeAsync(100)
-    rows = [row({ box: 'red', state: 'needs-you' })]
+    rows = [row({ box: 'red', boxReason: 'prompt', state: 'needs-you' })]
     await vi.advanceTimersByTimeAsync(1000)
     expect(sent).toEqual({ at: 300, done: true, error: RED_BOX_BLOCK })
     expect(pty.ops()).toEqual([`0 write ${CHAT} ${JSON.stringify(PASTE)}`])
@@ -357,7 +360,7 @@ describe('SessionInput send', () => {
   test('a new open of the chat view clears the block', async () => {
     await openChat()
     input.setBlocked(CHAT, true)
-    input.opened(CHAT)
+    input.opened(CHAT, 'abcd1234')
     input.data(CHAT)
     await vi.advanceTimersByTimeAsync(1500)
     pty.base = Date.now()
@@ -368,7 +371,7 @@ describe('SessionInput send', () => {
 
   test('send waits until a new chat window is ready', async () => {
     pty.views.add(CHAT)
-    input.opened(CHAT)
+    input.opened(CHAT, 'abcd1234')
     const sent = track(input.send(S, 'Reply with OK'))
     await vi.advanceTimersByTimeAsync(200)
     input.data(CHAT)
@@ -393,7 +396,7 @@ describe('SessionInput send', () => {
 
   test('send rejects when the chat attach ends during the wait', async () => {
     pty.views.add(CHAT)
-    input.opened(CHAT)
+    input.opened(CHAT, 'abcd1234')
     const sent = track(input.send(S, 'Reply with OK'))
     await vi.advanceTimersByTimeAsync(200)
     pty.views.delete(CHAT)
@@ -412,7 +415,7 @@ describe('SessionInput send', () => {
     }
     const failed = track(input.send(S, 'x'))
     await vi.advanceTimersByTimeAsync(100)
-    rows = [row({ box: 'red' })]
+    rows = [row({ box: 'red', boxReason: 'prompt' })]
     await vi.advanceTimersByTimeAsync(1000)
     expect(failed.error).toBe(RED_BOX_BLOCK)
     expect(pty.calls.filter(c => c.op !== 'write')).toEqual([])
@@ -465,7 +468,7 @@ describe('SessionInput send', () => {
 describe('SessionInput interrupt', () => {
   test('interrupt sends one Esc and a red box does not block it', async () => {
     await openChat()
-    rows = [row({ box: 'red', state: 'needs-you' })]
+    rows = [row({ box: 'red', boxReason: 'prompt', state: 'needs-you' })]
     const sent = track(input.interrupt(S))
     await vi.advanceTimersByTimeAsync(0)
     expect(sent).toEqual({ at: 0, done: true, error: undefined })
@@ -476,11 +479,11 @@ describe('SessionInput interrupt', () => {
     quietAttach()
     const sent = track(input.interrupt(S))
     await vi.advanceTimersByTimeAsync(5000)
-    expect(sent).toEqual({ at: 2500, done: true, error: undefined })
+    expect(sent).toEqual({ at: 1300, done: true, error: undefined })
     expect(pty.ops()).toEqual([
       `0 open ${SEND}`,
-      `1500 write ${SEND} "\\u001b"`,
-      `2500 close ${SEND}`,
+      `300 write ${SEND} "\\u001b"`,
+      `1300 close ${SEND}`,
     ])
   })
 
@@ -521,7 +524,214 @@ describe('SessionInput interrupt', () => {
     expect(b).toEqual({ at: 0, done: true, error: undefined })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(sent.error).toBeUndefined()
-    expect(a).toEqual({ at: 5300, done: true, error: undefined })
+    expect(a).toEqual({ at: 4100, done: true, error: undefined })
     expect(pty.writes().map(c => c.data)).toEqual([PASTE, '\r', '\x1b'])
+  })
+})
+
+describe('SessionInput box reasons', () => {
+  test('only a prompt box blocks a send', async () => {
+    await openChat()
+    for (const boxReason of ['escalated', 'error'] as const) {
+      rows = [row({ box: 'red', boxReason })]
+      const sent = track(input.send(S, 'Reply with OK'))
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(sent.error).toBeUndefined()
+    }
+    expect(pty.writes()).toHaveLength(4)
+    rows = [row({ box: 'red', boxReason: 'prompt', state: 'needs-you' })]
+    const prompt = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(prompt.error).toBe(RED_BOX_BLOCK)
+    expect(pty.writes()).toHaveLength(4)
+  })
+
+  test('a red box with no known reason blocks a send', async () => {
+    await openChat()
+    rows = [row({ box: 'red' })]
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(sent.error).toBe(RED_BOX_BLOCK)
+    expect(pty.calls).toEqual([])
+  })
+
+  test('an old yellow box does not block a send through a hidden attach', async () => {
+    quietAttach()
+    rows = [row({ box: 'red', boxReason: 'escalated' })]
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(sent).toEqual({ at: 2800, done: true, error: undefined })
+  })
+})
+
+describe('SessionInput gaps after an Esc', () => {
+  test('an interrupt and then a send at once: the paste comes 200 ms after the Esc', async () => {
+    await openChat()
+    const stop = track(input.interrupt(S))
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(stop.error).toBeUndefined()
+    expect(sent).toEqual({ at: 500, done: true, error: undefined })
+    expect(pty.ops()).toEqual([
+      `0 write ${CHAT} "\\u001b"`,
+      `200 write ${CHAT} ${JSON.stringify(PASTE)}`,
+      `500 write ${CHAT} "\\r"`,
+    ])
+  })
+
+  test('the paste waits for the Esc gap also when the chat window gets ready after the Esc', async () => {
+    pty.views.add(CHAT)
+    input.opened(CHAT, 'abcd1234')
+    input.data(CHAT)
+    await vi.advanceTimersByTimeAsync(1400)
+    const stop = track(input.interrupt(S))
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(stop.error).toBeUndefined()
+    expect(sent.error).toBeUndefined()
+    expect(pty.ops()).toEqual([
+      `1400 write ${CHAT} "\\u001b"`,
+      `1600 write ${CHAT} ${JSON.stringify(PASTE)}`,
+      `1900 write ${CHAT} "\\r"`,
+    ])
+  })
+
+  test('the interrupt gap uses a clock that a wall clock change does not move', async () => {
+    await openChat()
+    await input.interrupt(S)
+    vi.setSystemTime(Date.now() - 60_000)
+    await vi.advanceTimersByTimeAsync(1600)
+    const again = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(again.error).toBeUndefined()
+    expect(pty.writes().map(c => c.data)).toEqual(['\x1b', '\x1b'])
+  })
+})
+
+describe('SessionInput interrupt readiness', () => {
+  test('interrupt through a hidden attach does not wait for quiet output', async () => {
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(0)
+    // A working session: a spinner chunk each 100 ms, so the output never gets quiet.
+    const spinner = setInterval(() => input.data(SEND), 100)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(pty.writes()).toEqual([])
+    await vi.advanceTimersByTimeAsync(5000)
+    clearInterval(spinner)
+    expect(stop).toEqual({ at: 1400, done: true, error: undefined })
+    expect(pty.ops()).toEqual([
+      `0 open ${SEND}`,
+      `400 write ${SEND} "\\u001b"`,
+      `1400 close ${SEND}`,
+    ])
+  })
+
+  test('interrupt through a hidden attach with no output writes nothing', async () => {
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect(stop).toEqual({ at: 15_000, done: true, error: REASON_NOT_READY })
+    expect(pty.ops()).toEqual([`0 open ${SEND}`, `15000 close ${SEND}`])
+  })
+
+  test('interrupt in a chat window that is not quiet goes 300 ms after the first output', async () => {
+    pty.views.add(CHAT)
+    input.opened(CHAT, 'abcd1234')
+    const spinner = setInterval(() => input.data(CHAT), 100)
+    await vi.advanceTimersByTimeAsync(100)
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(1000)
+    clearInterval(spinner)
+    expect(stop).toEqual({ at: 400, done: true, error: undefined })
+    expect(pty.ops()).toEqual([`400 write ${CHAT} "\\u001b"`])
+  })
+})
+
+describe('SessionInput attach checks', () => {
+  test('the chat path refuses an attach of an old short ID', async () => {
+    await openChat()
+    rows = [row({ shortId: 'ffff0000' })]
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(sent.error).toBe(REASON_OLD_ATTACH)
+    expect(pty.calls).toEqual([])
+  })
+
+  test('a chat PTY with no watch gives the reason that the chat window closed', async () => {
+    pty.views.add(CHAT)
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sent.error).toBe(REASON_CHAT_GONE)
+    expect(pty.calls).toEqual([])
+  })
+
+  test('the hidden attach ends between the paste and the CR', async () => {
+    quietAttach()
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(1600)
+    pty.views.delete(SEND)
+    input.ended(SEND)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(sent).toEqual({ at: 1800, done: true, error: REASON_ATTACH_GONE })
+    expect(pty.ops()).toEqual([
+      `0 open ${SEND}`,
+      `1500 write ${SEND} ${JSON.stringify(PASTE)}`,
+      `1800 close ${SEND}`,
+    ])
+  })
+
+  test('a chat window that opens during the size read gets the send and no attach opens', async () => {
+    readSize.mockImplementation(async () => {
+      pty.views.add(CHAT)
+      input.opened(CHAT, 'abcd1234')
+      input.data(CHAT)
+      return { cols: 97, rows: 41 }
+    })
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(sent.error).toBeUndefined()
+    expect(pty.ops()).toEqual([
+      `1500 write ${CHAT} ${JSON.stringify(PASTE)}`,
+      `1800 write ${CHAT} "\\r"`,
+    ])
+  })
+})
+
+describe('SessionInput left arrow key', () => {
+  test('hasLeftKey finds the left arrow key in normal and application mode', () => {
+    expect(hasLeftKey('\x1b[D')).toBe(true)
+    expect(hasLeftKey('ab\x1bODc')).toBe(true)
+    expect(hasLeftKey('\x1b[C')).toBe(false)
+    expect(hasLeftKey('D')).toBe(false)
+  })
+
+  test('a send to a chat window waits 2 s after a left arrow key', async () => {
+    await openChat()
+    input.leftKey(CHAT)
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(sent.error).toBeUndefined()
+    expect(pty.ops()).toEqual([
+      `2000 write ${CHAT} ${JSON.stringify(PASTE)}`,
+      `2300 write ${CHAT} "\\r"`,
+    ])
+  })
+
+  test('the agent view that the renderer finds in the wait stops the send', async () => {
+    await openChat()
+    input.leftKey(CHAT)
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(800)
+    input.setBlocked(CHAT, true)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(sent).toEqual({ at: 2000, done: true, error: REASON_AGENT_VIEW })
+    expect(pty.calls).toEqual([])
+  })
+
+  test('a left arrow key does not delay an interrupt', async () => {
+    await openChat()
+    input.leftKey(CHAT)
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(stop).toEqual({ at: 0, done: true, error: undefined })
   })
 })

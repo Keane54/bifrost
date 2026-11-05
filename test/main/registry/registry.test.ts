@@ -393,6 +393,7 @@ describe('rows', () => {
     r.applyAgents([bg({ status: 'waiting', waitingFor: 'permission prompt' })], 100)
     expect(r.rows()[0]).toEqual({
       box: 'red',
+      boxReason: 'prompt',
       boxSince: 100,
       cwd: '/p',
       flashing: true,
@@ -407,6 +408,27 @@ describe('rows', () => {
       status: 'waiting',
       waitingFor: 'permission prompt',
     })
+  })
+
+  test('a red row has the cause of its box, and other rows have none', () => {
+    const r = registry()
+    r.applyAgents(
+      [bg(), bg({ sessionId: 's2', startedAt: 2 }), bg({ sessionId: 's3', startedAt: 3 })],
+      0,
+    )
+    r.applyEvents([ev('Stop', 's1', 0), ev('PermissionRequest', 's2', 0)], 0)
+    r.applyEvents([ev('StopFailure', 's3', 0)], 0)
+    expect(r.rows().map(row => [row.box, row.boxReason])).toEqual([
+      ['yellow', undefined],
+      ['red', 'prompt'],
+      ['red', 'error'],
+    ])
+    expect(Object.hasOwn(r.rows()[0], 'boxReason')).toBe(false)
+    r.tick(600_000)
+    expect(r.rows()[0]).toMatchObject({ box: 'red', boxReason: 'escalated' })
+    r.applyEvents([ev('UserPromptSubmit', 's1', 700_000)], 700_000)
+    expect(r.rows()[0].box).toBe('none')
+    expect(Object.hasOwn(r.rows()[0], 'boxReason')).toBe(false)
   })
 
   test('the row keeps the last assistant message', () => {

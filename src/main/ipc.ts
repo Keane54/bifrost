@@ -11,9 +11,10 @@ import {
 } from 'electron'
 import { isPriority } from '../shared/priority'
 import type { ClaudeVersion, DisplayMode } from '../shared/types'
+import { CHAT_VIEW } from '../shared/view-id'
 import { createActions } from './actions/actions'
 import { findProjectApps } from './actions/project-apps'
-import { CHAT_VIEW, SessionInput } from './actions/session-input'
+import { hasLeftKey, SessionInput } from './actions/session-input'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
@@ -29,7 +30,7 @@ import {
 } from './integration/integration'
 import { createQuietMarker } from './integration/quiet-marker'
 import { createSerialRunner } from './integration/serial'
-import { canAttach } from './pty/can-attach'
+import { checkChatOpen, REFUSED_NOT_CHAT } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
 import { PtyManager } from './pty/pty-manager'
@@ -298,19 +299,6 @@ export function registerIpc(): void {
   // Only the main process uses send views (D1).
   const isChatView = (viewId: unknown): viewId is string =>
     typeof viewId === 'string' && CHAT_VIEW.test(viewId)
-  // Open a PTY only for an attach to an owned session that is not parked.
-  // The attach must be for the session of the chat view, so input to the view reaches that session.
-  // Return the reason of a refusal, or null.
-  const refuseAttach = async (sessionId: string, args: string[]): Promise<string | null> => {
-    const rows = (await service).rows()
-    if (!canAttach(rows, args)) {
-      return 'refused: not an attach to an owned session that is not parked'
-    }
-    if (rows.find(r => r.sessionId === sessionId)?.shortId !== args[1]) {
-      return 'refused: the attach is not for the session of the chat view'
-    }
-    return null
-  }
   ipcMain.handle(
     'pty:open',
     async (
@@ -319,32 +307,34 @@ export function registerIpc(): void {
       args: string[],
       opts: { cwd: string; cols: number; rows: number },
     ) => {
-      if (!isChatView(viewId)) throw new Error('refused: not a chat view')
-      // A chat view ID is "chat:" and the session ID.
-      const sessionId = viewId.slice('chat:'.length)
+      if (!isChatView(viewId)) throw new Error(REFUSED_NOT_CHAT)
       // Get the page token before the first wait.
       const token = page.token()
       const manager = await getManager()
       if (!manager) throw new Error('claude not found')
-      const refused = await refuseAttach(sessionId, args)
-      if (refused) throw new Error(refused)
+      // Open a PTY only for an attach to an owned session that is not parked.
+      // The attach must be for the session of the chat view.
+      const first = checkChatOpen((await service).rows(), viewId, args)
+      if (!first.ok) throw new Error(first.reason)
       // One attach serves each session. Wait until a hidden send of this session ends (D1).
-      await input.idle(sessionId)
+      await input.idle(first.sessionId)
       // The rows can change during the wait. Check them again.
-      const refusedLater = await refuseAttach(sessionId, args)
-      if (refusedLater) throw new Error(refusedLater)
+      const again = checkChatOpen((await service).rows(), viewId, args)
+      if (!again.ok) throw new Error(again.reason)
       // The page can end during the waits above. Then no page owns the PTY, so do not open it.
       if (!isLivePage(e.sender, token)) {
         throw new Error('refused: the page that asked for the PTY is gone')
       }
       const pid = manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
-      input.opened(viewId)
+      input.opened(viewId, args[1])
       sizeWatcher.poke(viewId)
       return pid
     },
   )
   ipcMain.handle('pty:write', async (_e, viewId: unknown, data: unknown) => {
     if (!isChatView(viewId) || typeof data !== 'string') return false
+    // The left arrow key can open the agent view. A send to this view then waits (spec 8.5).
+    if (hasLeftKey(data)) input.leftKey(viewId)
     const manager = await getManager()
     return manager ? manager.write(viewId, data) : false
   })

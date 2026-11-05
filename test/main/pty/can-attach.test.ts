@@ -1,5 +1,11 @@
-import { expect, test } from 'vitest'
-import { canAttach } from '../../../src/main/pty/can-attach'
+import { describe, expect, test } from 'vitest'
+import {
+  canAttach,
+  checkChatOpen,
+  REFUSED_NOT_ATTACH,
+  REFUSED_NOT_CHAT,
+  REFUSED_OTHER_SESSION,
+} from '../../../src/main/pty/can-attach'
 import type { SessionRow } from '../../../src/shared/types'
 
 const row = (o: Partial<SessionRow> = {}): SessionRow => ({
@@ -48,4 +54,57 @@ test('canAttach refuses args that are not an attach to a short id', () => {
   expect(canAttach(rows, ['attach', 7] as unknown as string[])).toBe(false)
   expect(canAttach(rows, 'attach aa' as unknown as string[])).toBe(false)
   expect(canAttach(rows, null as unknown as string[])).toBe(false)
+})
+
+describe('checkChatOpen', () => {
+  const S = 'f3a9c2d1-4b5e-4c6d-8e7f-0a1b2c3d4e5f'
+  const T = 'a1b2c3d4-0000-4000-8000-000000000000'
+  const rows = [
+    row({ sessionId: S, shortId: 'abcd1234' }),
+    row({ sessionId: T, shortId: 'ef567890' }),
+  ]
+
+  test('checkChatOpen allows a chat view with the attach of its own session', () => {
+    expect(checkChatOpen(rows, `chat:${S}`, ['attach', 'abcd1234'])).toEqual({
+      ok: true,
+      sessionId: S,
+    })
+  })
+
+  test('checkChatOpen refuses a view that is not a chat view', () => {
+    for (const viewId of [`send:${S}`, 'chat:abc', `chat:${S}x`, S, 7, null]) {
+      expect(checkChatOpen(rows, viewId, ['attach', 'abcd1234'])).toEqual({
+        ok: false,
+        reason: REFUSED_NOT_CHAT,
+      })
+    }
+  })
+
+  test('checkChatOpen refuses the short ID of another session', () => {
+    expect(checkChatOpen(rows, `chat:${S}`, ['attach', 'ef567890'])).toEqual({
+      ok: false,
+      reason: REFUSED_OTHER_SESSION,
+    })
+  })
+
+  test('checkChatOpen refuses an upper-case view ID, because no row has that session ID', () => {
+    expect(checkChatOpen(rows, `chat:${S.toUpperCase()}`, ['attach', 'abcd1234'])).toEqual({
+      ok: false,
+      reason: REFUSED_OTHER_SESSION,
+    })
+  })
+
+  test('checkChatOpen refuses a parked or external row and args that are not an attach', () => {
+    for (const o of [{ state: 'parked' as const }, { kind: 'external' as const }]) {
+      const changed = [row({ sessionId: S, shortId: 'abcd1234', ...o })]
+      expect(checkChatOpen(changed, `chat:${S}`, ['attach', 'abcd1234'])).toEqual({
+        ok: false,
+        reason: REFUSED_NOT_ATTACH,
+      })
+    }
+    expect(checkChatOpen(rows, `chat:${S}`, ['--bg'])).toEqual({
+      ok: false,
+      reason: REFUSED_NOT_ATTACH,
+    })
+  })
 })

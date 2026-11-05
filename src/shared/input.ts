@@ -1,5 +1,6 @@
 // The text that Bifrost types into a session, and the checks on it (spec 8.4).
 // The main process runs the plan. The renderer uses the same checks to show a reason early.
+import type { SessionRow } from './types'
 
 export const PASTE_START = '\x1b[200~'
 export const PASTE_END = '\x1b[201~'
@@ -46,10 +47,12 @@ export function cleanText(text: string): string {
 
 // Make the steps that send the text. Each plan writes the text first, then CR.
 // No plan has only a CR, so Bifrost never sends CR to an empty prompt.
+// The length limit applies to the text as the user typed it, before the clean-up.
+// So the send box can count the characters itself, and a large text costs no clean-up time.
 export function planText(text: string, form: SlashForm = SLASH_FORM): InputPlan {
+  if (text.length > MAX_TEXT) return { ok: false, reason: REASON_TOO_LONG }
   const t = cleanText(text).trim()
   if (t === '') return { ok: false, reason: REASON_EMPTY }
-  if (t.length > MAX_TEXT) return { ok: false, reason: REASON_TOO_LONG }
   const slash = t.startsWith('/')
   if (slash && t.includes('\n')) return { ok: false, reason: REASON_SLASH_LINES }
   if (slash && form === 'typed') {
@@ -82,10 +85,20 @@ export const INTERRUPT_STEPS: readonly InputStep[] = Object.freeze([
 export function renameText(
   name: string,
 ): { ok: true; text: string } | { ok: false; reason: string } {
+  // The 64 character limit applies to the name after the clean-up.
+  // A name that is longer than MAX_TEXT gets no clean-up.
+  if (name.length > MAX_TEXT) return { ok: false, reason: REASON_NAME_LONG }
   const n = cleanText(name).replace(/\s+/g, ' ').trim()
   if (n === '') return { ok: false, reason: REASON_NO_NAME }
   if (n.length > MAX_RENAME) return { ok: false, reason: REASON_NAME_LONG }
   return { ok: true, text: `/rename ${n}` }
+}
+
+// A red box of a prompt blocks Send message, Run slash command and Rename (spec 8.4).
+// Typed text can answer the prompt by accident. An old yellow box and an error box do not block.
+// A red box with no known cause blocks, because it can be a prompt.
+export function promptBlocks(row: Pick<SessionRow, 'box' | 'boxReason'>): boolean {
+  return row.box === 'red' && row.boxReason !== 'escalated' && row.boxReason !== 'error'
 }
 
 // Enter sends the text. Shift+Enter adds a line break.
