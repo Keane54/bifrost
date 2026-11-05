@@ -4,7 +4,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { childEnv } from '../child-env'
 
-export type ExecResult = { code: number; stdout: string; stderr: string }
+// timedOut is true only when the timeout stopped the program.
+export type ExecResult = { code: number; stdout: string; stderr: string; timedOut?: boolean }
 export type ExecFn = (
   file: string,
   args: string[],
@@ -41,7 +42,10 @@ export const execFile: ExecFn = (file, args, opts) =>
           return
         }
         // No exit code: the program did not start, or a signal ended it.
-        resolve({ code: 1, stderr: stderr || error.message, stdout })
+        // Node sets killed when it sent the kill signal at the timeout.
+        const result: ExecResult = { code: 1, stderr: stderr || error.message, stdout }
+        if ((error as { killed?: boolean }).killed === true) result.timedOut = true
+        resolve(result)
       },
     )
   })

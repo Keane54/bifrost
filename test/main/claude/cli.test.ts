@@ -11,6 +11,13 @@ test('execFile stops a program that ignores SIGTERM at the timeout', async () =>
   })
   expect(Date.now() - start).toBeLessThan(1500)
   expect(result.code).not.toBe(0)
+  expect(result.timedOut).toBe(true)
+})
+
+test('execFile does not set timedOut for a program that exits with an error', async () => {
+  const result = await execFile('/bin/sh', ['-c', 'exit 3'])
+  expect(result.code).toBe(3)
+  expect(result.timedOut).toBeUndefined()
 })
 
 test('createRunClaude uses the base env without the removed variables', async () => {

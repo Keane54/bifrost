@@ -50,9 +50,16 @@ export function parseLoginEnvOutput(stdout: string): Record<string, string> | nu
 // The first claude call can start the shared background service.
 // Each background session gets the env of that service.
 // On any failure, return a copy of the fallback env.
+// Then log one line with the reason and the time that the shell took (review M9).
+// The default log is console.warn.
 export async function loadLoginEnv(
   exec: ExecFn,
-  opts: { execPath: string; fallback: NodeJS.ProcessEnv; shell?: string },
+  opts: {
+    execPath: string
+    fallback: NodeJS.ProcessEnv
+    shell?: string
+    log?: (message: string) => void
+  },
 ): Promise<Record<string, string>> {
   const shell = opts.shell ?? opts.fallback.SHELL ?? '/bin/zsh'
   const env: Record<string, string> = {}
@@ -62,9 +69,20 @@ export async function loadLoginEnv(
   }
   env.BIFROST_NODE = opts.execPath
   env.ELECTRON_RUN_AS_NODE = '1'
+  const start = performance.now()
   const result = await exec(shell, ['-lic', SCRIPT], { env, timeoutMs: SHELL_TIMEOUT_MS })
+  const ms = Math.round(performance.now() - start)
   const parsed = result.code === 0 ? parseLoginEnvOutput(result.stdout) : null
-  if (!parsed) return stringValues(opts.fallback)
+  if (!parsed) {
+    const reason = result.timedOut
+      ? `timeout after ${SHELL_TIMEOUT_MS} ms`
+      : result.code !== 0
+        ? `exit code ${result.code}`
+        : 'the output did not parse'
+    const log = opts.log ?? ((message: string) => console.warn(message))
+    log(`Bifrost uses its own env, because the login shell failed (${reason}). Time: ${ms} ms.`)
+    return stringValues(opts.fallback)
+  }
   for (const key of HELPER_KEYS) delete parsed[key]
   return parsed
 }

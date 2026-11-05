@@ -32,9 +32,41 @@ test('loadLoginEnv runs an interactive login shell with a small env', async () =
 
 test('loadLoginEnv falls back to its own env when the shell fails', async () => {
   const exec = vi.fn().mockResolvedValue({ code: 1, stderr: 'x', stdout: '' })
-  expect(await loadLoginEnv(exec, { execPath: '/E', fallback: { PATH: '/fb' } })).toEqual({
+  const log = vi.fn()
+  expect(await loadLoginEnv(exec, { execPath: '/E', fallback: { PATH: '/fb' }, log })).toEqual({
     PATH: '/fb',
   })
+  expect(log).toHaveBeenCalledTimes(1)
+  expect(log.mock.calls[0][0]).toMatch(/login shell failed \(exit code 1\)\. Time: \d+ ms\.$/)
+})
+
+test('loadLoginEnv logs a timeout of the shell', async () => {
+  const exec = vi.fn().mockResolvedValue({ code: 1, stderr: '', stdout: '', timedOut: true })
+  const log = vi.fn()
+  await loadLoginEnv(exec, { execPath: '/E', fallback: { PATH: '/fb' }, log })
+  expect(log).toHaveBeenCalledTimes(1)
+  expect(log.mock.calls[0][0]).toMatch(/\(timeout after 5000 ms\)\. Time: \d+ ms\.$/)
+})
+
+test('loadLoginEnv logs output that does not parse', async () => {
+  const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: 'banner only' })
+  const log = vi.fn()
+  await loadLoginEnv(exec, { execPath: '/E', fallback: { PATH: '/fb' }, log })
+  expect(log).toHaveBeenCalledTimes(1)
+  expect(log.mock.calls[0][0]).toMatch(/\(the output did not parse\)\. Time: \d+ ms\.$/)
+})
+
+test('loadLoginEnv logs nothing when the shell gives a good env', async () => {
+  const exec = vi.fn().mockResolvedValue({
+    code: 0,
+    stderr: '',
+    stdout: `${ENV_MARKER}{"PATH":"/login"}${ENV_MARKER}`,
+  })
+  const log = vi.fn()
+  expect(await loadLoginEnv(exec, { execPath: '/E', fallback: {}, log })).toEqual({
+    PATH: '/login',
+  })
+  expect(log).not.toHaveBeenCalled()
 })
 
 test('parseLoginEnvOutput returns null for a value that is not a string or for no PATH', () => {
@@ -46,6 +78,10 @@ test('parseLoginEnvOutput returns null for a value that is not a string or for n
 test('loadLoginEnv falls back when the shell output has no markers', async () => {
   const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: 'banner only' })
   expect(
-    await loadLoginEnv(exec, { execPath: '/E', fallback: { A: undefined, PATH: '/fb' } }),
+    await loadLoginEnv(exec, {
+      execPath: '/E',
+      fallback: { A: undefined, PATH: '/fb' },
+      log: () => {},
+    }),
   ).toEqual({ PATH: '/fb' })
 })
