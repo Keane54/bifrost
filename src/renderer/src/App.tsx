@@ -1,8 +1,13 @@
-import DebugView from './debug/DebugView'
+import { RegistryProvider } from './data/registry'
+import WindowManager from './wm/WindowManager'
 
-// The app shows the debug view until the real panels come in M2 and M3.
+// The app: one registry subscription, and the window manager with all panels.
 function App(): React.JSX.Element {
-  return <DebugView />
+  return (
+    <RegistryProvider>
+      <WindowManager />
+    </RegistryProvider>
+  )
 }
 
 export default App

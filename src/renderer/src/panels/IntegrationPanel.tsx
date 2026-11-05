@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { InstallPreview, IntegrationStatus } from '../../../shared/types'
+import type { ClaudeVersion, InstallPreview, IntegrationStatus } from '../../../shared/types'
 
 function describe(status: IntegrationStatus): string {
   if (status.installed) return 'Installed.'
@@ -15,10 +15,40 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-const BUTTON = 'mt-1 mr-2 mb-1'
+const BUTTON =
+  'mt-1 mr-2 mb-1 rounded border border-panel-edge px-2 py-0.5 hover:bg-title disabled:opacity-40'
+
+// The version of Claude Code, and a warning when it is below the minimum.
+function VersionLine(): React.JSX.Element {
+  const [version, setVersion] = useState<ClaudeVersion | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    window.bifrost
+      .claudeVersion()
+      .then(v => active && setVersion(v))
+      .catch(err => active && setError(message(err)))
+    return () => {
+      active = false
+    }
+  }, [])
+
+  return (
+    <div className='mb-2'>
+      Claude Code version:{' '}
+      {version ? (version.version ?? 'unknown') : error ? `error (${error})` : 'loading'}
+      {version && !version.ok && (
+        <span className='text-box-yellow'>
+          {' '}
+          Warning: this version is below the minimum {version.minimum}.
+        </span>
+      )}
+    </div>
+  )
+}
 
 // The controls for the Claude Code integration.
-
 export default function IntegrationPanel(): React.JSX.Element {
   const [status, setStatus] = useState<IntegrationStatus | null>(null)
   const [preview, setPreview] = useState<InstallPreview | null>(null)
@@ -70,7 +100,8 @@ export default function IntegrationPanel(): React.JSX.Element {
     })
 
   return (
-    <div className='rounded border border-panel-edge px-3 py-2'>
+    <div className='h-full select-text overflow-auto p-3 font-mono text-[13px] leading-[1.4]'>
+      <VersionLine />
       <div>{status ? describe(status) : 'Status: loading.'}</div>
       {status?.error && <div className='whitespace-pre-wrap text-box-red'>{status.error}</div>}
       <div>
