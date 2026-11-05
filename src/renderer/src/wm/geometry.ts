@@ -34,6 +34,11 @@ function clamp(value: number, low: number, high: number): number {
   return Math.min(Math.max(value, low), high)
 }
 
+// A delta that is not a finite number counts as 0.
+function finite(n: number): number {
+  return Number.isFinite(n) ? n : 0
+}
+
 function round(r: Rect): Rect {
   return { h: Math.round(r.h), w: Math.round(r.w), x: Math.round(r.x), y: Math.round(r.y) }
 }
@@ -98,30 +103,31 @@ export function moveRect(
   bounds: Size,
   snap: number = SNAP_DISTANCE,
 ): Result {
-  const raw = { ...start, x: start.x + dx, y: start.y + dy }
-  const guides: Guide[] = []
+  const raw = { ...start, x: start.x + finite(dx), y: start.y + finite(dy) }
   let { x, y } = raw
 
   const hit = closest([raw.x, raw.x + raw.w], snapLines('x', raw, others, bounds, snap), snap)
-  if (hit) {
-    x = hit.edge === 0 ? hit.line : hit.line - raw.w
-    guides.push({ at: hit.line, axis: 'x' })
-  }
+  if (hit) x = hit.edge === 0 ? hit.line : hit.line - raw.w
   const vit = closest([raw.y, raw.y + raw.h], snapLines('y', raw, others, bounds, snap), snap)
-  if (vit) {
-    y = vit.edge === 0 ? vit.line : vit.line - raw.h
-    guides.push({ at: vit.line, axis: 'y' })
-  }
+  if (vit) y = vit.edge === 0 ? vit.line : vit.line - raw.h
 
-  return {
-    guides,
-    rect: round({
-      h: raw.h,
-      w: raw.w,
-      x: clamp(x, 0, Math.max(0, bounds.w - raw.w)),
-      y: clamp(y, 0, Math.max(0, bounds.h - raw.h)),
-    }),
+  const rect = round({
+    h: raw.h,
+    w: raw.w,
+    x: clamp(x, 0, Math.max(0, bounds.w - raw.w)),
+    y: clamp(y, 0, Math.max(0, bounds.h - raw.h)),
+  })
+  // A guide shows only when the final edge lies on the guide line, after the clamp.
+  const guides: Guide[] = []
+  if (hit) {
+    const at = Math.round(hit.line)
+    if ((hit.edge === 0 ? rect.x : rect.x + rect.w) === at) guides.push({ at, axis: 'x' })
   }
+  if (vit) {
+    const at = Math.round(vit.line)
+    if ((vit.edge === 0 ? rect.y : rect.y + rect.h) === at) guides.push({ at, axis: 'y' })
+  }
+  return { guides, rect }
 }
 
 export function resizeRect(
@@ -138,10 +144,15 @@ export function resizeRect(
   let right = start.x + start.w
   let top = start.y
   let bottom = start.y + start.h
-  if (edge.includes('w')) left += dx
-  if (edge.includes('e')) right += dx
-  if (edge.includes('n')) top += dy
-  if (edge.includes('s')) bottom += dy
+  if (edge.includes('w')) left += finite(dx)
+  if (edge.includes('e')) right += finite(dx)
+  if (edge.includes('n')) top += finite(dy)
+  if (edge.includes('s')) bottom += finite(dy)
+  // Round the four edges first. Then w and h come from whole edges, so a fixed edge never moves.
+  left = Math.round(left)
+  right = Math.round(right)
+  top = Math.round(top)
+  bottom = Math.round(bottom)
 
   // The moved rect, used to find the other rects that overlap it.
   const raw = {
@@ -154,12 +165,15 @@ export function resizeRect(
   const xLines = snapLines('x', raw, others, bounds, snap)
   const yLines = snapLines('y', raw, others, bounds, snap)
 
+  // Rule for a start rect closer than min to the bounds: the limit low wins over the limit high,
+  // so the minimum size holds and the edge can pass the bounds. The input is a clamped rect,
+  // so this case does not occur in normal use.
   // Snap one moving edge, apply the limits, and keep the guide only if the edge stays on it.
   function place(value: number, lines: number[], low: number, high: number, axis: 'x' | 'y') {
     const hit = closest([value], lines, snap)
     const snapped = hit ? hit.line : value
     const result = clamp(snapped, low, Math.max(low, high))
-    if (hit && result === snapped) guides.push({ at: snapped, axis })
+    if (hit && result === snapped) guides.push({ at: Math.round(snapped), axis })
     return result
   }
 
@@ -174,7 +188,12 @@ export function resizeRect(
 
   return {
     guides,
-    rect: round({ h: bottom - top, w: right - left, x: left, y: top }),
+    rect: {
+      h: Math.round(bottom) - Math.round(top),
+      w: Math.round(right) - Math.round(left),
+      x: Math.round(left),
+      y: Math.round(top),
+    },
   }
 }
 

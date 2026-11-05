@@ -149,7 +149,98 @@ describe('resizeRect', () => {
   })
 })
 
+describe('fixes after review', () => {
+  const start = { h: 200, w: 300, x: 100, y: 100 }
+
+  it('keeps the fixed edges with a fractional delta', () => {
+    const w = resizeRect(start, 'w', 0.5, 0, [], bounds).rect
+    expect(w.x + w.w).toBe(400)
+    const n = resizeRect(start, 'n', 0, 0.5, [], bounds).rect
+    expect(n.y + n.h).toBe(300)
+    const nw = resizeRect(start, 'nw', 0.5, 0.5, [], bounds).rect
+    expect(nw.x + nw.w).toBe(400)
+    expect(nw.y + nw.h).toBe(300)
+  })
+
+  it('moveRect gives no guide when the clamp moves the rect off the line', () => {
+    // The right edge snaps to the other left edge at 1207. The clamp then moves it to 1200.
+    const other = { h: 200, w: 100, x: 1207, y: 100 }
+    const wide = { h: 200, w: 300, x: 910, y: 100 }
+    const result = moveRect(wide, 0, 0, [other], bounds)
+    expect(result.rect.x).toBe(900)
+    expect(result.guides.filter(g => g.axis === 'x')).toEqual([])
+  })
+
+  it('counts a non-finite delta as 0', () => {
+    expect(moveRect(start, Number.NaN, Number.POSITIVE_INFINITY, [], bounds).rect).toEqual(start)
+    expect(resizeRect(start, 'se', Number.NaN, Number.NEGATIVE_INFINITY, [], bounds).rect).toEqual(
+      start,
+    )
+  })
+
+  it('resizeRect snaps the y axis to another rect', () => {
+    const other = { h: 100, w: 200, x: 100, y: 600 }
+    const result = resizeRect(start, 's', 0, 297, [other], bounds)
+    expect(result.rect.h).toBe(500)
+    expect(result.guides).toEqual([{ at: 600, axis: 'y' }])
+  })
+
+  it('resizeRect nw snaps both edges', () => {
+    const other = { h: 100, w: 50, x: 40, y: 40 }
+    const result = resizeRect(start, 'nw', -56, -56, [other], bounds)
+    expect(result.rect).toEqual({ h: 260, w: 360, x: 40, y: 40 })
+    expect(result.guides).toEqual([
+      { at: 40, axis: 'x' },
+      { at: 40, axis: 'y' },
+    ])
+  })
+
+  it('resizeRect ne snaps both edges', () => {
+    const other = { h: 100, w: 100, x: 500, y: 40 }
+    const result = resizeRect(start, 'ne', 97, -57, [other], bounds)
+    expect(result.rect).toEqual({ h: 260, w: 400, x: 100, y: 40 })
+    expect(result.guides).toEqual([
+      { at: 500, axis: 'x' },
+      { at: 40, axis: 'y' },
+    ])
+  })
+
+  it('snaps at an overlap of exactly snap pixels', () => {
+    // The moved rect ends at y 300. The other starts at y 308, exactly 8 away.
+    const other = { h: 100, w: 100, x: 405, y: 308 }
+    const result = moveRect({ h: 200, w: 300, x: 100, y: 100 }, 305, 0, [other], bounds)
+    expect(result.rect.x).toBe(405)
+    const far = moveRect({ h: 200, w: 300, x: 100, y: 100 }, 305, 0, [{ ...other, y: 309 }], bounds)
+    expect(far.rect.x).toBe(405)
+    expect(far.guides).toEqual([])
+  })
+
+  it('rounds a guide from a fractional rect', () => {
+    const other = { h: 200, w: 100.4, x: 0, y: 100 }
+    const result = moveRect({ h: 200, w: 300, x: 105, y: 100 }, 0, 0, [other], bounds)
+    expect(result.guides).toContainEqual({ at: 100, axis: 'x' })
+  })
+})
+
 describe('clampRect', () => {
+  it('grows a rect below min up to min', () => {
+    expect(clampRect({ h: 10, w: 10, x: 50, y: 50 }, bounds)).toEqual({
+      h: 120,
+      w: 200,
+      x: 50,
+      y: 50,
+    })
+  })
+
+  it('uses the bounds when they are below min', () => {
+    expect(clampRect({ h: 100, w: 300, x: 50, y: 50 }, { h: 100, w: 150 })).toEqual({
+      h: 100,
+      w: 150,
+      x: 0,
+      y: 0,
+    })
+  })
+
   it('shrinks a rect larger than the bounds', () => {
     expect(clampRect({ h: 1500, w: 2000, x: 0, y: 0 }, bounds)).toEqual({
       h: 800,
