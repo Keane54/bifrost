@@ -162,6 +162,16 @@ function parseSort(value: unknown): SortSpec {
   return { column: value.column, desc: value.desc === true }
 }
 
+// A hidden column never sorts, because the sort column shows its arrow (spec 8.3).
+// When the sort column is hidden, the tab sorts by Name ascending if Name is visible.
+// Else it sorts by the first visible column after kind, ascending. The kind column is always
+// visible, so it is the last choice. A tab with a visible sort column keeps its object.
+function withVisibleSort(t: OverviewTab): OverviewTab {
+  if (t.columns.includes(t.sort.column)) return t
+  const column = t.columns.includes('name') ? 'name' : (t.columns[1] ?? 'kind')
+  return { ...t, sort: { column, desc: false } }
+}
+
 function parseTab(value: unknown, index: number): OverviewTab | null {
   if (!isObject(value) || typeof value.id !== 'string' || !TAB_ID.test(value.id)) return null
   if (typeof value.name !== 'string') return null
@@ -177,7 +187,7 @@ function parseTab(value: unknown, index: number): OverviewTab | null {
   const columns = parseColumns(value.columns)
   // Default columns for a damaged list keep the default order, as in a new tab.
   const order = parseOrder(value.order, Array.isArray(value.columns) ? columns : [])
-  return {
+  return withVisibleSort({
     color,
     columns: order.filter(id => columns.includes(id)),
     filter: parseFilter(value.filter),
@@ -186,7 +196,7 @@ function parseTab(value: unknown, index: number): OverviewTab | null {
     order,
     sort: parseSort(value.sort),
     widths: parseWidths(value.widths),
-  }
+  })
 }
 
 function tabNumber(id: string): number {
@@ -320,12 +330,14 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
       const { column } = action
       if (column === 'kind') return config
       // A column that you turn on shows at its place in the order.
-      return withTab(config, action.tabId, t => ({
-        ...t,
-        columns: t.columns.includes(column)
-          ? t.columns.filter(c => c !== column)
-          : t.order.filter(c => c === column || t.columns.includes(c)),
-      }))
+      return withTab(config, action.tabId, t =>
+        withVisibleSort({
+          ...t,
+          columns: t.columns.includes(column)
+            ? t.columns.filter(c => c !== column)
+            : t.order.filter(c => c === column || t.columns.includes(c)),
+        }),
+      )
     }
     case 'moveColumn': {
       // The move changes the order of all columns. A hidden column can move too.
@@ -342,14 +354,20 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
       })
     }
     case 'resetTab':
-      // The widths and the sort do not change.
+      // The widths do not change. The sort changes only when the reset hides the sort column.
       return withTab(config, action.tabId, t => {
         const filter = defaultFilter(t.id)
         const same =
           sameList(t.columns, DEFAULT_COLUMNS) &&
           sameList(t.order, COLUMN_IDS) &&
           sameFilter(t.filter, filter)
-        return same ? t : { ...t, columns: [...DEFAULT_COLUMNS], filter, order: [...COLUMN_IDS] }
+        if (same) return t
+        return withVisibleSort({
+          ...t,
+          columns: [...DEFAULT_COLUMNS],
+          filter,
+          order: [...COLUMN_IDS],
+        })
       })
     case 'setWidths':
       return withTab(config, action.tabId, t => {
@@ -363,13 +381,17 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
         return same ? t : { ...t, widths }
       })
     case 'sortBy':
-      return withTab(config, action.tabId, t => ({
-        ...t,
-        sort:
-          t.sort.column === action.column
-            ? { column: action.column, desc: !t.sort.desc }
-            : { column: action.column, desc: DESC_FIRST.has(action.column) },
-      }))
+      // A hidden column never sorts.
+      return withTab(config, action.tabId, t => {
+        if (!t.columns.includes(action.column)) return t
+        return {
+          ...t,
+          sort:
+            t.sort.column === action.column
+              ? { column: action.column, desc: !t.sort.desc }
+              : { column: action.column, desc: DESC_FIRST.has(action.column) },
+        }
+      })
     case 'rename': {
       const name = action.name.trim()
       if (name.length < 1 || name.length > MAX_SET_NAME || name === config.name) return config

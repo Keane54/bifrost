@@ -8,7 +8,9 @@ import {
 } from '../../../src/renderer/src/overview/config'
 import {
   columnRows,
+  DROP_MARGIN,
   dropTarget,
+  inDropArea,
   moveColumn,
   resetTab,
   setBoxOnly,
@@ -110,7 +112,7 @@ describe('overview settings model', () => {
   })
 
   it('resetTab gives the tab its default columns and filter, and keeps the widths and the sort', () => {
-    let c = overviewReducer(base(), { column: 'cost', tabId: 't2', type: 'sortBy' })
+    let c = overviewReducer(base(), { column: 'activity', tabId: 't2', type: 'sortBy' })
     c = overviewReducer(c, { tabId: 't2', type: 'setWidths', widths: { name: 200 } })
     const before = tabOf(c, 't2')
     let changed = moveColumn(toggleColumn(c, 't2', 'branch'), 't2', 'activity', 'name')
@@ -121,7 +123,7 @@ describe('overview settings model', () => {
     )
     const reset = resetTab(changed, 't2')
     expect(tabOf(reset, 't2')).toEqual(before)
-    expect(tabOf(reset, 't2').sort).toEqual({ column: 'cost', desc: true })
+    expect(tabOf(reset, 't2').sort).toEqual({ column: 'activity', desc: true })
     expect(tabOf(reset, 't2').widths).toEqual({ name: 200 })
     expect(reset.tabs[0]).toBe(changed.tabs[0])
   })
@@ -162,6 +164,24 @@ describe('overview settings model', () => {
     expect(showKind(c, 't1', 'owned', true)).toBe(c)
     expect(setBoxOnly(c, 't2', true)).toBe(c)
     expect(showState(c, 'nope', 'parked', true)).toBe(c)
+  })
+})
+
+describe('inDropArea', () => {
+  const list = { h: 200, w: 300, x: 100, y: 50 }
+
+  it('accepts a release on the list and up to DROP_MARGIN px outside it', () => {
+    expect(DROP_MARGIN).toBe(24)
+    expect(inDropArea(list, { x: 250, y: 150 })).toBe(true)
+    expect(inDropArea(list, { x: 100 - 24, y: 50 - 24 })).toBe(true)
+    expect(inDropArea(list, { x: 400 + 24, y: 250 + 24 })).toBe(true)
+  })
+
+  it('refuses a release more than DROP_MARGIN px outside the list', () => {
+    expect(inDropArea(list, { x: 100 - 25, y: 150 })).toBe(false)
+    expect(inDropArea(list, { x: 400 + 25, y: 150 })).toBe(false)
+    expect(inDropArea(list, { x: 250, y: 50 - 25 })).toBe(false)
+    expect(inDropArea(list, { x: 250, y: 250 + 25 })).toBe(false)
   })
 })
 

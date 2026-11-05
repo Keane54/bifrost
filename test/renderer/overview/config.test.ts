@@ -190,13 +190,73 @@ describe('overview config', () => {
   })
 
   it('sortBy flips the direction of the same column and starts Cost descending', () => {
-    const c = base()
+    const c = overviewReducer(base(), { column: 'cost', tabId: 't1', type: 'toggleColumn' })
     const flip = overviewReducer(c, { column: 'name', tabId: 't1', type: 'sortBy' })
     expect(flip.tabs[0]?.sort).toEqual({ column: 'name', desc: true })
     const cost = overviewReducer(c, { column: 'cost', tabId: 't1', type: 'sortBy' })
     expect(cost.tabs[0]?.sort).toEqual({ column: 'cost', desc: true })
     const state = overviewReducer(c, { column: 'state', tabId: 't1', type: 'sortBy' })
     expect(state.tabs[0]?.sort).toEqual({ column: 'state', desc: false })
+  })
+
+  it('sortBy refuses a hidden column', () => {
+    const c = base()
+    expect(overviewReducer(c, { column: 'cost', tabId: 't1', type: 'sortBy' })).toBe(c)
+  })
+
+  it('a hidden column never sorts: hiding the sort column sorts by Name ascending', () => {
+    let c = overviewReducer(base(), { column: 'state', tabId: 't1', type: 'sortBy' })
+    c = overviewReducer(c, { column: 'state', tabId: 't1', type: 'sortBy' })
+    expect(c.tabs[0]?.sort).toEqual({ column: 'state', desc: true })
+    const hidden = overviewReducer(c, { column: 'state', tabId: 't1', type: 'toggleColumn' })
+    expect(hidden.tabs[0]?.sort).toEqual({ column: 'name', desc: false })
+    // A column that is not the sort column does not change the sort.
+    const other = overviewReducer(c, { column: 'project', tabId: 't1', type: 'toggleColumn' })
+    expect(other.tabs[0]?.sort).toEqual({ column: 'state', desc: true })
+  })
+
+  it('hiding Name while it is the sort column sorts by the first visible column after kind', () => {
+    const c = overviewReducer(base(), { column: 'name', tabId: 't1', type: 'sortBy' })
+    expect(c.tabs[0]?.sort).toEqual({ column: 'name', desc: true })
+    const hidden = overviewReducer(c, { column: 'name', tabId: 't1', type: 'toggleColumn' })
+    expect(hidden.tabs[0]?.columns).toEqual(['kind', 'state', 'project', 'activity'])
+    expect(hidden.tabs[0]?.sort).toEqual({ column: 'state', desc: false })
+  })
+
+  it('a reset that hides the sort column sorts by Name ascending', () => {
+    let c = overviewReducer(base(), { column: 'cost', tabId: 't1', type: 'toggleColumn' })
+    c = overviewReducer(c, { column: 'cost', tabId: 't1', type: 'sortBy' })
+    expect(c.tabs[0]?.sort).toEqual({ column: 'cost', desc: true })
+    const reset = overviewReducer(c, { tabId: 't1', type: 'resetTab' })
+    expect(reset.tabs[0]?.columns).not.toContain('cost')
+    expect(reset.tabs[0]?.sort).toEqual({ column: 'name', desc: false })
+  })
+
+  it('parseOverviewConfig moves the sort of a saved tab off a hidden column', () => {
+    const c = parseOverviewConfig({
+      tabs: [
+        {
+          columns: ['kind', 'name', 'state'],
+          id: 't1',
+          name: 'A',
+          sort: { column: 'cost', desc: true },
+        },
+        {
+          columns: ['kind', 'state', 'project'],
+          id: 't2',
+          name: 'B',
+          sort: { column: 'name', desc: true },
+        },
+        { columns: ['kind'], id: 't3', name: 'C', sort: { column: 'state', desc: true } },
+        { columns: ['kind', 'cost'], id: 't4', name: 'D', sort: { column: 'cost', desc: true } },
+      ],
+    })
+    expect(c?.tabs.map(t => t.sort)).toEqual([
+      { column: 'name', desc: false },
+      { column: 'state', desc: false },
+      { column: 'kind', desc: false },
+      { column: 'cost', desc: true },
+    ])
   })
 
   it('setFilter and setWidths change only the named tab', () => {

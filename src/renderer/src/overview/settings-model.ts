@@ -3,6 +3,7 @@
 // The column changes use the reducer of config.ts. So the panel, the tab menu and the header drag
 // use the same rules.
 import type { SessionKind, SessionState } from '../../../shared/types'
+import type { Point, Rect } from '../wm/geometry'
 import { COLUMN_LABELS, type ColumnId } from './columns'
 import { KINDS, type OverviewConfig, overviewReducer, STATES } from './config'
 import type { TabFilter } from './rows'
@@ -91,6 +92,20 @@ export function showKind(
 // Show only the rows with a yellow or a red box, or all rows.
 export function setBoxOnly(config: OverviewConfig, tabId: string, on: boolean): OverviewConfig {
   return withFilter(config, tabId, f => ({ ...f, boxOnly: on }))
+}
+
+// A release more than this distance outside the list does not move the row. So you can stop a
+// drag with no change: move the pointer away from the list, and release it there.
+export const DROP_MARGIN = 24
+
+// True when p is on the list rect or not more than DROP_MARGIN px outside it.
+export function inDropArea(list: Rect, p: Point): boolean {
+  return (
+    p.x >= list.x - DROP_MARGIN &&
+    p.x <= list.x + list.w + DROP_MARGIN &&
+    p.y >= list.y - DROP_MARGIN &&
+    p.y <= list.y + list.h + DROP_MARGIN
+  )
 }
 
 // The column that a dragged row goes before. The pointer is over the row at overIndex. The upper

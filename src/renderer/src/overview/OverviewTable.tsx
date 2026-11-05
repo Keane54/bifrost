@@ -265,7 +265,11 @@ export default function OverviewTable({
             })}
           </tbody>
         </table>
-        {viewed.length === 0 && <p className='px-2 py-0.5 text-text-dim text-xs'>No sessions.</p>}
+        {viewed.length === 0 && (
+          <p className='px-2 py-0.5 text-text-dim text-xs'>
+            {rows.length === 0 ? 'No sessions.' : 'No sessions match the filters of this tab.'}
+          </p>
+        )}
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Positioner className='z-50 outline-none'>

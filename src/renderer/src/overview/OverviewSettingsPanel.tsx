@@ -13,8 +13,10 @@ import type { SessionKind } from '../../../shared/types'
 import { REASON_DEFAULT_TAB, REASON_KIND_COLUMN } from '../actions/reasons'
 import { cx } from '../lib/cx'
 import { MENU_ITEM, MENU_POPUP, Tip } from '../lib/menu'
+import { useWmState } from '../wm/context'
+import type { Point } from '../wm/geometry'
 import { movedToStack } from '../wm/hit'
-import { settingsOverviewId } from '../wm/state'
+import { frameOf, settingsOverviewId } from '../wm/state'
 import { TAB_TEXT } from './cells'
 import { type ColumnId, isColumnId } from './columns'
 import { activeTab, KINDS, type OverviewConfig, type OverviewTab, STATES } from './config'
@@ -23,6 +25,7 @@ import { useOverview } from './overviews-context'
 import {
   columnRows,
   dropTarget,
+  inDropArea,
   moveColumn,
   resetTab,
   setBoxOnly,
@@ -96,15 +99,17 @@ function placeAt(
 }
 
 // The dragged row and the column that it goes before. Null means the end of the list.
+// inside is false when the pointer is too far from the list. Then a release has no effect.
 interface DropMark {
   id: ColumnId
   before: ColumnId | null
+  inside: boolean
 }
 
 // A drag starts after the pointer moves 4 px, as a frame drag does (M2). So a click on a row
 // changes only its box. The order changes on the release. A line shows the drop place.
 // The row captures the pointer when the drag starts, as a tab of a stack does for a tear-out.
-// A cancel or a lost capture ends the drag with no change.
+// A cancel, a lost capture, or a release far from the list ends the drag with no change.
 function ColumnList({
   config,
   tab,
@@ -125,9 +130,15 @@ function ColumnList({
 
   useEffect(() => () => stop.current?.(), [])
 
-  function targetAt(id: ColumnId, y: number): ColumnId | null {
-    const { order, overIndex, upperHalf } = placeAt(list.current, y)
-    return dropTarget(order, id, overIndex, upperHalf)
+  // The drop place of the dragged row at the pointer. Null when the pointer is more than
+  // DROP_MARGIN px outside the list.
+  function targetAt(id: ColumnId, p: Point): { before: ColumnId | null } | null {
+    const box = list.current?.getBoundingClientRect()
+    if (!box || !inDropArea({ h: box.height, w: box.width, x: box.left, y: box.top }, p)) {
+      return null
+    }
+    const { order, overIndex, upperHalf } = placeAt(list.current, p.y)
+    return { before: dropTarget(order, id, overIndex, upperHalf) }
   }
 
   function startDrag(e: React.PointerEvent<HTMLElement>, id: ColumnId): void {
@@ -149,8 +160,13 @@ function ColumnList({
           // Without the capture, the window listeners still get the pointer events.
         }
       }
-      const before = targetAt(id, ev.clientY)
-      setMark(prev => (prev?.id === id && prev.before === before ? prev : { before, id }))
+      const target = targetAt(id, { x: ev.clientX, y: ev.clientY })
+      const next: DropMark = { before: target?.before ?? null, id, inside: target !== null }
+      setMark(prev =>
+        prev?.id === next.id && prev.before === next.before && prev.inside === next.inside
+          ? prev
+          : next,
+      )
     }
     const onUp = (ev: PointerEvent): void => {
       if (ev.pointerId !== pointerId) return
@@ -160,8 +176,8 @@ function ColumnList({
       window.setTimeout(() => {
         noClick.current = false
       }, 0)
-      const before = targetAt(id, ev.clientY)
-      edit(c => moveColumn(c, tabId, id, before))
+      const target = targetAt(id, { x: ev.clientX, y: ev.clientY })
+      if (target) edit(c => moveColumn(c, tabId, id, target.before))
     }
     const onCancel = (ev: PointerEvent): void => {
       if (ev.pointerId === pointerId) end()
@@ -182,8 +198,8 @@ function ColumnList({
     stop.current = end
   }
 
-  // A drop that does not change the order shows no line.
-  const moves = mark !== null && moveColumn(config, tab.id, mark.id, mark.before) !== config
+  // A drop that does not change the order, or a pointer far from the list, shows no line.
+  const moves = mark?.inside === true && moveColumn(config, tab.id, mark.id, mark.before) !== config
   const last = rows.at(-1)?.id
 
   return (
@@ -361,9 +377,19 @@ export default function OverviewSettingsPanel({ panelId }: { panelId: string }):
   const overviewId = settingsOverviewId(panelId)
   const { config, edit, update } = useOverview(overviewId)
   const [page, setPage] = useState<Page>('columns')
+  // A minimised Overview is open. A closed Overview shows no rows, so the panel shows no controls.
+  const open = frameOf(useWmState(), overviewId) !== undefined
   const tab = activeTab(config)
   // Reset has no effect on a tab with the default columns and filter.
   const isDefault = resetTab(config, tab.id) === config
+
+  if (!open) {
+    return (
+      <p className='p-3 text-text-dim text-xs' data-overview-settings={overviewId}>
+        This Overview is closed.
+      </p>
+    )
+  }
 
   return (
     <div
