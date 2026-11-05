@@ -7,6 +7,7 @@ import { cx } from '../lib/cx'
 import { PRIO_TEXT, TONE_TEXT } from '../overview/cells'
 import { stateLabel, stateTone } from '../overview/format'
 import OverviewPanel from '../overview/OverviewPanel'
+import OverviewSettingsPanel from '../overview/OverviewSettingsPanel'
 import { useOverview } from '../overview/overviews-context'
 import { SessionIcon } from '../overview/SessionIcon'
 import { panelKind } from '../wm/state'
@@ -19,6 +20,10 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
     case 'overview': {
       const n = panelId.slice('overview:'.length)
       return n === '1' ? 'Overview' : `Overview ${n}`
+    }
+    case 'overview-settings': {
+      const n = panelId.slice('overview-settings:'.length)
+      return n === '1' ? 'Overview Settings' : `Overview ${n} Settings`
     }
     case 'selected-item':
       return 'Selected Item'
@@ -90,6 +95,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
   switch (panelKind(panelId)) {
     case 'overview':
       return <OverviewPanel panelId={panelId} />
+    case 'overview-settings':
+      return <OverviewSettingsPanel panelId={panelId} />
     case 'selected-item':
       return <SelectedItemPanel />
     case 'integration':

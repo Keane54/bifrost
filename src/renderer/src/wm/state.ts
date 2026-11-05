@@ -1,12 +1,13 @@
 // The state of the window manager. A pure reducer keeps the frames, the stacks and the memory.
 import { centreRect, clampRect, MIN_SIZE, type Rect, type Size, shownRect } from './geometry'
 
-export type PanelKind = 'overview' | 'selected-item' | 'integration' | 'chat'
+export type PanelKind = 'overview' | 'overview-settings' | 'selected-item' | 'integration' | 'chat'
 
 export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   chat: { h: 480, w: 720 },
   integration: { h: 320, w: 520 },
   overview: { h: 360, w: 760 },
+  'overview-settings': { h: 420, w: 360 },
   'selected-item': { h: 300, w: 360 },
 }
 
@@ -47,6 +48,8 @@ export type WmAction =
 const STEP = 24
 
 const OVERVIEW = /^overview:([1-9][0-9]?)$/
+// The Overview Settings panel of the Overview overview:<n> is overview-settings:<n>.
+const OVERVIEW_SETTINGS = /^overview-settings:([1-9][0-9]?)$/
 // The same strict form as the main process: 8-4-4-4-12 hex digits.
 const CHAT = /^chat:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -54,8 +57,19 @@ export function panelKind(panelId: string): PanelKind | null {
   if (typeof panelId !== 'string') return null
   if (panelId === 'selected-item' || panelId === 'integration') return panelId
   if (OVERVIEW.test(panelId)) return 'overview'
+  if (OVERVIEW_SETTINGS.test(panelId)) return 'overview-settings'
   if (CHAT.test(panelId)) return 'chat'
   return null
+}
+
+// The ID of the Overview Settings panel of an Overview.
+export function overviewSettingsId(overviewId: string): string {
+  return `overview-settings:${overviewId.slice('overview:'.length)}`
+}
+
+// The ID of the Overview that an Overview Settings panel edits.
+export function settingsOverviewId(settingsId: string): string {
+  return `overview:${settingsId.slice('overview-settings:'.length)}`
 }
 
 export function initialState(bounds: Size): WmState {

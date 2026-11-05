@@ -9,6 +9,8 @@ export const REASON_NO_CWD = 'The project directory is not known.'
 export const REASON_NO_APPS = 'No app is available.'
 export const REASON_LAST_TAB = 'An Overview needs one tab.'
 export const REASON_MAX_TABS = 'An Overview has a maximum of 12 tabs.'
+export const REASON_KIND_COLUMN = 'The kind column is always first and always on.'
+export const REASON_DEFAULT_TAB = 'The tab has the default columns and filter.'
 export const REASON_WAIT_LIST = 'Waiting for the session list.'
 export const REASON_WAIT_ID = 'Waiting for the session ID.'
 

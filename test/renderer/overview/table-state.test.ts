@@ -44,11 +44,19 @@ describe('overview table state', () => {
     expect(Object.keys(state.columnSizing).sort()).toEqual([...COLUMN_IDS].sort())
   })
 
-  it('toTableState of a default tab shows all columns in the default order', () => {
+  it('toTableState of a default tab shows the default columns first', () => {
     const state = toTableState(tabWith({}))
     expect(state.sorting).toEqual([{ desc: false, id: 'name' }])
-    expect(state.columnOrder).toEqual([...COLUMN_IDS])
-    expect(COLUMN_IDS.every(id => state.columnVisibility[id])).toBe(true)
+    expect(state.columnOrder.join(',')).toBe(
+      'kind,name,state,project,activity,priority,branch,model,context,cost',
+    )
+    expect(COLUMN_IDS.filter(id => state.columnVisibility[id])).toEqual([
+      'kind',
+      'name',
+      'state',
+      'project',
+      'activity',
+    ])
   })
 
   it('dropBefore puts a column after a target on its right and before a target on its left', () => {

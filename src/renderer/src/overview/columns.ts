@@ -24,6 +24,10 @@ export const COLUMN_IDS: readonly ColumnId[] = [
   'activity',
 ]
 
+// The visible columns of a new tab (spec 8.3). You turn on the other columns in the Overview
+// Settings panel.
+export const DEFAULT_COLUMNS: readonly ColumnId[] = ['kind', 'name', 'state', 'project', 'activity']
+
 export const COLUMN_LABELS: Record<ColumnId, string> = {
   activity: 'Last activity',
   branch: 'Branch',

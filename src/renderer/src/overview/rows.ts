@@ -1,10 +1,11 @@
 // Tab filters and sort of the Overview rows.
-import type { SessionRow, SessionState } from '../../../shared/types'
+import type { SessionKind, SessionRow, SessionState } from '../../../shared/types'
 import type { ColumnId } from './columns'
 import { projectLabel } from './format'
 
 export interface TabFilter {
   states: SessionState[]
+  kinds: SessionKind[]
   boxOnly: boolean
 }
 
@@ -15,7 +16,10 @@ export interface SortSpec {
 
 export function filterRows(rows: SessionRow[], filter: TabFilter): SessionRow[] {
   return rows.filter(
-    row => filter.states.includes(row.state) && (!filter.boxOnly || row.box !== 'none'),
+    row =>
+      filter.states.includes(row.state) &&
+      filter.kinds.includes(row.kind) &&
+      (!filter.boxOnly || row.box !== 'none'),
   )
 }
 

@@ -29,9 +29,11 @@ export function useOverviews(): OverviewsValue {
 }
 
 // The config of one Overview. A panel without a saved config gets the default config.
+// update applies one action. edit applies a function to the current config.
 export function useOverview(panelId: string): {
   config: OverviewConfig
   update(action: OverviewAction): void
+  edit(change: (config: OverviewConfig) => OverviewConfig): void
 } {
   const { state, dispatch } = useOverviews()
   const config = configOf(state, panelId)
@@ -39,5 +41,10 @@ export function useOverview(panelId: string): {
     (action: OverviewAction) => dispatch({ action, panelId, type: 'update' }),
     [dispatch, panelId],
   )
-  return useMemo(() => ({ config, update }), [config, update])
+  const edit = useCallback(
+    (change: (config: OverviewConfig) => OverviewConfig) =>
+      dispatch({ edit: change, panelId, type: 'edit' }),
+    [dispatch, panelId],
+  )
+  return useMemo(() => ({ config, edit, update }), [config, edit, update])
 }

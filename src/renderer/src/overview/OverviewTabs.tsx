@@ -15,13 +15,12 @@ import {
   type OverviewAction,
   type OverviewConfig,
   type OverviewTab,
+  STATES,
 } from './config'
 import { stateLabel } from './format'
 
 type Update = (action: OverviewAction) => void
 
-// The states in the Filter menu, in this order.
-const FILTER_STATES: readonly SessionState[] = ['working', 'needs-you', 'error', 'idle', 'parked']
 // The kind column is always visible (D4). So the Columns menu does not show it.
 const MENU_COLUMNS: readonly ColumnId[] = COLUMN_IDS.filter(id => id !== 'kind')
 
@@ -118,11 +117,11 @@ function TabItem(props: {
   // Rename... opens the name field after the menu has closed.
   // Else the menu gives the focus back to the tab, and the field loses the focus at once.
   const renameNext = useRef(false)
-  const { states, boxOnly } = tab.filter
+  const { states, kinds, boxOnly } = tab.filter
 
   function setFilter(next: { states?: SessionState[]; boxOnly?: boolean }): void {
     update({
-      filter: { boxOnly: next.boxOnly ?? boxOnly, states: next.states ?? states },
+      filter: { boxOnly: next.boxOnly ?? boxOnly, kinds, states: next.states ?? states },
       tabId: tab.id,
       type: 'setFilter',
     })
@@ -176,14 +175,14 @@ function TabItem(props: {
               Rename...
             </ContextMenu.Item>
             <Submenu label='Filter'>
-              {FILTER_STATES.map(state => (
+              {STATES.map(state => (
                 <CheckItem
                   checked={states.includes(state)}
                   key={state}
                   label={stateLabel(state)}
                   onChange={on =>
                     setFilter({
-                      states: FILTER_STATES.filter(s => (s === state ? on : states.includes(s))),
+                      states: STATES.filter(s => (s === state ? on : states.includes(s))),
                     })
                   }
                 />

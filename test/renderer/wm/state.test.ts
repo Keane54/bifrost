@@ -5,7 +5,9 @@ import {
   DEFAULT_SIZES,
   frameOf,
   initialState,
+  overviewSettingsId,
   panelKind,
+  settingsOverviewId,
   shownFrames,
   topFrame,
   type WmAction,
@@ -25,6 +27,8 @@ describe('wm state', () => {
   it('panelKind accepts the fixed panel IDs and refuses all others', () => {
     expect(panelKind('overview:1')).toBe('overview')
     expect(panelKind('overview:99')).toBe('overview')
+    expect(panelKind('overview-settings:1')).toBe('overview-settings')
+    expect(panelKind('overview-settings:99')).toBe('overview-settings')
     expect(panelKind('selected-item')).toBe('selected-item')
     expect(panelKind('integration')).toBe('integration')
     expect(panelKind(CHAT)).toBe('chat')
@@ -36,9 +40,21 @@ describe('wm state', () => {
       'chat:abc',
       'foo',
       'overview:01',
+      'overview-settings:0',
+      'overview-settings:100',
+      'overview-settings',
     ]) {
       expect(panelKind(bad)).toBeNull()
     }
+  })
+
+  it('the Overview Settings panel of overview:<n> is overview-settings:<n> with 360 by 420', () => {
+    expect(overviewSettingsId('overview:1')).toBe('overview-settings:1')
+    expect(overviewSettingsId('overview:12')).toBe('overview-settings:12')
+    expect(settingsOverviewId('overview-settings:12')).toBe('overview:12')
+    expect(DEFAULT_SIZES['overview-settings']).toEqual({ h: 420, w: 360 })
+    const s = run([open('overview-settings:2')])
+    expect(s.frames[0]?.rect).toEqual(centreRect({ h: 420, w: 360 }, bounds))
   })
 
   it('open adds a centred frame with the default size', () => {

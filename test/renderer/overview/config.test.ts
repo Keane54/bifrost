@@ -16,7 +16,7 @@ const base = (): OverviewConfig => defaultOverviewConfig()
 const tabIds = (c: OverviewConfig) => c.tabs.map(t => t.id)
 
 describe('overview config', () => {
-  it('defaultOverviewConfig has the 5 tabs of spec 8.3 with all columns and Name ascending', () => {
+  it('defaultOverviewConfig has the 5 tabs of spec 8.3 with the default columns and Name ascending', () => {
     const c = defaultOverviewConfig()
     expect(c.name).toBe('Default')
     expect(c.active).toBe('t1')
@@ -30,7 +30,9 @@ describe('overview config', () => {
     ])
     expect(c.tabs[2]?.filter.states).toEqual(['working'])
     for (const t of c.tabs) {
-      expect(t.columns).toEqual([...COLUMN_IDS])
+      expect(t.columns).toEqual(['kind', 'name', 'state', 'project', 'activity'])
+      expect(t.order).toEqual([...COLUMN_IDS])
+      expect(t.filter.kinds).toEqual(['owned', 'external'])
       expect(t.widths).toEqual({})
       expect(t.sort).toEqual({ column: 'name', desc: false })
     }
@@ -139,34 +141,46 @@ describe('overview config', () => {
     expect(overviewReducer(c, { by: 1, tabId: 't5', type: 'moveTab' })).toBe(c)
   })
 
-  it('toggleColumn adds at the end, removes, and never removes kind', () => {
+  it('toggleColumn adds a column at its place in the order, removes it, and never removes kind', () => {
     const c = base()
-    const off = overviewReducer(c, { column: 'cost', tabId: 't1', type: 'toggleColumn' })
-    expect(off.tabs[0]?.columns).not.toContain('cost')
-    const on = overviewReducer(off, { column: 'cost', tabId: 't1', type: 'toggleColumn' })
-    expect(on.tabs[0]?.columns.at(-1)).toBe('cost')
+    const on = overviewReducer(c, { column: 'cost', tabId: 't1', type: 'toggleColumn' })
+    expect(on.tabs[0]?.columns).toEqual(['kind', 'name', 'state', 'project', 'cost', 'activity'])
+    const off = overviewReducer(on, { column: 'cost', tabId: 't1', type: 'toggleColumn' })
+    expect(off.tabs[0]?.columns).toEqual(c.tabs[0]?.columns)
+    expect(off.tabs[0]?.order).toEqual(c.tabs[0]?.order)
     expect(overviewReducer(c, { column: 'kind', tabId: 't1', type: 'toggleColumn' })).toBe(c)
   })
 
   it('moveColumn moves before a column, to the end for null, and never before kind', () => {
     const c = base()
     const cols = (x: OverviewConfig) => x.tabs[0]?.columns.join(',')
+    const order = (x: OverviewConfig) => x.tabs[0]?.order.join(',')
     const a = overviewReducer(c, {
+      before: 'name',
+      column: 'activity',
+      tabId: 't1',
+      type: 'moveColumn',
+    })
+    expect(cols(a)).toBe('kind,activity,name,state,project')
+    expect(order(a)).toBe('kind,activity,name,priority,state,project,branch,model,context,cost')
+    const b = overviewReducer(c, { before: null, column: 'name', tabId: 't1', type: 'moveColumn' })
+    expect(cols(b)).toBe('kind,state,project,activity,name')
+    const d = overviewReducer(c, {
+      before: 'kind',
+      column: 'project',
+      tabId: 't1',
+      type: 'moveColumn',
+    })
+    expect(cols(d)).toBe('kind,project,name,state,activity')
+    // A hidden column moves in the order only.
+    const e = overviewReducer(c, {
       before: 'name',
       column: 'cost',
       tabId: 't1',
       type: 'moveColumn',
     })
-    expect(cols(a)).toBe('kind,cost,name,priority,state,project,branch,model,context,activity')
-    const b = overviewReducer(c, { before: null, column: 'name', tabId: 't1', type: 'moveColumn' })
-    expect(cols(b)).toBe('kind,priority,state,project,branch,model,context,cost,activity,name')
-    const d = overviewReducer(c, {
-      before: 'kind',
-      column: 'cost',
-      tabId: 't1',
-      type: 'moveColumn',
-    })
-    expect(cols(d)).toBe('kind,cost,name,priority,state,project,branch,model,context,activity')
+    expect(cols(e)).toBe(cols(c))
+    expect(order(e)).toBe('kind,cost,name,priority,state,project,branch,model,context,activity')
     expect(
       overviewReducer(c, { before: 'name', column: 'kind', tabId: 't1', type: 'moveColumn' }),
     ).toBe(c)
@@ -188,11 +202,11 @@ describe('overview config', () => {
   it('setFilter and setWidths change only the named tab', () => {
     const c = base()
     const f = overviewReducer(c, {
-      filter: { boxOnly: true, states: ['idle'] },
+      filter: { boxOnly: true, kinds: ['owned'], states: ['idle'] },
       tabId: 't4',
       type: 'setFilter',
     })
-    expect(f.tabs[3]?.filter).toEqual({ boxOnly: true, states: ['idle'] })
+    expect(f.tabs[3]?.filter).toEqual({ boxOnly: true, kinds: ['owned'], states: ['idle'] })
     expect(f.tabs[0]).toBe(c.tabs[0])
     const w = overviewReducer(f, {
       tabId: 't2',
@@ -251,19 +265,98 @@ describe('overview config', () => {
     expect(overviewReducer(clash, { type: 'addTab' })).toBe(clash)
   })
 
-  it('parseOverviewConfig gives all columns for a tab with a damaged column list', () => {
+  it('parseOverviewConfig gives the default columns for a tab with a damaged column list', () => {
     const c = parseOverviewConfig({
       tabs: [
         { id: 't1', name: 'A' },
         { columns: 'name', id: 't2', name: 'B' },
       ],
     })
-    expect(c?.tabs.map(t => t.columns)).toEqual([[...COLUMN_IDS], [...COLUMN_IDS]])
+    const defaults = base().tabs[0]
+    expect(c?.tabs.map(t => t.columns)).toEqual([defaults?.columns, defaults?.columns])
+    expect(c?.tabs.map(t => t.order)).toEqual([[...COLUMN_IDS], [...COLUMN_IDS]])
+  })
+
+  it('a saved config keeps its columns: a tab from before the column order keeps its list', () => {
+    const c = parseOverviewConfig({
+      tabs: [
+        { columns: [...COLUMN_IDS], id: 't1', name: 'All' },
+        { columns: ['kind', 'cost', 'name'], id: 't2', name: 'B' },
+      ],
+    }) as OverviewConfig
+    expect(c.tabs[0]?.columns).toEqual([...COLUMN_IDS])
+    expect(c.tabs[0]?.order).toEqual([...COLUMN_IDS])
+    expect(c.tabs[1]?.columns).toEqual(['kind', 'cost', 'name'])
+    expect(c.tabs[1]?.order.join(',')).toBe(
+      'kind,cost,name,priority,state,project,branch,model,context,activity',
+    )
+  })
+
+  it('parseOverviewConfig keeps the places of hidden columns and adds missing columns', () => {
+    const c = parseOverviewConfig({
+      tabs: [
+        {
+          columns: ['kind', 'name', 'cost'],
+          id: 't1',
+          name: 'A',
+          order: ['cost', 'kind', 'branch', 'name', 'foo', 'name'],
+        },
+      ],
+    })
+    expect(c?.tabs[0]?.order.join(',')).toBe(
+      'kind,cost,branch,name,priority,state,project,model,context,activity',
+    )
+    // The visible columns follow the saved order.
+    expect(c?.tabs[0]?.columns).toEqual(['kind', 'cost', 'name'])
+  })
+
+  it('parseOverviewConfig gives both kinds to a filter without kinds and drops unknown kinds', () => {
+    const c = parseOverviewConfig({
+      tabs: [
+        { filter: { states: ['idle'] }, id: 't1', name: 'A' },
+        { filter: { kinds: ['external', 'x', 'external'], states: [] }, id: 't2', name: 'B' },
+        { filter: { kinds: 'owned', states: [] }, id: 't3', name: 'C' },
+      ],
+    })
+    expect(c?.tabs.map(t => t.filter.kinds)).toEqual([
+      ['owned', 'external'],
+      ['external'],
+      ['owned', 'external'],
+    ])
+  })
+
+  it('resetTab restores the default columns and filter, and returns the same object for a default tab', () => {
+    const c = base()
+    expect(overviewReducer(c, { tabId: 't2', type: 'resetTab' })).toBe(c)
+    const changed = overviewReducer(
+      overviewReducer(c, { column: 'cost', tabId: 't2', type: 'toggleColumn' }),
+      { filter: { boxOnly: false, kinds: [], states: [] }, tabId: 't2', type: 'setFilter' },
+    )
+    expect(overviewReducer(changed, { tabId: 't2', type: 'resetTab' }).tabs[1]).toEqual(c.tabs[1])
+  })
+
+  it('overviewsReducer edit applies a change to the current config of one panel', () => {
+    const s = overviewsReducer(
+      {},
+      {
+        edit: c => overviewReducer(c, { type: 'addTab' }),
+        panelId: 'overview:2',
+        type: 'edit',
+      },
+    )
+    expect(configOf(s, 'overview:2').tabs).toHaveLength(6)
+    expect(configOf(s, 'overview:1')).toBe(DEFAULT_CONFIG)
+    expect(overviewsReducer(s, { edit: c => c, panelId: 'overview:2', type: 'edit' })).toBe(s)
   })
 
   it('setFilter with the same filter returns the same object', () => {
     const c = base()
-    const same = { boxOnly: true, states: [...(c.tabs[1]?.filter.states ?? [])] }
+    const filter = c.tabs[1]?.filter
+    const same = {
+      boxOnly: true,
+      kinds: [...(filter?.kinds ?? [])],
+      states: [...(filter?.states ?? [])],
+    }
     expect(overviewReducer(c, { filter: same, tabId: 't2', type: 'setFilter' })).toBe(c)
   })
 })

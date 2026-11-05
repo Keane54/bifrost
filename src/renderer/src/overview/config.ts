@@ -1,7 +1,15 @@
 // The config of one Overview: its tabs, filters, columns, widths and sort.
-import type { SessionState } from '../../../shared/types'
+import type { SessionKind, SessionState } from '../../../shared/types'
 import { panelKind } from '../wm/state'
-import { COLUMN_IDS, type ColumnId, DESC_FIRST, isColumnId, MAX_WIDTH, MIN_WIDTH } from './columns'
+import {
+  COLUMN_IDS,
+  type ColumnId,
+  DEFAULT_COLUMNS,
+  DESC_FIRST,
+  isColumnId,
+  MAX_WIDTH,
+  MIN_WIDTH,
+} from './columns'
 import type { SortSpec, TabFilter } from './rows'
 
 export interface OverviewTab {
@@ -11,6 +19,10 @@ export interface OverviewTab {
   filter: TabFilter
   // The visible columns in display order. The kind column is always first.
   columns: ColumnId[]
+  // All columns in display order, also the hidden columns. The kind column is always first.
+  // A hidden column keeps its place. When you turn it on, it shows at that place.
+  // The visible columns are always in this order.
+  order: ColumnId[]
   widths: Partial<Record<ColumnId, number>>
   sort: SortSpec
 }
@@ -27,20 +39,28 @@ export const MAX_TAB_NAME = 24
 export const MAX_SET_NAME = 40
 export const TAB_COLOURS = 6
 
-const STATES: readonly SessionState[] = ['working', 'needs-you', 'error', 'idle', 'parked']
+// The states and the kinds of a tab filter, in the order of the filter lists.
+export const STATES: readonly SessionState[] = ['working', 'needs-you', 'error', 'idle', 'parked']
+export const KINDS: readonly SessionKind[] = ['owned', 'external']
 const LIVE: SessionState[] = ['working', 'needs-you', 'error', 'idle']
 // A tab ID has at most 4 digits, so the counter stays a safe whole number.
 const TAB_ID = /^t\d{1,4}$/
 const MAX_TAB_NUMBER = 9999
 const NAME_SORT: SortSpec = { column: 'name', desc: false }
 
+// A filter that shows both kinds.
+function filterOf(states: SessionState[], boxOnly = false): TabFilter {
+  return { boxOnly, kinds: [...KINDS], states: [...states] }
+}
+
 function tab(id: number, name: string, filter: TabFilter): OverviewTab {
   return {
     color: id - 1,
-    columns: [...COLUMN_IDS],
+    columns: [...DEFAULT_COLUMNS],
     filter,
     id: `t${id}`,
     name,
+    order: [...COLUMN_IDS],
     sort: { ...NAME_SORT },
     widths: {},
   }
@@ -52,13 +72,18 @@ export function defaultOverviewConfig(): OverviewConfig {
     name: 'Default',
     nextTab: 6,
     tabs: [
-      tab(1, 'All', { boxOnly: false, states: [...LIVE] }),
-      tab(2, 'Needs you', { boxOnly: true, states: [...LIVE] }),
-      tab(3, 'Working', { boxOnly: false, states: ['working'] }),
-      tab(4, 'Idle', { boxOnly: false, states: ['idle'] }),
-      tab(5, 'Parked', { boxOnly: false, states: ['parked'] }),
+      tab(1, 'All', filterOf(LIVE)),
+      tab(2, 'Needs you', filterOf(LIVE, true)),
+      tab(3, 'Working', filterOf(['working'])),
+      tab(4, 'Idle', filterOf(['idle'])),
+      tab(5, 'Parked', filterOf(['parked'])),
     ],
   }
+}
+
+// The filter of a default tab (spec 8.3). A tab that the user added starts with the filter of All.
+function defaultFilter(tabId: string): TabFilter {
+  return defaultOverviewConfig().tabs.find(t => t.id === tabId)?.filter ?? filterOf(LIVE)
 }
 
 // Shared by all Overviews that have no saved config. Never change it.
@@ -88,26 +113,48 @@ function parseWidths(value: unknown): Partial<Record<ColumnId, number>> {
 }
 
 function parseColumns(value: unknown): ColumnId[] {
-  // A missing or damaged list gives all columns. A list gives its valid IDs.
-  if (!Array.isArray(value)) return [...COLUMN_IDS]
+  // A missing or damaged list gives the default columns. A list gives its valid IDs.
+  if (!Array.isArray(value)) return [...DEFAULT_COLUMNS]
   const columns: ColumnId[] = []
-  if (Array.isArray(value)) {
-    for (const id of value) {
-      if (isColumnId(id) && id !== 'kind' && !columns.includes(id)) columns.push(id)
-    }
+  for (const id of value) {
+    if (isColumnId(id) && id !== 'kind' && !columns.includes(id)) columns.push(id)
   }
   return ['kind', ...columns]
 }
 
-function parseFilter(value: unknown): TabFilter {
-  const states: SessionState[] = []
-  if (isObject(value) && Array.isArray(value.states)) {
-    for (const s of value.states) {
-      const state = STATES.find(known => known === s)
-      if (state && !states.includes(state)) states.push(state)
-    }
+// The saved order gives the place of each column. A tab from before the order has no saved order.
+// Then the saved visible columns come first in their order, and the hidden columns follow in the
+// default order. So a saved tab keeps its columns.
+function parseOrder(value: unknown, columns: ColumnId[]): ColumnId[] {
+  const order: ColumnId[] = ['kind']
+  const add = (id: unknown): void => {
+    if (isColumnId(id) && !order.includes(id)) order.push(id)
   }
-  return { boxOnly: isObject(value) && value.boxOnly === true, states }
+  if (Array.isArray(value)) value.forEach(add)
+  columns.forEach(add)
+  COLUMN_IDS.forEach(add)
+  return order
+}
+
+// The known values of a list, without repeats. A value that is not a list gives an empty list.
+function knownValues<T>(value: unknown, known: readonly T[]): T[] {
+  const result: T[] = []
+  if (!Array.isArray(value)) return result
+  for (const item of value) {
+    const found = known.find(k => k === item)
+    if (found !== undefined && !result.includes(found)) result.push(found)
+  }
+  return result
+}
+
+function parseFilter(value: unknown): TabFilter {
+  const filter = isObject(value) ? value : {}
+  return {
+    boxOnly: filter.boxOnly === true,
+    // A filter from before the kinds, or a damaged kind list, shows both kinds.
+    kinds: Array.isArray(filter.kinds) ? knownValues(filter.kinds, KINDS) : [...KINDS],
+    states: knownValues(filter.states, STATES),
+  }
 }
 
 function parseSort(value: unknown): SortSpec {
@@ -127,12 +174,16 @@ function parseTab(value: unknown, index: number): OverviewTab | null {
     value.color < TAB_COLOURS
       ? value.color
       : index % TAB_COLOURS
+  const columns = parseColumns(value.columns)
+  // Default columns for a damaged list keep the default order, as in a new tab.
+  const order = parseOrder(value.order, Array.isArray(value.columns) ? columns : [])
   return {
     color,
-    columns: parseColumns(value.columns),
+    columns: order.filter(id => columns.includes(id)),
     filter: parseFilter(value.filter),
     id: value.id,
     name,
+    order,
     sort: parseSort(value.sort),
     widths: parseWidths(value.widths),
   }
@@ -190,6 +241,7 @@ export type OverviewAction =
   | { type: 'setFilter'; tabId: string; filter: TabFilter }
   | { type: 'toggleColumn'; tabId: string; column: ColumnId }
   | { type: 'moveColumn'; tabId: string; column: ColumnId; before: ColumnId | null }
+  | { type: 'resetTab'; tabId: string }
   | { type: 'setWidths'; tabId: string; widths: Partial<Record<ColumnId, number>> }
   | { type: 'sortBy'; tabId: string; column: ColumnId }
   | { type: 'rename'; name: string }
@@ -208,6 +260,14 @@ function withTab(
   return { ...config, tabs: config.tabs.map((t, i) => (i === index ? next : t)) }
 }
 
+function sameList<T>(a: readonly T[], b: readonly T[]): boolean {
+  return a.length === b.length && a.every((item, i) => item === b[i])
+}
+
+function sameFilter(a: TabFilter, b: TabFilter): boolean {
+  return a.boxOnly === b.boxOnly && sameList(a.states, b.states) && sameList(a.kinds, b.kinds)
+}
+
 export function overviewReducer(config: OverviewConfig, action: OverviewAction): OverviewConfig {
   switch (action.type) {
     case 'addTab': {
@@ -215,7 +275,7 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
       const n = config.nextTab
       if (n > MAX_TAB_NUMBER || config.tabs.some(t => t.id === `t${n}`)) return config
       const added: OverviewTab = {
-        ...tab(1, `Tab ${n}`, { boxOnly: false, states: [...LIVE] }),
+        ...tab(1, `Tab ${n}`, filterOf(LIVE)),
         color: (n - 1) % TAB_COLOURS,
         id: `t${n}`,
       }
@@ -252,34 +312,45 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
       return { ...config, active: action.tabId }
     case 'setFilter':
       return withTab(config, action.tabId, t => {
-        const { boxOnly, states } = action.filter
-        const same =
-          t.filter.boxOnly === boxOnly &&
-          t.filter.states.length === states.length &&
-          t.filter.states.every((state, i) => state === states[i])
-        return same ? t : { ...t, filter: { boxOnly, states: [...states] } }
+        const { boxOnly, kinds, states } = action.filter
+        if (sameFilter(t.filter, action.filter)) return t
+        return { ...t, filter: { boxOnly, kinds: [...kinds], states: [...states] } }
       })
     case 'toggleColumn': {
-      if (action.column === 'kind') return config
+      const { column } = action
+      if (column === 'kind') return config
+      // A column that you turn on shows at its place in the order.
       return withTab(config, action.tabId, t => ({
         ...t,
-        columns: t.columns.includes(action.column)
-          ? t.columns.filter(c => c !== action.column)
-          : [...t.columns, action.column],
+        columns: t.columns.includes(column)
+          ? t.columns.filter(c => c !== column)
+          : t.order.filter(c => c === column || t.columns.includes(c)),
       }))
     }
     case 'moveColumn': {
+      // The move changes the order of all columns. A hidden column can move too.
       const { column, before } = action
       if (column === 'kind' || column === before) return config
       return withTab(config, action.tabId, t => {
-        if (!t.columns.includes(column)) return t
-        if (before !== null && !t.columns.includes(before)) return t
-        const rest = t.columns.filter(c => c !== column)
+        if (!t.order.includes(column)) return t
+        if (before !== null && !t.order.includes(before)) return t
+        const rest = t.order.filter(c => c !== column)
         const at = before === null ? rest.length : Math.max(1, rest.indexOf(before))
-        const columns = [...rest.slice(0, at), column, ...rest.slice(at)]
-        return columns.every((c, i) => c === t.columns[i]) ? t : { ...t, columns }
+        const order = [...rest.slice(0, at), column, ...rest.slice(at)]
+        if (sameList(order, t.order)) return t
+        return { ...t, columns: order.filter(c => t.columns.includes(c)), order }
       })
     }
+    case 'resetTab':
+      // The widths and the sort do not change.
+      return withTab(config, action.tabId, t => {
+        const filter = defaultFilter(t.id)
+        const same =
+          sameList(t.columns, DEFAULT_COLUMNS) &&
+          sameList(t.order, COLUMN_IDS) &&
+          sameFilter(t.filter, filter)
+        return same ? t : { ...t, columns: [...DEFAULT_COLUMNS], filter, order: [...COLUMN_IDS] }
+      })
     case 'setWidths':
       return withTab(config, action.tabId, t => {
         const widths = { ...t.widths }
@@ -307,9 +378,11 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
   }
 }
 
+// An edit gives the next config from the current config. So it always reads the current config.
 export type OverviewsAction =
   | { type: 'load'; overviews: Record<string, OverviewConfig> }
   | { type: 'update'; panelId: string; action: OverviewAction }
+  | { type: 'edit'; panelId: string; edit(config: OverviewConfig): OverviewConfig }
 
 export function overviewsReducer(
   state: Record<string, OverviewConfig>,
@@ -317,7 +390,8 @@ export function overviewsReducer(
 ): Record<string, OverviewConfig> {
   if (action.type === 'load') return action.overviews
   const current = configOf(state, action.panelId)
-  const next = overviewReducer(current, action.action)
+  const next =
+    action.type === 'edit' ? action.edit(current) : overviewReducer(current, action.action)
   if (next === current) return state
   return { ...state, [action.panelId]: next }
 }

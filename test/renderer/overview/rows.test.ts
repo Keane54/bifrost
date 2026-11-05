@@ -12,6 +12,18 @@ describe('rows', () => {
     expect(ids(viewRows(ALL, defaultOverviewConfig().tabs[0] as OverviewTab))).toBe('ABCDEG')
   })
 
+  it('filterRows shows only the kinds of the filter', () => {
+    const states = ['working', 'needs-you', 'error', 'idle'] as const
+    const filter = (kinds: ('owned' | 'external')[]) => ({
+      boxOnly: false,
+      kinds,
+      states: [...states],
+    })
+    expect(ids(filterRows(ALL, filter(['owned'])))).toBe('ABDEG')
+    expect(ids(filterRows(ALL, filter(['external'])))).toBe('C')
+    expect(ids(filterRows(ALL, filter([])))).toBe('')
+  })
+
   it('sortRows by name is numeric and ignores case', () => {
     const rows = [
       row({ name: 's10', sessionId: 'a' }),

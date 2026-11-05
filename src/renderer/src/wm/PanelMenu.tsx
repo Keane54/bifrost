@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { MAX_SET_NAME } from '../overview/config'
 import { useOverview } from '../overview/overviews-context'
 import { useDismiss } from './popover'
-import { type Frame, panelKind, type WmAction } from './state'
+import { type Frame, overviewSettingsId, panelKind, type WmAction } from './state'
 
 // The screen position of the menu button. The menu opens below the button, at its right edge.
 export interface Anchor {
@@ -58,7 +58,7 @@ function SetNameField({ panelId }: { panelId: string }): React.JSX.Element {
 }
 
 // The menu of one frame: a Lock checkbox. A frame has no opacity control (spec 8.1).
-// For an Overview, the menu also has the name of the tab set.
+// For an Overview, the menu also has "Overview settings…" and the name of the tab set.
 // The menu is in document.body. So the clip of the frame does not apply to it.
 export default function PanelMenu({
   frame,
@@ -75,6 +75,8 @@ export default function PanelMenu({
     lock.current?.focus()
   }, [])
 
+  const overview = panelKind(frame.active) === 'overview'
+
   return createPortal(
     <div
       aria-label='Panel menu'
@@ -86,6 +88,18 @@ export default function PanelMenu({
         top: anchor.bottom + GAP,
       }}
     >
+      {overview && (
+        <button
+          className='-mx-1 rounded px-1 py-0.5 text-left hover:bg-hover active:bg-accent/12'
+          onClick={() => {
+            dispatch({ panelId: overviewSettingsId(frame.active), type: 'open' })
+            onClose()
+          }}
+          type='button'
+        >
+          Overview settings…
+        </button>
+      )}
       <label className='flex items-center gap-2'>
         <input
           checked={frame.locked}
@@ -95,7 +109,7 @@ export default function PanelMenu({
         />
         Lock
       </label>
-      {panelKind(frame.active) === 'overview' && <SetNameField panelId={frame.active} />}
+      {overview && <SetNameField panelId={frame.active} />}
     </div>,
     document.body,
   )
