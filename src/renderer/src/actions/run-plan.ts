@@ -28,6 +28,28 @@ export type RunPlan =
   | { kind: 'rename' }
   | { kind: 'call'; call: ApiCall; confirm: ConfirmText | null; after: After }
 
+// A request of a focus-send plan: the send box of the session takes the focus.
+export interface FocusRequest {
+  sessionId: string
+  text: '' | '/'
+  // A new number for each request. So the same request twice also focuses the send box.
+  n: number
+  // The time of the request in ms (Date.now).
+  at: number
+}
+
+// A send box uses a request only this long after the click. A later selection of the row
+// does not use an old request.
+export const FOCUS_REQUEST_MS = 1000
+
+export function focusRequestUsable(
+  request: FocusRequest | null,
+  sessionId: string,
+  now: number,
+): boolean {
+  return request !== null && request.sessionId === sessionId && now - request.at <= FOCUS_REQUEST_MS
+}
+
 const NONE: RunPlan = { kind: 'none' }
 
 function call(c: ApiCall, confirm: ConfirmText | null, after: After): RunPlan {

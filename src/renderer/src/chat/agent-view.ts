@@ -73,3 +73,38 @@ export function recentAttaches(history: number[], now: number): number[] {
 export function reattachDecision(history: number[], now: number): 'reattach' | 'give-up' {
   return recentAttaches(history, now).length >= MAX_REATTACH ? 'give-up' : 'reattach'
 }
+
+// The guard of a chat window for the agent view.
+// gaveUp: the window attached again too often, so it checks no more.
+// waiting: the agent view shows, and the reattach waits for a row that can attach.
+export interface AgentGuard {
+  gaveUp: boolean
+  waiting: boolean
+}
+
+// What a screen check does. free: the input starts again. The other steps except none stop
+// the input at once.
+export type AgentStep = 'none' | 'free' | 'give-up' | 'wait' | 'reattach'
+
+// The step of one screen check. history has the times of the recent attaches of the session.
+export function agentStep(
+  guard: AgentGuard,
+  screen: { agentView: boolean; targetOk: boolean; history: number[]; now: number },
+): AgentStep {
+  if (guard.gaveUp) return 'none'
+  if (!screen.agentView) return guard.waiting ? 'free' : 'none'
+  if (reattachDecision(screen.history, screen.now) === 'give-up') return 'give-up'
+  return screen.targetOk ? 'reattach' : 'wait'
+}
+
+// True for a step that stops the input of the window.
+export function stepBlocks(step: AgentStep): boolean {
+  return step === 'give-up' || step === 'wait' || step === 'reattach'
+}
+
+// The guard after a restart (a Resume of the session). The new attach starts with a new guard.
+// So the next agent view stops the input again. The attach history of the session stays, so the
+// window still gives up after MAX_REATTACH attaches in the window.
+export function afterRestart(guard: AgentGuard): AgentGuard {
+  return { ...guard, gaveUp: false, waiting: false }
+}

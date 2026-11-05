@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest'
 import {
   AGENT_CHECK_MAX_MS,
   AGENT_CHECK_QUIET_MS,
+  type AgentGuard,
+  afterRestart,
   agentCheckDelay,
+  agentStep,
   isAgentView,
   joinWrapped,
   MAX_REATTACH,
   REATTACH_WINDOW_MS,
   reattachDecision,
   recentAttaches,
+  stepBlocks,
 } from '../../../src/renderer/src/chat/agent-view'
 
 const COUNTS = '0 awaiting input · 0 working · 6 completed'
@@ -160,5 +164,51 @@ describe('agentCheckDelay', () => {
   it('checks each 1000 ms during continuous output', () => {
     const chunks = Array.from({ length: 30 }, (_, i) => i * 100)
     expect(checkTimes(chunks)).toEqual([1000, 2000, 3000])
+  })
+})
+
+describe('the agent view guard', () => {
+  const fresh: AgentGuard = { gaveUp: false, waiting: false }
+  const screen = (over: Partial<Parameters<typeof agentStep>[1]> = {}) => ({
+    agentView: true,
+    history: [] as number[],
+    now: 100_000,
+    targetOk: true,
+    ...over,
+  })
+  const full = (now: number) => Array.from({ length: MAX_REATTACH }, (_, i) => now - 1000 * (i + 1))
+
+  it('an agent view blocks the input and attaches again', () => {
+    expect(agentStep(fresh, screen())).toBe('reattach')
+    expect(stepBlocks('reattach')).toBe(true)
+  })
+
+  it('an agent view with a row that cannot attach blocks the input and waits', () => {
+    expect(agentStep(fresh, screen({ targetOk: false }))).toBe('wait')
+    expect(stepBlocks('wait')).toBe(true)
+  })
+
+  it('gives up after the attach limit and keeps the input blocked', () => {
+    expect(agentStep(fresh, screen({ history: full(100_000) }))).toBe('give-up')
+    expect(stepBlocks('give-up')).toBe(true)
+  })
+
+  it('frees the input when the agent view closes during the wait', () => {
+    expect(agentStep({ gaveUp: false, waiting: true }, screen({ agentView: false }))).toBe('free')
+    expect(stepBlocks('free')).toBe(false)
+    expect(agentStep(fresh, screen({ agentView: false }))).toBe('none')
+    expect(stepBlocks('none')).toBe(false)
+  })
+
+  it('a window that gave up checks nothing', () => {
+    expect(agentStep({ gaveUp: true, waiting: false }, screen())).toBe('none')
+  })
+
+  it('a restart after a give-up blocks the input again when the agent view shows', () => {
+    const after = afterRestart({ gaveUp: true, waiting: false })
+    expect(after).toEqual(fresh)
+    expect(stepBlocks(agentStep(after, screen()))).toBe(true)
+    // The shared attach history still limits the reattaches after the restart.
+    expect(agentStep(after, screen({ history: full(100_000) }))).toBe('give-up')
   })
 })

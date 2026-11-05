@@ -17,6 +17,8 @@ export const DIALOG_BUTTON =
 export interface ConfirmOptions {
   // The click on Open worktree. The dialog stays open.
   onOpenFolder?(): void
+  // Another dialog is open. The request then gives false at once.
+  onBusy?(): void
 }
 
 export type Confirm = (text: ConfirmText, opts?: ConfirmOptions) => Promise<boolean>
@@ -35,6 +37,8 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }): Re
   const [shown, setShown] = useState<Request | null>(null)
   const [step, setStep] = useState<ConfirmState>('first')
   const pending = useRef<Request | null>(null)
+  // The time (performance.now) of the change to the confirmAgain label.
+  const againAt = useRef(0)
   const cancelRef = useRef<HTMLButtonElement>(null)
 
   // Resolve the open request one time and close the dialog.
@@ -51,6 +55,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }): Re
     (text, opts = {}) =>
       new Promise<boolean>(resolve => {
         if (pending.current) {
+          opts.onBusy?.()
           resolve(false)
           return
         }
@@ -71,9 +76,21 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }): Re
     if (!current) return
     // The second click must be its own click. The second half of a double click does not count.
     if (step === 'again' && e.detail > 1) return
-    const result = confirmStep(step, current.text)
-    if (result.resolve) finish(true)
-    else setStep('again')
+    const result = confirmStep(step, current.text, performance.now() - againAt.current)
+    if (result.resolve) {
+      finish(true)
+      return
+    }
+    // A click that comes too soon in the step again changes nothing. The wait does not start again.
+    if (step === 'first') {
+      againAt.current = performance.now()
+      setStep('again')
+    }
+  }
+
+  // A held key gives repeated clicks. Only the first key down of a press counts.
+  function onConfirmKey(e: React.KeyboardEvent<HTMLButtonElement>): void {
+    if (e.repeat) e.preventDefault()
   }
 
   const text = shown?.text
@@ -124,6 +141,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }): Re
                 className={cx(DIALOG_BUTTON, step === 'again' && 'text-text-strong')}
                 data-confirm-ok={step}
                 onClick={onConfirm}
+                onKeyDown={onConfirmKey}
                 type='button'
               >
                 {text ? confirmLabel(step, text) : ''}

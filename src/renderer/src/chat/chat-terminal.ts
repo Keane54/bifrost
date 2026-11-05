@@ -8,12 +8,15 @@ import type { SessionRow, TermSize } from '../../../shared/types'
 import { cx } from '../lib/cx'
 import { errorMessage } from '../lib/error-message'
 import {
+  type AgentGuard,
+  afterRestart,
   agentCheckDelay,
+  agentStep,
   isAgentView,
   joinWrapped,
-  reattachDecision,
   recentAttaches,
   type ScreenRow,
+  stepBlocks,
 } from './agent-view'
 import {
   BUMP_GAP_MS,
@@ -288,12 +291,21 @@ export class ChatTerminal {
 
   // Attach again after a Resume. A terminal that did not end does nothing.
   // The attach follows the rule of setRow: it waits for a row that can attach.
+  // The agent view guard starts again. Without this, a window that gave up before the end
+  // would never stop the input again, and keys could go into the agent view (spec 8.5).
   restart(): void {
     if (this.disposed || !this.ended) return
+    const guard = afterRestart(this.agentGuard())
+    this.gaveUp = guard.gaveUp
+    this.agentWaiting = guard.waiting
     this.ended = false
     this.term.reset()
     this.maybeAttach()
     this.showNote()
+  }
+
+  private agentGuard(): AgentGuard {
+    return { gaveUp: this.gaveUp, waiting: this.agentWaiting }
   }
 
   // Block or free the keys of the window. The main process also refuses a send to the session
@@ -526,22 +538,26 @@ export class ChatTerminal {
     window.clearTimeout(this.checkTimer)
     this.checkTimer = undefined
     this.uncheckedSince = null
-    if (this.disposed || !this.attached || this.gaveUp) return
-    if (!isAgentView(joinWrapped(this.screenRows()))) {
+    if (this.disposed || !this.attached) return
+    const guard = this.agentGuard()
+    const history = this.deps.history
+    const now = Date.now()
+    const target = this.target
+    // A window that gave up reads no screen.
+    const agentView = !guard.gaveUp && isAgentView(joinWrapped(this.screenRows()))
+    const step = agentStep(guard, { agentView, history: history.times, now, targetOk: target.ok })
+    if (step === 'none') return
+    if (step === 'free') {
       // The agent view closed while the reattach waited for the row. Input starts again.
-      if (this.agentWaiting) {
-        this.agentWaiting = false
-        this.setInputBlocked(false)
-        this.showNote()
-      }
+      this.agentWaiting = false
+      this.setInputBlocked(false)
+      this.showNote()
       return
     }
     // Input stops at once.
-    this.setInputBlocked(true)
-    const history = this.deps.history
-    const now = Date.now()
+    this.setInputBlocked(stepBlocks(step))
     history.times = recentAttaches(history.times, now)
-    if (reattachDecision(history.times, now) === 'give-up') {
+    if (step === 'give-up') {
       this.gaveUp = true
       this.agentWaiting = false
       this.showNote()
@@ -549,8 +565,8 @@ export class ChatTerminal {
     }
     // The row cannot attach now. Input stays blocked, and the note gives the reason.
     // The next update of a row that can attach checks the screen again.
-    const target = this.target
-    if (!target.ok) {
+    // The step is wait only when the target is not ok. The second test tells TypeScript so.
+    if (step === 'wait' || !target.ok) {
       this.agentWaiting = true
       this.showNote()
       return

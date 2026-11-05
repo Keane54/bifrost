@@ -33,7 +33,7 @@ import { useConfirm } from './ConfirmDialog'
 import { confirmFor } from './confirm'
 import { friendlyError } from './errors'
 import RenameDialog from './RenameDialog'
-import { planRun, type RunPlan } from './run-plan'
+import { type FocusRequest, planRun, type RunPlan } from './run-plan'
 
 // The Labels setting comes in M5 (spec 9.1). Until then, Bifrost uses the plain labels.
 export const LABELS: LabelSet = 'plain'
@@ -48,12 +48,10 @@ const SLASH_FAVOURITES: string[] = [...DEFAULT_SLASH_FAVOURITES]
 // A click on it in the submenu would give its name to another session.
 const RENAME_COMMAND = /^\/rename(?:\s|$)/
 
-export interface FocusRequest {
-  sessionId: string
-  text: '' | '/'
-  // A new number for each request. So the same request twice also focuses the send box.
-  n: number
-}
+// The notice while the unmerged-work check of a Delete runs (Task 13).
+const CHECKING_NOTICE = 'Checking for unmerged work...'
+// The notice when a confirmation cannot open, because another dialog is open.
+const DIALOG_BUSY_NOTICE = 'Another dialog is open. Finish that one first.'
 
 export interface ActionsValue {
   run(id: ActionId, sessionId: string, arg?: MenuArg): void
@@ -68,6 +66,8 @@ export interface ActionsValue {
   notice: string | null
   // The send box of this session takes the focus.
   focusRequest: FocusRequest | null
+  // A send box used the request with this number. The request goes away.
+  clearFocusRequest(n: number): void
 }
 
 type CallPlan = Extract<RunPlan, { kind: 'call' }>
@@ -107,18 +107,41 @@ function resumedNotice(n: number): string {
   return n === 1 ? 'Resumed 1 session.' : `Resumed ${n} sessions.`
 }
 
-// A message that shows for MESSAGE_MS. A new message replaces the last one and shows for the
-// full time.
-function useTimedMessage(): [string | null, (text: string) => void] {
+interface TimedMessage {
+  text: string | null
+  // Show the text. A new text replaces the last one. The result identifies this text for hide.
+  show(text: string, opts?: { untilHidden?: boolean }): number
+  // Remove the text, if it is still the text that show gave the number for.
+  hide(id: number): void
+}
+
+// A message that shows for MESSAGE_MS, or until hide when untilHidden is true.
+// A new message replaces the last one and shows for the full time.
+function useTimedMessage(): TimedMessage {
   const [text, setText] = useState<string | null>(null)
   const timer = useRef<number | undefined>(undefined)
+  const shownId = useRef(0)
   useEffect(() => () => window.clearTimeout(timer.current), [])
-  const show = useCallback((next: string) => {
+  const show = useCallback((next: string, opts: { untilHidden?: boolean } = {}) => {
     window.clearTimeout(timer.current)
+    timer.current = undefined
+    shownId.current += 1
+    const id = shownId.current
     setText(next)
-    timer.current = window.setTimeout(() => setText(null), MESSAGE_MS)
+    if (opts.untilHidden !== true) {
+      timer.current = window.setTimeout(() => {
+        if (shownId.current === id) setText(null)
+      }, MESSAGE_MS)
+    }
+    return id
   }, [])
-  return [text, show]
+  const hide = useCallback((id: number) => {
+    if (shownId.current !== id) return
+    window.clearTimeout(timer.current)
+    timer.current = undefined
+    setText(null)
+  }, [])
+  return useMemo(() => ({ hide, show, text }), [hide, show, text])
 }
 
 // It must be inside the providers of the registry, the window manager, the history, the
@@ -131,8 +154,13 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const confirm = useConfirm()
   const chats = useChats()
   const [apps, setApps] = useState<ProjectApp[]>([])
-  const [error, showError] = useTimedMessage()
-  const [notice, showNotice] = useTimedMessage()
+  const errorLine = useTimedMessage()
+  const noticeLine = useTimedMessage()
+  const error = errorLine.text
+  const notice = noticeLine.text
+  const showError = errorLine.show
+  const showNotice = noticeLine.show
+  const hideNotice = noticeLine.hide
   // The session IDs with a call that did not end. The ref has the value at once.
   const [running, setRunning] = useState<ReadonlySet<string>>(() => new Set())
   const runningRef = useRef<ReadonlySet<string>>(running)
@@ -175,6 +203,21 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     setRunning(next)
   }, [])
 
+  // A confirmation could not open, because another dialog is open. The action does not run.
+  const onBusy = useCallback(() => {
+    showNotice(DIALOG_BUSY_NOTICE)
+  }, [showNotice])
+
+  // Close the Rename dialog only when it is still the dialog of this session. A send of an old
+  // dialog can end after the user opened Rename for another session.
+  const closeRename = useCallback((sessionId: string) => {
+    setRenameFor(cur => (cur === sessionId ? null : cur))
+  }, [])
+
+  const clearFocusRequest = useCallback((n: number) => {
+    setFocusRequest(cur => (cur?.n === n ? null : cur))
+  }, [])
+
   const send = useCallback(
     async (sessionId: string, text: string): Promise<void> => {
       await window.bifrost.input.send(sessionId, text)
@@ -197,11 +240,15 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           // Delete runs the unmerged-work check first (Task 13). A failed check gives null.
           setRunningFor(sessionId, true)
           marked = true
+          // The page is not modal during the check. The notice tells the user that it runs.
+          const checking = showNotice(CHECKING_NOTICE, { untilHidden: true })
           const check = await api.sessions.deleteCheck(sessionId).catch(() => null)
+          hideNotice(checking)
           const now = latest.current.rows.find(r => r.sessionId === sessionId) ?? row
           const text = confirmFor('delete', now, LABELS, check)
           if (text === null) return
           confirmed = await confirm(text, {
+            onBusy,
             // The main process finds the folder from the row. The page sends no path.
             onOpenFolder: () => {
               api.sessions.openWorktree(sessionId).catch(fail)
@@ -209,7 +256,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           })
           if (!confirmed) return
         } else if (plan.confirm !== null) {
-          confirmed = await confirm(plan.confirm)
+          confirmed = await confirm(plan.confirm, { onBusy })
           if (!confirmed) return
         }
         if (!marked) {
@@ -272,7 +319,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
         if (marked) setRunningFor(sessionId, false)
       }
     },
-    [chats, confirm, dispatch, fail, select, setRunningFor, showNotice],
+    [chats, confirm, dispatch, fail, hideNotice, onBusy, select, setRunningFor, showNotice],
   )
 
   const run = useCallback(
@@ -302,7 +349,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           select(sessionId)
           dispatch({ panelId: 'selected-item', type: 'open' })
           focusCount.current += 1
-          setFocusRequest({ n: focusCount.current, sessionId, text: plan.text })
+          setFocusRequest({ at: Date.now(), n: focusCount.current, sessionId, text: plan.text })
           break
         case 'send':
           send(sessionId, plan.text).catch(fail)
@@ -344,6 +391,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
 
   const value = useMemo<ActionsValue>(
     () => ({
+      clearFocusRequest,
       contextFor: sessionId =>
         contextOf(sessionId, state, apps, running.has(sessionId), history.recentSlash),
       error,
@@ -356,6 +404,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     }),
     [
       apps,
+      clearFocusRequest,
       error,
       focusRequest,
       history.recentSlash,
@@ -373,7 +422,11 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     <ActionsContext value={value}>
       {children}
       {renameFor !== null && (
-        <RenameDialog key={renameFor} onClose={() => setRenameFor(null)} sessionId={renameFor} />
+        <RenameDialog
+          key={renameFor}
+          onClose={() => closeRename(renameFor)}
+          sessionId={renameFor}
+        />
       )}
     </ActionsContext>
   )

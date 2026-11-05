@@ -1,19 +1,16 @@
 // The send box of the Selected Item panel (spec 8.4 item 6). Enter sends. Shift+Enter adds a line.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { isSendKey } from '../../../shared/input'
 import type { SessionRow } from '../../../shared/types'
 import { actionLabel, actionStateFor } from '../actions/action-model'
 import { useActions } from '../actions/actions-context'
 import { friendlyError } from '../actions/errors'
+import { focusRequestUsable } from '../actions/run-plan'
 import { cx } from '../lib/cx'
 import { errorMessage } from '../lib/error-message'
 
 const SENDING = 'Sending...'
 const SLASH_HINT = 'This runs as a slash command.'
-
-// The number of the last focus request that a send box used.
-// So a new mount of the panel does not use an old request again.
-let usedFocus = 0
 
 interface Failure {
   sessionId: string
@@ -21,7 +18,7 @@ interface Failure {
 }
 
 export default function SendBox({ row }: { row: SessionRow }): React.JSX.Element {
-  const { contextFor, focusRequest, send } = useActions()
+  const { clearFocusRequest, contextFor, focusRequest, send } = useActions()
   const sessionId = row.sessionId
   const ctx = contextFor(sessionId)
   const state = actionStateFor('send-message', row, ctx)
@@ -69,11 +66,28 @@ export default function SendBox({ row }: { row: SessionRow }): React.JSX.Element
     }
   }
 
+  // The session that the box shows. The focus frame reads it.
+  const shownFor = useRef(sessionId)
+  // The session of the box can change while the field has the focus, for example after Take
+  // control selects the new session. The keys must not go on into the draft of that session.
+  // The layout effect runs before the next key event.
+  useLayoutEffect(() => {
+    if (shownFor.current === sessionId) return
+    shownFor.current = sessionId
+    const el = field.current
+    if (el && document.activeElement === el) el.blur()
+  }, [sessionId])
+
+  // The frame that gives the focus. A change of the request does not cancel it, because the
+  // box clears the request that it used.
+  const focusFrame = useRef(0)
+  useEffect(() => () => cancelAnimationFrame(focusFrame.current), [])
+
   // A focus request from Send message or Run slash command (Other...).
   useEffect(() => {
     const request = focusRequest
-    if (!request || request.n <= usedFocus || request.sessionId !== sessionId) return
-    usedFocus = request.n
+    if (request === null || !focusRequestUsable(request, sessionId, Date.now())) return
+    clearFocusRequest(request.n)
     // A disabled field gets no text and no focus.
     if (field.current?.disabled) return
     if (request.text === '/' && (drafts.current.get(sessionId) ?? '') === '') {
@@ -81,14 +95,15 @@ export default function SendBox({ row }: { row: SessionRow }): React.JSX.Element
       setVersion(v => v + 1)
     }
     // Wait one frame. The menu that started the request closes first.
-    const frame = requestAnimationFrame(() => {
+    cancelAnimationFrame(focusFrame.current)
+    focusFrame.current = requestAnimationFrame(() => {
       const el = field.current
-      if (!el) return
+      // The box can show another session now. Then it takes no focus.
+      if (!el || shownFor.current !== request.sessionId) return
       el.focus()
       el.setSelectionRange(el.value.length, el.value.length)
     })
-    return () => cancelAnimationFrame(frame)
-  }, [focusRequest, sessionId])
+  }, [clearFocusRequest, focusRequest, sessionId])
 
   // One line under the field. The disabled reason comes first.
   let line: { text: string; dim: boolean } | null = null

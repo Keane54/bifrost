@@ -50,8 +50,19 @@ describe('confirm texts', () => {
       confirm: 'Delete session',
       confirmAgain: 'Delete anyway',
       openFolder: WT,
-      title: 'Delete session',
+      title: 'Delete fix-a',
     })
+  })
+
+  it('the Delete title names the session for each check result', () => {
+    for (const c of [undefined, null, check({}), check({ unmergedCommits: 1 })]) {
+      expect(del(c)?.title).toBe('Delete fix-a')
+      expect(del(c)?.confirm).toBe('Delete session')
+    }
+    const r = row({ cwd: WT, name: 'bifrost-a1b2', sessionId: 'a' })
+    expect(confirmFor('delete', r, 'plain')?.title).toBe('Delete bifrost-a1b2')
+    expect(confirmFor('delete', r, 'space')?.title).toBe('Self-destruct bifrost-a1b2')
+    expect(confirmFor('delete', r, 'space', null)?.title).toBe('Self-destruct bifrost-a1b2')
   })
 
   it('Delete uses the singular and leaves out a zero part', () => {
@@ -101,6 +112,6 @@ describe('confirm texts', () => {
     expect(confirmFor('stop', r, 'space')?.confirm).toBe('Power down')
     expect(confirmFor('stop', r, 'space')?.title).toBe('Power down')
     expect(confirmFor('delete', r, 'space')?.confirm).toBe('Self-destruct')
-    expect(confirmFor('delete', r, 'space')?.title).toBe('Self-destruct')
+    expect(confirmFor('delete', r, 'space')?.title).toBe('Self-destruct a')
   })
 })

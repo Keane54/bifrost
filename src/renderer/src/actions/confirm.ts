@@ -41,6 +41,9 @@ export function confirmFor(
   }
   if (id === 'delete') {
     const label = bareLabel('delete', labels)
+    // The title names the session. The word "session" of the plain label goes, because the name
+    // follows it: "Delete bifrost-a1b2", or "Self-destruct bifrost-a1b2" with the space labels.
+    const title = `${label.replace(/ session$/, '')} ${row.name}`
     const plain = `Delete ${row.name}? This removes the session and its conversation.`
     const ask = 'Are you sure you want to delete this?'
     const again = 'Delete anyway'
@@ -50,12 +53,12 @@ export function confirmFor(
         body: `Bifrost could not check this session for unmerged work. ${ask}`,
         confirm: label,
         confirmAgain: again,
-        title: label,
+        title,
         ...(folder === undefined ? {} : { openFolder: folder }),
       }
     }
     if (check === undefined || check.worktree === null) {
-      return { body: plain, confirm: label, title: label }
+      return { body: plain, confirm: label, title }
     }
     const parts: string[] = []
     if (check.unmergedCommits > 0) {
@@ -66,14 +69,14 @@ export function confirmFor(
       const n = check.changedFiles
       parts.push(`${n} changed ${n === 1 ? 'file' : 'files'}`)
     }
-    if (parts.length === 0) return { body: plain, confirm: label, title: label }
+    if (parts.length === 0) return { body: plain, confirm: label, title }
     const where = check.branch === null ? 'in its worktree' : `on ${check.branch}`
     return {
       body: `This session has ${parts.join(' and ')} ${where}. ${ask}`,
       confirm: label,
       confirmAgain: again,
       openFolder: check.worktree,
-      title: label,
+      title,
     }
   }
   const label = bareLabel('take-control', labels)

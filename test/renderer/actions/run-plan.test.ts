@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { ActionContext } from '../../../src/renderer/src/actions/action-model'
 import type { ConfirmText } from '../../../src/renderer/src/actions/confirm'
 import { confirmFor } from '../../../src/renderer/src/actions/confirm'
-import { confirmStep } from '../../../src/renderer/src/actions/confirm-step'
-import { planRun } from '../../../src/renderer/src/actions/run-plan'
+import { CONFIRM_AGAIN_WAIT_MS, confirmStep } from '../../../src/renderer/src/actions/confirm-step'
+import {
+  FOCUS_REQUEST_MS,
+  focusRequestUsable,
+  planRun,
+} from '../../../src/renderer/src/actions/run-plan'
 import { row } from '../overview/fixtures'
 
 const ctx = (over: Partial<ActionContext> = {}): ActionContext => ({
@@ -163,5 +167,49 @@ describe('confirmStep', () => {
 
   it('the second click with confirmAgain confirms', () => {
     expect(confirmStep('again', twice)).toEqual({ label: 'Delete anyway', resolve: true })
+  })
+})
+
+describe('the wait of the second confirm click', () => {
+  const twice: ConfirmText = {
+    body: 'b',
+    confirm: 'Delete session',
+    confirmAgain: 'Delete anyway',
+    title: 'Delete fix-a',
+  }
+
+  it('is 500 ms', () => {
+    expect(CONFIRM_AGAIN_WAIT_MS).toBe(500)
+  })
+
+  it('a click less than 500 ms after the label change does not confirm', () => {
+    expect(confirmStep('again', twice, 0)).toEqual({ label: 'Delete anyway', resolve: false })
+    expect(confirmStep('again', twice, 499)).toEqual({ label: 'Delete anyway', resolve: false })
+  })
+
+  it('a click 500 ms or more after the label change confirms', () => {
+    expect(confirmStep('again', twice, 500)).toEqual({ label: 'Delete anyway', resolve: true })
+    expect(confirmStep('again', twice, 2000)).toEqual({ label: 'Delete anyway', resolve: true })
+  })
+
+  it('does not apply to a dialog without confirmAgain', () => {
+    const plain: ConfirmText = { body: 'b', confirm: 'Stop session', title: 'Stop session' }
+    expect(confirmStep('first', plain, 0)).toEqual({ label: 'Stop session', resolve: true })
+  })
+})
+
+describe('focusRequestUsable', () => {
+  const request = { at: 10_000, n: 1, sessionId: 'o', text: '/' as const }
+
+  it('is true for the session of the request within 1 s', () => {
+    expect(FOCUS_REQUEST_MS).toBe(1000)
+    expect(focusRequestUsable(request, 'o', 10_000)).toBe(true)
+    expect(focusRequestUsable(request, 'o', 11_000)).toBe(true)
+  })
+
+  it('is false for another session, for no request and for a request older than 1 s', () => {
+    expect(focusRequestUsable(request, 'p', 10_000)).toBe(false)
+    expect(focusRequestUsable(null, 'o', 10_000)).toBe(false)
+    expect(focusRequestUsable(request, 'o', 11_001)).toBe(false)
   })
 })
