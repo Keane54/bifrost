@@ -1,5 +1,6 @@
 import { type Dispatch, type RefObject, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { CheckBox } from '../lib/CheckBox'
 import { MAX_SET_NAME } from '../overview/config'
 import { useOverview } from '../overview/overviews-context'
 import { useDismiss } from './popover'
@@ -68,7 +69,7 @@ export default function PanelMenu({
   onClose,
 }: PanelMenuProps): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
-  const lock = useRef<HTMLInputElement>(null)
+  const lock = useRef<HTMLElement>(null)
   useDismiss(ref, button, onClose)
 
   useEffect(() => {
@@ -100,15 +101,12 @@ export default function PanelMenu({
           Overview settings…
         </button>
       )}
-      <label className='flex items-center gap-2'>
-        <input
-          checked={frame.locked}
-          onChange={e => dispatch({ frameId: frame.id, locked: e.target.checked, type: 'lock' })}
-          ref={lock}
-          type='checkbox'
-        />
-        Lock
-      </label>
+      <CheckBox
+        checked={frame.locked}
+        label='Lock'
+        onChange={locked => dispatch({ frameId: frame.id, locked, type: 'lock' })}
+        ref={lock}
+      />
       {overview && <SetNameField panelId={frame.active} />}
     </div>,
     document.body,

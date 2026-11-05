@@ -5,12 +5,12 @@
 // row is the leftmost column.
 // Filters: checkboxes for the states, the kinds and the boxes that the tab shows.
 import { Button } from '@base-ui/react/button'
-import { Checkbox } from '@base-ui/react/checkbox'
 import { Select } from '@base-ui/react/select'
 import { Check, ChevronDown, GripVertical } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { SessionKind } from '../../../shared/types'
 import { REASON_DEFAULT_TAB, REASON_KIND_COLUMN } from '../actions/reasons'
+import { CheckBox } from '../lib/CheckBox'
 import { cx } from '../lib/cx'
 import { MENU_ITEM, MENU_POPUP, Tip } from '../lib/menu'
 import { useWmState } from '../wm/context'
@@ -43,36 +43,6 @@ const PAGES: { id: Page; label: string }[] = [
 ]
 
 const KIND_LABELS: Record<SessionKind, string> = { external: 'External', owned: 'Owned' }
-
-// The checkbox is the box and its name. A click on the name also changes the box.
-// The box is small and dark, with a check mark. A disabled box is faded (spec 9.1).
-const CHECKBOX =
-  'group flex min-w-0 flex-1 items-center gap-2 outline-none not-data-disabled:active:bg-accent/12'
-const BOX =
-  'flex size-3.5 shrink-0 items-center justify-center border border-text-dim bg-bg text-text-strong group-focus-visible:outline-1 group-focus-visible:outline-text-strong group-data-checked:border-text group-data-disabled:opacity-40'
-
-function CheckBox(props: {
-  checked: boolean
-  disabled?: boolean
-  label: string
-  onChange(checked: boolean): void
-}): React.JSX.Element {
-  return (
-    <Checkbox.Root
-      checked={props.checked}
-      className={CHECKBOX}
-      disabled={props.disabled}
-      onCheckedChange={checked => props.onChange(checked)}
-    >
-      <span className={BOX}>
-        <Checkbox.Indicator className='flex data-unchecked:hidden'>
-          <Check aria-hidden={true} size={10} strokeWidth={3} />
-        </Checkbox.Indicator>
-      </span>
-      <span className='truncate'>{props.label}</span>
-    </Checkbox.Root>
-  )
-}
 
 // The rows of the list in screen order, and the row under the pointer with the half of that row.
 // A pointer above the list is on the upper half of the first row. A pointer below the list is on
