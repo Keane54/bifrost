@@ -54,7 +54,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: Resume all runs': REASON_RESUME_ALL_RUNS,
   'refused: Take control needs a confirmation': 'Take control needs your confirmation first.',
   'refused: the attach is not for the session of the chat view':
-    "That attach doesn't match the session of this chat window.",
+    "That connection doesn't match the session of this chat window.",
   'refused: the page that asked for the PTY is gone':
     'The window that asked for the terminal has closed.',
   'refused: the project directory is not known': REASON_NO_CWD,
