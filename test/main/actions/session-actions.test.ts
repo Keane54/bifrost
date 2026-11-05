@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { trustMessage } from '../../../src/main/actions/claude-output'
 import {
   createSessionActions,
+  DELETE_END_WAIT_MS,
   END_POLL_MS,
   END_WAIT_MS,
   newSessionArgs,
@@ -517,6 +518,7 @@ describe('remove', () => {
     await actions.remove(S, true)
     expect(f.ops()).toEqual([
       `0 run ${JSON.stringify(['stop', SHORT])} ${JSON.stringify(RUN_OPTS)}`,
+      '0 isAlive 4242',
       `0 run ${JSON.stringify(['rm', SHORT])} ${JSON.stringify(RM_OPTS)}`,
       `0 forget ${S}`,
     ])
@@ -698,6 +700,7 @@ describe('remove of a worktree that claude rm keeps', () => {
     expect(f.ops()).toEqual([
       `0 trackedChanges ${WT}`,
       runLine(['stop', ID]),
+      '0 isAlive 4242',
       runLine(RM),
       `0 checkWorktree ${WT}`,
       runLine(DISCARD),
@@ -1024,6 +1027,7 @@ describe('remove of a running worktree session with changes (final review M3)', 
     expect(f.ops()).toEqual([
       `0 trackedChanges ${WT}`,
       runLine(['stop', ID]),
+      '0 isAlive 4242',
       runLine(['rm', ID]),
       `0 forget ${S}`,
     ])
@@ -1048,6 +1052,95 @@ describe('remove of a running worktree session with changes (final review M3)', 
     f.rows = [row()]
     await actions.remove(S, true)
     expect(f.ops('trackedChanges')).toEqual([])
+  })
+})
+
+describe('remove waits for the end of the session process (Task 19 bugs 1 and 2)', () => {
+  const stopLine = `0 run ${JSON.stringify(['stop', SHORT])} ${JSON.stringify(RUN_OPTS)}`
+  const NOT_STOPPED = 'refused: the session did not stop'
+
+  test('claude rm runs only after isAlive gives false', async () => {
+    f.rows = [row()]
+    let alive = true
+    f.alive = () => alive
+    let settled = false
+    const done = actions.remove(S, true).finally(() => {
+      settled = true
+    })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(settled).toBe(false)
+    expect(f.ops('run')).toEqual([stopLine])
+    expect(f.ops('isAlive').length).toBeGreaterThan(10)
+    alive = false
+    await vi.advanceTimersByTimeAsync(END_POLL_MS)
+    await done
+    expect(f.ops('run', 'forget').map(l => l.split(' ').slice(1, 3).join(' '))).toEqual([
+      `run ${JSON.stringify(['stop', SHORT])}`,
+      `run ${JSON.stringify(['rm', SHORT])}`,
+      `forget ${S}`,
+    ])
+  })
+
+  test('the wait is at least 15 seconds', () => {
+    expect(DELETE_END_WAIT_MS).toBeGreaterThanOrEqual(15_000)
+  })
+
+  test('a process that stays alive past the wait gives no claude rm, and releases the lock', async () => {
+    f.rows = [row()]
+    f.alive = () => true
+    let settled = false
+    const done = actions.remove(S, true).finally(() => {
+      settled = true
+    })
+    const check = expect(done).rejects.toThrow(NOT_STOPPED)
+    await vi.advanceTimersByTimeAsync(DELETE_END_WAIT_MS - 1)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await check
+    expect(f.ops('run')).toEqual([stopLine])
+    expect(f.ops('forget')).toEqual([])
+    // The lock is free. A second Delete starts and runs claude stop again.
+    f.alive = () => false
+    await actions.remove(S, true)
+    expect(f.ops('run')).toHaveLength(3)
+  })
+
+  test('a session with no PID still deletes and checks no process', async () => {
+    f.rows = [row({ pid: undefined })]
+    await actions.remove(S, true)
+    expect(f.ops('isAlive')).toEqual([])
+    expect(f.ops('run', 'forget')).toHaveLength(3)
+  })
+
+  test('the worktree discard still works after the wait', async () => {
+    const WT = KEPT_WORKTREE
+    f.rows = [row({ cwd: `${WT}/src`, shortId: KEPT_SHORT_ID })]
+    let alive = true
+    f.alive = () => alive
+    f.exec = args =>
+      args.length === 2 && args[0] === 'rm' ? { code: 1, stderr: '', stdout: KEPT_STDOUT } : OK
+    f.check = () => ({
+      branch: 'worktree-bifrost-test-rmx',
+      changedFiles: 0,
+      head: KEPT_HEAD,
+      unmergedCommits: 1,
+      worktree: WT,
+    })
+    const done = actions.remove(S, true, { changedFiles: 0, unmergedCommits: 1, worktree: WT })
+    await vi.advanceTimersByTimeAsync(1000)
+    // The re-check of the worktree waits for the end of the process.
+    expect(f.ops('checkWorktree')).toEqual([])
+    alive = false
+    await vi.advanceTimersByTimeAsync(END_POLL_MS)
+    await done
+    expect(f.ops('checkWorktree')).toHaveLength(1)
+    const runs = f.ops('run').map(l => JSON.parse(l.split(' ')[2]) as string[])
+    expect(runs).toEqual([
+      ['stop', KEPT_SHORT_ID],
+      ['rm', KEPT_SHORT_ID],
+      ['rm', KEPT_SHORT_ID, '--discard-unpushed', KEPT_DISCARD],
+    ])
+    expect(f.ops('forget')).toEqual([`${Date.now() - f.base} forget ${S}`])
   })
 })
 

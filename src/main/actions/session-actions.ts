@@ -41,6 +41,9 @@ export const START_TIMEOUT_MS = 30_000
 // Take control waits this time for the end of the session process (spec 9.2).
 export const END_WAIT_MS = 5000
 export const END_POLL_MS = 100
+// Delete waits this time for the end of the process after claude stop. claude rm refuses a
+// worktree while the process runs (Task 19 bug 1).
+export const DELETE_END_WAIT_MS = 15_000
 // The time limit of each claude command.
 export const RUN_TIMEOUT_MS = 60_000
 // The time limit of claude rm. A discard can delete a large worktree, for example one with
@@ -89,6 +92,7 @@ const REFUSED_KEPT = 'refused: claude rm kept the worktree'
 const REFUSED_UNCOMMITTED = 'refused: the worktree has uncommitted changes'
 const REFUSED_RM_SLOW = 'refused: claude rm took too long'
 const REFUSED_WORKTREE_CHANGED = 'refused: the worktree changed after the check'
+const REFUSED_NOT_STOPPED = 'refused: the session did not stop'
 const REFUSED_NO_MESSAGES = 'refused: the session has no messages yet'
 const REASON_NO_SHORT_ID = 'claude --bg did not give a session ID.'
 const REASON_CREATING = 'A new session is already starting. Please wait.'
@@ -408,11 +412,11 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     await start(run, ['--bg', '--resume', row.sessionId], row.cwd, 'claude --bg --resume')
   }
 
-  // Check isAlive each END_POLL_MS for up to END_WAIT_MS. Return true when the process ended.
-  const waitForEnd = async (pid: number): Promise<boolean> => {
+  // Check isAlive each END_POLL_MS for up to limitMs. Return true when the process ended.
+  const waitForEnd = async (pid: number, limitMs = END_WAIT_MS): Promise<boolean> => {
     for (let waited = 0; ; waited += END_POLL_MS) {
       if (!deps.isAlive(pid)) return true
-      if (waited >= END_WAIT_MS) return false
+      if (waited >= limitMs) return false
       await sleep(END_POLL_MS)
     }
   }
@@ -487,6 +491,10 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
           if (row.state !== 'parked') {
             await checkBeforeStop(row)
             await command(run, ['stop', shortId], 'claude stop')
+            // claude rm refuses a worktree while the process runs. Wait for the end first.
+            if (row.pid !== undefined && !(await waitForEnd(row.pid, DELETE_END_WAIT_MS))) {
+              throw new Error(REFUSED_NOT_STOPPED)
+            }
           }
           await removeSession(run, row, shortId, counts)
         }

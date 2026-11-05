@@ -60,6 +60,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the project directory is not known': REASON_NO_CWD,
   'refused: the send was cancelled by Interrupt':
     'Interrupt cancelled this message before it was sent.',
+  'refused: the session did not stop':
+    "The session didn't stop in time. Try Delete again in a moment.",
   'refused: the session has an open prompt':
     'This session is waiting on a prompt. Answer it in the chat window first.',
   'refused: the session has no messages yet':
