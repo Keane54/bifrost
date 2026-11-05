@@ -67,7 +67,10 @@ export async function loadStore(file: string): Promise<RegistryStore> {
       if (!isObject(entry)) continue
       const { sessionId } = entry
       // An old colour name maps to a new colour before the check.
-      const old = typeof entry.colour === 'string' ? OLD_WATCH_COLOURS[entry.colour] : undefined
+      const old =
+        typeof entry.colour === 'string' && Object.hasOwn(OLD_WATCH_COLOURS, entry.colour)
+          ? OLD_WATCH_COLOURS[entry.colour]
+          : undefined
       const colour = isWatchColour(entry.colour) ? entry.colour : old
       if (typeof sessionId !== 'string' || colour === undefined || seen.has(sessionId)) continue
       seen.add(sessionId)

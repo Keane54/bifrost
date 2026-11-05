@@ -1,19 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { WATCH_COLOURS } from '../../src/shared/watch'
 
-const WATCH_NAMES = [
-  'dark-red',
-  'red',
-  'amber',
-  'yellow',
-  'green',
-  'light-blue',
-  'dark-blue',
-  'white',
-]
+const WATCH_NAMES: readonly string[] = WATCH_COLOURS
 // The Overview table sits on the panel. The row background is the watch colour over this.
-const PANEL = '#101010'
+// The unfocused panel is about rgb(24 24 24). The focused panel is rgb(8 8 8).
+const PANELS = ['#181818', '#080808']
 
 function token(name: string): string {
   const match = CSS.match(new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})`))
@@ -252,8 +245,10 @@ describe('theme', () => {
   })
 
   it('the Overview colour tokens have no purple or pink', () => {
-    const tokens = [...CSS.matchAll(/--color-((?:project|tab|watch)-[\w-]+):\s*(#[0-9a-fA-F]{6})/g)]
-    expect(tokens.length).toBeGreaterThanOrEqual(22)
+    const tokens = [
+      ...CSS.matchAll(/--color-((?:project|tab|watch|prio)-[\w-]+):\s*(#[0-9a-fA-F]{6})/g),
+    ]
+    expect(tokens.length).toBeGreaterThanOrEqual(27)
     const bad = tokens
       .filter(([, , hex]) => {
         const hue = hsl(hex).h
@@ -267,10 +262,14 @@ describe('theme', () => {
   it('the boxes stay clearly visible on each watched row', () => {
     const rowOpacity = watchRowOpacity()
     const surfaces: [string, string][] = []
-    for (const name of WATCH_NAMES) {
-      const plain = mix(token(`watch-${name}`), rowOpacity, PANEL)
-      surfaces.push([`${name} plain`, plain])
-      surfaces.push([`${name} selected`, mix(token('accent'), 0.15, plain)])
+    for (const panel of PANELS) {
+      for (const name of WATCH_NAMES) {
+        const plain = mix(token(`watch-${name}`), rowOpacity, panel)
+        surfaces.push([`${name} plain on ${panel}`, plain])
+        surfaces.push([`${name} selected on ${panel}`, mix(token('accent'), 0.15, plain)])
+        // The hover and the open state: --color-hover (white at 5%) over the tinted row.
+        surfaces.push([`${name} hover on ${panel}`, mix('#ffffff', 0.05, plain)])
+      }
     }
     const bad = surfaces.flatMap(([label, background]) =>
       ['box-yellow', 'box-red']
@@ -288,5 +287,18 @@ describe('theme', () => {
     ]) {
       expect(Math.abs(light(watch) - light(box)), `${watch} and ${box}`).toBeGreaterThanOrEqual(15)
     }
+  })
+
+  // The tint is faint, so the full colour shows in a 3 px stripe at the left edge of the row.
+  it('has a stripe class for each watch colour', () => {
+    const text = source('watch/watch-colours.ts')
+    for (const name of WATCH_NAMES) {
+      expect(text, name).toContain(`shadow-[inset_3px_0_0_var(--color-watch-${name})]`)
+    }
+  })
+
+  it('shows the stripe in the Overview and in the Watchlist panel', () => {
+    expect(source('overview/OverviewTable.tsx')).toContain('WATCH_STRIPE[row.watch.colour]')
+    expect(source('watch/WatchlistPanel.tsx')).toContain('WATCH_SWATCH[row.watch.colour]')
   })
 })

@@ -27,7 +27,7 @@
   --color-hover: rgb(255 255 255 / 0.05);
   --color-snap: #bdbdbd;
   --color-box-yellow: #e2b93b;
-  --color-box-red: #f26b62;
+  --color-box-red: #f5766d;
   --color-parked: #6b7280;
 
   /* The text colours of the Overview tabs. None is yellow, red or grey (spec 8.10). */
@@ -39,8 +39,8 @@
   --color-tab-6: #9fd0c0;
 
   /* The colours of the priorities 1 to 5. */
-  --color-prio-1: #e46ad8;
-  --color-prio-2: #a77bf3;
+  --color-prio-1: #f59e0b;
+  --color-prio-2: #93c5fd;
   --color-prio-3: #5b9cf2;
   --color-prio-4: #3fbfb0;
   --color-prio-5: #7fc77a;

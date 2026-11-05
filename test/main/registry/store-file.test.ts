@@ -249,6 +249,8 @@ test('loadStore maps the old watch colours', async () => {
     { colour: 'purple', sessionId: 's3' },
     { colour: 'pink', sessionId: 's4' },
     { colour: 'teal', sessionId: 's5' },
+    { colour: 'constructor', sessionId: 's6' },
+    { colour: '__proto__', sessionId: 's7' },
   ]
   await writeFile(file, JSON.stringify({ names: {}, started: [], watch }))
   expect((await loadStore(file)).watch).toEqual([

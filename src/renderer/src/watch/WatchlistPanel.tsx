@@ -16,7 +16,7 @@ import { TONE_TEXT } from '../overview/cells'
 import { stateLabel, stateTone } from '../overview/format'
 import { SessionIcon } from '../overview/SessionIcon'
 import { movedToStack } from '../wm/hit'
-import { WATCH_ROW_BG } from './watch-colours'
+import { WATCH_ROW_BG, WATCH_SWATCH } from './watch-colours'
 import { dropTarget, isDragCancel, isMove, shouldMove, watchedRows } from './watch-order'
 
 const EMPTY_TEXT =
@@ -207,6 +207,16 @@ export default function WatchlistPanel(): React.JSX.Element {
                       <span
                         aria-hidden={true}
                         className='pointer-events-none absolute inset-0 bg-select'
+                      />
+                    )}
+                    {/* The stripe in the full watch colour. It is above the selection layer. */}
+                    {row.watch && (
+                      <span
+                        aria-hidden={true}
+                        className={cx(
+                          'pointer-events-none absolute inset-y-0 left-0 w-[3px]',
+                          WATCH_SWATCH[row.watch.colour],
+                        )}
                       />
                     )}
                     <SessionIcon row={row} size={16} />

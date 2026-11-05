@@ -23,7 +23,7 @@ import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { MENU_POPUP } from '../lib/menu'
 import { useNow } from '../lib/use-now'
-import { WATCH_ROW_BG } from '../watch/watch-colours'
+import { WATCH_ROW_BG, WATCH_STRIPE } from '../watch/watch-colours'
 import { useWmState } from '../wm/context'
 import { CellContent } from './cells'
 import {
@@ -267,6 +267,7 @@ export default function OverviewTable({
                         // and the hover are on the cells. So they show on top of the colour.
                         cx(
                           WATCH_ROW_BG[row.watch.colour],
+                          WATCH_STRIPE[row.watch.colour],
                           id === selectedId
                             ? '*:bg-select'
                             : open.has(id)

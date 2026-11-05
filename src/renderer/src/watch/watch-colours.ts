@@ -25,3 +25,18 @@ export const WATCH_SWATCH: Record<WatchColour, string> = {
   white: 'bg-watch-white',
   yellow: 'bg-watch-yellow',
 }
+
+// The stripe at the left edge of a watched row, in the full watch colour. The row background is
+// only a faint tint, so the stripe shows the exact colour. An inset shadow stays on top of the
+// background of the same cell, so the selection and the hover do not cover it. It is 3 px wide.
+// The cell has 4 px of padding, so the stripe does not touch the icon or its box.
+export const WATCH_STRIPE: Record<WatchColour, string> = {
+  amber: '*:first:shadow-[inset_3px_0_0_var(--color-watch-amber)]',
+  'dark-blue': '*:first:shadow-[inset_3px_0_0_var(--color-watch-dark-blue)]',
+  'dark-red': '*:first:shadow-[inset_3px_0_0_var(--color-watch-dark-red)]',
+  green: '*:first:shadow-[inset_3px_0_0_var(--color-watch-green)]',
+  'light-blue': '*:first:shadow-[inset_3px_0_0_var(--color-watch-light-blue)]',
+  red: '*:first:shadow-[inset_3px_0_0_var(--color-watch-red)]',
+  white: '*:first:shadow-[inset_3px_0_0_var(--color-watch-white)]',
+  yellow: '*:first:shadow-[inset_3px_0_0_var(--color-watch-yellow)]',
+}
