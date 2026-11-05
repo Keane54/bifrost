@@ -33,7 +33,7 @@ export const NO_STATUSLINE_SETTINGS = '{"statusLine":{"type":"command","command"
 
 const UUID = new RegExp(UUID_PATTERN)
 
-const NO_CLAUDE = 'claude not found'
+export const NO_CLAUDE = 'claude not found'
 const REFUSED_UNKNOWN = 'refused: unknown session'
 const REFUSED_BAD_ID = 'refused: bad session ID'
 const REFUSED_LOCKED = 'refused: an action on this session runs'

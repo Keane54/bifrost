@@ -29,7 +29,9 @@ const api: BifrostApi = {
   actions: {
     apps: () => invoke('actions:apps'),
     copySessionId: sessionId => invoke('actions:copy-session-id', sessionId),
+    openInTerminal: sessionId => invoke('actions:open-in-terminal', sessionId),
     openProject: (sessionId, appId) => invoke('actions:open-project', sessionId, appId),
+    terminalIcon: sessionId => invoke('actions:terminal-icon', sessionId),
   },
   claudePath: () => invoke('claude:path'),
   claudeVersion: () => invoke('claude:version'),

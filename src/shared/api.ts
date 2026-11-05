@@ -38,6 +38,12 @@ export interface BifrostApi {
     openProject(sessionId: string, appId: ProjectAppId): Promise<void>
     // Copy the full session ID to the clipboard.
     copySessionId(sessionId: string): Promise<void>
+    // Open the session in the terminal app. An owned session attaches there.
+    // An external session brings its own terminal app to the front.
+    // The notice is text for the user, or null. This rejects with a refusal code.
+    openInTerminal(sessionId: string): Promise<{ notice: string | null }>
+    // The icon (a data URL) of the terminal app of an external session, or null.
+    terminalIcon(sessionId: string): Promise<string | null>
   }
   input: {
     // Type the text into the session: a message, or a slash command when it starts with "/".

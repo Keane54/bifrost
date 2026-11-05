@@ -1,4 +1,4 @@
-import { access, stat } from 'node:fs/promises'
+import { access, mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -19,6 +19,7 @@ import { dirInfo, isAlive, processName, sendSignal } from './actions/process-inf
 import { findProjectApps } from './actions/project-apps'
 import { createSessionActions } from './actions/session-actions'
 import { hasLeftKey, SessionInput } from './actions/session-input'
+import { createTerminalLauncher } from './actions/terminal-launch'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
@@ -286,6 +287,36 @@ export function registerIpc(): void {
   )
   ipcMain.handle('actions:copy-session-id', (e, sessionId: unknown) =>
     fromPage(e, () => actions.copySessionId(sessionId)),
+  )
+  // Open in terminal. The command files are in <bifrostHome>/run and only the user can use them.
+  const runDir = join(paths.bifrostHome, 'run')
+  const terminals = createTerminalLauncher({
+    apps: () => findProjectApps(homedir(), exists),
+    claudePath: () => claudePath,
+    exec: execFile,
+    fileIcon: async path => {
+      try {
+        const image = await app.getFileIcon(path, { size: 'small' })
+        return image.isEmpty() ? null : image.toDataURL()
+      } catch {
+        return null
+      }
+    },
+    remove: file => rm(file, { force: true }),
+    rows: () => liveService?.rows() ?? [],
+    runDir,
+    terminalOf: id => liveService?.terminalOf(id),
+    writeClipboard: text => clipboard.writeText(text),
+    writeScript: async (file, text) => {
+      await mkdir(runDir, { mode: 0o700, recursive: true })
+      await writeFile(file, text, { mode: 0o700 })
+    },
+  })
+  ipcMain.handle('actions:open-in-terminal', (e, sessionId: unknown) =>
+    fromPage(e, () => terminals.openInTerminal(sessionId)),
+  )
+  ipcMain.handle('actions:terminal-icon', (e, sessionId: unknown) =>
+    fromPage(e, () => terminals.terminalIcon(sessionId)),
   )
   // The session commands. The renderer sends session IDs and the New session values only.
   // The main process finds the row, the PID and the directory, and makes the claude arguments.
