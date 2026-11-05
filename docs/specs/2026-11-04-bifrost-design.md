@@ -73,7 +73,7 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 - Each entry has `pid`, `cwd`, `kind`, `startedAt`, `sessionId`, `name` and `status`.
 - The `status` value is `busy`, `idle` or `waiting`.
 - Entries of background sessions also have `state`. Do not use `state`, because it is not reliable.
-- An entry can have `waitingFor`, for example "permission prompt". It comes with the `waiting` status.
+- An entry can have `waitingFor`. It comes with the `waiting` status. Seen values: `permission prompt`, and `input needed` for an `AskUserQuestion` call. Interactive sessions also report `waiting` at a prompt (M1).
 - A new background entry has no `pid` and no `status` for about 2.5 seconds.
 - After `claude stop` or a service stop, the `--all` entry has no `pid` and no `status`. It can lose its name.
 - `claude --bg` refuses a directory that you did not trust. Claude Code keeps trust for each git root.
@@ -85,7 +85,9 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 - `claude --bg --resume <session-id>` continues a session in the background with the same ID and the same conversation.
 - If that session still runs, `claude --bg --resume` starts a copy.
 - `/bg`, or ← on an empty prompt, moves an interactive session to the supervisor.
-- The supervisor did not stop an idle, unattached session in 75 minutes.
+- The supervisor did not stop an idle, unattached session in 75 minutes (M0). In M1, it parked an idle session about 60 minutes after its last turn, with no `SessionEnd` event.
+- A background session in a git repository enters a git worktree (`.claude/worktrees/<name>`, branch `worktree-<name>`) before it edits a file. `claude rm` deletes the worktree and the branch (M1).
+- Running sessions use a change of the hooks and the statusLine in `settings.json` at once. No restart is necessary (M1).
 - A restart of the computer stops all background sessions.
 - Hooks in `~/.claude/settings.json` apply to all local sessions.
 - The statusLine command gets the session JSON on stdin. The JSON includes the model, the cost, the context window and the rate limits.
@@ -188,7 +190,7 @@ Rules for the hook script:
 - The script never writes to stdout. Claude Code adds hook stdout to the context for some events.
 - The script makes its files with mode 0600 (`umask 077`), because the files hold tool input and output.
 - The script always exits with code 0.
-- The script must finish in less than 50 ms.
+- The median time of the script is less than 50 ms. The script adds less than 20 ms to the start of an empty `sh` (M1 measured the maximum at 96 to 106 ms under load, against 85 ms for an empty `sh`).
 - The hooks are not `async`. An async hook can write its file after the file of a later event, and the box rules need the correct order.
 
 M1 measures the cost of the `PostToolUse` hook. If the cost is too high, Bifrost uses the busy status from `claude agents --json`.
@@ -251,7 +253,7 @@ Box rules:
 7. External sessions also get boxes, because the hooks are global.
 8. Parked sessions never get a box.
 9. A red box also clears when `status` is no longer `waiting`. Another client can answer a prompt. Examples are the agent view, a terminal and a phone.
-10. A `status` sample clears a box only after a sample confirmed that box. `idle` confirms a yellow box and an error box. `waiting` confirms a red prompt box. The reason: Claude Code can report `busy` while the Stop hooks run, and an interactive session can report `idle` or `busy` at a prompt. Hook events clear a box at all times.
+10. A `status` sample clears a box only after a sample confirmed that box. `idle` confirms a yellow box and an error box. `waiting` confirms a red prompt box. The reason: Claude Code can report `busy` while the Stop hooks run. Hook events clear a box at all times.
 
 ## 8. User interface
 
@@ -664,7 +666,7 @@ At the first start, Bifrost shows the setup dialog. The dialog shows each change
 
 1. The hook entries that Bifrost adds to `~/.claude/settings.json`.
 2. The new statusLine command, and your current statusLine command that the wrapper runs.
-3. The backup path.
+3. The backup directory. The file name has the time of the install.
 
 You select "Install" or "Skip".
 
