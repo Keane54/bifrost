@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import * as R from '../../../src/renderer/src/actions/reasons'
 import {
   attachTarget,
+  type ChatView,
   chatPanelId,
   chatSessionId,
   chatViews,
+  gainedFocus,
   MAX_WEBGL,
   openChatIds,
   webglPlan,
@@ -60,6 +62,27 @@ describe('chatViews', () => {
     expect(v.get('c')).toEqual({ focused: false, visible: false })
     // The minimised frame is on top but is not the top frame.
     expect(v.get('a')).toEqual({ focused: true, visible: true })
+  })
+})
+
+describe('gainedFocus', () => {
+  it('gives the chats that became focused', () => {
+    const view = (focused: boolean): ChatView => ({ focused, visible: true })
+    const prev = new Map([
+      ['a', view(true)],
+      ['b', view(false)],
+    ])
+    const next = new Map([
+      ['a', view(false)],
+      ['b', view(true)],
+    ])
+    expect(gainedFocus(prev, next)).toEqual(['b'])
+    expect(gainedFocus(next, next)).toEqual([])
+  })
+
+  it('gives a new chat that is focused', () => {
+    const next = new Map([['c', { focused: true, visible: true }]])
+    expect(gainedFocus(new Map(), next)).toEqual(['c'])
   })
 })
 

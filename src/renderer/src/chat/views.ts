@@ -52,6 +52,15 @@ export function chatViews(state: Pick<WmState, 'frames'>): Map<string, ChatView>
   return views
 }
 
+// The session IDs that are focused in next and were not focused in prev.
+export function gainedFocus(prev: Map<string, ChatView>, next: Map<string, ChatView>): string[] {
+  const ids: string[] = []
+  for (const [id, view] of next) {
+    if (view.focused && !prev.get(id)?.focused) ids.push(id)
+  }
+  return ids
+}
+
 export const MAX_WEBGL = 12
 
 // The focused window gets WebGL first. When the limit cuts, it takes the place of

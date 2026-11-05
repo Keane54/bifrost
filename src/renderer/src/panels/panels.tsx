@@ -1,7 +1,11 @@
 // The title and the content of each panel kind.
 import type { SessionRow } from '../../../shared/types'
+import ChatPanel from '../chat/ChatPanel'
 import { chatSessionId } from '../chat/views'
 import { useRegistry } from '../data/registry'
+import { cx } from '../lib/cx'
+import { PRIO_TEXT, TONE_TEXT } from '../overview/cells'
+import { stateTone } from '../overview/format'
 import OverviewPanel from '../overview/OverviewPanel'
 import { useOverview } from '../overview/overviews-context'
 import { panelKind } from '../wm/state'
@@ -39,9 +43,25 @@ function OverviewTitle({ panelId }: { panelId: string }): React.JSX.Element {
   )
 }
 
+// A chat title shows a dot in the colour of the state, the name and the priority (spec 8.5).
 function ChatTitle({ panelId }: { panelId: string }): React.JSX.Element {
   const { rows } = useRegistry()
-  return <>{panelTitle(panelId, rows)}</>
+  const id = chatSessionId(panelId)
+  const row = rows.find(r => r.sessionId === id)
+  return (
+    <span className='inline-flex max-w-full items-center gap-1.5'>
+      {row && (
+        <span
+          aria-hidden={true}
+          className={cx('size-2 shrink-0 rounded-full bg-current', TONE_TEXT[stateTone(row)])}
+        />
+      )}
+      <span className='min-w-0 truncate'>{panelTitle(panelId, rows)}</span>
+      {row?.priority && (
+        <span className={cx('shrink-0', PRIO_TEXT[row.priority])}>{row.priority}</span>
+      )}
+    </span>
+  )
 }
 
 // The title content with live data. It renders when its data changes, not with its frame.
@@ -56,6 +76,11 @@ export function PanelTitle({ panelId }: { panelId: string }): React.JSX.Element 
   }
 }
 
+// The content area of the frame scrolls, except for a chat panel. Its terminal fills the area.
+export function panelScrolls(panelId: string): boolean {
+  return panelKind(panelId) !== 'chat'
+}
+
 export function PanelContent({ panelId }: { panelId: string }): React.JSX.Element {
   switch (panelKind(panelId)) {
     case 'overview':
@@ -65,7 +90,7 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
     case 'integration':
       return <IntegrationPanel />
     case 'chat':
-      return <div className='p-3 text-[13px] text-text-dim'>Chat windows come in M3.</div>
+      return <ChatPanel panelId={panelId} />
     default:
       return <div className='p-3 text-[13px] text-text-dim'>This panel is not known.</div>
   }

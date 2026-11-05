@@ -22,11 +22,33 @@ export function isAgentView(lines: string[]): boolean {
   return tail.some(isFooterLine) && lines.some(line => AGENT_VIEW_COUNTS.test(line))
 }
 
+// One row of the terminal screen. A wrapped row continues the row above it.
+export interface ScreenRow {
+  text: string
+  wrapped: boolean
+}
+
+// A narrow terminal wraps the footer into more than one row. This function joins the rows
+// of each line. Give the text of each row without a trim, because a wrap can occur at a space.
+// The trim of each line occurs after the join.
+export function joinWrapped(rows: ScreenRow[]): string[] {
+  const lines: string[] = []
+  for (const row of rows) {
+    if (row.wrapped && lines.length > 0) lines[lines.length - 1] += row.text
+    else lines.push(row.text)
+  }
+  return lines.map(line => line.trimEnd())
+}
+
 export const MAX_REATTACH = 3
 export const REATTACH_WINDOW_MS = 60_000
 
+// The attaches of the history that are in the window. The owner of a history keeps only these.
+export function recentAttaches(history: number[], now: number): number[] {
+  return history.filter(at => now - at < REATTACH_WINDOW_MS)
+}
+
 // Gives up when the history has MAX_REATTACH or more attaches in the window.
 export function reattachDecision(history: number[], now: number): 'reattach' | 'give-up' {
-  const recent = history.filter(at => now - at < REATTACH_WINDOW_MS)
-  return recent.length >= MAX_REATTACH ? 'give-up' : 'reattach'
+  return recentAttaches(history, now).length >= MAX_REATTACH ? 'give-up' : 'reattach'
 }

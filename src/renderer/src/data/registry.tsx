@@ -4,6 +4,8 @@ import type { SessionRow } from '../../../shared/types'
 export interface RegistryValue {
   rows: SessionRow[]
   error: string | null
+  // True after the first update from the main process.
+  loaded: boolean
   selectedId: string | null
   select(id: string | null): void
 }
@@ -18,6 +20,7 @@ function message(err: unknown): string {
 export function RegistryProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [rows, setRows] = useState<SessionRow[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -32,6 +35,7 @@ export function RegistryProvider({ children }: { children: React.ReactNode }): R
       updated = true
       setRows(r)
       setError(e)
+      setLoaded(true)
     })
     return () => {
       active = false
@@ -47,8 +51,8 @@ export function RegistryProvider({ children }: { children: React.ReactNode }): R
   }, [])
 
   const value = useMemo(
-    () => ({ error, rows, select, selectedId }),
-    [error, rows, select, selectedId],
+    () => ({ error, loaded, rows, select, selectedId }),
+    [error, loaded, rows, select, selectedId],
   )
   return <RegistryContext value={value}>{children}</RegistryContext>
 }

@@ -1,6 +1,6 @@
 import { type Dispatch, memo, useCallback, useRef, useState } from 'react'
 import { cx } from '../lib/cx'
-import { PanelContent, PanelTitle } from '../panels/panels'
+import { PanelContent, PanelTitle, panelScrolls } from '../panels/panels'
 import { type Edge, TITLE_H } from './geometry'
 import PanelMenu, { type Anchor } from './PanelMenu'
 import type { Frame, WmAction } from './state'
@@ -168,8 +168,15 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
           ×
         </button>
       </div>
-      {/* The content scrolls in both directions when it is larger than the frame. */}
-      <div className='relative min-h-0 flex-1 overflow-auto' data-frame-content={true}>
+      {/* The content scrolls in both directions when it is larger than the frame.
+        A chat panel does not scroll. Its terminal fills the area. */}
+      <div
+        className={cx(
+          'relative min-h-0 flex-1',
+          panelScrolls(frame.active) ? 'overflow-auto' : 'overflow-hidden',
+        )}
+        data-frame-content={true}
+      >
         <Content panelId={frame.active} />
       </div>
       {!frame.locked &&
