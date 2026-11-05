@@ -20,7 +20,7 @@ import {
   shownRect,
   titleBar,
 } from './geometry'
-import { movedToStack, titleBarAt, tornOut } from './hit'
+import { movedToStack, tearOutRect, titleBarAt, tornOut } from './hit'
 import {
   deleteLayout,
   EMPTY_STORE,
@@ -41,9 +41,6 @@ import {
 } from './state'
 
 const SAVE_DELAY_MS = 500
-// When a tab leaves its stack, the top left corner of the new frame is 60 pixels left of
-// the pointer and 14 pixels above it.
-const TEAR_OFFSET: Point = { x: 60, y: 14 }
 // The default layout: an Overview at the top left, and the Selected Item at the right of it.
 const GAP = 16
 const OVERVIEW_RECT: Rect = { h: 360, w: 760, x: 16, y: 16 }
@@ -349,7 +346,8 @@ export default function WindowManager(): React.JSX.Element {
           end(false)
           return
         }
-        const rect: Rect = { ...sourceRect, x: p.x - TEAR_OFFSET.x, y: p.y - TEAR_OFFSET.y }
+        // The new frame gets the saved size of the panel, or else the size of the stack.
+        const rect = tearOutRect(p, s.memory[panelId], sourceRect, s.bounds)
         // The reducer gives the new frame the ID f<nextFrame>.
         id = `f${s.nextFrame}`
         handle.frameId = id
@@ -473,11 +471,13 @@ export default function WindowManager(): React.JSX.Element {
         <LayoutsContext value={layoutNames}>
           <div className='flex h-full w-full'>
             <SideBar />
-            {/* The area keeps the z-order of its frames inside it. So a popover can be above them. */}
+            {/* The area keeps the z-order of its frames inside it. So a popover can be above them.
+                A text selection cannot start on the empty area. The panel content allows it.
+                During a drag or a resize, no part of the area allows a selection. */}
             <div
               className={cx(
-                'relative isolate min-w-0 flex-1 overflow-hidden',
-                dragging && 'select-none',
+                'relative isolate min-w-0 flex-1 select-none overflow-hidden',
+                dragging && '**:select-none',
               )}
               data-panel-area={true}
               ref={areaRef}

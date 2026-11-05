@@ -178,6 +178,15 @@ describe('wm state', () => {
     })
   })
 
+  it('stack keeps the rect of each source panel in memory', () => {
+    let s = run([open('overview:1'), open('integration')])
+    const own = { h: 356, w: 420, x: 700, y: 40 }
+    s = run([{ frameId: 'f2', rect: own, type: 'setRect' }], s)
+    s = run([{ frameId: 'f2', targetId: 'f1', type: 'stack' }], s)
+    expect(s.memory.integration).toEqual(own)
+    expect(s.memory['overview:1']).toBeUndefined()
+  })
+
   it('stack refuses the same frame, a minimised frame or a locked source', () => {
     const s = run([open('overview:1'), open('overview:2')])
     const same: WmAction = { frameId: 'f1', targetId: 'f1', type: 'stack' }

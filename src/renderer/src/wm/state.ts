@@ -179,7 +179,10 @@ function stack(state: WmState, frameId: string, targetId: string): WmState {
     panels: [...target.panels, ...source.panels],
   }
   const rest = { ...state, frames: state.frames.filter(f => f.id !== source.id) }
-  return withFrameOnTop(rest, next)
+  // Keep the rect of each source panel. A tear-out gives the panel this size again.
+  const memory = { ...state.memory }
+  for (const panelId of source.panels) memory[panelId] = source.rect
+  return { ...withFrameOnTop(rest, next), memory }
 }
 
 function unstack(state: WmState, panelId: string, rect: Rect): WmState {

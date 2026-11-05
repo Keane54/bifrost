@@ -1,9 +1,12 @@
 // Hit tests on the frames. The frames are in z-order, so the last frame is on top.
-import { contains, type Point, type Rect, titleBar } from './geometry'
+import { clampRect, contains, type Point, type Rect, type Size, titleBar } from './geometry'
 import type { Frame } from './state'
 
 // A tab leaves its stack when the pointer goes more than this distance from the title bar.
 export const TEAR_DISTANCE = 12
+// When a tab leaves its stack, the top left corner of the new frame is 60 pixels left of
+// the pointer and 14 pixels above it.
+export const TEAR_OFFSET: Point = { x: 60, y: 14 }
 // A move can stack its frame only after the pointer went this distance from the drag start.
 // So a small move of a frame whose title bar is on another title bar does not stack the frames.
 export const STACK_DISTANCE = 4
@@ -39,4 +42,13 @@ export function tornOut(bar: Rect, p: Point): boolean {
     p.x < bar.x - TEAR_DISTANCE ||
     p.x > bar.x + bar.w + TEAR_DISTANCE
   )
+}
+
+// The rect of a tab that leaves its stack, at the pointer p.
+// It has the saved size of the panel, or else the size of the stack. The size fits in the area.
+// The reducer moves the rect into the area.
+export function tearOutRect(p: Point, saved: Rect | undefined, stack: Rect, bounds: Size): Rect {
+  const size = saved && Number.isFinite(saved.w) && Number.isFinite(saved.h) ? saved : stack
+  const fit = clampRect({ h: size.h, w: size.w, x: 0, y: 0 }, bounds)
+  return { h: fit.h, w: fit.w, x: p.x - TEAR_OFFSET.x, y: p.y - TEAR_OFFSET.y }
 }

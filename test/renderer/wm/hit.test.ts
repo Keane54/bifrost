@@ -5,6 +5,8 @@ import {
   movedToStack,
   STACK_DISTANCE,
   TEAR_DISTANCE,
+  TEAR_OFFSET,
+  tearOutRect,
   titleBarAt,
   tornOut,
 } from '../../../src/renderer/src/wm/hit'
@@ -85,6 +87,34 @@ describe('wm hit tests', () => {
     expect(movedToStack(start, { x: 200, y: 96 })).toBe(true)
     expect(movedToStack(start, { x: 197, y: 97 })).toBe(true)
     expect(movedToStack(start, { x: 900, y: 600 })).toBe(true)
+  })
+
+  it('tearOutRect gives the saved size of the panel at the pointer', () => {
+    const area = { h: 800, w: 1200 }
+    const stack = { h: 420, w: 800, x: 200, y: 352 }
+    const p = { x: 700, y: 150 }
+    const saved = { h: 356, w: 420, x: 900, y: 40 }
+    expect(TEAR_OFFSET).toEqual({ x: 60, y: 14 })
+    expect(tearOutRect(p, saved, stack, area)).toEqual({ h: 356, w: 420, x: 640, y: 136 })
+  })
+
+  it('tearOutRect gives the size of the stack when the panel has no saved size', () => {
+    const area = { h: 800, w: 1200 }
+    const stack = { h: 420, w: 800, x: 200, y: 352 }
+    expect(tearOutRect({ x: 700, y: 150 }, undefined, stack, area)).toEqual({
+      h: 420,
+      w: 800,
+      x: 640,
+      y: 136,
+    })
+  })
+
+  it('tearOutRect fits a saved size that is larger than the area', () => {
+    const area = { h: 500, w: 800 }
+    const stack = { h: 300, w: 400, x: 0, y: 0 }
+    const saved = { h: 900, w: 1440, x: 0, y: 0 }
+    const rect = tearOutRect({ x: 100, y: 100 }, saved, stack, area)
+    expect({ h: rect.h, w: rect.w }).toEqual({ h: 500, w: 800 })
   })
 
   // The title bar of a frame at x 100, y 50. Its edges are x 100 and 400, y 50 and 78.
