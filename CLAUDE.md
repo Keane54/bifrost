@@ -7,6 +7,8 @@ Write all text for this project in ASD-STE100 Simplified Technical English. This
 - Commit message bodies.
 - Responses in conversation about this project.
 
+Exception: text that users read inside the app (dialogs, confirmations, tooltips, empty states, error messages) is plain, friendly English. It may ask a question, for example "Are you sure you want to delete this?". It must not sound robotic. Keep the facts exact (user decision, 2026-11-05).
+
 Core rules of the specification:
 
 - Use short sentences. Give one idea in each sentence.
