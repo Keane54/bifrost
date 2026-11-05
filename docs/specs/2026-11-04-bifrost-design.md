@@ -362,6 +362,9 @@ Tab rules:
 - You can add, remove, rename and move tabs.
 - Each tab has its own filter, columns and sort column.
 - Click a column header to sort by that column. Click it again to reverse the sort.
+- The menu of the Overview (the vertical dots in its title bar) has "Overview settings…". It opens the Overview Settings panel, as in EVE.
+- The Overview Settings panel has a tab selector for the Overview tab that you edit, and two tabs. Columns: a checkbox for each column and a drag to change the column order. The kind icon column is always on. Filters: checkboxes for the states, the kinds and the watched sessions that the tab shows. "Reset to default" restores the tab.
+- The default columns are Kind, Name, State, Project and Last activity. You turn on the other columns in the Overview Settings panel.
 
 Mouse:
 
@@ -889,3 +892,4 @@ The user gave these directions after he used the M2 build:
 5. The theme follows the neutral EVE look, with a light cyan accent on the panel top borders and for click feedback (section 8.10).
 6. Bifrost tries a Claude Code mod as an option that replaces the hooks and the statusLine wrapper. The poll of `claude agents --json` stays as the base.
 7. A Watchlist panel holds the sessions that you track, in your drag order and your colours (section 8.12). It comes in M4.
+8. The Overview menu opens an Overview Settings panel with column checkboxes and filters. The default columns are fewer (section 8.3).
