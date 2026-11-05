@@ -7,8 +7,8 @@ describe('confirm texts', () => {
     expect(confirmFor('stop', row({ sessionId: 'a', state: 'idle' }), 'plain')).toBeNull()
     expect(confirmFor('stop', row({ name: 'fix-a', sessionId: 'a' }), 'plain')).toEqual({
       body: 'fix-a is working right now. Stop it anyway? The current turn will end.',
-      confirm: 'Stop session...',
-      title: 'Stop session...',
+      confirm: 'Stop session',
+      title: 'Stop session',
     })
   })
 
@@ -42,7 +42,9 @@ describe('confirm texts', () => {
 
   it('the confirm labels use the label set', () => {
     const r = row({ sessionId: 'a' })
-    expect(confirmFor('stop', r, 'space')?.confirm).toBe('Power down...')
-    expect(confirmFor('delete', r, 'space')?.confirm).toBe('Self-destruct...')
+    expect(confirmFor('stop', r, 'space')?.confirm).toBe('Power down')
+    expect(confirmFor('stop', r, 'space')?.title).toBe('Power down')
+    expect(confirmFor('delete', r, 'space')?.confirm).toBe('Self-destruct')
+    expect(confirmFor('delete', r, 'space')?.title).toBe('Self-destruct')
   })
 })

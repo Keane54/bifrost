@@ -146,6 +146,17 @@ describe('action model', () => {
     expect(actionStateFor('take-control', ext({ cwd: '' }), ctx()).reason).toBe(R.REASON_NO_CWD)
   })
 
+  it('the checks run in order', () => {
+    const redNoId = row({ box: 'red', sessionId: 'r', state: 'needs-you' })
+    expect(actionStateFor('send-message', redNoId, ctx()).reason).toBe(R.REASON_RED_BOX)
+    const workingExt = row({ kind: 'external', pid: 42, sessionId: 'e', state: 'working' })
+    expect(actionStateFor('take-control', workingExt, ctx({ running: true })).reason).toBe(
+      R.REASON_RUNNING,
+    )
+    const redExtNoPid = row({ box: 'red', kind: 'external', sessionId: 'e', state: 'needs-you' })
+    expect(actionStateFor('take-control', redExtNoPid, ctx()).reason).toBe(R.REASON_TAKE_PROMPT)
+  })
+
   it('Stop on a parked row gives REASON_NO_PROCESS', () => {
     expect(actionStateFor('stop', parked, ctx()).reason).toBe(R.REASON_NO_PROCESS)
   })
@@ -174,6 +185,10 @@ describe('action model', () => {
     expect(actionStateFor('open-in-terminal', owned, ctx({ apps: [] })).reason).toBe(
       R.REASON_NO_TERMINAL,
     )
+    expect(
+      actionStateFor('open-in-terminal', owned, ctx({ apps: [{ id: 'finder', label: 'Finder' }] }))
+        .reason,
+    ).toBe(R.REASON_NO_TERMINAL)
     expect(actionStateFor('open-in-terminal', external, ctx()).reason).toBe(
       R.REASON_TERMINAL_UNKNOWN,
     )
@@ -213,12 +228,24 @@ describe('action model', () => {
     ])
     expect(items.filter(i => i.separatorBefore).map(i => i.label)).toEqual(['/a', 'Other...'])
     expect(items.at(-1)?.arg).toBe('/')
+    expect(items.map(i => i.key)).toEqual([
+      'fav:/compact',
+      'fav:/clear',
+      'fav:/context',
+      'recent:/a',
+      'recent:/b',
+      'recent:/c',
+      'recent:/d',
+      'recent:/e',
+      'other',
+    ])
+    expect(items.slice(0, -1).map(i => i.arg)).toEqual(items.slice(0, -1).map(i => i.label))
   })
 
   it('the availability reason comes before the milestone reason', () => {
     expect(actionStateFor('send-message', external, ctx()).reason).toBe(R.REASON_EXTERNAL)
     expect(actionStateFor('open', parked, ctx()).reason).toBe(R.REASON_PARKED)
-    expect(actionStateFor('take-control', owned, ctx()).reason).toBe(R.REASON_ONLY_EXTERNAL)
+    expect(actionStateFor('interrupt', external, ctx()).reason).toBe(R.REASON_EXTERNAL)
     expect(actionStateFor('take-control', owned, ctx()).reason).toBe(R.REASON_ONLY_EXTERNAL)
     expect(actionStateFor('resume', owned, ctx()).reason).toBe(R.REASON_ONLY_PARKED)
   })

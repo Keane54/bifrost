@@ -14,6 +14,11 @@ export function isWorktreeRow(row: SessionRow): boolean {
   return row.cwd.includes('/.claude/worktrees/') || (row.branch?.startsWith('worktree-') ?? false)
 }
 
+// The dots after a label mean that the action opens a dialog. The dialog itself has no dots.
+function bareLabel(id: 'stop' | 'delete' | 'take-control', labels: LabelSet): string {
+  return actionLabel(id, labels).replace(/\.\.\.$/, '')
+}
+
 export function confirmFor(
   id: 'stop' | 'delete' | 'take-control',
   row: SessionRow,
@@ -21,7 +26,7 @@ export function confirmFor(
 ): ConfirmText | null {
   if (id === 'stop') {
     if (row.state !== 'working') return null
-    const label = actionLabel('stop', labels)
+    const label = bareLabel('stop', labels)
     return {
       body: `${row.name} is working right now. Stop it anyway? The current turn will end.`,
       confirm: label,
@@ -29,14 +34,14 @@ export function confirmFor(
     }
   }
   if (id === 'delete') {
-    const label = actionLabel('delete', labels)
+    const label = bareLabel('delete', labels)
     return {
       body: `Delete ${row.name}? This removes the session and its conversation.`,
       confirm: label,
       title: label,
     }
   }
-  const label = actionLabel('take-control', labels)
+  const label = bareLabel('take-control', labels)
   return {
     body: `This closes the session in ${row.terminalApp ?? 'its terminal'} and moves it into Bifrost.`,
     confirm: label,
