@@ -28,6 +28,7 @@ const snap = (n = 1): LayoutSnapshot => ({
 const store = (layouts: UiStore['layouts'] = []): UiStore => ({
   current: null,
   layouts,
+  overviews: {},
   version: 1,
 })
 
@@ -147,5 +148,26 @@ describe('layout', () => {
     ])
     expect(deleteLayout(s, 'a').layouts.map(l => l.name)).toEqual(['b'])
     expect(deleteLayout(s, 'zzz').layouts).toHaveLength(2)
+  })
+
+  it('parseUiStore reads an M2 store without overviews and keeps its layouts', () => {
+    const parsed = parseUiStore({
+      current: null,
+      layouts: [{ name: 'A', snapshot: snap() }],
+      version: 1,
+    })
+    expect(parsed.overviews).toEqual({})
+    expect(parsed.layouts.map(l => l.name)).toEqual(['A'])
+  })
+
+  it('parseUiStore drops overviews with a bad panel ID or a bad config', () => {
+    const good = { tabs: [{ id: 't1', name: 'All' }] }
+    const parsed = parseUiStore({
+      current: null,
+      layouts: [],
+      overviews: { 'chat:x': good, 'overview:0': good, 'overview:2': good, 'overview:3': {} },
+      version: 1,
+    })
+    expect(Object.keys(parsed.overviews)).toEqual(['overview:2'])
   })
 })
