@@ -7,7 +7,8 @@ import { attachWindow, closeAllPtys, registerIpc, stopRegistry } from './ipc'
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     autoHideMenuBar: true,
-    backgroundColor: '#0b0f14',
+    // This colour must match --color-bg in src/renderer/src/styles/app.css.
+    backgroundColor: '#0a0d12',
     height: 900,
     show: false,
     title: 'Bifrost',

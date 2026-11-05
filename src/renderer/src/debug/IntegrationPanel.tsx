@@ -15,8 +15,9 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-// The controls for the Claude Code integration.
 const BUTTON = 'mt-1 mr-2 mb-1'
+
+// The controls for the Claude Code integration.
 
 export default function IntegrationPanel(): React.JSX.Element {
   const [status, setStatus] = useState<IntegrationStatus | null>(null)

@@ -16,7 +16,8 @@ function age(since: number, now: number): string {
 
 function boxClass(row: SessionRow): string {
   return cx(
-    'size-2.5 rounded-sm border-2 border-panel-edge',
+    'size-2.5 rounded-sm border-2',
+    row.box === 'none' && 'border-panel-edge',
     row.box === 'yellow' && 'border-box-yellow bg-box-yellow',
     row.box === 'red' && 'border-box-red bg-box-red',
     row.flashing && 'animate-box-flash',
