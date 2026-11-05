@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { confirmFor, isWorktreeRow } from '../../../src/renderer/src/actions/confirm'
+import { confirmFor } from '../../../src/renderer/src/actions/confirm'
 import type { WorktreeCheck } from '../../../src/shared/types'
 import { row } from '../overview/fixtures'
 
@@ -21,7 +21,7 @@ describe('confirm texts', () => {
 
   it('Delete gives the plain text', () => {
     expect(confirmFor('delete', row({ name: 'fix-a', sessionId: 'a' }), 'plain')?.body).toBe(
-      'Delete fix-a? This removes the session and its conversation.',
+      'Delete fix-a? This removes the session from Claude Code and Bifrost.',
     )
   })
 
@@ -41,7 +41,7 @@ describe('confirm texts', () => {
 
   it('Delete without unmerged work gives the plain text', () => {
     const text = del(check({}))
-    expect(text?.body).toBe('Delete fix-a? This removes the session and its conversation.')
+    expect(text?.body).toBe('Delete fix-a? This removes the session from Claude Code and Bifrost.')
     expect(text?.confirmAgain).toBeUndefined()
     expect(text?.openFolder).toBeUndefined()
     expect(del(check({ changedFiles: 4, worktree: null }))?.confirmAgain).toBeUndefined()
@@ -103,13 +103,7 @@ describe('confirm texts', () => {
     expect(confirmFor('delete', plainRow, 'plain', null)?.openFolder).toBeUndefined()
   })
 
-  it('isWorktreeRow finds a worktree cwd and a worktree- branch', () => {
-    expect(isWorktreeRow(row({ cwd: '/r/.claude/worktrees/fix-a', sessionId: 'a' }))).toBe(true)
-    expect(isWorktreeRow(row({ branch: 'worktree-x', cwd: '/r', sessionId: 'a' }))).toBe(true)
-    expect(isWorktreeRow(row({ branch: 'main', cwd: '/r', sessionId: 'a' }))).toBe(false)
-  })
-
-  it('isWorktreeRow and a failed check use the stored worktree of a stopped session', () => {
+  it('a failed check uses the stored worktree of a stopped session', () => {
     // A stopped session reports its start folder and the branch of that folder.
     const stopped = row({
       branch: 'main',
@@ -118,8 +112,14 @@ describe('confirm texts', () => {
       state: 'parked',
       worktree: WT,
     })
-    expect(isWorktreeRow(stopped)).toBe(true)
     expect(confirmFor('delete', stopped, 'plain', null)?.openFolder).toBe(WT)
+  })
+
+  it('the Delete text does not say that the conversation goes (final review M6)', () => {
+    // claude rm keeps the transcript file. So the text names only Claude Code and Bifrost.
+    for (const c of [undefined, check({})]) {
+      expect(del(c)?.body).not.toContain('conversation')
+    }
   })
 
   it('Take control names the terminal app', () => {

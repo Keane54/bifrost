@@ -14,12 +14,18 @@ import {
   REASON_PROMPT_IS_COMMAND,
   worktreeName,
 } from '../../shared/new-session'
-import type { ResumeAllResult, SeenCounts, SessionRow, WorktreeCheck } from '../../shared/types'
+import type {
+  IntegrationStatus,
+  ResumeAllResult,
+  SeenCounts,
+  SessionRow,
+  WorktreeCheck,
+} from '../../shared/types'
 import { worktreeOf, worktreeRoot } from '../../shared/worktree'
 import type { ExecResult, RunClaude } from '../claude/cli'
 import { UUID_PATTERN } from '../integration/scripts'
 import {
-  failure,
+  claudeFailure,
   isTrustError,
   type KeptChanges,
   parseKept,
@@ -50,8 +56,11 @@ const RM_OPTS = { killSignal: 'SIGTERM', timeoutMs: RM_TIMEOUT_MS } as const
 // A resume can fail just after the start of its process (Task 10 bug 3).
 export const RESUME_SETTLE_MS = 3000
 
-// Each new session gets a statusLine command that prints nothing (controller ruling, O4).
-// So the chat window does not show the statusline of the user. A resume keeps the setting.
+// A new session gets a statusLine command that prints nothing (controller ruling, O4). So the
+// chat window does not show the statusline of the user. A resume keeps the setting.
+// The Bifrost wrapper is the statusLine command, and it writes the status file of the session.
+// So the override goes in only when the wrapper is not installed (user decision, 2026-11-05). When the
+// wrapper is installed, the quiet file stops the statusline of the user in the chat window.
 // This is one argument. No shell reads it.
 export const NO_STATUSLINE_SETTINGS = '{"statusLine":{"type":"command","command":"true"}}'
 
@@ -88,6 +97,8 @@ const REASON_NOT_RESUMED = 'The session did not start again in 30 seconds.'
 const REASON_NOT_ENDED =
   'The session process did not end in 5 seconds. Bifrost did not start a copy of the session.'
 const REASON_RESUME_FAILED = 'Claude Code could not resume this session.'
+// The text of a failed SIGTERM. It holds no Node error (final review M5).
+const REASON_SIGNAL_FAILED = "Bifrost couldn't stop the terminal session. Try again."
 
 // The service rejects waitForRow with this message at the timeout.
 const TIMEOUT = 'timeout'
@@ -109,18 +120,23 @@ export interface SessionActionDeps {
   // The unmerged-work check and the HEAD commit of a worktree root (checkWorktreeHead in
   // worktree-check.ts). null means a git failure.
   checkWorktree(worktree: string): Promise<(WorktreeCheck & { head: string }) | null>
+  // The count of the changed files that git tracks in a worktree root (trackedChanges in
+  // worktree-check.ts). Untracked files do not count. null means a git failure.
+  trackedChanges(worktree: string): Promise<number | null>
   // Store the worktree root that claude rm names, for a row whose worktree Bifrost does not know.
   rememberWorktree(sessionId: string, worktree: string): void
   // True when the transcript of the session has a user message. A read error gives true.
   hasMessages(sessionId: string): Promise<boolean>
+  // The status that the Integration panel shows (integrationStatus in integration.ts).
+  integrationStatus(): Promise<IntegrationStatus>
 }
 
 export interface SessionActions {
   create(spec: unknown): Promise<{ sessionId: string }>
   stop(sessionId: unknown): Promise<void>
   // confirmed must be true. The renderer sets it only after the user accepts the confirmation.
-  // seen is the unmerged-work check that the dialog showed, or null when the check failed or
-  // did not run.
+  // seen is the unmerged-work check that the dialog showed, with the worktree of that check, or
+  // null when the check failed, found no worktree or did not run.
   remove(sessionId: unknown, confirmed: unknown, seen?: unknown): Promise<void>
   resume(sessionId: unknown): Promise<void>
   resumeAll(): Promise<ResumeAllResult>
@@ -134,13 +150,15 @@ export interface SessionActions {
 // The permission mode must be in the list. So Bifrost never passes bypassPermissions.
 // The prompt cannot start with "-" or be only a command name, so it cannot change the command.
 // checkNewSessionSpec refuses these values first. These checks stop a caller that skips it.
-export function newSessionArgs(spec: NewSessionSpec): string[] {
+// wrapper is true when the Bifrost statusline wrapper is installed. Then the statusline override
+// does not go in.
+export function newSessionArgs(spec: NewSessionSpec, wrapper: boolean): string[] {
   if (spec.permissionMode !== '' && !PERMISSION_MODES.includes(spec.permissionMode)) {
     throw new Error('refused: unknown permission mode')
   }
   if (spec.prompt.trimStart().startsWith('-')) throw new Error(REASON_PROMPT_FLAG)
   if (isClaudeCommand(spec.prompt)) throw new Error(REASON_PROMPT_IS_COMMAND)
-  const args = ['--bg', '--settings', NO_STATUSLINE_SETTINGS]
+  const args = wrapper ? ['--bg'] : ['--bg', '--settings', NO_STATUSLINE_SETTINGS]
   if (spec.worktree) args.push('--worktree', worktreeName(spec.name))
   if (spec.model !== '') args.push('--model', spec.model)
   if (spec.permissionMode !== '') args.push('--permission-mode', spec.permissionMode)
@@ -186,14 +204,16 @@ function checkTakeControl(row: SessionRow): void {
 
 // The check counts from the renderer. null and a missing value mean that the dialog showed no
 // check.
-// Each count must be an integer of 0 or more.
+// Each count must be an integer of 0 or more. The worktree of the check must be a string. The
+// Delete compares it with the worktree of the row (final review M2).
 function seenOf(seen: unknown): SeenCounts | null {
   if (seen === null || seen === undefined) return null
   if (typeof seen !== 'object') throw new Error(REFUSED_BAD_SEEN)
-  const { changedFiles, unmergedCommits } = seen as Record<string, unknown>
+  const { changedFiles, unmergedCommits, worktree } = seen as Record<string, unknown>
   const isCount = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0
   if (!isCount(changedFiles) || !isCount(unmergedCommits)) throw new Error(REFUSED_BAD_SEEN)
-  return { changedFiles, unmergedCommits }
+  if (typeof worktree !== 'string') throw new Error(REFUSED_BAD_SEEN)
+  return { changedFiles, unmergedCommits, worktree }
 }
 
 // The failure text of a Take control whose resumed session did not stay. claude logs gives the
@@ -245,7 +265,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   // Run a claude command that does not start a session.
   const command = async (run: RunClaude, args: string[], what: string): Promise<void> => {
     const result = await run(args, { timeoutMs: RUN_TIMEOUT_MS })
-    if (result.code !== 0) throw new Error(failure(result, what))
+    if (result.code !== 0) throw new Error(claudeFailure(result, what))
   }
 
   // Run a claude command that starts a session in cwd. A trust error gives the instruction.
@@ -259,8 +279,19 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (isTrustError(result.stdout) || isTrustError(result.stderr)) {
       throw new Error(trustMessage(cwd))
     }
-    if (result.code !== 0) throw new Error(failure(result, what))
+    if (result.code !== 0) throw new Error(claudeFailure(result, what))
     return result
+  }
+
+  // True when the statusLine is the Bifrost wrapper, as the Integration panel shows it.
+  // A failed status read counts as "not installed". Then the override goes in.
+  const wrapperInstalled = async (): Promise<boolean> => {
+    try {
+      const status = await deps.integrationStatus()
+      return status.error === undefined && status.statusLineInstalled === true
+    } catch {
+      return false
+    }
   }
 
   const checkProjectDir = async (cwd: string): Promise<void> => {
@@ -321,7 +352,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
       throw new Error(REFUSED_UNCOMMITTED)
     }
     const kept = parseKept(result.stdout)
-    if (kept === null) throw new Error(failure(result, 'claude rm'))
+    if (kept === null) throw new Error(claudeFailure(result, 'claude rm'))
     const keptPath = withoutSlash(kept.worktree)
     const worktree = worktreeOf(row)
     if (worktree === null) {
@@ -345,7 +376,18 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     // A second refusal means that the worktree changed after the first claude rm.
     if (parseKeptChanges(discard.stdout) !== null) throw new Error(REFUSED_UNCOMMITTED)
     if (parseKept(discard.stdout) !== null) throw new Error(REFUSED_WORKTREE_CHANGED)
-    throw new Error(failure(discard, 'claude rm'))
+    throw new Error(claudeFailure(discard, 'claude rm'))
+  }
+
+  // claude rm refuses a worktree with changes that git tracks and that are not committed. So the
+  // Delete of a running worktree session checks first, and does not stop the session for no
+  // result (final review M3). Untracked files alone do not block, and a failed check does not
+  // block. Then claude rm decides, and it never deletes changes that are not committed.
+  const checkBeforeStop = async (row: SessionRow): Promise<void> => {
+    const worktree = worktreeOf(row)
+    if (worktree === null) return
+    const tracked = await deps.trackedChanges(worktree)
+    if (tracked !== null && tracked > 0) throw new Error(REFUSED_UNCOMMITTED)
   }
 
   // Wait for the owned entry of a session that Bifrost resumed.
@@ -384,7 +426,8 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (dir.kind !== 'dir') throw new Error(REASON_DIR_MISSING)
     if (spec.worktree && !dir.git) throw new Error(REASON_NO_GIT)
     const run = await claude()
-    const result = await start(run, newSessionArgs(spec), spec.cwd, 'claude --bg')
+    const args = newSessionArgs(spec, await wrapperInstalled())
+    const result = await start(run, args, spec.cwd, 'claude --bg')
     const id = parseShortId(result.stdout)
     if (id === null) throw new Error(REASON_NO_SHORT_ID)
     let row: SessionRow
@@ -423,6 +466,8 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     // A parked row without a short ID is only removed from Bifrost (D5). Bifrost refuses a
     // session that runs and has no short ID. Bifrost cannot stop it, and the next sample
     // shows it again. removeSession gives the rules for a worktree that claude rm keeps.
+    // The check that the dialog showed must be for the worktree of the row now (final review
+    // M2). Else the dialog did not show the work that a discard removes.
     async remove(sessionId, confirmed, seen) {
       if (confirmed !== true) throw new Error(REFUSED_NOT_CONFIRMED)
       const counts = seenOf(seen)
@@ -433,10 +478,16 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (row.shortId === undefined && row.state !== 'parked') {
           throw new Error(REFUSED_NO_SHORT_ID)
         }
+        if (counts !== null && counts.worktree !== worktreeOf(row)) {
+          throw new Error(REFUSED_WORKTREE_CHANGED)
+        }
         if (row.shortId !== undefined) {
           const shortId = shortIdOf(row)
           const run = await claude()
-          if (row.state !== 'parked') await command(run, ['stop', shortId], 'claude stop')
+          if (row.state !== 'parked') {
+            await checkBeforeStop(row)
+            await command(run, ['stop', shortId], 'claude stop')
+          }
           await removeSession(run, row, shortId, counts)
         }
         deps.forget(row.sessionId)
@@ -545,8 +596,8 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         checkTakeControl(now)
         try {
           deps.signal(pid, 'SIGTERM')
-        } catch (error) {
-          throw new Error(`Bifrost could not send SIGTERM to process ${pid}: ${messageOf(error)}`)
+        } catch {
+          throw new Error(REASON_SIGNAL_FAILED)
         }
         if (!(await waitForEnd(pid))) throw new Error(REASON_NOT_ENDED)
         // A started session parks when it ends. So a failed resume leaves a parked row (D6).

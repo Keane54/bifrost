@@ -14,16 +14,6 @@ export interface ConfirmText {
   openFolder?: string
 }
 
-// A worktree session has a cwd in .claude/worktrees, a stored worktree or a branch that starts
-// with worktree-. A stopped session reports its start folder, so the stored worktree counts.
-export function isWorktreeRow(row: SessionRow): boolean {
-  return (
-    row.cwd.includes('/.claude/worktrees/') ||
-    worktreeOf(row) !== null ||
-    (row.branch?.startsWith('worktree-') ?? false)
-  )
-}
-
 // claude rm keeps a worktree with changes that are not committed (Task 17 bug 2). The Delete
 // body says so when the check shows changed files.
 const KEEPS_CHANGES =
@@ -54,7 +44,9 @@ export function confirmFor(
     // The title names the session. The word "session" of the plain label goes, because the name
     // follows it: "Delete bifrost-a1b2", or "Self-destruct bifrost-a1b2" with the space labels.
     const title = `${label.replace(/ session$/, '')} ${row.name}`
-    const plain = `Delete ${row.name}? This removes the session and its conversation.`
+    // claude rm keeps the transcript file, so the text does not say that the conversation goes
+    // (final review M6).
+    const plain = `Delete ${row.name}? This removes the session from Claude Code and Bifrost.`
     const ask = 'Are you sure you want to delete this?'
     const again = 'Delete anyway'
     if (check === null) {

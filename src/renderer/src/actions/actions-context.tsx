@@ -260,8 +260,8 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       // True only after a click on the confirm button of the dialog.
       let confirmed = false
       let marked = false
-      // The counts of the check that the Delete dialog showed. null when the check failed or
-      // found no worktree. Then the main process never discards a worktree that claude rm keeps.
+      // The counts and the worktree of the check that the Delete dialog showed. null when the
+      // check failed or found no worktree. Then the main process never discards a worktree that claude rm keeps.
       let seen: SeenCounts | null = null
       // True while the Delete runs after the confirm.
       let deleting = false
@@ -275,7 +275,12 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           const check = await api.sessions.deleteCheck(sessionId).catch(() => null)
           notices.hide(checking)
           if (check !== null && check.worktree !== null) {
-            seen = { changedFiles: check.changedFiles, unmergedCommits: check.unmergedCommits }
+            // The main process refuses the Delete when the row has another worktree now.
+            seen = {
+              changedFiles: check.changedFiles,
+              unmergedCommits: check.unmergedCommits,
+              worktree: check.worktree,
+            }
           }
           const now = latest.current.rows.find(r => r.sessionId === sessionId) ?? row
           const text = confirmFor('delete', now, LABELS, check)

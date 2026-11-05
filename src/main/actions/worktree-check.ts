@@ -73,6 +73,22 @@ async function countWork(cwd: string, exec: ExecFn): Promise<WorktreeCheck | nul
   }
 }
 
+// The count of the changed files that git tracks in a worktree: the porcelain lines that do not
+// start with "??". Untracked files do not count. null means a git failure. A failed read tries
+// one more time after CHECK_RETRY_MS, as checkWorktree does. The Delete of a running worktree
+// session uses this count before the stop (final review M3).
+export async function trackedChanges(worktree: string, exec: ExecFn): Promise<number | null> {
+  const read = async (): Promise<number | null> => {
+    const status = await git(exec, ['--no-optional-locks', '-C', worktree, 'status', '--porcelain'])
+    if (status === null) return null
+    return status.split('\n').filter(line => line.trim() !== '' && !line.startsWith('??')).length
+  }
+  const first = await read()
+  if (first !== null) return first
+  await sleep(CHECK_RETRY_MS)
+  return read()
+}
+
 // A commit ID from git rev-parse.
 const COMMIT = /^[0-9a-f]{40}$/
 

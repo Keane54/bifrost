@@ -24,7 +24,7 @@ import { createSessionActions } from './actions/session-actions'
 import { hasLeftKey, SessionInput } from './actions/session-input'
 import { createTerminalLauncher } from './actions/terminal-launch'
 import { hasMessages } from './actions/transcript'
-import { checkWorktreeHead, createWorktreeActions } from './actions/worktree-check'
+import { checkWorktreeHead, createWorktreeActions, trackedChanges } from './actions/worktree-check'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
@@ -374,6 +374,8 @@ export function registerIpc(): void {
     dirInfo: dir => dirInfo(execFile, stat, dir),
     forget: id => liveService?.forget(id),
     hasMessages: id => hasMessages(projectsDir, id),
+    // New session reads the status of the Integration panel for the statusline override.
+    integrationStatus: () => integrationStatus(paths),
     isAlive: pid => isAlive(kill, pid),
     markStarted: id => liveService?.markStarted(id),
     markStopped: id => liveService?.markStopped(id),
@@ -384,6 +386,7 @@ export function registerIpc(): void {
     rows: () => liveService?.rows() ?? [],
     run: () => run,
     signal: (pid, signal) => sendSignal(kill, pid, signal),
+    trackedChanges: worktree => trackedChanges(worktree, execFile),
     waitForRow: async (match, timeoutMs) => (await service).waitForRow(match, timeoutMs),
   })
   const worktrees = createWorktreeActions({

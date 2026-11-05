@@ -22,7 +22,10 @@ const LIST_FAILED = "Bifrost couldn't read the session list. It tries again in a
 const COMMAND_FAILED_TEXT = 'A Claude Code command failed. Try again in a moment.'
 
 // One entry for each "refused: ..." literal in src/main and src/shared. A test checks this.
+// The map also gives the text when Bifrost cannot find claude (final review M5).
 export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
+  'claude not found':
+    "Bifrost can't find Claude Code. Check that the claude command works in a terminal.",
   'refused: an action on this session runs':
     'Another action is still running on this session. Try again in a moment.',
   'refused: Bifrost does not delete an external session':
@@ -55,6 +58,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the page that asked for the PTY is gone':
     'The window that asked for the terminal has closed.',
   'refused: the project directory is not known': REASON_NO_CWD,
+  'refused: the send was cancelled by Interrupt':
+    'Interrupt cancelled this message before it was sent.',
   'refused: the session has an open prompt':
     'This session is waiting on a prompt. Answer it in the chat window first.',
   'refused: the session has no messages yet':

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  claudeFailure,
   failure,
   isTrustError,
   parseKept,
@@ -64,6 +65,37 @@ describe('claude output', () => {
       'claude stop failed with code 2',
     )
     expect(failure({ code: 1, stderr: 'e'.repeat(400), stdout: '' }, 'x')).toBe('e'.repeat(300))
+  })
+
+  test('claudeFailure puts the lead sentence before a raw text of claude (final review M5)', () => {
+    const lead = 'Claude Code reported a problem:'
+    expect(claudeFailure({ code: 1, stderr: ' bad \n', stdout: 'out' }, 'claude stop')).toBe(
+      `${lead} bad`,
+    )
+    expect(claudeFailure({ code: 1, stderr: ' \n', stdout: ' out ' }, 'claude rm')).toBe(
+      `${lead} out`,
+    )
+    // The raw text keeps its limit. The lead sentence comes in addition.
+    expect(claudeFailure({ code: 1, stderr: 'e'.repeat(400), stdout: '' }, 'x')).toBe(
+      `${lead} ${'e'.repeat(300)}`,
+    )
+  })
+
+  test('claudeFailure gives no lead sentence for a text that Bifrost or Node made', () => {
+    expect(claudeFailure({ code: 2, stderr: '', stdout: '' }, 'claude stop')).toBe(
+      'claude stop failed with code 2',
+    )
+    const banner = 'Starting background service…'
+    expect(claudeFailure({ code: 4, stderr: banner, stdout: '' }, 'claude --bg')).toBe(
+      'claude --bg failed with code 4',
+    )
+    // The app gives a friendly text for the Node text (errors.ts).
+    const node = 'Command failed: /Users/x/.local/bin/claude stop abcd1234'
+    expect(claudeFailure({ code: 1, stderr: node, stdout: '' }, 'claude stop')).toBe(node)
+  })
+
+  test('failure gives the raw text of a command that is not claude', () => {
+    expect(failure({ code: 1, stderr: 'LSOpen failed', stdout: '' }, 'open')).toBe('LSOpen failed')
   })
 
   test('failure does not give only the start banner of the background service', () => {

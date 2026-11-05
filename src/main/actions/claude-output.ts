@@ -96,14 +96,34 @@ export function parseKeptChanges(stdout: string): KeptChanges | null {
   return { shortId: kept[1] as string, worktree: kept[2] as string }
 }
 
-// The text of a failed claude command: the stderr, else the stdout, else the exit code.
+// The raw text of a failed command: the stderr, else the stdout, or '' when both are empty.
 // The stderr does not count when it has only the start line of the background service.
-export function failure(result: ExecResult, what: string): string {
+function rawText(result: ExecResult): string {
   const stderr = result.stderr
     .split('\n')
     .filter(line => !SERVICE_BANNER.test(line.trim()))
     .join('\n')
     .trim()
-  const text = stderr || result.stdout.trim() || `${what} failed with code ${result.code}`
-  return text.slice(0, MAX_FAILURE)
+  return (stderr || result.stdout.trim()).slice(0, MAX_FAILURE)
+}
+
+// The text of a failed command: the raw text, else the exit code.
+export function failure(result: ExecResult, what: string): string {
+  return rawText(result) || `${what} failed with code ${result.code}`
+}
+
+// The lead sentence before a raw text of claude (final review M5).
+const CLAUDE_REPORTED = 'Claude Code reported a problem:'
+// Node gives this text when a signal ended a command. It is not a text of claude. The app gives
+// a friendly text for it (errors.ts).
+const NODE_FAILED = 'Command failed:'
+
+// The text of a failed claude command. A raw text of claude gets the lead sentence, so the user
+// knows that the text comes from Claude Code. The text of the exit code and the Node text get no
+// lead sentence.
+export function claudeFailure(result: ExecResult, what: string): string {
+  const raw = rawText(result)
+  if (raw === '') return `${what} failed with code ${result.code}`
+  if (raw.startsWith(NODE_FAILED)) return raw
+  return `${CLAUDE_REPORTED} ${raw}`
 }

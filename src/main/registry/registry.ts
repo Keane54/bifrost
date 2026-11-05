@@ -33,8 +33,9 @@ export const PENDING_EVENT_MS = 60_000
 // A session that is not active stays in lastActive this long, in milliseconds.
 export const LAST_ACTIVE_GRACE_MS = 60_000
 
-// The registry forgets an owned or started session after this many --all lists in a row
-// without it (Task 17 bug 3).
+// The registry forgets a session after this many counted --all lists without it (Task 17 bug 3).
+// A list that does not count does not change the count. forgetGone gives the rules that set the
+// count back to 0.
 export const GONE_LISTS = 2
 
 // The data that the registry keeps for one session.
@@ -108,15 +109,17 @@ export class SessionRegistry {
   private readonly resumable: Set<string>
   // The sample time when a session of lastActive was first not active.
   private readonly inactiveSince = new Map<string, number>()
-  // The count of the --all lists in a row that did not have the session.
+  // The count of the counted --all lists without the session, since the count went back to 0
+  // (forgetGone). A list that does not count leaves the count as it is.
   private readonly missing = new Map<string, number>()
   // The terminal app for each PID. null means that the PID has no app.
   private readonly terminals = new Map<number, TerminalApp | null>()
   private changed = false
   private readonly sessions = new Map<string, Session>()
-  // The session ids of the last active list and of the last --all list. The --all set has only
-  // the background entries.
+  // The session ids of the last active list.
   private active = new Set<string>()
+  // The background session ids of the last counted --all list, and of each later --all list
+  // that did not count. A list that does not count adds its IDs and removes none.
   private all = new Set<string>()
   // The session ids of the background entries of the last active list.
   private activeBackground = new Set<string>()
@@ -207,16 +210,21 @@ export class SessionRegistry {
   // entry. Then the list can miss a session that exists.
   // Only a list that counts can remove a row or a stored value, through forgetGone. A list counts
   // when it is complete, not empty, and has each background session of the last active list
-  // (Task 18 fix round 1, M1 and M2). A list that does not count only adds rows and names. Its
-  // background IDs join the IDs of the last --all list, so leave() parks those sessions.
+  // (Task 18 fix round 1, M1 and M2). A list with no background entry also does not count while
+  // the registry knows a parked owned session (final review M1). The background service can
+  // start slowly, for example after a restart of the computer. A list that does not count only
+  // adds rows and names. Its background IDs join the IDs of all, so leave() parks those sessions.
   applyAllAgents(entries: AgentEntry[], complete: boolean): void {
     const listed = new Set(entries.map(entry => entry.sessionId))
-    const counts =
-      complete && entries.length > 0 && [...this.activeBackground].every(id => listed.has(id))
     // An interactive session that ended must not come back as a parked row.
     // So the registry uses only the background entries.
     const owned = entries.filter(entry => entry.kind === 'background')
     const ownedIds = owned.map(entry => entry.sessionId)
+    const counts =
+      complete &&
+      entries.length > 0 &&
+      [...this.activeBackground].every(id => listed.has(id)) &&
+      (owned.length > 0 || !this.knowsParkedOwned())
     this.all = counts ? new Set(ownedIds) : new Set([...this.all, ...ownedIds])
     for (const entry of owned) {
       this.keepName(entry)
@@ -538,6 +546,17 @@ export class SessionRegistry {
       if (missing >= GONE_LISTS) this.forget(id)
       else this.missing.set(id, missing)
     }
+  }
+
+  // True when the registry knows an owned session without a process: a parked owned row, or a
+  // session of the last run that did not run again yet (resumable). lastActive has only
+  // background sessions, so each resumable session is owned.
+  private knowsParkedOwned(): boolean {
+    if (this.resumable.size > 0) return true
+    for (const s of this.sessions.values()) {
+      if (s.kind === 'owned' && s.machine.state === 'parked') return true
+    }
+    return false
   }
 
   // A session that Bifrost started and that is not active is parked.

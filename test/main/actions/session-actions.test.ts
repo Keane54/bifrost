@@ -18,7 +18,8 @@ import {
   type NewSessionSpec,
   REASON_PROMPT_IS_COMMAND,
 } from '../../../src/shared/new-session'
-import type { SessionRow, WorktreeCheck } from '../../../src/shared/types'
+import type { IntegrationStatus, SessionRow, WorktreeCheck } from '../../../src/shared/types'
+import { worktreeOf } from '../../../src/shared/worktree'
 import {
   CHANGES_SHORT_ID,
   CHANGES_STDOUT,
@@ -78,6 +79,16 @@ const parked = (o: Partial<SessionRow> = {}): SessionRow =>
 const external = (o: Partial<SessionRow> = {}): SessionRow =>
   row({ kind: 'external', shortId: undefined, ...o })
 
+// The status of the Integration panel. wrapper is true when the statusLine is the Bifrost wrapper.
+const integration = (wrapper: boolean, o: Partial<IntegrationStatus> = {}): IntegrationStatus => ({
+  installed: wrapper,
+  missingHooks: [],
+  scriptsCurrent: true,
+  scriptsPresent: true,
+  statusLineInstalled: wrapper,
+  ...o,
+})
+
 const newSpec = (o: Partial<NewSessionSpec> = {}): NewSessionSpec => ({
   cwd: '/p',
   model: 'haiku',
@@ -100,10 +111,16 @@ class Fake {
   name: string | null = '/Users/x/.local/bin/claude'
   dir: DirInfo = { git: true, kind: 'dir' }
   onProcessName: () => void = () => {}
+  // Runs at each signal. A test can throw here.
+  onSignal: () => void = () => {}
   // The result of hasMessages.
   messages = true
   // The result of the worktree check of a Delete, with the HEAD commit.
   check: (path: string) => (WorktreeCheck & { head: string }) | null = () => null
+  // The count of the tracked changed files of a worktree before the stop. null is a git failure.
+  tracked: (path: string) => number | null = () => 0
+  // The integration status of the Integration panel. The default has no wrapper.
+  status: () => IntegrationStatus = () => integration(false)
   base = Date.now()
 
   private add(op: string, ...args: unknown[]): void {
@@ -141,6 +158,10 @@ class Fake {
         this.add('hasMessages', id)
         return this.messages
       },
+      integrationStatus: async () => {
+        this.add('integrationStatus')
+        return this.status()
+      },
       isAlive: pid => {
         this.add('isAlive', pid)
         return this.alive(pid)
@@ -161,7 +182,14 @@ class Fake {
           return this.exec(args)
         }
       },
-      signal: (pid, signal) => this.add('signal', pid, signal),
+      signal: (pid, signal) => {
+        this.add('signal', pid, signal)
+        this.onSignal()
+      },
+      trackedChanges: async path => {
+        this.add('trackedChanges', path)
+        return this.tracked(path)
+      },
       waitForRow: (match, timeoutMs) => {
         this.add('waitForRow', timeoutMs)
         const found = this.appear.find(match)
@@ -202,6 +230,7 @@ describe('newSessionArgs', () => {
           prompt: 'Reply',
           worktree: true,
         }),
+        false,
       ),
     ).toEqual([
       '--bg',
@@ -216,13 +245,13 @@ describe('newSessionArgs', () => {
       'n1',
       'Reply',
     ])
-    expect(newSessionArgs(newSpec({ model: '', name: 'n1' }))).toEqual([
+    expect(newSessionArgs(newSpec({ model: '', name: 'n1' }), false)).toEqual([
       '--bg',
       ...SETTINGS,
       '--name',
       'n1',
     ])
-    expect(newSessionArgs(newSpec({ model: '', name: 'My Name', worktree: true }))).toEqual([
+    expect(newSessionArgs(newSpec({ model: '', name: 'My Name', worktree: true }), false)).toEqual([
       '--bg',
       ...SETTINGS,
       '--worktree',
@@ -233,27 +262,38 @@ describe('newSessionArgs', () => {
   })
 
   test('newSessionArgs never passes a permission mode outside the list', () => {
-    expect(() => newSessionArgs(newSpec({ permissionMode: 'bypassPermissions' }))).toThrow(
+    expect(() => newSessionArgs(newSpec({ permissionMode: 'bypassPermissions' }), false)).toThrow(
       'refused: unknown permission mode',
     )
   })
 
   test('newSessionArgs gives the statusline override as one argument', () => {
-    const args = newSessionArgs(newSpec({ name: 'n1', prompt: 'Reply' }))
+    const args = newSessionArgs(newSpec({ name: 'n1', prompt: 'Reply' }), false)
     const at = args.indexOf('--settings')
     expect(at).toBeGreaterThan(0)
     expect(JSON.parse(args[at + 1])).toEqual({ statusLine: { command: 'true', type: 'command' } })
     expect(args.filter(arg => arg === '--settings')).toHaveLength(1)
   })
 
+  test('newSessionArgs gives no statusline override when the Bifrost wrapper is installed', () => {
+    expect(newSessionArgs(newSpec({ model: '', name: 'n1', prompt: 'Reply' }), true)).toEqual([
+      '--bg',
+      '--name',
+      'n1',
+      'Reply',
+    ])
+  })
+
   test('newSessionArgs never passes a command name or a flag as the prompt', () => {
     for (const prompt of ['update', ' help ', 'stop', 'migrate-installer']) {
-      expect(() => newSessionArgs(newSpec({ prompt })), prompt).toThrow(REASON_PROMPT_IS_COMMAND)
+      expect(() => newSessionArgs(newSpec({ prompt }), false), prompt).toThrow(
+        REASON_PROMPT_IS_COMMAND,
+      )
     }
-    expect(() => newSessionArgs(newSpec({ prompt: '-p' }))).toThrow(
+    expect(() => newSessionArgs(newSpec({ prompt: '-p' }), false)).toThrow(
       'The first prompt cannot start with "-".',
     )
-    expect(newSessionArgs(newSpec({ name: 'n1', prompt: 'update the docs' })).at(-1)).toBe(
+    expect(newSessionArgs(newSpec({ name: 'n1', prompt: 'update the docs' }), false).at(-1)).toBe(
       'update the docs',
     )
   })
@@ -275,6 +315,7 @@ describe('create', () => {
     ).resolves.toEqual({ sessionId: S })
     expect(f.ops()).toEqual([
       '0 dirInfo /p',
+      '0 integrationStatus',
       `0 run ${JSON.stringify([
         '--bg',
         ...SETTINGS,
@@ -289,6 +330,48 @@ describe('create', () => {
       `0 waitForRow ${START_TIMEOUT_MS}`,
       `0 markStarted ${S}`,
     ])
+  })
+
+  // the user, 2026-11-05 (I2): the override goes in only when the Bifrost wrapper is not installed.
+  // The wrapper is the statusLine command. The override would stop it for the life of the
+  // session, and the session would give no status data.
+  const createArgs = async (): Promise<string[]> => {
+    f.log = []
+    f.exec = () => STARTED
+    f.appear = [row({ shortId: NEW_SHORT })]
+    await expect(actions.create(newSpec())).resolves.toEqual({ sessionId: S })
+    const runs = f.ops('run')
+    expect(runs).toHaveLength(1)
+    return JSON.parse(runs[0].split(' ')[2]) as string[]
+  }
+  const PLAIN = ['--bg', '--model', 'haiku', '--name', 'bifrost-test-n']
+
+  test('create passes no statusline override when the Bifrost wrapper is installed', async () => {
+    f.status = () => integration(true)
+    expect(await createArgs()).toEqual(PLAIN)
+    // The Integration panel status counts, also when a hook or a script is missing.
+    f.status = () => integration(true, { installed: false, missingHooks: ['Stop'] })
+    expect(await createArgs()).toEqual(PLAIN)
+    expect(f.ops('integrationStatus')).toEqual(['0 integrationStatus'])
+  })
+
+  test('create passes the statusline override when the Bifrost wrapper is not installed', async () => {
+    f.status = () => integration(false)
+    expect(await createArgs()).toEqual(['--bg', ...SETTINGS, ...PLAIN.slice(1)])
+    // Hooks without the wrapper do not count.
+    f.status = () => integration(false, { installed: false, scriptsPresent: true })
+    expect(await createArgs()).toEqual(['--bg', ...SETTINGS, ...PLAIN.slice(1)])
+  })
+
+  test('a failed status read counts as not installed, so the override goes in', async () => {
+    // integrationStatus gives an error for a settings file that is not valid JSON.
+    f.status = () => integration(true, { error: 'The file is not valid JSON.' })
+    expect(await createArgs()).toEqual(['--bg', ...SETTINGS, ...PLAIN.slice(1)])
+    // A read that rejects.
+    f.status = () => {
+      throw new Error('EACCES')
+    }
+    expect(await createArgs()).toEqual(['--bg', ...SETTINGS, ...PLAIN.slice(1)])
   })
 
   test('create shows the trust error with the instruction', async () => {
@@ -404,6 +487,20 @@ describe('stop', () => {
       await expect(actions.stop(S)).rejects.toThrow('refused: bad session ID')
     }
     expect(f.log).toEqual([])
+  })
+
+  test('a failed claude command gives the lead sentence before the raw text (final review M5)', async () => {
+    f.rows = [row()]
+    f.exec = () => ({ code: 1, stderr: 'no such job\n', stdout: '' })
+    const stopped = await actions.stop(S).catch((e: Error) => e.message)
+    expect(stopped).toBe('Claude Code reported a problem: no such job')
+    f.rows = [parked()]
+    f.exec = () => ({ code: 1, stderr: '', stdout: 'rm failed' })
+    const removed = await actions.remove(S, true).catch((e: Error) => e.message)
+    expect(removed).toBe('Claude Code reported a problem: rm failed')
+    f.exec = () => ({ code: 1, stderr: 'resume failed', stdout: '' })
+    const resumed = await actions.resume(S).catch((e: Error) => e.message)
+    expect(resumed).toBe('Claude Code reported a problem: resume failed')
   })
 
   test('stop does not mark the session after a failed claude stop', async () => {
@@ -551,9 +648,11 @@ describe('remove of a worktree that claude rm keeps', () => {
   const KEPT_REFUSAL = 'refused: claude rm kept the worktree'
   const runLine = (args: string[]) =>
     `0 run ${JSON.stringify(args)} ${JSON.stringify(args[0] === 'rm' ? RM_OPTS : RUN_OPTS)}`
-  const counts = (unmergedCommits: number, changedFiles: number) => ({
+  // The check that the dialog showed, with the worktree of that check (final review M2).
+  const counts = (unmergedCommits: number, changedFiles: number, worktree = WT) => ({
     changedFiles,
     unmergedCommits,
+    worktree,
   })
   const found = (
     unmergedCommits: number,
@@ -597,6 +696,7 @@ describe('remove of a worktree that claude rm keeps', () => {
     f.check = () => found(2, 1)
     await actions.remove(S, true, counts(2, 1))
     expect(f.ops()).toEqual([
+      `0 trackedChanges ${WT}`,
       runLine(['stop', ID]),
       runLine(RM),
       `0 checkWorktree ${WT}`,
@@ -655,7 +755,8 @@ describe('remove of a worktree that claude rm keeps', () => {
     // The next Delete then checks the worktree of the kept text and offers Open worktree.
     f.exec = keeps
     f.check = () => found(0, 0)
-    for (const seen of [counts(0, 0), null]) {
+    // The check of a row with no worktree finds no worktree. So the dialog sends no counts.
+    for (const seen of [null, undefined]) {
       f.log = []
       f.rows = [parked({ cwd: '/r', shortId: ID })]
       await expect(actions.remove(S, true, seen)).rejects.toThrow(KEPT_REFUSAL)
@@ -664,7 +765,7 @@ describe('remove of a worktree that claude rm keeps', () => {
     // One trailing "/" goes away.
     f.log = []
     f.exec = args => (args[0] === 'rm' ? keptAt(`${WT}/`) : OK)
-    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(KEPT_REFUSAL)
+    await expect(actions.remove(S, true, null)).rejects.toThrow(KEPT_REFUSAL)
     expect(f.ops('rememberWorktree')).toEqual([`0 rememberWorktree ${S} ${WT}`])
   })
 
@@ -680,7 +781,7 @@ describe('remove of a worktree that claude rm keeps', () => {
       f.log = []
       f.rows = [current]
       f.exec = args => (args[0] === 'rm' ? result : OK)
-      await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(KEPT_REFUSAL)
+      await expect(actions.remove(S, true, null)).rejects.toThrow(KEPT_REFUSAL)
       expect(f.ops('run', 'rememberWorktree', 'checkWorktree')).toHaveLength(1)
     }
   })
@@ -707,7 +808,10 @@ describe('remove of a worktree that claude rm keeps', () => {
       f.log = []
       f.rows = [current]
       f.exec = args => (args.length === 2 && args[0] === 'rm' ? result : OK)
-      await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(CHANGED)
+      // The dialog checked the worktree of the row. Only the kept text names another worktree.
+      const seen = counts(0, 0, worktreeOf(current) ?? WT)
+      await expect(actions.remove(S, true, seen)).rejects.toThrow(CHANGED)
+      expect(f.ops('run')).toContainEqual(runLine(RM))
       expect(f.ops('run').map(line => line.split(' ')[2])).not.toContain(JSON.stringify(DISCARD))
       expect(f.ops('forget')).toEqual([])
     }
@@ -799,7 +903,7 @@ describe('remove of a worktree that claude rm keeps', () => {
     f.exec = args => (args[0] === 'rm' ? CHANGES : OK)
     f.check = () => found(1, 75)
     // Bifrost knows the worktree. It runs no check and no other command.
-    for (const seen of [counts(1, 75), null]) {
+    for (const seen of [counts(1, 75, CHANGES_WORKTREE), null]) {
       f.log = []
       f.rows = [parked({ cwd: '/r', shortId: CHANGES_SHORT_ID, worktree: CHANGES_WORKTREE })]
       await expect(actions.remove(S, true, seen)).rejects.toThrow(UNCOMMITTED)
@@ -808,12 +912,12 @@ describe('remove of a worktree that claude rm keeps', () => {
     // Bifrost knows no worktree. It remembers the worktree as for Task 15.
     f.log = []
     f.rows = [parked({ cwd: '/r', shortId: CHANGES_SHORT_ID })]
-    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(UNCOMMITTED)
+    await expect(actions.remove(S, true, null)).rejects.toThrow(UNCOMMITTED)
     expect(f.ops()).toEqual([runLine(rm), `0 rememberWorktree ${S} ${CHANGES_WORKTREE}`])
     // A kept line of another session gives no remembered worktree.
     f.log = []
     f.rows = [parked({ cwd: '/r', shortId: SHORT })]
-    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(UNCOMMITTED)
+    await expect(actions.remove(S, true, null)).rejects.toThrow(UNCOMMITTED)
     expect(f.ops()).toEqual([runLine(['rm', SHORT])])
   })
 
@@ -822,7 +926,7 @@ describe('remove of a worktree that claude rm keeps', () => {
     f.rows = [parked({ cwd: '/r', shortId: CHANGES_SHORT_ID, worktree: CHANGES_WORKTREE })]
     f.exec = args => (args[0] === 'rm' ? { code: 1, stderr: '', stdout: both } : OK)
     f.check = () => found(0, 0)
-    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(
+    await expect(actions.remove(S, true, counts(0, 0, CHANGES_WORKTREE))).rejects.toThrow(
       'refused: the worktree has uncommitted changes',
     )
     expect(f.ops('run')).toEqual([runLine(['rm', CHANGES_SHORT_ID])])
@@ -848,6 +952,10 @@ describe('remove of a worktree that claude rm keeps', () => {
       { changedFiles: 0.5, unmergedCommits: 0 },
       { changedFiles: '0', unmergedCommits: 0 },
       { changedFiles: 0, unmergedCommits: Number.NaN },
+      // The worktree of the check must be a string (final review M2).
+      { changedFiles: 0, unmergedCommits: 0 },
+      { changedFiles: 0, unmergedCommits: 0, worktree: null },
+      { changedFiles: 0, unmergedCommits: 0, worktree: 7 },
       0,
       'x',
       [],
@@ -855,6 +963,91 @@ describe('remove of a worktree that claude rm keeps', () => {
       await expect(actions.remove(S, true, seen)).rejects.toThrow('refused: bad input')
     }
     expect(f.log).toEqual([])
+  })
+
+  test('remove refuses before any command when the checked worktree is not the worktree of the row', async () => {
+    // The row moved to another worktree after the dialog check (final review M2). Without this
+    // check, the kept text and the new check name the worktree of the row, and the discard runs.
+    f.exec = keeps
+    f.check = () => found(0, 0)
+    const other = '/r/.claude/worktrees/other'
+    for (const current of [stoppedRow(), row({ cwd: `${WT}/src`, shortId: ID })]) {
+      f.log = []
+      f.rows = [current]
+      await expect(actions.remove(S, true, counts(0, 0, other))).rejects.toThrow(CHANGED)
+      expect(f.log).toEqual([])
+    }
+    // The row has no worktree now.
+    f.rows = [parked({ cwd: '/r', shortId: ID })]
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(CHANGED)
+    // A path with a "/" at the end is not the same text.
+    f.rows = [stoppedRow()]
+    await expect(actions.remove(S, true, counts(0, 0, `${WT}/`))).rejects.toThrow(CHANGED)
+    expect(f.log).toEqual([])
+    // The worktree of the row discards as before.
+    await actions.remove(S, true, counts(0, 0))
+    expect(f.ops('run', 'forget')).toEqual([runLine(RM), runLine(DISCARD), `0 forget ${S}`])
+  })
+})
+
+describe('remove of a running worktree session with changes (final review M3)', () => {
+  const ID = KEPT_SHORT_ID
+  const WT = KEPT_WORKTREE
+  const UNCOMMITTED = 'refused: the worktree has uncommitted changes'
+  const runLine = (args: string[]) =>
+    `0 run ${JSON.stringify(args)} ${JSON.stringify(args[0] === 'rm' ? RM_OPTS : RUN_OPTS)}`
+  const running = () => row({ cwd: `${WT}/src`, shortId: ID })
+  const seen = (changedFiles: number) => ({ changedFiles, unmergedCommits: 0, worktree: WT })
+
+  test('remove refuses before the stop when the worktree has tracked changes', async () => {
+    // claude rm refuses such a worktree. A stop first would end the turn of the session for
+    // no result.
+    for (const counts of [seen(2), null]) {
+      f.log = []
+      f.rows = [running()]
+      f.tracked = () => 2
+      await expect(actions.remove(S, true, counts)).rejects.toThrow(UNCOMMITTED)
+      expect(f.ops()).toEqual([`0 trackedChanges ${WT}`])
+    }
+    // One tracked change is enough.
+    f.log = []
+    f.tracked = () => 1
+    await expect(actions.remove(S, true, seen(1))).rejects.toThrow(UNCOMMITTED)
+    expect(f.ops('run', 'forget', 'markStopped')).toEqual([])
+  })
+
+  test('untracked files alone do not block the stop, so claude rm decides', async () => {
+    f.rows = [running()]
+    // The dialog counted three untracked files. git tracks none of them.
+    f.tracked = () => 0
+    await actions.remove(S, true, seen(3))
+    expect(f.ops()).toEqual([
+      `0 trackedChanges ${WT}`,
+      runLine(['stop', ID]),
+      runLine(['rm', ID]),
+      `0 forget ${S}`,
+    ])
+  })
+
+  test('a failed check does not block the stop, so claude rm decides', async () => {
+    f.rows = [running()]
+    f.tracked = () => null
+    await actions.remove(S, true, seen(0))
+    expect(f.ops('trackedChanges', 'run')).toEqual([
+      `0 trackedChanges ${WT}`,
+      runLine(['stop', ID]),
+      runLine(['rm', ID]),
+    ])
+  })
+
+  test('a parked row and a row outside a worktree get no check before the stop', async () => {
+    f.tracked = () => 5
+    // A parked row gets no stop. claude rm decides.
+    f.rows = [parked({ cwd: '/r', shortId: ID, worktree: WT })]
+    await actions.remove(S, true, seen(5))
+    f.rows = [row()]
+    await actions.remove(S, true)
+    expect(f.ops('trackedChanges')).toEqual([])
   })
 })
 
@@ -1034,6 +1227,16 @@ describe('resumeAll', () => {
 })
 
 describe('takeControl', () => {
+  test('a failed SIGTERM gives a friendly text without the Node error (final review M5)', async () => {
+    f.rows = [external()]
+    f.onSignal = () => {
+      throw new Error('kill EPERM')
+    }
+    const error = await actions.takeControl(S, true).catch((e: Error) => e)
+    expect((error as Error).message).toBe("Bifrost couldn't stop the terminal session. Try again.")
+    expect(f.ops('markStarted', 'run')).toEqual([])
+  })
+
   test('takeControl sends SIGTERM, waits for the end, resumes in the cwd and checks the new process', async () => {
     f.rows = [external()]
     f.alive = pid => pid === 5151 || Date.now() - f.base < 300
@@ -1235,20 +1438,26 @@ describe('takeControl', () => {
 
   test('resume, Resume all and Take control pass no extra flags', async () => {
     // A resume with a new flag starts a copy with a new session ID (controller ruling).
-    f.appear = [row()]
-    f.rows = [parked({ resumable: true })]
-    await actions.resume(S)
-    // The resumed row runs now. Resume all needs it parked again.
-    f.rows = [parked({ resumable: true })]
-    await actions.resumeAll()
-    f.rows = [external()]
-    f.appear = [row({ pid: 5151 })]
-    f.alive = pid => pid === 5151
-    const done = actions.takeControl(S, true)
-    await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
-    await done
-    const runs = f.ops('run').map(line => line.split(' ')[2])
-    expect(runs).toEqual(Array(3).fill(JSON.stringify(['--bg', '--resume', S])))
+    // The statusline override is for New session only. Each wrapper state gives no flag.
+    for (const wrapper of [false, true]) {
+      f.log = []
+      f.status = () => integration(wrapper)
+      f.appear = [row()]
+      f.rows = [parked({ resumable: true })]
+      await actions.resume(S)
+      // The resumed row runs now. Resume all needs it parked again.
+      f.rows = [parked({ resumable: true })]
+      await actions.resumeAll()
+      f.rows = [external()]
+      f.appear = [row({ pid: 5151 })]
+      f.alive = pid => pid === 5151
+      const done = actions.takeControl(S, true)
+      await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
+      await done
+      const runs = f.ops('run').map(line => line.split(' ')[2])
+      expect(runs).toEqual(Array(3).fill(JSON.stringify(['--bg', '--resume', S])))
+      expect(f.ops('integrationStatus')).toEqual([])
+    }
   })
 })
 

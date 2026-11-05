@@ -5,6 +5,7 @@ import {
   checkWorktree,
   checkWorktreeHead,
   createWorktreeActions,
+  trackedChanges,
   worktreeRoot,
 } from '../../../src/main/actions/worktree-check'
 import type { ExecFn, ExecResult } from '../../../src/main/claude/cli'
@@ -287,5 +288,28 @@ describe('checkWorktreeHead', () => {
     const exec = fake([])
     expect(await checkWorktreeHead('/r', exec)).toBeNull()
     expect(exec).not.toHaveBeenCalled()
+  })
+})
+
+describe('trackedChanges (final review M3)', () => {
+  it('counts the porcelain lines that do not start with ??', async () => {
+    const exec = fake([ok(' M a\n?? b\nM  c\nD  d\nR  e -> f\n?? g/\nA  h\n')])
+    expect(await trackedChanges(WT, exec)).toBe(5)
+    expect(exec.mock.calls).toEqual([['git', STATUS(WT), { timeoutMs: 5000 }]])
+  })
+
+  it('gives 0 for untracked files only and for a clean worktree', async () => {
+    expect(await trackedChanges(WT, fake([ok('?? a\n?? b/\n')]))).toBe(0)
+    expect(await trackedChanges(WT, fake([ok('')]))).toBe(0)
+  })
+
+  it('tries one more time after a failure, then gives null', async () => {
+    const once = fake([fail, ok(' M a\n')])
+    expect(await settled(trackedChanges(WT, once))).toBe(1)
+    expect(once).toHaveBeenCalledTimes(2)
+    const timeout: ExecResult = { code: 0, stderr: '', stdout: '', timedOut: true }
+    for (const bad of [fail, timeout, new Error('spawn')]) {
+      expect(await settled(trackedChanges(WT, fake([bad, bad])))).toBeNull()
+    }
   })
 })

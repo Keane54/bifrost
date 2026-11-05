@@ -84,6 +84,15 @@ describe('friendly errors', () => {
     )
   })
 
+  it('gives the friendly texts of the final review fixes', () => {
+    expect(friendlyError('refused: the send was cancelled by Interrupt')).toBe(
+      'Interrupt cancelled this message before it was sent.',
+    )
+    expect(friendlyError('claude not found')).toBe(
+      "Bifrost can't find Claude Code. Check that the claude command works in a terminal.",
+    )
+  })
+
   it('gives a friendly text for a failed read of the session list', () => {
     // Node gives this text when the timeout ended claude agents (Task 17 bug 4).
     for (const text of [

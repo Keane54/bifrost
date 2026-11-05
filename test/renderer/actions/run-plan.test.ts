@@ -114,7 +114,7 @@ describe('planRun', () => {
       kind: 'call',
     })
     expect(plan.kind === 'call' && plan.confirm?.body).toBe(
-      'Delete fix-a? This removes the session and its conversation.',
+      'Delete fix-a? This removes the session from Claude Code and Bifrost.',
     )
   })
 

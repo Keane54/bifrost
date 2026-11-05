@@ -95,5 +95,11 @@ describe('the notices while a Delete runs (Task 18 M5)', () => {
     notices.endDelete()
     notices.notify('Resumed 1 session.')
     expect(line.text).toBe('Resumed 1 session.')
+    // The count stays at 0. So the next Delete still keeps its notice until it ends.
+    notices.startDelete()
+    notices.notify('Resumed 2 sessions.')
+    expect(line.text).toBe(DELETING)
+    notices.endDelete()
+    expect(line.text).toBe('Resumed 2 sessions.')
   })
 })

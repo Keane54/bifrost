@@ -1211,3 +1211,86 @@ describe('one rule for all forgets (Task 18 fix round 1, M2)', () => {
     expect(r.rows().find(row => row.sessionId === 's1')).toMatchObject({ state: 'parked' })
   })
 })
+
+describe('a list with no background entry (final review M1)', () => {
+  // An interactive session in a terminal, for example in Warp. Its entry is in both lists.
+  const warp = bg({ id: undefined, kind: 'interactive', name: 'warp', pid: 77, sessionId: 'w1' })
+  const ids = (r: SessionRegistry) => r.rows().map(row => row.sessionId)
+
+  test('a list with no background entry does not count while a parked owned row exists', () => {
+    // For example after a restart of the computer: the background service starts slowly, and
+    // the lists have only the interactive sessions.
+    const r = registry()
+    r.applyAllAgents([bg({ pid: undefined, status: '' })], true)
+    r.setPriority('s1', 3)
+    r.watchAdd('s1', 'green')
+    r.applyAgents([warp], 100)
+    for (let i = 0; i < 3; i++) r.applyAllAgents([warp], true)
+    expect(r.rows().find(row => row.sessionId === 's1')).toMatchObject({
+      name: 'alpha',
+      priority: 3,
+      state: 'parked',
+      watch: { colour: 'green', order: 0 },
+    })
+    // A list with a background entry counts again.
+    r.applyAllAgents([warp, another], true)
+    r.applyAllAgents([warp, another], true)
+    expect(ids(r)).toEqual(['o2', 'w1'])
+  })
+
+  test('a list with no background entry does not count while a session of the last run waits', () => {
+    // Bifrost did not start s5, and no list showed it yet. lastActive of the store has it.
+    const r = registry({
+      lastActive: ['s5'],
+      names: { s5: 'five' },
+      priorities: { s5: 1 },
+      started: [],
+      watch: [{ colour: 'amber', sessionId: 's5' }],
+    })
+    r.applyAgents([warp], 100)
+    for (let i = 0; i < 3; i++) r.applyAllAgents([warp], true)
+    expect(r.store()).toMatchObject({
+      lastActive: ['s5'],
+      names: { s5: 'five', w1: 'warp' },
+      priorities: { s5: 1 },
+      watch: [{ colour: 'amber', sessionId: 's5' }],
+    })
+  })
+
+  test('a list with no background entry counts when no owned session waits', () => {
+    // Only the stored values of an interactive session that ended. Nothing owned is parked.
+    const r = registry({
+      lastActive: [],
+      names: { e1: 'old' },
+      priorities: { e1: 2 },
+      started: [],
+      watch: [],
+    })
+    r.applyAgents([warp], 100)
+    r.applyAllAgents([warp], true)
+    expect(r.store().priorities).toEqual({ e1: 2 })
+    r.applyAllAgents([warp], true)
+    expect(r.store().priorities).toEqual({})
+    expect(r.store().names).toEqual({ w1: 'warp' })
+  })
+})
+
+describe('the active list keeps a session from a forget (registry.ts forgetGone)', () => {
+  test('two counted --all lists in a row do not forget a session of the active list', () => {
+    // An interactive session in the active list. The --all set has only background IDs, and
+    // the session is not started. So only the active list keeps it.
+    const term = bg({ id: undefined, kind: 'interactive', name: 'term', pid: 77, sessionId: 'e1' })
+    const r = registry()
+    r.applyAgents([term], 100)
+    expect(r.setPriority('e1', 2)).toBe(true)
+    r.watchAdd('e1', 'light-blue')
+    r.applyAllAgents([term, another], true)
+    r.applyAllAgents([term, another], true)
+    r.applyAllAgents([term, another], true)
+    expect(r.rows().find(row => row.sessionId === 'e1')).toMatchObject({
+      kind: 'external',
+      priority: 2,
+      watch: { colour: 'light-blue', order: 0 },
+    })
+  })
+})

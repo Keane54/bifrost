@@ -133,6 +133,29 @@ function quietAttach(): void {
   }
 }
 
+describe('the user texts of a send (final review M5)', () => {
+  test('the texts name the connection to the session, not the attach', () => {
+    expect(REASON_ENDED).toBe(
+      'The connection to the session ended before it was ready. Bifrost sent nothing.',
+    )
+    expect(REASON_ATTACH_GONE).toBe('The connection to the session ended during the send.')
+    expect(REASON_OLD_ATTACH).toBe(
+      'The chat window shows an old connection to the session. Close the window and open it again.',
+    )
+    for (const text of [
+      REASON_AGENT_VIEW,
+      REASON_ATTACH_GONE,
+      REASON_CHAT_GONE,
+      REASON_ENDED,
+      REASON_NO_SIZE,
+      REASON_NOT_READY,
+      REASON_OLD_ATTACH,
+    ]) {
+      expect(text).not.toMatch(/attach/i)
+    }
+  })
+})
+
 describe('the view IDs', () => {
   test('chatView and sendView give the view IDs of a session', () => {
     expect(chatView(S)).toBe(CHAT)
@@ -517,15 +540,145 @@ describe('SessionInput interrupt', () => {
   test('an interrupt that waits in the queue makes a new interrupt resolve at once', async () => {
     quietAttach()
     const sent = track(input.send(S, 'Reply with OK'))
+    // The paste went at 1500 ms. So the Interrupt does not cancel the send, and it waits.
+    await vi.advanceTimersByTimeAsync(1600)
+    pty.base = Date.now() - 1600
     const a = track(input.interrupt(S))
     const b = track(input.interrupt(S))
     await vi.advanceTimersByTimeAsync(0)
     expect(a.done).toBe(false)
-    expect(b).toEqual({ at: 0, done: true, error: undefined })
+    expect(b).toEqual({ at: 1600, done: true, error: undefined })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(sent.error).toBeUndefined()
     expect(a).toEqual({ at: 4100, done: true, error: undefined })
     expect(pty.writes().map(c => c.data)).toEqual([PASTE, '\r', '\x1b'])
+  })
+})
+
+describe('SessionInput Interrupt first (final review M4)', () => {
+  const CANCELLED = 'refused: the send was cancelled by Interrupt'
+
+  // A working session: a spinner chunk each 100 ms, so the output never gets quiet.
+  function spin(view: string): () => void {
+    const timer = setInterval(() => input.data(view), 100)
+    return () => clearInterval(timer)
+  }
+
+  test('an Interrupt cancels a send that waits for quiet output in the chat window', async () => {
+    pty.views.add(CHAT)
+    input.opened(CHAT, 'abcd1234')
+    const stopSpin = spin(CHAT)
+    await vi.advanceTimersByTimeAsync(1000)
+    pty.base = Date.now()
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(sent.done).toBe(false)
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(0)
+    stopSpin()
+    // The send rejects at once. The Esc goes at once. The text never goes.
+    expect(sent).toEqual({ at: 2000, done: true, error: CANCELLED })
+    expect(stop).toEqual({ at: 2000, done: true, error: undefined })
+    expect(pty.ops()).toEqual([`2000 write ${CHAT} "\\u001b"`])
+  })
+
+  test('an Interrupt cancels a send in a hidden attach, and the two attaches do not overlap', async () => {
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(0)
+    const stopSpin = spin(SEND)
+    await vi.advanceTimersByTimeAsync(3000)
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(5000)
+    stopSpin()
+    expect(sent).toEqual({ at: 3000, done: true, error: CANCELLED })
+    expect(stop).toEqual({ at: 4400, done: true, error: undefined })
+    // The attach of the send closes before the attach of the Interrupt opens (one attach).
+    // The Esc goes 300 ms after the first output of the new attach.
+    expect(pty.ops()).toEqual([
+      `0 open ${SEND}`,
+      `3000 close ${SEND}`,
+      `3000 open ${SEND}`,
+      `3400 write ${SEND} "\\u001b"`,
+      `4400 close ${SEND}`,
+    ])
+  })
+
+  test('an Interrupt cancels each send of the session that waits in the queue', async () => {
+    pty.views.add(CHAT)
+    input.opened(CHAT, 'abcd1234')
+    const stopSpin = spin(CHAT)
+    await vi.advanceTimersByTimeAsync(1000)
+    pty.base = Date.now()
+    const first = track(input.send(S, 'Reply with OK'))
+    const second = track(input.send(S, '/compact'))
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(0)
+    stopSpin()
+    expect(first).toEqual({ at: 0, done: true, error: CANCELLED })
+    expect(second).toEqual({ at: 0, done: true, error: CANCELLED })
+    expect(stop.error).toBeUndefined()
+    expect(pty.writes().map(c => c.data)).toEqual(['\x1b'])
+    // A send after the Interrupt goes as normal, 200 ms after the Esc.
+    const later = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(later.error).toBeUndefined()
+    expect(pty.writes().map(c => c.data)).toEqual(['\x1b', PASTE, '\r'])
+  })
+
+  test('an Interrupt does not cancel a send that wrote its text', async () => {
+    // The paste is in the prompt. The CR goes, then the Esc. A cancel would leave the text.
+    await openChat()
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(100)
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(sent).toEqual({ at: 300, done: true, error: undefined })
+    expect(stop.error).toBeUndefined()
+    expect(pty.ops()).toEqual([
+      `0 write ${CHAT} ${JSON.stringify(PASTE)}`,
+      `300 write ${CHAT} "\\r"`,
+      `300 write ${CHAT} "\\u001b"`,
+    ])
+  })
+
+  test('an Interrupt does not cancel the CR that waits after a left arrow key', async () => {
+    await openChat()
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(100)
+    // The paste went at 0. The CR now waits 2 s after the left arrow key.
+    input.leftKey(CHAT)
+    await vi.advanceTimersByTimeAsync(50)
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(sent).toEqual({ at: 2100, done: true, error: undefined })
+    expect(stop).toEqual({ at: 2100, done: true, error: undefined })
+    expect(pty.ops()).toEqual([
+      `0 write ${CHAT} ${JSON.stringify(PASTE)}`,
+      `2100 write ${CHAT} "\\r"`,
+      `2100 write ${CHAT} "\\u001b"`,
+    ])
+  })
+
+  test('an Interrupt cancels a send that waits after a left arrow key', async () => {
+    await openChat()
+    input.leftKey(CHAT)
+    const sent = track(input.send(S, 'Reply with OK'))
+    await vi.advanceTimersByTimeAsync(500)
+    const stop = track(input.interrupt(S))
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(sent).toEqual({ at: 500, done: true, error: CANCELLED })
+    expect(stop).toEqual({ at: 500, done: true, error: undefined })
+    expect(pty.ops()).toEqual([`500 write ${CHAT} "\\u001b"`])
+  })
+
+  test('an Interrupt of another session does not cancel the send', async () => {
+    quietAttach()
+    const sent = track(input.send(S, 'Reply with OK'))
+    const other = track(input.interrupt('0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d'))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(other.error).toBe(REFUSED)
+    expect(sent).toEqual({ at: 2800, done: true, error: undefined })
+    expect(pty.writes().map(c => c.data)).toEqual([PASTE, '\r'])
   })
 })
 

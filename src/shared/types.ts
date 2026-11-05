@@ -67,8 +67,11 @@ export interface WorktreeCheck {
   unmergedCommits: number
 }
 
-// The counts of the unmerged-work check that the Delete dialog showed (Task 15).
-export type SeenCounts = Pick<WorktreeCheck, 'unmergedCommits' | 'changedFiles'>
+// The counts of the unmerged-work check that the Delete dialog showed (Task 15), and the
+// worktree of that check (final review M2).
+export type SeenCounts = Pick<WorktreeCheck, 'unmergedCommits' | 'changedFiles'> & {
+  worktree: string
+}
 
 // One row of the session list. The main process sends rows to the renderer.
 export interface SessionRow {

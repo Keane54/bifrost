@@ -1,5 +1,6 @@
 // The action model: which action is enabled for which row, and why not.
 
+import { promptBlocks } from '../../../shared/input'
 import { PRIORITIES } from '../../../shared/priority'
 import { TERMINAL_ORDER } from '../../../shared/terminal-order'
 import type {
@@ -165,7 +166,8 @@ export function actionStateFor(
     if (ctx.apps.length === 0) return off(REASON_NO_APPS)
   }
   if (RUNNING_BLOCKED.has(id) && ctx.running) return off(REASON_RUNNING)
-  if (RED_BOX_BLOCKED.has(id) && row.box === 'red') return off(REASON_RED_BOX)
+  // The main process uses the same rule (spec 8.4). Take control keeps its own rule below.
+  if (RED_BOX_BLOCKED.has(id) && promptBlocks(row)) return off(REASON_RED_BOX)
   if (NEEDS_SHORT_ID.has(id) && !row.shortId) return off(REASON_WAIT_ID)
   if (id === 'open-in-terminal' && cls === 'owned' && !row.shortId) return off(REASON_WAIT_ID)
   if (id === 'take-control') {

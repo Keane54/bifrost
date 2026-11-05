@@ -11,6 +11,7 @@ import {
   rowMenu,
 } from '../../../src/renderer/src/actions/action-model'
 import * as R from '../../../src/renderer/src/actions/reasons'
+import type { SessionRow } from '../../../src/shared/types'
 import { row } from '../overview/fixtures'
 
 const ctx = (over: Partial<ActionContext> = {}): ActionContext => ({
@@ -192,6 +193,34 @@ describe('action model', () => {
       )
     }
     expect(actionStateFor('interrupt', red, ctx()).enabled).toBe(true)
+  })
+
+  // Spec 8.4: an escalated yellow box and an error box show no prompt, so they do not block.
+  const redBox = (over: Partial<SessionRow> = {}) =>
+    row({ box: 'red', sessionId: 'r', shortId: 'abcd1234', state: 'needs-you', ...over })
+  const TYPED = ['send-message', 'run-slash', 'rename'] as const
+
+  it('an escalated box and an error box do not block Send message, Run slash command and Rename', () => {
+    for (const red of [redBox({ boxReason: 'escalated' }), redBox({ boxReason: 'error' })]) {
+      for (const id of TYPED) {
+        expect(actionStateFor(id, red, ctx())).toEqual({ enabled: true, reason: null })
+      }
+    }
+  })
+
+  it('a prompt box and a red box with no reason block Send message, Run slash command and Rename', () => {
+    for (const red of [redBox({ boxReason: 'prompt' }), redBox()]) {
+      for (const id of TYPED) {
+        expect(actionStateFor(id, red, ctx()).reason).toBe(R.REASON_RED_BOX)
+      }
+    }
+  })
+
+  it('Take control stays blocked for an escalated box and an error box (spec 9.2)', () => {
+    for (const boxReason of ['escalated', 'error'] as const) {
+      const red = redBox({ boxReason, kind: 'external', pid: 42, sessionId: 'e' })
+      expect(actionStateFor('take-control', red, ctx()).reason).toBe(R.REASON_TAKE_PROMPT)
+    }
   })
 
   it('actions that type need the short ID', () => {
