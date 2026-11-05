@@ -1,6 +1,7 @@
 import { Button } from '@base-ui/react/button'
 import {
   Crosshair,
+  Eye,
   List,
   ListPlus,
   type LucideIcon,
@@ -122,6 +123,7 @@ function SideBar(): React.JSX.Element {
         onClick={() => free && open(free)}
       />
       <SideButton icon={Crosshair} label='Selected Item' onClick={() => open('selected-item')} />
+      <SideButton icon={Eye} label='Watchlist' onClick={() => open('watchlist')} />
       <SideButton icon={Plug} label='Integration' onClick={() => open('integration')} />
       <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />
       <GlobalButton action='new-session' icon={SquarePlus} />

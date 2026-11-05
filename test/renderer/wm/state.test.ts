@@ -36,6 +36,8 @@ describe('wm state', () => {
     expect(panelKind('overview-settings:1')).toBe('overview-settings')
     expect(panelKind('overview-settings:99')).toBe('overview-settings')
     expect(panelKind('selected-item')).toBe('selected-item')
+    expect(panelKind('watchlist')).toBe('watchlist')
+    expect(DEFAULT_SIZES.watchlist).toEqual({ h: 280, w: 320 })
     expect(panelKind('integration')).toBe('integration')
     expect(panelKind(CHAT)).toBe('chat')
     expect(panelKind(CHAT.toUpperCase().replace('CHAT', 'chat'))).toBe('chat')

@@ -15,6 +15,9 @@ export type ApiCall =
   | 'set-priority'
   | 'copy-id'
   | 'open-project'
+  | 'watch-add'
+  | 'watch-colour'
+  | 'watch-remove'
 
 // What the provider does with the chat window after a call that did not fail.
 export type After = 'none' | 'open-chat' | 'close-chat' | 'restart-chat'
@@ -87,6 +90,9 @@ export function planRun(
     case 'copy-id':
     case 'open-project':
     case 'open-in-terminal':
+    case 'watch-add':
+    case 'watch-colour':
+    case 'watch-remove':
       return call(id, null, 'none')
     case 'resume':
       return call('resume', null, 'restart-chat')

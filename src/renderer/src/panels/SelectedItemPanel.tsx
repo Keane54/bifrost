@@ -47,6 +47,8 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
         {SELECTED_ITEM_ACTIONS.map(id => (
           <ActionButton action={id} key={id} sessionId={row.sessionId} />
         ))}
+        {/* A watched row gets the Remove button. Any other row gets the Add button. */}
+        <ActionButton action={row.watch ? 'watch-remove' : 'watch-add'} sessionId={row.sessionId} />
       </div>
       {/* 3. The project, the branch and the model. */}
       <dl className='grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5'>

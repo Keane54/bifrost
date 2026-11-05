@@ -8,8 +8,46 @@ const ids = (rows: { sessionId: string }[]) => rows.map(r => r.sessionId).join('
 describe('rows', () => {
   it('the default tabs filter the rows of spec 8.3', () => {
     const tabs = defaultOverviewConfig().tabs
-    expect(tabs.map(t => ids(filterRows(ALL, t.filter)))).toEqual(['ABCDEG', 'BCD', 'A', 'EG', 'F'])
+    expect(tabs.map(t => ids(filterRows(ALL, t.filter)))).toEqual([
+      'ABCDEG',
+      'BCD',
+      'A',
+      'EG',
+      'F',
+      '',
+    ])
     expect(ids(viewRows(ALL, defaultOverviewConfig().tabs[0] as OverviewTab))).toBe('ABCDEG')
+  })
+
+  it('the Watched tab comes after Needs you and shows the watched rows of every state', () => {
+    const tabs = defaultOverviewConfig().tabs
+    expect(tabs.map(t => t.name)).toEqual([
+      'All',
+      'Needs you',
+      'Working',
+      'Idle',
+      'Parked',
+      'Watched',
+    ])
+    const watched = tabs[5] as OverviewTab
+    expect(watched.id).toBe('t6')
+    expect(watched.filter.watchedOnly).toBe(true)
+    const rows = [
+      row({ sessionId: 'a' }),
+      row({ sessionId: 'b', watch: { colour: 'lime', order: 0 } }),
+      row({ sessionId: 'c', state: 'parked', watch: { colour: 'white', order: 1 } }),
+    ]
+    expect(ids(filterRows(rows, watched.filter))).toBe('bc')
+  })
+
+  it('watchedOnly false shows the rows that are not watched too', () => {
+    const rows = [
+      row({ sessionId: 'a' }),
+      row({ sessionId: 'b', watch: { colour: 'lime', order: 0 } }),
+    ]
+    const base = { boxOnly: false, kinds: ['owned' as const], states: ['working' as const] }
+    expect(ids(filterRows(rows, { ...base, watchedOnly: false }))).toBe('ab')
+    expect(ids(filterRows(rows, { ...base, watchedOnly: true }))).toBe('b')
   })
 
   it('filterRows shows only the kinds of the filter', () => {
@@ -18,6 +56,7 @@ describe('rows', () => {
       boxOnly: false,
       kinds,
       states: [...states],
+      watchedOnly: false,
     })
     expect(ids(filterRows(ALL, filter(['owned'])))).toBe('ABDEG')
     expect(ids(filterRows(ALL, filter(['external'])))).toBe('C')

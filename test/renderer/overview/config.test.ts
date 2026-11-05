@@ -16,18 +16,20 @@ const base = (): OverviewConfig => defaultOverviewConfig()
 const tabIds = (c: OverviewConfig) => c.tabs.map(t => t.id)
 
 describe('overview config', () => {
-  it('defaultOverviewConfig has the 5 tabs of spec 8.3 with the default columns and Name ascending', () => {
+  it('defaultOverviewConfig has the 6 tabs of spec 8.3 and the Watched tab with the default columns and Name ascending', () => {
     const c = defaultOverviewConfig()
     expect(c.name).toBe('Default')
     expect(c.active).toBe('t1')
-    expect(c.nextTab).toBe(6)
+    expect(c.nextTab).toBe(7)
     expect(c.tabs.map(t => [t.id, t.name, t.color, t.filter.boxOnly])).toEqual([
       ['t1', 'All', 0, false],
       ['t2', 'Needs you', 1, true],
       ['t3', 'Working', 2, false],
       ['t4', 'Idle', 3, false],
       ['t5', 'Parked', 4, false],
+      ['t6', 'Watched', 5, false],
     ])
+    expect(c.tabs.map(t => t.filter.watchedOnly)).toEqual([false, false, false, false, false, true])
     expect(c.tabs[2]?.filter.states).toEqual(['working'])
     for (const t of c.tabs) {
       expect(t.columns).toEqual(['kind', 'name', 'state', 'project', 'activity'])
@@ -96,14 +98,14 @@ describe('overview config', () => {
     expect(c?.nextTab).toBe(13)
   })
 
-  it('addTab appends Tab 6 with colour 5, activates it, and refuses a 13th tab', () => {
+  it('addTab appends Tab 7 with colour 0, activates it, and refuses a 13th tab', () => {
     let c = overviewReducer(base(), { type: 'addTab' })
-    const added = c.tabs[5]
-    expect(added).toMatchObject({ color: 5, id: 't6', name: 'Tab 6' })
+    const added = c.tabs[6]
+    expect(added).toMatchObject({ color: 0, id: 't7', name: 'Tab 7' })
     expect(added?.filter).toEqual(base().tabs[0]?.filter)
-    expect(c.active).toBe('t6')
-    expect(c.nextTab).toBe(7)
-    for (let i = 0; i < 6; i++) c = overviewReducer(c, { type: 'addTab' })
+    expect(c.active).toBe('t7')
+    expect(c.nextTab).toBe(8)
+    for (let i = 0; i < 5; i++) c = overviewReducer(c, { type: 'addTab' })
     expect(c.tabs).toHaveLength(12)
     expect(overviewReducer(c, { type: 'addTab' })).toBe(c)
   })
@@ -111,7 +113,7 @@ describe('overview config', () => {
   it('removeTab activates the tab to the left and refuses the last tab', () => {
     let c = overviewReducer(base(), { tabId: 't3', type: 'activate' })
     c = overviewReducer(c, { tabId: 't3', type: 'removeTab' })
-    expect(tabIds(c)).toEqual(['t1', 't2', 't4', 't5'])
+    expect(tabIds(c)).toEqual(['t1', 't2', 't4', 't5', 't6'])
     expect(c.active).toBe('t2')
     c = overviewReducer(c, { tabId: 't1', type: 'activate' })
     c = overviewReducer(c, { tabId: 't1', type: 'removeTab' })
@@ -136,9 +138,10 @@ describe('overview config', () => {
       't3',
       't4',
       't5',
+      't6',
     ])
     expect(overviewReducer(c, { by: -1, tabId: 't1', type: 'moveTab' })).toBe(c)
-    expect(overviewReducer(c, { by: 1, tabId: 't5', type: 'moveTab' })).toBe(c)
+    expect(overviewReducer(c, { by: 1, tabId: 't6', type: 'moveTab' })).toBe(c)
   })
 
   it('toggleColumn adds a column at its place in the order, removes it, and never removes kind', () => {
@@ -314,8 +317,8 @@ describe('overview config', () => {
       {},
       { action: { type: 'addTab' }, panelId: 'overview:1', type: 'update' },
     )
-    expect(configOf(s, 'overview:1').tabs).toHaveLength(6)
-    expect(configOf(s, 'overview:2').tabs).toHaveLength(5)
+    expect(configOf(s, 'overview:1').tabs).toHaveLength(7)
+    expect(configOf(s, 'overview:2').tabs).toHaveLength(6)
     s = overviewsReducer(s, { overviews: { 'overview:3': base() }, type: 'load' })
     expect(Object.keys(s)).toEqual(['overview:3'])
     expect(
@@ -390,6 +393,32 @@ describe('overview config', () => {
     expect(c?.tabs[0]?.columns).toEqual(['kind', 'cost', 'name'])
   })
 
+  it('parseOverviewConfig reads watchedOnly and gives false for an old filter', () => {
+    const tab = (filter: unknown) => ({ filter, id: 't1', name: 'A' })
+    const parse = (filter: unknown) =>
+      parseOverviewConfig({ tabs: [tab(filter)] })?.tabs[0]?.filter.watchedOnly
+    expect(parse({ boxOnly: false, kinds: ['owned'], states: ['idle'], watchedOnly: true })).toBe(
+      true,
+    )
+    expect(parse({ boxOnly: false, kinds: ['owned'], states: ['idle'] })).toBe(false)
+    expect(parse({ watchedOnly: 'yes' })).toBe(false)
+    expect(parse(undefined)).toBe(false)
+  })
+
+  it('a saved config keeps its own tabs: no Watched tab is added', () => {
+    const saved = { name: 'Mine', tabs: [{ id: 't1', name: 'One' }] }
+    expect(parseOverviewConfig(saved)?.tabs.map(t => t.name)).toEqual(['One'])
+  })
+
+  it('setFilter keeps watchedOnly', () => {
+    const c = overviewReducer(base(), {
+      filter: { boxOnly: false, kinds: ['owned'], states: ['idle'], watchedOnly: true },
+      tabId: 't4',
+      type: 'setFilter',
+    })
+    expect(c.tabs[3]?.filter.watchedOnly).toBe(true)
+  })
+
   it('parseOverviewConfig gives both kinds to a filter without kinds and drops unknown kinds', () => {
     const c = parseOverviewConfig({
       tabs: [
@@ -424,7 +453,7 @@ describe('overview config', () => {
         type: 'edit',
       },
     )
-    expect(configOf(s, 'overview:2').tabs).toHaveLength(6)
+    expect(configOf(s, 'overview:2').tabs).toHaveLength(7)
     expect(configOf(s, 'overview:1')).toBe(DEFAULT_CONFIG)
     expect(overviewsReducer(s, { edit: c => c, panelId: 'overview:2', type: 'edit' })).toBe(s)
   })
@@ -436,6 +465,7 @@ describe('overview config', () => {
       boxOnly: true,
       kinds: [...(filter?.kinds ?? [])],
       states: [...(filter?.states ?? [])],
+      watchedOnly: false,
     }
     expect(overviewReducer(c, { filter: same, tabId: 't2', type: 'setFilter' })).toBe(c)
   })

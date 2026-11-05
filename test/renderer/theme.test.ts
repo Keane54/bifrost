@@ -36,6 +36,14 @@ const TOKENS = [
   'accent',
   'accent-glow',
   'panel-focus',
+  'watch-orange',
+  'watch-green',
+  'watch-lime',
+  'watch-cyan',
+  'watch-blue',
+  'watch-purple',
+  'watch-pink',
+  'watch-white',
 ]
 
 // The class parts that can use the light cyan accent (spec 8.10): the top border of a frame,

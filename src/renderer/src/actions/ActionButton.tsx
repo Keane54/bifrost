@@ -3,6 +3,8 @@ import { Button } from '@base-ui/react/button'
 import {
   AppWindow,
   Circle,
+  Eye,
+  EyeOff,
   Hand,
   Info,
   type LucideIcon,
@@ -25,6 +27,8 @@ const ICONS: Partial<Record<ActionId, LucideIcon>> = {
   'send-message': MessageSquare,
   'show-info': Info,
   stop: Power,
+  'watch-add': Eye,
+  'watch-remove': EyeOff,
 }
 
 // A disabled button shows darker and faded. It keeps the focus and the tooltip.

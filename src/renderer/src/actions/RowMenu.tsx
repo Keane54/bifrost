@@ -3,9 +3,11 @@ import { ContextMenu } from '@base-ui/react/context-menu'
 import { Check, ChevronRight } from 'lucide-react'
 import { Fragment } from 'react'
 import { isPriority } from '../../../shared/priority'
+import { isWatchColour } from '../../../shared/watch'
 import { cx } from '../lib/cx'
 import { MENU_ITEM, MENU_POPUP, MENU_SEPARATOR, Tip } from '../lib/menu'
 import { PRIO_BG } from '../overview/cells'
+import { WATCH_SWATCH } from '../watch/watch-colours'
 import {
   type ActionId,
   buttonTip,
@@ -104,6 +106,12 @@ function Submenu({ entry, onRun }: { entry: SubmenuEntry; onRun: Run }): React.J
                     data-arg={item.key}
                     onClick={() => onRun(entry.action, item.arg)}
                   >
+                    {isWatchColour(item.arg) && (
+                      <span
+                        aria-hidden={true}
+                        className={cx('size-2 shrink-0', WATCH_SWATCH[item.arg])}
+                      />
+                    )}
                     {item.label}
                   </ContextMenu.Item>
                 </Fragment>

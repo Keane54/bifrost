@@ -50,6 +50,7 @@ describe('action model', () => {
       'Interrupt',
       '-',
       'Set priority',
+      'Add to watchlist',
       'Rename...',
       'Show Info',
       'Copy session ID',
@@ -60,6 +61,84 @@ describe('action model', () => {
       'Stop session...',
       'Delete session...',
     ])
+  })
+
+  it('the watch labels: plain and space', () => {
+    expect([ACTIONS['watch-add'].plain, ACTIONS['watch-add'].space]).toEqual([
+      'Add to watchlist',
+      'Track',
+    ])
+    expect([ACTIONS['watch-remove'].plain, ACTIONS['watch-remove'].space]).toEqual([
+      'Remove from watchlist',
+      'Stop tracking',
+    ])
+    expect(ACTIONS['watch-colour'].plain).toBe('Change colour')
+  })
+
+  it('rowMenu gives Add to watchlist with the 8 colours for an unwatched row', () => {
+    const menu = rowMenu(owned, ctx())
+    const add = find(menu, 'watch-add')
+    expect(add).toMatchObject({ label: 'Add to watchlist', type: 'submenu' })
+    expect(find(menu, 'watch-colour')).toBeUndefined()
+    expect(find(menu, 'watch-remove')).toBeUndefined()
+    if (add?.type !== 'submenu') throw new Error('not a submenu')
+    expect(add.items.map(i => [i.label, i.arg])).toEqual([
+      ['Orange', 'orange'],
+      ['Green', 'green'],
+      ['Lime', 'lime'],
+      ['Cyan', 'cyan'],
+      ['Blue', 'blue'],
+      ['Purple', 'purple'],
+      ['Pink', 'pink'],
+      ['White', 'white'],
+    ])
+    expect(add.state).toEqual({ enabled: true, reason: null })
+  })
+
+  it('rowMenu gives Change colour and Remove for a watched row, with a check on its colour', () => {
+    const watched = row({ sessionId: 'w', watch: { colour: 'lime', order: 0 } })
+    const menu = rowMenu(watched, ctx())
+    expect(find(menu, 'watch-add')).toBeUndefined()
+    expect(find(menu, 'watch-remove')).toMatchObject({
+      label: 'Remove from watchlist',
+      type: 'item',
+    })
+    const change = find(menu, 'watch-colour')
+    if (change?.type !== 'submenu') throw new Error('not a submenu')
+    expect(change.label).toBe('Change colour')
+    expect(change.items.filter(i => i.checked).map(i => i.arg)).toEqual(['lime'])
+  })
+
+  it('the watch actions use the space labels', () => {
+    const menu = rowMenu(owned, ctx({ labels: 'space' }))
+    expect(find(menu, 'watch-add')).toMatchObject({ label: 'Track' })
+    const watched = row({ sessionId: 'w', watch: { colour: 'lime', order: 0 } })
+    expect(find(rowMenu(watched, ctx({ labels: 'space' })), 'watch-remove')).toMatchObject({
+      label: 'Stop tracking',
+    })
+  })
+
+  it('the watch actions work for every row class', () => {
+    for (const r of [owned, external, parked]) {
+      expect(actionStateFor('watch-add', r, ctx()).enabled).toBe(true)
+    }
+    const watched = row({ kind: 'external', sessionId: 'w', watch: { colour: 'pink', order: 0 } })
+    expect(actionStateFor('watch-remove', watched, ctx()).enabled).toBe(true)
+    expect(actionStateFor('watch-colour', watched, ctx()).enabled).toBe(true)
+  })
+
+  it('a watch action that does not fit the row is off with a reason', () => {
+    const watched = row({ sessionId: 'w', watch: { colour: 'pink', order: 0 } })
+    expect(actionStateFor('watch-add', watched, ctx())).toEqual({
+      enabled: false,
+      reason: 'This session is already on the watchlist.',
+    })
+    for (const id of ['watch-colour', 'watch-remove'] as const) {
+      expect(actionStateFor(id, owned, ctx())).toEqual({
+        enabled: false,
+        reason: "This session isn't on the watchlist.",
+      })
+    }
   })
 
   it('rowMenu shows Take control only for an external row and Resume only for a parked row', () => {

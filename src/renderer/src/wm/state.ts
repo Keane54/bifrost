@@ -2,7 +2,13 @@
 import { CHAT_VIEW } from '../../../shared/view-id'
 import { centreRect, clampRect, MIN_SIZE, type Rect, type Size, shownRect } from './geometry'
 
-export type PanelKind = 'overview' | 'overview-settings' | 'selected-item' | 'integration' | 'chat'
+export type PanelKind =
+  | 'overview'
+  | 'overview-settings'
+  | 'selected-item'
+  | 'integration'
+  | 'watchlist'
+  | 'chat'
 
 export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   chat: { h: 480, w: 720 },
@@ -10,6 +16,7 @@ export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   overview: { h: 360, w: 760 },
   'overview-settings': { h: 420, w: 360 },
   'selected-item': { h: 300, w: 360 },
+  watchlist: { h: 280, w: 320 },
 }
 
 export interface Frame {
@@ -54,7 +61,9 @@ const OVERVIEW_SETTINGS = /^overview-settings:([1-9][0-9]?)$/
 
 export function panelKind(panelId: string): PanelKind | null {
   if (typeof panelId !== 'string') return null
-  if (panelId === 'selected-item' || panelId === 'integration') return panelId
+  if (panelId === 'selected-item' || panelId === 'integration' || panelId === 'watchlist') {
+    return panelId
+  }
   if (OVERVIEW.test(panelId)) return 'overview'
   if (OVERVIEW_SETTINGS.test(panelId)) return 'overview-settings'
   if (CHAT_VIEW.test(panelId)) return 'chat'

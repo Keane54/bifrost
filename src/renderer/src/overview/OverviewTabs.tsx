@@ -117,11 +117,20 @@ function TabItem(props: {
   // Rename... opens the name field after the menu has closed.
   // Else the menu gives the focus back to the tab, and the field loses the focus at once.
   const renameNext = useRef(false)
-  const { states, kinds, boxOnly } = tab.filter
+  const { states, kinds, boxOnly, watchedOnly } = tab.filter
 
-  function setFilter(next: { states?: SessionState[]; boxOnly?: boolean }): void {
+  function setFilter(next: {
+    states?: SessionState[]
+    boxOnly?: boolean
+    watchedOnly?: boolean
+  }): void {
     update({
-      filter: { boxOnly: next.boxOnly ?? boxOnly, kinds, states: next.states ?? states },
+      filter: {
+        boxOnly: next.boxOnly ?? boxOnly,
+        kinds,
+        states: next.states ?? states,
+        watchedOnly: next.watchedOnly ?? watchedOnly,
+      },
       tabId: tab.id,
       type: 'setFilter',
     })
@@ -192,6 +201,11 @@ function TabItem(props: {
                 checked={boxOnly}
                 label='Only rows with a box'
                 onChange={on => setFilter({ boxOnly: on })}
+              />
+              <CheckItem
+                checked={watchedOnly}
+                label='Only watched sessions'
+                onChange={on => setFilter({ watchedOnly: on })}
               />
             </Submenu>
             <Submenu label='Columns'>

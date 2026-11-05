@@ -49,8 +49,12 @@ const MAX_TAB_NUMBER = 9999
 const NAME_SORT: SortSpec = { column: 'name', desc: false }
 
 // A filter that shows both kinds.
-function filterOf(states: SessionState[], boxOnly = false): TabFilter {
-  return { boxOnly, kinds: [...KINDS], states: [...states] }
+function filterOf(
+  states: readonly SessionState[],
+  boxOnly = false,
+  watchedOnly = false,
+): TabFilter {
+  return { boxOnly, kinds: [...KINDS], states: [...states], watchedOnly }
 }
 
 function tab(id: number, name: string, filter: TabFilter): OverviewTab {
@@ -70,13 +74,15 @@ export function defaultOverviewConfig(): OverviewConfig {
   return {
     active: 't1',
     name: 'Default',
-    nextTab: 6,
+    nextTab: 7,
     tabs: [
       tab(1, 'All', filterOf(LIVE)),
       tab(2, 'Needs you', filterOf(LIVE, true)),
       tab(3, 'Working', filterOf(['working'])),
       tab(4, 'Idle', filterOf(['idle'])),
       tab(5, 'Parked', filterOf(['parked'])),
+      // The Watched tab shows the watched rows of every state.
+      tab(6, 'Watched', filterOf(STATES, false, true)),
     ],
   }
 }
@@ -154,6 +160,8 @@ function parseFilter(value: unknown): TabFilter {
     // A filter from before the kinds, or a damaged kind list, shows both kinds.
     kinds: Array.isArray(filter.kinds) ? knownValues(filter.kinds, KINDS) : [...KINDS],
     states: knownValues(filter.states, STATES),
+    // A filter from before the Watchlist shows the rows that are not watched too.
+    watchedOnly: filter.watchedOnly === true,
   }
 }
 
@@ -275,7 +283,12 @@ function sameList<T>(a: readonly T[], b: readonly T[]): boolean {
 }
 
 function sameFilter(a: TabFilter, b: TabFilter): boolean {
-  return a.boxOnly === b.boxOnly && sameList(a.states, b.states) && sameList(a.kinds, b.kinds)
+  return (
+    a.boxOnly === b.boxOnly &&
+    a.watchedOnly === b.watchedOnly &&
+    sameList(a.states, b.states) &&
+    sameList(a.kinds, b.kinds)
+  )
 }
 
 export function overviewReducer(config: OverviewConfig, action: OverviewAction): OverviewConfig {
@@ -322,9 +335,9 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
       return { ...config, active: action.tabId }
     case 'setFilter':
       return withTab(config, action.tabId, t => {
-        const { boxOnly, kinds, states } = action.filter
+        const { boxOnly, kinds, states, watchedOnly } = action.filter
         if (sameFilter(t.filter, action.filter)) return t
-        return { ...t, filter: { boxOnly, kinds: [...kinds], states: [...states] } }
+        return { ...t, filter: { boxOnly, kinds: [...kinds], states: [...states], watchedOnly } }
       })
     case 'toggleColumn': {
       const { column } = action

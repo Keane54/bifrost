@@ -16,3 +16,6 @@ export const WATCH_COLOURS: readonly WatchColour[] = [
 export function isWatchColour(value: unknown): value is WatchColour {
   return WATCH_COLOURS.some(colour => colour === value)
 }
+
+// The colour that a watch button without a colour choice uses.
+export const DEFAULT_WATCH_COLOUR: WatchColour = 'orange'

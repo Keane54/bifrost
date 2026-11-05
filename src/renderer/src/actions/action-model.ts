@@ -2,7 +2,14 @@
 
 import { PRIORITIES } from '../../../shared/priority'
 import { TERMINAL_ORDER } from '../../../shared/terminal-order'
-import type { Priority, ProjectApp, ProjectAppId, SessionRow } from '../../../shared/types'
+import type {
+  Priority,
+  ProjectApp,
+  ProjectAppId,
+  SessionRow,
+  WatchColour,
+} from '../../../shared/types'
+import { WATCH_COLOURS } from '../../../shared/watch'
 import {
   comesIn,
   REASON_EXTERNAL,
@@ -13,6 +20,7 @@ import {
   REASON_NO_PROCESS,
   REASON_NO_TERMINAL,
   REASON_NO_WINDOW,
+  REASON_NOT_WATCHED,
   REASON_NOTHING_TO_RESUME,
   REASON_ONLY_EXTERNAL,
   REASON_ONLY_PARKED,
@@ -24,6 +32,7 @@ import {
   REASON_TAKE_PROMPT,
   REASON_TERMINAL_UNKNOWN,
   REASON_WAIT_ID,
+  REASON_WATCHED,
 } from './reasons'
 
 export type ActionId =
@@ -44,6 +53,9 @@ export type ActionId =
   | 'close-window'
   | 'stop'
   | 'delete'
+  | 'watch-add'
+  | 'watch-colour'
+  | 'watch-remove'
 
 export type RowClass = 'owned' | 'external' | 'parked'
 
@@ -95,6 +107,9 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
   'show-info': def('show-info', 'Show Info', 'Scan', 'all', 5),
   stop: def('stop', 'Stop session', 'Power down', ['owned'], 4),
   'take-control': def('take-control', 'Take control', 'Commandeer', ['external'], 4),
+  'watch-add': def('watch-add', 'Add to watchlist', 'Track', 'all', 4),
+  'watch-colour': def('watch-colour', 'Change colour', 'Change colour', 'all', 4),
+  'watch-remove': def('watch-remove', 'Remove from watchlist', 'Stop tracking', 'all', 4),
 }
 
 export interface ActionContext {
@@ -136,6 +151,8 @@ export function actionStateFor(
   if (!row) return off(REASON_GONE)
   const def = ACTIONS[id]
   const cls = rowClass(row)
+  if (id === 'watch-add' && row.watch) return off(REASON_WATCHED)
+  if ((id === 'watch-colour' || id === 'watch-remove') && !row.watch) return off(REASON_NOT_WATCHED)
   if (id === 'stop' && cls === 'parked') return off(REASON_NO_PROCESS)
   if (def.for !== 'all' && !def.for.includes(cls)) {
     if (def.for.length === 1 && def.for[0] === 'external') return off(REASON_ONLY_EXTERNAL)
@@ -189,7 +206,7 @@ export function buttonTip(id: ActionId, state: ActionState, labels: LabelSet): s
 }
 
 // A slash command is a string that starts with "/". The string "/" means "Other...".
-export type MenuArg = Priority | null | ProjectAppId | `/${string}`
+export type MenuArg = Priority | null | ProjectAppId | WatchColour | `/${string}`
 
 export interface SubItem {
   key: string
@@ -230,6 +247,14 @@ function subItems(id: ActionId, row: SessionRow, ctx: ActionContext): SubItem[] 
       { arg: null, checked: row.priority === undefined, key: 'none', label: 'None' },
     ]
   }
+  if (id === 'watch-add' || id === 'watch-colour') {
+    return WATCH_COLOURS.map(colour => ({
+      arg: colour as MenuArg,
+      checked: row.watch?.colour === colour,
+      key: colour,
+      label: colour.charAt(0).toUpperCase() + colour.slice(1),
+    }))
+  }
   if (id === 'open-project') {
     return ctx.apps.map(app => ({ arg: app.id, key: app.id, label: app.label }))
   }
@@ -254,6 +279,8 @@ const SUBMENU_ACTIONS: ReadonlySet<ActionId> = new Set([
   'run-slash',
   'set-priority',
   'open-project',
+  'watch-add',
+  'watch-colour',
 ])
 
 // Give the right-click menu of spec 9.5 in order.
@@ -277,6 +304,7 @@ export function rowMenu(row: SessionRow, ctx: ActionContext): MenuEntry[] {
     entry('interrupt'),
     sep,
     entry('set-priority'),
+    ...(row.watch ? [entry('watch-colour'), entry('watch-remove')] : [entry('watch-add')]),
     entry('rename'),
     entry('show-info'),
     entry('copy-id'),

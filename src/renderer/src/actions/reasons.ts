@@ -36,3 +36,5 @@ export const REASON_RESUME_ALL_RUNS = 'Resume all is already running.'
 export function comesIn(m: 4 | 5): string {
   return `Coming in M${m}`
 }
+export const REASON_WATCHED = 'This session is already on the watchlist.'
+export const REASON_NOT_WATCHED = "This session isn't on the watchlist."

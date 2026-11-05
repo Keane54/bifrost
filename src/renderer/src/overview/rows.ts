@@ -7,6 +7,8 @@ export interface TabFilter {
   states: SessionState[]
   kinds: SessionKind[]
   boxOnly: boolean
+  // Show only the rows on the watchlist.
+  watchedOnly: boolean
 }
 
 export interface SortSpec {
@@ -19,7 +21,8 @@ export function filterRows(rows: SessionRow[], filter: TabFilter): SessionRow[] 
     row =>
       filter.states.includes(row.state) &&
       filter.kinds.includes(row.kind) &&
-      (!filter.boxOnly || row.box !== 'none'),
+      (!filter.boxOnly || row.box !== 'none') &&
+      (!filter.watchedOnly || row.watch !== undefined),
   )
 }
 

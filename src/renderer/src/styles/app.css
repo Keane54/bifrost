@@ -55,6 +55,16 @@
   --color-project-7: #38bdf8;
   --color-project-8: #a3d63a;
 
+  /* The colours of a watched session. The row background uses them at about 25%. */
+  --color-watch-orange: #f59e42;
+  --color-watch-green: #34c759;
+  --color-watch-lime: #b6e03c;
+  --color-watch-cyan: #22d3ee;
+  --color-watch-blue: #4f8ef7;
+  --color-watch-purple: #a66cf2;
+  --color-watch-pink: #f472b6;
+  --color-watch-white: #f2f2f2;
+
   --font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
 

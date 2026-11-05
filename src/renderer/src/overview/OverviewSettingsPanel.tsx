@@ -29,6 +29,7 @@ import {
   moveColumn,
   resetTab,
   setBoxOnly,
+  setWatchedOnly,
   showKind,
   showState,
   toggleColumn,
@@ -249,9 +250,8 @@ function FilterRow({ children }: { children: React.ReactNode }) {
   return <li className='flex h-[22px] items-center px-2 hover:bg-hover'>{children}</li>
 }
 
-// The "Watched only" box comes with the Watchlist in M4.
 function FilterList({ tab, edit }: { tab: OverviewTab; edit: Edit }): React.JSX.Element {
-  const { states, kinds, boxOnly } = tab.filter
+  const { states, kinds, boxOnly, watchedOnly } = tab.filter
   return (
     <div className='py-1'>
       <Group title='States'>
@@ -282,6 +282,15 @@ function FilterList({ tab, edit }: { tab: OverviewTab; edit: Edit }): React.JSX.
             checked={boxOnly}
             label='Only rows with a box'
             onChange={on => edit(c => setBoxOnly(c, tab.id, on))}
+          />
+        </FilterRow>
+      </Group>
+      <Group title='Watchlist'>
+        <FilterRow>
+          <CheckBox
+            checked={watchedOnly}
+            label='Only watched sessions'
+            onChange={on => edit(c => setWatchedOnly(c, tab.id, on))}
           />
         </FilterRow>
       </Group>

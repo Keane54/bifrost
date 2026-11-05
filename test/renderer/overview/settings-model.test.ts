@@ -136,10 +136,10 @@ describe('overview settings model', () => {
 
   it('resetTab gives an added tab the filter of All', () => {
     const added = overviewReducer(base(), { type: 'addTab' })
-    const changed = showState(toggleColumn(added, 't6', 'model'), 't6', 'working', false)
-    const reset = resetTab(changed, 't6')
-    expect(tabOf(reset, 't6').filter).toEqual(tabOf(base(), 't1').filter)
-    expect(shown(reset, 't6')).toEqual(shown(base()))
+    const changed = showState(toggleColumn(added, 't7', 'model'), 't7', 'working', false)
+    const reset = resetTab(changed, 't7')
+    expect(tabOf(reset, 't7').filter).toEqual(tabOf(base(), 't1').filter)
+    expect(shown(reset, 't7')).toEqual(shown(base()))
   })
 
   it('showState, showKind and setBoxOnly change the tab filter and keep a fixed order', () => {

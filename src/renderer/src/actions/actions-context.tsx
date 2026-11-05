@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { isPriority } from '../../../shared/priority'
 import type { ProjectApp, ProjectAppId, SessionRow } from '../../../shared/types'
+import { DEFAULT_WATCH_COLOUR, isWatchColour } from '../../../shared/watch'
 import { useChats } from '../chat/chat-terminals'
 import { chatPanelId } from '../chat/views'
 import { useRegistry } from '../data/registry'
@@ -296,6 +297,16 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           }
           case 'set-priority':
             if (arg === null || isPriority(arg)) await api.registry.setPriority(sessionId, arg)
+            break
+          case 'watch-add':
+            // A call without a colour choice, for example the button, uses the default colour.
+            await api.registry.watch.add(sessionId, isWatchColour(arg) ? arg : DEFAULT_WATCH_COLOUR)
+            break
+          case 'watch-colour':
+            if (isWatchColour(arg)) await api.registry.watch.colour(sessionId, arg)
+            break
+          case 'watch-remove':
+            await api.registry.watch.remove(sessionId)
             break
           case 'copy-id':
             await api.actions.copySessionId(sessionId)

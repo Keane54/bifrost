@@ -94,6 +94,11 @@ export function setBoxOnly(config: OverviewConfig, tabId: string, on: boolean): 
   return withFilter(config, tabId, f => ({ ...f, boxOnly: on }))
 }
 
+// Show only the rows on the watchlist, or all rows.
+export function setWatchedOnly(config: OverviewConfig, tabId: string, on: boolean): OverviewConfig {
+  return withFilter(config, tabId, f => ({ ...f, watchedOnly: on }))
+}
+
 // A release more than this distance outside the list does not move the row. So you can stop a
 // drag with no change: move the pointer away from the list, and release it there.
 export const DROP_MARGIN = 24

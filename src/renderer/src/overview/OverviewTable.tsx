@@ -23,6 +23,7 @@ import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { MENU_POPUP } from '../lib/menu'
 import { useNow } from '../lib/use-now'
+import { WATCH_ROW_BG } from '../watch/watch-colours'
 import { useWmState } from '../wm/context'
 import { CellContent } from './cells'
 import {
@@ -261,7 +262,22 @@ export default function OverviewTable({
                     // The selected row is a light cyan. A hover stays neutral. A press gives a
                     // short cyan tint (spec 8.10).
                     'h-[22px] active:bg-accent/12',
-                    id === selectedId ? 'bg-select' : open.has(id) ? 'bg-hover' : 'hover:bg-hover',
+                    row.watch
+                      ? // A watched row has its watch colour as the row background. The selection
+                        // and the hover are on the cells. So they show on top of the colour.
+                        cx(
+                          WATCH_ROW_BG[row.watch.colour],
+                          id === selectedId
+                            ? '*:bg-select'
+                            : open.has(id)
+                              ? '*:bg-hover'
+                              : 'hover:*:bg-hover',
+                        )
+                      : id === selectedId
+                        ? 'bg-select'
+                        : open.has(id)
+                          ? 'bg-hover'
+                          : 'hover:bg-hover',
                     row.state === 'parked' && 'text-parked',
                   )}
                   data-session-id={id}
