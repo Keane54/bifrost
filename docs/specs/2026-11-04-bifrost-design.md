@@ -737,6 +737,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Poll interval | 2 seconds |
 | Snap distance | 8 pixels |
 | Panel transparency | 15% (the background of all panels; 0% is solid) |
+| Interface scale | 100% (80% to 150% in steps of 10%; Electron zooms the whole page; View menu Zoom In Cmd+=, Zoom Out Cmd+-, Actual Size) |
 | Slash commands | `/compact`, `/clear`, `/context` |
 | Terminal font | SF Mono, 13 pt |
 | Display mode | Window |
@@ -893,3 +894,4 @@ The user gave these directions after he used the M2 build:
 6. Bifrost tries a Claude Code mod as an option that replaces the hooks and the statusLine wrapper. The poll of `claude agents --json` stays as the base.
 7. A Watchlist panel holds the sessions that you track, in your drag order and your colours (section 8.12). It comes in M4.
 8. The Overview menu opens an Overview Settings panel with column checkboxes and filters. The default columns are fewer (section 8.3).
+9. Settings has an Interface scale from 80% to 150% for different screen resolutions (section 12). It comes in M5a.
