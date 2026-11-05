@@ -5,6 +5,7 @@ import {
   type OverviewConfig,
   type OverviewTab,
   overviewReducer,
+  parseOverviewConfig,
 } from '../../../src/renderer/src/overview/config'
 import {
   columnRows,
@@ -136,10 +137,34 @@ describe('overview settings model', () => {
 
   it('resetTab gives an added tab the filter of All', () => {
     const added = overviewReducer(base(), { type: 'addTab' })
-    const changed = showState(toggleColumn(added, 't7', 'model'), 't7', 'working', false)
-    const reset = resetTab(changed, 't7')
-    expect(tabOf(reset, 't7').filter).toEqual(tabOf(base(), 't1').filter)
-    expect(shown(reset, 't7')).toEqual(shown(base()))
+    const changed = showState(toggleColumn(added, 't6', 'model'), 't6', 'working', false)
+    const reset = resetTab(changed, 't6')
+    expect(tabOf(reset, 't6').filter).toEqual(tabOf(base(), 't1').filter)
+    expect(shown(reset, 't6')).toEqual(shown(base()))
+  })
+
+  it('Reset tab of a user tab t6 in a saved M3 config gives the All filter', () => {
+    const m3 = {
+      nextTab: 6,
+      tabs: ['All', 'Needs you', 'Working', 'Idle', 'Parked'].map((name, i) => ({
+        id: `t${i + 1}`,
+        name,
+      })),
+    }
+    const saved = parseOverviewConfig(m3) as OverviewConfig
+    const added = overviewReducer(saved, { type: 'addTab' })
+    expect(tabOf(added, 't6').name).toBe('Tab 6')
+    const changed = showState(added, 't6', 'working', false)
+    const reset = resetTab(changed, 't6')
+    expect(tabOf(reset, 't6').filter).toEqual(tabOf(base(), 't1').filter)
+    expect(tabOf(reset, 't6').filter.watchedOnly).toBe(false)
+  })
+
+  it('Reset tab of the Watched tab gives the Watched filter', () => {
+    const changed = showState(base(), 't0', 'working', false)
+    const reset = resetTab(changed, 't0')
+    expect(tabOf(reset, 't0').filter).toEqual(tabOf(base(), 't0').filter)
+    expect(tabOf(reset, 't0').filter.watchedOnly).toBe(true)
   })
 
   it('showState, showKind and setBoxOnly change the tab filter and keep a fixed order', () => {

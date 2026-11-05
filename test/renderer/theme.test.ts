@@ -123,8 +123,15 @@ describe('theme', () => {
     expect(source(name)).toMatch(PRESS)
   })
 
-  it('keeps the hover neutral: no variant uses bg-select', () => {
-    const bad = FILES.filter(f => /[\w-]+:bg-select\b/.test(f.text)).map(f => f.path)
+  // The only variant of bg-select that is allowed is *:bg-select (the cells) in the Overview
+  // table. A watched row has its watch colour on the row, so the selection goes on the cells
+  // to show on top of it. Any other variant, hover: included, is not allowed.
+  it('keeps the hover neutral: no variant uses bg-select, except *:bg-select in the Overview table', () => {
+    const bad = FILES.flatMap(f =>
+      (f.text.match(/(?:[\w-]+|\*):bg-select\b/g) ?? [])
+        .filter(use => !(use === '*:bg-select' && f.path.endsWith('overview/OverviewTable.tsx')))
+        .map(use => `${f.path}: ${use}`),
+    )
     expect(bad).toEqual([])
   })
 

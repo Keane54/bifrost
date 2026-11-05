@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dropTarget, watchedRows } from '../../../src/renderer/src/watch/watch-order'
+import { dropTarget, isMove, watchedRows } from '../../../src/renderer/src/watch/watch-order'
 import { row } from '../overview/fixtures'
 
 const order = ['a', 'b', 'c', 'd']
@@ -48,5 +48,28 @@ describe('watchedRows', () => {
       row({ sessionId: 'q', watch: { colour: 'blue', order: 0 } }),
     ]
     expect(watchedRows(rows).map(r => r.sessionId)).toEqual(['q', 'p'])
+  })
+})
+
+describe('isMove', () => {
+  it('a drop at the place that the row has now is not a move', () => {
+    expect(isMove(order, 'b', 'c')).toBe(false)
+    expect(isMove(order, 'd', null)).toBe(false)
+  })
+
+  it('a drop at another place is a move', () => {
+    expect(isMove(order, 'a', 'c')).toBe(true)
+    expect(isMove(order, 'a', null)).toBe(true)
+    expect(isMove(order, 'd', 'a')).toBe(true)
+  })
+
+  it('a drop of a row that is not in the list is not a move', () => {
+    expect(isMove(order, 'x', null)).toBe(false)
+  })
+
+  it('a drop from dropTarget on the row itself is not a move', () => {
+    for (const half of [true, false]) {
+      expect(isMove(order, 'b', dropTarget(order, 'b', 1, half))).toBe(false)
+    }
   })
 })

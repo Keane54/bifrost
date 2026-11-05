@@ -25,3 +25,14 @@ export function dropTarget(
   // Before the dragged row itself is the same place as before the row after it.
   return before === draggedId ? (order[at + 1] ?? null) : before
 }
+
+// True when a drop of the row before `before` changes the order. A drop at the place that the
+// row has now, or a row that is not in the list, is not a move.
+export function isMove(
+  order: readonly string[],
+  draggedId: string,
+  before: string | null,
+): boolean {
+  const at = order.indexOf(draggedId)
+  return at >= 0 && before !== (order[at + 1] ?? null)
+}

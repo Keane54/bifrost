@@ -46,6 +46,8 @@ const LIVE: SessionState[] = ['working', 'needs-you', 'error', 'idle']
 // A tab ID has at most 4 digits, so the counter stays a safe whole number.
 const TAB_ID = /^t\d{1,4}$/
 const MAX_TAB_NUMBER = 9999
+// The tab colour of the Watched tab (an index of TAB_COLOURS).
+const WATCHED_COLOUR = 5
 const NAME_SORT: SortSpec = { column: 'name', desc: false }
 
 // A filter that shows both kinds.
@@ -57,9 +59,10 @@ function filterOf(
   return { boxOnly, kinds: [...KINDS], states: [...states], watchedOnly }
 }
 
-function tab(id: number, name: string, filter: TabFilter): OverviewTab {
+// The colour of a default tab follows its number. The Watched tab is t0, so it has its own colour.
+function tab(id: number, name: string, filter: TabFilter, color = id - 1): OverviewTab {
   return {
-    color: id - 1,
+    color,
     columns: [...DEFAULT_COLUMNS],
     filter,
     id: `t${id}`,
@@ -74,15 +77,16 @@ export function defaultOverviewConfig(): OverviewConfig {
   return {
     active: 't1',
     name: 'Default',
-    nextTab: 7,
+    nextTab: 6,
     tabs: [
       tab(1, 'All', filterOf(LIVE)),
       tab(2, 'Needs you', filterOf(LIVE, true)),
+      // The Watched tab shows the watched rows of every state. Its ID is t0. A tab that the user
+      // adds never has t0, because nextTab starts at 1. So a saved config cannot clash with it.
+      tab(0, 'Watched', filterOf(STATES, false, true), WATCHED_COLOUR),
       tab(3, 'Working', filterOf(['working'])),
       tab(4, 'Idle', filterOf(['idle'])),
       tab(5, 'Parked', filterOf(['parked'])),
-      // The Watched tab shows the watched rows of every state.
-      tab(6, 'Watched', filterOf(STATES, false, true)),
     ],
   }
 }

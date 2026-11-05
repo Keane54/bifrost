@@ -17,7 +17,7 @@ import { stateLabel, stateTone } from '../overview/format'
 import { SessionIcon } from '../overview/SessionIcon'
 import { movedToStack } from '../wm/hit'
 import { WATCH_ROW_BG } from './watch-colours'
-import { dropTarget, watchedRows } from './watch-order'
+import { dropTarget, isMove, watchedRows } from './watch-order'
 
 const EMPTY_TEXT =
   'Nothing on your watchlist yet. Right-click a session and choose Add to watchlist.'
@@ -56,6 +56,8 @@ export default function WatchlistPanel(): React.JSX.Element {
   const { contextFor, run } = useActions()
   const watched = useMemo(() => watchedRows(rows), [rows])
   const list = useRef<HTMLUListElement>(null)
+  // The current order, for a drag that is still on when a row changes.
+  const orderRef = useRef<string[]>([])
   // Removes the window listeners of the current drag.
   const stop = useRef<(() => void) | null>(null)
   // True from the release of a drag until the click of that release has gone.
@@ -67,6 +69,9 @@ export default function WatchlistPanel(): React.JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRow = menuId === null ? undefined : rows.find(r => r.sessionId === menuId)
 
+  useEffect(() => {
+    orderRef.current = watched.map(r => r.sessionId)
+  }, [watched])
   useEffect(() => () => stop.current?.(), [])
   // When the row goes away, the menu closes.
   useEffect(() => {
@@ -102,11 +107,8 @@ export default function WatchlistPanel(): React.JSX.Element {
         noClick.current = false
       }, 0)
       const target = targetAt(ev.clientY)
-      // A drop at the place that the row has now is not a move.
-      const order = watched.map(r => r.sessionId)
-      const at = order.indexOf(id)
-      const same = target === (order[at + 1] ?? null)
-      if (same) return
+      // A drop at the place that the row has now is not a move. The ref has the current order.
+      if (!isMove(orderRef.current, id, target)) return
       setError(null)
       window.bifrost.registry.watch
         .move(id, target)
@@ -130,8 +132,7 @@ export default function WatchlistPanel(): React.JSX.Element {
 
   // A drop that keeps the place shows no line.
   const order = watched.map(r => r.sessionId)
-  const draggedAt = mark === null ? -1 : order.indexOf(mark.id)
-  const moves = mark !== null && draggedAt >= 0 && mark.before !== (order[draggedAt + 1] ?? null)
+  const moves = mark !== null && isMove(order, mark.id, mark.before)
   const last = order.at(-1)
 
   return (
