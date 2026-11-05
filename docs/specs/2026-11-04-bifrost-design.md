@@ -313,6 +313,7 @@ Bifrost uses its own window manager, because the snap and stack rules are specif
 | Show Info | All details of one session. |
 | Event log | All hook events, with their times. |
 | Usage HUD | The 5-hour and 7-day rate limits. |
+| Watchlist | The sessions that you track, in your own order and colours. |
 | Service status | The status of Claude, GitHub and Sentry. |
 
 ### 8.3 Overview
@@ -471,6 +472,19 @@ Dialog rules:
 - Yellow, red and grey have fixed meanings: yellow box, red box and parked session.
 - The terminal font is a setting.
 
+### 8.12 Watchlist
+
+The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you want to track.
+
+- "Add to watchlist" in the right-click menu and on the Selected Item panel adds a session. You select a colour in a submenu.
+- The colours are orange, green, lime, cyan, blue, purple, pink and white. Yellow and red are not watch colours, because they mean the boxes.
+- The Watchlist panel shows one row for each watched session: the icon with its box, the name and the state. The row background has the watch colour, translucent.
+- You drag a row up or down to change the order. The order is your priority. The list shows no numbers.
+- A click selects the session. A double-click opens its chat window. The right-click menu has "Change colour" and "Remove from watchlist".
+- In the Overview, a watched row also has its watch colour as the row background (section 8.3). A "Watched" tab shows only the watched sessions.
+- The watch data belongs to the session. Bifrost keeps it with the session names and priorities. A session that leaves all lists leaves the Watchlist.
+- Priority 1 to 5 (section 9.1) is a separate feature.
+
 ### 8.11 Service status
 
 - The Service status panel shows the status of Claude, GitHub and Sentry. `claude-statusline` checks the same services.
@@ -501,6 +515,8 @@ Dialog rules:
 | Close window | Disengage | Owned, with an open chat window | End the attach process. |
 | Stop session | Power down | Owned | `claude stop <id>`. Bifrost asks for confirmation if the session is busy. |
 | Delete session | Self-destruct | Owned, parked | `claude rm <id>`. Bifrost always asks for confirmation. |
+| Add to watchlist | Track | All | Bifrost data only (section 8.12). |
+| Remove from watchlist | Stop tracking | Watched sessions | Bifrost data only (section 8.12). |
 
 The "Labels" setting selects plain labels or space labels. The setting applies to menus, buttons, tooltips and dialogs.
 
@@ -871,3 +887,4 @@ The user gave these directions after he used the M2 build:
 4. A panel has no opacity control. Only the panel background is translucent, and one Settings row sets it (sections 8.1 and 12).
 5. The theme follows the neutral EVE look, with no colour accent (section 8.10).
 6. Bifrost tries a Claude Code mod as an option that replaces the hooks and the statusLine wrapper. The poll of `claude agents --json` stays as the base.
+7. A Watchlist panel holds the sessions that you track, in your drag order and your colours (section 8.12). It comes in M4.
