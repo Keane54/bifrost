@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile, stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { UUID_PATTERN } from '../integration/scripts'
 
@@ -60,4 +60,46 @@ export async function readStatusFiles(sessionsDir: string): Promise<Map<string, 
     }
   }
   return map
+}
+
+// A temporary status file of the wrapper is this old only after a hard stop of the wrapper.
+export const STATUS_TEMP_MAX_AGE_MS = 60_000
+
+// Delete the temporary files (.status.*) of the wrapper that are older than maxAgeMs.
+// A hard stop of the wrapper between the write and the move can leave such a file.
+// Bifrost runs this at start. Return the number of deleted files. A missing directory gives 0.
+export async function cleanStatusTemps(
+  sessionsDir: string,
+  now: number,
+  maxAgeMs: number,
+): Promise<number> {
+  let sessions: string[]
+  try {
+    sessions = await readdir(sessionsDir)
+  } catch {
+    return 0
+  }
+  let deleted = 0
+  for (const session of sessions) {
+    if (!UUID.test(session)) continue
+    const dir = join(sessionsDir, session)
+    let names: string[]
+    try {
+      names = await readdir(dir)
+    } catch {
+      continue
+    }
+    for (const name of names) {
+      if (!name.startsWith('.status.')) continue
+      const path = join(dir, name)
+      try {
+        if (now - (await stat(path)).mtimeMs <= maxAgeMs) continue
+        await unlink(path)
+        deleted++
+      } catch {
+        // Another process removed the file. Skip it.
+      }
+    }
+  }
+  return deleted
 }

@@ -1,8 +1,13 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
-import { parseStatusJson, readStatusFiles } from '../../../src/main/registry/status-file'
+import {
+  cleanStatusTemps,
+  parseStatusJson,
+  readStatusFiles,
+  STATUS_TEMP_MAX_AGE_MS,
+} from '../../../src/main/registry/status-file'
 
 let dir: string
 beforeEach(() => {
@@ -42,4 +47,28 @@ test('readStatusFiles skips a directory name that is not a UUID', async () => {
 
 test('readStatusFiles returns an empty map for a missing directory', async () => {
   expect((await readStatusFiles('/no/such/dir')).size).toBe(0)
+})
+
+test('cleanStatusTemps deletes old temporary files and keeps the rest', async () => {
+  expect(STATUS_TEMP_MAX_AGE_MS).toBe(60_000)
+  const now = 1_800_000_000_000
+  const id = '123e4567-e89b-12d3-a456-426614174000'
+  const put = (name: string, ageMs: number): void => {
+    const path = join(dir, name)
+    writeFileSync(path, '{}')
+    utimesSync(path, (now - ageMs) / 1000, (now - ageMs) / 1000)
+  }
+  mkdirSync(join(dir, id))
+  mkdirSync(join(dir, 'not-a-uuid'))
+  put(`${id}/.status.1`, 60_001)
+  put(`${id}/.status.2`, 1000)
+  put(`${id}/status.json`, 999_000)
+  put('not-a-uuid/.status.3', 999_000)
+  expect(await cleanStatusTemps(dir, now, 60_000)).toBe(1)
+  expect(readdirSync(join(dir, id)).sort()).toEqual(['.status.2', 'status.json'])
+  expect(readdirSync(join(dir, 'not-a-uuid'))).toEqual(['.status.3'])
+})
+
+test('cleanStatusTemps gives 0 for a missing directory', async () => {
+  expect(await cleanStatusTemps('/no/such/dir', 0, 60_000)).toBe(0)
 })
