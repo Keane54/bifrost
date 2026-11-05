@@ -4,16 +4,12 @@
 // A right-click on a row opens the row menu (spec 9.5). It does not change the selection (D6).
 import { ContextMenu } from '@base-ui/react/context-menu'
 import {
-  type ColumnSizingState,
   columnOrderingFeature,
-  columnResizingFeature,
   columnSizingFeature,
   columnVisibilityFeature,
   createColumnHelper,
-  functionalUpdate,
   rowSortingFeature,
   tableFeatures,
-  type Updater,
   useTable,
 } from '@tanstack/react-table'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -39,11 +35,10 @@ import {
 } from './columns'
 import type { OverviewAction, OverviewTab } from './config'
 import { viewRows } from './rows'
-import { dropBefore, toTableState, widthsFromSizing } from './table-state'
+import { dropBefore, inResizeZone, RESIZE_ZONE, toTableState } from './table-state'
 
 const features = tableFeatures({
   columnOrderingFeature,
-  columnResizingFeature,
   columnSizingFeature,
   columnVisibilityFeature,
   rowSortingFeature,
@@ -66,7 +61,8 @@ const columns = helper.columns(
 
 const DRAG_TYPE = 'application/x-bifrost-column'
 const STICKY = 'sticky top-0 z-10 bg-panel p-0'
-const CELL = 'overflow-hidden text-clip whitespace-nowrap px-1 py-0'
+// A long text ends with an ellipsis, so it never touches the next column.
+const CELL = 'truncate px-1 py-0'
 
 function columnOf(id: string): ColumnId {
   return isColumnId(id) ? id : 'name'
@@ -102,25 +98,36 @@ export default function OverviewTable({
     if (menuOpen && !menuRow) setMenuOpen(false)
   }, [menuOpen, menuRow])
 
-  // A resize step gives an updater. Keep only the widths that changed and save them in the tab.
-  function onColumnSizingChange(updater: Updater<ColumnSizingState>): void {
-    const current: ColumnSizingState = state.columnSizing
-    const next = functionalUpdate(updater, current)
-    const changed: ColumnSizingState = {}
-    for (const [id, width] of Object.entries(next)) {
-      if (width !== current[id]) changed[id] = width
+  // The resize in progress: the column, the pointer start and the width at the start.
+  const resizing = useRef<{ id: ColumnId; startX: number; startWidth: number } | null>(null)
+  const [resizeId, setResizeId] = useState<ColumnId | null>(null)
+
+  // The resize changes the width of its own column only. No other column changes.
+  function resizeTo(clientX: number): void {
+    const r = resizing.current
+    if (r === null) return
+    update({
+      tabId: tab.id,
+      type: 'setWidths',
+      widths: { [r.id]: r.startWidth + clientX - r.startX },
+    })
+  }
+
+  function endResize(e: React.PointerEvent<HTMLDivElement>): void {
+    if (resizing.current === null) return
+    resizing.current = null
+    setResizeId(null)
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
     }
-    update({ tabId: tab.id, type: 'setWidths', widths: widthsFromSizing(changed) })
   }
 
   const table = useTable({
-    columnResizeMode: 'onChange',
     columns,
     data,
     features,
     getRowId: row => row.sessionId,
     manualSorting: true,
-    onColumnSizingChange,
     state,
   })
 
@@ -159,7 +166,6 @@ export default function OverviewTable({
               {headers.map(header => {
                 const id = columnOf(header.column.id)
                 const sorted = header.column.getIsSorted()
-                const resize = header.getResizeHandler()
                 return (
                   <th
                     aria-sort={
@@ -193,6 +199,12 @@ export default function OverviewTable({
                       onClick={() => update({ column: id, tabId: tab.id, type: 'sortBy' })}
                       onDragEnd={endDrag}
                       onDragStart={e => {
+                        // A drag that starts in the resize zone never moves the column.
+                        const right = e.currentTarget.getBoundingClientRect().right
+                        if (inResizeZone(e.clientX, right)) {
+                          e.preventDefault()
+                          return
+                        }
                         dragged.current = id
                         e.dataTransfer.effectAllowed = 'move'
                         // Not text/plain, so a drop on a text field does not insert the label.
@@ -205,16 +217,26 @@ export default function OverviewTable({
                         <span className='text-[8px]'>{sorted === 'desc' ? '▼' : '▲'}</span>
                       )}
                     </button>
-                    {/* Not in the button, so a drag on it resizes and does not move the column. */}
+                    {/* Not in the button. It takes the pointer, so a drag on it only resizes. */}
                     <div
                       aria-hidden={true}
                       className={cx(
-                        'absolute top-0 right-0 h-full w-1 cursor-col-resize touch-none hover:bg-text-strong/40',
-                        header.column.getIsResizing() && 'bg-text-strong/60',
+                        'absolute top-0 right-0 h-full cursor-col-resize touch-none hover:bg-text-strong/40',
+                        resizeId === id && 'bg-text-strong/60',
                       )}
                       data-resize-handle={true}
-                      onMouseDown={resize}
-                      onTouchStart={resize}
+                      onPointerCancel={endResize}
+                      onPointerDown={e => {
+                        if (e.button !== 0) return
+                        e.preventDefault()
+                        e.stopPropagation()
+                        e.currentTarget.setPointerCapture(e.pointerId)
+                        resizing.current = { id, startWidth: header.getSize(), startX: e.clientX }
+                        setResizeId(id)
+                      }}
+                      onPointerMove={e => resizeTo(e.clientX)}
+                      onPointerUp={endResize}
+                      style={{ width: RESIZE_ZONE }}
                     />
                   </th>
                 )

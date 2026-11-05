@@ -3,6 +3,8 @@ import { COLUMN_IDS } from '../../../src/renderer/src/overview/columns'
 import { defaultOverviewConfig, type OverviewTab } from '../../../src/renderer/src/overview/config'
 import {
   dropBefore,
+  inResizeZone,
+  RESIZE_ZONE,
   toTableState,
   widthsFromSizing,
 } from '../../../src/renderer/src/overview/table-state'
@@ -73,6 +75,13 @@ describe('overview table state', () => {
     expect(dropBefore([...columns], 'name', 'name')).toBeNull()
     expect(dropBefore([...columns], 'model', 'name')).toBeNull()
     expect(dropBefore([...columns], 'name', 'model')).toBeNull()
+  })
+
+  it('inResizeZone is true only in the handle area at the right edge of the header', () => {
+    expect(inResizeZone(200, 200)).toBe(true)
+    expect(inResizeZone(200 - RESIZE_ZONE, 200)).toBe(true)
+    expect(inResizeZone(200 - RESIZE_ZONE - 1, 200)).toBe(false)
+    expect(inResizeZone(201, 200)).toBe(false)
   })
 
   it('widthsFromSizing drops unknown IDs, rounds and clamps', () => {

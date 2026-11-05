@@ -55,3 +55,11 @@ export function widthsFromSizing(
   }
   return widths
 }
+
+// The resize handle is this wide (px) at the right edge of a header cell.
+export const RESIZE_ZONE = 6
+
+// True if the pointer is on the resize handle of a header that ends at `right`.
+export function inResizeZone(clientX: number, right: number): boolean {
+  return clientX >= right - RESIZE_ZONE && clientX <= right
+}
