@@ -1,0 +1,271 @@
+import { describe, expect, it } from 'vitest'
+import { centreRect } from '../../../src/renderer/src/wm/geometry'
+import {
+  DEFAULT_SIZES,
+  frameOf,
+  initialState,
+  panelKind,
+  topFrame,
+  type WmAction,
+  type WmState,
+  wmReducer,
+} from '../../../src/renderer/src/wm/state'
+
+const bounds = { h: 800, w: 1200 }
+const CHAT = 'chat:123e4567-e89b-12d3-a456-426614174000'
+
+function run(actions: WmAction[], from: WmState = initialState(bounds)): WmState {
+  return actions.reduce(wmReducer, from)
+}
+const open = (panelId: string): WmAction => ({ panelId, type: 'open' })
+
+describe('wm state', () => {
+  it('panelKind accepts the fixed panel IDs and refuses all others', () => {
+    expect(panelKind('overview:1')).toBe('overview')
+    expect(panelKind('overview:99')).toBe('overview')
+    expect(panelKind('selected-item')).toBe('selected-item')
+    expect(panelKind('integration')).toBe('integration')
+    expect(panelKind(CHAT)).toBe('chat')
+    expect(panelKind(CHAT.toUpperCase().replace('CHAT', 'chat'))).toBe('chat')
+    for (const bad of [
+      'overview:0',
+      'overview:100',
+      'overview:x',
+      'chat:abc',
+      'foo',
+      'overview:01',
+    ]) {
+      expect(panelKind(bad)).toBeNull()
+    }
+  })
+
+  it('open adds a centred frame with the default size', () => {
+    const s = run([open('integration')])
+    expect(s.frames).toHaveLength(1)
+    expect(s.frames[0]).toMatchObject({
+      active: 'integration',
+      id: 'f1',
+      locked: false,
+      minimised: false,
+      opacity: 1,
+      panels: ['integration'],
+      rect: centreRect(DEFAULT_SIZES.integration, bounds),
+    })
+    expect(s.nextFrame).toBe(2)
+  })
+
+  it('open uses the saved position from memory and clamps it', () => {
+    const base = {
+      ...initialState(bounds),
+      memory: { 'overview:1': { h: 360, w: 760, x: 1000, y: 10 } },
+    }
+    const s = run([open('overview:1')], base)
+    expect(s.frames[0]?.rect).toEqual({ h: 360, w: 760, x: 440, y: 10 })
+  })
+
+  it('open focuses, activates and restores a panel that is open', () => {
+    let s = run([open('overview:1'), open('overview:2')])
+    s = run([{ frameId: 'f1', targetId: 'f2', type: 'stack' as const }], s)
+    s = run([{ frameId: 'f2', type: 'minimise' }, open('overview:1')], s)
+    const f = frameOf(s, 'overview:1')
+    expect(f?.active).toBe('overview:1')
+    expect(f?.minimised).toBe(false)
+    expect(s.frames).toHaveLength(1)
+
+    let t = run([open('overview:1'), open('overview:2'), { frameId: 'f1', type: 'minimise' }])
+    t = run([open('overview:1')], t)
+    expect(t.frames.map(x => x.id)).toEqual(['f2', 'f1'])
+    expect(t.frames[1]?.minimised).toBe(false)
+  })
+
+  it('open ignores an invalid panel ID', () => {
+    const s = initialState(bounds)
+    expect(wmReducer(s, open('nope'))).toBe(s)
+  })
+
+  it('close keeps the position in memory and removes an empty frame', () => {
+    const s = run([open('integration')])
+    const rect = s.frames[0]?.rect
+    const c = run([{ panelId: 'integration', type: 'close' }], s)
+    expect(c.frames).toEqual([])
+    expect(c.memory.integration).toEqual(rect)
+    expect(frameOf(run([open('integration')], c), 'integration')?.rect).toEqual(rect)
+  })
+
+  it('close of one tab keeps the other tabs and activates the tab to the left', () => {
+    let s = run([open('overview:1'), open('overview:2'), open('overview:3')])
+    s = run(
+      [
+        { frameId: 'f2', targetId: 'f1', type: 'stack' },
+        { frameId: 'f3', targetId: 'f1', type: 'stack' },
+      ],
+      s,
+    )
+    expect(s.frames[0]?.panels).toEqual(['overview:1', 'overview:2', 'overview:3'])
+    s = run([{ panelId: 'overview:3', type: 'close' }], s)
+    expect(s.frames[0]).toMatchObject({
+      active: 'overview:2',
+      panels: ['overview:1', 'overview:2'],
+    })
+    s = run(
+      [
+        { panelId: 'overview:1', type: 'activate' },
+        { panelId: 'overview:1', type: 'close' },
+      ],
+      s,
+    )
+    expect(s.frames[0]).toMatchObject({ active: 'overview:2', panels: ['overview:2'] })
+  })
+
+  it('closeActive closes the active panel of the top frame', () => {
+    const s = run([open('overview:1'), open('integration'), { frameId: 'f2', type: 'minimise' }])
+    const c = run([{ type: 'closeActive' }], s)
+    expect(c.frames.map(f => f.id)).toEqual(['f2'])
+    expect(topFrame(s)?.id).toBe('f1')
+  })
+
+  it('focus moves the frame to the top', () => {
+    const s = run([open('overview:1'), open('overview:2'), { frameId: 'f1', type: 'focus' }])
+    expect(s.frames.map(f => f.id)).toEqual(['f2', 'f1'])
+  })
+
+  it('setRect clamps and ignores a locked or minimised frame', () => {
+    let s = run([open('overview:1')])
+    s = run([{ frameId: 'f1', rect: { h: 300, w: 400, x: 5000, y: -20 }, type: 'setRect' }], s)
+    expect(s.frames[0]?.rect).toEqual({ h: 300, w: 400, x: 800, y: 0 })
+    const locked = run([{ frameId: 'f1', locked: true, type: 'lock' }], s)
+    const move: WmAction = { frameId: 'f1', rect: { h: 300, w: 400, x: 1, y: 1 }, type: 'setRect' }
+    expect(wmReducer(locked, move)).toBe(locked)
+    const min = run([{ frameId: 'f1', type: 'minimise' }], s)
+    expect(wmReducer(min, move)).toBe(min)
+  })
+
+  it('stack moves the panels of the source into the target', () => {
+    const s = run([open('overview:1'), open('overview:2'), open('overview:3')])
+    const t = run([{ frameId: 'f1', targetId: 'f2', type: 'stack' }], s)
+    expect(t.frames.map(f => f.id)).toEqual(['f3', 'f2'])
+    expect(t.frames[1]).toMatchObject({
+      active: 'overview:1',
+      panels: ['overview:2', 'overview:1'],
+    })
+  })
+
+  it('stack refuses the same frame, a minimised frame or a locked source', () => {
+    const s = run([open('overview:1'), open('overview:2')])
+    const same: WmAction = { frameId: 'f1', targetId: 'f1', type: 'stack' }
+    expect(wmReducer(s, same)).toBe(s)
+    const min = run([{ frameId: 'f2', type: 'minimise' }], s)
+    expect(wmReducer(min, { frameId: 'f1', targetId: 'f2', type: 'stack' })).toBe(min)
+    expect(wmReducer(min, { frameId: 'f2', targetId: 'f1', type: 'stack' })).toBe(min)
+    const locked = run([{ frameId: 'f1', locked: true, type: 'lock' }], s)
+    expect(wmReducer(locked, { frameId: 'f1', targetId: 'f2', type: 'stack' })).toBe(locked)
+  })
+
+  it('unstack makes a new frame on top with the old opacity', () => {
+    let s = run([
+      open('overview:1'),
+      open('overview:2'),
+      { frameId: 'f2', targetId: 'f1', type: 'stack' },
+      { frameId: 'f1', opacity: 0.5, type: 'opacity' },
+    ])
+    const old = s.frames[0]?.rect
+    s = run([{ panelId: 'overview:2', rect: { h: 300, w: 400, x: 50, y: 60 }, type: 'unstack' }], s)
+    expect(s.frames.map(f => f.id)).toEqual(['f1', 'f3'])
+    expect(s.frames[0]).toMatchObject({ active: 'overview:1', panels: ['overview:1'] })
+    expect(s.frames[1]).toMatchObject({
+      locked: false,
+      opacity: 0.5,
+      panels: ['overview:2'],
+      rect: { h: 300, w: 400, x: 50, y: 60 },
+    })
+    expect(s.memory['overview:2']).toEqual(old)
+    expect(s.nextFrame).toBe(4)
+  })
+
+  it('unstack refuses a frame with one panel or a locked frame', () => {
+    const rect = { h: 300, w: 400, x: 50, y: 60 }
+    const one = run([open('overview:1')])
+    expect(wmReducer(one, { panelId: 'overview:1', rect, type: 'unstack' })).toBe(one)
+    const two = run([
+      open('overview:1'),
+      open('overview:2'),
+      { frameId: 'f2', targetId: 'f1', type: 'stack' },
+    ])
+    const locked = run([{ frameId: 'f1', locked: true, type: 'lock' }], two)
+    expect(wmReducer(locked, { panelId: 'overview:2', rect, type: 'unstack' })).toBe(locked)
+  })
+
+  it('opacity is clamped to 0.3 and 1', () => {
+    const s = run([open('overview:1')])
+    const at = (opacity: number) =>
+      wmReducer(s, { frameId: 'f1', opacity, type: 'opacity' }).frames[0]?.opacity
+    expect(at(0)).toBe(0.3)
+    expect(at(5)).toBe(1)
+    expect(at(0.456)).toBe(0.46)
+  })
+
+  it('bounds clamps all frames into a smaller window', () => {
+    let s = run([open('overview:1'), open('integration')])
+    s = run([{ bounds: { h: 400, w: 600 }, type: 'bounds' }], s)
+    expect(s.bounds).toEqual({ h: 400, w: 600 })
+    for (const f of s.frames) {
+      expect(f.rect.x + f.rect.w).toBeLessThanOrEqual(600)
+      expect(f.rect.y + f.rect.h).toBeLessThanOrEqual(400)
+    }
+  })
+
+  it('load replaces the frames, drops invalid and repeated panels, and clamps', () => {
+    const base = run([open('integration')])
+    const r = { h: 300, w: 400, x: 5000, y: 5000 }
+    const mk = (panels: string[], active: string) => ({
+      active,
+      locked: false,
+      minimised: false,
+      opacity: 1,
+      panels,
+      rect: r,
+    })
+    const memory = { 'overview:9': { h: 200, w: 200, x: 1, y: 1 } }
+    const s = wmReducer(base, {
+      frames: [
+        mk(['overview:1', 'bad'], 'bad'),
+        mk(['bad'], 'bad'),
+        mk(['overview:1'], 'overview:1'),
+        mk(['overview:2', 'selected-item'], 'selected-item'),
+      ],
+      memory,
+      type: 'load',
+    })
+    expect(s.frames.map(f => f.id)).toEqual(['f2', 'f3'])
+    expect(s.frames[0]).toMatchObject({ active: 'overview:1', panels: ['overview:1'] })
+    expect(s.frames[0]?.rect).toEqual({ h: 300, w: 400, x: 800, y: 500 })
+    expect(s.frames[1]?.panels).toEqual(['overview:2', 'selected-item'])
+    expect(s.memory).toEqual(memory)
+    expect(s.nextFrame).toBe(4)
+  })
+
+  it('a no-change action returns the same state object', () => {
+    const s = run([open('overview:1'), open('overview:2')])
+    const f2 = s.frames[1]
+    const actions: WmAction[] = [
+      open('nope'),
+      open('overview:2'),
+      { panelId: 'integration', type: 'close' },
+      { frameId: 'zz', type: 'focus' },
+      { frameId: 'f2', type: 'focus' },
+      { frameId: 'f2', rect: f2?.rect as never, type: 'setRect' },
+      { frameId: 'f2', targetId: 'zz', type: 'stack' },
+      { panelId: 'zz', rect: f2?.rect as never, type: 'unstack' },
+      { panelId: 'overview:2', type: 'activate' },
+      { frameId: 'f2', type: 'restore' },
+      { frameId: 'f2', locked: false, type: 'lock' },
+      { frameId: 'f2', opacity: 1, type: 'opacity' },
+      { bounds, type: 'bounds' },
+    ]
+    for (const a of actions) expect(wmReducer(s, a)).toBe(s)
+    const empty = initialState(bounds)
+    expect(wmReducer(empty, { type: 'closeActive' })).toBe(empty)
+    const min = run([{ frameId: 'f1', type: 'minimise' }], s)
+    expect(wmReducer(min, { frameId: 'f1', type: 'minimise' })).toBe(min)
+  })
+})

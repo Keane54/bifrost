@@ -126,7 +126,7 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 
 ### 5.2 Renderer
 
-The renderer is one React app. React keeps the state. M2 decides if Zustand is necessary. The main process sends updates of the registry to the renderer. It sends a maximum of 4 updates each second.
+The renderer is one React app. React keeps the state. M2 decided that React state is enough. A reducer keeps the window manager state. Zustand is not used. The main process sends updates of the registry to the renderer. It sends a maximum of 4 updates each second.
 
 Context isolation is on. The preload script supplies a typed API. The renderer has no direct access to Node.
 
@@ -743,7 +743,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | TanStack Table | Overview columns, sort, column order and resize for each tab | M3 |
 | TanStack Hotkeys (beta) | Key map, hold-key-and-click, key editor in Settings | M3 to M5 |
 | lucide-react | Icons | M3 |
-| Zustand | Only if renderer state grows beyond React state. Decide in M2. | M2 |
+| Zustand | Not used. A reducer keeps the window manager state (M2). | M2 |
 | Zod | Not used. The hand-written checks stay small (M1). | M1 |
 | lefthook and commitlint | Commit message checks. Added in M1. | M1 |
 | Playwright for Electron | Smoke test | M5 |
