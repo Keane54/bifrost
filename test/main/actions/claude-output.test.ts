@@ -3,11 +3,20 @@ import {
   failure,
   isTrustError,
   parseKept,
+  parseKeptChanges,
   parseShortId,
   SHORT_ID,
   trustMessage,
 } from '../../../src/main/actions/claude-output'
-import { KEPT_DISCARD, KEPT_SHORT_ID, KEPT_STDOUT, KEPT_WORKTREE } from '../../fixtures/claude-rm'
+import {
+  CHANGES_SHORT_ID,
+  CHANGES_STDOUT,
+  CHANGES_WORKTREE,
+  KEPT_DISCARD,
+  KEPT_SHORT_ID,
+  KEPT_STDOUT,
+  KEPT_WORKTREE,
+} from '../../fixtures/claude-rm'
 
 // The dash (U+2014) of the resume output. Biome writes a \u escape as the character itself.
 const DASH = String.fromCharCode(0x2014)
@@ -139,5 +148,42 @@ describe('claude output', () => {
     ]) {
       expect(parseKept(text)).toBeNull()
     }
+  })
+
+  test('parseKeptChanges gives the short ID and the worktree of the real output', () => {
+    expect(parseKeptChanges(CHANGES_STDOUT)).toEqual({
+      shortId: CHANGES_SHORT_ID,
+      worktree: CHANGES_WORKTREE,
+    })
+    // The output has no discard value.
+    expect(parseKept(CHANGES_STDOUT)).toBeNull()
+  })
+
+  test('parseKeptChanges gives null without the kept line or the changes text', () => {
+    const [kept, ...rest] = CHANGES_STDOUT.split('\n')
+    const OPEN = String.fromCharCode(0x201c)
+    const CLOSE = String.fromCharCode(0x201d)
+    const withKept = (line: string) => [line, ...rest].join('\n')
+    for (const line of [
+      `kept ${CHANGES_SHORT_ID}`,
+      kept.replace(CHANGES_SHORT_ID, CHANGES_SHORT_ID.toUpperCase()),
+      kept.replace(CHANGES_SHORT_ID, CHANGES_SHORT_ID.slice(1)),
+      kept.replace(DASH, '-'),
+      kept.replace(OPEN, '"').replace(CLOSE, '"'),
+      kept.replace(CHANGES_WORKTREE, ''),
+      `${kept} and more`,
+      `  ${kept}`,
+    ]) {
+      expect(parseKeptChanges(withKept(line))).toBeNull()
+    }
+    // The kept line must be the first line, and only one kept line is valid.
+    expect(parseKeptChanges(`removed 27b87cbf\n${CHANGES_STDOUT}`)).toBeNull()
+    expect(parseKeptChanges(withKept(`${kept}\n${kept}`))).toBeNull()
+    // The kept text of a worktree with commits on no remote is not the changes text.
+    expect(parseKeptChanges(KEPT_STDOUT)).toBeNull()
+    expect(parseKeptChanges(kept)).toBeNull()
+    expect(parseKeptChanges(CHANGES_STDOUT.replace('uncommitted changes', 'changes'))).toBeNull()
+    expect(parseKeptChanges('')).toBeNull()
+    expect(parseKeptChanges('The worktree has uncommitted changes')).toBeNull()
   })
 })

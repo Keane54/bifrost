@@ -960,3 +960,123 @@ describe('worktrees', () => {
     expect(old.store().worktrees).toEqual([])
   })
 })
+
+describe('a session that is gone (Task 17 bug 3)', () => {
+  const WT = '/r/.claude/worktrees/gone'
+  // Another parked session, so that the --all list is not empty.
+  const other = bg({ id: 'bb', name: 'beta', pid: undefined, sessionId: 'o1', status: '' })
+  // A started session that claude rm in a terminal removed. The store has all its values.
+  const withGone = () => {
+    const r = registry({
+      lastActive: ['s9'],
+      names: { s9: 'nine' },
+      priorities: { s9: 2 },
+      started: ['s9'],
+      watch: [{ colour: 'amber', sessionId: 's9' }],
+      worktrees: [{ path: WT, sessionId: 's9' }],
+    })
+    r.applyAgents([], 100)
+    return r
+  }
+  const ids = (r: SessionRegistry) => r.rows().map(row => row.sessionId)
+
+  test('a started session that two --all lists in a row do not have is forgotten', () => {
+    const r = withGone()
+    expect(ids(r)).toEqual(['s9'])
+    r.applyAllAgents([other])
+    expect(ids(r)).toEqual(['s9', 'o1'])
+    expect(r.store().started).toEqual(['s9'])
+    r.storeChanged()
+    r.applyAllAgents([other])
+    expect(ids(r)).toEqual(['o1'])
+    expect(r.store()).toEqual({
+      lastActive: [],
+      names: { o1: 'beta' },
+      priorities: {},
+      started: [],
+      watch: [],
+      worktrees: [],
+    })
+    expect(r.storeChanged()).toBe(true)
+    // The next active list does not park it again.
+    r.applyAgents([], 200)
+    expect(ids(r)).toEqual(['o1'])
+  })
+
+  test('a session that comes back resets the count', () => {
+    const r = withGone()
+    const back = bg({ id: 'a9', pid: undefined, sessionId: 's9', status: '' })
+    r.applyAllAgents([other])
+    r.applyAllAgents([other, back])
+    r.applyAllAgents([other])
+    expect(ids(r)).toContain('s9')
+    expect(r.store().started).toEqual(['s9'])
+    r.applyAllAgents([other])
+    expect(ids(r)).not.toContain('s9')
+  })
+
+  test('a session in the active list is not gone', () => {
+    // A --all list that started before the session can miss it. The active list has it.
+    const r = withGone()
+    for (const at of [200, 300, 400]) {
+      r.applyAgents([bg({ sessionId: 's9' })], at)
+      r.applyAllAgents([other])
+    }
+    expect(ids(r)).toContain('s9')
+    expect(r.store().started).toEqual(['s9'])
+  })
+
+  test('an entry of any kind in --all keeps the session', () => {
+    // A failed Take control leaves a started session with an interactive entry (D6).
+    const r = withGone()
+    const ended = bg({
+      id: undefined,
+      kind: 'interactive',
+      pid: undefined,
+      sessionId: 's9',
+      status: '',
+    })
+    for (let i = 0; i < 3; i++) r.applyAllAgents([other, ended])
+    expect(ids(r)).toContain('s9')
+    expect(r.store().watch).toEqual([{ colour: 'amber', sessionId: 's9' }])
+  })
+
+  test('an empty --all list and a list with a skipped entry do not count', () => {
+    const r = withGone()
+    r.applyAllAgents([other])
+    r.applyAllAgents([])
+    r.applyAllAgents([other], false)
+    r.applyAllAgents([], false)
+    expect(ids(r)).toContain('s9')
+    expect(r.store().started).toEqual(['s9'])
+    expect(r.store().worktrees).toEqual([{ path: WT, sessionId: 's9' }])
+    // These lists do not stop the count either. The next good list is the second one in a row.
+    r.applyAllAgents([other])
+    expect(ids(r)).not.toContain('s9')
+  })
+
+  test('one --all list without the session does not forget it', () => {
+    const r = withGone()
+    r.applyAllAgents([other])
+    r.applyAgents([], 200)
+    r.tick(300)
+    expect(r.rows().find(row => row.sessionId === 's9')).toMatchObject({
+      name: 'nine',
+      priority: 2,
+      state: 'parked',
+      watch: { colour: 'amber', order: 0 },
+      worktree: WT,
+    })
+  })
+
+  test('a forget by Delete also clears the count', () => {
+    const r = withGone()
+    r.applyAllAgents([other])
+    r.forget('s9')
+    // The same ID again starts with no count.
+    r.markStarted('s9')
+    r.applyAgents([], 200)
+    r.applyAllAgents([other])
+    expect(ids(r)).toContain('s9')
+  })
+})

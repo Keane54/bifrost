@@ -10,6 +10,8 @@ import { REFUSED_DELETE_EXTERNAL, REFUSED_UNKNOWN } from './session-actions'
 export { worktreeRoot }
 
 const GIT_TIMEOUT_MS = 5000
+// A failed check tries one more time after this wait (Task 17 bug 5).
+export const CHECK_RETRY_MS = 500
 const OPEN_TIMEOUT_MS = 10_000
 const REFUSED_NO_WORKTREE = 'refused: the session has no worktree'
 
@@ -34,13 +36,27 @@ async function git(exec: ExecFn, args: string[]): Promise<string | null> {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 // Count the changed files and the commits that are not merged. null means a command failed.
-// The base is the commit that the main checkout has now. It also works for a detached HEAD.
+// A failed check tries one more time after CHECK_RETRY_MS. A git command of the session or an
+// install in the worktree can make one check fail (Task 17 bug 5).
 export async function checkWorktree(cwd: string, exec: ExecFn): Promise<WorktreeCheck | null> {
+  const first = await countWork(cwd, exec)
+  if (first !== null) return first
+  await sleep(CHECK_RETRY_MS)
+  return countWork(cwd, exec)
+}
+
+// One check. The base is the commit that the main checkout has now. It also works for a detached
+// HEAD. git status gets --no-optional-locks, so it does not write the index.lock of the worktree.
+async function countWork(cwd: string, exec: ExecFn): Promise<WorktreeCheck | null> {
   const root = worktreeRoot(cwd)
   if (!root) return { branch: null, changedFiles: 0, unmergedCommits: 0, worktree: null }
   const { worktree, repo } = root
-  const status = await git(exec, ['-C', worktree, 'status', '--porcelain'])
+  const status = await git(exec, ['--no-optional-locks', '-C', worktree, 'status', '--porcelain'])
   if (status === null) return null
   const head = await git(exec, ['-C', worktree, 'rev-parse', '--abbrev-ref', 'HEAD'])
   if (head === null) return null

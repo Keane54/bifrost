@@ -35,6 +35,9 @@ describe('confirm texts', () => {
   })
   const del = (c: WorktreeCheck | null | undefined) =>
     confirmFor('delete', row({ cwd: WT, name: 'fix-a', sessionId: 'a' }), 'plain', c)
+  // The sentence for changed files (Task 17 bug 2). claude rm keeps such a worktree.
+  const KEEPS =
+    'Claude Code keeps a worktree with changes that are not committed, so commit or discard them first.'
 
   it('Delete without unmerged work gives the plain text', () => {
     const text = del(check({}))
@@ -46,7 +49,7 @@ describe('confirm texts', () => {
 
   it('Delete with unmerged work gives the counts and asks again', () => {
     expect(del(check({ changedFiles: 3, unmergedCommits: 2 }))).toEqual({
-      body: 'This session has 2 commits that are not merged and 3 changed files on worktree-fix-a. Are you sure you want to delete this?',
+      body: `This session has 2 commits that are not merged and 3 changed files on worktree-fix-a. ${KEEPS} Are you sure you want to delete this?`,
       confirm: 'Delete session',
       confirmAgain: 'Delete anyway',
       openFolder: WT,
@@ -70,14 +73,23 @@ describe('confirm texts', () => {
       'This session has 1 commit that is not merged on worktree-fix-a. Are you sure you want to delete this?',
     )
     expect(del(check({ changedFiles: 1, unmergedCommits: 1 }))?.body).toBe(
-      'This session has 1 commit that is not merged and 1 changed file on worktree-fix-a. Are you sure you want to delete this?',
+      `This session has 1 commit that is not merged and 1 changed file on worktree-fix-a. ${KEEPS} Are you sure you want to delete this?`,
     )
     expect(del(check({ changedFiles: 1 }))?.body).toBe(
-      'This session has 1 changed file on worktree-fix-a. Are you sure you want to delete this?',
+      `This session has 1 changed file on worktree-fix-a. ${KEEPS} Are you sure you want to delete this?`,
     )
     expect(del(check({ branch: null, unmergedCommits: 1 }))?.body).toBe(
       'This session has 1 commit that is not merged in its worktree. Are you sure you want to delete this?',
     )
+  })
+
+  it('Delete names the kept worktree only when the check shows changed files', () => {
+    expect(del(check({ changedFiles: 75, unmergedCommits: 1 }))?.body).toBe(
+      `This session has 1 commit that is not merged and 75 changed files on worktree-fix-a. ${KEEPS} Are you sure you want to delete this?`,
+    )
+    for (const c of [check({ unmergedCommits: 3 }), check({}), null, undefined]) {
+      expect(del(c)?.body).not.toContain(KEEPS)
+    }
   })
 
   it('Delete after a failed check says so and asks again', () => {

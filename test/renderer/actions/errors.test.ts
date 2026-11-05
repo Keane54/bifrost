@@ -75,6 +75,41 @@ describe('friendly errors', () => {
     )
   })
 
+  it('gives the exact texts of the Delete refusals of Task 18', () => {
+    expect(friendlyError('refused: claude rm took too long')).toBe(
+      'Claude Code took too long to delete this session. Check the worktree, then delete again.',
+    )
+    expect(friendlyError('refused: the worktree has uncommitted changes')).toBe(
+      'Claude Code kept this session, because its worktree has changes that are not committed. Open the worktree, commit or discard them, then delete again.',
+    )
+  })
+
+  it('gives a friendly text for a failed read of the session list', () => {
+    // Node gives this text when the timeout ended claude agents (Task 17 bug 4).
+    for (const text of [
+      'Command failed: /Users/x/.local/bin/claude agents --json',
+      'Command failed: /Users/x/.local/bin/claude agents --json --all',
+      'Command failed: /Users/x/.local/bin/claude agents --json\nsome stderr',
+    ]) {
+      expect(friendlyError(text)).toBe(
+        "Bifrost couldn't read the session list. It tries again in a moment.",
+      )
+    }
+  })
+
+  it('gives a friendly text for another failed command', () => {
+    for (const text of [
+      'Command failed: /Users/x/.local/bin/claude rm 27b87cbf --discard-unpushed a@b',
+      'Command failed: /Users/x/.local/bin/claude stop abcd1234',
+    ]) {
+      expect(friendlyError(text)).toBe('A Claude Code command failed. Try again in a moment.')
+    }
+    // Only a text that starts with the Node text changes.
+    expect(friendlyError('claude agents --json: Command failed: x')).toBe(
+      'claude agents --json: Command failed: x',
+    )
+  })
+
   // The error line wraps to more lines (Task 15). So a text can have two sentences.
   it('has short texts with no refusal code and no em dash', () => {
     for (const text of Object.values(FRIENDLY_ERRORS)) {

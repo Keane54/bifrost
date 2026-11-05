@@ -33,6 +33,10 @@ export const PENDING_EVENT_MS = 60_000
 // A session that is not active stays in lastActive this long, in milliseconds.
 export const LAST_ACTIVE_GRACE_MS = 60_000
 
+// The registry forgets an owned or started session after this many --all lists in a row
+// without it (Task 17 bug 3).
+export const GONE_LISTS = 2
+
 // The data that the registry keeps for one session.
 interface Session {
   sessionId: string
@@ -104,6 +108,8 @@ export class SessionRegistry {
   private readonly resumable: Set<string>
   // The sample time when a session of lastActive was first not active.
   private readonly inactiveSince = new Map<string, number>()
+  // The count of the --all lists in a row that did not have the session.
+  private readonly missing = new Map<string, number>()
   // The terminal app for each PID. null means that the PID has no app.
   private readonly terminals = new Map<number, TerminalApp | null>()
   private changed = false
@@ -189,8 +195,10 @@ export class SessionRegistry {
   }
 
   // Apply the output of "claude agents --json --all".
-  // Call it only after a poll that did not fail.
-  applyAllAgents(entries: AgentEntry[]): void {
+  // Call it only after a poll that did not fail. complete is false when the parser skipped an
+  // entry. Then the list can miss a session that exists.
+  applyAllAgents(entries: AgentEntry[], complete = true): void {
+    this.forgetGone(entries, complete)
     // An interactive session that ended must not come back as a parked row.
     // So the registry uses only the background entries.
     const owned = entries.filter(entry => entry.kind === 'background')
@@ -262,6 +270,7 @@ export class SessionRegistry {
     this.all.delete(sessionId)
     this.resumable.delete(sessionId)
     this.inactiveSince.delete(sessionId)
+    this.missing.delete(sessionId)
     const removed = [
       this.started.delete(sessionId),
       this.names.delete(sessionId),
@@ -503,6 +512,35 @@ export class SessionRegistry {
     const keep = (s.kind === 'owned' && this.all.has(sessionId)) || this.started.has(sessionId)
     if (keep) this.park(s, sampledAt)
     else this.sessions.delete(sessionId)
+  }
+
+  // Forget an owned or started session that GONE_LISTS --all lists in a row did not have.
+  // claude rm in a terminal removes a session, but the started list keeps it (Task 17 bug 3).
+  // These sessions are not gone, and their counts go back to 0:
+  // - A session in the active list.
+  // - A session with an entry of any kind in the --all list.
+  // An empty list and a list that is not complete do not count. They do not reset a count.
+  // The service calls applyAllAgents only after a good poll, so a failed read never counts.
+  private forgetGone(entries: AgentEntry[], complete: boolean): void {
+    const listed = new Set(entries.map(entry => entry.sessionId))
+    const candidates = new Set(this.started)
+    for (const s of this.sessions.values()) {
+      if (s.kind === 'owned') candidates.add(s.sessionId)
+    }
+    for (const id of this.missing.keys()) {
+      if (!candidates.has(id)) this.missing.delete(id)
+    }
+    const counts = complete && entries.length > 0
+    for (const id of candidates) {
+      if (listed.has(id) || this.active.has(id)) {
+        this.missing.delete(id)
+        continue
+      }
+      if (!counts) continue
+      const missing = (this.missing.get(id) ?? 0) + 1
+      if (missing >= GONE_LISTS) this.forget(id)
+      else this.missing.set(id, missing)
+    }
   }
 
   // A session that Bifrost started and that is not active is parked.

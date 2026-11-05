@@ -8,6 +8,7 @@ const fixture = readFileSync(join(__dirname, '../../fixtures/agents.json'), 'utf
 test('parseAgents reads all entries from the fixture', () => {
   const r = parseAgents(fixture)
   expect(r.error).toBeUndefined()
+  expect(r.partial).toBeUndefined()
   expect(r.entries).toHaveLength(2)
   expect(r.entries[1]).toMatchObject({
     id: '6df6c51a',
@@ -31,6 +32,14 @@ test('parseAgents skips an entry without sessionId and keeps the others', () => 
   const data = JSON.parse(fixture)
   delete data[0].sessionId
   expect(parseAgents(JSON.stringify(data)).entries.map(e => e.name)).toEqual(['beta-24'])
+})
+test('parseAgents marks a list with a skipped entry as partial', () => {
+  // The registry then does not take the list as proof that a session is gone (Task 17 bug 3).
+  const data = JSON.parse(fixture)
+  delete data[0].sessionId
+  expect(parseAgents(JSON.stringify(data)).partial).toBe(true)
+  expect(parseAgents(`[null, ${JSON.stringify(data[1])}]`).partial).toBe(true)
+  expect(parseAgents('[]')).toEqual({ entries: [] })
 })
 test('listAgents adds --all only when asked', async () => {
   const run = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '[]' })

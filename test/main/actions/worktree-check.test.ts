@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OPEN } from '../../../src/main/actions/actions'
 import {
+  CHECK_RETRY_MS,
   checkWorktree,
   checkWorktreeHead,
   createWorktreeActions,
@@ -24,6 +25,29 @@ function fake(outputs: (ExecResult | Error)[]) {
 }
 
 const good = () => [ok(' M a\n?? b\n'), ok('worktree-fix-a\n'), ok('abc123\n'), ok('3\n')]
+// git status takes no optional lock, so it writes no index.lock (Task 17 bug 5).
+const STATUS = (worktree: string) => [
+  '--no-optional-locks',
+  '-C',
+  worktree,
+  'status',
+  '--porcelain',
+]
+const fail: ExecResult = { code: 128, stderr: 'fatal', stdout: '' }
+
+// A failed check waits CHECK_RETRY_MS with the fake timers. This runs all timers.
+async function settled<T>(promise: Promise<T>): Promise<T> {
+  await vi.runAllTimersAsync()
+  return promise
+}
+
+beforeEach(() => {
+  vi.useFakeTimers()
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('worktreeRoot', () => {
   it('finds the worktree and the repo', () => {
@@ -76,7 +100,7 @@ describe('checkWorktree', () => {
     })
     const opts = { timeoutMs: 5000 }
     expect(exec.mock.calls).toEqual([
-      ['git', ['-C', WT, 'status', '--porcelain'], opts],
+      ['git', STATUS(WT), opts],
       ['git', ['-C', WT, 'rev-parse', '--abbrev-ref', 'HEAD'], opts],
       ['git', ['-C', '/r', 'rev-parse', 'HEAD'], opts],
       ['git', ['-C', WT, 'rev-list', '--count', 'abc123..HEAD'], opts],
@@ -89,22 +113,55 @@ describe('checkWorktree', () => {
     expect((await checkWorktree(WT, fake(out)))?.branch).toBeNull()
   })
 
-  it('gives null when a git command fails', async () => {
-    const withAt = (i: number, v: ExecResult | Error) => {
-      const out = good()
+  it('gives null when a git command fails in both tries', async () => {
+    // One try runs the commands up to the one that fails. The second try gets the same outputs.
+    const twice = (i: number, v: ExecResult | Error) => {
+      const out = good().slice(0, i + 1)
       out[i] = v
-      return out
+      return [...out, ...out]
     }
-    const fail: ExecResult = { code: 128, stderr: 'fatal', stdout: '' }
     const timeout: ExecResult = { code: 0, stderr: '', stdout: '', timedOut: true }
-    for (const out of [
-      withAt(0, fail),
-      withAt(1, new Error('spawn')),
-      withAt(2, timeout),
-      withAt(3, ok('x\n')),
-    ]) {
-      expect(await checkWorktree(WT, fake(out))).toBeNull()
+    for (const [i, out] of [
+      [0, twice(0, fail)],
+      [1, twice(1, new Error('spawn'))],
+      [2, twice(2, timeout)],
+      [3, twice(3, ok('x\n'))],
+    ] as const) {
+      const exec = fake([...out])
+      expect(await settled(checkWorktree(WT, exec))).toBeNull()
+      expect(exec).toHaveBeenCalledTimes(2 * (i + 1))
     }
+  })
+
+  it('a failed check tries one more time after 500 ms', async () => {
+    expect(CHECK_RETRY_MS).toBe(500)
+    const exec = fake([fail, ...good()])
+    const check = checkWorktree(WT, exec)
+    await vi.advanceTimersByTimeAsync(CHECK_RETRY_MS - 1)
+    expect(exec).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await check).toEqual({
+      branch: 'worktree-fix-a',
+      changedFiles: 2,
+      unmergedCommits: 3,
+      worktree: WT,
+    })
+    expect(exec.mock.calls.map(call => call[1])).toEqual([
+      STATUS(WT),
+      STATUS(WT),
+      ['-C', WT, 'rev-parse', '--abbrev-ref', 'HEAD'],
+      ['-C', '/r', 'rev-parse', 'HEAD'],
+      ['-C', WT, 'rev-list', '--count', 'abc123..HEAD'],
+    ])
+  })
+
+  it('a good check does not run again, and a second failure gives null', async () => {
+    const exec = fake(good())
+    expect((await settled(checkWorktree(WT, exec)))?.worktree).toBe(WT)
+    expect(exec).toHaveBeenCalledTimes(4)
+    const failing = fake([fail, fail, ...good()])
+    expect(await settled(checkWorktree(WT, failing))).toBeNull()
+    expect(failing).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -170,7 +227,7 @@ describe('the stored worktree of a stopped session', () => {
       unmergedCommits: 3,
       worktree: WT,
     })
-    expect(exec.mock.calls[0]?.[1]).toEqual(['-C', WT, 'status', '--porcelain'])
+    expect(exec.mock.calls[0]?.[1]).toEqual(STATUS(WT))
   })
 
   it('deleteCheck checks the stored worktree of a row with no cwd', async () => {
@@ -210,7 +267,6 @@ describe('checkWorktreeHead', () => {
   })
 
   it('gives null when the HEAD read fails or gives no commit', async () => {
-    const fail: ExecResult = { code: 128, stderr: 'fatal', stdout: '' }
     const timeout: ExecResult = { code: 0, stderr: '', stdout: '', timedOut: true }
     for (const last of [
       fail,
@@ -220,12 +276,14 @@ describe('checkWorktreeHead', () => {
       ok('abc\n'),
       ok(HEAD.toUpperCase()),
     ]) {
-      expect(await checkWorktreeHead(WT, fake([...good(), last]))).toBeNull()
+      expect(await settled(checkWorktreeHead(WT, fake([...good(), last])))).toBeNull()
     }
   })
 
   it('gives null for a failed check and for a folder outside .claude/worktrees', async () => {
-    expect(await checkWorktreeHead(WT, fake([{ code: 1, stderr: '', stdout: '' }]))).toBeNull()
+    const failed = fake([fail, fail])
+    expect(await settled(checkWorktreeHead(WT, failed))).toBeNull()
+    expect(failed).toHaveBeenCalledTimes(2)
     const exec = fake([])
     expect(await checkWorktreeHead('/r', exec)).toBeNull()
     expect(exec).not.toHaveBeenCalled()

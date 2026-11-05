@@ -6,10 +6,17 @@ import { childEnv } from '../child-env'
 
 // timedOut is true only when the timeout stopped the program.
 export type ExecResult = { code: number; stdout: string; stderr: string; timedOut?: boolean }
+// The signal that stops a program at the timeout.
+export type KillSignal = 'SIGKILL' | 'SIGTERM'
 export type ExecFn = (
   file: string,
   args: string[],
-  opts?: { cwd?: string; timeoutMs?: number; env?: Record<string, string> },
+  opts?: {
+    cwd?: string
+    timeoutMs?: number
+    env?: Record<string, string>
+    killSignal?: KillSignal
+  },
 ) => Promise<ExecResult>
 
 const DEFAULT_TIMEOUT_MS = 10000
@@ -19,6 +26,8 @@ const DEFAULT_TIMEOUT_MS = 10000
 // Without opts.env, the program gets the env of the app.
 // At the timeout, SIGKILL stops the program. A program can ignore SIGTERM, but not SIGKILL.
 // So a hung program cannot stop a poll.
+// opts.killSignal SIGTERM lets the program stop its work cleanly. Use it only for a command
+// that a SIGKILL can leave half done. Node then waits until the program ends.
 export const execFile: ExecFn = (file, args, opts) =>
   new Promise(resolve => {
     nodeExecFile(
@@ -28,7 +37,7 @@ export const execFile: ExecFn = (file, args, opts) =>
         cwd: opts?.cwd,
         encoding: 'utf8',
         env: opts?.env,
-        killSignal: 'SIGKILL',
+        killSignal: opts?.killSignal ?? 'SIGKILL',
         timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       },
       (error, stdout, stderr) => {
@@ -36,15 +45,19 @@ export const execFile: ExecFn = (file, args, opts) =>
           resolve({ code: 0, stderr, stdout })
           return
         }
+        // Node sets killed when it sent the kill signal at the timeout.
+        // A program can exit with a code after SIGTERM. The timeout still stopped it.
+        const killed = (error as { killed?: boolean }).killed === true
         const code = (error as NodeJS.ErrnoException).code
         if (typeof code === 'number') {
-          resolve({ code, stderr, stdout })
+          const result: ExecResult = { code, stderr, stdout }
+          if (killed) result.timedOut = true
+          resolve(result)
           return
         }
         // No exit code: the program did not start, or a signal ended it.
-        // Node sets killed when it sent the kill signal at the timeout.
         const result: ExecResult = { code: 1, stderr: stderr || error.message, stdout }
-        if ((error as { killed?: boolean }).killed === true) result.timedOut = true
+        if (killed) result.timedOut = true
         resolve(result)
       },
     )
@@ -85,7 +98,7 @@ export async function resolveClaudePath(
 
 export type RunClaude = (
   args: string[],
-  opts?: { cwd?: string; timeoutMs?: number },
+  opts?: { cwd?: string; timeoutMs?: number; killSignal?: KillSignal },
 ) => Promise<ExecResult>
 
 // Each claude run gets the clean child env, made from baseEnv.

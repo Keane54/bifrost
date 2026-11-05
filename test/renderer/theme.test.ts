@@ -289,6 +289,12 @@ describe('theme', () => {
     }
   })
 
+  // the user, 2026-11-05: dark red was too close to red (Task 17, contrast 1.34:1).
+  it('the stripes of dark red and red differ clearly', () => {
+    expect(token('watch-dark-red')).toBe('#7f1d1d')
+    expect(contrast(token('watch-dark-red'), token('watch-red'))).toBeGreaterThanOrEqual(2)
+  })
+
   // The tint is faint, so the full colour shows in a 3 px stripe at the left edge of the row.
   it('has a stripe class for each watch colour', () => {
     const text = source('watch/watch-colours.ts')

@@ -40,7 +40,8 @@ import { type FocusRequest, planRun, type RunPlan } from './run-plan'
 // The Labels setting comes in M5 (spec 9.1). Until then, Bifrost uses the plain labels.
 export const LABELS: LabelSet = 'plain'
 
-// An error or a notice of an action shows for 5 seconds.
+// A notice of an action shows for 5 seconds. An error stays until the user closes it, because a
+// Delete error can be long (Task 17).
 const MESSAGE_MS = 5000
 
 // The slash favourites are the spec default list until Settings (M5, D8).
@@ -52,6 +53,8 @@ const RENAME_COMMAND = /^\/rename(?:\s|$)/
 
 // The notice while the unmerged-work check of a Delete runs (Task 13).
 const CHECKING_NOTICE = 'Checking for unmerged work...'
+// The notice while a Delete runs after the confirm. claude rm can take some minutes (Task 17).
+const DELETING_NOTICE = 'Deleting the session...'
 // The notice when a confirmation cannot open, because another dialog is open.
 const DIALOG_BUSY_NOTICE = 'Another dialog is open. Finish that one first.'
 
@@ -62,8 +65,11 @@ export interface ActionsValue {
   send(sessionId: string, text: string): Promise<void>
   contextFor(sessionId: string): ActionContext
   globalContext(): GlobalContext
-  // The message of the last failed action, or null. It is the text for the user.
+  // The message of the last failed action, or null. It is the text for the user. It stays until
+  // closeError or the next error.
   error: string | null
+  // Remove the error.
+  closeError(): void
   // A message for the user after an action, or null.
   notice: string | null
   // The New session dialog is open.
@@ -117,6 +123,8 @@ interface TimedMessage {
   show(text: string, opts?: { untilHidden?: boolean }): number
   // Remove the text, if it is still the text that show gave the number for.
   hide(id: number): void
+  // Remove the text that shows now.
+  clear(): void
 }
 
 // A message that shows for MESSAGE_MS, or until hide when untilHidden is true.
@@ -145,7 +153,8 @@ function useTimedMessage(): TimedMessage {
     timer.current = undefined
     setText(null)
   }, [])
-  return useMemo(() => ({ hide, show, text }), [hide, show, text])
+  const clear = useCallback(() => hide(shownId.current), [hide])
+  return useMemo(() => ({ clear, hide, show, text }), [clear, hide, show, text])
 }
 
 // It must be inside the providers of the registry, the window manager, the history, the
@@ -162,9 +171,14 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const noticeLine = useTimedMessage()
   const error = errorLine.text
   const notice = noticeLine.text
-  const showError = errorLine.show
+  const showErrorLine = errorLine.show
+  const closeError = errorLine.clear
   const showNotice = noticeLine.show
   const hideNotice = noticeLine.hide
+  const showError = useCallback(
+    (text: string) => showErrorLine(text, { untilHidden: true }),
+    [showErrorLine],
+  )
   // The session IDs with a call that did not end. The ref has the value at once.
   const [running, setRunning] = useState<ReadonlySet<string>>(() => new Set())
   const runningRef = useRef<ReadonlySet<string>>(running)
@@ -245,6 +259,8 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       // The counts of the check that the Delete dialog showed. null when the check failed or
       // found no worktree. Then the main process never discards a worktree that claude rm keeps.
       let seen: SeenCounts | null = null
+      // The notice of a Delete that runs, or null.
+      let deleting: number | null = null
       try {
         if (plan.call === 'remove') {
           // Delete runs the unmerged-work check first (Task 13). A failed check gives null.
@@ -286,6 +302,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
             break
           case 'remove':
             if (!confirmed) return
+            deleting = showNotice(DELETING_NOTICE, { untilHidden: true })
             await api.sessions.remove(sessionId, true, seen)
             break
           case 'resume':
@@ -339,6 +356,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       } catch (err) {
         fail(err)
       } finally {
+        if (deleting !== null) hideNotice(deleting)
         if (marked) setRunningFor(sessionId, false)
       }
     },
@@ -417,6 +435,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const value = useMemo<ActionsValue>(
     () => ({
       clearFocusRequest,
+      closeError,
       contextFor: sessionId =>
         contextOf(sessionId, state, apps, running.has(sessionId), history.recentSlash),
       error,
@@ -431,6 +450,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     [
       apps,
       clearFocusRequest,
+      closeError,
       error,
       focusRequest,
       history.recentSlash,

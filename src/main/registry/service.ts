@@ -277,11 +277,13 @@ export class RegistryService {
     }
   }
 
+  // A failed poll and a rejected poll change nothing. So a failed read never counts for the
+  // forget of a gone session (Task 17 bug 3).
   private async pollAll(): Promise<void> {
     const list = await this.deps.listAll()
     // After a failed poll, the registry keeps the last --all list.
     if (this.stopped || list.error !== undefined) return
-    this.registry.applyAllAgents(list.entries)
+    this.registry.applyAllAgents(list.entries, list.partial !== true)
     this.changed()
   }
 

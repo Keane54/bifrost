@@ -252,7 +252,7 @@ export default function WatchlistPanel(): React.JSX.Element {
           </ContextMenu.Positioner>
         </ContextMenu.Portal>
       </ContextMenu.Root>
-      <ErrorLine message={error} />
+      <ErrorLine message={error} onClose={() => setError(null)} />
     </div>
   )
 }

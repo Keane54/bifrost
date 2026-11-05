@@ -73,6 +73,29 @@ export function parseKept(stdout: string): KeptWorktree | null {
   return { discard: value, shortId: kept[1] as string, worktree: kept[2] as string }
 }
 
+// The short ID and the worktree that a kept line names.
+export interface KeptChanges {
+  shortId: string
+  worktree: string
+}
+
+// "claude rm" keeps a worktree with changes that are not committed. Then it prints the kept line
+// first and the text "The worktree has uncommitted changes" (Task 17 bug 2). It prints no
+// --discard-unpushed value, and Claude Code has no command that deletes such a worktree.
+const CHANGES_TEXT = 'The worktree has uncommitted changes'
+
+// Read a "claude rm" refusal for changes that are not committed. This gives null when the first
+// line is not a kept line of the correct form, when another line starts with "kept ", and for
+// text without the changes text.
+export function parseKeptChanges(stdout: string): KeptChanges | null {
+  const lines = stdout.split('\n')
+  if (lines.filter(line => line.startsWith('kept ')).length !== 1) return null
+  const kept = KEPT_LINE.exec(lines[0] as string)
+  if (kept === null) return null
+  if (!lines.slice(1).some(line => line.includes(CHANGES_TEXT))) return null
+  return { shortId: kept[1] as string, worktree: kept[2] as string }
+}
+
 // The text of a failed claude command: the stderr, else the stdout, else the exit code.
 // The stderr does not count when it has only the start line of the background service.
 export function failure(result: ExecResult, what: string): string {

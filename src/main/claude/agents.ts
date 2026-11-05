@@ -11,7 +11,8 @@ export interface AgentEntry {
   id?: string
   waitingFor?: string // comes with status 'waiting'
 }
-export type AgentList = { entries: AgentEntry[]; error?: string }
+// partial is true when the parser skipped an entry. Then the list can miss a session.
+export type AgentList = { entries: AgentEntry[]; error?: string; partial?: true }
 
 function toEntry(raw: unknown): AgentEntry | null {
   if (typeof raw !== 'object' || raw === null) return null
@@ -33,7 +34,7 @@ function toEntry(raw: unknown): AgentEntry | null {
 
 // Read the output of "claude agents --json".
 // The parser starts at the first line that begins with "[".
-// It skips an entry that has no sessionId.
+// It skips an entry that has no sessionId, and then marks the list as partial.
 // It keeps an entry that has no pid.
 export function parseAgents(stdout: string): AgentList {
   if (stdout.trim() === '') return { entries: [], error: 'empty output' }
@@ -48,6 +49,7 @@ export function parseAgents(stdout: string): AgentList {
   }
   if (!Array.isArray(data)) return { entries: [], error: 'parse error: output is not an array' }
   const entries = data.map(toEntry).filter((e): e is AgentEntry => e !== null)
+  if (entries.length < data.length) return { entries, partial: true }
   return { entries }
 }
 

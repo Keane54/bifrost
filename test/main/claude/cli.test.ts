@@ -14,6 +14,17 @@ test('execFile stops a program that ignores SIGTERM at the timeout', async () =>
   expect(result.timedOut).toBe(true)
 })
 
+test('execFile sends the kill signal of opts at the timeout and sets timedOut', async () => {
+  // The program exits with code 7 at SIGTERM. SIGKILL ends it with no exit code.
+  const result = await execFile(
+    '/bin/sh',
+    ['-c', 'trap "exit 7" TERM; while :; do sleep 0.05; done'],
+    { killSignal: 'SIGTERM', timeoutMs: 200 },
+  )
+  expect(result.code).toBe(7)
+  expect(result.timedOut).toBe(true)
+})
+
 test('execFile does not set timedOut for a program that exits with an error', async () => {
   const result = await execFile('/bin/sh', ['-c', 'exit 3'])
   expect(result.code).toBe(3)

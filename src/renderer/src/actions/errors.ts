@@ -15,6 +15,11 @@ import {
 const PREFIX = 'refused: '
 const NOT_CLAUDE = /^refused: process (\d+) is not a claude process$/
 const ONLY_RUNNING = 'This only works for a Bifrost session that is running.'
+// Node gives this text when a signal ended a command, for example at the timeout.
+const COMMAND_FAILED = 'Command failed:'
+const LIST_COMMAND = 'agents --json'
+const LIST_FAILED = "Bifrost couldn't read the session list. It tries again in a moment."
+const COMMAND_FAILED_TEXT = 'A Claude Code command failed. Try again in a moment.'
 
 // One entry for each "refused: ..." literal in src/main and src/shared. A test checks this.
 export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
@@ -31,6 +36,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: bad watch move': "Bifrost couldn't move that session in the watchlist.",
   'refused: claude rm kept the worktree':
     'Claude Code kept this session, because its worktree has commits that exist on no remote. Open the worktree to check them, then delete again.',
+  'refused: claude rm took too long':
+    'Claude Code took too long to delete this session. Check the worktree, then delete again.',
   'refused: Delete needs a confirmation': 'Delete needs your confirmation first.',
   'refused: no terminal app is installed': REASON_NO_TERMINAL,
   'refused: no window': "The Bifrost window isn't ready.",
@@ -70,6 +77,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the UI state must be an object': "Bifrost couldn't save the window layout.",
   'refused: the worktree changed after the check':
     'The worktree changed after the check. Check it again, then delete.',
+  'refused: the worktree has uncommitted changes':
+    'Claude Code kept this session, because its worktree has changes that are not committed. Open the worktree, commit or discard them, then delete again.',
   'refused: the worktree option is off': "The worktree option isn't available.",
   'refused: unknown app': "Bifrost doesn't know that app.",
   'refused: unknown model': "Bifrost doesn't know that model.",
@@ -78,12 +87,16 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
 }
 
 // The friendly text of a message. A code that is not in the map loses its prefix and gets a
-// capital first letter. Any other message stays as it is.
+// capital first letter. A "Command failed:" text of Node gives a friendly text, with a special
+// text for the session list (Task 17 bug 4). Any other message stays as it is.
 export function friendlyError(message: string): string {
   const known = FRIENDLY_ERRORS[message]
   if (known !== undefined) return known
   const pid = NOT_CLAUDE.exec(message)?.[1]
   if (pid !== undefined) return `Process ${pid} isn't a Claude process, so Bifrost left it alone.`
+  if (message.startsWith(COMMAND_FAILED)) {
+    return message.includes(LIST_COMMAND) ? LIST_FAILED : COMMAND_FAILED_TEXT
+  }
   if (!message.startsWith(PREFIX)) return message
   const rest = message.slice(PREFIX.length)
   return rest.charAt(0).toUpperCase() + rest.slice(1)

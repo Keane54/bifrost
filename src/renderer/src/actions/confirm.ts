@@ -24,6 +24,11 @@ export function isWorktreeRow(row: SessionRow): boolean {
   )
 }
 
+// claude rm keeps a worktree with changes that are not committed (Task 17 bug 2). The Delete
+// body says so when the check shows changed files.
+const KEEPS_CHANGES =
+  'Claude Code keeps a worktree with changes that are not committed, so commit or discard them first.'
+
 // The dots after a label mean that the action opens a dialog. The dialog itself has no dots.
 function bareLabel(id: 'stop' | 'delete' | 'take-control', labels: LabelSet): string {
   return actionLabel(id, labels).replace(/\.\.\.$/, '')
@@ -76,8 +81,9 @@ export function confirmFor(
     }
     if (parts.length === 0) return { body: plain, confirm: label, title }
     const where = check.branch === null ? 'in its worktree' : `on ${check.branch}`
+    const keeps = check.changedFiles > 0 ? ` ${KEEPS_CHANGES}` : ''
     return {
-      body: `This session has ${parts.join(' and ')} ${where}. ${ask}`,
+      body: `This session has ${parts.join(' and ')} ${where}.${keeps} ${ask}`,
       confirm: label,
       confirmAgain: again,
       openFolder: check.worktree,

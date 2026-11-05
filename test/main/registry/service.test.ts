@@ -566,3 +566,83 @@ describe('M4 registry service', () => {
     expect(updates.at(-1)?.rows).toEqual([])
   })
 })
+
+describe('a session that is gone (Task 17 bug 3)', () => {
+  // Another parked session, so that the --all list is not empty.
+  const other = bg({ id: 'bb', pid: undefined, sessionId: 'o1', status: '' })
+  // s9 is a started session that claude rm in a terminal removed.
+  const withGone = () =>
+    newRegistry({
+      lastActive: [],
+      names: { s9: 'nine' },
+      priorities: {},
+      started: ['s9'],
+      watch: [],
+    })
+  const ids = (service: RegistryService) => service.rows().map(row => row.sessionId)
+  const listAllOf = (...lists: (AgentList | Error)[]) => {
+    const fn = vi.fn<() => Promise<AgentList>>()
+    for (const list of lists) {
+      if (list instanceof Error) fn.mockRejectedValueOnce(list)
+      else fn.mockResolvedValueOnce(list)
+    }
+    return fn
+  }
+
+  test('a failed --all read between two good reads does not count', async () => {
+    const failed = { entries: [], error: 'Command failed: claude agents --json --all' }
+    const listAll = listAllOf({ entries: [other] }, failed, { entries: [other] })
+    const saveStore = vi.fn(async (_store: RegistryStore) => {})
+    const { service } = startService(fakeDeps({ listAll, saveStore }), withGone())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ids(service)).toContain('s9')
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.allMs)
+    expect(listAll).toHaveBeenCalledTimes(2)
+    expect(ids(service)).toContain('s9')
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.allMs)
+    expect(listAll).toHaveBeenCalledTimes(3)
+    expect(ids(service)).toEqual(['o1'])
+    const saved = saveStore.mock.calls.at(-1)?.[0]
+    expect(saved?.started).toEqual([])
+    expect(saved?.names).not.toHaveProperty('s9')
+  })
+
+  test('failed and rejected --all reads never forget', async () => {
+    const failed = { entries: [], error: 'boom' }
+    const listAll = listAllOf(
+      { entries: [other] },
+      failed,
+      new Error('spawn failed'),
+      failed,
+      new Error('spawn failed'),
+    )
+    const { service } = startService(fakeDeps({ listAll }), withGone())
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(4 * SERVICE_TIMING.allMs)
+    expect(listAll).toHaveBeenCalledTimes(5)
+    expect(ids(service)).toContain('s9')
+  })
+
+  test('a partial --all list never forgets', async () => {
+    const partial: AgentList = { entries: [other], partial: true }
+    const listAll = listAllOf({ entries: [other] }, partial, partial, partial)
+    const { service } = startService(fakeDeps({ listAll }), withGone())
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(3 * SERVICE_TIMING.allMs)
+    expect(listAll).toHaveBeenCalledTimes(4)
+    expect(ids(service)).toContain('s9')
+  })
+
+  test('a --all list that comes after the stop does not forget', async () => {
+    const late = vi.fn<() => Promise<AgentList>>()
+    late.mockResolvedValueOnce({ entries: [other] })
+    late.mockImplementationOnce(() => resolveLater(1000, { entries: [other] }))
+    const { service } = startService(fakeDeps({ listAll: late }), withGone())
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.allMs)
+    expect(late).toHaveBeenCalledTimes(2)
+    service.stop()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(ids(service)).toContain('s9')
+  })
+})

@@ -21,3 +21,19 @@ export const KEPT_STDOUT = [
   `  push them and run 'claude rm abd71478' again, or discard the worktree and its commits: claude rm abd71478 --discard-unpushed ${KEPT_DISCARD}`,
   '',
 ].join('\n')
+
+// The stdout of "claude rm 27b87cbf" for a worktree with uncommitted changes (Task 17 bug 2, in
+// docs/m4-findings.md). The findings give the text after the kept line, and they give the dash
+// (U+2014). The kept line and the line breaks have the form of the output above. The short ID
+// and the worktree are the ones of bifrost-test-wt1 (Task 17 bug 1). The output has no
+// --discard-unpushed value.
+export const CHANGES_SHORT_ID = '27b87cbf'
+export const CHANGES_WORKTREE =
+  '/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-wt1'
+
+export const CHANGES_STDOUT = [
+  `kept 27b87cbf ${DASH} its worktree is still at ${OPEN_QUOTE}/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-wt1${CLOSE_QUOTE}`,
+  '  The worktree has uncommitted changes. Deleting it would lose them.',
+  "  commit or stash them and run 'claude rm 27b87cbf' again, or delete the session from 'claude agents' (ctrl+x twice)",
+  '',
+].join('\n')

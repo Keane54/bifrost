@@ -6,6 +6,7 @@ import {
   END_WAIT_MS,
   newSessionArgs,
   RESUME_SETTLE_MS,
+  RM_TIMEOUT_MS,
   RUN_TIMEOUT_MS,
   type SessionActionDeps,
   START_TIMEOUT_MS,
@@ -18,6 +19,9 @@ import {
 } from '../../../src/shared/new-session'
 import type { SessionRow, WorktreeCheck } from '../../../src/shared/types'
 import {
+  CHANGES_SHORT_ID,
+  CHANGES_STDOUT,
+  CHANGES_WORKTREE,
   KEPT_DISCARD,
   KEPT_HEAD,
   KEPT_SHORT_ID,
@@ -44,6 +48,8 @@ const NOT_ENDED =
   'The session process did not end in 5 seconds. Bifrost did not start a copy of the session.'
 const NOT_RESUMED = 'The session did not start again in 30 seconds.'
 const RUN_OPTS = { timeoutMs: RUN_TIMEOUT_MS }
+// claude rm gets 10 minutes and SIGTERM (Task 17 bug 1).
+const RM_OPTS = { killSignal: 'SIGTERM', timeoutMs: RM_TIMEOUT_MS }
 // The statusline override of each new session, as one argument (controller ruling).
 const SETTINGS = ['--settings', '{"statusLine":{"type":"command","command":"true"}}']
 const IN_P = { cwd: '/p', timeoutMs: RUN_TIMEOUT_MS }
@@ -413,7 +419,7 @@ describe('remove', () => {
     await actions.remove(S, true)
     expect(f.ops()).toEqual([
       `0 run ${JSON.stringify(['stop', SHORT])} ${JSON.stringify(RUN_OPTS)}`,
-      `0 run ${JSON.stringify(['rm', SHORT])} ${JSON.stringify(RUN_OPTS)}`,
+      `0 run ${JSON.stringify(['rm', SHORT])} ${JSON.stringify(RM_OPTS)}`,
       `0 forget ${S}`,
     ])
   })
@@ -422,7 +428,7 @@ describe('remove', () => {
     f.rows = [parked()]
     await actions.remove(S, true)
     expect(f.ops()).toEqual([
-      `0 run ${JSON.stringify(['rm', SHORT])} ${JSON.stringify(RUN_OPTS)}`,
+      `0 run ${JSON.stringify(['rm', SHORT])} ${JSON.stringify(RM_OPTS)}`,
       `0 forget ${S}`,
     ])
   })
@@ -447,6 +453,29 @@ describe('remove', () => {
     f.rows = [parked()]
     f.exec = () => ({ code: 1, stderr: 'rm failed', stdout: '' })
     await expect(actions.remove(S, true)).rejects.toThrow('rm failed')
+    expect(f.ops('forget')).toEqual([])
+  })
+
+  test('claude rm has 10 minutes, and the other commands keep the old limit', () => {
+    expect(RM_TIMEOUT_MS).toBe(600_000)
+    expect(RUN_TIMEOUT_MS).toBe(60_000)
+  })
+
+  test('remove gives the slow text when claude rm reaches its time limit, and does not forget', async () => {
+    // Node gives this text when the kill signal ended the program (Task 17 bug 1).
+    const slow: ExecResult = {
+      code: 1,
+      stderr: 'Command failed: /Users/x/.local/bin/claude rm abcd1234',
+      stdout: '',
+      timedOut: true,
+    }
+    f.rows = [parked()]
+    f.exec = () => slow
+    await expect(actions.remove(S, true)).rejects.toThrow('refused: claude rm took too long')
+    expect(f.ops('forget')).toEqual([])
+    // A program that exits with a code after the SIGTERM also reached the limit.
+    f.exec = () => ({ code: 143, stderr: '', stdout: 'removing', timedOut: true })
+    await expect(actions.remove(S, true)).rejects.toThrow('refused: claude rm took too long')
     expect(f.ops('forget')).toEqual([])
   })
 
@@ -485,7 +514,8 @@ describe('remove of a worktree that claude rm keeps', () => {
   const DISCARD = ['rm', ID, '--discard-unpushed', KEPT_DISCARD]
   const CHANGED = 'refused: the worktree changed after the check'
   const KEPT_REFUSAL = 'refused: claude rm kept the worktree'
-  const runLine = (args: string[]) => `0 run ${JSON.stringify(args)} ${JSON.stringify(RUN_OPTS)}`
+  const runLine = (args: string[]) =>
+    `0 run ${JSON.stringify(args)} ${JSON.stringify(args[0] === 'rm' ? RM_OPTS : RUN_OPTS)}`
   const counts = (unmergedCommits: number, changedFiles: number) => ({
     changedFiles,
     unmergedCommits,
@@ -701,6 +731,64 @@ describe('remove of a worktree that claude rm keeps', () => {
     f.check = () => found(0, 0)
     await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(CHANGED)
     expect(f.ops()).toEqual([runLine(RM), `0 checkWorktree ${WT}`, runLine(DISCARD)])
+  })
+
+  test('remove gives the slow text when the discard reaches its time limit, and does not forget', async () => {
+    f.rows = [stoppedRow()]
+    f.exec = args =>
+      args.length === 2 ? KEPT : { code: 1, stderr: 'Command failed', stdout: '', timedOut: true }
+    f.check = () => found(0, 0)
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(
+      'refused: claude rm took too long',
+    )
+    expect(f.ops()).toEqual([runLine(RM), `0 checkWorktree ${WT}`, runLine(DISCARD)])
+  })
+
+  test('remove refuses a worktree with uncommitted changes and tries no discard', async () => {
+    const UNCOMMITTED = 'refused: the worktree has uncommitted changes'
+    const CHANGES: ExecResult = { code: 1, stderr: '', stdout: CHANGES_STDOUT }
+    const rm = ['rm', CHANGES_SHORT_ID]
+    f.exec = args => (args[0] === 'rm' ? CHANGES : OK)
+    f.check = () => found(1, 75)
+    // Bifrost knows the worktree. It runs no check and no other command.
+    for (const seen of [counts(1, 75), null]) {
+      f.log = []
+      f.rows = [parked({ cwd: '/r', shortId: CHANGES_SHORT_ID, worktree: CHANGES_WORKTREE })]
+      await expect(actions.remove(S, true, seen)).rejects.toThrow(UNCOMMITTED)
+      expect(f.ops()).toEqual([runLine(rm)])
+    }
+    // Bifrost knows no worktree. It remembers the worktree as for Task 15.
+    f.log = []
+    f.rows = [parked({ cwd: '/r', shortId: CHANGES_SHORT_ID })]
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(UNCOMMITTED)
+    expect(f.ops()).toEqual([runLine(rm), `0 rememberWorktree ${S} ${CHANGES_WORKTREE}`])
+    // A kept line of another session gives no remembered worktree.
+    f.log = []
+    f.rows = [parked({ cwd: '/r', shortId: SHORT })]
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(UNCOMMITTED)
+    expect(f.ops()).toEqual([runLine(['rm', SHORT])])
+  })
+
+  test('remove tries no discard when the changes text comes with a discard value', async () => {
+    const both = `${CHANGES_STDOUT}  claude rm ${CHANGES_SHORT_ID} --discard-unpushed ${KEPT_DISCARD}\n`
+    f.rows = [parked({ cwd: '/r', shortId: CHANGES_SHORT_ID, worktree: CHANGES_WORKTREE })]
+    f.exec = args => (args[0] === 'rm' ? { code: 1, stderr: '', stdout: both } : OK)
+    f.check = () => found(0, 0)
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(
+      'refused: the worktree has uncommitted changes',
+    )
+    expect(f.ops('run')).toEqual([runLine(['rm', CHANGES_SHORT_ID])])
+  })
+
+  test('remove gives the changes text when the discard refuses for uncommitted changes', async () => {
+    const changesAt = CHANGES_STDOUT.replaceAll(CHANGES_SHORT_ID, ID).replace(CHANGES_WORKTREE, WT)
+    f.rows = [stoppedRow()]
+    f.exec = args => (args.length === 2 ? KEPT : { code: 1, stderr: '', stdout: changesAt })
+    f.check = () => found(0, 0)
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(
+      'refused: the worktree has uncommitted changes',
+    )
+    expect(f.ops('run', 'forget')).toEqual([runLine(RM), runLine(DISCARD)])
   })
 
   test('remove refuses check counts that are not counts', async () => {

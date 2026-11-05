@@ -21,7 +21,9 @@ import { UUID_PATTERN } from '../integration/scripts'
 import {
   failure,
   isTrustError,
+  type KeptChanges,
   parseKept,
+  parseKeptChanges,
   parseShortId,
   SHORT_ID,
   trustMessage,
@@ -35,6 +37,11 @@ export const END_WAIT_MS = 5000
 export const END_POLL_MS = 100
 // The time limit of each claude command.
 export const RUN_TIMEOUT_MS = 60_000
+// The time limit of claude rm. A discard can delete a large worktree, for example one with
+// node_modules. A SIGKILL at the limit leaves the worktree half deleted (Task 17 bug 1). So
+// claude rm gets SIGTERM at the limit.
+export const RM_TIMEOUT_MS = 600_000
+const RM_OPTS = { killSignal: 'SIGTERM', timeoutMs: RM_TIMEOUT_MS } as const
 // After Take control, the resumed session must still run this time after its process showed.
 // A resume can fail just after the start of its process (Task 10 bug 3).
 export const RESUME_SETTLE_MS = 3000
@@ -66,6 +73,8 @@ const REFUSED_NO_PID = 'refused: the session has no process ID'
 const REFUSED_CHANGED = 'refused: the session process changed'
 const REFUSED_BAD_SEEN = 'refused: bad input'
 const REFUSED_KEPT = 'refused: claude rm kept the worktree'
+const REFUSED_UNCOMMITTED = 'refused: the worktree has uncommitted changes'
+const REFUSED_RM_SLOW = 'refused: claude rm took too long'
 const REFUSED_WORKTREE_CHANGED = 'refused: the worktree changed after the check'
 const REFUSED_NO_MESSAGES = 'refused: the session has no messages yet'
 const REASON_NO_SHORT_ID = 'claude --bg did not give a session ID.'
@@ -257,6 +266,24 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     }
   }
 
+  // Run claude rm. A timeout gives REFUSED_RM_SLOW, because the output after SIGTERM is not
+  // complete.
+  const rm = async (run: RunClaude, args: string[]): Promise<ExecResult> => {
+    const result = await run(args, RM_OPTS)
+    if (result.timedOut === true) throw new Error(REFUSED_RM_SLOW)
+    return result
+  }
+
+  // Store the worktree that a kept line names, for a row whose worktree Bifrost does not know.
+  // The next Delete can then check this worktree and offer Open worktree. The kept line must
+  // name the short ID of the row and a worktree root.
+  const rememberKept = (row: SessionRow, shortId: string, kept: KeptChanges): void => {
+    if (worktreeOf(row) !== null) return
+    const keptPath = withoutSlash(kept.worktree)
+    const root = worktreeRoot(keptPath)?.worktree
+    if (kept.shortId === shortId && root === keptPath) deps.rememberWorktree(row.sessionId, root)
+  }
+
   // Run claude rm. It keeps a worktree that has commits on no remote, and prints the value
   // that discards them (M4 controller check). Bifrost discards only when all of these apply:
   // - The Delete dialog showed a check of the worktree.
@@ -264,22 +291,28 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   // - A new check after the stop finds no more commits and no more changed files.
   // - The HEAD commit of the worktree is the commit in the discard value.
   // The discard value comes only from parseKept.
+  // claude rm also keeps a worktree with changes that are not committed, and gives no discard
+  // value (Task 17 bug 2). Claude Code has no command that deletes such a worktree. So Bifrost
+  // never tries a discard for it, also when the text has a discard value.
   const removeSession = async (
     run: RunClaude,
     row: SessionRow,
     shortId: string,
     seen: SeenCounts | null,
   ): Promise<void> => {
-    const result = await run(['rm', shortId], { timeoutMs: RUN_TIMEOUT_MS })
+    const result = await rm(run, ['rm', shortId])
     if (result.code === 0) return
+    const changes = parseKeptChanges(result.stdout)
+    if (changes !== null) {
+      rememberKept(row, shortId, changes)
+      throw new Error(REFUSED_UNCOMMITTED)
+    }
     const kept = parseKept(result.stdout)
     if (kept === null) throw new Error(failure(result, 'claude rm'))
     const keptPath = withoutSlash(kept.worktree)
     const worktree = worktreeOf(row)
     if (worktree === null) {
-      // The next Delete can then check this worktree and offer Open worktree.
-      const root = worktreeRoot(keptPath)?.worktree
-      if (kept.shortId === shortId && root === keptPath) deps.rememberWorktree(row.sessionId, root)
+      rememberKept(row, shortId, kept)
       throw new Error(REFUSED_KEPT)
     }
     if (seen === null) throw new Error(REFUSED_KEPT)
@@ -294,11 +327,10 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
       now.changedFiles > seen.changedFiles ||
       now.head !== kept.discard.split('@')[0]
     if (changed) throw new Error(REFUSED_WORKTREE_CHANGED)
-    const discard = await run(['rm', shortId, '--discard-unpushed', kept.discard], {
-      timeoutMs: RUN_TIMEOUT_MS,
-    })
+    const discard = await rm(run, ['rm', shortId, '--discard-unpushed', kept.discard])
     if (discard.code === 0) return
     // A second refusal means that the worktree changed after the first claude rm.
+    if (parseKeptChanges(discard.stdout) !== null) throw new Error(REFUSED_UNCOMMITTED)
     if (parseKept(discard.stdout) !== null) throw new Error(REFUSED_WORKTREE_CHANGED)
     throw new Error(failure(discard, 'claude rm'))
   }

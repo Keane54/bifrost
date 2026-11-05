@@ -90,7 +90,7 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
 
 export default function SelectedItemPanel(): React.JSX.Element {
   const { rows, selectedId } = useRegistry()
-  const { error, notice } = useActions()
+  const { closeError, error, notice } = useActions()
   const row = selectedId === null ? undefined : rows.find(r => r.sessionId === selectedId)
 
   return (
@@ -105,7 +105,7 @@ export default function SelectedItemPanel(): React.JSX.Element {
         )}
       </div>
       <NoticeLine message={notice} />
-      <ErrorLine message={error} />
+      <ErrorLine message={error} onClose={closeError} />
     </div>
   )
 }
