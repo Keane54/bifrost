@@ -62,11 +62,12 @@ describe('new session values', () => {
   test('CLAUDE_COMMANDS has each command and alias of the claude help text', () => {
     const names = helpCommands(FIXTURE)
     // The parse found the list. A broken parse gives few names.
-    expect(names.length).toBeGreaterThan(30)
-    expect(names).toEqual(expect.arrayContaining(['stop', 'kill', 'update', 'upgrade', 'help']))
+    expect(names.length).toBeGreaterThan(15)
+    expect(names).toEqual(expect.arrayContaining(['stop', 'kill', 'update', 'upgrade', 'rm']))
     expect(names.filter(name => !CLAUDE_COMMANDS.includes(name))).toEqual([])
     // The list also keeps the names of older versions.
-    expect(CLAUDE_COMMANDS).toEqual(expect.arrayContaining(['config', 'migrate-installer']))
+    // The help text does not show "help" and the hidden commands. The list keeps them.
+    expect(CLAUDE_COMMANDS).toEqual(expect.arrayContaining(['config', 'migrate-installer', 'help']))
   })
 
   test('helpCommands reads the commander help form', () => {

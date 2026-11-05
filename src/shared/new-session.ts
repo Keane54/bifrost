@@ -32,7 +32,7 @@ const MAX_WORKTREE_NAME = 40
 // The top-level commands and aliases of claude, also the hidden ones, and "help".
 // The prompt is the last argument of "claude --bg". claude reads a prompt that is only
 // one of these names as that command, for example "update" (Task 4 review).
-// test/fixtures/claude-commands.txt holds the names of Claude Code 2.1.318. The list also
+// test/fixtures/claude-commands.txt holds the "claude --help" text of 2.1.318. The list also
 // keeps "config" and "migrate-installer" from older versions. An extra name only refuses
 // a one-word prompt, so the list can have more names than claude.
 export const CLAUDE_COMMANDS: readonly string[] = Object.freeze([
