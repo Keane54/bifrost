@@ -91,7 +91,7 @@ User events: `message.channels`, `message.groups`, `message.im`, `message.mpim`.
 
 ## Open points for the first test
 
-1. Socket Mode with user events: all related facts say that it works, but no Slack page says it in one sentence. The first test checks it. If it fails, Bifrost polls `conversations.history` for the open panels.
+1. Socket Mode with user events: all related facts say that it works. But no Slack page says it in one sentence. The first test checks it. If it fails, Bifrost polls `conversations.history` for the open panels.
 2. App label: the first test checks if Slack shows an app label on a message that Bifrost sends.
 
 ## Give Bifrost to colleagues
@@ -99,7 +99,7 @@ User events: `message.channels`, `message.groups`, `message.im`, `message.mpim`.
 These facts set the method:
 
 - The rate limits apply for each app. All users of one app share them.
-- Socket Mode gives each event to only one open connection of the app. If two people run Bifrost on one app, the events of one person can go to the Bifrost of the other person. That is a privacy fault. So two people must never share one Socket Mode app.
+- Socket Mode gives each event to only one open connection of the app. Two people can run Bifrost on one app. Then the events of one person can go to the Bifrost of the other person. That is a privacy fault. So two people must never share one Socket Mode app.
 
 The options:
 
