@@ -1,7 +1,7 @@
 // Cell text and tones for the Overview.
 import type { SessionRow, SessionState } from '../../../shared/types'
 
-const WORKTREE_TAIL = /\/\.claude\/worktrees\/[^/]+$/
+const WORKTREE_TAIL = /\/\.claude\/worktrees\/[^/]+(\/.*)?$/
 
 // Give the last two parts of the working directory. A Claude worktree path gives its repository.
 export function projectLabel(cwd: string): string {
@@ -15,16 +15,17 @@ export function projectLabel(cwd: string): string {
 }
 
 export function formatCost(usd?: number): string {
-  return usd === undefined ? '' : `$${usd.toFixed(2)}`
+  return typeof usd !== 'number' || !Number.isFinite(usd) ? '' : `$${usd.toFixed(2)}`
 }
 
 export function formatPercent(p?: number): string {
-  return p === undefined ? '' : `${Math.round(p)}%`
+  return typeof p !== 'number' || !Number.isFinite(p) ? '' : `${Math.round(p)}%`
 }
 
 // Both times are in milliseconds.
 export function formatAge(since: number, now: number): string {
   const s = Math.max(0, Math.floor((now - since) / 1000))
+  if (!Number.isFinite(s)) return ''
   if (s < 60) return `${s} s`
   if (s < 3600) return `${Math.floor(s / 60)} min`
   if (s < 86400) return `${Math.floor(s / 3600)} h`

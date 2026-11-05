@@ -55,4 +55,18 @@ describe('format', () => {
     expect(previewLines('\n a \n\nb\nc\nd')).toEqual(['a', 'b', 'c'])
     expect(previewLines(undefined)).toEqual([])
   })
+
+  it('format functions give an empty text for a value that is not a finite number', () => {
+    expect(formatCost(0)).toBe('$0.00')
+    expect(formatPercent(0)).toBe('0%')
+    expect(formatCost(Number.NaN)).toBe('')
+    expect(formatPercent(null as unknown as number)).toBe('')
+    expect(formatAge(Number.NaN, 5)).toBe('')
+  })
+
+  it('projectLabel shows the repository for a folder inside a Claude worktree', () => {
+    expect(projectLabel('/Users/o/Developer/bifrost/.claude/worktrees/fix-a/src')).toBe(
+      'Developer/bifrost',
+    )
+  })
 })

@@ -51,11 +51,11 @@ function keyOf(row: SessionRow, column: ColumnId): Key {
 }
 
 function isEmpty(key: Key): key is undefined | '' {
-  return key === undefined || key === ''
+  return key === undefined || key === '' || (typeof key === 'number' && Number.isNaN(key))
 }
 
 function compare(a: Key, b: Key): number {
-  if (typeof a === 'number' && typeof b === 'number') return a - b
+  if (typeof a === 'number' && typeof b === 'number') return a < b ? -1 : a > b ? 1 : 0
   return collator.compare(String(a), String(b))
 }
 

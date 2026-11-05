@@ -29,7 +29,9 @@ export const TAB_COLOURS = 6
 
 const STATES: readonly SessionState[] = ['working', 'needs-you', 'error', 'idle', 'parked']
 const LIVE: SessionState[] = ['working', 'needs-you', 'error', 'idle']
-const TAB_ID = /^t\d+$/
+// A tab ID has at most 4 digits, so the counter stays a safe whole number.
+const TAB_ID = /^t\d{1,4}$/
+const MAX_TAB_NUMBER = 9999
 const NAME_SORT: SortSpec = { column: 'name', desc: false }
 
 function tab(id: number, name: string, filter: TabFilter): OverviewTab {
@@ -86,6 +88,8 @@ function parseWidths(value: unknown): Partial<Record<ColumnId, number>> {
 }
 
 function parseColumns(value: unknown): ColumnId[] {
+  // A missing or damaged list gives all columns. A list gives its valid IDs.
+  if (!Array.isArray(value)) return [...COLUMN_IDS]
   const columns: ColumnId[] = []
   if (Array.isArray(value)) {
     for (const id of value) {
@@ -152,7 +156,12 @@ export function parseOverviewConfig(data: unknown): OverviewConfig | null {
   const name = typeof data.name === 'string' ? data.name.trim() : ''
   const highest = Math.max(...tabs.map(t => tabNumber(t.id)))
   const nextTab =
-    typeof data.nextTab === 'number' && Number.isInteger(data.nextTab) ? data.nextTab : 0
+    typeof data.nextTab === 'number' &&
+    Number.isSafeInteger(data.nextTab) &&
+    data.nextTab >= 1 &&
+    data.nextTab <= MAX_TAB_NUMBER
+      ? data.nextTab
+      : 0
   return {
     active: tabs.some(t => t.id === data.active) ? (data.active as string) : first.id,
     name: name.length >= 1 && name.length <= MAX_SET_NAME ? name : 'Default',
@@ -204,6 +213,7 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
     case 'addTab': {
       if (config.tabs.length >= MAX_TABS) return config
       const n = config.nextTab
+      if (n > MAX_TAB_NUMBER || config.tabs.some(t => t.id === `t${n}`)) return config
       const added: OverviewTab = {
         ...tab(1, `Tab ${n}`, { boxOnly: false, states: [...LIVE] }),
         color: (n - 1) % TAB_COLOURS,
@@ -241,10 +251,14 @@ export function overviewReducer(config: OverviewConfig, action: OverviewAction):
       }
       return { ...config, active: action.tabId }
     case 'setFilter':
-      return withTab(config, action.tabId, t => ({
-        ...t,
-        filter: { boxOnly: action.filter.boxOnly, states: [...action.filter.states] },
-      }))
+      return withTab(config, action.tabId, t => {
+        const { boxOnly, states } = action.filter
+        const same =
+          t.filter.boxOnly === boxOnly &&
+          t.filter.states.length === states.length &&
+          t.filter.states.every((state, i) => state === states[i])
+        return same ? t : { ...t, filter: { boxOnly, states: [...states] } }
+      })
     case 'toggleColumn': {
       if (action.column === 'kind') return config
       return withTab(config, action.tabId, t => ({

@@ -235,4 +235,35 @@ describe('overview config', () => {
       'overview:2': base(),
     })
   })
+
+  it('parseOverviewConfig bounds nextTab and never repeats a tab ID', () => {
+    const tabs = [{ id: 't1', name: 'A' }]
+    for (const nextTab of [1e21, 2 ** 53, -1, 1.5, '9', 0, 10000]) {
+      expect(parseOverviewConfig({ nextTab, tabs })?.nextTab).toBe(2)
+    }
+    expect(parseOverviewConfig({ nextTab: 40, tabs })?.nextTab).toBe(40)
+    expect(parseOverviewConfig({ tabs: [{ id: 't12345', name: 'A' }] })).toBeNull()
+    const full = parseOverviewConfig({ nextTab: 9999, tabs }) as OverviewConfig
+    const last = overviewReducer(full, { type: 'addTab' })
+    expect(last.tabs.map(t => t.id)).toEqual(['t1', 't9999'])
+    expect(overviewReducer(last, { type: 'addTab' })).toBe(last)
+    const clash = { ...base(), nextTab: 3 }
+    expect(overviewReducer(clash, { type: 'addTab' })).toBe(clash)
+  })
+
+  it('parseOverviewConfig gives all columns for a tab with a damaged column list', () => {
+    const c = parseOverviewConfig({
+      tabs: [
+        { id: 't1', name: 'A' },
+        { columns: 'name', id: 't2', name: 'B' },
+      ],
+    })
+    expect(c?.tabs.map(t => t.columns)).toEqual([[...COLUMN_IDS], [...COLUMN_IDS]])
+  })
+
+  it('setFilter with the same filter returns the same object', () => {
+    const c = base()
+    const same = { boxOnly: true, states: [...(c.tabs[1]?.filter.states ?? [])] }
+    expect(overviewReducer(c, { filter: same, tabId: 't2', type: 'setFilter' })).toBe(c)
+  })
 })
