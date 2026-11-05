@@ -134,9 +134,9 @@ describe('new session values', () => {
 
   test('checkNewSessionSpec refuses each bad value with its reason', () => {
     const cases: [Record<string, unknown>, string][] = [
-      [{ cwd: 'p' }, 'Select a project directory.'],
-      [{ cwd: '' }, 'Select a project directory.'],
-      [{ cwd: 7 }, 'Select a project directory.'],
+      [{ cwd: 'p' }, 'Choose a project folder.'],
+      [{ cwd: '' }, 'Choose a project folder.'],
+      [{ cwd: 7 }, 'Choose a project folder.'],
       [{ name: '' }, 'Type a name.'],
       [{ name: ' \x1b ' }, 'Type a name.'],
       [{ name: 'n'.repeat(65) }, 'The name is too long. The maximum is 64 characters.'],

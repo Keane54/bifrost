@@ -99,6 +99,13 @@ export interface DirInfo {
   git: boolean
 }
 
+// Texts that users read in the app. The main process and the renderer use the same strings.
+export const REASON_WORKTREE_OFF =
+  "Worktrees don't work with background sessions in this version of Claude Code."
+export const REASON_DIR_CHECK = 'Checking the folder...'
+export const REASON_DIR_MISSING = "This folder doesn't exist."
+export const REASON_NO_GIT = "This folder isn't in a git repository, so it can't use a worktree."
+
 export type SpecCheck = { ok: true; spec: NewSessionSpec } | { ok: false; reason: string }
 
 const BAD_DATA = 'refused: bad new session data'
@@ -120,7 +127,7 @@ export function checkNewSessionSpec(input: unknown): SpecCheck {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return refuse(BAD_DATA)
   const v = input as Record<string, unknown>
   const cwd = typeof v.cwd === 'string' ? trimDir(v.cwd.trim()) : ''
-  if (!cwd.startsWith('/')) return refuse('Select a project directory.')
+  if (!cwd.startsWith('/')) return refuse('Choose a project folder.')
   if (typeof v.name !== 'string') return refuse(BAD_DATA)
   const name = cleanText(v.name).trim()
   if (name === '') return refuse('Type a name.')

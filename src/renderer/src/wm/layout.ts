@@ -1,5 +1,6 @@
 // Snapshots and named layouts. The main process keeps the file. The renderer checks all values.
 import { type OverviewConfig, parseOverviews } from '../overview/config'
+import { EMPTY_HISTORY, type History, parseHistory } from '../sessions/history'
 import type { Rect } from './geometry'
 import { type Frame, panelKind, type WmState } from './state'
 
@@ -14,9 +15,17 @@ export interface UiStore {
   layouts: { name: string; snapshot: LayoutSnapshot }[]
   // The config of each Overview, keyed by panel ID (D1).
   overviews: Record<string, OverviewConfig>
+  // The dialog history: recent folders, last model and mode, recent slash commands.
+  history: History
 }
 
-export const EMPTY_STORE: UiStore = { current: null, layouts: [], overviews: {}, version: 1 }
+export const EMPTY_STORE: UiStore = {
+  current: null,
+  history: EMPTY_HISTORY,
+  layouts: [],
+  overviews: {},
+  version: 1,
+}
 export const MAX_LAYOUTS = 20
 export const MAX_NAME = 40
 
@@ -100,6 +109,7 @@ export function parseUiStore(data: unknown): UiStore {
   }
   return {
     current: parseSnapshot(data.current),
+    history: parseHistory(data.history),
     layouts,
     overviews: parseOverviews(data.overviews),
     version: 1,

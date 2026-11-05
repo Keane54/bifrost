@@ -285,12 +285,12 @@ describe('create', () => {
 
   test('create refuses a missing directory and a worktree outside a git repository', async () => {
     f.dir = { git: false, kind: 'missing' }
-    await expect(actions.create(newSpec())).rejects.toThrow('The directory does not exist.')
+    await expect(actions.create(newSpec())).rejects.toThrow("This folder doesn't exist.")
     f.dir = { git: false, kind: 'other' }
-    await expect(actions.create(newSpec())).rejects.toThrow('The directory does not exist.')
+    await expect(actions.create(newSpec())).rejects.toThrow("This folder doesn't exist.")
     f.dir = { git: false, kind: 'dir' }
     await expect(actions.create(newSpec({ worktree: true }))).rejects.toThrow(
-      'The directory is not in a git repository.',
+      "This folder isn't in a git repository, so it can't use a worktree.",
     )
     expect(f.ops('run')).toEqual([])
     // Without the worktree option, a directory outside git is correct.
@@ -482,7 +482,7 @@ describe('resume', () => {
   test('resume refuses a missing directory and a bad session ID', async () => {
     f.rows = [parked({ cwd: '' })]
     await expect(actions.resume(S)).rejects.toThrow(
-      'Bifrost does not know the project directory of this session.',
+      "Bifrost doesn't know the project folder of this session.",
     )
     f.rows = [parked()]
     f.dir = { git: false, kind: 'missing' }
@@ -686,7 +686,7 @@ describe('takeControl', () => {
       [[external({ pid: undefined })], 'refused: the session has no process ID'],
       [[external({ sessionId: 'abc' })], 'refused: bad session ID'],
       [[external({ cwd: 'p' })], 'The project directory p does not exist.'],
-      [[external({ cwd: '' })], 'Bifrost does not know the project directory of this session.'],
+      [[external({ cwd: '' })], "Bifrost doesn't know the project folder of this session."],
       // 0 and -1 signal a process group or all processes of the user. 1 is launchd.
       [[external({ pid: 0 })], 'refused: bad process ID'],
       [[external({ pid: -1 })], 'refused: bad process ID'],

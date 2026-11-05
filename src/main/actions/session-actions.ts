@@ -8,6 +8,8 @@ import {
   isClaudeCommand,
   type NewSessionSpec,
   PERMISSION_MODES,
+  REASON_DIR_MISSING,
+  REASON_NO_GIT,
   REASON_PROMPT_FLAG,
   REASON_PROMPT_IS_COMMAND,
   worktreeName,
@@ -51,11 +53,9 @@ const REFUSED_PROMPT = 'refused: the session has an open prompt'
 const REFUSED_NOT_IDLE = 'refused: the session is not idle'
 const REFUSED_NO_PID = 'refused: the session has no process ID'
 const REFUSED_CHANGED = 'refused: the session process changed'
-const REASON_NO_DIR = 'The directory does not exist.'
-const REASON_NO_GIT = 'The directory is not in a git repository.'
 const REASON_NO_SHORT_ID = 'claude --bg did not give a session ID.'
 const REASON_CREATING = 'A new session is already starting. Please wait.'
-const REASON_NO_CWD = 'Bifrost does not know the project directory of this session.'
+const REASON_NO_CWD = "Bifrost doesn't know the project folder of this session."
 const REASON_NOT_RESUMED = 'The session did not start again in 30 seconds.'
 const REASON_NOT_ENDED =
   'The session process did not end in 5 seconds. Bifrost did not start a copy of the session.'
@@ -240,7 +240,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (!checked.ok) throw new Error(checked.reason)
     const spec = checked.spec
     const dir = await deps.dirInfo(spec.cwd)
-    if (dir.kind !== 'dir') throw new Error(REASON_NO_DIR)
+    if (dir.kind !== 'dir') throw new Error(REASON_DIR_MISSING)
     if (spec.worktree && !dir.git) throw new Error(REASON_NO_GIT)
     const run = await claude()
     const result = await start(run, newSessionArgs(spec), spec.cwd, 'claude --bg')

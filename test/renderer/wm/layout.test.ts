@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { EMPTY_HISTORY } from '../../../src/renderer/src/sessions/history'
 import {
   deleteLayout,
   EMPTY_STORE,
@@ -26,6 +27,7 @@ const snap = (n = 1): LayoutSnapshot => ({
 })
 const store = (layouts: UiStore['layouts'] = []): UiStore => ({
   current: null,
+  history: EMPTY_HISTORY,
   layouts,
   overviews: {},
   version: 1,
@@ -48,6 +50,17 @@ describe('layout', () => {
     for (const bad of [null, [], 'x', { version: 2 }, undefined, 7]) {
       expect(parseUiStore(bad)).toEqual(EMPTY_STORE)
     }
+  })
+
+  it('parseUiStore reads a store without history', () => {
+    const parsed = parseUiStore({
+      current: null,
+      layouts: [{ name: 'a', snapshot: snap() }],
+      overviews: {},
+      version: 1,
+    })
+    expect(parsed.history).toEqual(EMPTY_HISTORY)
+    expect(parsed.layouts.map(l => l.name)).toEqual(['a'])
   })
 
   it('parseUiStore drops bad rects, invalid panel IDs and empty frames', () => {
