@@ -1,15 +1,22 @@
 @import "tailwindcss";
+@import "@fontsource/saira-semi-condensed/400.css";
+@import "@fontsource/saira-semi-condensed/500.css";
+@import "@fontsource/saira-semi-condensed/600.css";
 
 /* All colour tokens of Bifrost live in this block. */
 @theme {
-  --color-bg: #0a0d12;
-  --color-panel: rgb(16 22 30 / 0.78);
-  --color-panel-edge: rgb(120 160 190 / 0.22);
-  --color-title: rgb(24 32 44 / 0.92);
-  --color-text: #d6dee6;
-  --color-text-dim: #7d8a96;
-  --color-accent: #5fb3c9;
-  --color-snap: #5fb3c9;
+  --panel-alpha: 0.85;
+  --color-bg: #0a0a0a;
+  --color-panel: rgb(16 16 16 / var(--panel-alpha));
+  --color-panel-edge: rgb(255 255 255 / 0.1);
+  --color-title: #2a2a2a;
+  --color-section: #232323;
+  --color-text: #d2d2d2;
+  --color-text-dim: #8a8a8a;
+  --color-text-strong: #ffffff;
+  --color-select: rgb(255 255 255 / 0.1);
+  --color-hover: rgb(255 255 255 / 0.05);
+  --color-snap: #bdbdbd;
   --color-box-yellow: #e2b93b;
   --color-box-red: #e0473e;
   --color-parked: #6b7280;
@@ -29,12 +36,7 @@
   --color-prio-4: #3fbfb0;
   --color-prio-5: #7fc77a;
 
-  /* The backgrounds of the Overview rows. */
-  --color-row-hover: rgb(120 160 190 / 0.08);
-  --color-row-selected: rgb(95 179 201 / 0.28);
-  --color-row-open: rgb(95 179 201 / 0.12);
-
-  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --font-ui: "Saira Semi Condensed", -apple-system, system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
   --font-narrow: "SF Compact Text", "SF Compact", -apple-system, system-ui, sans-serif;
 

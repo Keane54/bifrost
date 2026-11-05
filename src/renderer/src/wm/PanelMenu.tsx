@@ -28,7 +28,7 @@ function NameField(props: { name: string; onSave(name: string): void }): React.J
     <label className='flex flex-col gap-1'>
       <span>Tab set name</span>
       <input
-        className='rounded border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-accent'
+        className='rounded border border-panel-edge bg-bg px-2 py-1 text-text outline-none focus:border-text-strong/30'
         maxLength={MAX_SET_NAME}
         onChange={e => setDraft(e.target.value)}
         onKeyDown={e => {
@@ -94,7 +94,6 @@ export default function PanelMenu({
           <span className='text-text-dim'>{percent}%</span>
         </span>
         <input
-          className='accent-accent'
           max={100}
           min={30}
           onChange={e =>
@@ -109,7 +108,6 @@ export default function PanelMenu({
       <label className='flex items-center gap-2'>
         <input
           checked={frame.locked}
-          className='accent-accent'
           onChange={e => dispatch({ frameId: frame.id, locked: e.target.checked, type: 'lock' })}
           type='checkbox'
         />

@@ -47,7 +47,7 @@ describe('format', () => {
     expect(stateTone({ box: 'yellow', state: 'needs-you' })).toBe('yellow')
     expect(stateTone({ box: 'red', state: 'needs-you' })).toBe('red')
     expect(stateTone({ box: 'none', state: 'error' })).toBe('red')
-    expect(stateTone({ box: 'none', state: 'working' })).toBe('accent')
+    expect(stateTone({ box: 'none', state: 'working' })).toBe('active')
     expect(stateTone({ box: 'none', state: 'idle' })).toBe('dim')
     expect(stateTone({ box: 'none', state: 'parked' })).toBe('parked')
   })

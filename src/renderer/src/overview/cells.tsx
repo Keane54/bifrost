@@ -42,7 +42,7 @@ export const PRIO_BG: Record<Priority, string> = {
 }
 
 export const TONE_TEXT: Record<Tone, string> = {
-  accent: 'text-accent',
+  active: 'text-text-strong',
   dim: 'text-text-dim',
   parked: 'text-parked',
   red: 'text-box-red',

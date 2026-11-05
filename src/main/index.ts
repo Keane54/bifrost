@@ -49,7 +49,7 @@ async function createWindow(): Promise<void> {
   const mainWindow = new BrowserWindow({
     autoHideMenuBar: true,
     // This colour must match --color-bg in src/renderer/src/styles/app.css.
-    backgroundColor: '#0a0d12',
+    backgroundColor: '#0a0a0a',
     ...MIN_WINDOW,
     show: false,
     title: 'Bifrost',

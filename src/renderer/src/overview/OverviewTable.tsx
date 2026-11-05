@@ -168,7 +168,7 @@ export default function OverviewTable({
                     className={cx(
                       STICKY,
                       'text-left font-normal',
-                      dropTarget === id && 'outline-1 outline-accent -outline-offset-1',
+                      dropTarget === id && 'outline-1 outline-text-strong -outline-offset-1',
                     )}
                     data-column-id={id}
                     key={header.id}
@@ -209,8 +209,8 @@ export default function OverviewTable({
                     <div
                       aria-hidden={true}
                       className={cx(
-                        'absolute top-0 right-0 h-full w-1 cursor-col-resize touch-none hover:bg-accent/40',
-                        header.column.getIsResizing() && 'bg-accent/60',
+                        'absolute top-0 right-0 h-full w-1 cursor-col-resize touch-none hover:bg-text-strong/40',
+                        header.column.getIsResizing() && 'bg-text-strong/60',
                       )}
                       data-resize-handle={true}
                       onMouseDown={resize}
@@ -230,11 +230,7 @@ export default function OverviewTable({
                 <tr
                   className={cx(
                     'h-[18px]',
-                    id === selectedId
-                      ? 'bg-row-selected'
-                      : open.has(id)
-                        ? 'bg-row-open'
-                        : 'hover:bg-row-hover',
+                    id === selectedId ? 'bg-select' : open.has(id) ? 'bg-hover' : 'hover:bg-hover',
                     row.state === 'parked' && 'text-parked',
                   )}
                   data-session-id={id}

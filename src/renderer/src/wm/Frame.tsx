@@ -86,7 +86,7 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
       className={cx(
         'absolute flex-col overflow-hidden rounded-md border bg-panel backdrop-blur-md',
         frame.minimised ? 'hidden' : 'flex',
-        top ? 'border-accent' : 'border-panel-edge',
+        top ? 'border-text-strong/30' : 'border-panel-edge',
       )}
       data-frame-id={id}
       onPointerDownCapture={() => dispatch({ frameId: id, type: 'focus' })}
@@ -115,7 +115,7 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
                   className={cx(
                     'min-w-0 truncate border-b-2 px-2 text-xs',
                     active
-                      ? 'border-accent text-text'
+                      ? 'border-text-strong text-text-strong'
                       : 'border-transparent text-text-dim hover:text-text',
                   )}
                   data-panel-id={panelId}

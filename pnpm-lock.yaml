@@ -115,6 +115,9 @@ importers:
       '@electron-toolkit/utils':
         specifier: 4.0.0
         version: 4.0.0(electron@44.7.2(supports-color@7.2.0))
+      '@fontsource/saira-semi-condensed':
+        specifier: 5.3.0
+        version: 5.3.0
       '@xterm/addon-fit':
         specifier: 0.11.0
         version: 0.11.0
@@ -519,6 +522,9 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
+
+  '@fontsource/saira-semi-condensed@5.3.0':
+    resolution: {integrity: sha512-ODnnx0osErt7pRMY+MhxqwXOpPEKlRNW6Bb1Ci70Y37JMnISFAUZYo6ZGv/VOWc2x/IetzdmMaiiEVNPtWMi9Q==}
 
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
@@ -2800,6 +2806,8 @@ snapshots:
       react-dom: 19.3.0(react@19.3.0)
 
   '@floating-ui/utils@0.2.12': {}
+
+  '@fontsource/saira-semi-condensed@5.3.0': {}
 
   '@isaacs/fs-minipass@4.0.1':
     dependencies:

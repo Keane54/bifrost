@@ -61,7 +61,10 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
       {/* 4. The context bar, the context percent and the cost. */}
       <div className='flex items-center gap-2'>
         <div aria-hidden={true} className='h-1 min-w-0 flex-1 bg-panel-edge'>
-          <div className='h-full bg-accent' style={{ width: `${barFill(row.contextPercent)}%` }} />
+          <div
+            className='h-full bg-text-strong'
+            style={{ width: `${barFill(row.contextPercent)}%` }}
+          />
         </div>
         <span className='shrink-0' title='Context'>
           {orDash(formatPercent(row.contextPercent))}

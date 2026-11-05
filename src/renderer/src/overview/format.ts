@@ -50,7 +50,7 @@ export function stateLabel(state: SessionState): string {
   return STATE_LABELS[state]
 }
 
-export type Tone = 'accent' | 'yellow' | 'red' | 'dim' | 'parked'
+export type Tone = 'active' | 'yellow' | 'red' | 'dim' | 'parked'
 
 export function stateTone(row: Pick<SessionRow, 'state' | 'box'>): Tone {
   switch (row.state) {
@@ -59,7 +59,7 @@ export function stateTone(row: Pick<SessionRow, 'state' | 'box'>): Tone {
     case 'needs-you':
       return row.box === 'yellow' ? 'yellow' : 'red'
     case 'working':
-      return 'accent'
+      return 'active'
     case 'idle':
       return 'dim'
     case 'parked':

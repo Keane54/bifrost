@@ -4,7 +4,7 @@ import { Tooltip } from '@base-ui/react/tooltip'
 export const MENU_POPUP =
   'min-w-36 rounded-md border border-panel-edge bg-title py-1 text-text text-xs outline-none backdrop-blur-md'
 export const MENU_ITEM =
-  'flex h-5 cursor-default select-none items-center gap-2 px-2 outline-none data-disabled:opacity-40 data-highlighted:bg-row-selected'
+  'flex h-5 cursor-default select-none items-center gap-2 px-2 outline-none data-disabled:opacity-40 data-highlighted:bg-select'
 export const MENU_SEPARATOR = 'my-1 h-px bg-panel-edge'
 
 // A tooltip on one element. A null label shows no tooltip.

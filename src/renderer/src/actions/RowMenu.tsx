@@ -81,7 +81,7 @@ function Submenu({ entry, onRun }: { entry: SubmenuEntry; onRun: Run }): React.J
     <ContextMenu.SubmenuRoot disabled={disabled}>
       <Tip label={tipOf(entry)} side='right'>
         <ContextMenu.SubmenuTrigger
-          className={cx(MENU_ITEM, 'justify-between pr-1 aria-expanded:bg-row-hover')}
+          className={cx(MENU_ITEM, 'justify-between pr-1 aria-expanded:bg-hover')}
           data-action={entry.action}
           disabled={disabled}
         >

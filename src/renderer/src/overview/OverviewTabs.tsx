@@ -29,7 +29,7 @@ function Submenu({ label, children }: { label: string; children: React.ReactNode
   return (
     <ContextMenu.SubmenuRoot>
       <ContextMenu.SubmenuTrigger
-        className={cx(MENU_ITEM, 'justify-between pr-1 data-popup-open:bg-row-hover')}
+        className={cx(MENU_ITEM, 'justify-between pr-1 data-popup-open:bg-hover')}
       >
         {label}
         <ChevronRight aria-hidden={true} size={12} />

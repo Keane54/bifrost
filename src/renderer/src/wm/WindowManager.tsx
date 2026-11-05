@@ -541,7 +541,7 @@ export default function WindowManager(): React.JSX.Element {
                   frames, because the dragged frame covers the title bar. */}
                     {dropBar && dropFrame && (
                       <div
-                        className='pointer-events-none absolute rounded-t-md bg-accent/15 outline-2 outline-accent -outline-offset-2'
+                        className='pointer-events-none absolute rounded-t-md bg-text-strong/10 outline-2 outline-text-strong/30 -outline-offset-2'
                         data-drop-target={dropFrame.id}
                         style={{
                           height: dropBar.h,
