@@ -265,12 +265,12 @@ Panel functions:
 
 - Drag the title bar to move the panel.
 - Drag an edge or a corner to resize the panel.
-- The panel snaps to the window edges and to other panels at 8 pixels or less.
+- The panel snaps to the window edges and to other panels at 8 pixels or less. The snap occurs only when you release the mouse button. During the drag, the panel follows the pointer, and a small arrow mark shows at the middle of each edge that will snap. Bifrost shows no long guide line.
 - Drop a panel on the title bar of a different panel to stack the two as tabs.
 - Drag a tab out of a stack to make a separate panel.
 - Minimise a panel to the side bar.
 - Lock a panel to prevent moves and resizes.
-- Set the opacity of a panel from 30% to 100%.
+- Only the panel background is translucent. Text and content stay solid. One setting, "Panel transparency", sets the background of all panels (section 12). A panel has no opacity control of its own.
 
 Position memory:
 
@@ -326,7 +326,8 @@ The Overview uses the layout of the EVE Overview, with Bifrost colours, icons an
 - A line shows the active tab. A "+" button adds a tab.
 - The column headers are small and grey. The sort column shows ▲ or ▼.
 - The rows are dense and use a narrow font. Text that is too long is cut off. It does not wrap.
-- The first column shows a small icon. The yellow box and the red box go around this icon.
+- The first column shows a small icon. The icon shape shows the kind of the session: one shape for an owned session, the terminal app icon for an external session, and a dim shape for a parked session. The icon colour shows the project: each project gets a fixed colour from a palette without yellow, red and grey.
+- The yellow box and the red box are four corner brackets around the icon, as in EVE. A new box flashes. A yellow box changes to red by the rules of section 7.
 - A row can have a background highlight colour.
 - The panel background is translucent.
 
@@ -462,8 +463,10 @@ Dialog rules:
 
 ### 8.10 Theme
 
-- The theme is dark. The panels are translucent, with a background blur.
-- Bifrost uses its own colours, icons and fonts. It does not copy EVE assets.
+- The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur.
+- Bifrost has no colour accent. A selected row gets a light neutral highlight. The active tab has white text and a white underline.
+- The UI font is Saira Semi Condensed (OFL licence), bundled with the app. Shentox needs a paid licence, so Bifrost does not use it now.
+- Bifrost uses its own icons and fonts. It does not copy EVE art, icons or fonts.
 - One file holds all colour tokens.
 - Yellow, red and grey have fixed meanings: yellow box, red box and parked session.
 - The terminal font is a setting.
@@ -713,6 +716,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Start at login | Off |
 | Poll interval | 2 seconds |
 | Snap distance | 8 pixels |
+| Panel transparency | 15% (the background of all panels; 0% is solid) |
 | Slash commands | `/compact`, `/clear`, `/context` |
 | Terminal font | SF Mono, 13 pt |
 | Display mode | Window |
@@ -855,3 +859,14 @@ The user gave these directions on 2026-11-04:
 1. Chat windows show no statusline. The wrapper does not run your statusLine command for owned sessions (section 6.3). The reason is the cost: with 10 sessions, each statusline starts many processes each second.
 2. Data that is the same for all sessions goes in separate panels: the Usage HUD and the Service status panel (sections 8.8 and 8.11).
 3. Data for one session goes in the Overview and the Selected Item panel (sections 8.3 and 8.4).
+
+## 21. Decisions on 2026-11-05 (UI review)
+
+The user gave these directions after he used the M2 build:
+
+1. The Overview columns can be resized (built in M3).
+2. The row icon shows the kind of the session, in a colour for each project. The box is four corner brackets around the icon (section 8.3).
+3. A panel snaps only on release, with small arrow marks and no long guide line (section 8.1).
+4. A panel has no opacity control. Only the panel background is translucent, and one Settings row sets it (sections 8.1 and 12).
+5. The theme follows the neutral EVE look, with no colour accent (section 8.10).
+6. Bifrost tries a Claude Code mod as an option that replaces the hooks and the statusLine wrapper. The poll of `claude agents --json` stays as the base.
