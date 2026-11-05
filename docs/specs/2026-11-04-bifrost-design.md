@@ -463,7 +463,7 @@ Dialog rules:
 - After `claude --bg`, Bifrost waits for the entry in `claude agents --json`. Exit code 0 is not proof of a start.
 - If `claude --bg` gives the trust error, the dialog shows the error. It tells the user to run `claude` in that directory one time and accept the trust prompt.
 - After the entry appears, Bifrost opens the chat window of the new session.
-- The worktree option needs a test in a trusted repository (M4).
+- M4 test (2026-11-05): `--worktree <name>` works in a trusted repository. See `docs/m4-findings.md`.
 
 ### 8.10 Theme
 
