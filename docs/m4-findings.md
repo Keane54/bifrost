@@ -313,3 +313,101 @@ Results:
 - `claude rm` keeps a worktree that has commits on no remote. In a repository with no remote, the count also has the commits of `main`.
 - The value of `--discard-unpushed` is `<40 hex characters>@<32 hex characters>`. It comes only from the refusal text.
 - A stopped session loses its worktree in `claude agents`. Bifrost must remember the worktree while the session runs.
+
+## Task 17: second app check
+
+The controller agent ran the second app check on 2026-11-05 from 18:14 to 19:56 GMT. The Mac slept from 19:05 to 19:37. The code was branch `m4` at `e8253b9`. The versions were Claude Code 2.1.318, Electron 44.7.2 and macOS 26.6.2.
+
+### Method
+
+- The agent used the method of Task 10. The dev app had its own userData in the scratch folder `m4-check2/userdata`, and `--remote-debugging-port=9333`. `registry.json` and `ui-state.json` appeared in that folder. The mtimes and sizes of the real Bifrost userData files and of `~/.claude/settings.json` did not change.
+- The agent drove the page with `agent-browser` (clicks, keys, mouse moves, `eval` reads and screenshots). Before each action, it read the session ID and the name in the menu target, the Selected Item panel or the dialog title, and checked the `bifrost-test-` prefix.
+- Each `claude` command of the agent went through `.m0-sandbox/cl.sh`, with Haiku and the folder `.m0-sandbox`. The New session dialog used `.m0-sandbox`, Haiku and a `bifrost-test-` name.
+- The Bifrost integration is not installed. To get a yellow box, the agent started `bifrost-test-y1`, `bifrost-test-y2` and `bifrost-test-ext2` with `--settings <scratch>/hooks.json`. That file has the 10 Bifrost hook rows. It applies only to these sessions. `~/.claude/settings.json` did not change. The red boxes came from `--permission-mode manual` and a prompt that runs `touch`. The agent did not answer the prompts.
+- A ps loop recorded each `claude stop` and `claude rm` command line of the app, with the time.
+- The agent quit the dev app two times with SIGTERM to its own Electron main PID. The app removed `~/.bifrost/active` at each quit. At the end, the agent wrote the marker again (0 bytes, mode 600).
+
+Changes to the method:
+
+- At the first start, macOS showed the alert "The last time you opened Electron, it unexpectedly quit while reopening windows". The window did not open until the alert closed. The agent clicked Don't Reopen on the alert of its own Electron PID.
+- After the sleep, the screen stayed locked. The page was `hidden` and got no animation frames. A closed dialog then kept its backdrop (`data-ending-style`), and the backdrop blocked clicks. Each screenshot gives one frame. So the agent took a screenshot after each dialog step. This can also explain Task 10 bug 12.
+- At the sleep, `agent-browser` lost the CDP link and started its own Chrome. The agent closed that Chrome and connected a new session.
+- The row menu closed when the right mouse button came up, because the CDP button events came slowly. The agent pressed the right button only, then clicked the menu item.
+- The test commits ran the git hooks of the repository (lefthook). The hooks ran `pnpm`, and `pnpm` installed `node_modules` in the worktree (519 MB in `bifrost-test-wt1`, 748 MB in `bifrost-test-wt2`). The later test commits used `--no-verify`.
+- The agent did not load a copy of the real `registry.json`, because the safety rules do not let the agent read the real userData.
+
+### Results
+
+| Check | Method | Result | Screenshot |
+|---|---|---|---|
+| T15 item 1: Delete of a worktree session with one commit | `bifrost-test-wt3` from New session with Use a worktree. One commit with `--no-verify`. Delete session..., then Delete anyway two times. | Pass. The dialog says `This session has 1 commit that is not merged on worktree-bifrost-test-wt3.`. The app ran `claude stop f3629043`, `claude rm f3629043`, then `claude rm f3629043 --discard-unpushed b8589e8e...@3c5fe921...` (40 and 32 hex characters). The row went away 4 s after the confirm. The chat window closed. The worktree folder, the branch and the session are gone. | `m4-findings/t17-15-delete-worktree-1-commit.png` |
+| T15 item 1: first try | The same steps with `bifrost-test-wt1`. A `pnpm` install ran in the worktree at that time. | Fail. See bug 1. | `m4-findings/t17-16-delete-raw-kept-text.png` |
+| T15 item 2: one more commit after the dialog opens | `bifrost-test-wt2` (two commits). Open the Delete dialog. Make a third commit. Confirm. | Pass. The dialog said 2 commits. The app ran `claude stop` and `claude rm`, and no discard. The text `The worktree changed after the check. Check it again, then delete.` showed 3 s after the confirm. The worktree and the branch stayed. The row parked. | `m4-findings/t17-18-delete-worktree-changed.png` |
+| T15 item 2: fresh Delete | Delete the parked `bifrost-test-wt2` again. | Pass. The dialog says `3 commits`. The app ran `claude rm`, then the discard. The discard took 8 s with the 748 MB `node_modules`. The row, the worktree and the branch went away 11 s after the confirm. | `m4-findings/t17-19-delete-3-commits.png` |
+| T15 item 3: stopped worktree session | Delete session... on the parked `bifrost-test-wt1`. Read the Selected Item panel. | Pass. The dialog has the commit warning and Open worktree. The Selected Item panel shows the branch `worktree-bifrost-test-wt1`. | `m4-findings/t17-17-delete-stopped-worktree.png` |
+| T15 item 4: restart with a stopped worktree session | SIGTERM to the dev main PID. Read `registry.json`. Start the app. Open the Delete dialog. | Pass. `registry.json` has the entry under `worktrees`. After the start, the row has the worktree and the branch. The dialog still shows the commit warning. | - |
+| T15 item 5: Take control with no message | `.command` file in Terminal with no prompt (`bifrost-test-ext1`). Menu > Take control, then confirm. Measure with the page clock. | Pass. The text `This session has no messages yet, so there's nothing to take over. Send a message in its terminal first.` showed 135 ms after the confirm click. The `claude` process (PID 36099) still ran. | `m4-findings/t17-20-take-control-no-messages.png` |
+| T15 item 6: Take control with one message | `.command` file with the first prompt `Reply with the word READY.` (`bifrost-test-ext2`). Take control, then confirm. | Pass. The chat window opened 9.3 s after the confirm (Task 10: 6 s). The row became owned with the same session ID. No error showed. The Terminal process ended. The watch colour stayed. | `m4-findings/t17-21-take-control-ok.png` |
+| T15 item 8: user message in the transcript | Read the transcript of `bifrost-test-ext2`. | Pass. The first `"type":"user"` is at byte 13,443 of 386,896, so it is in the first 256 KB. `bifrost-test-ext1` has no transcript file. | - |
+| T15 item 9: long error text | Read the error line of bug 1 in the narrow Selected Item panel. | Pass. The text wraps. It has no `Error:` prefix and no cut. | `m4-findings/t17-16-delete-raw-kept-text.png` |
+| T16: Warp and Terminal icons | Read the `img` of each external row. Look at the Overview. | Pass. The two icons are different. Terminal is a 32 x 32 PNG of 2,042 characters, and Warp is a 32 x 32 PNG of 2,474 characters. Both look like the real app icons. | `m4-findings/t17-22-warp-and-terminal-rows.png`, `m4-findings/t17-23-icons-zoom.png` |
+| T16: 14 px icon with the corner box | Add `bifrost-test-ext2` (yellow box) to the watchlist. Read the image size. | Pass. The Watchlist image is 14 x 14 in a 16 px cell. The Overview image is 16 x 16 in an 18 px cell. The yellow brackets show around the icon. | `m4-findings/t17-24-watchlist-icon-yellow-box.png` |
+| T16: focused panel darker | Click the Watchlist panel. Read the computed backgrounds. | Pass. The focused panel is `rgb(8 8 8 / 0.95)` and the others are `rgb(24 24 24 / 0.85)`. Over `#0a0a0a` this gives about 8 and 22 of 255. The focused panel looks clearly darker. | `m4-findings/t17-09-focused-and-unfocused-panels.png` |
+| T16: square cyan focus ring | Press Tab through the side bar, the title bars, the tabs, the column headers, the Selected Item actions, the New session fields and buttons, the worktree check box and the Lock item. | Pass. Each focus has `1px solid rgb(143, 220, 236)`, offset 0 and radius 0. The Lock box is square. Menus show no extra outline. | `m4-findings/t17-10-focus-ring-side-bar.png`, `m4-findings/t17-11-focus-ring-worktree-box.png`, `m4-findings/t17-12-focus-ring-lock.png` |
+| T16: check mark on the current colour | Row menu > Change colour on a dark red row. Then click Amber. | Pass. Only Dark red has the check mark. Amber applied and the order stayed. | `m4-findings/t17-08-change-colour-check.png` |
+| T16: relative folder | Type `relative/path` and ` relative/path` in Folder. Read the worktree box. | Pass. The box is off with the reason `Choose a project folder.`. `/private/tmp` gives the "not in a git repository" text. `.m0-sandbox` turns the box on. | - |
+| T16: focus after a failed start | Start `bifrost-test-untrusted` in `/private/tmp/bifrost-test-untrusted-t17`. | Pass. The trust text shows, no session starts, and the cursor is in Folder. The agent removed the folder. | `m4-findings/t17-14-trust-error-folder-focus.png` |
+| T16: Esc during a Watchlist drag | Mouse down on a row, move 38 px, Esc, then release. CDP mouse events. | Pass. Esc removed the faded row and the line. The order stayed. `registry.json` did not change, so no move call ran. The release did not select the row. | - |
+| T16: Add to watchlist in the Selected Item panel | Remove a test row from the watchlist. Hover the button, then click it. Pick Amber. | Pass. The tooltip `Add to watchlist` shows. The menu of 8 colours opens under the button. Amber went to the selected session only. | `m4-findings/t17-13-selected-item-add-menu.png` |
+| T14: 8 watch colours with the 3 px stripe | Put the 8 colours on 4 test rows in 4 rounds. Look at the Overview and the Watchlist panel. | Pass. Each watched row has a 3 px stripe in the full colour and a 12% tint, in both places. | `m4-findings/t17-01-watch-dark-red-red.png` to `m4-findings/t17-05-watch-green-white.png` |
+| T14: dark red against red, amber against yellow | Compare the rows side by side. | For the user. The stripes of dark red and red differ only a little (contrast 1.34:1). The agent can see the difference only when the two rows are next to each other. The tints look the same. Amber and yellow are clearly different (1.85:1, and the hue). | `m4-findings/t17-01-watch-dark-red-red.png`, `m4-findings/t17-06-stripe-dark-red-red-zoom.png`, `m4-findings/t17-03-watch-amber-yellow.png` |
+| T14: yellow and red boxes on watched rows | Each round has two yellow-box rows and two red-box rows. One row is selected and one row has the hover. | Pass. Both boxes read clearly on all 8 colours, also on the selected and the hover rows, and in the Watchlist panel. The yellow box reads clearly on the amber row. The brackets flash, so some screenshots show a dim phase. After about 10 min the yellow boxes changed to red (the escalation). | `m4-findings/t17-01-watch-dark-red-red.png` to `m4-findings/t17-05-watch-green-white.png` |
+| T14: new box red | Look at the brackets and the `Needs you` text. | For the user. The value is now `#f5766d`. It reads as a light red. The agent did not see an Integration panel error line. | `m4-findings/t17-07-priority-column.png` |
+| T14: priority colours | Set priorities 1, 2, 3 and 5 on test rows. Show the Priority column. | Pass. 1 is amber, 2 light blue, 3 blue, 4 teal (menu) and 5 green. No priority is purple or pink. | `m4-findings/t17-07-priority-column.png` |
+| T14: Bifrost mark | Look at owned, parked and external rows. | Pass. Owned and parked rows show the hexagon. External rows show the terminal app icon. | `m4-findings/t17-22-warp-and-terminal-rows.png` |
+| T14: no purple or pink on the Overview | Read the computed colours (text, background, borders, outline, fill, stroke, shadow) of each element of the page. | Pass. No colour has a hue from 250 to 350 degrees and a saturation over 15%. | - |
+| Task 10 bug 1 | T15 items 1 and 2. | Pass on `bifrost-test-wt3` and `bifrost-test-wt2`. See bug 1 for the first try. | - |
+| Task 10 bug 2 | T15 items 3 and 4. | Pass. | - |
+| Task 10 bug 3 | T15 item 5. | Pass. | - |
+| Task 10 bug 4 | The Change colour check. | Pass. | - |
+| Task 10 bug 5 | The icon check. | Pass. | - |
+| Clean-up | `cl.sh agents --json --all`, `git worktree list`, `git branch`, `ps`. | Pass. See "Clean-up" below. | - |
+
+### Bugs found
+
+1. **Bifrost kills a slow `claude rm --discard-unpushed`, and the worktree stays half deleted.**
+   1. Start `bifrost-test-wt1` with New session and Use a worktree.
+   2. Make one commit in the worktree through the git hooks of the repository. The hooks run `pnpm`, and `pnpm` installs `node_modules` in the worktree.
+   3. While the install runs, click Delete session..., then Delete anyway two times.
+   4. Result: the app ran `claude stop` at 18:32:57, `claude rm` at 18:32:58 and the discard at 18:33:02. The discard ended with no exit code. The dev log has only `Command failed: /Users/dev-user/.local/bin/claude rm 27b87cbf --discard-unpushed ...`. Node gives this text when a signal ends the process, and Bifrost sends SIGKILL at the timeout of 60 s. The discard had deleted 75 tracked files and a part of `node_modules`. The worktree, the branch and the session stayed. The row parked.
+   5. The error line showed for 5 s only, so the agent did not see it in the app.
+   6. The next Delete dialog says `1 commit that is not merged and 75 changed files`. Then `claude rm` refuses with "The worktree has uncommitted changes" and gives no discard value. Bifrost cannot delete the session (bug 2).
+   7. The agent removed the rest by hand: `git worktree remove --force` took 26 s, then `git branch -D` and `cl.sh rm 27b87cbf`. On `bifrost-test-wt2` (748 MB `node_modules`, no install) the discard took 8 s. So the probable cause is the install that wrote into `node_modules` during the delete.
+2. **A Delete that `claude rm` refuses because of uncommitted changes shows the raw `claude` text.**
+   1. Make a change in the worktree of a worktree session (for example delete a tracked file).
+   2. Click Delete session..., then Delete anyway two times.
+   3. Result: the error line shows `kept <id> - its worktree is still at "..." The worktree has uncommitted changes. Deleting it would lose them. commit or stash them and run 'claude rm <id>' again, or delete the session from 'claude agents' (ctrl+x twice)` (the real dash is U+2014). The text tells the user to use `claude agents`. It shows for 5 s only. `parseKept` gives null for this text, so `failure()` passes the stdout through.
+3. **A session that a terminal removes stays in Bifrost as a parked row.**
+   1. Start a session from Bifrost (it goes into the `started` list).
+   2. Remove it with `claude rm <id>` in a terminal.
+   3. Result: `claude agents --json --all` has no entry. Bifrost still shows the parked row `bifrost-test-wt1`, with the worktree path of a worktree that is gone. `registry.json` keeps the ID in `started` and in `worktrees`.
+4. **The session list error shows a raw command (seen one time).** During the second Delete of `bifrost-test-wt1`, `claude rm` ran from 18:48:21 to 18:48:29. At 18:48:22 the Overview showed `Command failed: /Users/dev-user/.local/bin/claude agents --json`. The poll of the session list probably reached its timeout while `claude rm` ran.
+5. **The Delete check failed one time.** The Delete dialog of the running `bifrost-test-wt2` said `Bifrost could not check this session for unmerged work.`. This was about 10 min before the sleep, soon after a `pnpm` install in that worktree. Later `git status --porcelain` took 0.09 s, and the next dialog gave the count. The agent could not find the cause.
+
+### For the user
+
+- Judge dark red against red in `t17-01` and `t17-06`. The stripes differ only a little, and the tints look the same.
+- Judge the box red `#f5766d` and the 4 blue-like project colours. Look at an Integration panel error line. The agent did not see one.
+- Decide the 60 s timeout and the SIGKILL of the discard (bug 1). Decide whether an error line must stay longer than 5 s. A Delete error is long, and it went away before the agent read it.
+- Do a right-click on a row and an Esc during a Watchlist drag with a real mouse. The agent used CDP mouse events, and a slow right-button release closed the row menu.
+- The chat window shows the Claude Code status line with a purple bar. This comes from the status line of the session, not from Bifrost.
+- The old test session `d64bb329` is still there. The agent did not touch it.
+- These files stay: the transcripts of 5 test sessions in `~/.claude/projects/-Users-dev-user-Developer-bifrost--m0-sandbox` (`d16d5637`, `3f2fe209`, `b070d7ed`, `7fcbb538`, `b08df198`), and the `quiet` folders of 8 test session IDs in `~/.bifrost/sessions`.
+- Terminal: the agent closed its two windows (IDs 4700 and 4701). Terminal still lists them as hidden windows. The three Terminal windows of Task 10 (IDs 4565, 4577, 4579) are still open.
+
+### Clean-up
+
+- `cl.sh agents --json --all` has 8 entries and no `bifrost-test-` name. The agent removed each test session after a name check (`cl.sh stop` when it had a PID, then `cl.sh rm`). It ended `bifrost-test-ext1` with SIGTERM after it read the command line of the PID.
+- `git worktree list` has only the main checkout, `.worktrees/m3` and `.worktrees/m4`. No `worktree-bifrost-test-*` branch stays. The agent removed the empty `.claude/worktrees` and `.claude` folders of the repository.
+- No `claude attach` process and no dev app process runs. `~/.bifrost/active` exists, 0 bytes, mode 600.
+- The agent removed `/private/tmp/bifrost-test-untrusted-t17` and the two `.command` files. No `perm-check-r*.txt` file exists, because the prompts got no answer.
