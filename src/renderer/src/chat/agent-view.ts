@@ -40,6 +40,17 @@ export function joinWrapped(rows: ScreenRow[]): string[] {
   return lines.map(line => line.trimEnd())
 }
 
+// Bifrost reads the screen 250 ms after the last chunk. During continuous output, for example
+// a spinner, it reads the screen at least each 1000 ms. So input stops soon (D10).
+export const AGENT_CHECK_QUIET_MS = 250
+export const AGENT_CHECK_MAX_MS = 1000
+
+// The wait before the next check, at the time of a chunk. firstAt is the time of the first
+// chunk after the last check.
+export function agentCheckDelay(firstAt: number, now: number): number {
+  return Math.max(0, Math.min(AGENT_CHECK_QUIET_MS, firstAt + AGENT_CHECK_MAX_MS - now))
+}
+
 export const MAX_REATTACH = 3
 export const REATTACH_WINDOW_MS = 60_000
 

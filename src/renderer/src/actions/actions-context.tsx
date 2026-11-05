@@ -13,6 +13,7 @@ import { isPriority } from '../../../shared/priority'
 import type { ProjectApp, ProjectAppId } from '../../../shared/types'
 import { chatPanelId } from '../chat/views'
 import { useRegistry } from '../data/registry'
+import { errorMessage } from '../lib/error-message'
 import { useWmControls, useWmState } from '../wm/context'
 import { frameOf, type WmState } from '../wm/state'
 import {
@@ -37,10 +38,6 @@ export interface ActionsValue {
 }
 
 const ActionsContext = createContext<ActionsValue | null>(null)
-
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
 
 function contextOf(sessionId: string, state: WmState, apps: ProjectApp[]): ActionContext {
   return { apps, chatOpen: frameOf(state, chatPanelId(sessionId)) !== undefined, labels: LABELS }
@@ -84,7 +81,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   // A new error replaces the last error. It shows for the full time.
   const fail = useCallback((err: unknown) => {
     window.clearTimeout(errorTimer.current)
-    setError(message(err))
+    setError(errorMessage(err))
     errorTimer.current = window.setTimeout(() => setError(null), ERROR_MS)
   }, [])
 

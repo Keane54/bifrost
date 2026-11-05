@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { SessionRow } from '../../../shared/types'
+import { errorMessage } from '../lib/error-message'
 
 export interface RegistryValue {
   rows: SessionRow[]
@@ -11,10 +12,6 @@ export interface RegistryValue {
 }
 
 const RegistryContext = createContext<RegistryValue | null>(null)
-
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
 
 // One subscription to the session registry for the whole app. It also keeps the selection.
 export function RegistryProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
@@ -47,7 +44,7 @@ export function RegistryProvider({ children }: { children: React.ReactNode }): R
   const select = useCallback((id: string | null) => {
     setSelectedId(id)
     if (id === null) return
-    window.bifrost.registry.acknowledge(id).catch(err => setError(message(err)))
+    window.bifrost.registry.acknowledge(id).catch(err => setError(errorMessage(err)))
   }, [])
 
   const value = useMemo(

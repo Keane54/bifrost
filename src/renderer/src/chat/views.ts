@@ -38,6 +38,9 @@ export interface ChatView {
   focused: boolean
 }
 
+// The view of a chat that no panel shows.
+export const HIDDEN_VIEW: ChatView = { focused: false, visible: false }
+
 export function chatViews(state: Pick<WmState, 'frames'>): Map<string, ChatView> {
   const top = topFrame(state)
   const views = new Map<string, ChatView>()

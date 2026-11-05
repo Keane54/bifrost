@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ClaudeVersion, InstallPreview, IntegrationStatus } from '../../../shared/types'
+import { errorMessage } from '../lib/error-message'
 
 function describe(status: IntegrationStatus): string {
   if (status.installed) return 'Installed.'
@@ -9,10 +10,6 @@ function describe(status: IntegrationStatus): string {
   if (!status.scriptsPresent) missing.push('scripts')
   else if (!status.scriptsCurrent) missing.push('current scripts (install again to repair)')
   return `Not installed. Missing: ${missing.join('; ') || 'unknown'}.`
-}
-
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
 }
 
 const BUTTON =
@@ -28,7 +25,7 @@ function VersionLine(): React.JSX.Element {
     window.bifrost
       .claudeVersion()
       .then(v => active && setVersion(v))
-      .catch(err => active && setError(message(err)))
+      .catch(err => active && setError(errorMessage(err)))
     return () => {
       active = false
     }
@@ -60,7 +57,7 @@ export default function IntegrationPanel(): React.JSX.Element {
     window.bifrost.integration
       .status()
       .then(setStatus)
-      .catch(err => setError(message(err)))
+      .catch(err => setError(errorMessage(err)))
   }, [])
 
   // Run one action. The three buttons stay off until it ends.
@@ -75,7 +72,7 @@ export default function IntegrationPanel(): React.JSX.Element {
     try {
       await action()
     } catch (err) {
-      setError(message(err))
+      setError(errorMessage(err))
     } finally {
       running.current = false
       setBusy(false)

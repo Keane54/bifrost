@@ -6,7 +6,9 @@ import { Terminal } from '@xterm/xterm'
 import type { BifrostApi } from '../../../shared/api'
 import type { SessionRow, TermSize } from '../../../shared/types'
 import { cx } from '../lib/cx'
+import { errorMessage } from '../lib/error-message'
 import {
+  agentCheckDelay,
   isAgentView,
   joinWrapped,
   reattachDecision,
@@ -21,10 +23,7 @@ import {
   type Px,
   RESIZE_DEBOUNCE_MS,
 } from './size-rule'
-import { type AttachTarget, attachTarget, type ChatView, chatPanelId } from './views'
-
-// Bifrost reads the screen for the agent view this time after the last chunk.
-const AGENT_CHECK_MS = 250
+import { type AttachTarget, attachTarget, type ChatView, chatPanelId, HIDDEN_VIEW } from './views'
 
 const GIVE_UP_TEXT =
   'The agent view opened 3 times in 60 seconds. Close this window and open it again.'
@@ -41,16 +40,12 @@ export interface ChatTerminalDeps {
   // The element that keeps the terminal when no panel shows it.
   parking: HTMLElement
   history: AttachHistory
+  // True when a newer terminal uses the view ID of this terminal.
+  replaced(): boolean
 }
-
-const HIDDEN: ChatView = { focused: false, visible: false }
 
 function sameView(a: ChatView, b: ChatView): boolean {
   return a.focused === b.focused && a.visible === b.visible
-}
-
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
 }
 
 export class ChatTerminal {
@@ -73,7 +68,7 @@ export class ChatTerminal {
   private webglBroken = false
 
   private target: AttachTarget = attachTarget(undefined, false)
-  private view: ChatView = HIDDEN
+  private view: ChatView = HIDDEN_VIEW
   private panel: Px | null = null
   private session: TermSize | null = null
   // True from a focus gain until a size decision with a known fit.
@@ -86,10 +81,14 @@ export class ChatTerminal {
   private sizeAsked = false
 
   private attached = false
+  // The number of the current attach. A late write result of an old attach has no effect.
+  private attachCount = 0
   private opening = false
   private ended = false
   private inputBlocked = false
   private gaveUp = false
+  // True when the agent view shows and the reattach waits for a row that can attach.
+  private agentWaiting = false
   private disposed = false
 
   private resizeTimer: number | undefined
@@ -97,6 +96,8 @@ export class ChatTerminal {
   private pendingBump: TermSize | null = null
   private bumpTimer: number | undefined
   private checkTimer: number | undefined
+  // The time of the first chunk after the last agent view check, or null.
+  private uncheckedSince: number | null = null
   private focusFrame = 0
 
   constructor(sessionId: string, deps: ChatTerminalDeps) {
@@ -153,6 +154,8 @@ export class ChatTerminal {
     if (this.disposed) return
     this.target = attachTarget(row, loaded)
     this.maybeAttach()
+    // The agent view waits for the row. Now the row can attach, so check the screen again.
+    if (this.agentWaiting && this.target.ok) this.checkAgentView()
     this.showNote()
   }
 
@@ -228,18 +231,17 @@ export class ChatTerminal {
     // Without an attach, a chunk comes from an old PTY of this view. Ignore it.
     if (this.disposed || !this.attached) return
     this.term.write(chunk)
+    const now = Date.now()
+    if (this.uncheckedSince === null) this.uncheckedSince = now
     window.clearTimeout(this.checkTimer)
-    this.checkTimer = window.setTimeout(() => this.checkAgentView(), AGENT_CHECK_MS)
+    const delay = agentCheckDelay(this.uncheckedSince, now)
+    this.checkTimer = window.setTimeout(() => this.checkAgentView(), delay)
   }
 
   exited(code: number): void {
     // Without an attach, the exit is for an old PTY of this view, for example during a reattach.
     if (this.disposed || !this.attached) return
-    this.attached = false
-    this.ended = true
-    this.stopTimers()
-    this.term.write(`\r\n[process ended: code ${code}]\r\n`)
-    this.showNote()
+    this.end(`[process ended: code ${code}]`)
   }
 
   // Move the element back to the parking element. A panel calls this when it no longer shows it.
@@ -266,8 +268,37 @@ export class ChatTerminal {
 
   private input(data: string): void {
     if (!this.attached || this.inputBlocked) return
-    // A failed write has no effect. The main process returns false for a closed PTY.
-    this.deps.pty.write(this.viewId, data).catch(() => {})
+    const attach = this.attachCount
+    // The main process gives false when the view has no PTY. Then the attach is gone.
+    this.deps.pty.write(this.viewId, data).then(
+      written => {
+        if (!written) this.inputFailed(attach)
+      },
+      (err: unknown) => {
+        console.warn('Bifrost cannot write to the attach of a chat window.', this.viewId, err)
+        this.inputFailed(attach)
+      },
+    )
+  }
+
+  // The attach is gone, but no exit came. The terminal ends, as after an exit.
+  private inputFailed(attach: number): void {
+    if (this.disposed || !this.attached || attach !== this.attachCount) return
+    this.end('[input failed: the attach ended]')
+    // A write can fail while the attach still runs. Close it, so that no hidden attach stays.
+    this.deps.pty.close(this.viewId).catch(err => {
+      console.warn('Bifrost cannot close the attach of a chat window.', this.viewId, err)
+    })
+  }
+
+  // Mark the terminal as ended and write one line. It does not attach again by itself.
+  private end(line: string): void {
+    this.attached = false
+    this.ended = true
+    this.agentWaiting = false
+    this.stopTimers()
+    this.term.write(`\r\n${line}\r\n`)
+    this.showNote()
   }
 
   private maybeAttach(): void {
@@ -316,11 +347,17 @@ export class ChatTerminal {
       () => {
         this.opening = false
         if (this.disposed) {
-          // The window closed during the open. Close the new PTY.
-          this.deps.pty.close(this.viewId).catch(() => {})
+          // The window closed during the open. Close the new PTY, but not the PTY of a newer
+          // window of the session. The open of that window closed this PTY already.
+          if (!this.deps.replaced()) {
+            this.deps.pty.close(this.viewId).catch(err => {
+              console.warn('Bifrost cannot close the attach of a chat window.', this.viewId, err)
+            })
+          }
           return
         }
         this.attached = true
+        this.attachCount += 1
         // A reattach after the agent view blocked the input. The new attach unblocks it.
         this.inputBlocked = false
         this.showNote()
@@ -331,9 +368,7 @@ export class ChatTerminal {
         this.opening = false
         if (this.disposed) return
         // No new try. Close the window and open it again. This stops an error loop.
-        this.ended = true
-        this.term.write(`\r\n[open failed: ${message(err)}]\r\n`)
-        this.showNote()
+        this.end(`[open failed: ${errorMessage(err)}]`)
       },
     )
   }
@@ -411,7 +446,10 @@ export class ChatTerminal {
 
   private sendResize(size: TermSize): void {
     this.lastSentAt = Date.now()
-    this.deps.pty.resize(this.viewId, size.cols, size.rows).catch(() => {})
+    // A failed resize does not end the attach. The next resize can work.
+    this.deps.pty.resize(this.viewId, size.cols, size.rows).catch(err => {
+      console.warn('Bifrost cannot resize the attach of a chat window.', this.viewId, err)
+    })
   }
 
   // Zoom the terminal to fit its panel (D8: never above 1).
@@ -433,6 +471,11 @@ export class ChatTerminal {
     this.focusFrame = requestAnimationFrame(() => {
       this.focusFrame = 0
       if (this.disposed || !this.wantFocus || !this.view.focused || !this.panel) return
+      // A menu or a dialog, for example the right-click menu of a tab, keeps the keyboard focus.
+      if (document.activeElement?.closest('[role="menu"], [role="dialog"]')) {
+        this.wantFocus = false
+        return
+      }
       this.term.focus()
       if (this.term.textarea === document.activeElement) this.wantFocus = false
     })
@@ -440,9 +483,19 @@ export class ChatTerminal {
 
   // Read the screen. The agent view lists the sessions of all projects (spec 8.5, D10).
   private checkAgentView(): void {
+    window.clearTimeout(this.checkTimer)
     this.checkTimer = undefined
+    this.uncheckedSince = null
     if (this.disposed || !this.attached || this.gaveUp) return
-    if (!isAgentView(joinWrapped(this.screenRows()))) return
+    if (!isAgentView(joinWrapped(this.screenRows()))) {
+      // The agent view closed while the reattach waited for the row. Input starts again.
+      if (this.agentWaiting) {
+        this.agentWaiting = false
+        this.inputBlocked = false
+        this.showNote()
+      }
+      return
+    }
     // Input stops at once.
     this.inputBlocked = true
     const history = this.deps.history
@@ -450,12 +503,19 @@ export class ChatTerminal {
     history.times = recentAttaches(history.times, now)
     if (reattachDecision(history.times, now) === 'give-up') {
       this.gaveUp = true
+      this.agentWaiting = false
       this.showNote()
       return
     }
-    // The row cannot attach now. Input stays blocked until the next check.
+    // The row cannot attach now. Input stays blocked, and the note gives the reason.
+    // The next update of a row that can attach checks the screen again.
     const target = this.target
-    if (!target.ok) return
+    if (!target.ok) {
+      this.agentWaiting = true
+      this.showNote()
+      return
+    }
+    this.agentWaiting = false
     history.times.push(now)
     this.attached = false
     this.term.reset()
@@ -476,8 +536,9 @@ export class ChatTerminal {
 
   private showNote(): void {
     let text: string | null = null
+    const waiting = this.agentWaiting || (!this.attached && !this.opening)
     if (this.gaveUp) text = GIVE_UP_TEXT
-    else if (!this.attached && !this.opening && !this.target.ok) text = this.target.reason
+    else if (waiting && !this.target.ok) text = this.target.reason
     this.note.textContent = text ?? ''
     this.note.hidden = text === null
   }
@@ -487,6 +548,7 @@ export class ChatTerminal {
     window.clearTimeout(this.resizeTimer)
     window.clearTimeout(this.bumpTimer)
     this.checkTimer = undefined
+    this.uncheckedSince = null
     this.resizeTimer = undefined
     this.bumpTimer = undefined
     this.pendingResize = null

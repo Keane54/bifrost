@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AGENT_CHECK_MAX_MS,
+  AGENT_CHECK_QUIET_MS,
+  agentCheckDelay,
   isAgentView,
   joinWrapped,
   MAX_REATTACH,
@@ -97,5 +100,42 @@ describe('recentAttaches', () => {
   it('drops the attaches that are 60 seconds old or older', () => {
     expect(recentAttaches([39_999, 40_000, 40_001, 99_000], 100_000)).toEqual([40_001, 99_000])
     expect(recentAttaches([], 100_000)).toEqual([])
+  })
+})
+
+// The times of the checks for chunks at these times. A chunk restarts the timer of the check.
+function checkTimes(chunks: number[]): number[] {
+  const checks: number[] = []
+  let first: number | null = null
+  let due: number | null = null
+  for (const at of chunks) {
+    if (due !== null && due <= at) {
+      checks.push(due)
+      first = null
+    }
+    if (first === null) first = at
+    due = at + agentCheckDelay(first, at)
+  }
+  if (due !== null) checks.push(due)
+  return checks
+}
+
+describe('agentCheckDelay', () => {
+  it('waits for 250 ms of quiet, but never more than 1000 ms after the first chunk', () => {
+    expect(AGENT_CHECK_QUIET_MS).toBe(250)
+    expect(AGENT_CHECK_MAX_MS).toBe(1000)
+    expect(agentCheckDelay(0, 0)).toBe(250)
+    expect(agentCheckDelay(0, 900)).toBe(100)
+    expect(agentCheckDelay(0, 1000)).toBe(0)
+    expect(agentCheckDelay(0, 1500)).toBe(0)
+  })
+
+  it('checks 250 ms after the last chunk of a short burst', () => {
+    expect(checkTimes([0, 100, 200])).toEqual([450])
+  })
+
+  it('checks each 1000 ms during continuous output', () => {
+    const chunks = Array.from({ length: 30 }, (_, i) => i * 100)
+    expect(checkTimes(chunks)).toEqual([1000, 2000, 3000])
   })
 })

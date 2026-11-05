@@ -13,12 +13,11 @@ import {
   chatSessionId,
   chatViews,
   gainedFocus,
+  HIDDEN_VIEW,
   MAX_WEBGL,
   openChatIds,
   webglPlan,
 } from './views'
-
-const HIDDEN: ChatView = { focused: false, visible: false }
 
 interface ChatTerminalsDeps {
   pty: BifrostApi['pty']
@@ -79,11 +78,16 @@ export class ChatTerminals {
     }
     for (const id of openIds) {
       if (this.terminals.has(id)) continue
-      const terminal = new ChatTerminal(id, {
+      const terminal: ChatTerminal = new ChatTerminal(id, {
         acknowledge: this.deps.acknowledge,
         history: this.historyOf(id),
         parking: this.parking,
         pty: this.deps.pty,
+        // A newer window of the session uses the same view ID.
+        replaced: () => {
+          const current = this.terminals.get(id)
+          return current !== undefined && current !== terminal
+        },
       })
       this.terminals.set(id, terminal)
       changed = true
@@ -95,7 +99,7 @@ export class ChatTerminals {
       const terminal = this.terminals.get(id)
       if (!terminal) continue
       // The view comes first. So the first attach knows if the window shows.
-      terminal.setView(views.get(id) ?? HIDDEN, gained.has(id))
+      terminal.setView(views.get(id) ?? HIDDEN_VIEW, gained.has(id))
       terminal.setRow(byId.get(id), loaded)
     }
     this.planWebgl(openIds, views)
@@ -156,7 +160,7 @@ export class ChatTerminals {
     for (const id of openIds) {
       const terminal = this.terminals.get(id)
       if (!terminal) continue
-      const view = views.get(id) ?? HIDDEN
+      const view = views.get(id) ?? HIDDEN_VIEW
       if (terminal.hasWebgl) loaded.push(id)
       if (!view.visible || terminal.webglFailed) continue
       visible.push(id)
