@@ -24,6 +24,12 @@ function run(actions: WmAction[], from: WmState = initialState(bounds)): WmState
 const open = (panelId: string): WmAction => ({ panelId, type: 'open' })
 
 describe('wm state', () => {
+  it('a new Selected Item panel opens at 360 x 300 when the memory has no rect for it', () => {
+    expect(DEFAULT_SIZES['selected-item']).toEqual({ h: 300, w: 360 })
+    const s = run([open('selected-item')])
+    expect(s.frames[0]?.rect).toMatchObject({ h: 300, w: 360 })
+  })
+
   it('panelKind accepts the fixed panel IDs and refuses all others', () => {
     expect(panelKind('overview:1')).toBe('overview')
     expect(panelKind('overview:99')).toBe('overview')
