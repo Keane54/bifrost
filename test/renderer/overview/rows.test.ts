@@ -42,9 +42,19 @@ describe('rows', () => {
     expect(ids(sortRows(rows, { column: 'cost', desc: true }))).toBe('bac')
   })
 
-  it('sortRows by state gives red, yellow, working, idle, parked', () => {
+  it('sortRows by state gives error, needs you, working, idle, parked', () => {
     expect(ids(sortRows([...ALL].reverse(), { column: 'state', desc: false }))).toBe('DCBAGEF')
     expect(ids(sortRows(ALL, { column: 'kind', desc: false }))).toBe('ABDEFGC')
+  })
+
+  // Spec 7 rule 6: Bifrost does not move a row because of a box.
+  it('sortRows by state does not move a row when its yellow box changes to red', () => {
+    const red = row({ box: 'red', sessionId: 'b', state: 'needs-you', status: 'idle' })
+    const yellow = row({ box: 'yellow', sessionId: 'a', state: 'needs-you', status: 'idle' })
+    const before = sortRows([yellow, red], { column: 'state', desc: false })
+    const after = sortRows([{ ...yellow, box: 'red' }, red], { column: 'state', desc: false })
+    expect(ids(before)).toBe('ab')
+    expect(ids(after)).toBe('ab')
   })
 
   it('sortRows by project uses the project label', () => {

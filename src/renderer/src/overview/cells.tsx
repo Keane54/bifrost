@@ -32,6 +32,15 @@ export const PRIO_TEXT: Record<Priority, string> = {
   5: 'text-prio-5',
 }
 
+// The swatch of a priority in the Set priority menu.
+export const PRIO_BG: Record<Priority, string> = {
+  1: 'bg-prio-1',
+  2: 'bg-prio-2',
+  3: 'bg-prio-3',
+  4: 'bg-prio-4',
+  5: 'bg-prio-5',
+}
+
 export const TONE_TEXT: Record<Tone, string> = {
   accent: 'text-accent',
   dim: 'text-text-dim',

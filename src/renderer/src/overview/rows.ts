@@ -1,7 +1,7 @@
 // Tab filters and sort of the Overview rows.
 import type { SessionRow, SessionState } from '../../../shared/types'
 import type { ColumnId } from './columns'
-import { projectLabel, stateTone, type Tone } from './format'
+import { projectLabel } from './format'
 
 export interface TabFilter {
   states: SessionState[]
@@ -21,7 +21,15 @@ export function filterRows(rows: SessionRow[], filter: TabFilter): SessionRow[] 
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
 
-const TONE_RANK: Record<Tone, number> = { accent: 2, dim: 3, parked: 4, red: 0, yellow: 1 }
+// The State column sorts by the state only, not by the box.
+// So a yellow box that changes to red does not move the row (spec 7 rule 6).
+const STATE_RANK: Record<SessionState, number> = {
+  error: 0,
+  idle: 3,
+  'needs-you': 1,
+  parked: 4,
+  working: 2,
+}
 
 type Key = number | string | undefined
 
@@ -34,7 +42,7 @@ function keyOf(row: SessionRow, column: ColumnId): Key {
     case 'priority':
       return row.priority
     case 'state':
-      return TONE_RANK[stateTone(row)]
+      return STATE_RANK[row.state]
     case 'project':
       return projectLabel(row.cwd)
     case 'branch':

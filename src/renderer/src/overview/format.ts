@@ -22,6 +22,12 @@ export function formatPercent(p?: number): string {
   return typeof p !== 'number' || !Number.isFinite(p) ? '' : `${Math.round(p)}%`
 }
 
+// The width of the fill of the context bar, as a percent from 0 to 100.
+// A value that is not a finite number gives an empty bar.
+export function barFill(p?: number): number {
+  return typeof p !== 'number' || !Number.isFinite(p) ? 0 : Math.min(100, Math.max(0, p))
+}
+
 // Both times are in milliseconds.
 export function formatAge(since: number, now: number): string {
   const s = Math.max(0, Math.floor((now - since) / 1000))

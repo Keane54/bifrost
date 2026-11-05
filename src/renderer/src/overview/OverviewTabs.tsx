@@ -1,12 +1,12 @@
 // The tab row of an Overview: one coloured tab for each tab, the tab menu and the + button.
 import { Button } from '@base-ui/react/button'
 import { ContextMenu } from '@base-ui/react/context-menu'
-import { Tooltip } from '@base-ui/react/tooltip'
 import { Check, ChevronRight, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { SessionState } from '../../../shared/types'
 import { REASON_LAST_TAB, REASON_MAX_TABS } from '../actions/reasons'
 import { cx } from '../lib/cx'
+import { MENU_ITEM, MENU_POPUP, MENU_SEPARATOR, Tip } from '../lib/menu'
 import { TAB_TEXT } from './cells'
 import { COLUMN_IDS, COLUMN_LABELS, type ColumnId } from './columns'
 import {
@@ -25,46 +25,18 @@ const FILTER_STATES: readonly SessionState[] = ['working', 'needs-you', 'error',
 // The kind column is always visible (D4). So the Columns menu does not show it.
 const MENU_COLUMNS: readonly ColumnId[] = COLUMN_IDS.filter(id => id !== 'kind')
 
-const POPUP =
-  'min-w-36 rounded-md border border-panel-edge bg-title py-1 text-text text-xs outline-none backdrop-blur-md'
-const ITEM =
-  'flex h-5 cursor-default select-none items-center gap-2 px-2 outline-none data-disabled:opacity-40 data-highlighted:bg-row-selected'
-const SEPARATOR = 'my-1 h-px bg-panel-edge'
-
-// A tooltip on one element. A null label shows no tooltip.
-function Tip({
-  label,
-  children,
-}: {
-  label: string | null
-  children: React.ReactElement
-}): React.JSX.Element {
-  return (
-    <Tooltip.Root disabled={label === null}>
-      <Tooltip.Trigger render={children} />
-      <Tooltip.Portal>
-        <Tooltip.Positioner className='z-50' sideOffset={6}>
-          <Tooltip.Popup className='rounded border border-panel-edge bg-title px-2 py-1 text-text text-xs'>
-            {label}
-          </Tooltip.Popup>
-        </Tooltip.Positioner>
-      </Tooltip.Portal>
-    </Tooltip.Root>
-  )
-}
-
 function Submenu({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <ContextMenu.SubmenuRoot>
       <ContextMenu.SubmenuTrigger
-        className={cx(ITEM, 'justify-between pr-1 data-popup-open:bg-row-hover')}
+        className={cx(MENU_ITEM, 'justify-between pr-1 data-popup-open:bg-row-hover')}
       >
         {label}
         <ChevronRight aria-hidden={true} size={12} />
       </ContextMenu.SubmenuTrigger>
       <ContextMenu.Portal>
         <ContextMenu.Positioner alignOffset={-5} className='z-50 outline-none'>
-          <ContextMenu.Popup className={POPUP}>{children}</ContextMenu.Popup>
+          <ContextMenu.Popup className={MENU_POPUP}>{children}</ContextMenu.Popup>
         </ContextMenu.Positioner>
       </ContextMenu.Portal>
     </ContextMenu.SubmenuRoot>
@@ -80,7 +52,7 @@ function CheckItem(props: {
   return (
     <ContextMenu.CheckboxItem
       checked={props.checked}
-      className={ITEM}
+      className={MENU_ITEM}
       onCheckedChange={checked => props.onChange(checked)}
     >
       <span className='flex w-3 shrink-0 justify-center'>
@@ -194,9 +166,9 @@ function TabItem(props: {
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Positioner className='z-50 outline-none'>
-          <ContextMenu.Popup className={POPUP}>
+          <ContextMenu.Popup className={MENU_POPUP}>
             <ContextMenu.Item
-              className={ITEM}
+              className={MENU_ITEM}
               onClick={() => {
                 renameNext.current = true
               }}
@@ -216,7 +188,7 @@ function TabItem(props: {
                   }
                 />
               ))}
-              <ContextMenu.Separator className={SEPARATOR} />
+              <ContextMenu.Separator className={MENU_SEPARATOR} />
               <CheckItem
                 checked={boxOnly}
                 label='Only rows with a box'
@@ -238,21 +210,21 @@ function TabItem(props: {
               ))}
             </Submenu>
             <ContextMenu.Item
-              className={ITEM}
+              className={MENU_ITEM}
               onClick={() => update({ by: -1, tabId: tab.id, type: 'moveTab' })}
             >
               Move left
             </ContextMenu.Item>
             <ContextMenu.Item
-              className={ITEM}
+              className={MENU_ITEM}
               onClick={() => update({ by: 1, tabId: tab.id, type: 'moveTab' })}
             >
               Move right
             </ContextMenu.Item>
-            <ContextMenu.Separator className={SEPARATOR} />
+            <ContextMenu.Separator className={MENU_SEPARATOR} />
             <Tip label={only ? REASON_LAST_TAB : null}>
               <ContextMenu.Item
-                className={ITEM}
+                className={MENU_ITEM}
                 disabled={only}
                 onClick={() => update({ tabId: tab.id, type: 'removeTab' })}
               >

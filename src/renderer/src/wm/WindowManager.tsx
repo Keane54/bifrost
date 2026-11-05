@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { ActionsProvider } from '../actions/actions-context'
 import { cx } from '../lib/cx'
 import { overviewsReducer } from '../overview/config'
 import { OverviewsProvider } from '../overview/overviews-context'
@@ -491,64 +492,67 @@ export default function WindowManager(): React.JSX.Element {
     <WmControlsContext value={controls}>
       <WmStateContext value={state}>
         <LayoutsContext value={layoutNames}>
-          <div className='flex h-full w-full'>
-            <SideBar />
-            {/* The Overview panels, the frame titles and the frame menus read the configs. */}
-            <OverviewsProvider dispatch={dispatchOverviews} state={overviews}>
-              {/* The area keeps the z-order of its frames inside it. So a popover can be above
+          {/* The actions read the frames. So the provider is inside the state context. */}
+          <ActionsProvider>
+            <div className='flex h-full w-full'>
+              <SideBar />
+              {/* The Overview panels, the frame titles and the frame menus read the configs. */}
+              <OverviewsProvider dispatch={dispatchOverviews} state={overviews}>
+                {/* The area keeps the z-order of its frames inside it. So a popover can be above
                   them. A text selection cannot start on the empty area. The panel content allows
                   it. During a drag or a resize, no part of the area allows a selection. */}
-              <div
-                className={cx(
-                  'relative isolate min-w-0 flex-1 select-none overflow-hidden',
-                  dragging && '**:select-none',
-                )}
-                data-panel-area={true}
-                ref={areaRef}
-              >
-                {order.map(frame => (
-                  <Frame
-                    dispatch={dispatch}
-                    frame={live?.frameId === frame.id ? { ...frame, rect: live.rect } : frame}
-                    key={frame.id}
-                    onDrag={beginDrag}
-                    top={frame.id === topId}
-                    z={shown.indexOf(frame)}
-                  />
-                ))}
-                {guides.map(g => (
-                  <div
-                    className={cx(
-                      'pointer-events-none absolute bg-snap',
-                      g.axis === 'x' ? 'inset-y-0 w-px' : 'inset-x-0 h-px',
-                    )}
-                    data-guide={g.axis}
-                    key={`${g.axis}:${g.at}`}
-                    style={
-                      g.axis === 'x'
-                        ? { left: Math.min(g.at, bounds.w - 1), zIndex: guideZ }
-                        : { top: Math.min(g.at, bounds.h - 1), zIndex: guideZ }
-                    }
-                  />
-                ))}
-                {/* The title bar where a drop stacks the dragged frame. The outline is above all
+                <div
+                  className={cx(
+                    'relative isolate min-w-0 flex-1 select-none overflow-hidden',
+                    dragging && '**:select-none',
+                  )}
+                  data-panel-area={true}
+                  ref={areaRef}
+                >
+                  {order.map(frame => (
+                    <Frame
+                      dispatch={dispatch}
+                      frame={live?.frameId === frame.id ? { ...frame, rect: live.rect } : frame}
+                      key={frame.id}
+                      onDrag={beginDrag}
+                      top={frame.id === topId}
+                      z={shown.indexOf(frame)}
+                    />
+                  ))}
+                  {guides.map(g => (
+                    <div
+                      className={cx(
+                        'pointer-events-none absolute bg-snap',
+                        g.axis === 'x' ? 'inset-y-0 w-px' : 'inset-x-0 h-px',
+                      )}
+                      data-guide={g.axis}
+                      key={`${g.axis}:${g.at}`}
+                      style={
+                        g.axis === 'x'
+                          ? { left: Math.min(g.at, bounds.w - 1), zIndex: guideZ }
+                          : { top: Math.min(g.at, bounds.h - 1), zIndex: guideZ }
+                      }
+                    />
+                  ))}
+                  {/* The title bar where a drop stacks the dragged frame. The outline is above all
                   frames, because the dragged frame covers the title bar. */}
-                {dropBar && dropFrame && (
-                  <div
-                    className='pointer-events-none absolute rounded-t-md bg-accent/15 outline-2 outline-accent -outline-offset-2'
-                    data-drop-target={dropFrame.id}
-                    style={{
-                      height: dropBar.h,
-                      left: dropBar.x,
-                      top: dropBar.y,
-                      width: dropBar.w,
-                      zIndex: guideZ,
-                    }}
-                  />
-                )}
-              </div>
-            </OverviewsProvider>
-          </div>
+                  {dropBar && dropFrame && (
+                    <div
+                      className='pointer-events-none absolute rounded-t-md bg-accent/15 outline-2 outline-accent -outline-offset-2'
+                      data-drop-target={dropFrame.id}
+                      style={{
+                        height: dropBar.h,
+                        left: dropBar.x,
+                        top: dropBar.y,
+                        width: dropBar.w,
+                        zIndex: guideZ,
+                      }}
+                    />
+                  )}
+                </div>
+              </OverviewsProvider>
+            </div>
+          </ActionsProvider>
         </LayoutsContext>
       </WmStateContext>
     </WmControlsContext>

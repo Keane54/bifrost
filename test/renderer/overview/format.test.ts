@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  barFill,
   formatAge,
   formatCost,
   formatPercent,
@@ -68,5 +69,11 @@ describe('format', () => {
     expect(projectLabel('/Users/o/Developer/bifrost/.claude/worktrees/fix-a/src')).toBe(
       'Developer/bifrost',
     )
+  })
+
+  it('barFill gives the context bar fill from 0 to 100, and 0 without a value', () => {
+    expect([41.6, -5, 140].map(p => barFill(p))).toEqual([41.6, 0, 100])
+    expect(barFill(undefined)).toBe(0)
+    expect(barFill(Number.NaN)).toBe(0)
   })
 })

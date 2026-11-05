@@ -4,6 +4,7 @@ import {
   type ActionContext,
   type ActionId,
   actionStateFor,
+  buttonTip,
   type MenuEntry,
   rowMenu,
 } from '../../../src/renderer/src/actions/action-model'
@@ -154,5 +155,15 @@ describe('action model', () => {
     expect(m).toContain('Warp to')
     expect(m).toContain('Hail...')
     expect(m).toContain('Power down...')
+  })
+
+  it('buttonTip gives the label, and the reason on a second line when disabled', () => {
+    expect(buttonTip('open', actionStateFor('open', owned, ctx()), 'plain')).toBe('Open')
+    expect(buttonTip('stop', actionStateFor('stop', owned, ctx()), 'plain')).toBe(
+      'Stop session\nComes in M4',
+    )
+    expect(buttonTip('open', actionStateFor('open', parked, ctx()), 'space')).toBe(
+      `Warp to\n${R.REASON_PARKED}`,
+    )
   })
 })

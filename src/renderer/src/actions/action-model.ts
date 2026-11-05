@@ -134,6 +134,13 @@ export function actionLabel(id: ActionId, labels: LabelSet): string {
   return ELLIPSIS_ACTIONS.has(id) ? `${text}...` : text
 }
 
+// The tooltip of a button or a menu entry. It has no three full stops.
+// A disabled action also gives the reason on a second line.
+export function buttonTip(id: ActionId, state: ActionState, labels: LabelSet): string {
+  const label = ACTIONS[id][labels]
+  return state.enabled || state.reason === null ? label : `${label}\n${state.reason}`
+}
+
 export type MenuArg = Priority | null | ProjectAppId
 
 export interface SubItem {
