@@ -42,8 +42,9 @@ const TOKENS = [
 // through the --color-select token in app.css.
 const ACCENT_CLASSES = [
   /^border-t-accent$/,
+  /^--color-accent-glow$/,
   /^border-t-accent\/35$/,
-  /^from-accent-glow$/,
+  /^shadow-\[0_0_14px_1px_var\(--color-accent-glow\)\]'?$/,
   /^(?:[a-z-]+:)*active:bg-accent\/12$/,
 ]
 const PRESS = /(?:^|\s|')(?:[a-z-]+:)*active:bg-accent\/12(?:\s|'|$)/
@@ -60,7 +61,7 @@ describe('theme', () => {
 
   it('defines the light cyan accent and its glow', () => {
     expect(CSS).toContain('--color-accent: #8fdcec;')
-    expect(CSS).toContain('--color-accent-glow: rgb(143 220 236 / 0.35);')
+    expect(CSS).toContain('--color-accent-glow: rgb(143 220 236 / 0.28);')
   })
 
   it('gives the selected row the accent at 15%', () => {
@@ -85,9 +86,11 @@ describe('theme', () => {
 
   it('gives the frame the cyan top border and the glow', () => {
     const frame = source('wm/Frame.tsx')
-    for (const part of ['border-t-accent', 'border-t-accent/35', 'from-accent-glow']) {
+    for (const part of ['border-t-accent', 'border-t-accent/35']) {
       expect(accentParts(frame)).toContain(part)
     }
+    // The glow is a shadow outside the frame edge.
+    expect(frame).toContain('shadow-[0_0_14px_1px_var(--color-accent-glow)]')
   })
 
   it.each([

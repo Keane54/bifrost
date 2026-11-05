@@ -90,7 +90,9 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
       className={cx(
         'absolute flex-col overflow-hidden border bg-panel backdrop-blur-md',
         frame.minimised ? 'hidden' : 'flex',
-        top ? 'border-text-strong/30 border-t-accent' : 'border-panel-edge border-t-accent/35',
+        top
+          ? 'border-text-strong/30 border-t-accent shadow-[0_0_14px_1px_var(--color-accent-glow)]'
+          : 'border-panel-edge border-t-accent/35',
       )}
       data-frame-id={id}
       onPointerDownCapture={() => dispatch({ frameId: id, type: 'focus' })}
@@ -102,12 +104,9 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
         zIndex: z,
       }}
     >
-      {/* Only the top frame has the glow: a cyan gradient over the top 10 px of the title bar. */}
+      {/* Only the top frame has the glow. It is a shadow outside the frame edge, not inside. */}
       <div
-        className={cx(
-          'flex shrink-0 touch-none select-none items-center gap-1 bg-title pr-3 pl-1',
-          top && 'bg-linear-to-b from-accent-glow to-[10px] to-transparent',
-        )}
+        className={cx('flex shrink-0 touch-none select-none items-center gap-1 bg-title pr-3 pl-1')}
         data-title-bar={true}
         onPointerDown={onTitleDown}
         style={{ height: TITLE_H }}
