@@ -58,6 +58,9 @@ describe('confirm texts', () => {
     expect(del(check({ unmergedCommits: 1 }))?.body).toBe(
       'This session has 1 commit that is not merged on worktree-fix-a. Are you sure you want to delete this?',
     )
+    expect(del(check({ changedFiles: 1, unmergedCommits: 1 }))?.body).toBe(
+      'This session has 1 commit that is not merged and 1 changed file on worktree-fix-a. Are you sure you want to delete this?',
+    )
     expect(del(check({ changedFiles: 1 }))?.body).toBe(
       'This session has 1 changed file on worktree-fix-a. Are you sure you want to delete this?',
     )

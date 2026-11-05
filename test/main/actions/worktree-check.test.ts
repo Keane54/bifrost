@@ -31,6 +31,25 @@ describe('worktreeRoot', () => {
     expect(worktreeRoot('/r')).toBeNull()
     expect(worktreeRoot('/r/.claude/worktrees/')).toBeNull()
   })
+
+  it('worktreeRoot uses the first mark', () => {
+    expect(worktreeRoot('/r/.claude/worktrees/a/.claude/worktrees/b')).toEqual({
+      repo: '/r',
+      worktree: '/r/.claude/worktrees/a',
+    })
+  })
+
+  it('worktreeRoot refuses a relative path, dot segments and an empty repo', () => {
+    for (const cwd of [
+      'r/.claude/worktrees/a',
+      '/r/.claude/worktrees/..',
+      '/r/.claude/worktrees/a/../../x',
+      '/r/./.claude/worktrees/a',
+      '/.claude/worktrees/a',
+    ]) {
+      expect(worktreeRoot(cwd)).toBeNull()
+    }
+  })
 })
 
 describe('checkWorktree', () => {

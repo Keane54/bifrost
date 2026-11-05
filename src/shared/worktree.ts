@@ -3,9 +3,12 @@ const MARK = '/.claude/worktrees/'
 
 // The worktree root and the repo of a cwd. A cwd in a subfolder gives the same root.
 // A cwd outside .claude/worktrees/<name> gives null.
+// A relative path, a '.' or '..' segment and an empty repo part also give null.
 export function worktreeRoot(cwd: string): { worktree: string; repo: string } | null {
+  if (!cwd.startsWith('/')) return null
+  if (cwd.split('/').some(part => part === '.' || part === '..')) return null
   const at = cwd.indexOf(MARK)
-  if (at < 0) return null
+  if (at <= 0) return null
   const rest = cwd.slice(at + MARK.length)
   const name = rest.split('/')[0]
   if (name === '') return null
