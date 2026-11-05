@@ -48,8 +48,10 @@ const api: BifrostApi = {
     close: (viewId, signal) => invoke('pty:close', viewId, signal),
     onData: cb => subscribe('pty:data', cb),
     onExit: cb => subscribe('pty:exit', cb),
+    onSize: cb => subscribe('pty:size', cb),
     open: (viewId, args, opts) => invoke('pty:open', viewId, args, opts),
     resize: (viewId, cols, rows) => invoke('pty:resize', viewId, cols, rows),
+    sessionSize: sessionId => invoke('pty:session-size', sessionId),
     write: (viewId, data) => invoke('pty:write', viewId, data),
   },
   registry: {

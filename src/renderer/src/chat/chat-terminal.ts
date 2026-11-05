@@ -13,7 +13,14 @@ import {
   recentAttaches,
   type ScreenRow,
 } from './agent-view'
-import { decideSize, fitScale, openSize, type Px, RESIZE_DEBOUNCE_MS } from './size-rule'
+import {
+  BUMP_GAP_MS,
+  decideSize,
+  fitScale,
+  openSize,
+  type Px,
+  RESIZE_DEBOUNCE_MS,
+} from './size-rule'
 import { type AttachTarget, attachTarget, type ChatView, chatPanelId } from './views'
 
 // Bifrost reads the screen for the agent view this time after the last chunk.
@@ -75,6 +82,8 @@ export class ChatTerminal {
   private wantFocus = false
   private lastSent: TermSize | null = null
   private lastSentAt: number | null = null
+  // True after the first read of the session size. An unfocused window reads it before it opens.
+  private sizeAsked = false
 
   private attached = false
   private opening = false
@@ -85,6 +94,8 @@ export class ChatTerminal {
 
   private resizeTimer: number | undefined
   private pendingResize: TermSize | null = null
+  private pendingBump: TermSize | null = null
+  private bumpTimer: number | undefined
   private checkTimer: number | undefined
   private focusFrame = 0
 
@@ -265,10 +276,33 @@ export class ChatTerminal {
     if (!target.ok) return
     // A visible window waits for the size of its panel. So the attach gets the correct size.
     if (this.view.visible && !this.panel) return
+    // An unfocused window opens with the session size. So it reads the size first.
+    if (!this.view.focused && !this.session && !this.sizeAsked) {
+      this.readSessionSize()
+      return
+    }
     const fit = this.currentFit()
     // The attach sends the fit of a focused window. So the focus gain needs no other send.
     if (fit) this.focusGained = false
     this.open(target, openSize({ fit, focused: this.view.focused, session: this.session }))
+  }
+
+  // Read the session size one time before the first open. A failed read gives no size.
+  private readSessionSize(): void {
+    this.sizeAsked = true
+    this.opening = true
+    this.deps.pty.sessionSize(this.sessionId).then(
+      size => this.afterSizeRead(size),
+      () => this.afterSizeRead(null),
+    )
+  }
+
+  private afterSizeRead(size: TermSize | null): void {
+    this.opening = false
+    if (this.disposed) return
+    // A size event can arrive during the read. It is newer.
+    if (size && !this.session) this.session = size
+    this.maybeAttach()
   }
 
   // Open the attach PTY. An attach also sets the size of the session (M3 Task 1).
@@ -345,23 +379,39 @@ export class ChatTerminal {
     if (decision.send && this.attached) {
       this.lastSent = decision.send
       this.lastSentAt = now
-      this.sendLater(decision.send)
+      this.sendLater(decision.send, decision.bump ?? null)
     }
     this.applyScale()
   }
 
   // Each resize causes a full redraw. So only the last size of a burst goes to the PTY.
-  private sendLater(size: TermSize): void {
+  // A bump goes first. It gives the SIGWINCH that the same size does not give.
+  private sendLater(size: TermSize, bump: TermSize | null): void {
     this.pendingResize = size
+    this.pendingBump = bump ?? this.pendingBump
     window.clearTimeout(this.resizeTimer)
     this.resizeTimer = window.setTimeout(() => {
       this.resizeTimer = undefined
       const next = this.pendingResize
+      const first = this.pendingBump
       this.pendingResize = null
+      this.pendingBump = null
       if (!next || this.disposed || !this.attached) return
-      this.lastSentAt = Date.now()
-      this.deps.pty.resize(this.viewId, next.cols, next.rows).catch(() => {})
+      if (!first) {
+        this.sendResize(next)
+        return
+      }
+      this.sendResize(first)
+      this.bumpTimer = window.setTimeout(() => {
+        this.bumpTimer = undefined
+        if (!this.disposed && this.attached) this.sendResize(next)
+      }, BUMP_GAP_MS)
     }, RESIZE_DEBOUNCE_MS)
+  }
+
+  private sendResize(size: TermSize): void {
+    this.lastSentAt = Date.now()
+    this.deps.pty.resize(this.viewId, size.cols, size.rows).catch(() => {})
   }
 
   // Zoom the terminal to fit its panel (D8: never above 1).
@@ -435,8 +485,11 @@ export class ChatTerminal {
   private stopTimers(): void {
     window.clearTimeout(this.checkTimer)
     window.clearTimeout(this.resizeTimer)
+    window.clearTimeout(this.bumpTimer)
     this.checkTimer = undefined
     this.resizeTimer = undefined
+    this.bumpTimer = undefined
     this.pendingResize = null
+    this.pendingBump = null
   }
 }

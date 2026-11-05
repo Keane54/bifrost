@@ -9,6 +9,8 @@ export interface Px {
 
 export const DEFAULT_TERM: TermSize = { cols: 120, rows: 32 }
 export const RESIZE_DEBOUNCE_MS = 150
+// The wait between the bump and the fit, so the session gets two separate SIGWINCH.
+export const BUMP_GAP_MS = 60
 // After a send, a different session size is an old read for this time.
 export const SESSION_ECHO_MS = 500
 
@@ -29,6 +31,15 @@ export interface SizeInput {
 export interface SizeDecision {
   term: TermSize
   send: TermSize | null
+  // Set only when the PTY already has the fit. A resize to the same size gives no SIGWINCH.
+  // So the window sends this size first, then send.
+  bump?: TermSize
+}
+
+// A size that differs from the fit by one row. It is never smaller than 1 x 1.
+export function bumpSize(fit: TermSize): TermSize {
+  if (fit.rows > 1) return { cols: fit.cols, rows: fit.rows - 1 }
+  return { cols: fit.cols > 1 ? fit.cols - 1 : fit.cols + 1, rows: fit.rows }
 }
 
 function same(a: TermSize | null, b: TermSize | null): boolean {
@@ -38,6 +49,11 @@ function same(a: TermSize | null, b: TermSize | null): boolean {
 export function decideSize(input: SizeInput): SizeDecision {
   const { fit, session, term, lastSent, lastSentAt, now } = input
   if (input.focused && fit && (input.focusGained || !same(fit, lastSent))) {
+    // The window takes the size back from another client. Its PTY has the fit already, so a
+    // resize to the fit gives no SIGWINCH. The bump gives one.
+    if (input.focusGained && same(fit, lastSent)) {
+      return { bump: bumpSize(fit), send: fit, term: fit }
+    }
     return { send: fit, term: fit }
   }
   if (session) {

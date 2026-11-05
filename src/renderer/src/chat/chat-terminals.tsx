@@ -62,6 +62,7 @@ export class ChatTerminals {
     this.unsubscribe = [
       pty.onData((viewId, chunk) => this.terminalOf(viewId)?.write(chunk)),
       pty.onExit((viewId, exitCode) => this.terminalOf(viewId)?.exited(exitCode)),
+      pty.onSize((viewId, size) => this.terminalOf(viewId)?.setSessionSize(size)),
     ]
   }
 

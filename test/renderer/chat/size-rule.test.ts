@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  bumpSize,
   DEFAULT_TERM,
   decideSize,
   fitScale,
@@ -35,8 +36,29 @@ describe('decideSize', () => {
   })
 
   it('the focused window sends its fit when it gains focus', () => {
-    const d = decideSize(input({ focused: true, focusGained: true, lastSent: A }))
+    const d = decideSize(input({ focused: true, focusGained: true, lastSent: B }))
     expect(d).toEqual({ send: A, term: A })
+  })
+
+  it('a focus gain with the fit in the PTY sends a different size first', () => {
+    const d = decideSize(input({ focused: true, focusGained: true, lastSent: A, session: B }))
+    expect(d).toEqual({ bump: { cols: 100, rows: 29 }, send: A, term: A })
+  })
+
+  it('a focus gain with another size in the PTY needs no bump', () => {
+    const d = decideSize(input({ focused: true, focusGained: true, lastSent: B }))
+    expect(d.bump).toBeUndefined()
+    expect(decideSize(input({ focused: true, focusGained: true })).bump).toBeUndefined()
+  })
+
+  it('a fit change without a focus gain needs no bump', () => {
+    expect(decideSize(input({ focused: true, lastSent: B })).bump).toBeUndefined()
+  })
+
+  it('the bump differs from the fit and stays at least 1 x 1', () => {
+    expect(bumpSize({ cols: 80, rows: 24 })).toEqual({ cols: 80, rows: 23 })
+    expect(bumpSize({ cols: 80, rows: 1 })).toEqual({ cols: 79, rows: 1 })
+    expect(bumpSize({ cols: 1, rows: 1 })).toEqual({ cols: 2, rows: 1 })
   })
 
   it('the focused window sends its fit when the fit changes', () => {

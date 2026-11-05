@@ -32,6 +32,7 @@ import { canAttach } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
 import { PtyManager } from './pty/pty-manager'
+import { chatSessionOf, readSessionSize, SessionSizeWatcher } from './pty/session-size'
 import { cleanEventDir, drainEventDir } from './registry/event-dir'
 import { readBranch } from './registry/git-branch'
 import { PENDING_EVENT_MS, SessionRegistry } from './registry/registry'
@@ -45,6 +46,9 @@ import { isDisplayMode } from './window/window-state'
 // A yellow box changes to red after 10 minutes.
 const ESCALATION_MS = 600_000
 
+// The terminal sends this after a resize: clear the screen, then draw it again.
+const FULL_REDRAW = '\x1b[2J'
+
 let registered = false
 let currentWindow: BrowserWindow | null = null
 let managerPromise: Promise<PtyManager | null> | null = null
@@ -53,6 +57,25 @@ let managerPromise: Promise<PtyManager | null> | null = null
 let liveManager: PtyManager | null = null
 // All PTYs belong to the page that the current window shows.
 const page = new PageScope(() => liveManager?.closeAll())
+
+// The PID of the owned row that a chat view shows, or undefined.
+function pidOfView(viewId: string): number | undefined {
+  const sessionId = chatSessionOf(viewId)
+  if (sessionId === null) return undefined
+  return pidOfSession(sessionId)
+}
+
+function pidOfSession(sessionId: string): number | undefined {
+  const row = liveService?.rows().find(r => r.sessionId === sessionId)
+  return row && row.kind === 'owned' ? row.pid : undefined
+}
+
+// Reads the session size after a redraw. It sends the size to the page when it changes.
+const sizeWatcher = new SessionSizeWatcher({
+  emit: (viewId, size) => send('pty:size', viewId, size),
+  pidOf: pidOfView,
+  read: pid => readSessionSize(execFile, pid),
+})
 // The main process sets liveService when the store loads.
 let liveService: RegistryService | null = null
 let serviceStopped = false
@@ -168,8 +191,15 @@ export function registerIpc(): void {
   managerPromise = Promise.all([claudePath, loginEnv]).then(([path, env]) => {
     if (!path) return null
     const m = new PtyManager(nodePtySpawn, path, env)
-    m.onData((viewId, chunk) => send('pty:data', viewId, chunk))
-    m.onExit((viewId, exitCode, signal) => send('pty:exit', viewId, exitCode, signal))
+    m.onData((viewId, chunk) => {
+      send('pty:data', viewId, chunk)
+      // A full redraw follows a resize by any client (M0 question 1). So read the size.
+      if (chunk.includes(FULL_REDRAW)) sizeWatcher.poke(viewId)
+    })
+    m.onExit((viewId, exitCode, signal) => {
+      sizeWatcher.forget(viewId)
+      send('pty:exit', viewId, exitCode, signal)
+    })
     liveManager = m
     return m
   })
@@ -267,7 +297,9 @@ export function registerIpc(): void {
       if (!isLivePage(e.sender, token)) {
         throw new Error('refused: the page that asked for the PTY is gone')
       }
-      return manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
+      const pid = manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
+      sizeWatcher.poke(viewId)
+      return pid
     },
   )
   ipcMain.handle('pty:write', async (_e, viewId: string, data: string) => {
@@ -278,8 +310,18 @@ export function registerIpc(): void {
     ;(await getManager())?.resize(viewId, cols, rows)
   })
   ipcMain.handle('pty:close', async (_e, viewId: string, signal?: string) => {
+    sizeWatcher.forget(viewId)
     ;(await getManager())?.close(viewId, signal)
   })
+  // The size of the session TTY. The row must be owned and have a PID. Bifrost only reads it.
+  ipcMain.handle('pty:session-size', (e, sessionId: unknown) =>
+    fromPage(e, async () => {
+      if (typeof sessionId !== 'string') return null
+      await service
+      const pid = pidOfSession(sessionId)
+      return pid === undefined ? null : readSessionSize(execFile, pid)
+    }),
+  )
 }
 
 // Make a window the target of pty:data, pty:exit and registry:update.

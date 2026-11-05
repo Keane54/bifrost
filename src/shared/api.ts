@@ -7,6 +7,7 @@ import type {
   ProjectApp,
   ProjectAppId,
   SessionRow,
+  TermSize,
 } from './types'
 
 // The type of window.bifrost. The preload script implements it.
@@ -74,5 +75,9 @@ export interface BifrostApi {
     // Each on* function returns a function that removes only that listener.
     onData(cb: (viewId: string, chunk: string) => void): () => void
     onExit(cb: (viewId: string, exitCode: number, signal?: number) => void): () => void
+    // The main process sends the session size after a change that it reads from the TTY.
+    onSize(cb: (viewId: string, size: TermSize) => void): () => void
+    // The size of the session TTY, or null when the row is not owned or has no PID.
+    sessionSize(sessionId: string): Promise<TermSize | null>
   }
 }
