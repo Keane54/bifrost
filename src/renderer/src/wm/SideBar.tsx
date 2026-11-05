@@ -1,5 +1,13 @@
 import { Button } from '@base-ui/react/button'
-import { Crosshair, List, ListPlus, type LucideIcon, Plug, RotateCcw } from 'lucide-react'
+import {
+  Crosshair,
+  List,
+  ListPlus,
+  type LucideIcon,
+  Plug,
+  RotateCcw,
+  SquarePlus,
+} from 'lucide-react'
 import { memo } from 'react'
 import {
   actionLabel,
@@ -116,6 +124,7 @@ function SideBar(): React.JSX.Element {
       <SideButton icon={Crosshair} label='Selected Item' onClick={() => open('selected-item')} />
       <SideButton icon={Plug} label='Integration' onClick={() => open('integration')} />
       <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />
+      <GlobalButton action='new-session' icon={SquarePlus} />
       <GlobalButton action='resume-all' icon={RotateCcw} />
       {minimised.length > 0 && <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />}
       <div className='flex min-h-0 flex-col items-center gap-1 overflow-y-auto'>

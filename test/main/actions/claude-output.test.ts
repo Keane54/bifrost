@@ -42,7 +42,7 @@ describe('claude output', () => {
 
   test('trustMessage tells the user to accept the trust prompt one time', () => {
     expect(trustMessage('/p')).toBe(
-      'This directory is not trusted. Run claude in /p one time and accept the trust prompt. Then try again.',
+      "Claude Code doesn't trust this folder yet. Run claude in /p once, accept the trust prompt, then try again.",
     )
   })
 

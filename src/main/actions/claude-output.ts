@@ -25,7 +25,7 @@ export function isTrustError(text: string): boolean {
 
 // The instruction for the trust error (spec 8.9).
 export function trustMessage(dir: string): string {
-  return `This directory is not trusted. Run claude in ${dir} one time and accept the trust prompt. Then try again.`
+  return `Claude Code doesn't trust this folder yet. Run claude in ${dir} once, accept the trust prompt, then try again.`
 }
 
 // The first start of the background service writes this line to stderr (M0, M4 Task 1).

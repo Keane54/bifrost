@@ -18,6 +18,7 @@ import { useRegistry } from '../data/registry'
 import { errorMessage } from '../lib/error-message'
 import { DEFAULT_SLASH_FAVOURITES, rememberSlash } from '../sessions/history'
 import { useHistory } from '../sessions/history-context'
+import NewSessionDialog from '../sessions/NewSessionDialog'
 import { useWmControls, useWmState } from '../wm/context'
 import { frameOf, type WmState } from '../wm/state'
 import {
@@ -64,6 +65,8 @@ export interface ActionsValue {
   error: string | null
   // A message for the user after an action, or null.
   notice: string | null
+  // The New session dialog is open.
+  newSessionOpen: boolean
   // The send box of this session takes the focus.
   focusRequest: FocusRequest | null
   // A send box used the request with this number. The request goes away.
@@ -169,6 +172,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null)
   const focusCount = useRef(0)
   const [renameFor, setRenameFor] = useState<string | null>(null)
+  const [newSessionOpen, setNewSessionOpen] = useState(false)
   // run reads the data of the last render from this ref. So it checks the current row.
   const latest = useRef({ apps, history, rows, selectedId, state })
 
@@ -213,6 +217,8 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const closeRename = useCallback((sessionId: string) => {
     setRenameFor(cur => (cur === sessionId ? null : cur))
   }, [])
+
+  const closeNewSession = useCallback(() => setNewSessionOpen(false), [])
 
   const clearFocusRequest = useCallback((n: number) => {
     setFocusRequest(cur => (cur?.n === n ? null : cur))
@@ -367,8 +373,10 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
 
   const runGlobal = useCallback(
     (id: GlobalActionId) => {
-      // New session comes in Task 9.
-      if (id !== 'resume-all') return
+      if (id === 'new-session') {
+        setNewSessionOpen(true)
+        return
+      }
       const ctx = globalOf(latest.current.rows, resumeAllRef.current)
       if (!globalActionState('resume-all', ctx).enabled) return
       resumeAllRef.current = true
@@ -397,6 +405,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       error,
       focusRequest,
       globalContext: () => globalOf(rows, resumeAllRunning),
+      newSessionOpen,
       notice,
       run,
       runGlobal,
@@ -408,6 +417,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       error,
       focusRequest,
       history.recentSlash,
+      newSessionOpen,
       notice,
       resumeAllRunning,
       rows,
@@ -428,6 +438,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           sessionId={renameFor}
         />
       )}
+      <NewSessionDialog onClose={closeNewSession} open={newSessionOpen} />
     </ActionsContext>
   )
 }
