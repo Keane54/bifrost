@@ -4,10 +4,10 @@ import ChatPanel from '../chat/ChatPanel'
 import { chatSessionId } from '../chat/views'
 import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
-import { PRIO_TEXT, TONE_TEXT } from '../overview/cells'
-import { stateTone } from '../overview/format'
+import { PRIO_TEXT } from '../overview/cells'
 import OverviewPanel from '../overview/OverviewPanel'
 import { useOverview } from '../overview/overviews-context'
+import { SessionIcon } from '../overview/SessionIcon'
 import { panelKind } from '../wm/state'
 import IntegrationPanel from './IntegrationPanel'
 import SelectedItemPanel from './SelectedItemPanel'
@@ -43,19 +43,14 @@ function OverviewTitle({ panelId }: { panelId: string }): React.JSX.Element {
   )
 }
 
-// A chat title shows a dot in the colour of the state, the name and the priority (spec 8.5).
+// A chat title shows the session icon, the name and the priority (spec 8.5).
 function ChatTitle({ panelId }: { panelId: string }): React.JSX.Element {
   const { rows } = useRegistry()
   const id = chatSessionId(panelId)
   const row = rows.find(r => r.sessionId === id)
   return (
     <span className='inline-flex max-w-full items-center gap-1.5'>
-      {row && (
-        <span
-          aria-hidden={true}
-          className={cx('size-2 shrink-0 rounded-full bg-current', TONE_TEXT[stateTone(row)])}
-        />
-      )}
+      {row && <SessionIcon row={row} size={16} />}
       <span className='min-w-0 truncate'>{panelTitle(panelId, rows)}</span>
       {row?.priority && (
         <span className={cx('shrink-0', PRIO_TEXT[row.priority])}>{row.priority}</span>

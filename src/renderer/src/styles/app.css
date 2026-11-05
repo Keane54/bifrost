@@ -36,6 +36,16 @@
   --color-prio-4: #3fbfb0;
   --color-prio-5: #7fc77a;
 
+  /* The colours of the projects. None is yellow, red, orange or grey (spec 8.3). */
+  --color-project-1: #a78bfa;
+  --color-project-2: #60a5fa;
+  --color-project-3: #2dd4bf;
+  --color-project-4: #4ade80;
+  --color-project-5: #e879f9;
+  --color-project-6: #818cf8;
+  --color-project-7: #38bdf8;
+  --color-project-8: #a3d63a;
+
   --font-ui: "Saira Semi Condensed", -apple-system, system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
   --font-narrow: "SF Compact Text", "SF Compact", -apple-system, system-ui, sans-serif;

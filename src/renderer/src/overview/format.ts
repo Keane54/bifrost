@@ -3,11 +3,15 @@ import type { SessionRow, SessionState } from '../../../shared/types'
 
 const WORKTREE_TAIL = /\/\.claude\/worktrees\/[^/]+(\/.*)?$/
 
+// Give the working directory without a trailing slash.
+// A Claude worktree path gives its repository.
+export function repoPath(cwd: string): string {
+  return cwd.replace(/\/+$/, '').replace(WORKTREE_TAIL, '')
+}
+
 // Give the last two parts of the working directory. A Claude worktree path gives its repository.
 export function projectLabel(cwd: string): string {
-  const parts = cwd
-    .replace(/\/+$/, '')
-    .replace(WORKTREE_TAIL, '')
+  const parts = repoPath(cwd)
     .split('/')
     .filter(part => part !== '')
   if (parts.length === 0) return cwd === '' ? '' : '/'

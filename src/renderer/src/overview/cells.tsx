@@ -1,7 +1,5 @@
 // The cells of the Overview rows, and the class lookups for the colour tokens.
-import { Bot, SquareTerminal } from 'lucide-react'
 import type { Priority, SessionRow } from '../../../shared/types'
-import { cx } from '../lib/cx'
 import type { ColumnId } from './columns'
 import {
   formatAge,
@@ -12,6 +10,7 @@ import {
   stateTone,
   type Tone,
 } from './format'
+import { SessionIcon } from './SessionIcon'
 
 // Tailwind finds only full class names in the source. So these lookups hold full names.
 // The index is the colour of the tab (0 to 5).
@@ -49,26 +48,6 @@ export const TONE_TEXT: Record<Tone, string> = {
   yellow: 'text-box-yellow',
 }
 
-// The kind icon in a 16 px square. The yellow box and the red box are the border of the square.
-// An external row shows a generic terminal icon until M4 (D9).
-export function KindBox({ row }: { row: SessionRow }): React.JSX.Element {
-  const Icon = row.kind === 'owned' ? Bot : SquareTerminal
-  return (
-    <span
-      className={cx(
-        'flex size-4 shrink-0 items-center justify-center border-2',
-        row.box === 'yellow' && 'border-box-yellow',
-        row.box === 'red' && 'border-box-red',
-        row.box === 'none' && 'border-transparent',
-        row.flashing && 'animate-box-flash',
-      )}
-      title={row.kind === 'owned' ? 'Owned session' : 'External session'}
-    >
-      <Icon aria-hidden={true} size={12} />
-    </span>
-  )
-}
-
 // The content of one cell. The age in the Last activity column uses the time now.
 export function CellContent({
   column,
@@ -81,7 +60,7 @@ export function CellContent({
 }): React.ReactNode {
   switch (column) {
     case 'kind':
-      return <KindBox row={row} />
+      return <SessionIcon row={row} size={20} />
     case 'name':
       return row.name
     case 'priority':

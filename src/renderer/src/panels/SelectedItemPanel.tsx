@@ -18,6 +18,7 @@ import {
   stateLabel,
   stateTone,
 } from '../overview/format'
+import { SessionIcon } from '../overview/SessionIcon'
 
 const LABEL = 'text-text-dim'
 
@@ -30,8 +31,9 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
   const lines = previewLines(row.lastMessage, 3)
   return (
     <div className='flex min-w-0 select-text flex-col gap-2 p-3 text-xs'>
-      {/* 1. The name, the state and the priority. */}
-      <div className='flex min-w-0 items-baseline gap-2'>
+      {/* 1. The icon, the name, the state and the priority. */}
+      <div className='flex min-w-0 items-center gap-2'>
+        <SessionIcon row={row} size={22} />
         <span className='min-w-0 truncate font-semibold text-[13px]'>{row.name}</span>
         <span className={cx('shrink-0', TONE_TEXT[stateTone(row)])}>{stateLabel(row.state)}</span>
         <span
