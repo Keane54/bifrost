@@ -11,7 +11,8 @@ export async function writeJsonAtomic(file: string, data: unknown): Promise<void
     await writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
     await rename(temporary, file)
   } catch (error) {
-    await rm(temporary, { force: true })
+    // A failed clean-up must not hide the first error.
+    await rm(temporary, { force: true }).catch(() => {})
     throw error
   }
 }

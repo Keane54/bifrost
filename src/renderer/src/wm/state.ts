@@ -262,6 +262,7 @@ export function wmReducer(state: WmState, action: WmAction): WmState {
     case 'bounds': {
       const { bounds } = action
       if (!bounds || !Number.isFinite(bounds.w) || !Number.isFinite(bounds.h)) return state
+      if (bounds.w < 1 || bounds.h < 1) return state
       if (bounds.w === state.bounds.w && bounds.h === state.bounds.h) return state
       const frames = state.frames.map(f => {
         const rect = clampRect(f.rect, bounds, MIN_SIZE)

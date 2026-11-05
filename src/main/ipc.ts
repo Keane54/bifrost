@@ -164,7 +164,7 @@ export function registerIpc(): void {
   const service = startService(run, paths)
   // The UI store opens one time. The handlers use the same store.
   const uiStore = openUiStore(join(app.getPath('userData'), 'ui-state.json'))
-  ipcMain.handle('ui:load', e => fromPage(e, async () => (await uiStore).data))
+  ipcMain.handle('ui:load', e => fromPage(e, async () => (await uiStore).load()))
   ipcMain.handle('ui:save', (e, data: unknown) =>
     fromPage(e, async () => (await uiStore).save(data)),
   )

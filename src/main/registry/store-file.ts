@@ -38,7 +38,9 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   return { names, started }
 }
 
-// Write the store with an atomic write.
+// Write the store to a temporary name in the same directory. Then rename the file.
+// So a crash during the write cannot leave a part of a file.
+// writeJsonAtomic does the work.
 export async function saveStore(file: string, store: RegistryStore): Promise<void> {
   await writeJsonAtomic(file, store)
 }

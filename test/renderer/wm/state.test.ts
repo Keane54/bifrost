@@ -317,4 +317,16 @@ describe('wm state', () => {
     ]
     for (const a of actions) expect(() => wmReducer(second, a)).not.toThrow()
   })
+
+  it('bounds with a width or height under 1 changes nothing', () => {
+    const s = run([open('integration')])
+    for (const b of [
+      { h: 800, w: 0 },
+      { h: 0, w: 1200 },
+      { h: -5, w: -5 },
+      { h: 0.5, w: 900 },
+    ]) {
+      expect(wmReducer(s, { bounds: b, type: 'bounds' })).toBe(s)
+    }
+  })
 })
