@@ -465,7 +465,8 @@ Dialog rules:
 ### 8.10 Theme
 
 - The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur.
-- Bifrost has no colour accent. A selected row gets a light neutral highlight. The active tab has white text and a white underline.
+- The accent colour is a light cyan, used sparingly, as in EVE. The top border of each panel is a 1 px cyan line with a soft glow into the title bar; the focused panel has the full glow, other panels a dim line. A click on a button, tab or row gives a short, low-opacity cyan tint.
+- A selected row gets a light neutral highlight, not cyan. The active tab has white text and a white underline.
 - The UI font is Saira Semi Condensed (OFL licence), bundled with the app. Shentox needs a paid licence, so Bifrost does not use it now.
 - Bifrost uses its own icons and fonts. It does not copy EVE art, icons or fonts.
 - One file holds all colour tokens.
@@ -885,6 +886,6 @@ The user gave these directions after he used the M2 build:
 2. The row icon shows the kind of the session, in a colour for each project. The box is four corner brackets around the icon (section 8.3).
 3. A panel snaps only on release, with small arrow marks and no long guide line (section 8.1).
 4. A panel has no opacity control. Only the panel background is translucent, and one Settings row sets it (sections 8.1 and 12).
-5. The theme follows the neutral EVE look, with no colour accent (section 8.10).
+5. The theme follows the neutral EVE look, with a light cyan accent on the panel top borders and for click feedback (section 8.10).
 6. Bifrost tries a Claude Code mod as an option that replaces the hooks and the statusLine wrapper. The poll of `claude agents --json` stays as the base.
 7. A Watchlist panel holds the sessions that you track, in your drag order and your colours (section 8.12). It comes in M4.
