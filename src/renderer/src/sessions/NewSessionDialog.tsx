@@ -11,7 +11,7 @@ import {
 } from '../../../shared/new-session'
 import { actionLabel } from '../actions/action-model'
 import { useActions } from '../actions/actions-context'
-import { DIALOG_BACKDROP, DIALOG_BUTTON, DIALOG_POPUP } from '../actions/ConfirmDialog'
+import { DIALOG_BACKDROP, DIALOG_BUTTON, DIALOG_POPUP_WIDE } from '../actions/ConfirmDialog'
 import { friendlyError } from '../actions/errors'
 import { chatPanelId } from '../chat/views'
 import { useRegistry } from '../data/registry'
@@ -48,6 +48,9 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
   const [info, setInfo] = useState<DirInfo | null>(null)
   const [reason, setReason] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [checkFailed, setCheckFailed] = useState(false)
+  // True from the first submit at once, before the next render.
+  const startingRef = useRef(false)
   const listId = useId()
   const cwdRef = useRef<HTMLInputElement>(null)
   const dirs = recentDirectories(history, rows)
@@ -55,6 +58,7 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
   // Check the folder 300 ms after the last change. A change clears the old result first.
   useEffect(() => {
     setInfo(null)
+    setCheckFailed(false)
     if (!form.cwd.startsWith('/')) return
     let active = true
     const timer = window.setTimeout(() => {
@@ -63,7 +67,7 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
           if (active) setInfo(result)
         },
         () => {
-          // The check failed. The checkbox stays off, with the reason that the check runs.
+          if (active) setCheckFailed(true)
         },
       )
     }, DIR_CHECK_MS)
@@ -73,27 +77,32 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
     }
   }, [form.cwd])
 
-  const worktree = worktreeState(info)
+  const worktree = worktreeState(info, undefined, checkFailed)
 
   async function submit(): Promise<void> {
-    if (busy) return
+    if (busy || startingRef.current) return
     const result = toSpec(form)
     if (!result.ok) {
       setReason(result.reason)
       return
     }
+    startingRef.current = true
     setBusy(true)
     setReason(null)
+    let sessionId: string
     try {
-      const { sessionId } = await window.bifrost.sessions.create(result.spec)
-      update(h => rememberSession(h, result.spec))
-      onClose()
-      select(sessionId)
-      wmDispatch({ panelId: chatPanelId(sessionId), type: 'open' })
+      sessionId = (await window.bifrost.sessions.create(result.spec)).sessionId
     } catch (err) {
       setReason(friendlyError(errorMessage(err)))
+      startingRef.current = false
       setBusy(false)
+      return
     }
+    // The session exists now. A second submit would start a copy, so the fields stay off.
+    update(h => rememberSession(h, result.spec))
+    onClose()
+    select(sessionId)
+    wmDispatch({ panelId: chatPanelId(sessionId), type: 'open' })
   }
 
   async function browse(): Promise<void> {
@@ -116,7 +125,7 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
       <Dialog.Portal>
         <Dialog.Backdrop className={DIALOG_BACKDROP} />
         <Dialog.Popup
-          className={cx(DIALOG_POPUP, 'max-w-[440px]')}
+          className={DIALOG_POPUP_WIDE}
           data-new-session-dialog={true}
           initialFocus={cwdRef}
         >

@@ -9,6 +9,8 @@ import { type ConfirmState, confirmLabel, confirmStep } from './confirm-step'
 // The style of the menu popup of M3, with 13 px text and a maximum width of 420 px.
 export const DIALOG_POPUP =
   'fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-32px)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 border border-panel-edge bg-title p-4 text-[13px] text-text outline-none backdrop-blur-md'
+// The same style with a maximum width of 440 px, for the New session dialog.
+export const DIALOG_POPUP_WIDE = DIALOG_POPUP.replace('max-w-[420px]', 'max-w-[440px]')
 export const DIALOG_BACKDROP = 'fixed inset-0 z-50 bg-bg/40'
 // A press gives a short cyan tint. A hover stays neutral (spec 8.10).
 export const DIALOG_BUTTON =

@@ -4,6 +4,7 @@ import {
   formReducer,
   initialForm,
   REASON_DIR_CHECK,
+  REASON_DIR_CHECK_FAILED,
   REASON_DIR_MISSING,
   REASON_NO_GIT,
   REASON_WORKTREE_OFF,
@@ -65,6 +66,15 @@ describe('new session form', () => {
     expect(toSpec(form)).toEqual({ ok: false, reason: 'Choose a project folder.' })
     const ok = toSpec({ ...form, cwd: '/p/app', name: 'app-a1b2' })
     expect(ok).toMatchObject({ ok: true, spec: { cwd: '/p/app', name: 'app-a1b2' } })
+  })
+
+  it('worktreeState gives the failed-check reason when the folder check failed', () => {
+    expect(REASON_DIR_CHECK_FAILED).toBe("Bifrost couldn't check this folder.")
+    expect(worktreeState(null, true, true)).toEqual({
+      enabled: false,
+      reason: REASON_DIR_CHECK_FAILED,
+    })
+    expect(worktreeState(null, false, true).reason).toBe(REASON_WORKTREE_OFF)
   })
 
   it('worktreeState gives each reason, and enabled for a git directory', () => {

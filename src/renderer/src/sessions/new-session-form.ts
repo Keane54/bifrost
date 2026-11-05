@@ -5,6 +5,7 @@ import {
   type ModelChoice,
   type NewSessionSpec,
   REASON_DIR_CHECK,
+  REASON_DIR_CHECK_FAILED,
   REASON_DIR_MISSING,
   REASON_NO_GIT,
   REASON_WORKTREE_OFF,
@@ -13,7 +14,13 @@ import {
 import type { ActionState } from '../actions/action-model'
 import type { History } from './history'
 
-export { REASON_DIR_CHECK, REASON_DIR_MISSING, REASON_NO_GIT, REASON_WORKTREE_OFF }
+export {
+  REASON_DIR_CHECK,
+  REASON_DIR_CHECK_FAILED,
+  REASON_DIR_MISSING,
+  REASON_NO_GIT,
+  REASON_WORKTREE_OFF,
+}
 
 const MAX_BASE = 40
 
@@ -101,8 +108,10 @@ export function toSpec(
 export function worktreeState(
   info: DirInfo | null,
   worktreeOk: boolean = WORKTREE_OK,
+  checkFailed = false,
 ): ActionState {
   if (!worktreeOk) return { enabled: false, reason: REASON_WORKTREE_OFF }
+  if (checkFailed) return { enabled: false, reason: REASON_DIR_CHECK_FAILED }
   if (info === null) return { enabled: false, reason: REASON_DIR_CHECK }
   if (info.kind !== 'dir') return { enabled: false, reason: REASON_DIR_MISSING }
   if (!info.git) return { enabled: false, reason: REASON_NO_GIT }

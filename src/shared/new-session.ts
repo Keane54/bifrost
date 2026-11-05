@@ -103,6 +103,7 @@ export interface DirInfo {
 export const REASON_WORKTREE_OFF =
   "Worktrees don't work with background sessions in this version of Claude Code."
 export const REASON_DIR_CHECK = 'Checking the folder...'
+export const REASON_DIR_CHECK_FAILED = "Bifrost couldn't check this folder."
 export const REASON_DIR_MISSING = "This folder doesn't exist."
 export const REASON_NO_GIT = "This folder isn't in a git repository, so it can't use a worktree."
 
