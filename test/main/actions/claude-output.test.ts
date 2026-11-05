@@ -7,7 +7,7 @@ import {
   SHORT_ID,
   trustMessage,
 } from '../../../src/main/actions/claude-output'
-import { KEPT_DISCARD, KEPT_STDOUT } from '../../fixtures/claude-rm'
+import { KEPT_DISCARD, KEPT_SHORT_ID, KEPT_STDOUT, KEPT_WORKTREE } from '../../fixtures/claude-rm'
 
 // The dash (U+2014) of the resume output. Biome writes a \u escape as the character itself.
 const DASH = String.fromCharCode(0x2014)
@@ -70,8 +70,35 @@ describe('claude output', () => {
     )
   })
 
-  test('parseKept gives the discard value of the real claude rm output', () => {
-    expect(parseKept(KEPT_STDOUT)).toEqual({ discard: KEPT_DISCARD })
+  test('parseKept gives the discard value, the short ID and the worktree of the real output', () => {
+    expect(parseKept(KEPT_STDOUT)).toEqual({
+      discard: KEPT_DISCARD,
+      shortId: KEPT_SHORT_ID,
+      worktree: KEPT_WORKTREE,
+    })
+  })
+
+  test('parseKept gives null when the kept line does not give the short ID and the worktree', () => {
+    const [kept, ...rest] = KEPT_STDOUT.split('\n')
+    const OPEN = String.fromCharCode(0x201c)
+    const CLOSE = String.fromCharCode(0x201d)
+    const withKept = (line: string) => [line, ...rest].join('\n')
+    for (const line of [
+      `kept ${KEPT_SHORT_ID}`,
+      kept.replace(KEPT_SHORT_ID, KEPT_SHORT_ID.toUpperCase()),
+      kept.replace(KEPT_SHORT_ID, KEPT_SHORT_ID.slice(1)),
+      kept.replace(KEPT_SHORT_ID, `${KEPT_SHORT_ID}0`),
+      kept.replace(DASH, '-'),
+      kept.replace(OPEN, '"').replace(CLOSE, '"'),
+      kept.replace(KEPT_WORKTREE, ''),
+      kept.replace(CLOSE, ''),
+      `${kept} and more`,
+      kept.replace('its worktree is still at', 'its worktree is at'),
+    ]) {
+      expect(parseKept(withKept(line))).toBeNull()
+    }
+    // Two kept lines give no value.
+    expect(parseKept(withKept(`${kept}\n${kept}`))).toBeNull()
   })
 
   test('parseKept gives null for a changed value', () => {

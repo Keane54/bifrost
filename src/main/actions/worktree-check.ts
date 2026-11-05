@@ -57,6 +57,23 @@ export async function checkWorktree(cwd: string, exec: ExecFn): Promise<Worktree
   }
 }
 
+// A commit ID from git rev-parse.
+const COMMIT = /^[0-9a-f]{40}$/
+
+// The check of a Delete after the stop: the counts and the HEAD commit of the worktree.
+// The discard value of claude rm starts with the HEAD commit. null means that a git command
+// failed, or that the folder is not in a worktree.
+export async function checkWorktreeHead(
+  worktree: string,
+  exec: ExecFn,
+): Promise<(WorktreeCheck & { head: string }) | null> {
+  const check = await checkWorktree(worktree, exec)
+  if (check === null || check.worktree === null) return null
+  const head = (await git(exec, ['-C', check.worktree, 'rev-parse', 'HEAD']))?.trim()
+  if (head === undefined || !COMMIT.test(head)) return null
+  return { ...check, head }
+}
+
 export function createWorktreeActions(deps: WorktreeActionDeps): WorktreeActions {
   // The row of a Delete. An unknown session and an external session are refused.
   const find = (sessionId: unknown): SessionRow => {

@@ -349,6 +349,23 @@ describe('updates and the store', () => {
     expect(service.setPriority('nope', 2)).toBe(false)
   })
 
+  test('rememberWorktree sends an update and saves the store', async () => {
+    const saveStore = vi.fn(async () => {})
+    const WT = '/r/.claude/worktrees/fix-a'
+    const { service, updates } = startService(
+      fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }),
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    saveStore.mockClear()
+    expect(service.rememberWorktree('s1', WT)).toBe(true)
+    expect(updates.at(-1)?.rows[0].worktree).toBe(WT)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(saveStore).toHaveBeenCalledWith(
+      expect.objectContaining({ worktrees: [{ path: WT, sessionId: 's1' }] }),
+    )
+    expect(service.rememberWorktree('nope', WT)).toBe(false)
+  })
+
   test('the watch changes send an update and save the store', async () => {
     const saveStore = vi.fn(async () => {})
     const entries = [bg(), bg({ id: 'bb', name: 'beta', pid: 6, sessionId: 's2' })]

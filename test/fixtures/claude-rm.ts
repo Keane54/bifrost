@@ -6,9 +6,14 @@ const DASH = String.fromCharCode(0x2014)
 const OPEN_QUOTE = String.fromCharCode(0x201c)
 const CLOSE_QUOTE = String.fromCharCode(0x201d)
 
-// The value of --discard-unpushed in the output.
-export const KEPT_DISCARD =
-  'f7698d38614ba22b41f996fab73124361d2fe389@598a160a880168020f78fdeda23f998a'
+// The short ID, the worktree and the HEAD commit of the worktree in the output.
+export const KEPT_SHORT_ID = 'abd71478'
+export const KEPT_WORKTREE =
+  '/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-rmx'
+export const KEPT_HEAD = 'f7698d38614ba22b41f996fab73124361d2fe389'
+
+// The value of --discard-unpushed in the output. The first part is the HEAD commit.
+export const KEPT_DISCARD = `${KEPT_HEAD}@598a160a880168020f78fdeda23f998a`
 
 export const KEPT_STDOUT = [
   `kept abd71478 ${DASH} its worktree is still at ${OPEN_QUOTE}/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-rmx${CLOSE_QUOTE}`,

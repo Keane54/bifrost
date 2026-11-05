@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { OPEN } from '../../../src/main/actions/actions'
 import {
   checkWorktree,
+  checkWorktreeHead,
   createWorktreeActions,
   worktreeRoot,
 } from '../../../src/main/actions/worktree-check'
@@ -186,5 +187,47 @@ describe('the stored worktree of a stopped session', () => {
     })
     await a.openWorktree('s1')
     expect(exec).toHaveBeenCalledWith(OPEN, [WT], { timeoutMs: 10000 })
+  })
+})
+
+describe('checkWorktreeHead', () => {
+  const HEAD = 'f7698d38614ba22b41f996fab73124361d2fe389'
+
+  it('gives the counts and the HEAD commit of the worktree', async () => {
+    const exec = fake([...good(), ok(`${HEAD}\n`)])
+    expect(await checkWorktreeHead(WT, exec)).toEqual({
+      branch: 'worktree-fix-a',
+      changedFiles: 2,
+      head: HEAD,
+      unmergedCommits: 3,
+      worktree: WT,
+    })
+    expect(exec.mock.calls.at(-1)).toEqual([
+      'git',
+      ['-C', WT, 'rev-parse', 'HEAD'],
+      { timeoutMs: 5000 },
+    ])
+  })
+
+  it('gives null when the HEAD read fails or gives no commit', async () => {
+    const fail: ExecResult = { code: 128, stderr: 'fatal', stdout: '' }
+    const timeout: ExecResult = { code: 0, stderr: '', stdout: '', timedOut: true }
+    for (const last of [
+      fail,
+      timeout,
+      new Error('spawn'),
+      ok(''),
+      ok('abc\n'),
+      ok(HEAD.toUpperCase()),
+    ]) {
+      expect(await checkWorktreeHead(WT, fake([...good(), last]))).toBeNull()
+    }
+  })
+
+  it('gives null for a failed check and for a folder outside .claude/worktrees', async () => {
+    expect(await checkWorktreeHead(WT, fake([{ code: 1, stderr: '', stdout: '' }]))).toBeNull()
+    const exec = fake([])
+    expect(await checkWorktreeHead('/r', exec)).toBeNull()
+    expect(exec).not.toHaveBeenCalled()
   })
 })

@@ -15,7 +15,7 @@ import {
   worktreeName,
 } from '../../shared/new-session'
 import type { ResumeAllResult, SeenCounts, SessionRow, WorktreeCheck } from '../../shared/types'
-import { worktreeOf } from '../../shared/worktree'
+import { worktreeOf, worktreeRoot } from '../../shared/worktree'
 import type { ExecResult, RunClaude } from '../claude/cli'
 import { UUID_PATTERN } from '../integration/scripts'
 import {
@@ -93,8 +93,11 @@ export interface SessionActionDeps {
   // The executable path of the process, or null when ps cannot read it.
   processName(pid: number): Promise<string | null>
   dirInfo(dir: string): Promise<DirInfo>
-  // The unmerged-work check of a worktree root (worktree-check.ts). null means a git failure.
-  checkWorktree(worktree: string): Promise<WorktreeCheck | null>
+  // The unmerged-work check and the HEAD commit of a worktree root (checkWorktreeHead in
+  // worktree-check.ts). null means a git failure.
+  checkWorktree(worktree: string): Promise<(WorktreeCheck & { head: string }) | null>
+  // Store the worktree root that claude rm names, for a row whose worktree Bifrost does not know.
+  rememberWorktree(sessionId: string, worktree: string): void
   // True when the transcript of the session has a user message. A read error gives true.
   hasMessages(sessionId: string): Promise<boolean>
 }
@@ -168,7 +171,8 @@ function checkTakeControl(row: SessionRow): void {
   if (row.state !== 'idle' && !yellow) throw new Error(REFUSED_NOT_IDLE)
 }
 
-// The check counts from the renderer. null and a missing value mean that no check was shown.
+// The check counts from the renderer. null and a missing value mean that the dialog showed no
+// check.
 // Each count must be an integer of 0 or more.
 function seenOf(seen: unknown): SeenCounts | null {
   if (seen === null || seen === undefined) return null
@@ -185,6 +189,11 @@ function resumeFailed(row: SessionRow | undefined): string {
   const shortId = row?.shortId
   if (shortId === undefined || !SHORT_ID.test(shortId)) return REASON_RESUME_FAILED
   return `${REASON_RESUME_FAILED} Run claude logs ${shortId} to see the cause.`
+}
+
+// Remove one "/" at the end of a path.
+function withoutSlash(path: string): string {
+  return path.endsWith('/') ? path.slice(0, -1) : path
 }
 
 // True when the last part of the process path is "claude" (D6).
@@ -249,9 +258,12 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   }
 
   // Run claude rm. It keeps a worktree that has commits on no remote, and prints the value
-  // that discards them (M4 controller check). Bifrost discards only when the Delete dialog
-  // showed a check of the worktree, and a new check after the stop finds no more commits and
-  // no more changed files. The discard value comes only from parseKept.
+  // that discards them (M4 controller check). Bifrost discards only when all of these apply:
+  // - The Delete dialog showed a check of the worktree.
+  // - The kept text names the short ID of the row and the worktree that Bifrost checks.
+  // - A new check after the stop finds no more commits and no more changed files.
+  // - The HEAD commit of the worktree is the commit in the discard value.
+  // The discard value comes only from parseKept.
   const removeSession = async (
     run: RunClaude,
     row: SessionRow,
@@ -262,15 +274,26 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (result.code === 0) return
     const kept = parseKept(result.stdout)
     if (kept === null) throw new Error(failure(result, 'claude rm'))
+    const keptPath = withoutSlash(kept.worktree)
     const worktree = worktreeOf(row)
-    if (seen === null || worktree === null) throw new Error(REFUSED_KEPT)
+    if (worktree === null) {
+      // The next Delete can then check this worktree and offer Open worktree.
+      const root = worktreeRoot(keptPath)?.worktree
+      if (kept.shortId === shortId && root === keptPath) deps.rememberWorktree(row.sessionId, root)
+      throw new Error(REFUSED_KEPT)
+    }
+    if (seen === null) throw new Error(REFUSED_KEPT)
+    if (kept.shortId !== shortId || keptPath !== withoutSlash(worktree)) {
+      throw new Error(REFUSED_WORKTREE_CHANGED)
+    }
     const now = await deps.checkWorktree(worktree)
-    const more =
+    const changed =
       now === null ||
       now.worktree === null ||
       now.unmergedCommits > seen.unmergedCommits ||
-      now.changedFiles > seen.changedFiles
-    if (more) throw new Error(REFUSED_WORKTREE_CHANGED)
+      now.changedFiles > seen.changedFiles ||
+      now.head !== kept.discard.split('@')[0]
+    if (changed) throw new Error(REFUSED_WORKTREE_CHANGED)
     const discard = await run(['rm', shortId, '--discard-unpushed', kept.discard], {
       timeoutMs: RUN_TIMEOUT_MS,
     })

@@ -33,25 +33,44 @@ export function trustMessage(dir: string): string {
 const SERVICE_BANNER = /^Starting background service/
 
 // "claude rm" keeps a worktree that has commits on no remote. Then it exits 1 and prints a line
-// that starts with "kept <short id>" and a command with "--discard-unpushed <value>"
-// (M4 controller check, Claude Code 2.1.318). The value goes into a claude argument. So it must
-// be 40 hex digits, "@" and 32 hex digits, and nothing more.
-const KEPT_LINE = /^kept /
+// "kept <short id> \u2014 its worktree is still at \u201c<path>\u201d" and a command with
+// "--discard-unpushed <value>" (M4 controller check, Claude Code 2.1.318). The value goes into a
+// claude argument. So it must be 40 hex digits, "@" and 32 hex digits, and nothing more.
+// The source holds no em dash, so the special characters are written as codes.
+const DASH = String.fromCharCode(0x2014)
+const OPEN_QUOTE = String.fromCharCode(0x201c)
+const CLOSE_QUOTE = String.fromCharCode(0x201d)
+const KEPT_LINE = new RegExp(
+  `^kept ([0-9a-f]{8}) ${DASH} its worktree is still at ${OPEN_QUOTE}([^${OPEN_QUOTE}${CLOSE_QUOTE}]+)${CLOSE_QUOTE}$`,
+)
 const DISCARD_FLAG = /--discard-unpushed (\S+)/g
 const DISCARD_VALUE = /^[0-9a-f]{40}@[0-9a-f]{32}$/
 
-// The discard value of a "claude rm" refusal, or null. Text without a kept line, without the
-// flag, with a value of a different form or with two different values gives null.
-export function parseKept(stdout: string): { discard: string } | null {
+// What a "claude rm" refusal gives: the discard value, and the short ID and the worktree that
+// the kept line names.
+export interface KeptWorktree {
+  discard: string
+  shortId: string
+  worktree: string
+}
+
+// Read a "claude rm" refusal. This gives null for text without exactly one line that starts with
+// "kept ", for a kept line of a different form, for text without the flag, for a value of a
+// different form and for two different values.
+export function parseKept(stdout: string): KeptWorktree | null {
   const lines = stdout.split('\n')
-  if (!lines.some(line => KEPT_LINE.test(line))) return null
+  const keptLines = lines.filter(line => line.startsWith('kept '))
+  if (keptLines.length !== 1) return null
+  const kept = KEPT_LINE.exec(keptLines[0] as string)
+  if (kept === null) return null
   const values = new Set<string>()
   for (const line of lines) {
     for (const match of line.matchAll(DISCARD_FLAG)) values.add(match[1] as string)
   }
   if (values.size !== 1) return null
   const [value] = values
-  return DISCARD_VALUE.test(value) ? { discard: value } : null
+  if (!DISCARD_VALUE.test(value)) return null
+  return { discard: value, shortId: kept[1] as string, worktree: kept[2] as string }
 }
 
 // The text of a failed claude command: the stderr, else the stdout, else the exit code.

@@ -396,6 +396,18 @@ export class SessionRegistry {
     return true
   }
 
+  // Store the worktree root that claude rm names for a session. Bifrost did not see the
+  // session run in it. Return false for an unknown session or a path that is not a worktree
+  // root. Then nothing changes.
+  rememberWorktree(sessionId: string, path: string): boolean {
+    if (!this.sessions.has(sessionId) || worktreeRoot(path)?.worktree !== path) return false
+    if (this.worktrees.get(sessionId) !== path) {
+      this.worktrees.set(sessionId, path)
+      this.changed = true
+    }
+    return true
+  }
+
   // Return new row objects, sorted by startedAt, then by sessionId.
   rows(): SessionRow[] {
     return this.sorted().map(s => this.toRow(s))

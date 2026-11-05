@@ -188,6 +188,14 @@ export class RegistryService {
     return ok
   }
 
+  // Store the worktree that claude rm names for a session. Return false when the registry
+  // refuses it.
+  rememberWorktree(sessionId: string, path: string): boolean {
+    const ok = this.registry.rememberWorktree(sessionId, path)
+    if (ok) this.changed()
+    return ok
+  }
+
   rows(): SessionRow[] {
     return this.registry.rows()
   }

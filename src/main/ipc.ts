@@ -22,7 +22,7 @@ import { createSessionActions } from './actions/session-actions'
 import { hasLeftKey, SessionInput } from './actions/session-input'
 import { createTerminalLauncher } from './actions/terminal-launch'
 import { hasMessages } from './actions/transcript'
-import { checkWorktree, createWorktreeActions } from './actions/worktree-check'
+import { checkWorktreeHead, createWorktreeActions } from './actions/worktree-check'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
@@ -370,7 +370,7 @@ export function registerIpc(): void {
   // Take control reads only the start of the transcript of the session (Task 15).
   const projectsDir = join(homedir(), '.claude', 'projects')
   const sessions = createSessionActions({
-    checkWorktree: worktree => checkWorktree(worktree, execFile),
+    checkWorktree: worktree => checkWorktreeHead(worktree, execFile),
     dirInfo: dir => dirInfo(execFile, stat, dir),
     forget: id => liveService?.forget(id),
     hasMessages: id => hasMessages(projectsDir, id),
@@ -378,6 +378,9 @@ export function registerIpc(): void {
     markStarted: id => liveService?.markStarted(id),
     markStopped: id => liveService?.markStopped(id),
     processName: pid => processName(execFile, pid),
+    rememberWorktree: (id, worktree) => {
+      liveService?.rememberWorktree(id, worktree)
+    },
     rows: () => liveService?.rows() ?? [],
     run: () => run,
     signal: (pid, signal) => sendSignal(kill, pid, signal),

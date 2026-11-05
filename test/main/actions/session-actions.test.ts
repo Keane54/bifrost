@@ -17,7 +17,13 @@ import {
   REASON_PROMPT_IS_COMMAND,
 } from '../../../src/shared/new-session'
 import type { SessionRow, WorktreeCheck } from '../../../src/shared/types'
-import { KEPT_DISCARD, KEPT_STDOUT } from '../../fixtures/claude-rm'
+import {
+  KEPT_DISCARD,
+  KEPT_HEAD,
+  KEPT_SHORT_ID,
+  KEPT_STDOUT,
+  KEPT_WORKTREE,
+} from '../../fixtures/claude-rm'
 
 const S = 'f3a9c2d1-4b5e-4c6d-8e7f-0a1b2c3d4e5f'
 const S2 = '0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d'
@@ -89,8 +95,8 @@ class Fake {
   onProcessName: () => void = () => {}
   // The result of hasMessages.
   messages = true
-  // The result of the worktree check of a Delete.
-  check: (path: string) => WorktreeCheck | null = () => null
+  // The result of the worktree check of a Delete, with the HEAD commit.
+  check: (path: string) => (WorktreeCheck & { head: string }) | null = () => null
   base = Date.now()
 
   private add(op: string, ...args: unknown[]): void {
@@ -139,6 +145,7 @@ class Fake {
         this.onProcessName()
         return this.name
       },
+      rememberWorktree: (id, path) => this.add('rememberWorktree', id, path),
       rows: () => this.rows,
       run: async () => {
         if (!this.claude) return null
@@ -470,10 +477,12 @@ describe('remove', () => {
 })
 
 describe('remove of a worktree that claude rm keeps', () => {
-  const WT = '/r/.claude/worktrees/fix-a'
+  // The rows of this group have the short ID and the worktree of the real kept text.
+  const ID = KEPT_SHORT_ID
+  const WT = KEPT_WORKTREE
   const KEPT: ExecResult = { code: 1, stderr: '', stdout: KEPT_STDOUT }
-  const RM = ['rm', SHORT]
-  const DISCARD = ['rm', SHORT, '--discard-unpushed', KEPT_DISCARD]
+  const RM = ['rm', ID]
+  const DISCARD = ['rm', ID, '--discard-unpushed', KEPT_DISCARD]
   const CHANGED = 'refused: the worktree changed after the check'
   const KEPT_REFUSAL = 'refused: claude rm kept the worktree'
   const runLine = (args: string[]) => `0 run ${JSON.stringify(args)} ${JSON.stringify(RUN_OPTS)}`
@@ -481,16 +490,28 @@ describe('remove of a worktree that claude rm keeps', () => {
     changedFiles,
     unmergedCommits,
   })
-  const found = (unmergedCommits: number, changedFiles: number): WorktreeCheck => ({
-    branch: 'worktree-fix-a',
+  const found = (
+    unmergedCommits: number,
+    changedFiles: number,
+    head = KEPT_HEAD,
+  ): WorktreeCheck & { head: string } => ({
+    branch: 'worktree-bifrost-test-rmx',
     changedFiles,
+    head,
     unmergedCommits,
     worktree: WT,
   })
   // claude rm keeps the worktree. claude rm with the discard value removes it.
   const keeps = (args: string[]) => (args.length === 2 && args[0] === 'rm' ? KEPT : OK)
   // A stopped worktree session reports its start folder. The row keeps the worktree.
-  const stoppedRow = () => parked({ cwd: '/r', worktree: WT })
+  const stoppedRow = (o: Partial<SessionRow> = {}) =>
+    parked({ cwd: '/r', shortId: ID, worktree: WT, ...o })
+  // The kept text with another worktree path.
+  const keptAt = (path: string): ExecResult => ({
+    code: 1,
+    stderr: '',
+    stdout: KEPT_STDOUT.replace(WT, path),
+  })
 
   test('remove discards after a refusal when seen is 0 and 0', async () => {
     f.rows = [stoppedRow()]
@@ -506,12 +527,12 @@ describe('remove of a worktree that claude rm keeps', () => {
   })
 
   test('remove discards when the new check after the stop equals seen', async () => {
-    f.rows = [row({ cwd: `${WT}/src` })]
+    f.rows = [row({ cwd: `${WT}/src`, shortId: ID })]
     f.exec = keeps
     f.check = () => found(2, 1)
     await actions.remove(S, true, counts(2, 1))
     expect(f.ops()).toEqual([
-      runLine(['stop', SHORT]),
+      runLine(['stop', ID]),
       runLine(RM),
       `0 checkWorktree ${WT}`,
       runLine(DISCARD),
@@ -538,9 +559,10 @@ describe('remove of a worktree that claude rm keeps', () => {
 
   test('remove does not discard when the new check fails or finds no worktree', async () => {
     f.exec = keeps
-    const none: WorktreeCheck = {
+    const none = {
       branch: null,
       changedFiles: 0,
+      head: KEPT_HEAD,
       unmergedCommits: 0,
       worktree: null,
     }
@@ -564,12 +586,82 @@ describe('remove of a worktree that claude rm keeps', () => {
     }
   })
 
-  test('remove does not discard when Bifrost knows no worktree of the row', async () => {
-    f.rows = [parked({ cwd: '/r' })]
+  test('remove does not discard when Bifrost knows no worktree of the row, and remembers it', async () => {
+    // The next Delete then checks the worktree of the kept text and offers Open worktree.
     f.exec = keeps
     f.check = () => found(0, 0)
+    for (const seen of [counts(0, 0), null]) {
+      f.log = []
+      f.rows = [parked({ cwd: '/r', shortId: ID })]
+      await expect(actions.remove(S, true, seen)).rejects.toThrow(KEPT_REFUSAL)
+      expect(f.ops()).toEqual([runLine(RM), `0 rememberWorktree ${S} ${WT}`])
+    }
+    // One trailing "/" goes away.
+    f.log = []
+    f.exec = args => (args[0] === 'rm' ? keptAt(`${WT}/`) : OK)
     await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(KEPT_REFUSAL)
-    expect(f.ops()).toEqual([runLine(RM)])
+    expect(f.ops('rememberWorktree')).toEqual([`0 rememberWorktree ${S} ${WT}`])
+  })
+
+  test('remove does not remember a kept worktree of another session or a path that is not a root', async () => {
+    const cases: [SessionRow, ExecResult][] = [
+      [parked({ cwd: '/r', shortId: SHORT }), KEPT],
+      [parked({ cwd: '/r', shortId: ID }), keptAt(`${WT}/src`)],
+      [parked({ cwd: '/r', shortId: ID }), keptAt('/r/src')],
+      [parked({ cwd: '/r', shortId: ID }), keptAt('r/.claude/worktrees/a')],
+      [parked({ cwd: '/r', shortId: ID }), keptAt(`${WT}//`)],
+    ]
+    for (const [current, result] of cases) {
+      f.log = []
+      f.rows = [current]
+      f.exec = args => (args[0] === 'rm' ? result : OK)
+      await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(KEPT_REFUSAL)
+      expect(f.ops('run', 'rememberWorktree', 'checkWorktree')).toHaveLength(1)
+    }
+  })
+
+  test('remove does not discard when the kept text names another short ID', async () => {
+    f.rows = [stoppedRow({ shortId: SHORT })]
+    f.exec = args => (args.length === 2 && args[0] === 'rm' ? KEPT : OK)
+    f.check = () => found(0, 0)
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(CHANGED)
+    expect(f.ops('run')).toEqual([runLine(['rm', SHORT])])
+  })
+
+  test('remove does not discard when the kept text names another worktree', async () => {
+    f.check = () => found(0, 0)
+    // A cwd in a worktree inside a worktree gives the outer root. claude rm keeps the inner one.
+    const inner = `${WT}/.claude/worktrees/inner`
+    const cases: [SessionRow, ExecResult][] = [
+      [stoppedRow({ worktree: '/r/.claude/worktrees/other' }), KEPT],
+      [stoppedRow(), keptAt(`${WT}//`)],
+      [stoppedRow(), keptAt(`${WT}-2`)],
+      [row({ cwd: inner, shortId: ID }), keptAt(inner)],
+    ]
+    for (const [current, result] of cases) {
+      f.log = []
+      f.rows = [current]
+      f.exec = args => (args.length === 2 && args[0] === 'rm' ? result : OK)
+      await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(CHANGED)
+      expect(f.ops('run').map(line => line.split(' ')[2])).not.toContain(JSON.stringify(DISCARD))
+      expect(f.ops('forget')).toEqual([])
+    }
+  })
+
+  test('remove does not discard when the HEAD of the worktree is not the commit of the value', async () => {
+    f.rows = [stoppedRow()]
+    f.exec = keeps
+    f.check = () => found(0, 0, '0'.repeat(40))
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(CHANGED)
+    expect(f.ops()).toEqual([runLine(RM), `0 checkWorktree ${WT}`])
+  })
+
+  test('remove compares the kept worktree after one trailing slash goes away', async () => {
+    f.rows = [stoppedRow()]
+    f.exec = args => (args.length === 2 && args[0] === 'rm' ? keptAt(`${WT}/`) : OK)
+    f.check = () => found(0, 0)
+    await actions.remove(S, true, counts(0, 0))
+    expect(f.ops('run', 'forget')).toEqual([runLine(RM), runLine(DISCARD), `0 forget ${S}`])
   })
 
   test('remove never passes a value that parseKept did not give', async () => {

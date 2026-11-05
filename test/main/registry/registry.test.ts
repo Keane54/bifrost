@@ -869,6 +869,36 @@ describe('worktrees', () => {
     expect(r.store().worktrees).toEqual([])
   })
 
+  test('a parked session in the active list stores no worktree', () => {
+    // A started session that is not active is parked. Its next active entry has no pid.
+    const r = registry()
+    r.markStarted('s1')
+    r.applyAgents([], 100)
+    r.applyAgents([inWorktree({ pid: undefined, status: '' })], 200)
+    expect(r.rows()[0]).toMatchObject({ cwd: `${WT}/src`, state: 'parked' })
+    expect(r.rows()[0].worktree).toBeUndefined()
+    expect(r.store().worktrees).toEqual([])
+  })
+
+  test('rememberWorktree stores a worktree root for a known session only', () => {
+    const r = registry()
+    r.markStarted('s1')
+    r.applyAllAgents([stopped()])
+    r.storeChanged()
+    // A path that is not a worktree root, and an unknown session, change nothing.
+    for (const path of [`${WT}/src`, '/r', 'r/.claude/worktrees/a', `${WT}/`]) {
+      expect(r.rememberWorktree('s1', path)).toBe(false)
+    }
+    expect(r.rememberWorktree('s9', WT)).toBe(false)
+    expect(r.storeChanged()).toBe(false)
+    expect(r.rememberWorktree('s1', WT)).toBe(true)
+    expect(r.rows()[0]).toMatchObject({ cwd: '/r', worktree: WT })
+    expect(r.store().worktrees).toEqual([{ path: WT, sessionId: 's1' }])
+    expect(r.storeChanged()).toBe(true)
+    expect(r.rememberWorktree('s1', WT)).toBe(true)
+    expect(r.storeChanged()).toBe(false)
+  })
+
   test('the worktree stays after the session parks with its start folder', () => {
     const r = registry()
     r.markStarted('s1')
