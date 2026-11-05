@@ -341,6 +341,7 @@ describe('store', () => {
       priorities: {},
       started: ['s1'],
       watch: [],
+      worktrees: [],
     })
   })
 
@@ -409,6 +410,7 @@ describe('store', () => {
       priorities: {},
       started: [],
       watch: [],
+      worktrees: [],
     })
 
     r.applyAgents([bg({ name: '' })], 100)
@@ -835,5 +837,96 @@ describe('watchlist', () => {
     r.watchAdd('s1', 'blue')
     r.forget('s1')
     expect(r.store().watch).toEqual([])
+  })
+})
+
+describe('worktrees', () => {
+  const WT = '/r/.claude/worktrees/fix-a'
+  // A worktree session that runs. Its cwd is a subfolder of the worktree.
+  const inWorktree = (o: Partial<AgentEntry> = {}) => bg({ cwd: `${WT}/src`, ...o })
+  // The --all entry of the same session after a stop. Its cwd is the start folder.
+  const stopped = (o: Partial<AgentEntry> = {}) =>
+    bg({ cwd: '/r', pid: undefined, status: '', ...o })
+
+  test('the registry remembers the worktree of a session that runs', () => {
+    const r = registry()
+    r.applyAgents([inWorktree()], 100)
+    expect(r.rows()[0].worktree).toBe(WT)
+    expect(r.store().worktrees).toEqual([{ path: WT, sessionId: 's1' }])
+    expect(r.storeChanged()).toBe(true)
+    // The same worktree again does not change the store.
+    r.applyAgents([inWorktree()], 200)
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('a row outside a worktree and a parked row store no worktree', () => {
+    const r = registry()
+    r.applyAgents([bg({ cwd: '/r' })], 100)
+    expect(r.rows()[0].worktree).toBeUndefined()
+    // An entry with a worktree cwd and no pid is parked.
+    r.applyAllAgents([inWorktree({ pid: undefined, sessionId: 's2', status: '' })])
+    expect(r.rows().find(row => row.sessionId === 's2')?.state).toBe('parked')
+    expect(r.store().worktrees).toEqual([])
+  })
+
+  test('the worktree stays after the session parks with its start folder', () => {
+    const r = registry()
+    r.markStarted('s1')
+    r.applyAgents([inWorktree()], 100)
+    r.applyAgents([], 200)
+    r.applyAllAgents([stopped()])
+    const row = r.rows()[0]
+    expect(row).toMatchObject({ cwd: '/r', state: 'parked', worktree: WT })
+    expect(r.store().worktrees).toEqual([{ path: WT, sessionId: 's1' }])
+  })
+
+  test('the branch read uses the stored worktree when the cwd has no worktree', () => {
+    const r = registry()
+    r.applyAgents([inWorktree(), bg({ cwd: '/q', sessionId: 's2', startedAt: 2 })], 100)
+    expect(r.cwds()).toEqual([`${WT}/src`, '/q'])
+    r.applyAgents([bg({ cwd: '/q', sessionId: 's2', startedAt: 2 })], 200)
+    r.applyAllAgents([stopped(), bg({ cwd: '/q', sessionId: 's2', startedAt: 2 })])
+    expect(r.cwds()).toEqual([WT, '/q'])
+    r.applyBranch(WT, 'worktree-fix-a')
+    r.applyBranch('/r', 'main')
+    expect(r.rows()[0]).toMatchObject({ branch: 'worktree-fix-a', cwd: '/r' })
+  })
+
+  test('applyAllAgents prunes the worktree of a session that left all lists', () => {
+    const r = registry()
+    r.applyAgents([inWorktree({ id: undefined, kind: 'interactive' })], 100)
+    expect(r.store().worktrees).toHaveLength(1)
+    r.storeChanged()
+    r.applyAgents([], 200)
+    r.applyAllAgents([])
+    expect(r.store().worktrees).toEqual([])
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('forget removes the worktree', () => {
+    const r = registry()
+    r.applyAgents([inWorktree()], 100)
+    r.storeChanged()
+    r.forget('s1')
+    expect(r.store().worktrees).toEqual([])
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('a loaded worktree goes on the row, and a store without worktrees is valid', () => {
+    const r = registry({
+      lastActive: [],
+      names: {},
+      priorities: {},
+      started: ['s1'],
+      watch: [],
+      worktrees: [{ path: WT, sessionId: 's1' }],
+    })
+    r.applyAllAgents([stopped()])
+    expect(r.rows()[0]).toMatchObject({ cwd: '/r', worktree: WT })
+    const old = new SessionRegistry({
+      escalationMs: 600_000,
+      store: { lastActive: [], names: {}, started: [] },
+    })
+    expect(old.store().worktrees).toEqual([])
   })
 })

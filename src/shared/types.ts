@@ -67,6 +67,9 @@ export interface WorktreeCheck {
   unmergedCommits: number
 }
 
+// The counts of the unmerged-work check that the Delete dialog showed (Task 15).
+export type SeenCounts = Pick<WorktreeCheck, 'unmergedCommits' | 'changedFiles'>
+
 // One row of the session list. The main process sends rows to the renderer.
 export interface SessionRow {
   sessionId: string
@@ -91,6 +94,9 @@ export interface SessionRow {
   contextPercent?: number
   costUsd?: number
   branch?: string
+  // The worktree root that Bifrost saw while the session ran. A stopped session reports its
+  // start folder as its cwd, so this keeps the worktree of the session.
+  worktree?: string
   priority?: Priority
   // Present for a watched session. order is the 0-based place in the watchlist.
   watch?: { colour: WatchColour; order: number }

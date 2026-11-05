@@ -2,11 +2,16 @@ import { readFile } from 'node:fs/promises'
 import { isPriority } from '../../shared/priority'
 import type { Priority } from '../../shared/types'
 import { isWatchColour } from '../../shared/watch'
+import { worktreeRoot } from '../../shared/worktree'
 import { writeJsonAtomic } from '../store/json-file'
 import type { RegistryStore } from './registry'
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function emptyStore(): RegistryStore {
+  return { lastActive: [], names: {}, priorities: {}, started: [], watch: [], worktrees: [] }
 }
 
 // Read the registry store.
@@ -15,6 +20,9 @@ function isObject(value: unknown): value is Record<string, unknown> {
 // A file without lastActive (from M3) gives an empty list.
 // A file without watch (from M3) gives an empty watchlist.
 // A watch entry with a bad colour, a bad ID or a repeated ID is dropped.
+// A file without worktrees (from M3 or an early M4) gives no worktrees.
+// A worktree entry needs a string ID and an absolute path that worktreeRoot accepts.
+// An entry with a repeated ID is dropped.
 // The function removes each value that has the wrong type.
 // Other read errors, for example EACCES or EISDIR, reject.
 export async function loadStore(file: string): Promise<RegistryStore> {
@@ -22,17 +30,16 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   try {
     text = await readFile(file, 'utf8')
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-      return { lastActive: [], names: {}, priorities: {}, started: [], watch: [] }
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return emptyStore()
     throw error
   }
   let data: unknown
   try {
     data = JSON.parse(text)
   } catch {
-    return { lastActive: [], names: {}, priorities: {}, started: [], watch: [] }
+    return emptyStore()
   }
-  if (!isObject(data)) return { lastActive: [], names: {}, priorities: {}, started: [], watch: [] }
+  if (!isObject(data)) return emptyStore()
   const names = isObject(data.names)
     ? Object.fromEntries(
         Object.entries(data.names).filter((pair): pair is [string, string] => {
@@ -64,7 +71,19 @@ export async function loadStore(file: string): Promise<RegistryStore> {
       watch.push({ colour, sessionId })
     }
   }
-  return { lastActive, names, priorities, started, watch }
+  const withWorktree = new Set<string>()
+  const worktrees: RegistryStore['worktrees'] = []
+  if (Array.isArray(data.worktrees)) {
+    for (const entry of data.worktrees) {
+      if (!isObject(entry)) continue
+      const { path, sessionId } = entry
+      if (typeof sessionId !== 'string' || withWorktree.has(sessionId)) continue
+      if (typeof path !== 'string' || worktreeRoot(path) === null) continue
+      withWorktree.add(sessionId)
+      worktrees.push({ path, sessionId })
+    }
+  }
+  return { lastActive, names, priorities, started, watch, worktrees }
 }
 
 // Write the store to a temporary name in the same directory. Then rename the file.
@@ -85,9 +104,6 @@ export async function openStore(
     return { save: store => saveStore(file, store), store: await loadStore(file) }
   } catch (error) {
     log(`Bifrost cannot read ${file}. The registry uses an empty store and does not save.`, error)
-    return {
-      save: async () => {},
-      store: { lastActive: [], names: {}, priorities: {}, started: [], watch: [] },
-    }
+    return { save: async () => {}, store: emptyStore() }
   }
 }

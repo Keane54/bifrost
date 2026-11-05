@@ -2,10 +2,12 @@ import { describe, expect, test } from 'vitest'
 import {
   failure,
   isTrustError,
+  parseKept,
   parseShortId,
   SHORT_ID,
   trustMessage,
 } from '../../../src/main/actions/claude-output'
+import { KEPT_DISCARD, KEPT_STDOUT } from '../../fixtures/claude-rm'
 
 // The dash (U+2014) of the resume output. Biome writes a \u escape as the character itself.
 const DASH = String.fromCharCode(0x2014)
@@ -66,5 +68,49 @@ describe('claude output', () => {
     expect(failure({ code: 4, stderr: banner, stdout: '' }, 'claude --bg')).toBe(
       'claude --bg failed with code 4',
     )
+  })
+
+  test('parseKept gives the discard value of the real claude rm output', () => {
+    expect(parseKept(KEPT_STDOUT)).toEqual({ discard: KEPT_DISCARD })
+  })
+
+  test('parseKept gives null for a changed value', () => {
+    const [commit, token] = KEPT_DISCARD.split('@')
+    for (const value of [
+      `${commit.slice(1)}@${token}`,
+      `${commit}a@${token}`,
+      `${commit}@${token.slice(1)}`,
+      `${commit}@${token}0`,
+      `${commit.toUpperCase()}@${token}`,
+      `${commit}${token}`,
+      `${commit}@${token}@${token}`,
+      `${commit}@${token};`,
+      `${commit}@${token}.`,
+      `${commit}@${token}$(id)`,
+      `-${commit}@${token}`,
+      `${commit.slice(0, 39)}g@${token}`,
+    ]) {
+      expect(parseKept(KEPT_STDOUT.replace(KEPT_DISCARD, value))).toBeNull()
+    }
+    // Two different values give no value.
+    const other = `${'0'.repeat(40)}@${'1'.repeat(32)}`
+    expect(parseKept(`${KEPT_STDOUT}--discard-unpushed ${other}\n`)).toBeNull()
+  })
+
+  test('parseKept gives null for other text', () => {
+    const discardLine = `claude rm abd71478 --discard-unpushed ${KEPT_DISCARD}`
+    for (const text of [
+      '',
+      'removed abd71478',
+      discardLine,
+      // The kept line must be at the start of a line.
+      `  kept abd71478\n${discardLine}`,
+      `not kept abd71478\n${discardLine}`,
+      'kept abd71478\nno discard flag here',
+      `kept abd71478\n--discard-unpushed\n${KEPT_DISCARD}`,
+      `kept abd71478\n--discard-unpushed=${KEPT_DISCARD}`,
+    ]) {
+      expect(parseKept(text)).toBeNull()
+    }
   })
 })

@@ -14,10 +14,18 @@ import {
   REASON_PROMPT_IS_COMMAND,
   worktreeName,
 } from '../../shared/new-session'
-import type { ResumeAllResult, SessionRow } from '../../shared/types'
+import type { ResumeAllResult, SeenCounts, SessionRow, WorktreeCheck } from '../../shared/types'
+import { worktreeOf } from '../../shared/worktree'
 import type { ExecResult, RunClaude } from '../claude/cli'
 import { UUID_PATTERN } from '../integration/scripts'
-import { failure, isTrustError, parseShortId, SHORT_ID, trustMessage } from './claude-output'
+import {
+  failure,
+  isTrustError,
+  parseKept,
+  parseShortId,
+  SHORT_ID,
+  trustMessage,
+} from './claude-output'
 import { isSafePid } from './process-info'
 
 // The time that Bifrost waits for the entry of a started session.
@@ -27,6 +35,9 @@ export const END_WAIT_MS = 5000
 export const END_POLL_MS = 100
 // The time limit of each claude command.
 export const RUN_TIMEOUT_MS = 60_000
+// After Take control, the resumed session must still run this time after its process showed.
+// A resume can fail just after the start of its process (Task 10 bug 3).
+export const RESUME_SETTLE_MS = 3000
 
 // Each new session gets a statusLine command that prints nothing (controller ruling, O4).
 // So the chat window does not show the statusline of the user. A resume keeps the setting.
@@ -53,12 +64,17 @@ const REFUSED_PROMPT = 'refused: the session has an open prompt'
 const REFUSED_NOT_IDLE = 'refused: the session is not idle'
 const REFUSED_NO_PID = 'refused: the session has no process ID'
 const REFUSED_CHANGED = 'refused: the session process changed'
+const REFUSED_BAD_SEEN = 'refused: bad input'
+const REFUSED_KEPT = 'refused: claude rm kept the worktree'
+const REFUSED_WORKTREE_CHANGED = 'refused: the worktree changed after the check'
+const REFUSED_NO_MESSAGES = 'refused: the session has no messages yet'
 const REASON_NO_SHORT_ID = 'claude --bg did not give a session ID.'
 const REASON_CREATING = 'A new session is already starting. Please wait.'
 const REASON_NO_CWD = "Bifrost doesn't know the project folder of this session."
 const REASON_NOT_RESUMED = 'The session did not start again in 30 seconds.'
 const REASON_NOT_ENDED =
   'The session process did not end in 5 seconds. Bifrost did not start a copy of the session.'
+const REASON_RESUME_FAILED = 'Claude Code could not resume this session.'
 
 // The service rejects waitForRow with this message at the timeout.
 const TIMEOUT = 'timeout'
@@ -77,13 +93,19 @@ export interface SessionActionDeps {
   // The executable path of the process, or null when ps cannot read it.
   processName(pid: number): Promise<string | null>
   dirInfo(dir: string): Promise<DirInfo>
+  // The unmerged-work check of a worktree root (worktree-check.ts). null means a git failure.
+  checkWorktree(worktree: string): Promise<WorktreeCheck | null>
+  // True when the transcript of the session has a user message. A read error gives true.
+  hasMessages(sessionId: string): Promise<boolean>
 }
 
 export interface SessionActions {
   create(spec: unknown): Promise<{ sessionId: string }>
   stop(sessionId: unknown): Promise<void>
   // confirmed must be true. The renderer sets it only after the user accepts the confirmation.
-  remove(sessionId: unknown, confirmed: unknown): Promise<void>
+  // seen is the unmerged-work check that the dialog showed, or null when the check failed or
+  // did not run.
+  remove(sessionId: unknown, confirmed: unknown, seen?: unknown): Promise<void>
   resume(sessionId: unknown): Promise<void>
   resumeAll(): Promise<ResumeAllResult>
   // confirmed must be true, as for remove. Take control ends a terminal process.
@@ -146,6 +168,25 @@ function checkTakeControl(row: SessionRow): void {
   if (row.state !== 'idle' && !yellow) throw new Error(REFUSED_NOT_IDLE)
 }
 
+// The check counts from the renderer. null and a missing value mean that no check was shown.
+// Each count must be an integer of 0 or more.
+function seenOf(seen: unknown): SeenCounts | null {
+  if (seen === null || seen === undefined) return null
+  if (typeof seen !== 'object') throw new Error(REFUSED_BAD_SEEN)
+  const { changedFiles, unmergedCommits } = seen as Record<string, unknown>
+  const isCount = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0
+  if (!isCount(changedFiles) || !isCount(unmergedCommits)) throw new Error(REFUSED_BAD_SEEN)
+  return { changedFiles, unmergedCommits }
+}
+
+// The failure text of a Take control whose resumed session did not stay. claude logs gives the
+// cause, and Bifrost does not run it.
+function resumeFailed(row: SessionRow | undefined): string {
+  const shortId = row?.shortId
+  if (shortId === undefined || !SHORT_ID.test(shortId)) return REASON_RESUME_FAILED
+  return `${REASON_RESUME_FAILED} Run claude logs ${shortId} to see the cause.`
+}
+
 // True when the last part of the process path is "claude" (D6).
 function isClaudeProcess(name: string | null): boolean {
   return name !== null && name.trim().split('/').pop() === 'claude'
@@ -205,6 +246,38 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (!cwd.startsWith('/') || (await deps.dirInfo(cwd)).kind !== 'dir') {
       throw new Error(`The folder ${cwd} doesn't exist.`)
     }
+  }
+
+  // Run claude rm. It keeps a worktree that has commits on no remote, and prints the value
+  // that discards them (M4 controller check). Bifrost discards only when the Delete dialog
+  // showed a check of the worktree, and a new check after the stop finds no more commits and
+  // no more changed files. The discard value comes only from parseKept.
+  const removeSession = async (
+    run: RunClaude,
+    row: SessionRow,
+    shortId: string,
+    seen: SeenCounts | null,
+  ): Promise<void> => {
+    const result = await run(['rm', shortId], { timeoutMs: RUN_TIMEOUT_MS })
+    if (result.code === 0) return
+    const kept = parseKept(result.stdout)
+    if (kept === null) throw new Error(failure(result, 'claude rm'))
+    const worktree = worktreeOf(row)
+    if (seen === null || worktree === null) throw new Error(REFUSED_KEPT)
+    const now = await deps.checkWorktree(worktree)
+    const more =
+      now === null ||
+      now.worktree === null ||
+      now.unmergedCommits > seen.unmergedCommits ||
+      now.changedFiles > seen.changedFiles
+    if (more) throw new Error(REFUSED_WORKTREE_CHANGED)
+    const discard = await run(['rm', shortId, '--discard-unpushed', kept.discard], {
+      timeoutMs: RUN_TIMEOUT_MS,
+    })
+    if (discard.code === 0) return
+    // A second refusal means that the worktree changed after the first claude rm.
+    if (parseKept(discard.stdout) !== null) throw new Error(REFUSED_WORKTREE_CHANGED)
+    throw new Error(failure(discard, 'claude rm'))
   }
 
   // Wait for the owned entry of a session that Bifrost resumed.
@@ -281,9 +354,10 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     // Delete runs claude stop for a session that runs, then claude rm, then forgets the session.
     // A parked row without a short ID is only removed from Bifrost (D5). Bifrost refuses a
     // session that runs and has no short ID. Bifrost cannot stop it, and the next sample
-    // shows it again.
-    async remove(sessionId, confirmed) {
+    // shows it again. removeSession gives the rules for a worktree that claude rm keeps.
+    async remove(sessionId, confirmed, seen) {
       if (confirmed !== true) throw new Error(REFUSED_NOT_CONFIRMED)
+      const counts = seenOf(seen)
       return locked(sessionId, async row => {
         if (row.kind === 'external' && row.state !== 'parked') {
           throw new Error(REFUSED_DELETE_EXTERNAL)
@@ -295,7 +369,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
           const shortId = shortIdOf(row)
           const run = await claude()
           if (row.state !== 'parked') await command(run, ['stop', shortId], 'claude stop')
-          await command(run, ['rm', shortId], 'claude rm')
+          await removeSession(run, row, shortId, counts)
         }
         deps.forget(row.sessionId)
       })
@@ -373,6 +447,8 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     // Spec 9.2. SIGTERM goes only to the process of this external session, after the claude
     // name check (D6). If the process does not end in 5 seconds, Bifrost starts no copy.
     // The renderer sets confirmed only after the user accepts the confirmation of spec 9.2.
+    // Claude Code cannot resume a session that has no user message (Task 10 bug 3). So Bifrost
+    // sends no signal to such a session.
     async takeControl(sessionId, confirmed) {
       if (confirmed !== true) throw new Error(REFUSED_TAKE_NOT_CONFIRMED)
       return locked(sessionId, async row => {
@@ -384,6 +460,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (!isSafePid(pid)) throw new Error(REFUSED_BAD_PID)
         const cwd = row.cwd
         await checkProjectDir(cwd)
+        if (!(await deps.hasMessages(row.sessionId))) throw new Error(REFUSED_NO_MESSAGES)
         // Find claude before the signal. Without claude, Bifrost cannot resume the session.
         const run = await claude()
         if (!isClaudeProcess(await deps.processName(pid))) {
@@ -408,6 +485,12 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         deps.markStarted(row.sessionId)
         await start(run, ['--bg', '--resume', row.sessionId], cwd, 'claude --bg --resume')
         await waitResumed(row.sessionId)
+        // The resumed session must still run after RESUME_SETTLE_MS. Else it ended or parked
+        // before it ran.
+        await sleep(RESUME_SETTLE_MS)
+        const resumed = deps.rows().find(r => r.sessionId === row.sessionId)
+        const newPid = resumed && runsOwned(row.sessionId)(resumed) ? resumed.pid : undefined
+        if (newPid === undefined || !deps.isAlive(newPid)) throw new Error(resumeFailed(resumed))
         return { sessionId: row.sessionId }
       })
     },

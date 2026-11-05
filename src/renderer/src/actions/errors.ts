@@ -29,6 +29,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: bad session ID': "That session ID isn't valid.",
   'refused: bad watch colour': "That isn't a colour for the watchlist.",
   'refused: bad watch move': "Bifrost couldn't move that session in the watchlist.",
+  'refused: claude rm kept the worktree':
+    'Claude Code kept this session, because its worktree has commits that exist on no remote. Open the worktree to check them, then delete again.',
   'refused: Delete needs a confirmation': 'Delete needs your confirmation first.',
   'refused: no terminal app is installed': REASON_NO_TERMINAL,
   'refused: no window': "The Bifrost window isn't ready.",
@@ -48,6 +50,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the project directory is not known': REASON_NO_CWD,
   'refused: the session has an open prompt':
     'This session is waiting on a prompt. Answer it in the chat window first.',
+  'refused: the session has no messages yet':
+    "This session has no messages yet, so there's nothing to take over. Send a message in its terminal first.",
   'refused: the session has no process ID': "Bifrost doesn't know the process ID of this session.",
   'refused: the session has no process ID yet': REASON_NO_PID,
   'refused: the session has no worktree': "This session doesn't have a worktree.",
@@ -64,6 +68,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the terminal app of the session is not known': REASON_TERMINAL_UNKNOWN,
   'refused: the UI state is too large': 'The window layout is too large to save.',
   'refused: the UI state must be an object': "Bifrost couldn't save the window layout.",
+  'refused: the worktree changed after the check':
+    'The worktree changed after the check. Check it again, then delete.',
   'refused: the worktree option is off': "The worktree option isn't available.",
   'refused: unknown app': "Bifrost doesn't know that app.",
   'refused: unknown model': "Bifrost doesn't know that model.",

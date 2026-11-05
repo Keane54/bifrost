@@ -97,6 +97,19 @@ describe('confirm texts', () => {
     expect(isWorktreeRow(row({ branch: 'main', cwd: '/r', sessionId: 'a' }))).toBe(false)
   })
 
+  it('isWorktreeRow and a failed check use the stored worktree of a stopped session', () => {
+    // A stopped session reports its start folder and the branch of that folder.
+    const stopped = row({
+      branch: 'main',
+      cwd: '/r',
+      sessionId: 'a',
+      state: 'parked',
+      worktree: WT,
+    })
+    expect(isWorktreeRow(stopped)).toBe(true)
+    expect(confirmFor('delete', stopped, 'plain', null)?.openFolder).toBe(WT)
+  })
+
   it('Take control names the terminal app', () => {
     const base = { kind: 'external', sessionId: 'a' } as const
     expect(confirmFor('take-control', row({ ...base, terminalApp: 'Warp' }), 'plain')?.body).toBe(

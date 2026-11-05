@@ -32,6 +32,28 @@ export function trustMessage(dir: string): string {
 // It is not an error.
 const SERVICE_BANNER = /^Starting background service/
 
+// "claude rm" keeps a worktree that has commits on no remote. Then it exits 1 and prints a line
+// that starts with "kept <short id>" and a command with "--discard-unpushed <value>"
+// (M4 controller check, Claude Code 2.1.318). The value goes into a claude argument. So it must
+// be 40 hex digits, "@" and 32 hex digits, and nothing more.
+const KEPT_LINE = /^kept /
+const DISCARD_FLAG = /--discard-unpushed (\S+)/g
+const DISCARD_VALUE = /^[0-9a-f]{40}@[0-9a-f]{32}$/
+
+// The discard value of a "claude rm" refusal, or null. Text without a kept line, without the
+// flag, with a value of a different form or with two different values gives null.
+export function parseKept(stdout: string): { discard: string } | null {
+  const lines = stdout.split('\n')
+  if (!lines.some(line => KEPT_LINE.test(line))) return null
+  const values = new Set<string>()
+  for (const line of lines) {
+    for (const match of line.matchAll(DISCARD_FLAG)) values.add(match[1] as string)
+  }
+  if (values.size !== 1) return null
+  const [value] = values
+  return DISCARD_VALUE.test(value) ? { discard: value } : null
+}
+
 // The text of a failed claude command: the stderr, else the stdout, else the exit code.
 // The stderr does not count when it has only the start line of the background service.
 export function failure(result: ExecResult, what: string): string {

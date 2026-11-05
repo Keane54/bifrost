@@ -15,7 +15,14 @@ afterEach(async () => {
 })
 
 test('loadStore returns an empty store for a missing or bad file', async () => {
-  const emptyStore = { lastActive: [], names: {}, priorities: {}, started: [], watch: [] }
+  const emptyStore = {
+    lastActive: [],
+    names: {},
+    priorities: {},
+    started: [],
+    watch: [],
+    worktrees: [],
+  }
   expect(await loadStore(join(dir, 'missing.json'))).toEqual(emptyStore)
 
   const bad = join(dir, 'bad.json')
@@ -37,6 +44,7 @@ test('loadStore removes the values that have the wrong type', async () => {
       priorities: {},
       started: ['s1', 4, null],
       watch: [],
+      worktrees: [],
     }),
   )
   expect(await loadStore(file)).toEqual({
@@ -45,6 +53,7 @@ test('loadStore removes the values that have the wrong type', async () => {
     priorities: {},
     started: ['s1'],
     watch: [],
+    worktrees: [],
   })
 
   await writeFile(file, JSON.stringify({ names: ['x'], priorities: {}, started: 'x' }))
@@ -54,6 +63,7 @@ test('loadStore removes the values that have the wrong type', async () => {
     priorities: {},
     started: [],
     watch: [],
+    worktrees: [],
   })
 })
 
@@ -65,24 +75,40 @@ test('saveStore then loadStore gives the same store', async () => {
     priorities: {},
     started: ['s2'],
     watch: [],
+    worktrees: [],
   }
   await saveStore(file, store)
   expect(await loadStore(file)).toEqual(store)
 
-  const next = { lastActive: [], names: { s3: 'gamma' }, priorities: {}, started: [], watch: [] }
+  const next = {
+    lastActive: [],
+    names: { s3: 'gamma' },
+    priorities: {},
+    started: [],
+    watch: [],
+    worktrees: [],
+  }
   await saveStore(file, next)
   expect(await loadStore(file)).toEqual(next)
 })
 
 test('saveStore makes the directory and leaves no temporary file', async () => {
   const file = join(dir, 'user-data', 'registry.json')
-  await saveStore(file, { lastActive: [], names: {}, priorities: {}, started: [], watch: [] })
+  await saveStore(file, {
+    lastActive: [],
+    names: {},
+    priorities: {},
+    started: [],
+    watch: [],
+    worktrees: [],
+  })
   await saveStore(file, {
     lastActive: [],
     names: { s1: 'alpha' },
     priorities: {},
     started: [],
     watch: [],
+    worktrees: [],
   })
   expect(await readdir(join(dir, 'user-data'))).toEqual(['registry.json'])
   expect((await stat(file)).mode & 0o777).toBe(0o600)
@@ -102,6 +128,7 @@ test('openStore loads the file and saves to it', async () => {
     priorities: {},
     started: [],
     watch: [],
+    worktrees: [],
   })
   const log = vi.fn()
   const opened = await openStore(file, log)
@@ -111,6 +138,7 @@ test('openStore loads the file and saves to it', async () => {
     priorities: {},
     started: [],
     watch: [],
+    worktrees: [],
   })
   await opened.save({
     lastActive: [],
@@ -118,6 +146,7 @@ test('openStore loads the file and saves to it', async () => {
     priorities: {},
     started: ['s2'],
     watch: [],
+    worktrees: [],
   })
   expect(await loadStore(file)).toEqual({
     lastActive: [],
@@ -125,6 +154,7 @@ test('openStore loads the file and saves to it', async () => {
     priorities: {},
     started: ['s2'],
     watch: [],
+    worktrees: [],
   })
   expect(log).not.toHaveBeenCalled()
 })
@@ -140,6 +170,7 @@ test('openStore uses an empty store and does not save when it cannot read the fi
     priorities: {},
     started: [],
     watch: [],
+    worktrees: [],
   })
   expect(log).toHaveBeenCalledTimes(1)
   await opened.save({
@@ -148,6 +179,7 @@ test('openStore uses an empty store and does not save when it cannot read the fi
     priorities: {},
     started: [],
     watch: [],
+    worktrees: [],
   })
   expect((await stat(file)).isDirectory()).toBe(true)
   expect(await readdir(file)).toEqual([])
@@ -163,6 +195,7 @@ test('loadStore reads an M1 file without priorities', async () => {
     priorities: {},
     started: [],
     watch: [],
+    worktrees: [],
   })
 })
 
@@ -182,6 +215,7 @@ test('loadStore reads a file without lastActive', async () => {
     priorities: { a: 2 },
     started: [],
     watch: [],
+    worktrees: [],
   })
 })
 
@@ -236,7 +270,7 @@ test('loadStore keeps a full M3 file that has no watch', async () => {
     started: ['s1'],
   }
   await writeFile(file, JSON.stringify(m3))
-  expect(await loadStore(file)).toEqual({ ...m3, watch: [] })
+  expect(await loadStore(file)).toEqual({ ...m3, watch: [], worktrees: [] })
 })
 
 test('loadStore keeps the other fields when watch is damaged', async () => {
@@ -248,7 +282,50 @@ test('loadStore keeps the other fields when watch is damaged', async () => {
     started: ['s1'],
   }
   await writeFile(file, JSON.stringify({ ...rest, watch: 'broken' }))
-  expect(await loadStore(file)).toEqual({ ...rest, watch: [] })
+  expect(await loadStore(file)).toEqual({ ...rest, watch: [], worktrees: [] })
   await writeFile(file, JSON.stringify({ ...rest, watch: [1, null, { colour: 'red' }, []] }))
-  expect(await loadStore(file)).toEqual({ ...rest, watch: [] })
+  expect(await loadStore(file)).toEqual({ ...rest, watch: [], worktrees: [] })
+})
+
+test('loadStore gives no worktrees for a file without worktrees', async () => {
+  const file = join(dir, 'registry.json')
+  await writeFile(file, JSON.stringify({ names: {}, started: [], watch: [] }))
+  expect((await loadStore(file)).worktrees).toEqual([])
+  await writeFile(file, JSON.stringify({ names: {}, started: [], worktrees: 'x' }))
+  expect((await loadStore(file)).worktrees).toEqual([])
+})
+
+test('loadStore keeps only worktree entries with a string ID and a worktree path', async () => {
+  const file = join(dir, 'registry.json')
+  const worktrees = [
+    { path: '/r/.claude/worktrees/a', sessionId: 's1' },
+    { path: '/r/.claude/worktrees/b', sessionId: 7 },
+    { path: 'r/.claude/worktrees/c', sessionId: 's3' },
+    { path: '/r/src', sessionId: 's4' },
+    { path: '/r/.claude/worktrees/../x', sessionId: 's5' },
+    { path: 7, sessionId: 's6' },
+    { path: '/r/.claude/worktrees/d', sessionId: 's1' },
+    null,
+    'text',
+    { path: '/q/.claude/worktrees/e', sessionId: 's7' },
+  ]
+  await writeFile(file, JSON.stringify({ names: {}, started: [], worktrees }))
+  expect((await loadStore(file)).worktrees).toEqual([
+    { path: '/r/.claude/worktrees/a', sessionId: 's1' },
+    { path: '/q/.claude/worktrees/e', sessionId: 's7' },
+  ])
+})
+
+test('saveStore then loadStore keeps the worktrees', async () => {
+  const file = join(dir, 'registry.json')
+  const store = {
+    lastActive: [],
+    names: {},
+    priorities: {},
+    started: ['s1'],
+    watch: [],
+    worktrees: [{ path: '/r/.claude/worktrees/a', sessionId: 's1' }],
+  }
+  await saveStore(file, store)
+  expect(await loadStore(file)).toEqual(store)
 })

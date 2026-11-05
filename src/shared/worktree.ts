@@ -14,3 +14,12 @@ export function worktreeRoot(cwd: string): { worktree: string; repo: string } | 
   if (name === '') return null
   return { repo: cwd.slice(0, at), worktree: cwd.slice(0, at + MARK.length) + name }
 }
+
+// The worktree root of a row: from its cwd, else from the worktree that Bifrost stored while the
+// session ran. A stopped session reports its start folder as its cwd (M4 controller check).
+// A stored path that worktreeRoot refuses gives null.
+export function worktreeOf(row: { cwd: string; worktree?: string }): string | null {
+  const root =
+    worktreeRoot(row.cwd) ?? (row.worktree === undefined ? null : worktreeRoot(row.worktree))
+  return root?.worktree ?? null
+}

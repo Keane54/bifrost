@@ -63,11 +63,24 @@ describe('friendly errors', () => {
     expect(friendlyError('claude stop failed: exit 1')).toBe('claude stop failed: exit 1')
   })
 
+  it('gives the exact texts of the Delete and Take control refusals of Task 15', () => {
+    expect(friendlyError('refused: claude rm kept the worktree')).toBe(
+      'Claude Code kept this session, because its worktree has commits that exist on no remote. Open the worktree to check them, then delete again.',
+    )
+    expect(friendlyError('refused: the worktree changed after the check')).toBe(
+      'The worktree changed after the check. Check it again, then delete.',
+    )
+    expect(friendlyError('refused: the session has no messages yet')).toBe(
+      "This session has no messages yet, so there's nothing to take over. Send a message in its terminal first.",
+    )
+  })
+
+  // The error line wraps to more lines (Task 15). So a text can have two sentences.
   it('has short texts with no refusal code and no em dash', () => {
     for (const text of Object.values(FRIENDLY_ERRORS)) {
       expect(text.startsWith('refused')).toBe(false)
       expect(text).not.toContain(EM_DASH)
-      expect(text.length).toBeLessThanOrEqual(100)
+      expect(text.length).toBeLessThanOrEqual(150)
     }
   })
 })

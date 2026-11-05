@@ -1,4 +1,5 @@
 import type { Priority, SessionKind, SessionRow, WatchColour } from '../../shared/types'
+import { worktreeRoot } from '../../shared/worktree'
 import type { AgentEntry } from '../claude/agents'
 import type { HookEvent } from './hook-event'
 import {
@@ -22,6 +23,8 @@ export interface RegistryStore {
   priorities: Record<string, Priority>
   // The watched sessions. The array order is the order of the watchlist.
   watch: { sessionId: string; colour: WatchColour }[]
+  // The worktree root of each session, from a sample while the session ran.
+  worktrees: { sessionId: string; path: string }[]
 }
 
 // A hook event for an unknown session waits this long for the session to show.
@@ -92,6 +95,9 @@ export class SessionRegistry {
   private readonly priorities: Map<string, Priority>
   // The watch colour of each watched session. The Map order is the watchlist order.
   private readonly watched: Map<string, WatchColour>
+  // The worktree root of each session that ran in a worktree. A stopped session reports its
+  // start folder as its cwd (M4 controller check). So the registry keeps the root.
+  private readonly worktrees: Map<string, string>
   // The sessions with a process in the last samples. The store keeps them.
   private readonly lastActive: Set<string>
   // The sessions of lastActive at the start. Resume all can resume them. Not saved.
@@ -110,10 +116,10 @@ export class SessionRegistry {
   private status = new Map<string, StatusData>()
   private readonly branches = new Map<string, string>()
 
-  // A store without priorities, lastActive or watch (from an older version) is valid.
+  // A store without priorities, lastActive, watch or worktrees (from an older version) is valid.
   constructor(opts: {
-    store: Omit<RegistryStore, 'priorities' | 'lastActive' | 'watch'> &
-      Partial<Pick<RegistryStore, 'priorities' | 'lastActive' | 'watch'>>
+    store: Omit<RegistryStore, 'priorities' | 'lastActive' | 'watch' | 'worktrees'> &
+      Partial<Pick<RegistryStore, 'priorities' | 'lastActive' | 'watch' | 'worktrees'>>
     escalationMs: number
   }) {
     this.escalationMs = opts.escalationMs
@@ -121,6 +127,7 @@ export class SessionRegistry {
     this.started = new Set(opts.store.started)
     this.priorities = new Map(Object.entries(opts.store.priorities ?? {}) as [string, Priority][])
     this.watched = new Map((opts.store.watch ?? []).map(w => [w.sessionId, w.colour]))
+    this.worktrees = new Map((opts.store.worktrees ?? []).map(w => [w.sessionId, w.path]))
     const last = opts.store.lastActive ?? []
     this.lastActive = new Set(last)
     this.resumable = new Set(last)
@@ -153,6 +160,7 @@ export class SessionRegistry {
         status: entry.status,
         waitingFor: entry.waitingFor,
       })
+      this.keepWorktree(s)
     }
     for (const id of this.active) {
       if (!ids.has(id)) this.leave(id, sampledAt)
@@ -201,7 +209,7 @@ export class SessionRegistry {
         this.sessions.delete(s.sessionId)
       }
     }
-    // Remove the names, priorities and watch entries of sessions that left all lists.
+    // Remove the names, priorities, watch entries and worktrees of sessions that left all lists.
     // This limits the size of the store.
     for (const id of this.names.keys()) {
       if (this.known(id)) continue
@@ -216,6 +224,11 @@ export class SessionRegistry {
     for (const id of this.watched.keys()) {
       if (this.known(id)) continue
       this.watched.delete(id)
+      this.changed = true
+    }
+    for (const id of this.worktrees.keys()) {
+      if (this.known(id)) continue
+      this.worktrees.delete(id)
       this.changed = true
     }
   }
@@ -254,6 +267,7 @@ export class SessionRegistry {
       this.names.delete(sessionId),
       this.priorities.delete(sessionId),
       this.watched.delete(sessionId),
+      this.worktrees.delete(sessionId),
       this.lastActive.delete(sessionId),
     ]
     if (removed.some(Boolean)) this.changed = true
@@ -387,10 +401,11 @@ export class SessionRegistry {
     return this.sorted().map(s => this.toRow(s))
   }
 
-  // Return each cwd of the rows one time.
+  // Return the folder of the branch read of each row one time. This is the cwd, or the stored
+  // worktree when the cwd is not in a worktree.
   // An empty cwd is not a directory. The list does not contain an empty cwd.
   cwds(): string[] {
-    const cwds = new Set(this.sorted().map(s => s.cwd))
+    const cwds = new Set(this.sorted().map(s => this.branchDir(s)))
     cwds.delete('')
     return [...cwds]
   }
@@ -403,6 +418,7 @@ export class SessionRegistry {
       priorities: Object.fromEntries(this.priorities),
       started: [...this.started],
       watch: [...this.watched].map(([sessionId, colour]) => ({ colour, sessionId })),
+      worktrees: [...this.worktrees].map(([sessionId, path]) => ({ path, sessionId })),
     }
   }
 
@@ -441,6 +457,22 @@ export class SessionRegistry {
 
   private dropOldEvents(now: number): void {
     this.pending = this.pending.filter(ev => now - ev.at <= PENDING_EVENT_MS)
+  }
+
+  // Store the worktree root of a session that is not parked and has a cwd in a worktree.
+  private keepWorktree(s: Session): void {
+    if (s.machine.state === 'parked') return
+    const root = worktreeRoot(s.cwd)
+    if (root === null || this.worktrees.get(s.sessionId) === root.worktree) return
+    this.worktrees.set(s.sessionId, root.worktree)
+    this.changed = true
+  }
+
+  // The folder for the branch read of a session. A stopped worktree session reports its start
+  // folder, so the stored worktree gives its branch.
+  private branchDir(s: Session): string {
+    if (worktreeRoot(s.cwd) !== null) return s.cwd
+    return this.worktrees.get(s.sessionId) ?? s.cwd
   }
 
   private keepName(entry: AgentEntry): void {
@@ -514,8 +546,10 @@ export class SessionRegistry {
     if (status?.model !== undefined) row.model = status.model
     if (status?.contextPercent !== undefined) row.contextPercent = status.contextPercent
     if (status?.costUsd !== undefined) row.costUsd = status.costUsd
-    const branch = this.branches.get(s.cwd)
+    const branch = this.branches.get(this.branchDir(s))
     if (branch !== undefined) row.branch = branch
+    const worktree = this.worktrees.get(s.sessionId)
+    if (worktree !== undefined) row.worktree = worktree
     const priority = this.priorities.get(s.sessionId)
     if (priority !== undefined) row.priority = priority
     const colour = this.watched.get(s.sessionId)

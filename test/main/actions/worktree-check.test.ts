@@ -7,6 +7,7 @@ import {
 } from '../../../src/main/actions/worktree-check'
 import type { ExecFn, ExecResult } from '../../../src/main/claude/cli'
 import type { SessionRow } from '../../../src/shared/types'
+import { worktreeOf } from '../../../src/shared/worktree'
 
 const WT = '/r/.claude/worktrees/fix-a'
 const ok = (stdout: string): ExecResult => ({ code: 0, stderr: '', stdout })
@@ -140,5 +141,50 @@ describe('worktree actions', () => {
     exec.mockClear()
     await expect(a.openWorktree('s2')).rejects.toThrow('refused: the session has no worktree')
     expect(exec).not.toHaveBeenCalled()
+  })
+})
+
+describe('the stored worktree of a stopped session', () => {
+  it('worktreeOf uses the cwd first, then the stored worktree', () => {
+    expect(worktreeOf({ cwd: `${WT}/src` })).toBe(WT)
+    expect(worktreeOf({ cwd: `${WT}/src`, worktree: '/q/.claude/worktrees/b' })).toBe(WT)
+    expect(worktreeOf({ cwd: '/p', worktree: WT })).toBe(WT)
+    expect(worktreeOf({ cwd: '', worktree: `${WT}/src` })).toBe(WT)
+    expect(worktreeOf({ cwd: '/p' })).toBeNull()
+    // A stored path that worktreeRoot refuses gives no worktree.
+    for (const worktree of ['r/.claude/worktrees/a', '/r/x', '/r/.claude/worktrees/..']) {
+      expect(worktreeOf({ cwd: '/p', worktree })).toBeNull()
+    }
+  })
+
+  it('deleteCheck checks the stored worktree when the cwd is the start folder', async () => {
+    const exec = fake(good())
+    const a = createWorktreeActions({
+      exec,
+      rows: () => [row({ cwd: '/p', state: 'parked', worktree: WT })],
+    })
+    expect(await a.deleteCheck('s1')).toEqual({
+      branch: 'worktree-fix-a',
+      changedFiles: 2,
+      unmergedCommits: 3,
+      worktree: WT,
+    })
+    expect(exec.mock.calls[0]?.[1]).toEqual(['-C', WT, 'status', '--porcelain'])
+  })
+
+  it('deleteCheck checks the stored worktree of a row with no cwd', async () => {
+    const exec = fake(good())
+    const a = createWorktreeActions({ exec, rows: () => [row({ cwd: '', worktree: WT })] })
+    expect((await a.deleteCheck('s1'))?.worktree).toBe(WT)
+  })
+
+  it('openWorktree opens the stored worktree when the cwd is the start folder', async () => {
+    const exec = fake([ok('')])
+    const a = createWorktreeActions({
+      exec,
+      rows: () => [row({ cwd: '/p', state: 'parked', worktree: WT })],
+    })
+    await a.openWorktree('s1')
+    expect(exec).toHaveBeenCalledWith(OPEN, [WT], { timeoutMs: 10000 })
   })
 })

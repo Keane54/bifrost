@@ -1,7 +1,7 @@
 // The check before a Delete (spec 9.1). A session in a worktree can have work that is not merged.
 // All git commands only read. The renderer sends a session ID. The paths come from the row.
 import type { SessionRow, WorktreeCheck } from '../../shared/types'
-import { worktreeRoot } from '../../shared/worktree'
+import { worktreeOf, worktreeRoot } from '../../shared/worktree'
 import type { ExecFn } from '../claude/cli'
 import { OPEN } from './actions'
 import { failure } from './claude-output'
@@ -68,17 +68,19 @@ export function createWorktreeActions(deps: WorktreeActionDeps): WorktreeActions
   }
 
   return {
+    // A stopped session reports its start folder as its cwd. Then the check uses the worktree
+    // that Bifrost stored while the session ran.
     async deleteCheck(sessionId) {
       const row = find(sessionId)
-      if (row.cwd === '') return null
-      return checkWorktree(row.cwd, deps.exec)
+      const dir = worktreeOf(row) ?? row.cwd
+      if (dir === '') return null
+      return checkWorktree(dir, deps.exec)
     },
 
     async openWorktree(sessionId) {
-      const row = find(sessionId)
-      const root = worktreeRoot(row.cwd)
-      if (!root) throw new Error(REFUSED_NO_WORKTREE)
-      const result = await deps.exec(OPEN, [root.worktree], { timeoutMs: OPEN_TIMEOUT_MS })
+      const worktree = worktreeOf(find(sessionId))
+      if (worktree === null) throw new Error(REFUSED_NO_WORKTREE)
+      const result = await deps.exec(OPEN, [worktree], { timeoutMs: OPEN_TIMEOUT_MS })
       if (result.code !== 0) throw new Error(failure(result, 'open'))
     },
   }

@@ -11,7 +11,7 @@ import {
   useState,
 } from 'react'
 import { isPriority } from '../../../shared/priority'
-import type { ProjectApp, ProjectAppId, SessionRow } from '../../../shared/types'
+import type { ProjectApp, ProjectAppId, SeenCounts, SessionRow } from '../../../shared/types'
 import { DEFAULT_WATCH_COLOUR, isWatchColour } from '../../../shared/watch'
 import { useChats } from '../chat/chat-terminals'
 import { chatPanelId } from '../chat/views'
@@ -242,6 +242,9 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       // True only after a click on the confirm button of the dialog.
       let confirmed = false
       let marked = false
+      // The counts of the check that the Delete dialog showed. null when the check failed or
+      // found no worktree. Then the main process never discards a worktree that claude rm keeps.
+      let seen: SeenCounts | null = null
       try {
         if (plan.call === 'remove') {
           // Delete runs the unmerged-work check first (Task 13). A failed check gives null.
@@ -251,6 +254,9 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           const checking = showNotice(CHECKING_NOTICE, { untilHidden: true })
           const check = await api.sessions.deleteCheck(sessionId).catch(() => null)
           hideNotice(checking)
+          if (check !== null && check.worktree !== null) {
+            seen = { changedFiles: check.changedFiles, unmergedCommits: check.unmergedCommits }
+          }
           const now = latest.current.rows.find(r => r.sessionId === sessionId) ?? row
           const text = confirmFor('delete', now, LABELS, check)
           if (text === null) return
@@ -280,7 +286,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
             break
           case 'remove':
             if (!confirmed) return
-            await api.sessions.remove(sessionId, true)
+            await api.sessions.remove(sessionId, true, seen)
             break
           case 'resume':
             await api.sessions.resume(sessionId)

@@ -5,6 +5,7 @@ import {
   END_POLL_MS,
   END_WAIT_MS,
   newSessionArgs,
+  RESUME_SETTLE_MS,
   RUN_TIMEOUT_MS,
   type SessionActionDeps,
   START_TIMEOUT_MS,
@@ -15,7 +16,8 @@ import {
   type NewSessionSpec,
   REASON_PROMPT_IS_COMMAND,
 } from '../../../src/shared/new-session'
-import type { SessionRow } from '../../../src/shared/types'
+import type { SessionRow, WorktreeCheck } from '../../../src/shared/types'
+import { KEPT_DISCARD, KEPT_STDOUT } from '../../fixtures/claude-rm'
 
 const S = 'f3a9c2d1-4b5e-4c6d-8e7f-0a1b2c3d4e5f'
 const S2 = '0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d'
@@ -85,6 +87,10 @@ class Fake {
   name: string | null = '/Users/x/.local/bin/claude'
   dir: DirInfo = { git: true, kind: 'dir' }
   onProcessName: () => void = () => {}
+  // The result of hasMessages.
+  messages = true
+  // The result of the worktree check of a Delete.
+  check: (path: string) => WorktreeCheck | null = () => null
   base = Date.now()
 
   private add(op: string, ...args: unknown[]): void {
@@ -109,11 +115,19 @@ class Fake {
 
   deps(): SessionActionDeps {
     return {
+      checkWorktree: async path => {
+        this.add('checkWorktree', path)
+        return this.check(path)
+      },
       dirInfo: async dir => {
         this.add('dirInfo', dir)
         return this.dir
       },
       forget: id => this.add('forget', id),
+      hasMessages: async id => {
+        this.add('hasMessages', id)
+        return this.messages
+      },
       isAlive: pid => {
         this.add('isAlive', pid)
         return this.alive(pid)
@@ -137,7 +151,11 @@ class Fake {
       waitForRow: (match, timeoutMs) => {
         this.add('waitForRow', timeoutMs)
         const found = this.appear.find(match)
-        if (found) return Promise.resolve(found)
+        if (found) {
+          // The registry now has the row that matched.
+          this.rows = [...this.rows.filter(r => r.sessionId !== found.sessionId), found]
+          return Promise.resolve(found)
+        }
         return new Promise((_resolve, reject) => {
           setTimeout(() => reject(new Error('timeout')), timeoutMs)
         })
@@ -451,6 +469,167 @@ describe('remove', () => {
   })
 })
 
+describe('remove of a worktree that claude rm keeps', () => {
+  const WT = '/r/.claude/worktrees/fix-a'
+  const KEPT: ExecResult = { code: 1, stderr: '', stdout: KEPT_STDOUT }
+  const RM = ['rm', SHORT]
+  const DISCARD = ['rm', SHORT, '--discard-unpushed', KEPT_DISCARD]
+  const CHANGED = 'refused: the worktree changed after the check'
+  const KEPT_REFUSAL = 'refused: claude rm kept the worktree'
+  const runLine = (args: string[]) => `0 run ${JSON.stringify(args)} ${JSON.stringify(RUN_OPTS)}`
+  const counts = (unmergedCommits: number, changedFiles: number) => ({
+    changedFiles,
+    unmergedCommits,
+  })
+  const found = (unmergedCommits: number, changedFiles: number): WorktreeCheck => ({
+    branch: 'worktree-fix-a',
+    changedFiles,
+    unmergedCommits,
+    worktree: WT,
+  })
+  // claude rm keeps the worktree. claude rm with the discard value removes it.
+  const keeps = (args: string[]) => (args.length === 2 && args[0] === 'rm' ? KEPT : OK)
+  // A stopped worktree session reports its start folder. The row keeps the worktree.
+  const stoppedRow = () => parked({ cwd: '/r', worktree: WT })
+
+  test('remove discards after a refusal when seen is 0 and 0', async () => {
+    f.rows = [stoppedRow()]
+    f.exec = keeps
+    f.check = () => found(0, 0)
+    await actions.remove(S, true, counts(0, 0))
+    expect(f.ops()).toEqual([
+      runLine(RM),
+      `0 checkWorktree ${WT}`,
+      runLine(DISCARD),
+      `0 forget ${S}`,
+    ])
+  })
+
+  test('remove discards when the new check after the stop equals seen', async () => {
+    f.rows = [row({ cwd: `${WT}/src` })]
+    f.exec = keeps
+    f.check = () => found(2, 1)
+    await actions.remove(S, true, counts(2, 1))
+    expect(f.ops()).toEqual([
+      runLine(['stop', SHORT]),
+      runLine(RM),
+      `0 checkWorktree ${WT}`,
+      runLine(DISCARD),
+      `0 forget ${S}`,
+    ])
+    // Less work than the dialog showed also discards.
+    f.log = []
+    f.rows = [stoppedRow()]
+    f.check = () => found(1, 0)
+    await actions.remove(S, true, counts(2, 1))
+    expect(f.ops('run', 'forget')).toEqual([runLine(RM), runLine(DISCARD), `0 forget ${S}`])
+  })
+
+  test('remove does not discard when the new check has more commits or more changed files', async () => {
+    f.exec = keeps
+    for (const now of [found(3, 1), found(2, 2), found(9, 9)]) {
+      f.log = []
+      f.rows = [stoppedRow()]
+      f.check = () => now
+      await expect(actions.remove(S, true, counts(2, 1))).rejects.toThrow(CHANGED)
+      expect(f.ops()).toEqual([runLine(RM), `0 checkWorktree ${WT}`])
+    }
+  })
+
+  test('remove does not discard when the new check fails or finds no worktree', async () => {
+    f.exec = keeps
+    const none: WorktreeCheck = {
+      branch: null,
+      changedFiles: 0,
+      unmergedCommits: 0,
+      worktree: null,
+    }
+    for (const now of [null, none]) {
+      f.log = []
+      f.rows = [stoppedRow()]
+      f.check = () => now
+      await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(CHANGED)
+      expect(f.ops()).toEqual([runLine(RM), `0 checkWorktree ${WT}`])
+    }
+  })
+
+  test('remove does not discard when seen is null', async () => {
+    f.exec = keeps
+    f.check = () => found(0, 0)
+    for (const seen of [null, undefined]) {
+      f.log = []
+      f.rows = [stoppedRow()]
+      await expect(actions.remove(S, true, seen)).rejects.toThrow(KEPT_REFUSAL)
+      expect(f.ops()).toEqual([runLine(RM)])
+    }
+  })
+
+  test('remove does not discard when Bifrost knows no worktree of the row', async () => {
+    f.rows = [parked({ cwd: '/r' })]
+    f.exec = keeps
+    f.check = () => found(0, 0)
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(KEPT_REFUSAL)
+    expect(f.ops()).toEqual([runLine(RM)])
+  })
+
+  test('remove never passes a value that parseKept did not give', async () => {
+    f.check = () => found(0, 0)
+    const cases: [ExecResult, string][] = [
+      [{ code: 1, stderr: 'rm failed', stdout: '' }, 'rm failed'],
+      [{ code: 1, stderr: KEPT_STDOUT, stdout: '' }, 'kept abd71478'],
+      [{ code: 1, stderr: '', stdout: KEPT_STDOUT.replace('kept ', 'held ') }, 'held abd71478'],
+      [
+        { code: 1, stderr: '', stdout: KEPT_STDOUT.replace(KEPT_DISCARD, `${KEPT_DISCARD};id`) },
+        'kept',
+      ],
+      [
+        {
+          code: 1,
+          stderr: '',
+          stdout: KEPT_STDOUT.replace(KEPT_DISCARD, KEPT_DISCARD.toUpperCase()),
+        },
+        'kept',
+      ],
+      [{ code: 1, stderr: '', stdout: KEPT_STDOUT.replace(KEPT_DISCARD, '--all') }, 'kept'],
+      [{ code: 2, stderr: '', stdout: '' }, 'claude rm failed with code 2'],
+    ]
+    for (const [result, error] of cases) {
+      f.log = []
+      f.rows = [stoppedRow()]
+      f.exec = args => (args[0] === 'rm' ? result : OK)
+      await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(error)
+      expect(f.ops()).toEqual([runLine(RM)])
+    }
+  })
+
+  test('remove gives the changed text when claude rm keeps the worktree again', async () => {
+    // The second refusal ends the delete. Bifrost tries the discard one time only.
+    f.rows = [stoppedRow()]
+    f.exec = args => (args[0] === 'rm' ? KEPT : OK)
+    f.check = () => found(0, 0)
+    await expect(actions.remove(S, true, counts(0, 0))).rejects.toThrow(CHANGED)
+    expect(f.ops()).toEqual([runLine(RM), `0 checkWorktree ${WT}`, runLine(DISCARD)])
+  })
+
+  test('remove refuses check counts that are not counts', async () => {
+    f.rows = [stoppedRow()]
+    for (const seen of [
+      {},
+      { changedFiles: 0 },
+      { changedFiles: -1, unmergedCommits: 0 },
+      { changedFiles: 0.5, unmergedCommits: 0 },
+      { changedFiles: '0', unmergedCommits: 0 },
+      { changedFiles: 0, unmergedCommits: Number.NaN },
+      0,
+      'x',
+      [],
+    ]) {
+      await expect(actions.remove(S, true, seen)).rejects.toThrow('refused: bad input')
+    }
+    expect(f.log).toEqual([])
+  })
+})
+
 describe('resume', () => {
   test('resume runs claude --bg --resume with the session ID in the cwd and waits for the entry', async () => {
     f.rows = [parked()]
@@ -627,15 +806,21 @@ describe('resumeAll', () => {
 })
 
 describe('takeControl', () => {
-  test('takeControl sends SIGTERM, waits for the end and resumes in the cwd', async () => {
+  test('takeControl sends SIGTERM, waits for the end, resumes in the cwd and checks the new process', async () => {
     f.rows = [external()]
-    f.alive = () => Date.now() - f.base < 300
+    f.alive = pid => pid === 5151 || Date.now() - f.base < 300
     f.appear = [external({ pid: 5151 }), row({ pid: 5151 })]
-    const done = actions.takeControl(S, true)
-    await vi.advanceTimersByTimeAsync(300)
+    let settled = false
+    const done = actions.takeControl(S, true).finally(() => {
+      settled = true
+    })
+    await vi.advanceTimersByTimeAsync(300 + RESUME_SETTLE_MS - 1)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
     await expect(done).resolves.toEqual({ sessionId: S })
     expect(f.ops()).toEqual([
       '0 dirInfo /p',
+      `0 hasMessages ${S}`,
       '0 processName 4242',
       '0 signal 4242 SIGTERM',
       '0 isAlive 4242',
@@ -645,14 +830,64 @@ describe('takeControl', () => {
       `300 markStarted ${S}`,
       `300 run ${JSON.stringify(['--bg', '--resume', S])} ${JSON.stringify(IN_P)}`,
       `300 waitForRow ${START_TIMEOUT_MS}`,
+      `${300 + RESUME_SETTLE_MS} isAlive 5151`,
     ])
   })
 
   test('takeControl accepts a yellow box', async () => {
     f.rows = [external({ box: 'yellow', state: 'needs-you', status: 'waiting' })]
-    f.appear = [row()]
-    await expect(actions.takeControl(S, true)).resolves.toEqual({ sessionId: S })
+    f.appear = [row({ pid: 5151 })]
+    f.alive = pid => pid === 5151
+    const done = actions.takeControl(S, true)
+    await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
+    await expect(done).resolves.toEqual({ sessionId: S })
     expect(f.ops('signal')).toEqual(['0 signal 4242 SIGTERM'])
+  })
+
+  test('takeControl refuses a session with no messages and sends no signal', async () => {
+    // Claude Code cannot resume a session without a user message (Task 10 bug 3).
+    f.rows = [external()]
+    f.messages = false
+    await expect(actions.takeControl(S, true)).rejects.toThrow(
+      'refused: the session has no messages yet',
+    )
+    expect(f.ops('hasMessages')).toEqual([`0 hasMessages ${S}`])
+    expect(f.ops('signal', 'processName', 'markStarted', 'run')).toEqual([])
+  })
+
+  test('takeControl rejects when the resumed session parks before it runs', async () => {
+    // The resumed job gets a process, and then it ends at once (Task 10 bug 3).
+    f.rows = [external()]
+    f.appear = [row({ pid: 5151 })]
+    f.alive = pid => pid === 5151
+    const done = actions.takeControl(S, true)
+    const check = expect(done).rejects.toThrow(
+      `Claude Code could not resume this session. Run claude logs ${SHORT} to see the cause.`,
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    f.rows = [parked()]
+    await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS - 1000)
+    await check
+    expect(f.ops('signal', 'markStarted')).toEqual(['0 signal 4242 SIGTERM', `0 markStarted ${S}`])
+  })
+
+  test('takeControl rejects when the process of the resumed session ends', async () => {
+    f.rows = [external()]
+    f.appear = [row({ pid: 5151 })]
+    f.alive = () => false
+    const done = actions.takeControl(S, true)
+    const check = expect(done).rejects.toThrow('Claude Code could not resume this session.')
+    await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
+    await check
+    expect(f.ops('isAlive').at(-1)).toBe(`${RESUME_SETTLE_MS} isAlive 5151`)
+    // A row without a short ID gives no claude logs hint.
+    f.log = []
+    f.rows = [external()]
+    f.appear = [row({ pid: 5151, shortId: undefined })]
+    const next = actions.takeControl(S, true)
+    const nextCheck = expect(next).rejects.toThrow(/^Claude Code could not resume this session\.$/)
+    await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
+    await nextCheck
   })
 
   test('takeControl starts no copy when the process does not end in 5 seconds', async () => {
@@ -763,8 +998,11 @@ describe('takeControl', () => {
     }
     expect(f.log).toEqual([])
     // A refused call does not hold the lock.
-    f.appear = [row()]
-    await expect(actions.takeControl(S, true)).resolves.toEqual({ sessionId: S })
+    f.appear = [row({ pid: 5151 })]
+    f.alive = pid => pid === 5151
+    const done = actions.takeControl(S, true)
+    await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
+    await expect(done).resolves.toEqual({ sessionId: S })
   })
 
   test('resume, Resume all and Take control pass no extra flags', async () => {
@@ -772,9 +1010,15 @@ describe('takeControl', () => {
     f.appear = [row()]
     f.rows = [parked({ resumable: true })]
     await actions.resume(S)
+    // The resumed row runs now. Resume all needs it parked again.
+    f.rows = [parked({ resumable: true })]
     await actions.resumeAll()
     f.rows = [external()]
-    await actions.takeControl(S, true)
+    f.appear = [row({ pid: 5151 })]
+    f.alive = pid => pid === 5151
+    const done = actions.takeControl(S, true)
+    await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
+    await done
     const runs = f.ops('run').map(line => line.split(' ')[2])
     expect(runs).toEqual(Array(3).fill(JSON.stringify(['--bg', '--resume', S])))
   })

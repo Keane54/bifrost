@@ -1,7 +1,7 @@
 // The texts of the confirmation dialogs (spec 9.1, 9.2).
 
 import type { SessionRow, WorktreeCheck } from '../../../shared/types'
-import { worktreeRoot } from '../../../shared/worktree'
+import { worktreeOf } from '../../../shared/worktree'
 import { actionLabel, type LabelSet } from './action-model'
 
 export interface ConfirmText {
@@ -14,9 +14,14 @@ export interface ConfirmText {
   openFolder?: string
 }
 
-// A worktree session has a cwd in .claude/worktrees or a branch that starts with worktree-.
+// A worktree session has a cwd in .claude/worktrees, a stored worktree or a branch that starts
+// with worktree-. A stopped session reports its start folder, so the stored worktree counts.
 export function isWorktreeRow(row: SessionRow): boolean {
-  return row.cwd.includes('/.claude/worktrees/') || (row.branch?.startsWith('worktree-') ?? false)
+  return (
+    row.cwd.includes('/.claude/worktrees/') ||
+    worktreeOf(row) !== null ||
+    (row.branch?.startsWith('worktree-') ?? false)
+  )
 }
 
 // The dots after a label mean that the action opens a dialog. The dialog itself has no dots.
@@ -48,7 +53,7 @@ export function confirmFor(
     const ask = 'Are you sure you want to delete this?'
     const again = 'Delete anyway'
     if (check === null) {
-      const folder = worktreeRoot(row.cwd)?.worktree
+      const folder = worktreeOf(row) ?? undefined
       return {
         body: `Bifrost could not check this session for unmerged work. ${ask}`,
         confirm: label,

@@ -413,6 +413,7 @@ describe('updates and the store', () => {
       priorities: {},
       started: [],
       watch: [],
+      worktrees: [],
     })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(saveStore).toHaveBeenCalledTimes(1)
@@ -436,6 +437,7 @@ describe('updates and the store', () => {
       priorities: {},
       started: [],
       watch: [],
+      worktrees: [],
     })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(saveStore).toHaveBeenCalledTimes(2)
@@ -463,6 +465,7 @@ describe('updates and the store', () => {
       priorities: {},
       started: [],
       watch: [],
+      worktrees: [],
     })
   })
 

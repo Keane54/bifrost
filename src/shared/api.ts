@@ -8,6 +8,7 @@ import type {
   ProjectApp,
   ProjectAppId,
   ResumeAllResult,
+  SeenCounts,
   SessionRow,
   TermSize,
   WatchColour,
@@ -73,8 +74,10 @@ export interface BifrostApi {
     // Run "claude stop". Only for an owned session that runs.
     stop(sessionId: string): Promise<void>
     // Delete the session. Pass true only after the user accepted the confirmation.
-    // The main process refuses a delete without it.
-    remove(sessionId: string, confirmed: true): Promise<void>
+    // The main process refuses a delete without it. seen is the unmerged-work check that the
+    // dialog showed, or null when the check failed or did not run. The main process discards
+    // a worktree that claude rm keeps only after a check that the dialog showed.
+    remove(sessionId: string, confirmed: true, seen: SeenCounts | null): Promise<void>
     // Run "claude --bg --resume". Only for a parked session.
     resume(sessionId: string): Promise<void>
     resumeAll(): Promise<ResumeAllResult>

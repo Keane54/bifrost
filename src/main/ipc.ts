@@ -21,7 +21,8 @@ import { findProjectApps } from './actions/project-apps'
 import { createSessionActions } from './actions/session-actions'
 import { hasLeftKey, SessionInput } from './actions/session-input'
 import { createTerminalLauncher } from './actions/terminal-launch'
-import { createWorktreeActions } from './actions/worktree-check'
+import { hasMessages } from './actions/transcript'
+import { checkWorktree, createWorktreeActions } from './actions/worktree-check'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
@@ -366,9 +367,13 @@ export function registerIpc(): void {
   const kill = (pid: number, signal: string | number): void => {
     process.kill(pid, signal)
   }
+  // Take control reads only the start of the transcript of the session (Task 15).
+  const projectsDir = join(homedir(), '.claude', 'projects')
   const sessions = createSessionActions({
+    checkWorktree: worktree => checkWorktree(worktree, execFile),
     dirInfo: dir => dirInfo(execFile, stat, dir),
     forget: id => liveService?.forget(id),
+    hasMessages: id => hasMessages(projectsDir, id),
     isAlive: pid => isAlive(kill, pid),
     markStarted: id => liveService?.markStarted(id),
     markStopped: id => liveService?.markStopped(id),
@@ -392,8 +397,9 @@ export function registerIpc(): void {
   ipcMain.handle('sessions:stop', (e, sessionId: unknown) =>
     fromPage(e, () => sessions.stop(sessionId)),
   )
-  ipcMain.handle('sessions:remove', (e, sessionId: unknown, confirmed: unknown) =>
-    fromPage(e, () => sessions.remove(sessionId, confirmed)),
+  // seen is the check that the Delete dialog showed. session-actions checks each value.
+  ipcMain.handle('sessions:remove', (e, sessionId: unknown, confirmed: unknown, seen: unknown) =>
+    fromPage(e, () => sessions.remove(sessionId, confirmed, seen)),
   )
   ipcMain.handle('sessions:resume', (e, sessionId: unknown) =>
     fromPage(e, () => sessions.resume(sessionId)),
