@@ -225,6 +225,8 @@ export default function OverviewTable({
                         resizeId === id && 'bg-text-strong/60',
                       )}
                       data-resize-handle={true}
+                      // Without the capture, no pointer up comes to the handle. End the resize.
+                      onLostPointerCapture={endResize}
                       onPointerCancel={endResize}
                       onPointerDown={e => {
                         if (e.button !== 0) return
@@ -234,7 +236,11 @@ export default function OverviewTable({
                         resizing.current = { id, startWidth: header.getSize(), startX: e.clientX }
                         setResizeId(id)
                       }}
-                      onPointerMove={e => resizeTo(e.clientX)}
+                      onPointerMove={e => {
+                        // No button is down. So Bifrost did not get the pointer up. End the resize.
+                        if (e.buttons === 0) endResize(e)
+                        else resizeTo(e.clientX)
+                      }}
                       onPointerUp={endResize}
                       style={{ width: RESIZE_ZONE }}
                     />
