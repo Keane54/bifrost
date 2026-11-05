@@ -523,11 +523,12 @@ export class ChatTerminal {
     this.open(target, this.termSize())
   }
 
-  // The rows of the visible screen, without a trim. joinWrapped trims each line.
+  // The rows of the screen, without a trim. joinWrapped trims each line.
+  // The screen starts at baseY. The viewport starts higher when the user scrolls back (D10).
   private screenRows(): ScreenRow[] {
     const buffer = this.term.buffer.active
     const rows: ScreenRow[] = []
-    for (let y = buffer.viewportY; y < buffer.viewportY + this.term.rows; y++) {
+    for (let y = buffer.baseY; y < buffer.baseY + this.term.rows; y++) {
       const line = buffer.getLine(y)
       if (line) rows.push({ text: line.translateToString(false), wrapped: line.isWrapped })
     }

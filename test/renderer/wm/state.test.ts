@@ -44,12 +44,12 @@ describe('wm state', () => {
   it('open adds a centred frame with the default size', () => {
     const s = run([open('integration')])
     expect(s.frames).toHaveLength(1)
-    expect(s.frames[0]).toMatchObject({
+    // A frame has no opacity field (spec 8.1).
+    expect(s.frames[0]).toEqual({
       active: 'integration',
       id: 'f1',
       locked: false,
       minimised: false,
-      opacity: 1,
       panels: ['integration'],
       rect: centreRect(DEFAULT_SIZES.integration, bounds),
     })
@@ -198,12 +198,11 @@ describe('wm state', () => {
     expect(wmReducer(locked, { frameId: 'f1', targetId: 'f2', type: 'stack' })).toBe(locked)
   })
 
-  it('unstack makes a new frame on top with the old opacity', () => {
+  it('unstack makes a new frame on top', () => {
     let s = run([
       open('overview:1'),
       open('overview:2'),
       { frameId: 'f2', targetId: 'f1', type: 'stack' },
-      { frameId: 'f1', opacity: 0.5, type: 'opacity' },
     ])
     const old = s.frames[0]?.rect
     s = run([{ panelId: 'overview:2', rect: { h: 300, w: 400, x: 50, y: 60 }, type: 'unstack' }], s)
@@ -211,7 +210,6 @@ describe('wm state', () => {
     expect(s.frames[0]).toMatchObject({ active: 'overview:1', panels: ['overview:1'] })
     expect(s.frames[1]).toMatchObject({
       locked: false,
-      opacity: 0.5,
       panels: ['overview:2'],
       rect: { h: 300, w: 400, x: 50, y: 60 },
     })
@@ -230,15 +228,6 @@ describe('wm state', () => {
     ])
     const locked = run([{ frameId: 'f1', locked: true, type: 'lock' }], two)
     expect(wmReducer(locked, { panelId: 'overview:2', rect, type: 'unstack' })).toBe(locked)
-  })
-
-  it('opacity is clamped to 0.3 and 1', () => {
-    const s = run([open('overview:1')])
-    const at = (opacity: number) =>
-      wmReducer(s, { frameId: 'f1', opacity, type: 'opacity' }).frames[0]?.opacity
-    expect(at(0)).toBe(0.3)
-    expect(at(5)).toBe(1)
-    expect(at(0.456)).toBe(0.46)
   })
 
   it('bounds keeps the saved rects and shows each frame inside a smaller window', () => {
@@ -267,7 +256,6 @@ describe('wm state', () => {
       active: `overview:${i + 1}`,
       locked: false,
       minimised: false,
-      opacity: 1,
       panels: [`overview:${i + 1}`],
       rect,
     }))
@@ -299,7 +287,6 @@ describe('wm state', () => {
       active,
       locked: false,
       minimised: false,
-      opacity: 1,
       panels,
       rect: r,
     })
@@ -338,7 +325,6 @@ describe('wm state', () => {
       { panelId: 'overview:2', type: 'activate' },
       { frameId: 'f2', type: 'restore' },
       { frameId: 'f2', locked: false, type: 'lock' },
-      { frameId: 'f2', opacity: 1, type: 'opacity' },
       { bounds, type: 'bounds' },
     ]
     for (const a of actions) expect(wmReducer(s, a)).toBe(s)
@@ -390,7 +376,6 @@ describe('wm state', () => {
       { frameId: f[0]?.id ?? '', type: 'minimise' },
       { frameId: f[0]?.id ?? '', type: 'restore' },
       { frameId: f[0]?.id ?? '', locked: true, type: 'lock' },
-      { frameId: f[0]?.id ?? '', opacity: 0.5, type: 'opacity' },
       { bounds: { h: 400, w: 500 }, type: 'bounds' },
       { frames: [], memory: {}, type: 'load' },
     ]

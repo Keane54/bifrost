@@ -21,7 +21,6 @@ function frame(id: string, panels: string[], active: string, minimised = false):
     id,
     locked: false,
     minimised,
-    opacity: 1,
     panels,
     rect: { h: 100, w: 100, x: 0, y: 0 },
   }

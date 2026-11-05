@@ -5,6 +5,8 @@
 
 /* All colour tokens of Bifrost live in this block. */
 @theme {
+  /* The alpha of the panel background only. Text and content stay solid (spec 8.1).
+     The Settings row "Panel transparency" (M5a) sets this value on the document root. */
   --panel-alpha: 0.85;
   --color-bg: #0a0a0a;
   --color-panel: rgb(16 16 16 / var(--panel-alpha));

@@ -57,9 +57,9 @@ function SetNameField({ panelId }: { panelId: string }): React.JSX.Element {
   )
 }
 
-// The menu of one frame: an opacity slider and a Lock checkbox.
+// The menu of one frame: a Lock checkbox. A frame has no opacity control (spec 8.1).
 // For an Overview, the menu also has the name of the tab set.
-// The menu is in document.body. So the opacity and the clip of the frame do not apply to it.
+// The menu is in document.body. So the clip of the frame does not apply to it.
 export default function PanelMenu({
   frame,
   anchor,
@@ -68,14 +68,12 @@ export default function PanelMenu({
   onClose,
 }: PanelMenuProps): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
-  const slider = useRef<HTMLInputElement>(null)
+  const lock = useRef<HTMLInputElement>(null)
   useDismiss(ref, button, onClose)
 
   useEffect(() => {
-    slider.current?.focus()
+    lock.current?.focus()
   }, [])
-
-  const percent = Math.round(frame.opacity * 100)
 
   return createPortal(
     <div
@@ -88,27 +86,11 @@ export default function PanelMenu({
         top: anchor.bottom + GAP,
       }}
     >
-      <label className='flex flex-col gap-1'>
-        <span className='flex justify-between'>
-          <span>Opacity</span>
-          <span className='text-text-dim'>{percent}%</span>
-        </span>
-        <input
-          max={100}
-          min={30}
-          onChange={e =>
-            dispatch({ frameId: frame.id, opacity: Number(e.target.value) / 100, type: 'opacity' })
-          }
-          ref={slider}
-          step={5}
-          type='range'
-          value={percent}
-        />
-      </label>
       <label className='flex items-center gap-2'>
         <input
           checked={frame.locked}
           onChange={e => dispatch({ frameId: frame.id, locked: e.target.checked, type: 'lock' })}
+          ref={lock}
           type='checkbox'
         />
         Lock

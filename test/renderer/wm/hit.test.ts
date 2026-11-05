@@ -18,7 +18,6 @@ function frame(id: string, rect: Rect, minimised = false): Frame {
     id,
     locked: false,
     minimised,
-    opacity: 1,
     panels: ['overview:1'],
     rect,
   }

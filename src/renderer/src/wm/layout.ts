@@ -53,16 +53,12 @@ function parseFrame(value: unknown): Omit<Frame, 'id'> | null {
   }
   const first = panels[0]
   if (first === undefined) return null
-  const opacity =
-    typeof value.opacity === 'number' && Number.isFinite(value.opacity)
-      ? Math.min(1, Math.max(0.3, value.opacity))
-      : 1
+  // An M2 store has an opacity value on each frame. The parse ignores it (spec 8.1).
   return {
     active:
       typeof value.active === 'string' && panels.includes(value.active) ? value.active : first,
     locked: value.locked === true,
     minimised: value.minimised === true,
-    opacity,
     panels,
     rect,
   }

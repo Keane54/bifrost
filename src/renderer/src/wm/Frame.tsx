@@ -81,6 +81,7 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
     setMenu(open => (open || !box ? null : { bottom: box.bottom, right: box.right }))
   }
 
+  // Only the background is translucent (bg-panel and --panel-alpha). Text and content stay solid.
   return (
     <div
       className={cx(
@@ -93,7 +94,6 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
       style={{
         height: rect.h,
         left: rect.x,
-        opacity: frame.opacity,
         top: rect.y,
         width: rect.w,
         zIndex: z,

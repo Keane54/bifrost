@@ -18,7 +18,6 @@ export interface Frame {
   rect: Rect
   minimised: boolean
   locked: boolean
-  opacity: number
 }
 
 export interface WmState {
@@ -41,7 +40,6 @@ export type WmAction =
   | { type: 'minimise'; frameId: string }
   | { type: 'restore'; frameId: string }
   | { type: 'lock'; frameId: string; locked: boolean }
-  | { type: 'opacity'; frameId: string; opacity: number }
   | { type: 'bounds'; bounds: Size }
   | { type: 'load'; frames: Omit<Frame, 'id'>[]; memory: Record<string, Rect> }
 
@@ -160,7 +158,6 @@ function open(state: WmState, panelId: string): WmState {
     id: `f${state.nextFrame}`,
     locked: false,
     minimised: false,
-    opacity: 1,
     panels: [panelId],
     rect,
   }
@@ -194,7 +191,6 @@ function unstack(state: WmState, panelId: string, rect: Rect): WmState {
     id: `f${state.nextFrame}`,
     locked: false,
     minimised: false,
-    opacity: frame.opacity,
     panels: [panelId],
     rect: clampRect(rect, state.bounds, MIN_SIZE),
   }
@@ -205,10 +201,6 @@ function unstack(state: WmState, panelId: string, rect: Rect): WmState {
     memory: { ...state.memory, [panelId]: frame.rect },
     nextFrame: state.nextFrame + 1,
   }
-}
-
-function clampOpacity(value: number): number {
-  return Math.round(Math.min(1, Math.max(0.3, value)) * 100) / 100
 }
 
 function load(state: WmState, input: Omit<Frame, 'id'>[], memory: Record<string, Rect>): WmState {
@@ -230,7 +222,6 @@ function load(state: WmState, input: Omit<Frame, 'id'>[], memory: Record<string,
       id: `f${nextFrame}`,
       locked: item.locked === true,
       minimised: item.minimised === true,
-      opacity: Number.isFinite(item.opacity) ? clampOpacity(item.opacity) : 1,
       panels,
       // Keep the rect as saved. The screen shows it inside the current bounds.
       rect: { ...item.rect },
@@ -286,12 +277,6 @@ export function wmReducer(state: WmState, action: WmAction): WmState {
       const frame = state.frames.find(f => f.id === action.frameId)
       if (!frame || frame.locked === action.locked) return state
       return withFrame(state, { ...frame, locked: action.locked })
-    }
-    case 'opacity': {
-      const frame = state.frames.find(f => f.id === action.frameId)
-      if (!frame || !Number.isFinite(action.opacity)) return state
-      const opacity = clampOpacity(action.opacity)
-      return opacity === frame.opacity ? state : withFrame(state, { ...frame, opacity })
     }
     case 'bounds': {
       const { bounds } = action

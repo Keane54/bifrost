@@ -17,7 +17,6 @@ const frame = {
   active: 'integration',
   locked: false,
   minimised: false,
-  opacity: 1,
   panels: ['integration'],
   rect,
 }
@@ -75,22 +74,38 @@ describe('layout', () => {
     expect(parsed.layouts).toEqual([])
   })
 
-  it('parseUiStore clamps opacity and fills the defaults', () => {
+  it('parseUiStore fills the defaults', () => {
     const parsed = parseUiStore({
       current: {
         frames: [
           { panels: ['integration'], rect },
-          { opacity: 0.1, panels: ['selected-item'], rect },
-          { active: 'zzz', minimised: 'yes', opacity: 5, panels: ['overview:1'], rect },
+          { active: 'zzz', locked: 1, minimised: 'yes', panels: ['overview:1'], rect },
         ],
         memory: {},
       },
       version: 1,
     })
-    const [a, b, c] = parsed.current?.frames ?? []
+    const [a, b] = parsed.current?.frames ?? []
     expect(a).toEqual(frame)
-    expect(b?.opacity).toBe(0.3)
-    expect(c).toMatchObject({ active: 'overview:1', locked: false, minimised: false, opacity: 1 })
+    expect(b).toEqual({
+      active: 'overview:1',
+      locked: false,
+      minimised: false,
+      panels: ['overview:1'],
+      rect,
+    })
+  })
+
+  it('parseUiStore drops an old opacity field', () => {
+    // An M2 store has an opacity value on each frame. A frame has no opacity now (spec 8.1).
+    const old = { ...frame, opacity: 0.5 }
+    const parsed = parseUiStore({
+      current: { frames: [old], memory: {} },
+      layouts: [{ name: 'A', snapshot: { frames: [old, { ...old, opacity: 'x' }], memory: {} } }],
+      version: 1,
+    })
+    expect(parsed.current?.frames).toEqual([frame])
+    expect(parsed.layouts[0]?.snapshot.frames).toEqual([frame, frame])
   })
 
   it('parseUiStore keeps the first of two layouts with the same name and at most 20 layouts', () => {
@@ -117,7 +132,7 @@ describe('layout', () => {
     let state = initialState({ h: 800, w: 1200 })
     state = wmReducer(state, { panelId: 'integration', type: 'open' })
     state = wmReducer(state, { panelId: 'overview:2', type: 'open' })
-    state = wmReducer(state, { frameId: 'f2', opacity: 0.5, type: 'opacity' })
+    state = wmReducer(state, { frameId: 'f2', locked: true, type: 'lock' })
     state = wmReducer(state, { panelId: 'integration', type: 'close' })
     const snapshot = toSnapshot(state)
     const parsed = parseUiStore({ current: snapshot, layouts: [], version: 1 })
