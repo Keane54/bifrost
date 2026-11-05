@@ -59,6 +59,8 @@ export function statuslineScript(originalCommand: string | null): string {
 exec 2>/dev/null
 umask 077
 base="\${BIFROST_HOME:-$HOME/.bifrost}"
+# If fd 0 is closed, open /dev/null as stdin. Without it, bash 3.2 gives cat a pipe that never ends.
+true 3<&0 || exec </dev/null
 ${notRunning}
 # Read stdin one time. The x keeps the newlines at the end of the input.
 input=$(cat; printf x)

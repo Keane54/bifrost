@@ -232,3 +232,33 @@ test('the wrapper makes status.json with mode 0600', async () => {
   expect((await stat(join(home, 'sessions', UUID))).mode & 0o777).toBe(0o700)
   expect((await stat(join(home, 'sessions', UUID, 'status.json'))).mode & 0o777).toBe(0o600)
 })
+
+// Run the wrapper with fd 0 closed. A shell closes fd 0, then runs the file.
+function runWithClosedStdin(
+  file: string,
+  bifrostHome: string,
+): Promise<{ code: number | null; stdout: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('sh', ['-c', 'exec 0<&-; exec bash "$0"', file], {
+      env: { ...process.env, BIFROST_HOME: bifrostHome },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 5000,
+    })
+    let stdout = ''
+    child.stdout.on('data', chunk => {
+      stdout += chunk
+    })
+    child.on('error', reject)
+    child.on('close', code => resolve({ code, stdout }))
+  })
+}
+
+test('the wrapper does not block when fd 0 is closed', async () => {
+  const file = join(dir, 'wrapper.sh')
+  await writeFile(file, statuslineScript("printf 'LINE'"))
+  await activate(home)
+  expect(await runWithClosedStdin(file, home)).toEqual({ code: 0, stdout: 'LINE' })
+  const idle = join(dir, 'idle-home')
+  await mkdir(idle)
+  expect(await runWithClosedStdin(file, idle)).toEqual({ code: 0, stdout: 'LINE' })
+}, 15_000)
