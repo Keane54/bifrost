@@ -18,7 +18,7 @@ function isFooterLine(line: string): boolean {
 }
 
 // A border of the prompt box or a rule line: only box-drawing characters and spaces.
-const BORDER = /^[\s─-╿]*[─-╿][\s─-╿]*$/
+const BORDER = /^[\s\u2500-\u257f]*[\u2500-\u257f][\s\u2500-\u257f]*$/
 
 // In the agent view, the footer is the last non-empty line. A footer line with a border after it
 // is in the prompt box. A paste of more than one line puts the footer on a continuation line.
