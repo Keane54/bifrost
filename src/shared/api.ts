@@ -10,6 +10,7 @@ import type {
   ResumeAllResult,
   SessionRow,
   TermSize,
+  WorktreeCheck,
 } from './types'
 
 // The type of window.bifrost. The preload script implements it.
@@ -71,6 +72,11 @@ export interface BifrostApi {
     // Pass true only after the user accepted the confirmation. The main process refuses
     // a call without it.
     takeControl(sessionId: string, confirmed: true): Promise<{ sessionId: string }>
+    // Count the commits that are not merged and the changed files in the worktree of the
+    // session. This resolves with null when a git command fails.
+    deleteCheck(sessionId: string): Promise<WorktreeCheck | null>
+    // Open the worktree folder of the session. The main process finds the path from the row.
+    openWorktree(sessionId: string): Promise<void>
     // What the main process finds at an absolute path.
     dirInfo(dir: string): Promise<DirInfo>
     // Show the directory picker. This resolves with null after a cancel.

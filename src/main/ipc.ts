@@ -20,6 +20,7 @@ import { findProjectApps } from './actions/project-apps'
 import { createSessionActions } from './actions/session-actions'
 import { hasLeftKey, SessionInput } from './actions/session-input'
 import { createTerminalLauncher } from './actions/terminal-launch'
+import { createWorktreeActions } from './actions/worktree-check'
 import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
@@ -337,6 +338,16 @@ export function registerIpc(): void {
     signal: (pid, signal) => sendSignal(kill, pid, signal),
     waitForRow: async (match, timeoutMs) => (await service).waitForRow(match, timeoutMs),
   })
+  const worktrees = createWorktreeActions({
+    exec: execFile,
+    rows: () => liveService?.rows() ?? [],
+  })
+  ipcMain.handle('sessions:delete-check', (e, sessionId: unknown) =>
+    fromPage(e, () => worktrees.deleteCheck(sessionId)),
+  )
+  ipcMain.handle('sessions:open-worktree', (e, sessionId: unknown) =>
+    fromPage(e, () => worktrees.openWorktree(sessionId)),
+  )
   ipcMain.handle('sessions:create', (e, spec: unknown) => fromPage(e, () => sessions.create(spec)))
   ipcMain.handle('sessions:stop', (e, sessionId: unknown) =>
     fromPage(e, () => sessions.stop(sessionId)),

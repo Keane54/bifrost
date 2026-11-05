@@ -34,7 +34,7 @@ export const NO_STATUSLINE_SETTINGS = '{"statusLine":{"type":"command","command"
 const UUID = new RegExp(UUID_PATTERN)
 
 export const NO_CLAUDE = 'claude not found'
-const REFUSED_UNKNOWN = 'refused: unknown session'
+export const REFUSED_UNKNOWN = 'refused: unknown session'
 const REFUSED_BAD_ID = 'refused: bad session ID'
 const REFUSED_LOCKED = 'refused: an action on this session runs'
 const REFUSED_RESUME_ALL = 'refused: Resume all runs'
@@ -43,7 +43,7 @@ const REFUSED_TAKE_NOT_CONFIRMED = 'refused: Take control needs a confirmation'
 const REFUSED_NO_SHORT_ID = 'refused: the session runs and has no short ID'
 const REFUSED_BAD_PID = 'refused: bad process ID'
 const REFUSED_STOP = 'refused: only an owned session that runs'
-const REFUSED_DELETE_EXTERNAL = 'refused: Bifrost does not delete an external session'
+export const REFUSED_DELETE_EXTERNAL = 'refused: Bifrost does not delete an external session'
 const REFUSED_NOT_PARKED = 'refused: the session is not parked'
 const REFUSED_NOT_EXTERNAL = 'refused: only an external session'
 const REFUSED_WORKING = 'refused: the session is working'

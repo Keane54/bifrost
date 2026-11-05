@@ -69,7 +69,9 @@ const api: BifrostApi = {
   },
   sessions: {
     create: spec => invoke('sessions:create', spec),
+    deleteCheck: sessionId => invoke('sessions:delete-check', sessionId),
     dirInfo: dir => invoke('sessions:dir-info', dir),
+    openWorktree: sessionId => invoke('sessions:open-worktree', sessionId),
     pickDirectory: defaultPath => invoke('sessions:pick-directory', defaultPath),
     remove: (sessionId, confirmed) => invoke('sessions:remove', sessionId, confirmed),
     resume: sessionId => invoke('sessions:resume', sessionId),

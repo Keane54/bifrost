@@ -47,6 +47,15 @@ export type SessionKind = 'owned' | 'external'
 // The priority of a session. 1 is the highest.
 export type Priority = 1 | 2 | 3 | 4 | 5
 
+// What a check finds in the worktree of a session before a Delete.
+// worktree is null when the session has no worktree under .claude/worktrees.
+export interface WorktreeCheck {
+  worktree: string | null
+  branch: string | null
+  changedFiles: number
+  unmergedCommits: number
+}
+
 // One row of the session list. The main process sends rows to the renderer.
 export interface SessionRow {
   sessionId: string

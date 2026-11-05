@@ -1,12 +1,17 @@
 // The texts of the confirmation dialogs (spec 9.1, 9.2).
 
-import type { SessionRow } from '../../../shared/types'
+import type { SessionRow, WorktreeCheck } from '../../../shared/types'
+import { worktreeRoot } from '../../../shared/worktree'
 import { actionLabel, type LabelSet } from './action-model'
 
 export interface ConfirmText {
   title: string
   body: string
   confirm: string
+  // The first click changes the confirm button to this label. Only a second click confirms.
+  confirmAgain?: string
+  // A folder that the dialog can open, so the user can look at the work first.
+  openFolder?: string
 }
 
 // A worktree session has a cwd in .claude/worktrees or a branch that starts with worktree-.
@@ -23,6 +28,7 @@ export function confirmFor(
   id: 'stop' | 'delete' | 'take-control',
   row: SessionRow,
   labels: LabelSet,
+  check?: WorktreeCheck | null,
 ): ConfirmText | null {
   if (id === 'stop') {
     if (row.state !== 'working') return null
@@ -35,9 +41,38 @@ export function confirmFor(
   }
   if (id === 'delete') {
     const label = bareLabel('delete', labels)
+    const plain = `Delete ${row.name}? This removes the session and its conversation.`
+    const ask = 'Are you sure you want to delete this?'
+    const again = 'Delete anyway'
+    if (check === null) {
+      const folder = worktreeRoot(row.cwd)?.worktree
+      return {
+        body: `Bifrost could not check this session for unmerged work. ${ask}`,
+        confirm: label,
+        confirmAgain: again,
+        title: label,
+        ...(folder === undefined ? {} : { openFolder: folder }),
+      }
+    }
+    if (check === undefined || check.worktree === null) {
+      return { body: plain, confirm: label, title: label }
+    }
+    const parts: string[] = []
+    if (check.unmergedCommits > 0) {
+      const n = check.unmergedCommits
+      parts.push(`${n} ${n === 1 ? 'commit' : 'commits'} that ${n === 1 ? 'is' : 'are'} not merged`)
+    }
+    if (check.changedFiles > 0) {
+      const n = check.changedFiles
+      parts.push(`${n} changed ${n === 1 ? 'file' : 'files'}`)
+    }
+    if (parts.length === 0) return { body: plain, confirm: label, title: label }
+    const where = check.branch === null ? 'in its worktree' : `on ${check.branch}`
     return {
-      body: `Delete ${row.name}? This removes the session and its conversation.`,
+      body: `This session has ${parts.join(' and ')} ${where}. ${ask}`,
       confirm: label,
+      confirmAgain: again,
+      openFolder: check.worktree,
       title: label,
     }
   }
