@@ -22,6 +22,12 @@ export interface BifrostApi {
     install(): Promise<IntegrationStatus>
     uninstall(): Promise<IntegrationStatus>
   }
+  ui: {
+    // The saved UI state, or null when the file is missing or damaged.
+    load(): Promise<unknown>
+    // Rejects when the value is not a plain object or is larger than 1 MB.
+    save(data: unknown): Promise<void>
+  }
   pty: {
     // The main process opens a PTY only for "attach <short id>".
     // The session must be owned and not parked.

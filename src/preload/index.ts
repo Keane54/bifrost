@@ -47,6 +47,10 @@ const api: BifrostApi = {
     onUpdate: cb => subscribe('registry:update', cb),
     rows: () => invoke('registry:rows'),
   },
+  ui: {
+    load: () => invoke('ui:load'),
+    save: data => invoke('ui:save', data),
+  },
 }
 
 // The renderer gets only window.bifrost. Context isolation is on.

@@ -33,6 +33,7 @@ import { PENDING_EVENT_MS, SessionRegistry } from './registry/registry'
 import { RegistryService, type ServiceDeps } from './registry/service'
 import { cleanStatusTemps, readStatusFiles, STATUS_TEMP_MAX_AGE_MS } from './registry/status-file'
 import { openStore } from './registry/store-file'
+import { openUiStore } from './store/ui-store'
 
 // A yellow box changes to red after 10 minutes.
 const ESCALATION_MS = 600_000
@@ -161,6 +162,12 @@ export function registerIpc(): void {
   const getManager = (): Promise<PtyManager | null> => managerPromise as Promise<PtyManager | null>
   const paths = defaultPaths(homedir())
   const service = startService(run, paths)
+  // The UI store opens one time. The handlers use the same store.
+  const uiStore = openUiStore(join(app.getPath('userData'), 'ui-state.json'))
+  ipcMain.handle('ui:load', e => fromPage(e, async () => (await uiStore).data))
+  ipcMain.handle('ui:save', (e, data: unknown) =>
+    fromPage(e, async () => (await uiStore).save(data)),
+  )
 
   ipcMain.handle('claude:path', () => claudePath)
   ipcMain.handle('claude:version', async (): Promise<ClaudeVersion> => {

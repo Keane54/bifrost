@@ -268,4 +268,53 @@ describe('wm state', () => {
     const min = run([{ frameId: 'f1', type: 'minimise' }], s)
     expect(wmReducer(min, { frameId: 'f1', type: 'minimise' })).toBe(min)
   })
+
+  it('close of a stack tab then open puts the panel at the stack rect', () => {
+    let s = run([open('overview:1'), open('integration')])
+    s = run([{ frameId: 'f2', targetId: 'f1', type: 'stack' }], s)
+    const moved = { h: 300, w: 400, x: 120, y: 90 }
+    s = run([{ frameId: 'f1', rect: moved, type: 'setRect' }], s)
+    const rectAtClose = s.frames[0]?.rect
+    s = run([{ panelId: 'integration', type: 'close' }], s)
+    expect(s.frames).toHaveLength(1)
+    s = run([open('integration')], s)
+    expect(frameOf(s, 'integration')?.rect).toEqual(rectAtClose)
+    expect(frameOf(s, 'integration')?.rect).toEqual(moved)
+  })
+
+  it('the reducer does not mutate its input', () => {
+    const deepFreeze = <T>(value: T): T => {
+      if (typeof value === 'object' && value !== null) {
+        for (const v of Object.values(value)) deepFreeze(v)
+        Object.freeze(value)
+      }
+      return value
+    }
+    const base = run([open('overview:1'), open('integration'), open('selected-item')])
+    const stacked = run([{ frameId: 'f2', targetId: 'f1', type: 'stack' }], base)
+    const s = deepFreeze(run([{ panelId: 'selected-item', type: 'close' }], stacked))
+    expect(s.frames.length).toBe(1)
+    expect(Object.keys(s.memory).length).toBeGreaterThan(0)
+    const second = deepFreeze(run([open('overview:2')], s))
+    const f = second.frames
+    const r = { h: 250, w: 350, x: 40, y: 50 }
+    const actions: WmAction[] = [
+      open('chat:123e4567-e89b-12d3-a456-426614174000'),
+      open('selected-item'),
+      { panelId: 'integration', type: 'close' },
+      { type: 'closeActive' },
+      { frameId: f[0]?.id ?? '', type: 'focus' },
+      { frameId: f[0]?.id ?? '', rect: r, type: 'setRect' },
+      { frameId: f[1]?.id ?? '', targetId: f[0]?.id ?? '', type: 'stack' },
+      { panelId: 'integration', rect: r, type: 'unstack' },
+      { panelId: 'integration', type: 'activate' },
+      { frameId: f[0]?.id ?? '', type: 'minimise' },
+      { frameId: f[0]?.id ?? '', type: 'restore' },
+      { frameId: f[0]?.id ?? '', locked: true, type: 'lock' },
+      { frameId: f[0]?.id ?? '', opacity: 0.5, type: 'opacity' },
+      { bounds: { h: 400, w: 500 }, type: 'bounds' },
+      { frames: [], memory: {}, type: 'load' },
+    ]
+    for (const a of actions) expect(() => wmReducer(second, a)).not.toThrow()
+  })
 })

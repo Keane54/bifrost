@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { writeJsonAtomic } from '../store/json-file'
 import type { RegistryStore } from './registry'
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -39,18 +38,9 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   return { names, started }
 }
 
-// Write the store to a temporary name in the same directory. Then rename the file.
-// So a crash during the write cannot leave a part of a file.
+// Write the store with an atomic write.
 export async function saveStore(file: string, store: RegistryStore): Promise<void> {
-  await mkdir(dirname(file), { recursive: true })
-  const temporary = `${file}.${randomUUID()}.tmp`
-  try {
-    await writeFile(temporary, `${JSON.stringify(store, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
-    await rename(temporary, file)
-  } catch (error) {
-    await rm(temporary, { force: true })
-    throw error
-  }
+  await writeJsonAtomic(file, store)
 }
 
 // Load the store for the registry service. Give the save function for the same file.
