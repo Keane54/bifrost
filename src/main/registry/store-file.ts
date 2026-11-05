@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { isPriority } from '../../shared/priority'
 import type { Priority } from '../../shared/types'
-import { isWatchColour } from '../../shared/watch'
+import { isWatchColour, OLD_WATCH_COLOURS } from '../../shared/watch'
 import { worktreeRoot } from '../../shared/worktree'
 import { writeJsonAtomic } from '../store/json-file'
 import type { RegistryStore } from './registry'
@@ -65,8 +65,11 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   if (Array.isArray(data.watch)) {
     for (const entry of data.watch) {
       if (!isObject(entry)) continue
-      const { colour, sessionId } = entry
-      if (typeof sessionId !== 'string' || !isWatchColour(colour) || seen.has(sessionId)) continue
+      const { sessionId } = entry
+      // An old colour name maps to a new colour before the check.
+      const old = typeof entry.colour === 'string' ? OLD_WATCH_COLOURS[entry.colour] : undefined
+      const colour = isWatchColour(entry.colour) ? entry.colour : old
+      if (typeof sessionId !== 'string' || colour === undefined || seen.has(sessionId)) continue
       seen.add(sessionId)
       watch.push({ colour, sessionId })
     }

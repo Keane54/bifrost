@@ -2,6 +2,75 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+const WATCH_NAMES = [
+  'dark-red',
+  'red',
+  'amber',
+  'yellow',
+  'green',
+  'light-blue',
+  'dark-blue',
+  'white',
+]
+// The Overview table sits on the panel. The row background is the watch colour over this.
+const PANEL = '#101010'
+
+function token(name: string): string {
+  const match = CSS.match(new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})`))
+  if (!match) throw new Error(`No hex token ${name}`)
+  return match[1]
+}
+
+function rgb(hex: string): [number, number, number] {
+  return [1, 3, 5].map(i => Number.parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
+}
+
+function hex(channels: number[]): string {
+  return `#${channels.map(c => Math.round(c).toString(16).padStart(2, '0')).join('')}`
+}
+
+// The colour over the background at the opacity.
+function mix(over: string, opacity: number, under: string): string {
+  const a = rgb(over)
+  const b = rgb(under)
+  return hex(a.map((c, i) => c * opacity + b[i] * (1 - opacity)))
+}
+
+function hsl(colour: string): { h: number; l: number } {
+  const [r, g, b] = rgb(colour).map(c => c / 255)
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const d = max - min
+  let h = 0
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
+  }
+  return { h: (h * 60 + 360) % 360, l: ((max + min) / 2) * 100 }
+}
+
+function luminance(colour: string): number {
+  const [r, g, b] = rgb(colour).map(c => {
+    const v = c / 255
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+function contrast(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+// The opacity of the row background, from the class names in watch-colours.ts.
+function watchRowOpacity(): number {
+  const found = [...source('watch/watch-colours.ts').matchAll(/bg-watch-[\w-]+\/(\d+)'/g)]
+  const values = new Set(found.map(m => Number(m[1])))
+  if (values.size !== 1) throw new Error('The watch row classes need one opacity')
+  return [...values][0] / 100
+}
+
 const SRC = join(__dirname, '../../src/renderer/src')
 const CSS = readFileSync(join(SRC, 'styles/app.css'), 'utf8')
 
@@ -36,13 +105,13 @@ const TOKENS = [
   'accent',
   'accent-glow',
   'panel-focus',
-  'watch-orange',
+  'watch-dark-red',
+  'watch-red',
+  'watch-amber',
+  'watch-yellow',
   'watch-green',
-  'watch-lime',
-  'watch-cyan',
-  'watch-blue',
-  'watch-purple',
-  'watch-pink',
+  'watch-light-blue',
+  'watch-dark-blue',
   'watch-white',
 ]
 
@@ -180,5 +249,44 @@ describe('theme', () => {
   it('uses Geist Mono as the UI font', () => {
     expect(CSS).toContain('--font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;')
     expect(CSS).not.toMatch(/saira|font-narrow/i)
+  })
+
+  it('the Overview colour tokens have no purple or pink', () => {
+    const tokens = [...CSS.matchAll(/--color-((?:project|tab|watch)-[\w-]+):\s*(#[0-9a-fA-F]{6})/g)]
+    expect(tokens.length).toBeGreaterThanOrEqual(22)
+    const bad = tokens
+      .filter(([, , hex]) => {
+        const hue = hsl(hex).h
+        return hue >= 255 && hue <= 345
+      })
+      .map(([, name]) => name)
+    expect(bad).toEqual([])
+  })
+
+  // the user, 2026-11-05: the yellow box and the red box stay clearly visible on every watched row.
+  it('the boxes stay clearly visible on each watched row', () => {
+    const rowOpacity = watchRowOpacity()
+    const surfaces: [string, string][] = []
+    for (const name of WATCH_NAMES) {
+      const plain = mix(token(`watch-${name}`), rowOpacity, PANEL)
+      surfaces.push([`${name} plain`, plain])
+      surfaces.push([`${name} selected`, mix(token('accent'), 0.15, plain)])
+    }
+    const bad = surfaces.flatMap(([label, background]) =>
+      ['box-yellow', 'box-red']
+        .filter(box => contrast(token(box), background) < 3)
+        .map(box => `${box} on ${label}: ${contrast(token(box), background).toFixed(2)}`),
+    )
+    expect(bad).toEqual([])
+  })
+
+  it('the watch red and yellow differ from the box colours', () => {
+    const light = (name: string): number => hsl(token(name)).l
+    for (const [watch, box] of [
+      ['watch-red', 'box-red'],
+      ['watch-yellow', 'box-yellow'],
+    ]) {
+      expect(Math.abs(light(watch) - light(box)), `${watch} and ${box}`).toBeGreaterThanOrEqual(15)
+    }
   })
 })

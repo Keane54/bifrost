@@ -27,14 +27,14 @@
   --color-hover: rgb(255 255 255 / 0.05);
   --color-snap: #bdbdbd;
   --color-box-yellow: #e2b93b;
-  --color-box-red: #e0473e;
+  --color-box-red: #f26b62;
   --color-parked: #6b7280;
 
   /* The text colours of the Overview tabs. None is yellow, red or grey (spec 8.10). */
   --color-tab-1: #7cc4d6;
-  --color-tab-2: #d68fc0;
+  --color-tab-2: #8fb8e8;
   --color-tab-3: #86c48f;
-  --color-tab-4: #a993e0;
+  --color-tab-4: #5fb3a1;
   --color-tab-5: #6f9fe6;
   --color-tab-6: #9fd0c0;
 
@@ -46,23 +46,23 @@
   --color-prio-5: #7fc77a;
 
   /* The colours of the projects. None is yellow, red, orange or grey (spec 8.3). */
-  --color-project-1: #a78bfa;
+  --color-project-1: #93c5fd;
   --color-project-2: #60a5fa;
   --color-project-3: #2dd4bf;
   --color-project-4: #4ade80;
-  --color-project-5: #e879f9;
-  --color-project-6: #818cf8;
+  --color-project-5: #34d399;
+  --color-project-6: #7aa2d6;
   --color-project-7: #38bdf8;
   --color-project-8: #a3d63a;
 
-  /* The colours of a watched session. The row background uses them at about 25%. */
-  --color-watch-orange: #f59e42;
-  --color-watch-green: #34c759;
-  --color-watch-lime: #b6e03c;
-  --color-watch-cyan: #22d3ee;
-  --color-watch-blue: #4f8ef7;
-  --color-watch-purple: #a66cf2;
-  --color-watch-pink: #f472b6;
+  /* The colours of a watched session. The row background uses them at 12%. */
+  --color-watch-dark-red: #b91c1c;
+  --color-watch-red: #dc2626;
+  --color-watch-amber: #f59e0b;
+  --color-watch-yellow: #fef08a;
+  --color-watch-green: #22c55e;
+  --color-watch-light-blue: #7dd3fc;
+  --color-watch-dark-blue: #2563eb;
   --color-watch-white: #f2f2f2;
 
   --font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;

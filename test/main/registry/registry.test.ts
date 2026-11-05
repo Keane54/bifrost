@@ -713,40 +713,40 @@ describe('watchlist', () => {
 
   test('watchAdd appends the session and changes the store', () => {
     const r = two()
-    expect(r.watchAdd('s2', 'blue')).toBe(true)
-    expect(r.watchAdd('s1', 'pink')).toBe(true)
+    expect(r.watchAdd('s2', 'dark-blue')).toBe(true)
+    expect(r.watchAdd('s1', 'red')).toBe(true)
     expect(watchOf(r)).toEqual([
-      { colour: 'blue', sessionId: 's2' },
-      { colour: 'pink', sessionId: 's1' },
+      { colour: 'dark-blue', sessionId: 's2' },
+      { colour: 'red', sessionId: 's1' },
     ])
     expect(r.storeChanged()).toBe(true)
   })
 
   test('watchAdd of a watched session changes only the colour', () => {
     const r = two()
-    r.watchAdd('s1', 'blue')
+    r.watchAdd('s1', 'dark-blue')
     r.watchAdd('s2', 'green')
     r.storeChanged()
-    expect(r.watchAdd('s1', 'cyan')).toBe(true)
+    expect(r.watchAdd('s1', 'light-blue')).toBe(true)
     expect(watchOf(r)).toEqual([
-      { colour: 'cyan', sessionId: 's1' },
+      { colour: 'light-blue', sessionId: 's1' },
       { colour: 'green', sessionId: 's2' },
     ])
     expect(r.storeChanged()).toBe(true)
-    r.watchAdd('s1', 'cyan')
+    r.watchAdd('s1', 'light-blue')
     expect(r.storeChanged()).toBe(false)
   })
 
   test('watchAdd refuses an unknown session', () => {
     const r = two()
-    expect(r.watchAdd('nope', 'blue')).toBe(false)
+    expect(r.watchAdd('nope', 'dark-blue')).toBe(false)
     expect(watchOf(r)).toEqual([])
     expect(r.storeChanged()).toBe(false)
   })
 
   test('watchRemove removes the session', () => {
     const r = two()
-    r.watchAdd('s1', 'blue')
+    r.watchAdd('s1', 'dark-blue')
     r.storeChanged()
     expect(r.watchRemove('s1')).toBe(true)
     expect(watchOf(r)).toEqual([])
@@ -758,20 +758,20 @@ describe('watchlist', () => {
 
   test('watchColour changes the colour of a watched session only', () => {
     const r = two()
-    r.watchAdd('s1', 'blue')
+    r.watchAdd('s1', 'dark-blue')
     r.storeChanged()
-    expect(r.watchColour('s1', 'lime')).toBe(true)
-    expect(watchOf(r)).toEqual([{ colour: 'lime', sessionId: 's1' }])
+    expect(r.watchColour('s1', 'green')).toBe(true)
+    expect(watchOf(r)).toEqual([{ colour: 'green', sessionId: 's1' }])
     expect(r.storeChanged()).toBe(true)
-    expect(r.watchColour('s2', 'lime')).toBe(true)
-    expect(watchOf(r)).toEqual([{ colour: 'lime', sessionId: 's1' }])
+    expect(r.watchColour('s2', 'green')).toBe(true)
+    expect(watchOf(r)).toEqual([{ colour: 'green', sessionId: 's1' }])
     expect(r.storeChanged()).toBe(false)
-    expect(r.watchColour('nope', 'lime')).toBe(false)
+    expect(r.watchColour('nope', 'green')).toBe(false)
   })
 
   test('watchMove puts the session before another one', () => {
     const r = two()
-    r.watchAdd('s1', 'blue')
+    r.watchAdd('s1', 'dark-blue')
     r.watchAdd('s2', 'green')
     r.storeChanged()
     expect(r.watchMove('s2', 's1')).toBe(true)
@@ -781,7 +781,7 @@ describe('watchlist', () => {
 
   test('watchMove with null puts the session at the end', () => {
     const r = two()
-    r.watchAdd('s1', 'blue')
+    r.watchAdd('s1', 'dark-blue')
     r.watchAdd('s2', 'green')
     r.storeChanged()
     expect(r.watchMove('s1', null)).toBe(true)
@@ -791,7 +791,7 @@ describe('watchlist', () => {
 
   test('watchMove of an unknown ID does nothing', () => {
     const r = two()
-    r.watchAdd('s1', 'blue')
+    r.watchAdd('s1', 'dark-blue')
     r.watchAdd('s2', 'green')
     r.storeChanged()
     expect(r.watchMove('nope', 's1')).toBe(false)
@@ -803,14 +803,14 @@ describe('watchlist', () => {
 
   test('rows carry the colour and the order', () => {
     const r = two()
-    r.watchAdd('s2', 'blue')
-    r.watchAdd('s1', 'pink')
+    r.watchAdd('s2', 'dark-blue')
+    r.watchAdd('s1', 'red')
     const rows = r.rows()
-    expect(rows.find(x => x.sessionId === 's2')?.watch).toEqual({ colour: 'blue', order: 0 })
-    expect(rows.find(x => x.sessionId === 's1')?.watch).toEqual({ colour: 'pink', order: 1 })
+    expect(rows.find(x => x.sessionId === 's2')?.watch).toEqual({ colour: 'dark-blue', order: 0 })
+    expect(rows.find(x => x.sessionId === 's1')?.watch).toEqual({ colour: 'red', order: 1 })
     r.watchRemove('s2')
     expect(r.rows().find(x => x.sessionId === 's2')).not.toHaveProperty('watch')
-    expect(r.rows().find(x => x.sessionId === 's1')?.watch).toEqual({ colour: 'pink', order: 0 })
+    expect(r.rows().find(x => x.sessionId === 's1')?.watch).toEqual({ colour: 'red', order: 0 })
   })
 
   test('a store without watch is valid', () => {
@@ -824,7 +824,7 @@ describe('watchlist', () => {
   test('applyAllAgents removes a session that left all lists from the watchlist', () => {
     const r = registry()
     r.applyAgents([bg({ id: undefined, kind: 'interactive' })], 100)
-    r.watchAdd('s1', 'blue')
+    r.watchAdd('s1', 'dark-blue')
     r.storeChanged()
     r.applyAgents([], 200)
     r.applyAllAgents([])
@@ -834,7 +834,7 @@ describe('watchlist', () => {
 
   test('forgetting a session removes it from the watchlist', () => {
     const r = two()
-    r.watchAdd('s1', 'blue')
+    r.watchAdd('s1', 'dark-blue')
     r.forget('s1')
     expect(r.store().watch).toEqual([])
   })

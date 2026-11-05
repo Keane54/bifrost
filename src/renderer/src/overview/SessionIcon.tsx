@@ -1,9 +1,10 @@
 // The row icon (spec 8.3). The glyph shows the kind of the session. Its colour shows the project.
 // The yellow box and the red box are four corner brackets around the glyph.
-import { Hexagon, SquareTerminal } from 'lucide-react'
+import { SquareTerminal } from 'lucide-react'
 import type { SessionRow } from '../../../shared/types'
 import { cx } from '../lib/cx'
 import { useTerminalIcon } from '../lib/use-terminal-icon'
+import { BifrostMark } from './BifrostMark'
 import { iconKind, projectColourIndex, projectKey } from './session-icon'
 
 // Tailwind finds only full class names in the source. So this lookup holds full names.
@@ -39,7 +40,6 @@ const CORNERS = [
 export function SessionIcon({ row, size }: { row: SessionRow; size: number }): React.JSX.Element {
   const kind = iconKind(row)
   const appIcon = useTerminalIcon(row)
-  const Glyph = kind === 'external' ? SquareTerminal : Hexagon
   const colour =
     kind === 'parked' ? 'text-parked' : PROJECT_TEXT[projectColourIndex(projectKey(row.cwd)) - 1]
   const arm = `${size * 0.3}px`
@@ -62,8 +62,10 @@ export function SessionIcon({ row, size }: { row: SessionRow; size: number }): R
           title={row.terminalApp}
           width={imageSize}
         />
+      ) : kind === 'external' ? (
+        <SquareTerminal aria-hidden={true} className={colour} size={glyphSize} />
       ) : (
-        <Glyph aria-hidden={true} className={colour} size={glyphSize} />
+        <BifrostMark className={colour} size={glyphSize} />
       )}
       {row.box !== 'none' &&
         CORNERS.map(corner => (

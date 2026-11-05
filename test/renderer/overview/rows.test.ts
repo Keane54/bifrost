@@ -34,7 +34,7 @@ describe('rows', () => {
     expect(watched.filter.watchedOnly).toBe(true)
     const rows = [
       row({ sessionId: 'a' }),
-      row({ sessionId: 'b', watch: { colour: 'lime', order: 0 } }),
+      row({ sessionId: 'b', watch: { colour: 'green', order: 0 } }),
       row({ sessionId: 'c', state: 'parked', watch: { colour: 'white', order: 1 } }),
     ]
     expect(ids(filterRows(rows, watched.filter))).toBe('bc')
@@ -43,7 +43,7 @@ describe('rows', () => {
   it('watchedOnly false shows the rows that are not watched too', () => {
     const rows = [
       row({ sessionId: 'a' }),
-      row({ sessionId: 'b', watch: { colour: 'lime', order: 0 } }),
+      row({ sessionId: 'b', watch: { colour: 'green', order: 0 } }),
     ]
     const base = { boxOnly: false, kinds: ['owned' as const], states: ['working' as const] }
     expect(ids(filterRows(rows, { ...base, watchedOnly: false }))).toBe('ab')

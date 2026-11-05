@@ -84,20 +84,20 @@ describe('action model', () => {
     expect(find(menu, 'watch-remove')).toBeUndefined()
     if (add?.type !== 'submenu') throw new Error('not a submenu')
     expect(add.items.map(i => [i.label, i.arg])).toEqual([
-      ['Orange', 'orange'],
+      ['Dark red', 'dark-red'],
+      ['Red', 'red'],
+      ['Amber', 'amber'],
+      ['Yellow', 'yellow'],
       ['Green', 'green'],
-      ['Lime', 'lime'],
-      ['Cyan', 'cyan'],
-      ['Blue', 'blue'],
-      ['Purple', 'purple'],
-      ['Pink', 'pink'],
+      ['Light blue', 'light-blue'],
+      ['Dark blue', 'dark-blue'],
       ['White', 'white'],
     ])
     expect(add.state).toEqual({ enabled: true, reason: null })
   })
 
   it('rowMenu gives Change colour and Remove for a watched row, with a check on its colour', () => {
-    const watched = row({ sessionId: 'w', watch: { colour: 'lime', order: 0 } })
+    const watched = row({ sessionId: 'w', watch: { colour: 'green', order: 0 } })
     const menu = rowMenu(watched, ctx())
     expect(find(menu, 'watch-add')).toBeUndefined()
     expect(find(menu, 'watch-remove')).toMatchObject({
@@ -107,13 +107,13 @@ describe('action model', () => {
     const change = find(menu, 'watch-colour')
     if (change?.type !== 'submenu') throw new Error('not a submenu')
     expect(change.label).toBe('Change colour')
-    expect(change.items.filter(i => i.checked).map(i => i.arg)).toEqual(['lime'])
+    expect(change.items.filter(i => i.checked).map(i => i.arg)).toEqual(['green'])
   })
 
   it('the watch actions use the space labels', () => {
     const menu = rowMenu(owned, ctx({ labels: 'space' }))
     expect(find(menu, 'watch-add')).toMatchObject({ label: 'Track' })
-    const watched = row({ sessionId: 'w', watch: { colour: 'lime', order: 0 } })
+    const watched = row({ sessionId: 'w', watch: { colour: 'green', order: 0 } })
     expect(find(rowMenu(watched, ctx({ labels: 'space' })), 'watch-remove')).toMatchObject({
       label: 'Stop tracking',
     })
@@ -123,13 +123,13 @@ describe('action model', () => {
     for (const r of [owned, external, parked]) {
       expect(actionStateFor('watch-add', r, ctx()).enabled).toBe(true)
     }
-    const watched = row({ kind: 'external', sessionId: 'w', watch: { colour: 'pink', order: 0 } })
+    const watched = row({ kind: 'external', sessionId: 'w', watch: { colour: 'red', order: 0 } })
     expect(actionStateFor('watch-remove', watched, ctx()).enabled).toBe(true)
     expect(actionStateFor('watch-colour', watched, ctx()).enabled).toBe(true)
   })
 
   it('a watch action that does not fit the row is off with a reason', () => {
-    const watched = row({ sessionId: 'w', watch: { colour: 'pink', order: 0 } })
+    const watched = row({ sessionId: 'w', watch: { colour: 'red', order: 0 } })
     expect(actionStateFor('watch-add', watched, ctx())).toEqual({
       enabled: false,
       reason: 'This session is already on the watchlist.',
@@ -403,10 +403,10 @@ describe('action model', () => {
       ]),
     ).toBe('2')
     expect(checkedKey([{ arg: 1, checked: false, key: '1' }])).toBeUndefined()
-    const watched = row({ sessionId: 'w', watch: { colour: 'cyan', order: 0 } })
+    const watched = row({ sessionId: 'w', watch: { colour: 'light-blue', order: 0 } })
     const change = find(rowMenu(watched, ctx()), 'watch-colour')
     if (change?.type !== 'submenu') throw new Error('not a submenu')
-    expect(checkedKey(change.items)).toBe('cyan')
+    expect(checkedKey(change.items)).toBe('light-blue')
     // A row that is not watched has no colour to mark.
     const add = find(rowMenu(owned, ctx()), 'watch-add')
     if (add?.type !== 'submenu') throw new Error('not a submenu')

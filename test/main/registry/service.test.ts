@@ -377,23 +377,23 @@ describe('updates and the store', () => {
     const rowWatch = (id: string) => updates.at(-1)?.rows.find(r => r.sessionId === id)?.watch
 
     saveStore.mockClear()
-    expect(service.watchAdd('s1', 'blue')).toBe(true)
+    expect(service.watchAdd('s1', 'dark-blue')).toBe(true)
     expect(service.watchAdd('s2', 'green')).toBe(true)
     await vi.advanceTimersByTimeAsync(300)
-    expect(rowWatch('s1')).toEqual({ colour: 'blue', order: 0 })
+    expect(rowWatch('s1')).toEqual({ colour: 'dark-blue', order: 0 })
     expect(rowWatch('s2')).toEqual({ colour: 'green', order: 1 })
     await vi.advanceTimersByTimeAsync(0)
     expect(watchOf()).toEqual([
-      { colour: 'blue', sessionId: 's1' },
+      { colour: 'dark-blue', sessionId: 's1' },
       { colour: 'green', sessionId: 's2' },
     ])
 
     saveStore.mockClear()
-    expect(service.watchColour('s1', 'pink')).toBe(true)
+    expect(service.watchColour('s1', 'red')).toBe(true)
     await vi.advanceTimersByTimeAsync(300)
-    expect(rowWatch('s1')?.colour).toBe('pink')
+    expect(rowWatch('s1')?.colour).toBe('red')
     await vi.advanceTimersByTimeAsync(0)
-    expect(watchOf()?.[0]).toEqual({ colour: 'pink', sessionId: 's1' })
+    expect(watchOf()?.[0]).toEqual({ colour: 'red', sessionId: 's1' })
 
     saveStore.mockClear()
     expect(service.watchMove('s2', 's1')).toBe(true)
@@ -408,12 +408,12 @@ describe('updates and the store', () => {
     await vi.advanceTimersByTimeAsync(300)
     expect(rowWatch('s2')).toBeUndefined()
     await vi.advanceTimersByTimeAsync(0)
-    expect(watchOf()).toEqual([{ colour: 'pink', sessionId: 's1' }])
+    expect(watchOf()).toEqual([{ colour: 'red', sessionId: 's1' }])
 
     saveStore.mockClear()
-    expect(service.watchAdd('nope', 'blue')).toBe(false)
+    expect(service.watchAdd('nope', 'dark-blue')).toBe(false)
     expect(service.watchRemove('nope')).toBe(false)
-    expect(service.watchColour('nope', 'blue')).toBe(false)
+    expect(service.watchColour('nope', 'dark-blue')).toBe(false)
     expect(service.watchMove('nope', null)).toBe(false)
     await vi.advanceTimersByTimeAsync(0)
     expect(saveStore).not.toHaveBeenCalled()

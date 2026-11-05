@@ -49,13 +49,13 @@ export type Priority = 1 | 2 | 3 | 4 | 5
 
 // The colour of a watched session.
 export type WatchColour =
-  | 'orange'
+  | 'dark-red'
+  | 'red'
+  | 'amber'
+  | 'yellow'
   | 'green'
-  | 'lime'
-  | 'cyan'
-  | 'blue'
-  | 'purple'
-  | 'pink'
+  | 'light-blue'
+  | 'dark-blue'
   | 'white'
 
 // What a check finds in the worktree of a session before a Delete.

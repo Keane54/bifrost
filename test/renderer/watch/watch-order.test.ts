@@ -50,8 +50,8 @@ describe('watchedRows', () => {
   it('gives only the watched rows in watch order', () => {
     const rows = [
       row({ sessionId: 'x' }),
-      row({ sessionId: 'p', watch: { colour: 'pink', order: 1 } }),
-      row({ sessionId: 'q', watch: { colour: 'blue', order: 0 } }),
+      row({ sessionId: 'p', watch: { colour: 'red', order: 1 } }),
+      row({ sessionId: 'q', watch: { colour: 'dark-blue', order: 0 } }),
     ]
     expect(watchedRows(rows).map(r => r.sessionId)).toEqual(['q', 'p'])
   })

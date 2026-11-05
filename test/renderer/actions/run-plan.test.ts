@@ -37,12 +37,12 @@ const parked = row({ sessionId: 'p', state: 'parked' })
 
 describe('planRun', () => {
   it('the watch actions plan one call, with the colour as the argument', () => {
-    const watched = row({ sessionId: 'w', watch: { colour: 'pink', order: 0 } })
+    const watched = row({ sessionId: 'w', watch: { colour: 'red', order: 0 } })
     const call = (c: string) => ({ after: 'none', call: c, confirm: null, kind: 'call' })
-    expect(planRun('watch-add', owned, ctx(), 'cyan')).toEqual(call('watch-add'))
-    expect(planRun('watch-colour', watched, ctx(), 'blue')).toEqual(call('watch-colour'))
+    expect(planRun('watch-add', owned, ctx(), 'light-blue')).toEqual(call('watch-add'))
+    expect(planRun('watch-colour', watched, ctx(), 'dark-blue')).toEqual(call('watch-colour'))
     expect(planRun('watch-remove', watched, ctx())).toEqual(call('watch-remove'))
-    expect(planRun('watch-add', watched, ctx(), 'cyan')).toEqual({ kind: 'none' })
+    expect(planRun('watch-add', watched, ctx(), 'light-blue')).toEqual({ kind: 'none' })
     expect(planRun('watch-remove', owned, ctx())).toEqual({ kind: 'none' })
   })
 

@@ -234,18 +234,36 @@ test('loadStore gives an empty watchlist for a file without watch', async () => 
 test('loadStore keeps good watch entries in order', async () => {
   const file = join(dir, 'registry.json')
   const watch = [
-    { colour: 'blue', sessionId: 's2' },
-    { colour: 'orange', sessionId: 's1' },
+    { colour: 'dark-blue', sessionId: 's2' },
+    { colour: 'amber', sessionId: 's1' },
   ]
   await writeFile(file, JSON.stringify({ names: {}, started: [], watch }))
   expect((await loadStore(file)).watch).toEqual(watch)
 })
 
+test('loadStore maps the old watch colours', async () => {
+  const file = join(dir, 'registry.json')
+  const watch = [
+    { colour: 'orange', sessionId: 's1' },
+    { colour: 'cyan', sessionId: 's2' },
+    { colour: 'purple', sessionId: 's3' },
+    { colour: 'pink', sessionId: 's4' },
+    { colour: 'teal', sessionId: 's5' },
+  ]
+  await writeFile(file, JSON.stringify({ names: {}, started: [], watch }))
+  expect((await loadStore(file)).watch).toEqual([
+    { colour: 'amber', sessionId: 's1' },
+    { colour: 'light-blue', sessionId: 's2' },
+    { colour: 'dark-blue', sessionId: 's3' },
+    { colour: 'red', sessionId: 's4' },
+  ])
+})
+
 test('loadStore drops watch entries with a bad colour, a bad ID or a repeated ID', async () => {
   const file = join(dir, 'registry.json')
   const watch = [
-    { colour: 'blue', sessionId: 's1' },
-    { colour: 'red', sessionId: 's2' },
+    { colour: 'dark-blue', sessionId: 's1' },
+    { colour: 'teal', sessionId: 's2' },
     { colour: 'pink', sessionId: 7 },
     { colour: 'green', sessionId: 's1' },
     null,
@@ -254,7 +272,7 @@ test('loadStore drops watch entries with a bad colour, a bad ID or a repeated ID
   ]
   await writeFile(file, JSON.stringify({ names: {}, started: [], watch }))
   expect((await loadStore(file)).watch).toEqual([
-    { colour: 'blue', sessionId: 's1' },
+    { colour: 'dark-blue', sessionId: 's1' },
     { colour: 'white', sessionId: 's3' },
   ])
   await writeFile(file, JSON.stringify({ names: {}, started: [], watch: 'x' }))

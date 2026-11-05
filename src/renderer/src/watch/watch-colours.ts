@@ -2,26 +2,26 @@
 // So these lookups hold full names. The tokens are in styles/app.css.
 import type { WatchColour } from '../../../shared/types'
 
-// The row background: the watch colour at about 25%.
+// The row background: the watch colour at 12%.
 export const WATCH_ROW_BG: Record<WatchColour, string> = {
-  blue: 'bg-watch-blue/25',
-  cyan: 'bg-watch-cyan/25',
-  green: 'bg-watch-green/25',
-  lime: 'bg-watch-lime/25',
-  orange: 'bg-watch-orange/25',
-  pink: 'bg-watch-pink/25',
-  purple: 'bg-watch-purple/25',
-  white: 'bg-watch-white/25',
+  amber: 'bg-watch-amber/12',
+  'dark-blue': 'bg-watch-dark-blue/12',
+  'dark-red': 'bg-watch-dark-red/12',
+  green: 'bg-watch-green/12',
+  'light-blue': 'bg-watch-light-blue/12',
+  red: 'bg-watch-red/12',
+  white: 'bg-watch-white/12',
+  yellow: 'bg-watch-yellow/12',
 }
 
 // The small square of a colour in the colour menu.
 export const WATCH_SWATCH: Record<WatchColour, string> = {
-  blue: 'bg-watch-blue',
-  cyan: 'bg-watch-cyan',
+  amber: 'bg-watch-amber',
+  'dark-blue': 'bg-watch-dark-blue',
+  'dark-red': 'bg-watch-dark-red',
   green: 'bg-watch-green',
-  lime: 'bg-watch-lime',
-  orange: 'bg-watch-orange',
-  pink: 'bg-watch-pink',
-  purple: 'bg-watch-purple',
+  'light-blue': 'bg-watch-light-blue',
+  red: 'bg-watch-red',
   white: 'bg-watch-white',
+  yellow: 'bg-watch-yellow',
 }

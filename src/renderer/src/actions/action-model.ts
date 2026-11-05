@@ -241,6 +241,12 @@ export function checkedKey(items: readonly SubItem[]): string | undefined {
   return items.find(item => item.checked)?.key
 }
 
+// The label of a colour in the colour menu: "dark-red" gives "Dark red".
+function colourLabel(colour: WatchColour): string {
+  const words = colour.replace('-', ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 function subItems(id: ActionId, row: SessionRow, ctx: ActionContext): SubItem[] {
   if (id === 'set-priority') {
     return [
@@ -258,7 +264,7 @@ function subItems(id: ActionId, row: SessionRow, ctx: ActionContext): SubItem[] 
       arg: colour as MenuArg,
       checked: row.watch?.colour === colour,
       key: colour,
-      label: colour.charAt(0).toUpperCase() + colour.slice(1),
+      label: colourLabel(colour),
     }))
   }
   if (id === 'open-project') {
