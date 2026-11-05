@@ -26,6 +26,7 @@ describe('initial state', () => {
       acknowledged: true,
       box: 'none',
       boxSince: null,
+      confirmed: false,
       state: 'idle',
     })
     expect(STATUS_GRACE_MS).toBe(1000)
@@ -51,6 +52,7 @@ describe('hook events', () => {
       acknowledged: false,
       box: 'red',
       boxSince: 7,
+      confirmed: false,
       redReason: 'prompt',
       state: 'needs-you',
     })
@@ -80,6 +82,7 @@ describe('hook events', () => {
       acknowledged: false,
       box: 'yellow',
       boxSince: 10,
+      confirmed: false,
       lastMessage: 'Done',
       state: 'needs-you',
     })
@@ -132,20 +135,29 @@ describe('hook events', () => {
 })
 
 describe('status samples', () => {
-  test('busy gives working with no box', () => {
-    const y = onHookEvent(INITIAL_STATE, ev('Stop', 1))
+  // Changed for rule 10: busy clears a yellow box only after an idle sample confirmed it.
+  test('busy gives working with no box after the box is confirmed', () => {
+    const y = onStatus(onHookEvent(INITIAL_STATE, ev('Stop', 1)), { sampledAt: 3, status: 'idle' })
     expect(onStatus(y, { sampledAt: 5, status: 'busy' })).toMatchObject({
       box: 'none',
       boxSince: null,
+      confirmed: false,
       state: 'working',
     })
   })
-  test('waiting with waitingFor gives a red prompt box', () => {
+  test('busy gives working when no box exists', () => {
+    expect(onStatus(INITIAL_STATE, { sampledAt: 5, status: 'busy' })).toMatchObject({
+      box: 'none',
+      state: 'working',
+    })
+  })
+  test('waiting with waitingFor gives a confirmed red prompt box', () => {
     expect(onStatus(working, { sampledAt: 20, status: 'waiting', waitingFor: 'approval' })).toEqual(
       {
         acknowledged: false,
         box: 'red',
         boxSince: 20,
+        confirmed: true,
         redReason: 'prompt',
         state: 'needs-you',
       },
@@ -158,13 +170,17 @@ describe('status samples', () => {
     const r = onStatus(working, { sampledAt: 20, status: 'waiting', waitingFor: 'a' })
     expect(onStatus(r, { sampledAt: 30, status: 'waiting', waitingFor: 'a' })).toEqual(r)
   })
+  // Changed for rule 10: a waiting sample confirms the red prompt box first.
   test('an idle sample from a poll that started before the prompt keeps the red box', () => {
-    const red = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 10_000))
+    const hook = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 10_000))
+    const red = onStatus(hook, { sampledAt: 10_200, status: 'waiting', waitingFor: 'approval' })
     expect(onStatus(red, { sampledAt: 10_500, status: 'idle' }).box).toBe('red')
     expect(onStatus(red, { sampledAt: 11_500, status: 'idle' }).box).toBe('none')
   })
-  test('an idle sample after the grace clears a red prompt to idle', () => {
-    const red = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 10_000))
+  // Changed for rule 10: a waiting sample confirms the red prompt box first.
+  test('an idle sample after the grace clears a confirmed red prompt to idle', () => {
+    const hook = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 10_000))
+    const red = onStatus(hook, { sampledAt: 10_200, status: 'waiting', waitingFor: 'approval' })
     expect(onStatus(red, { sampledAt: 11_500, status: 'idle' })).toMatchObject({
       acknowledged: true,
       box: 'none',
@@ -172,13 +188,15 @@ describe('status samples', () => {
       state: 'idle',
     })
   })
-  test('an idle sample keeps a yellow box', () => {
+  // Changed for rule 10: the idle sample keeps the box and confirms it.
+  test('an idle sample keeps a yellow box and confirms it', () => {
     const y = onHookEvent(INITIAL_STATE, ev('Stop', 0))
-    expect(onStatus(y, { sampledAt: 99_000, status: 'idle' })).toEqual(y)
+    expect(onStatus(y, { sampledAt: 99_000, status: 'idle' })).toEqual({ ...y, confirmed: true })
   })
-  test('an idle sample keeps a red error box', () => {
+  // Changed for rule 10: the idle sample keeps the box and confirms it.
+  test('an idle sample keeps a red error box and confirms it', () => {
     const e = onHookEvent(INITIAL_STATE, ev('StopFailure', 0))
-    expect(onStatus(e, { sampledAt: 99_000, status: 'idle' })).toEqual(e)
+    expect(onStatus(e, { sampledAt: 99_000, status: 'idle' })).toEqual({ ...e, confirmed: true })
   })
   test('an idle sample turns working with no box into idle', () => {
     expect(onStatus(working, { sampledAt: 5, status: 'idle' })).toMatchObject({
@@ -186,8 +204,12 @@ describe('status samples', () => {
       state: 'idle',
     })
   })
+  // Changed for rule 10: an idle sample confirms the error box first.
   test('an error clears when the session works again', () => {
-    const e = onHookEvent(INITIAL_STATE, ev('StopFailure', 0))
+    const e = onStatus(onHookEvent(INITIAL_STATE, ev('StopFailure', 0)), {
+      sampledAt: 2000,
+      status: 'idle',
+    })
     expect(onStatus(e, { sampledAt: 5000, status: 'busy' })).toMatchObject({
       box: 'none',
       state: 'working',
@@ -279,11 +301,14 @@ describe('fix round 1', () => {
       redReason: 'prompt',
     })
   })
+  // Changed for rule 10: an idle sample confirms the yellow box first.
   test('a busy sample older than the box keeps the box', () => {
-    const y = onHookEvent(INITIAL_STATE, ev('Stop', 10_000))
+    const hook = onHookEvent(INITIAL_STATE, ev('Stop', 10_000))
+    const y = onStatus(hook, { sampledAt: 10_001, status: 'idle' })
+    expect(y.confirmed).toBe(true)
     expect(onStatus(y, { sampledAt: 9_900, status: 'busy' })).toEqual(y)
     expect(onStatus(y, { sampledAt: 10_000, status: 'busy' })).toEqual(y)
-    expect(onStatus(y, { sampledAt: 10_001, status: 'busy' })).toMatchObject({
+    expect(onStatus(y, { sampledAt: 10_002, status: 'busy' })).toMatchObject({
       box: 'none',
       state: 'working',
     })
@@ -320,8 +345,126 @@ describe('fix round 1', () => {
   test('acknowledge with no box changes nothing', () => {
     expect(onAcknowledge(INITIAL_STATE)).toEqual(INITIAL_STATE)
   })
+  // Changed for rule 10: a waiting sample confirms the red prompt box first.
   test('an idle sample at exactly the grace boundary keeps the red box', () => {
-    const r = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 10_000))
+    const hook = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 10_000))
+    const r = onStatus(hook, { sampledAt: 10_100, status: 'waiting', waitingFor: 'approval' })
     expect(onStatus(r, { sampledAt: 10_000 + STATUS_GRACE_MS, status: 'idle' })).toEqual(r)
+  })
+})
+
+describe('box confirmation (spec section 7, rule 10)', () => {
+  const waiting = (sampledAt: number) => ({ sampledAt, status: 'waiting', waitingFor: 'approval' })
+  const busy = (sampledAt: number) => ({ sampledAt, status: 'busy' })
+  const idle = (sampledAt: number) => ({ sampledAt, status: 'idle' })
+
+  test('a busy sample while the Stop hooks run keeps the yellow box (review I4)', () => {
+    const y = onHookEvent(working, ev('Stop', 10_000))
+    const afterBusy = onStatus(y, busy(10_300))
+    expect(afterBusy).toEqual(y)
+    const afterIdle = onStatus(afterBusy, idle(12_600))
+    expect(afterIdle).toMatchObject({ box: 'yellow', confirmed: true, state: 'needs-you' })
+    expect(onStatus(afterIdle, busy(20_000))).toMatchObject({ box: 'none', state: 'working' })
+  })
+
+  test('busy and idle samples keep a red prompt box from a hook (review I3)', () => {
+    const r = onHookEvent(working, ev('PermissionRequest', 20_000))
+    const afterBusy = onStatus(r, busy(21_000))
+    expect(afterBusy).toEqual(r)
+    const afterIdle = onStatus(afterBusy, idle(21_500))
+    expect(afterIdle).toEqual(r)
+    expect(onStatus(afterIdle, idle(90_000))).toEqual(r)
+  })
+
+  test('PermissionRequest, waiting, then idle after the grace clears the box', () => {
+    const r = onHookEvent(working, ev('PermissionRequest', 20_000))
+    const confirmed = onStatus(r, waiting(20_500))
+    expect(confirmed).toEqual({ ...r, confirmed: true })
+    expect(onStatus(confirmed, idle(21_000))).toEqual(confirmed)
+    expect(onStatus(confirmed, idle(21_500))).toMatchObject({ box: 'none', state: 'idle' })
+  })
+
+  test('PermissionRequest, waiting, then busy clears the box (rule 9)', () => {
+    const r = onStatus(onHookEvent(working, ev('PermissionRequest', 20_000)), waiting(20_500))
+    expect(onStatus(r, busy(21_000))).toMatchObject({ box: 'none', state: 'working' })
+  })
+
+  test('a red box from a status sample alone clears on idle', () => {
+    const r = onStatus(working, waiting(20_000))
+    expect(r).toMatchObject({ box: 'red', confirmed: true, redReason: 'prompt' })
+    expect(onStatus(r, idle(22_000))).toMatchObject({ box: 'none', state: 'idle' })
+  })
+
+  test('an AskUserQuestion red box stays through busy samples', () => {
+    const r = onHookEvent(working, ev('PreToolUse', 5_000, { toolName: 'AskUserQuestion' }))
+    const afterBusy = onStatus(onStatus(r, busy(6_000)), busy(8_000))
+    expect(afterBusy).toEqual(r)
+    expect(onStatus(afterBusy, idle(9_000))).toEqual(r)
+  })
+
+  test('UserPromptSubmit clears a yellow box that no sample confirmed', () => {
+    const y = onHookEvent(working, ev('Stop', 10_000))
+    expect(y.confirmed).toBe(false)
+    expect(onHookEvent(y, ev('UserPromptSubmit', 10_500))).toMatchObject({
+      box: 'none',
+      confirmed: false,
+      state: 'working',
+    })
+  })
+
+  test('a new box from a hook event is not confirmed', () => {
+    const y = onStatus(onHookEvent(working, ev('Stop', 10_000)), idle(11_000))
+    expect(y.confirmed).toBe(true)
+    const again = onHookEvent(y, ev('Stop', 12_000))
+    expect(again).toMatchObject({ box: 'yellow', boxSince: 12_000, confirmed: false })
+    expect(onStatus(again, busy(12_500)).box).toBe('yellow')
+    expect(onHookEvent(y, ev('StopFailure', 12_000)).confirmed).toBe(false)
+    expect(onHookEvent(y, ev('PermissionRequest', 12_000)).confirmed).toBe(false)
+  })
+
+  test('a repeated prompt event keeps the time and the flash but needs a new confirmation', () => {
+    const r = onAcknowledge(
+      onStatus(onHookEvent(working, ev('PermissionRequest', 20_000)), waiting(20_500)),
+    )
+    const again = onHookEvent(
+      r,
+      ev('Notification', 21_000, { notificationType: 'permission_prompt' }),
+    )
+    expect(again).toEqual({ ...r, confirmed: false })
+    expect(onStatus(again, busy(21_500))).toEqual(again)
+  })
+
+  test('a sample that is not newer than the box does not confirm it', () => {
+    const y = onHookEvent(working, ev('Stop', 10_000))
+    expect(onStatus(y, idle(10_000))).toEqual(y)
+    const r = onHookEvent(working, ev('PermissionRequest', 10_000))
+    expect(onStatus(r, waiting(9_000))).toEqual(r)
+  })
+
+  test('the escalation keeps the confirmed flag', () => {
+    const y = onHookEvent(working, ev('Stop', 0))
+    const open = onTick(y, 600_000, 600_000)
+    expect(open).toMatchObject({ box: 'red', confirmed: false, redReason: 'escalated' })
+    expect(onStatus(open, busy(600_500)).box).toBe('red')
+    const done = onTick(onStatus(y, idle(1_000)), 600_000, 600_000)
+    expect(done).toMatchObject({ box: 'red', confirmed: true, redReason: 'escalated' })
+    expect(onStatus(done, busy(600_500))).toMatchObject({ box: 'none', state: 'working' })
+  })
+
+  test('an idle sample confirms an escalated box', () => {
+    const open = onTick(onHookEvent(working, ev('Stop', 0)), 600_000, 600_000)
+    const done = onStatus(open, idle(601_000))
+    expect(done).toEqual({ ...open, confirmed: true })
+    expect(onStatus(done, busy(602_000))).toMatchObject({ box: 'none', state: 'working' })
+  })
+
+  test('a waiting sample replaces a yellow box with a confirmed red prompt box', () => {
+    const y = onHookEvent(working, ev('Stop', 10_000))
+    expect(onStatus(y, waiting(11_000))).toMatchObject({
+      box: 'red',
+      boxSince: 11_000,
+      confirmed: true,
+      redReason: 'prompt',
+    })
   })
 })
