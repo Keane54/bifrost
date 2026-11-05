@@ -7,12 +7,19 @@ export const AGENT_VIEW_COUNTS = /\d+ awaiting input · \d+ working · \d+ compl
 // Text that a conversation quotes higher on the screen does not match.
 const FOOTER_LINES = 3
 
+// Spaces and box-drawing characters (U+2500 to U+257F) may frame the footer line.
+const FRAME = /^[\s\u2500-\u257f]+|[\s\u2500-\u257f]+$/g
+
+// The footer must fill its line. Text before it, such as a prompt mark, gives no match.
+function isFooterLine(line: string): boolean {
+  const text = line.replace(FRAME, '')
+  const match = AGENT_VIEW_FOOTER.exec(text)
+  return match !== null && match.index === 0
+}
+
 export function isAgentView(lines: string[]): boolean {
   const tail = lines.filter(line => line.trim() !== '').slice(-FOOTER_LINES)
-  return (
-    tail.some(line => AGENT_VIEW_FOOTER.test(line)) &&
-    lines.some(line => AGENT_VIEW_COUNTS.test(line))
-  )
+  return tail.some(isFooterLine) && lines.some(line => AGENT_VIEW_COUNTS.test(line))
 }
 
 export const MAX_REATTACH = 3
