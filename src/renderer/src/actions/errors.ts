@@ -27,6 +27,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: bad priority': "That priority isn't valid.",
   'refused: bad process ID': "The process ID of this session isn't valid.",
   'refused: bad session ID': "That session ID isn't valid.",
+  'refused: bad watch colour': "That isn't a colour for the watchlist.",
+  'refused: bad watch move': "Bifrost couldn't move that session in the watchlist.",
   'refused: Delete needs a confirmation': 'Delete needs your confirmation first.',
   'refused: no terminal app is installed': REASON_NO_TERMINAL,
   'refused: no window': "The Bifrost window isn't ready.",

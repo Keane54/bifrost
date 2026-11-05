@@ -27,14 +27,14 @@ const ev = (name: HookEventName, sessionId: string, at: number): HookEvent => ({
 })
 
 const registry = (
-  store: RegistryStore = { lastActive: [], names: {}, priorities: {}, started: [] },
+  store: RegistryStore = { lastActive: [], names: {}, priorities: {}, started: [], watch: [] },
 ) => new SessionRegistry({ escalationMs: 600_000, store })
 
 describe('brief', () => {
   test('a background entry is an owned row', () => {
     const r = new SessionRegistry({
       escalationMs: 600_000,
-      store: { lastActive: [], names: {}, priorities: {}, started: [] },
+      store: { lastActive: [], names: {}, priorities: {}, started: [], watch: [] },
     })
     r.applyAgents([bg()], 100)
     expect(r.rows()[0]).toMatchObject({
@@ -72,7 +72,13 @@ describe('brief', () => {
   })
 
   test('a started session that is not active and not in --all is parked', () => {
-    const r = registry({ lastActive: [], names: { s9: 'nine' }, priorities: {}, started: [] })
+    const r = registry({
+      lastActive: [],
+      names: { s9: 'nine' },
+      priorities: {},
+      started: [],
+      watch: [],
+    })
     r.markStarted('s9')
     r.applyAgents([], 100)
     r.applyAllAgents([])
@@ -283,14 +289,26 @@ describe('names', () => {
   })
 
   test('the stored name comes before the status file name', () => {
-    const r = registry({ lastActive: [], names: { s1: 'stored' }, priorities: {}, started: [] })
+    const r = registry({
+      lastActive: [],
+      names: { s1: 'stored' },
+      priorities: {},
+      started: [],
+      watch: [],
+    })
     r.applyAgents([bg({ name: '' })], 100)
     r.applyStatusFiles(new Map([['s1', { sessionName: 'from-status', updatedAt: 50 }]]))
     expect(r.rows()[0].name).toBe('stored')
   })
 
   test('a new entry name replaces the stored name', () => {
-    const r = registry({ lastActive: [], names: { s1: 'old' }, priorities: {}, started: [] })
+    const r = registry({
+      lastActive: [],
+      names: { s1: 'old' },
+      priorities: {},
+      started: [],
+      watch: [],
+    })
     r.applyAgents([bg({ name: 'new' })], 100)
     expect(r.rows()[0].name).toBe('new')
     expect(r.store().names).toEqual({ s1: 'new' })
@@ -322,6 +340,7 @@ describe('store', () => {
       names: { s1: 'alpha' },
       priorities: {},
       started: ['s1'],
+      watch: [],
     })
   })
 
@@ -350,6 +369,7 @@ describe('store', () => {
       names: { s1: 'one', s2: 'two', s3: 'three' },
       priorities: {},
       started: ['s3'],
+      watch: [],
     })
     r.applyAgents([bg({ name: 'one' })], 100)
     r.applyAllAgents([bg({ name: '', pid: undefined, sessionId: 's2', status: '' })])
@@ -358,7 +378,13 @@ describe('store', () => {
   })
 
   test('applyAllAgents does not keep the name of an interactive entry', () => {
-    const r = registry({ lastActive: [], names: { s1: 'warp' }, priorities: {}, started: [] })
+    const r = registry({
+      lastActive: [],
+      names: { s1: 'warp' },
+      priorities: {},
+      started: [],
+      watch: [],
+    })
     r.applyAllAgents([bg({ kind: 'interactive', name: 'warp', pid: undefined, status: '' })])
     expect(r.store().names).toEqual({})
   })
@@ -369,6 +395,7 @@ describe('store', () => {
       names: { s1: 'alpha' },
       priorities: {},
       started: [],
+      watch: [],
     }
     const r = registry(input)
     input.names.s1 = 'changed'
@@ -381,6 +408,7 @@ describe('store', () => {
       names: { s1: 'alpha' },
       priorities: {},
       started: [],
+      watch: [],
     })
 
     r.applyAgents([bg({ name: '' })], 100)
@@ -620,7 +648,7 @@ describe('forget, lastActive and terminals', () => {
   })
 
   test('the loaded lastActive gives the resumable rows', () => {
-    const r = registry({ lastActive: ['s1'], names: {}, priorities: {}, started: [] })
+    const r = registry({ lastActive: ['s1'], names: {}, priorities: {}, started: [], watch: [] })
     r.applyAgents([], 1000)
     r.applyAllAgents([bg({ pid: undefined, status: '' })])
     expect(r.rows()[0]).toMatchObject({ resumable: true, state: 'parked' })
@@ -630,7 +658,7 @@ describe('forget, lastActive and terminals', () => {
   })
 
   test('a resumable session that runs again is no longer resumable', () => {
-    const r = registry({ lastActive: ['s1'], names: {}, priorities: {}, started: [] })
+    const r = registry({ lastActive: ['s1'], names: {}, priorities: {}, started: [], watch: [] })
     r.applyAgents([bg()], 1000)
     r.applyAgents([], 2000)
     r.applyAllAgents([bg({ pid: undefined, status: '' })])
@@ -669,5 +697,143 @@ describe('forget, lastActive and terminals', () => {
     r.applyTerminals(new Map([[931, null]]))
     expect(r.pidsWithoutTerminal()).toEqual([])
     expect(r.rows().find(row => row.sessionId === 'e1')?.terminalApp).toBeUndefined()
+  })
+})
+
+describe('watchlist', () => {
+  const two = () => {
+    const r = registry()
+    r.applyAgents([bg(), bg({ id: 'bb', name: 'beta', pid: 6, sessionId: 's2' })], 100)
+    r.storeChanged()
+    return r
+  }
+  const watchOf = (r: SessionRegistry) => r.store().watch
+
+  test('watchAdd appends the session and changes the store', () => {
+    const r = two()
+    expect(r.watchAdd('s2', 'blue')).toBe(true)
+    expect(r.watchAdd('s1', 'pink')).toBe(true)
+    expect(watchOf(r)).toEqual([
+      { colour: 'blue', sessionId: 's2' },
+      { colour: 'pink', sessionId: 's1' },
+    ])
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('watchAdd of a watched session changes only the colour', () => {
+    const r = two()
+    r.watchAdd('s1', 'blue')
+    r.watchAdd('s2', 'green')
+    r.storeChanged()
+    expect(r.watchAdd('s1', 'cyan')).toBe(true)
+    expect(watchOf(r)).toEqual([
+      { colour: 'cyan', sessionId: 's1' },
+      { colour: 'green', sessionId: 's2' },
+    ])
+    expect(r.storeChanged()).toBe(true)
+    r.watchAdd('s1', 'cyan')
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('watchAdd refuses an unknown session', () => {
+    const r = two()
+    expect(r.watchAdd('nope', 'blue')).toBe(false)
+    expect(watchOf(r)).toEqual([])
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('watchRemove removes the session', () => {
+    const r = two()
+    r.watchAdd('s1', 'blue')
+    r.storeChanged()
+    expect(r.watchRemove('s1')).toBe(true)
+    expect(watchOf(r)).toEqual([])
+    expect(r.storeChanged()).toBe(true)
+    expect(r.watchRemove('s1')).toBe(true)
+    expect(r.storeChanged()).toBe(false)
+    expect(r.watchRemove('nope')).toBe(false)
+  })
+
+  test('watchColour changes the colour of a watched session only', () => {
+    const r = two()
+    r.watchAdd('s1', 'blue')
+    r.storeChanged()
+    expect(r.watchColour('s1', 'lime')).toBe(true)
+    expect(watchOf(r)).toEqual([{ colour: 'lime', sessionId: 's1' }])
+    expect(r.storeChanged()).toBe(true)
+    expect(r.watchColour('s2', 'lime')).toBe(true)
+    expect(watchOf(r)).toEqual([{ colour: 'lime', sessionId: 's1' }])
+    expect(r.storeChanged()).toBe(false)
+    expect(r.watchColour('nope', 'lime')).toBe(false)
+  })
+
+  test('watchMove puts the session before another one', () => {
+    const r = two()
+    r.watchAdd('s1', 'blue')
+    r.watchAdd('s2', 'green')
+    r.storeChanged()
+    expect(r.watchMove('s2', 's1')).toBe(true)
+    expect(watchOf(r).map(w => w.sessionId)).toEqual(['s2', 's1'])
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('watchMove with null puts the session at the end', () => {
+    const r = two()
+    r.watchAdd('s1', 'blue')
+    r.watchAdd('s2', 'green')
+    r.storeChanged()
+    expect(r.watchMove('s1', null)).toBe(true)
+    expect(watchOf(r).map(w => w.sessionId)).toEqual(['s2', 's1'])
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('watchMove of an unknown ID does nothing', () => {
+    const r = two()
+    r.watchAdd('s1', 'blue')
+    r.watchAdd('s2', 'green')
+    r.storeChanged()
+    expect(r.watchMove('nope', 's1')).toBe(false)
+    expect(r.watchMove('s2', 'nope')).toBe(false)
+    expect(r.watchMove('s1', 's1')).toBe(true)
+    expect(watchOf(r).map(w => w.sessionId)).toEqual(['s1', 's2'])
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('rows carry the colour and the order', () => {
+    const r = two()
+    r.watchAdd('s2', 'blue')
+    r.watchAdd('s1', 'pink')
+    const rows = r.rows()
+    expect(rows.find(x => x.sessionId === 's2')?.watch).toEqual({ colour: 'blue', order: 0 })
+    expect(rows.find(x => x.sessionId === 's1')?.watch).toEqual({ colour: 'pink', order: 1 })
+    r.watchRemove('s2')
+    expect(r.rows().find(x => x.sessionId === 's2')).not.toHaveProperty('watch')
+    expect(r.rows().find(x => x.sessionId === 's1')?.watch).toEqual({ colour: 'pink', order: 0 })
+  })
+
+  test('a store without watch is valid', () => {
+    const r = new SessionRegistry({
+      escalationMs: 600_000,
+      store: { lastActive: [], names: {}, started: [] },
+    })
+    expect(r.store().watch).toEqual([])
+  })
+
+  test('applyAllAgents removes a session that left all lists from the watchlist', () => {
+    const r = registry()
+    r.applyAgents([bg({ id: undefined, kind: 'interactive' })], 100)
+    r.watchAdd('s1', 'blue')
+    r.storeChanged()
+    r.applyAgents([], 200)
+    r.applyAllAgents([])
+    expect(r.store().watch).toEqual([])
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('forgetting a session removes it from the watchlist', () => {
+    const r = two()
+    r.watchAdd('s1', 'blue')
+    r.forget('s1')
+    expect(r.store().watch).toEqual([])
   })
 })

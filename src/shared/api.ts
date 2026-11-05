@@ -10,6 +10,7 @@ import type {
   ResumeAllResult,
   SessionRow,
   TermSize,
+  WatchColour,
   WorktreeCheck,
 } from './types'
 
@@ -26,6 +27,15 @@ export interface BifrostApi {
     // Set the priority of the session. null removes it.
     // This rejects for a bad priority and for an unknown session.
     setPriority(sessionId: string, priority: Priority | null): Promise<void>
+    // The watchlist. Each call rejects for bad input and for an unknown session.
+    watch: {
+      // Add the session at the end. A watched session only gets the new colour.
+      add(sessionId: string, colour: WatchColour): Promise<void>
+      remove(sessionId: string): Promise<void>
+      colour(sessionId: string, colour: WatchColour): Promise<void>
+      // Move the session before beforeSessionId. null moves it to the end.
+      move(sessionId: string, beforeSessionId: string | null): Promise<void>
+    }
     // The main process sends a maximum of 4 updates each second.
     // The error is the error of the last poll of the session list, or null.
     // The returned function removes only this listener.

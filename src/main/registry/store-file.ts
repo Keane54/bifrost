@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { isPriority } from '../../shared/priority'
 import type { Priority } from '../../shared/types'
+import { isWatchColour } from '../../shared/watch'
 import { writeJsonAtomic } from '../store/json-file'
 import type { RegistryStore } from './registry'
 
@@ -12,6 +13,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
 // A missing file or a file that is not valid JSON gives an empty store.
 // A file without priorities (from M1) gives no priorities.
 // A file without lastActive (from M3) gives an empty list.
+// A file without watch (from M3) gives an empty watchlist.
+// A watch entry with a bad colour, a bad ID or a repeated ID is dropped.
 // The function removes each value that has the wrong type.
 // Other read errors, for example EACCES or EISDIR, reject.
 export async function loadStore(file: string): Promise<RegistryStore> {
@@ -20,16 +23,16 @@ export async function loadStore(file: string): Promise<RegistryStore> {
     text = await readFile(file, 'utf8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT')
-      return { lastActive: [], names: {}, priorities: {}, started: [] }
+      return { lastActive: [], names: {}, priorities: {}, started: [], watch: [] }
     throw error
   }
   let data: unknown
   try {
     data = JSON.parse(text)
   } catch {
-    return { lastActive: [], names: {}, priorities: {}, started: [] }
+    return { lastActive: [], names: {}, priorities: {}, started: [], watch: [] }
   }
-  if (!isObject(data)) return { lastActive: [], names: {}, priorities: {}, started: [] }
+  if (!isObject(data)) return { lastActive: [], names: {}, priorities: {}, started: [], watch: [] }
   const names = isObject(data.names)
     ? Object.fromEntries(
         Object.entries(data.names).filter((pair): pair is [string, string] => {
@@ -50,7 +53,18 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   const lastActive = Array.isArray(data.lastActive)
     ? [...new Set(data.lastActive.filter((id): id is string => typeof id === 'string'))]
     : []
-  return { lastActive, names, priorities, started }
+  const seen = new Set<string>()
+  const watch: RegistryStore['watch'] = []
+  if (Array.isArray(data.watch)) {
+    for (const entry of data.watch) {
+      if (!isObject(entry)) continue
+      const { colour, sessionId } = entry
+      if (typeof sessionId !== 'string' || !isWatchColour(colour) || seen.has(sessionId)) continue
+      seen.add(sessionId)
+      watch.push({ colour, sessionId })
+    }
+  }
+  return { lastActive, names, priorities, started, watch }
 }
 
 // Write the store to a temporary name in the same directory. Then rename the file.
@@ -73,7 +87,7 @@ export async function openStore(
     log(`Bifrost cannot read ${file}. The registry uses an empty store and does not save.`, error)
     return {
       save: async () => {},
-      store: { lastActive: [], names: {}, priorities: {}, started: [] },
+      store: { lastActive: [], names: {}, priorities: {}, started: [], watch: [] },
     }
   }
 }

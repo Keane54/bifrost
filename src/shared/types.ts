@@ -47,6 +47,17 @@ export type SessionKind = 'owned' | 'external'
 // The priority of a session. 1 is the highest.
 export type Priority = 1 | 2 | 3 | 4 | 5
 
+// The colour of a watched session.
+export type WatchColour =
+  | 'orange'
+  | 'green'
+  | 'lime'
+  | 'cyan'
+  | 'blue'
+  | 'purple'
+  | 'pink'
+  | 'white'
+
 // What a check finds in the worktree of a session before a Delete.
 // worktree is null when the session has no worktree under .claude/worktrees.
 export interface WorktreeCheck {
@@ -81,6 +92,8 @@ export interface SessionRow {
   costUsd?: number
   branch?: string
   priority?: Priority
+  // Present for a watched session. order is the 0-based place in the watchlist.
+  watch?: { colour: WatchColour; order: number }
   // True for a parked row that Resume all resumes.
   resumable?: true
   // The name of the terminal app of an external row.

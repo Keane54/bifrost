@@ -1,4 +1,4 @@
-import type { Priority, SessionRow } from '../../shared/types'
+import type { Priority, SessionRow, WatchColour } from '../../shared/types'
 import type { AgentList } from '../claude/agents'
 import type { HookEvent } from './hook-event'
 import type { RegistryStore, SessionRegistry } from './registry'
@@ -160,6 +160,32 @@ export class RegistryService {
     const known = this.registry.setPriority(sessionId, priority)
     if (known) this.changed()
     return known
+  }
+
+  // The four watch changes use the same change path as setPriority.
+  // Each returns false if the change is not possible. Then nothing changes.
+  watchAdd(sessionId: string, colour: WatchColour): boolean {
+    const ok = this.registry.watchAdd(sessionId, colour)
+    if (ok) this.changed()
+    return ok
+  }
+
+  watchRemove(sessionId: string): boolean {
+    const ok = this.registry.watchRemove(sessionId)
+    if (ok) this.changed()
+    return ok
+  }
+
+  watchColour(sessionId: string, colour: WatchColour): boolean {
+    const ok = this.registry.watchColour(sessionId, colour)
+    if (ok) this.changed()
+    return ok
+  }
+
+  watchMove(sessionId: string, beforeSessionId: string | null): boolean {
+    const ok = this.registry.watchMove(sessionId, beforeSessionId)
+    if (ok) this.changed()
+    return ok
   }
 
   rows(): SessionRow[] {

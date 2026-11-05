@@ -1,4 +1,4 @@
-import type { Priority, SessionKind, SessionRow } from '../../shared/types'
+import type { Priority, SessionKind, SessionRow, WatchColour } from '../../shared/types'
 import type { AgentEntry } from '../claude/agents'
 import type { HookEvent } from './hook-event'
 import {
@@ -20,6 +20,8 @@ export interface RegistryStore {
   names: Record<string, string>
   started: string[]
   priorities: Record<string, Priority>
+  // The watched sessions. The array order is the order of the watchlist.
+  watch: { sessionId: string; colour: WatchColour }[]
 }
 
 // A hook event for an unknown session waits this long for the session to show.
@@ -88,6 +90,8 @@ export class SessionRegistry {
   private readonly names: Map<string, string>
   private readonly started: Set<string>
   private readonly priorities: Map<string, Priority>
+  // The watch colour of each watched session. The Map order is the watchlist order.
+  private readonly watched: Map<string, WatchColour>
   // The sessions with a process in the last samples. The store keeps them.
   private readonly lastActive: Set<string>
   // The sessions of lastActive at the start. Resume all can resume them. Not saved.
@@ -106,16 +110,17 @@ export class SessionRegistry {
   private status = new Map<string, StatusData>()
   private readonly branches = new Map<string, string>()
 
-  // A store without priorities or lastActive (from an older version) is valid.
+  // A store without priorities, lastActive or watch (from an older version) is valid.
   constructor(opts: {
-    store: Omit<RegistryStore, 'priorities' | 'lastActive'> &
-      Partial<Pick<RegistryStore, 'priorities' | 'lastActive'>>
+    store: Omit<RegistryStore, 'priorities' | 'lastActive' | 'watch'> &
+      Partial<Pick<RegistryStore, 'priorities' | 'lastActive' | 'watch'>>
     escalationMs: number
   }) {
     this.escalationMs = opts.escalationMs
     this.names = new Map(Object.entries(opts.store.names))
     this.started = new Set(opts.store.started)
     this.priorities = new Map(Object.entries(opts.store.priorities ?? {}) as [string, Priority][])
+    this.watched = new Map((opts.store.watch ?? []).map(w => [w.sessionId, w.colour]))
     const last = opts.store.lastActive ?? []
     this.lastActive = new Set(last)
     this.resumable = new Set(last)
@@ -196,7 +201,7 @@ export class SessionRegistry {
         this.sessions.delete(s.sessionId)
       }
     }
-    // Remove the names and priorities of sessions that left all lists.
+    // Remove the names, priorities and watch entries of sessions that left all lists.
     // This limits the size of the store.
     for (const id of this.names.keys()) {
       if (this.known(id)) continue
@@ -206,6 +211,11 @@ export class SessionRegistry {
     for (const id of this.priorities.keys()) {
       if (this.known(id)) continue
       this.priorities.delete(id)
+      this.changed = true
+    }
+    for (const id of this.watched.keys()) {
+      if (this.known(id)) continue
+      this.watched.delete(id)
       this.changed = true
     }
   }
@@ -243,6 +253,7 @@ export class SessionRegistry {
       this.started.delete(sessionId),
       this.names.delete(sessionId),
       this.priorities.delete(sessionId),
+      this.watched.delete(sessionId),
       this.lastActive.delete(sessionId),
     ]
     if (removed.some(Boolean)) this.changed = true
@@ -323,6 +334,54 @@ export class SessionRegistry {
     return true
   }
 
+  // Add a session to the end of the watchlist. A watched session only gets the new colour.
+  // Return false for a session that the registry does not know.
+  watchAdd(sessionId: string, colour: WatchColour): boolean {
+    if (!this.sessions.has(sessionId)) return false
+    if (this.watched.get(sessionId) !== colour) {
+      this.watched.set(sessionId, colour)
+      this.changed = true
+    }
+    return true
+  }
+
+  // Remove a session from the watchlist. Return false for a session that the registry does not know.
+  watchRemove(sessionId: string): boolean {
+    if (!this.sessions.has(sessionId)) return false
+    if (this.watched.delete(sessionId)) this.changed = true
+    return true
+  }
+
+  // Change the colour of a watched session. A session that is not watched stays as it is.
+  // Return false for a session that the registry does not know.
+  watchColour(sessionId: string, colour: WatchColour): boolean {
+    if (!this.sessions.has(sessionId)) return false
+    if (this.watched.has(sessionId) && this.watched.get(sessionId) !== colour) {
+      this.watched.set(sessionId, colour)
+      this.changed = true
+    }
+    return true
+  }
+
+  // Move a watched session before another watched session. null moves it to the end.
+  // Return false if sessionId or beforeSessionId is not watched. Then nothing changes.
+  watchMove(sessionId: string, beforeSessionId: string | null): boolean {
+    const colour = this.watched.get(sessionId)
+    if (colour === undefined) return false
+    if (beforeSessionId !== null && !this.watched.has(beforeSessionId)) return false
+    if (beforeSessionId === sessionId) return true
+    const order = [...this.watched.keys()].filter(id => id !== sessionId)
+    const index = beforeSessionId === null ? order.length : order.indexOf(beforeSessionId)
+    order.splice(index, 0, sessionId)
+    const before = [...this.watched.keys()]
+    if (order.every((id, i) => id === before[i])) return true
+    const colours = new Map(this.watched)
+    this.watched.clear()
+    for (const id of order) this.watched.set(id, colours.get(id) as WatchColour)
+    this.changed = true
+    return true
+  }
+
   // Return new row objects, sorted by startedAt, then by sessionId.
   rows(): SessionRow[] {
     return this.sorted().map(s => this.toRow(s))
@@ -343,6 +402,7 @@ export class SessionRegistry {
       names: Object.fromEntries(this.names),
       priorities: Object.fromEntries(this.priorities),
       started: [...this.started],
+      watch: [...this.watched].map(([sessionId, colour]) => ({ colour, sessionId })),
     }
   }
 
@@ -458,6 +518,9 @@ export class SessionRegistry {
     if (branch !== undefined) row.branch = branch
     const priority = this.priorities.get(s.sessionId)
     if (priority !== undefined) row.priority = priority
+    const colour = this.watched.get(s.sessionId)
+    if (colour !== undefined)
+      row.watch = { colour, order: [...this.watched.keys()].indexOf(s.sessionId) }
     if (m.state === 'parked' && this.resumable.has(s.sessionId)) row.resumable = true
     if (s.kind === 'external' && s.pid !== undefined) {
       const app = this.terminals.get(s.pid)

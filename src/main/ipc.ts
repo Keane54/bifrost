@@ -12,8 +12,9 @@ import {
   type WebContents,
 } from 'electron'
 import { isPriority } from '../shared/priority'
-import type { ClaudeVersion, DisplayMode } from '../shared/types'
+import type { ClaudeVersion, DisplayMode, WatchColour } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
+import { isWatchColour } from '../shared/watch'
 import { createActions } from './actions/actions'
 import { dirInfo, isAlive, processName, sendSignal } from './actions/process-info'
 import { findProjectApps } from './actions/project-apps'
@@ -269,6 +270,44 @@ export function registerIpc(): void {
         throw new Error('refused: unknown session')
       }
     }),
+  )
+  // Each watchlist handler checks the input. Then the service changes the watchlist.
+  const watchHandler = (
+    channel: string,
+    change: (service: RegistryService, a: string, b: unknown) => boolean,
+    valid: (a: unknown, b: unknown) => boolean,
+    code: string,
+  ): void => {
+    ipcMain.handle(channel, (e, a: unknown, b: unknown) =>
+      fromPage(e, async () => {
+        if (typeof a !== 'string' || !valid(a, b)) throw new Error(code)
+        if (!change(await service, a, b)) throw new Error('refused: unknown session')
+      }),
+    )
+  }
+  watchHandler(
+    'registry:watch-add',
+    (s, id, colour) => s.watchAdd(id, colour as WatchColour),
+    (_id, colour) => isWatchColour(colour),
+    'refused: bad watch colour',
+  )
+  watchHandler(
+    'registry:watch-remove',
+    (s, id) => s.watchRemove(id),
+    () => true,
+    'refused: bad session ID',
+  )
+  watchHandler(
+    'registry:watch-colour',
+    (s, id, colour) => s.watchColour(id, colour as WatchColour),
+    (_id, colour) => isWatchColour(colour),
+    'refused: bad watch colour',
+  )
+  watchHandler(
+    'registry:watch-move',
+    (s, id, before) => s.watchMove(id, before as string | null),
+    (_id, before) => before === null || typeof before === 'string',
+    'refused: bad watch move',
   )
   // The renderer sends IDs only. The main process finds the row, the path and the app.
   const exists = (path: string): Promise<boolean> =>

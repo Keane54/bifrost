@@ -66,6 +66,13 @@ const api: BifrostApi = {
     onUpdate: cb => subscribe('registry:update', cb),
     rows: () => invoke('registry:rows'),
     setPriority: (sessionId, priority) => invoke('registry:set-priority', sessionId, priority),
+    watch: {
+      add: (sessionId, colour) => invoke('registry:watch-add', sessionId, colour),
+      colour: (sessionId, colour) => invoke('registry:watch-colour', sessionId, colour),
+      move: (sessionId, beforeSessionId) =>
+        invoke('registry:watch-move', sessionId, beforeSessionId),
+      remove: sessionId => invoke('registry:watch-remove', sessionId),
+    },
   },
   sessions: {
     create: spec => invoke('sessions:create', spec),

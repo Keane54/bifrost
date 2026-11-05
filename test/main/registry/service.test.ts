@@ -45,7 +45,7 @@ function fakeDeps(o: Partial<ServiceDeps> = {}): ServiceDeps {
 }
 
 const newRegistry = (
-  store: RegistryStore = { lastActive: [], names: {}, priorities: {}, started: [] },
+  store: RegistryStore = { lastActive: [], names: {}, priorities: {}, started: [], watch: [] },
 ) => new SessionRegistry({ escalationMs: 600_000, store })
 
 interface Update {
@@ -359,6 +359,7 @@ describe('updates and the store', () => {
       names: { s1: 'alpha' },
       priorities: {},
       started: [],
+      watch: [],
     })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(saveStore).toHaveBeenCalledTimes(1)
@@ -381,6 +382,7 @@ describe('updates and the store', () => {
       names: { s1: 'alpha' },
       priorities: {},
       started: [],
+      watch: [],
     })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(saveStore).toHaveBeenCalledTimes(2)
@@ -407,6 +409,7 @@ describe('updates and the store', () => {
       names: { s1: 'beta' },
       priorities: {},
       started: [],
+      watch: [],
     })
   })
 
