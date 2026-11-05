@@ -1,6 +1,7 @@
 // The action model: which action is enabled for which row, and why not.
 
 import { PRIORITIES } from '../../../shared/priority'
+import { TERMINAL_ORDER } from '../../../shared/terminal-order'
 import type { Priority, ProjectApp, ProjectAppId, SessionRow } from '../../../shared/types'
 import {
   comesIn,
@@ -8,10 +9,21 @@ import {
   REASON_GONE,
   REASON_NO_APPS,
   REASON_NO_CWD,
+  REASON_NO_PID,
+  REASON_NO_PROCESS,
+  REASON_NO_TERMINAL,
   REASON_NO_WINDOW,
+  REASON_NOTHING_TO_RESUME,
   REASON_ONLY_EXTERNAL,
   REASON_ONLY_PARKED,
   REASON_PARKED,
+  REASON_RED_BOX,
+  REASON_RESUME_ALL_RUNS,
+  REASON_RUNNING,
+  REASON_TAKE_BUSY,
+  REASON_TAKE_PROMPT,
+  REASON_TERMINAL_UNKNOWN,
+  REASON_WAIT_ID,
 } from './reasons'
 
 export type ActionId =
@@ -89,7 +101,14 @@ export interface ActionContext {
   chatOpen: boolean
   apps: ProjectApp[]
   labels: LabelSet
+  // True while another action runs on the session.
+  running: boolean
+  slashFavourites: string[]
+  slashRecent: string[]
 }
+
+// The last milestone that is built. Show Info comes later.
+const BUILT_MILESTONE = 4
 
 export interface ActionState {
   enabled: boolean
@@ -97,6 +116,16 @@ export interface ActionState {
 }
 
 const off = (reason: string): ActionState => ({ enabled: false, reason })
+
+const RUNNING_BLOCKED: ReadonlySet<ActionId> = new Set(['stop', 'delete', 'resume', 'take-control'])
+const RED_BOX_BLOCKED: ReadonlySet<ActionId> = new Set(['send-message', 'run-slash', 'rename'])
+const NEEDS_SHORT_ID: ReadonlySet<ActionId> = new Set([
+  'send-message',
+  'run-slash',
+  'rename',
+  'interrupt',
+  'stop',
+])
 
 // Check the rules in order. The first rule that matches gives the reason.
 export function actionStateFor(
@@ -107,6 +136,7 @@ export function actionStateFor(
   if (!row) return off(REASON_GONE)
   const def = ACTIONS[id]
   const cls = rowClass(row)
+  if (id === 'stop' && cls === 'parked') return off(REASON_NO_PROCESS)
   if (def.for !== 'all' && !def.for.includes(cls)) {
     if (def.for.length === 1 && def.for[0] === 'external') return off(REASON_ONLY_EXTERNAL)
     if (def.for.length === 1 && def.for[0] === 'parked') return off(REASON_ONLY_PARKED)
@@ -117,7 +147,24 @@ export function actionStateFor(
     if (!row.cwd.startsWith('/')) return off(REASON_NO_CWD)
     if (ctx.apps.length === 0) return off(REASON_NO_APPS)
   }
-  if (def.milestone === 4 || def.milestone === 5) return off(comesIn(def.milestone))
+  if (RUNNING_BLOCKED.has(id) && ctx.running) return off(REASON_RUNNING)
+  if (RED_BOX_BLOCKED.has(id) && row.box === 'red') return off(REASON_RED_BOX)
+  if (NEEDS_SHORT_ID.has(id) && !row.shortId) return off(REASON_WAIT_ID)
+  if (id === 'open-in-terminal' && cls === 'owned' && !row.shortId) return off(REASON_WAIT_ID)
+  if (id === 'take-control') {
+    if (row.state === 'working') return off(REASON_TAKE_BUSY)
+    if (row.box === 'red') return off(REASON_TAKE_PROMPT)
+    if (row.pid === undefined) return off(REASON_NO_PID)
+    if (!row.cwd.startsWith('/')) return off(REASON_NO_CWD)
+  }
+  if (id === 'resume' && !row.cwd.startsWith('/')) return off(REASON_NO_CWD)
+  if (id === 'open-in-terminal') {
+    if (cls === 'owned' && !ctx.apps.some(app => TERMINAL_ORDER.includes(app.id))) {
+      return off(REASON_NO_TERMINAL)
+    }
+    if (cls === 'external' && !row.terminalApp) return off(REASON_TERMINAL_UNKNOWN)
+  }
+  if (def.milestone > BUILT_MILESTONE) return off(comesIn(def.milestone as 5))
   return { enabled: true, reason: null }
 }
 
@@ -141,13 +188,15 @@ export function buttonTip(id: ActionId, state: ActionState, labels: LabelSet): s
   return state.enabled || state.reason === null ? label : `${label}\n${state.reason}`
 }
 
-export type MenuArg = Priority | null | ProjectAppId
+// A slash command is a string that starts with "/". The string "/" means "Other...".
+export type MenuArg = Priority | null | ProjectAppId | `/${string}`
 
 export interface SubItem {
   key: string
   label: string
   arg: MenuArg
   checked?: boolean
+  separatorBefore?: boolean
 }
 
 export type MenuEntry =
@@ -166,6 +215,9 @@ export const SELECTED_ITEM_ACTIONS: ActionId[] = [
   'stop',
 ]
 
+// The number of recent slash commands in the submenu.
+export const SLASH_MENU_RECENT = 5
+
 function subItems(id: ActionId, row: SessionRow, ctx: ActionContext): SubItem[] {
   if (id === 'set-priority') {
     return [
@@ -181,7 +233,20 @@ function subItems(id: ActionId, row: SessionRow, ctx: ActionContext): SubItem[] 
   if (id === 'open-project') {
     return ctx.apps.map(app => ({ arg: app.id, key: app.id, label: app.label }))
   }
-  // The favourites of run-slash come in M4.
+  if (id === 'run-slash') {
+    const favourites = ctx.slashFavourites
+    const recent = ctx.slashRecent.filter(c => !favourites.includes(c)).slice(0, SLASH_MENU_RECENT)
+    return [
+      ...favourites.map(c => ({ arg: c as MenuArg, key: `fav:${c}`, label: c })),
+      ...recent.map((c, i) => ({
+        arg: c as MenuArg,
+        key: `recent:${c}`,
+        label: c,
+        ...(i === 0 ? { separatorBefore: true } : {}),
+      })),
+      { arg: '/', key: 'other', label: 'Other...', separatorBefore: true },
+    ]
+  }
   return []
 }
 
@@ -224,4 +289,21 @@ export function rowMenu(row: SessionRow, ctx: ActionContext): MenuEntry[] {
     entry('stop'),
     entry('delete'),
   ]
+}
+
+export type GlobalActionId = 'new-session' | 'resume-all'
+
+export interface GlobalContext {
+  // The number of parked rows that Resume all resumes.
+  resumable: number
+  resumeAllRunning: boolean
+  labels: LabelSet
+}
+
+// The state of an action that needs no row.
+export function globalActionState(id: GlobalActionId, ctx: GlobalContext): ActionState {
+  if (id === 'new-session') return { enabled: true, reason: null }
+  if (ctx.resumeAllRunning) return off(REASON_RESUME_ALL_RUNS)
+  if (ctx.resumable === 0) return off(REASON_NOTHING_TO_RESUME)
+  return { enabled: true, reason: null }
 }

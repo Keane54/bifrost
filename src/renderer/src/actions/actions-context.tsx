@@ -40,7 +40,15 @@ export interface ActionsValue {
 const ActionsContext = createContext<ActionsValue | null>(null)
 
 function contextOf(sessionId: string, state: WmState, apps: ProjectApp[]): ActionContext {
-  return { apps, chatOpen: frameOf(state, chatPanelId(sessionId)) !== undefined, labels: LABELS }
+  // Task 8 gives the real values of running and the slash lists.
+  return {
+    apps,
+    chatOpen: frameOf(state, chatPanelId(sessionId)) !== undefined,
+    labels: LABELS,
+    running: false,
+    slashFavourites: [],
+    slashRecent: [],
+  }
 }
 
 function isAppId(arg: MenuArg | undefined, apps: ProjectApp[]): arg is ProjectAppId {

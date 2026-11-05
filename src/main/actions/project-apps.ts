@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { TERMINAL_ORDER } from '../../shared/terminal-order'
 import type { ProjectApp, ProjectAppId } from '../../shared/types'
 
 export interface InstalledApp extends ProjectApp {
@@ -16,8 +17,7 @@ export const APP_CANDIDATES: { id: ProjectAppId; label: string; bundle: string }
   { bundle: '/System/Applications/Utilities/Terminal.app', id: 'terminal', label: 'Terminal' },
 ]
 
-// The list offers only the first installed terminal app of this order.
-export const TERMINAL_ORDER: ProjectAppId[] = ['warp', 'ghostty', 'iterm2', 'terminal']
+export { TERMINAL_ORDER }
 
 async function locate(
   bundle: string,
