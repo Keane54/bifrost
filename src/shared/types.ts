@@ -40,10 +40,10 @@ export type Box = 'none' | 'yellow' | 'red'
 // Owned: the supervisor runs the session in the background. External: a terminal app owns it.
 export type SessionKind = 'owned' | 'external'
 
-// One row of the session list. The main process sends rows to the renderer.
 // The priority of a session. 1 is the highest.
 export type Priority = 1 | 2 | 3 | 4 | 5
 
+// One row of the session list. The main process sends rows to the renderer.
 export interface SessionRow {
   sessionId: string
   shortId?: string
