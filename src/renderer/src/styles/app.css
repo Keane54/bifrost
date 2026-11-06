@@ -30,6 +30,11 @@
   --color-box-red: #f5766d;
   --color-parked: #6b7280;
 
+  /* The background of a chat terminal: fully transparent. The frame colour and its blur show
+     through, so Panel transparency applies to chat windows too (spec 8.5). The terminal reads
+     this token at run time. */
+  --color-terminal-bg: #00000000;
+
   /* The text colours of the Overview tabs. The first six are the automatic colours. You choose the
      others. No token comes near the box colours (spec 8.10). */
   --color-tab-1: #7cc4d6;
@@ -182,4 +187,14 @@
     background-size: 200% 100%;
     mask-image: linear-gradient(to bottom, transparent, black 85%);
   }
+}
+
+/* The chat terminal is transparent (spec 8.5). xterm.css paints the viewport element of xterm.js
+   black, behind the screen, and gives it a native scroll bar. xterm.js 6 scrolls with its own
+   scroll element. The black scroll element hid the native scroll bar before, so this rule hides
+   it now. This rule is outside a layer, because the rules of xterm.css are outside a layer too,
+   and a rule in a layer always loses to them. */
+[data-chat-terminal] .xterm .xterm-viewport {
+  background-color: var(--color-terminal-bg);
+  scrollbar-width: none;
 }

@@ -464,6 +464,9 @@ Send box rules:
 - Visible chat windows use the WebGL renderer.
 - A chat window in a back tab, or a minimised chat window, releases its WebGL context.
 - During Take control, the chat window shows the Take control loader in place of the terminal (section 9.2).
+- The terminal has a transparent background (user decision, 2026-11-06). The frame colour and its blur show through, so the "Panel transparency" setting also applies to chat windows. The token `--color-terminal-bg` is fully transparent, and xterm.js has `allowTransparency`. The WebGL renderer and the DOM renderer both draw the transparent background, also after a WebGL context loss. `app.css` replaces the black viewport and the native scroll bar of `xterm.css`.
+- The blur behind a chat window is light: 8 pixels (`backdrop-blur-sm`). The other panels keep 12 pixels. So it is clear when a chat window is over another panel, as in EVE.
+- The terminal text stays easy to read. A test checks the contrast of white text and of a mid-grey dim text on the panel colour at each transparency, over the blurred text of another panel.
 
 Size rule (the user approved this on 2026-11-04; M3 builds it):
 
@@ -517,7 +520,7 @@ Dialog rules:
 
 ### 8.10 Theme
 
-- The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur.
+- The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur. A chat window has a lighter blur than the other panels (section 8.5).
 - The accent colour is a light cyan, as in EVE. Bifrost uses the accent on few elements. The top border of each panel is a 1 px cyan line. The focused panel has the full line and a cyan glow above its top edge only. Other panels have a dim line and no glow. A click on a button, a tab or a row gives a short cyan tint with low opacity.
 - The focused panel is less transparent than the other panels, so it stands out, as in EVE. The background, the border and the glow change in 250 ms when the focus moves (user decision, 2026-11-05).
 - A selected row gets a light, low-opacity cyan background, so it differs from a neutral row. A tab in a panel stack is white with a white underline when it is active. An Overview tab keeps its own text colour (section 8.3), and the active Overview tab has an underline in that colour, as in EVE.

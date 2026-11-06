@@ -28,6 +28,7 @@ import {
   type Px,
   RESIZE_DEBOUNCE_MS,
 } from './size-rule'
+import { terminalBackground, terminalOptions } from './terminal-options'
 import { type AttachTarget, attachTarget, type ChatView, chatPanelId, HIDDEN_VIEW } from './views'
 import { addedContexts, releaseWebgl, type WebglContext } from './webgl-release'
 
@@ -139,12 +140,10 @@ export class ChatTerminal {
     deps.parking.append(this.element)
 
     const font = deps.font ?? DEFAULT_SETTINGS.terminalFont
-    this.term = new Terminal({
-      fontFamily: cssFontFamily(font),
-      fontSize: font.size,
-      macOptionClickForcesSelection: true,
-      scrollback: 5000,
-    })
+    // The background is transparent. The frame colour and its blur show through (spec 8.5).
+    const style = getComputedStyle(document.documentElement)
+    const background = terminalBackground(name => style.getPropertyValue(name))
+    this.term = new Terminal(terminalOptions(font, background))
     this.term.loadAddon(this.fit)
     this.term.open(this.host)
     // The keys and the xterm.js replies go to the PTY.

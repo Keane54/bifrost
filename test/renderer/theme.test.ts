@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { PANEL_TRANSPARENCY_CHOICES } from '../../src/shared/settings'
 import { WATCH_COLOURS } from '../../src/shared/watch'
 
 const WATCH_NAMES: readonly string[] = WATCH_COLOURS
@@ -223,8 +224,11 @@ describe('theme', () => {
     expect(bad).toEqual([])
   })
 
-  it('the theme has the panel blur', () => {
-    expect(source('wm/Frame.tsx')).toContain('backdrop-blur')
+  it('the theme has the panel blur, and a lighter blur for a chat window', () => {
+    expect(source('wm/Frame.tsx')).toContain('frameBlur(frame.active)')
+    const style = source('wm/frame-style.ts')
+    expect(style).toContain("'backdrop-blur-md'")
+    expect(style).toContain("'backdrop-blur-sm'")
   })
 
   it('uses the accent class part only for the top border, the glow and active: states', () => {
@@ -461,5 +465,54 @@ describe('the Service status tokens', () => {
         if (a < b) expect(distance(token(a), token(b)), `${a} to ${b}`).toBeGreaterThanOrEqual(0.1)
       }
     }
+  })
+})
+
+// the user, 2026-11-06: the chat terminal has no black background. The frame colour and its blur show
+// through, so the Panel transparency setting applies to chat windows too.
+describe('the chat terminal background', () => {
+  // The default text colour of xterm.js, and a mid grey as the dim text of Claude Code.
+  const TEXT = '#ffffff'
+  const DIM = '#999999'
+
+  // xterm.css paints the viewport element black and gives it a native scroll bar, outside a layer.
+  // So the override must be outside a layer too, after the last layer block.
+  it('replaces the black viewport and its native scroll bar of xterm.css, outside a layer', () => {
+    const rule =
+      '[data-chat-terminal] .xterm .xterm-viewport {\n  background-color: var(--color-terminal-bg);\n  scrollbar-width: none;\n}'
+    const at = CSS.indexOf(rule)
+    expect(at).toBeGreaterThan(-1)
+    const lastLayer = CSS.lastIndexOf('@layer')
+    const layerEnd = CSS.indexOf('\n}\n', lastLayer)
+    expect(at).toBeGreaterThan(layerEnd)
+  })
+
+  it('is fully transparent', () => {
+    const match = CSS.match(/--color-terminal-bg:\s*(#[0-9a-fA-F]{8});/)
+    expect(match?.[1].toLowerCase()).toBe('#00000000')
+  })
+
+  // The worst case under a chat window is the text of another panel. The light blur spreads it,
+  // so the backdrop is about a quarter of the text colour over the panel colour.
+  it('keeps the text easy to read on the panel at each transparency', () => {
+    const level = (name: string): number => {
+      const match = CSS.match(new RegExp(`--color-${name}: rgb\\((\\d+) `))
+      return Number(match?.[1])
+    }
+    const grey = (n: number): string => hex([n, n, n])
+    const backdrop = mix(token('text'), 0.25, grey(level('panel')))
+    const bad: string[] = []
+    for (const percent of PANEL_TRANSPARENCY_CHOICES) {
+      const alpha = 1 - percent / 100
+      const panels = [
+        ['panel', mix(grey(level('panel')), alpha, backdrop)],
+        ['focused panel', mix(grey(level('panel-focus')), Math.min(1, alpha + 0.1), backdrop)],
+      ]
+      for (const [name, surface] of panels) {
+        if (contrast(TEXT, surface) < 7) bad.push(`text on ${name} at ${percent}%`)
+        if (contrast(DIM, surface) < 4.5) bad.push(`dim text on ${name} at ${percent}%`)
+      }
+    }
+    expect(bad).toEqual([])
   })
 })
