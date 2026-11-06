@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BACKGROUND_FIELDS, backgroundClass } from '../../src/renderer/src/wm/background-style'
+import {
+  BACKGROUND_FIELDS,
+  backgroundClass,
+  backgroundMotion,
+  windowActive,
+} from '../../src/renderer/src/wm/background-style'
 import { WATCH_COLOURS } from '../../src/shared/watch'
 import { contrast, hex, luminance, mix } from '../helpers/colour'
 
@@ -406,7 +411,7 @@ describe('the motion of the background', () => {
     }
   })
 
-  it('stops the motion with reduced motion and with the setting off', () => {
+  it('stops the motion with reduced motion and with the setting off from the start', () => {
     const lastField = CSS.lastIndexOf('.background-field:nth-child(')
     const reduced = CSS.indexOf('@media (prefers-reduced-motion: reduce)', lastField)
     expect(reduced).toBeGreaterThan(lastField)
@@ -414,17 +419,75 @@ describe('the motion of the background', () => {
     expect(blockAt(CSS, reduced)).toMatch(
       /^\s*\.background \.background-field\s*\{\s*animation:\s*none;\s*\}\s*$/,
     )
-    const off = CSS.indexOf('.background-still .background-field {', lastField)
-    expect(off).toBeGreaterThan(lastField)
-    expect(declarations(blockAt(CSS, off))).toEqual([['animation', 'none']])
+    const still = CSS.indexOf('.background-still .background-field {', lastField)
+    expect(still).toBeGreaterThan(lastField)
+    expect(declarations(blockAt(CSS, still))).toEqual([['animation', 'none']])
+  })
+
+  // The field rules set the animation shorthand, and the shorthand sets the play state to running.
+  // So the pause rule must come after them.
+  it('pauses the fields where they are, with no jump', () => {
+    const lastField = CSS.lastIndexOf('.background-field:nth-child(')
+    const paused = CSS.indexOf('.background-paused .background-field {', lastField)
+    expect(paused).toBeGreaterThan(lastField)
+    expect(declarations(blockAt(CSS, paused))).toEqual([['animation-play-state', 'paused']])
+  })
+})
+
+describe('the state of the motion', () => {
+  const ON = { active: true, animated: true, ran: true }
+
+  it('moves only with the setting on and an active window', () => {
+    expect(backgroundMotion(ON)).toBe('moving')
+    expect(backgroundMotion({ ...ON, ran: false })).toBe('moving')
+  })
+
+  // The coordinator, 2026-11-06: no motion while the window does not have the focus or the page
+  // is hidden. The fields stay where they are and continue from there.
+  it('pauses in place while the window is not active', () => {
+    expect(backgroundMotion({ ...ON, active: false })).toBe('paused')
+    expect(backgroundMotion({ ...ON, active: false, ran: false })).toBe('paused')
+  })
+
+  it('pauses in place when the setting goes off after the fields moved', () => {
+    expect(backgroundMotion({ ...ON, animated: false })).toBe('paused')
+    expect(backgroundMotion({ active: false, animated: false, ran: true })).toBe('paused')
+  })
+
+  it('keeps the still position when the setting is off from the start', () => {
+    expect(backgroundMotion({ active: true, animated: false, ran: false })).toBe('still')
+    expect(backgroundMotion({ active: false, animated: false, ran: false })).toBe('still')
+  })
+
+  it('makes the window active only with the focus and a visible page', () => {
+    const page = (focus: boolean, visibilityState: DocumentVisibilityState) => ({
+      hasFocus: () => focus,
+      visibilityState,
+    })
+    expect(windowActive(page(true, 'visible'))).toBe(true)
+    expect(windowActive(page(false, 'visible'))).toBe(false)
+    expect(windowActive(page(true, 'hidden'))).toBe(false)
+    expect(windowActive(page(false, 'hidden'))).toBe(false)
   })
 })
 
 describe('the Animated background setting', () => {
-  it('adds the still class only when the setting is off', () => {
-    expect(backgroundClass(true)).toBe('background')
-    expect(backgroundClass(false)).toBe('background background-still')
-    expect(VIEW).toContain('backgroundClass(settings.animatedBackground)')
+  it('gives each motion its class', () => {
+    expect(backgroundClass('moving')).toBe('background')
+    expect(backgroundClass('paused')).toBe('background background-paused')
+    expect(backgroundClass('still')).toBe('background background-still')
+  })
+
+  // The settings are the defaults until the first get resolves. So the view waits for them,
+  // and a setting that is off at the start gives the still position.
+  it('reads the setting after the settings load, and follows the focus and the page', () => {
+    expect(VIEW).toContain('ready && settings.animatedBackground')
+    expect(VIEW).toContain('backgroundClass(backgroundMotion(')
+    expect(VIEW).toContain('windowActive(document)')
+    for (const event of ["window.addEventListener('focus'", "window.addEventListener('blur'"]) {
+      expect(VIEW).toContain(event)
+    }
+    expect(VIEW).toContain("document.addEventListener('visibilitychange'")
   })
 })
 

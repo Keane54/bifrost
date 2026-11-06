@@ -418,17 +418,25 @@
     }
   }
 
-  /* No motion with reduced motion, or with the Animated background setting off. The fields then
-     stay at their still position: the first step of each cycle. These rules have the same
-     specificity as the field rules and come after them, so they win over them. */
-  @media (prefers-reduced-motion: reduce) {
-    .background .background-field {
-      animation: none;
-    }
+  /* The stop rules. They have the same specificity as the field rules and come after them, so
+     they win over them. The field rules set the animation shorthand, and the shorthand sets the
+     play state to running. So the pause rule must also come after them.
+     Paused: the window does not have the focus, the page is hidden, or the Animated background
+     setting went off. The fields stop where they are and continue from there, with no jump.
+     Still: reduced motion, or the setting is off at the start. The fields stay at their still
+     position, the first step of each cycle. */
+  .background-paused .background-field {
+    animation-play-state: paused;
   }
 
   .background-still .background-field {
     animation: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .background .background-field {
+      animation: none;
+    }
   }
 }
 

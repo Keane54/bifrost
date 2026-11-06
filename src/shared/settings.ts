@@ -44,7 +44,7 @@ export interface Settings {
   panelTransparency: number
   // The zoom of the page in percent.
   interfaceScale: number
-  // The colour fields of the background move slowly. false keeps them still (spec 8.10).
+  // The colour fields of the background move slowly. false pauses them (spec 8.10).
   animatedBackground: boolean
   slashCommands: string[]
   terminalFont: TerminalFont
