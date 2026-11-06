@@ -1,5 +1,6 @@
 import type { On, SessionMeasureInput, SessionUsage } from 'claude-code'
 import { expect, type MockClock, mock, test } from 'claude-code/testing'
+import { register } from '../hooks/register'
 
 // Tests of the Live details mod. The hooks of each test stand for the engine.
 // The http.fetch hook records each line. No line goes to a real socket.
@@ -457,14 +458,14 @@ test('a usage line before any classic.Stop has no effort', async ($, on) => {
   expect(w.lines[1]).not.toHaveProperty('transcriptPath')
 })
 
-test('the usage line cuts the version, the effort, the permission mode and the transcript path', async ($, on) => {
+test('the usage line cuts the version, the effort and the permission mode', async ($, on) => {
   const w = world(on, { version: 'v'.repeat(300) })
   await $.classic.Stop({
     effort: { level: 'e'.repeat(300) },
     permission_mode: 'p'.repeat(300),
     session_id: S,
     stop_hook_active: false,
-    transcript_path: `/${'t'.repeat(2000)}`,
+    transcript_path: TRANSCRIPT,
   })
   await $.session.start(START)
   await w.clock.settle()
@@ -472,9 +473,29 @@ test('the usage line cuts the version, the effort, the permission mode and the t
   expect(w.lines[1]).toMatchObject({
     effort: 'e'.repeat(200),
     permissionMode: 'p'.repeat(200),
-    transcriptPath: `/${'t'.repeat(1023)}`,
+    transcriptPath: TRANSCRIPT,
     version: 'v'.repeat(200),
   })
+})
+
+test('the usage line leaves out a transcript path longer than 1,024 characters', async ($, on) => {
+  const w = world(on)
+  const stopWith = (transcript_path: string) => $.classic.Stop({ ...STOP, transcript_path })
+  // A cut path names another file. So the mod does not cut a path.
+  await stopWith(`/${'t'.repeat(1024)}`)
+  await $.turn.complete(turnEnd('ALPHA'))
+  await w.clock.settle()
+  await w.clock.advance(2500)
+  expect(w.kinds()).toEqual(['turn.complete', 'usage'])
+  expect(w.lines[1]).toMatchObject({ effort: 'xhigh' })
+  expect(w.lines[1]).not.toHaveProperty('transcriptPath')
+  // A path of 1,024 characters goes in the line whole.
+  const path = `/${'t'.repeat(1023)}`
+  await stopWith(path)
+  await $.turn.complete(turnEnd('BRAVO'))
+  await w.clock.settle()
+  await w.clock.advance(2500)
+  expect(w.lines.at(-1)).toMatchObject({ kind: 'usage', transcriptPath: path })
 })
 
 test('a version read that never settles does not stop the usage lines', async ($, on) => {
@@ -576,4 +597,45 @@ test('a late classic.Stop of the old session does not go into a line of the new 
   ])
   expect(w.lines[1]).not.toHaveProperty('effort')
   expect(w.lines[1]).not.toHaveProperty('transcriptPath')
+})
+
+// One hook of a direct call of register: ($, e, next).
+type Hook = (...args: unknown[]) => unknown
+
+// An older engine build can lack $.session.version. A test of the kit cannot remove an engine
+// call, so this test calls register with its own on and its own $. That $ has no
+// session.version, so a call of it throws at once.
+test('an engine without session.version still gives the usage line with the model and the cost', async () => {
+  const hooks = new Map<string, Hook>()
+  const ownOn = (name: string, hook: Hook) => {
+    hooks.set(name, hook)
+    return { catch: () => undefined }
+  }
+  register(ownOn as unknown as On, {})
+  const lines: Line[] = []
+  const engine = {
+    clock: { after: () => {}, every: () => {}, sleep: () => new Promise<void>(() => {}) },
+    env: { get: async () => '/h' },
+    http: {
+      fetch: async (_url: string, init: { body: string }) => {
+        lines.push(JSON.parse(init.body))
+        return { headers: {}, ok: true, status: 204, text: '' }
+      },
+    },
+    session: { id: async () => S, model: async () => MODEL, usage: async () => USAGE },
+  }
+  const measure: SessionMeasureInput = {
+    changed: ['cost'],
+    context: USAGE.context,
+    cost: { usd: 0.0069 },
+    rateLimits: RATE_LIMITS,
+  }
+  const next = async (e: SessionMeasureInput) => ({ changed: e.changed })
+  expect(await hooks.get('session.measure')?.(engine, measure, next)).toEqual({ changed: ['cost'] })
+  // The line goes out after some promise steps. Let them all run.
+  for (let i = 0; i < 100; i++) await Promise.resolve()
+  expect(lines).toEqual([
+    expect.objectContaining({ costUsd: 0.0069, kind: 'usage', model: MODEL, sid: S }),
+  ])
+  expect(lines[0]).not.toHaveProperty('version')
 })

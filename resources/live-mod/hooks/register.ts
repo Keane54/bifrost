@@ -73,6 +73,12 @@ function cutKnown(value: string | undefined, max = TEXT_MAX): string | undefined
   return value === undefined ? undefined : cut(value, max)
 }
 
+// Return the path when it has at most TRANSCRIPT_PATH_MAX characters, else undefined. The mod
+// does not cut a path, because a cut path names another file.
+function wholePath(path: string | undefined): string | undefined {
+  return path !== undefined && path.length <= TRANSCRIPT_PATH_MAX ? path : undefined
+}
+
 function readHome($: EngineInterface): Promise<string | undefined> {
   home ??= $.env.get('HOME').catch(() => undefined)
   return home
@@ -82,10 +88,12 @@ function readHome($: EngineInterface): Promise<string | undefined> {
 // The mod waits at most VERSION_WAIT_MS for a read. A read that does not settle in that time
 // stays open, and the next usage line waits for the same read again. So a read that never settles
 // never stops a usage line. A rejection gives no version, and the next usage line reads again.
+// An older engine build can lack $.session.version. Then the call throws at once. The read starts
+// in a promise step, so that throw is a rejection too and the line goes out without a version.
 async function readVersion($: EngineInterface): Promise<string | undefined> {
   if (claudeVersion !== undefined) return claudeVersion
-  versionRead ??= $.session
-    .version()
+  versionRead ??= Promise.resolve()
+    .then(() => $.session.version())
     .then(result => {
       if (typeof result.version === 'string') claudeVersion = result.version
     })
@@ -156,7 +164,7 @@ async function sendUsage($: EngineInterface, figures?: Figures) {
         model: cutKnown(model),
         permissionMode: cutKnown(kept.permissionMode),
         rateLimits,
-        transcriptPath: cutKnown(kept.transcriptPath, TRANSCRIPT_PATH_MAX),
+        transcriptPath: wholePath(kept.transcriptPath),
         version: cutKnown(version),
       }
     })

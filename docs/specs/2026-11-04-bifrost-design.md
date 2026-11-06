@@ -188,7 +188,7 @@ Rules for the live lines:
 - The mod sends one line for each event. It sends the line with `POST http://bifrost/v1/event` over the socket.
 - A hook does not wait for a send, because a send can fail or take long. The one exception is `session.end`, which waits at most 200 ms.
 - Each line has `v: 1`. Bifrost ignores a line with another version, and a line that is not valid.
-- The server accepts a body of at most 65,536 bytes. The mod cuts `answer` to 4,000 characters, `transcriptPath` to 1,024 characters and each other text to 200 characters.
+- The server accepts a body of at most 65,536 bytes. The mod cuts `answer` to 4,000 characters and each other text to 200 characters. It does not cut `transcriptPath`, because a cut path names another file. It leaves out a path of more than 1,024 characters.
 - The server closes a request that has no end after 5,000 ms.
 - The mod counts the sends that have not settled. At 32 or more, a new send or usage read sends nothing and returns at once. The line is lost. Bifrost gets the state again at the next line or the next heartbeat. The reason: a Bifrost that hangs never answers a send, and its request timeout then does not run.
 - Order rule (D4): Bifrost drops a state event that is older than the newest applied event of the session. It compares `at`, then `seq` when both events have one.
@@ -213,7 +213,7 @@ A `usage` line also has four optional fields (M5b D28). Show Info shows them (se
 
 | Field | Source |
 |---|---|
-| `version` | The `version` of `$.session.version()`. The mod keeps it after the first answer. A usage line waits at most 500 ms for a read. A read that does not settle in that time stays open, and the line goes out without `version`. The next line waits for the same read again. A rejection gives no version, and the next line reads again. |
+| `version` | The `version` of `$.session.version()`. The mod keeps it after the first answer. A usage line waits at most 500 ms for a read. A read that does not settle in that time stays open, and the line goes out without `version`. The next line waits for the same read again. A rejection gives no version, and the next line reads again. An older engine build can lack `$.session.version`. Then the call throws at once. The mod starts the read in a promise step, so that throw is a rejection too, and the line goes out without `version`. |
 | `effort` | `effort.level` of the newest `classic.Stop` input of the session of the line. |
 | `permissionMode` | `permission_mode` of the newest `classic.Stop` input of the session of the line. |
 | `transcriptPath` | `transcript_path` of the newest `classic.Stop` input of the session of the line. |
@@ -236,7 +236,7 @@ Rules for the usage data:
 - The mod cannot read the session name. The name comes from `claude agents --json`.
 - The mod sends each of the four optional fields only when it knows the value. A line before the first `classic.Stop` of its session has no `effort`, `permissionMode` or `transcriptPath`. A line of an older mod has none of the four fields.
 - The mod keeps the three `classic.Stop` values for each session ID (`session_id` of the input). `session.end` removes the values of its session. So after `/clear`, a line of the new session ID never has the values of the old session.
-- The parser keeps `version`, `effort` and `permissionMode` when each is a text that is not empty. It cuts each to 200 characters. It keeps `transcriptPath` only when the path starts with `/`, has no line break and has at most 1,024 characters. It leaves out a bad field and keeps the line.
+- The parser keeps `version`, `effort` and `permissionMode` when each is a text that is not empty. It cuts each to 200 characters. It keeps `transcriptPath` only when the path starts with `/`, has at most 1,024 characters, and has no C0 control (U+0000 to U+001F, also the line breaks), no DEL (U+007F) and no bidi control (U+202A to U+202E, U+2066 to U+2069). A bidi control can make a path look like another path. It leaves out a bad field and keeps the line.
 - Each row gets these fields from its last `usage` line: `contextWindowSize` (from `context.window`), `rateLimits`, `claudeVersion` (from `version`), `effort`, `permissionMode` and `transcriptPath`. A missing value leaves the field out. The rate limits are different (next rule).
 - A `usage` line without `rateLimits` keeps the last rate limits of its session and the time of the line that had them. Only a line with `rateLimits` replaces them.
 - The newest rate limits (M5b D19) are the rate limits with the newest time, of all sessions. The time is the `at` of the line that had them. A session that is not a row also counts, until the registry forgets it. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.

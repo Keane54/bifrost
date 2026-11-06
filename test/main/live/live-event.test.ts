@@ -159,6 +159,29 @@ describe('parseLiveLine', () => {
     })
   })
 
+  // C0 controls, DEL and the bidi controls. A bidi control can make a path look like another path.
+  // The test gives code points, so the source file has no invisible character.
+  test.each([[0x00], [0x07], [0x1b], [0x1f], [0x7f], [0x202a], [0x202e], [0x2066], [0x2069]])(
+    'parseLiveLine leaves out a transcript path with the control character %d',
+    code => {
+      const transcriptPath = `/h/p${String.fromCodePoint(code)}x.jsonl`
+      const text = line({ costUsd: 0.5, kind: 'usage', transcriptPath })
+      expect(parseLiveLine(text, R)).toEqual({
+        at: 1000,
+        sessionId: S,
+        type: 'usage',
+        usage: { costUsd: 0.5 },
+      })
+    },
+  )
+
+  test('parseLiveLine keeps a transcript path with spaces and letters that are not ASCII', () => {
+    const path = '/Users/dev-user/Mes projets été/日本/S.jsonl'
+    expect(parseLiveLine(line({ kind: 'usage', transcriptPath: path }), R)).toMatchObject({
+      usage: { transcriptPath: path },
+    })
+  })
+
   test('parseLiveLine leaves out an empty or bad version, effort and permission mode', () => {
     const text = line({ costUsd: 0.5, effort: '', kind: 'usage', permissionMode: 3, version: null })
     expect(parseLiveLine(text, R)).toEqual({

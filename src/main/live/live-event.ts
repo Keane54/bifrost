@@ -117,15 +117,27 @@ function readUsage(raw: Raw): LiveUsage {
   return usage
 }
 
-// A transcript path is absolute, has no line break and has at most TRANSCRIPT_PATH_MAX
+// A transcript path is absolute, has no unsafe character and has at most TRANSCRIPT_PATH_MAX
 // characters. The parser does not cut a path, because a cut path is a different file.
 function isTranscriptPath(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.startsWith('/') &&
-    !/[\n\r]/.test(value) &&
-    value.length <= TRANSCRIPT_PATH_MAX
+    value.length <= TRANSCRIPT_PATH_MAX &&
+    !hasUnsafeChar(value)
   )
+}
+
+// Return true when the text has a C0 control (U+0000 to U+001F, also the line breaks), DEL
+// (U+007F) or a bidi control (U+202A to U+202E, U+2066 to U+2069). A bidi control can make a path
+// look like another path.
+function hasUnsafeChar(text: string): boolean {
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0
+    if (code <= 0x1f || code === 0x7f) return true
+    if ((code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069)) return true
+  }
+  return false
 }
 
 // Read one line of the mod. receivedAt is the time of receipt in milliseconds.
