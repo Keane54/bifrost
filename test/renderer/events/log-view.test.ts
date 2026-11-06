@@ -2,11 +2,14 @@ import { describe, expect, test } from 'vitest'
 import {
   eventText,
   filterLog,
-  formatClock,
+  formatLogTime,
+  logRow,
   mergeLog,
   sessionOptions,
   visibleRange,
 } from '../../../src/renderer/src/events/log-view'
+import { formatClock } from '../../../src/renderer/src/lib/time'
+import { EVENT_LOG_MAX } from '../../../src/shared/event-log'
 import type { LogEntry, SessionRow } from '../../../src/shared/types'
 
 const e = (seq: number, sessionId = 's1', o: Partial<LogEntry> = {}): LogEntry => ({
@@ -26,6 +29,14 @@ describe('mergeLog', () => {
 
   test('mergeLog sorts by seq when the append came before the list', () => {
     expect(seqs(mergeLog([e(4)], [e(1), e(2), e(4)]))).toEqual([1, 2, 4])
+  })
+
+  test('mergeLog keeps the EVENT_LOG_MAX newest by default, the same max as the main log', () => {
+    expect(EVENT_LOG_MAX).toBe(5000)
+    const many = Array.from({ length: EVENT_LOG_MAX + 2 }, (_, i) => e(i + 1))
+    const merged = mergeLog([], many)
+    expect(merged).toHaveLength(EVENT_LOG_MAX)
+    expect(merged[0]?.seq).toBe(3)
   })
 
   test('mergeLog keeps the max newest and returns the same array with no new entry', () => {
@@ -54,12 +65,35 @@ describe('visibleRange', () => {
 })
 
 describe('texts', () => {
-  test('eventText and formatClock give the texts', () => {
+  test('eventText and formatLogTime give the texts', () => {
     expect(eventText(e(1, 's1', { detail: 'AskUserQuestion', name: 'PreToolUse' }))).toBe(
       'PreToolUse (AskUserQuestion)',
     )
     expect(eventText(e(1))).toBe('Stop')
-    expect(formatClock(Date.UTC(2026, 10, 5, 14, 3, 7, 45), 'UTC')).toBe('14:03:07.045')
+    const at = Date.UTC(2026, 10, 5, 14, 3, 7, 45)
+    expect(formatLogTime(at, 'UTC')).toBe('14:03:07.045')
+    // The log time is not the HH:MM clock of lib/time (final wave item 9).
+    expect(formatLogTime).not.toBe(formatClock)
+    expect(formatClock(at, 'UTC')).toBe('14:03')
+  })
+
+  test('logRow gives a notice the whole width and a title with the whole text (item 9)', () => {
+    const text =
+      "macOS didn't show a notification. Allow notifications for Bifrost in System Settings."
+    expect(logRow(e(1, '', { kind: 'notice', name: text }), [])).toEqual({
+      session: null,
+      text,
+      title: text,
+    })
+  })
+
+  test('logRow gives an event its session label and text, and no title', () => {
+    const rows = [{ name: 'zeta', sessionId: 'aaaaaaaa-1111' }] as SessionRow[]
+    expect(logRow(e(1, 'aaaaaaaa-1111', { detail: 'Bash', name: 'PostToolUse' }), rows)).toEqual({
+      session: 'zeta',
+      text: 'PostToolUse (Bash)',
+      title: undefined,
+    })
   })
 
   test('eventText gives a notice as its plain text', () => {

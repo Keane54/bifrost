@@ -1,10 +1,11 @@
 // The pure logic of the Event log panel (spec 8.7).
+import { EVENT_LOG_MAX } from '../../../shared/event-log'
 import type { LogEntry, SessionRow } from '../../../shared/types'
 
-// The clock of a log row: HH:MM:SS.mmm (R8, one time module).
-export { formatClockMs as formatClock } from '../lib/time'
+// The time of a log row: HH:MM:SS.mmm (R8, one time module). It has its own name, because
+// formatClock of lib/time gives HH:MM.
+export { formatClockMs as formatLogTime } from '../lib/time'
 
-export const LOG_MAX = 5000
 // The height of a row, in px.
 export const ROW_HEIGHT = 18
 const OVERSCAN = 8
@@ -15,7 +16,7 @@ const SHORT_ID = 8
 export function mergeLog(
   current: LogEntry[],
   incoming: LogEntry[],
-  max: number = LOG_MAX,
+  max: number = EVENT_LOG_MAX,
 ): LogEntry[] {
   const known = new Set(current.map(entry => entry.seq))
   const fresh = incoming.filter(entry => {
@@ -50,6 +51,17 @@ export function visibleRange(
 export function eventText(entry: LogEntry): string {
   if (entry.kind === 'notice') return entry.name
   return entry.detail === undefined ? entry.name : `${entry.name} (${entry.detail})`
+}
+
+// The texts of one row. A notice has no session. Its text also uses the session column, and its
+// title holds the whole text, because a narrow panel cuts it (final wave item 9).
+export function logRow(
+  entry: LogEntry,
+  rows: SessionRow[],
+): { session: string | null; text: string; title: string | undefined } {
+  const text = eventText(entry)
+  if (entry.kind === 'notice') return { session: null, text, title: text }
+  return { session: sessionLabel(entry.sessionId, rows), text, title: undefined }
 }
 
 // The label of a session: the row name, else the first 8 characters of the ID.

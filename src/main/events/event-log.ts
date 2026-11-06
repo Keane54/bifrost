@@ -1,10 +1,10 @@
 // The Event log (spec 8.7). The main process keeps the newest live state events in memory.
 // Nothing goes to disk.
+import { EVENT_LOG_MAX } from '../../shared/event-log'
 import type { LogEntry } from '../../shared/types'
 import type { HookEvent } from '../registry/hook-event'
 
-// The log keeps this many entries.
-export const EVENT_LOG_MAX = 5000
+export { EVENT_LOG_MAX }
 // The main process sends new entries to the page at most once in this time.
 export const APPEND_GAP_MS = 250
 

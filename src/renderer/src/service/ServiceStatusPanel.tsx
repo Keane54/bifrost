@@ -7,8 +7,9 @@ import { cx } from '../lib/cx'
 import { useNow } from '../lib/use-now'
 import { checkedText, incidentLine, levelText } from './service-view'
 
-// Text colour and dot colour of each level. "No data" has no dot.
-const LEVEL_TEXT: Record<Exclude<ServiceLevel, 'unknown'>, string> = {
+// The class of the text colour and the dot colour of each level. "No data" has no dot. The texts
+// of the levels are LEVEL_TEXT in service-view.ts.
+const LEVEL_CLASS: Record<Exclude<ServiceLevel, 'unknown'>, string> = {
   critical: 'text-svc-critical',
   maintenance: 'text-svc-maint',
   major: 'text-svc-major',
@@ -23,8 +24,8 @@ function Block({ service, now }: { service: ServiceStatus; now: number }): React
       <div className='flex items-center gap-2 text-xs'>
         {known ? (
           <>
-            <span className={cx('size-2 shrink-0 bg-current', LEVEL_TEXT[service.level])} />
-            <span className={LEVEL_TEXT[service.level]}>{levelText(service.level)}</span>
+            <span className={cx('size-2 shrink-0 bg-current', LEVEL_CLASS[service.level])} />
+            <span className={LEVEL_CLASS[service.level]}>{levelText(service.level)}</span>
           </>
         ) : (
           <span className='text-text italic'>{levelText(service.level)}</span>

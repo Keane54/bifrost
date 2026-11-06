@@ -5,12 +5,11 @@ import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { useLive } from '../settings/live-context'
 import {
-  eventText,
   filterLog,
-  formatClock,
+  formatLogTime,
+  logRow,
   mergeLog,
   ROW_HEIGHT,
-  sessionLabel,
   sessionOptions,
   visibleRange,
 } from './log-view'
@@ -107,25 +106,31 @@ export default function EventLogPanel(): React.JSX.Element {
           </div>
         ) : (
           <div className='relative' style={{ height: count * ROW_HEIGHT }}>
-            {shown.map((entry, i) => (
-              <div
-                className={cx(
-                  'absolute right-0 left-0 flex items-center gap-2 px-2',
-                  entry.kind === 'notice' && 'text-text-strong',
-                )}
-                data-log-row={entry.seq}
-                key={entry.seq}
-                style={{ height: ROW_HEIGHT, top: (start + i) * ROW_HEIGHT }}
-              >
-                <span className='w-24 shrink-0 font-mono text-text-dim'>
-                  {formatClock(entry.at)}
-                </span>
-                <span className='w-[150px] shrink-0 truncate text-text-dim'>
-                  {entry.kind === 'notice' ? '' : sessionLabel(entry.sessionId, rows)}
-                </span>
-                <span className='min-w-0 flex-1 truncate'>{eventText(entry)}</span>
-              </div>
-            ))}
+            {shown.map((entry, i) => {
+              const row = logRow(entry, rows)
+              return (
+                <div
+                  className={cx(
+                    'absolute right-0 left-0 flex items-center gap-2 px-2',
+                    entry.kind === 'notice' && 'text-text-strong',
+                  )}
+                  data-log-row={entry.seq}
+                  key={entry.seq}
+                  style={{ height: ROW_HEIGHT, top: (start + i) * ROW_HEIGHT }}
+                >
+                  <span className='w-24 shrink-0 font-mono text-text-dim'>
+                    {formatLogTime(entry.at)}
+                  </span>
+                  {/* A notice has no session. Its text uses the session column too. */}
+                  {row.session !== null && (
+                    <span className='w-[150px] shrink-0 truncate text-text-dim'>{row.session}</span>
+                  )}
+                  <span className='min-w-0 flex-1 truncate' title={row.title}>
+                    {row.text}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
