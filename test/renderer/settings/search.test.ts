@@ -7,7 +7,9 @@ import {
   GENERAL_LABELS,
   keyMatches,
   noMatchText,
+  resultCountText,
   SECTION_TITLES,
+  type SearchHit,
   type SearchSection,
   searchEscape,
   searchSettings,
@@ -195,6 +197,15 @@ describe('searchSettings', () => {
 })
 
 describe('the texts and the keys of the search field', () => {
+  // Review Minor 5: a live line tells a screen reader the number of matches.
+  it('gives the count of the matching rows for a screen reader', () => {
+    const hit = (rows: string[]): SearchHit => ({ id: 'keys', rows, title: 'Keys', whole: false })
+    expect(resultCountText(null, '')).toBe('')
+    expect(resultCountText([], 'xyz')).toBe('No settings match "xyz".')
+    expect(resultCountText([hit(['a'])], 'a')).toBe('1 setting matches.')
+    expect(resultCountText([hit(['a', 'b']), hit(['c'])], 'a')).toBe('3 settings match.')
+  })
+
   it('names the query in the no-match line', () => {
     expect(noMatchText('  xyz ')).toBe('No settings match "xyz".')
   })

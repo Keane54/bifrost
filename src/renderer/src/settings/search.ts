@@ -186,6 +186,15 @@ export function noMatchText(query: string): string {
   return `No settings match "${query.trim()}".`
 }
 
+// The text of the live line for a screen reader (review Minor 5): the number of matching rows, or
+// the no-match line. With no search, the line is empty.
+export function resultCountText(hits: readonly SearchHit[] | null, query: string): string {
+  if (hits === null) return ''
+  if (hits.length === 0) return noMatchText(query)
+  const count = hits.reduce((sum, hit) => sum + hit.rows.length, 0)
+  return count === 1 ? '1 setting matches.' : `${count} settings match.`
+}
+
 // Esc in the search field clears the query first. In an empty field, Esc closes Settings, as the
 // Esc key does outside a text field (spec 9.4). During an IME composition, Esc only cancels the
 // composition (review Minor 2).

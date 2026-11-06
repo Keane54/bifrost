@@ -18,6 +18,7 @@ import { SaveTrackerContext } from './save-context'
 import { SaveTracker } from './save-tracker'
 import {
   noMatchText,
+  resultCountText,
   SECTION_TITLES,
   type SearchHit,
   searchEscape,
@@ -213,15 +214,23 @@ export default function SettingsPanel(): React.JSX.Element {
           {hits === null && section === 'slash' && <SlashSection />}
           {hits === null && section === 'keys' && <KeysSection />}
           {hits === null && section === 'live' && <LiveSection />}
-          {hits?.map(hit => (
-            <Hit hit={hit} key={hit.id} />
-          ))}
-          {hits !== null && hits.length === 0 && (
-            <p className='px-3 py-2 text-text-dim text-xs' data-settings-no-match={true}>
-              {noMatchText(query)}
-            </p>
+          {hits !== null && (
+            <section aria-label='Search results' data-search-results={true}>
+              {hits.map(hit => (
+                <Hit hit={hit} key={hit.id} />
+              ))}
+              {hits.length === 0 && (
+                <p className='px-3 py-2 text-text-dim text-xs' data-settings-no-match={true}>
+                  {noMatchText(query)}
+                </p>
+              )}
+            </section>
           )}
         </div>
+        {/* The live line gives the number of matches to a screen reader (review Minor 5). */}
+        <p className='sr-only' data-search-count={true} role='status'>
+          {resultCountText(hits, query)}
+        </p>
         <div
           className='flex shrink-0 items-center justify-end border-panel-edge border-t px-3 py-1.5 text-xs'
           data-settings-footer={true}

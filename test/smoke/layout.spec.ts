@@ -171,6 +171,7 @@ test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their la
     await search.fill('cmd shift t')
     await expect(frame.locator('[data-search-section]')).toHaveCount(1)
     await expect(frame.locator('[data-key-slot="take-control:mod"]')).toBeVisible()
+    await expect(frame.getByRole('status')).toHaveText('1 setting matches.')
     await search.fill('xyz')
     await expect(frame.locator('[data-settings-no-match]')).toHaveText('No settings match "xyz".')
     // Esc clears the field first. Then Esc in the empty field closes Settings.
