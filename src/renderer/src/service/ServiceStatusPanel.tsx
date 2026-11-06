@@ -171,9 +171,11 @@ export default function ServiceStatusPanel(): React.JSX.Element {
   }, [])
 
   // The view of the rows (spec 8.11). The panel measures the full rows and chooses the view
-  // before the paint: after each render, and at each resize of the panel. The measure does not
-  // depend on the view, so the view cannot change in a loop.
+  // before the paint: after each render, at each resize of the panel, and at each change of the
+  // width of a measure copy. The measure does not depend on the view, so the view cannot change in
+  // a loop.
   const panel = useRef<HTMLDivElement>(null)
+  const observerRef = useRef<ResizeObserver | null>(null)
   const [view, setView] = useState<ServiceView>(0)
   const choose = useCallback(() => {
     const el = panel.current
@@ -181,15 +183,37 @@ export default function ServiceStatusPanel(): React.JSX.Element {
     if (!el || !row) return
     setView(serviceView(row.clientWidth, measureNeeds(el)))
   }, [])
-  useLayoutEffect(() => choose())
   useLayoutEffect(() => {
     const el = panel.current
     if (!el) return
     // flushSync renders the new view at once, so a resize shows no frame of the old view.
     const observer = new ResizeObserver(() => flushSync(choose))
+    observerRef.current = observer
     observer.observe(el)
-    return () => observer.disconnect()
+    // A web font, for example Geist Mono, can load after the first measure. It changes the width
+    // of the text, but not the size of the panel (review Minor 2).
+    const fonts = document.fonts
+    const onFonts = (): void => choose()
+    fonts.addEventListener('loadingdone', onFonts)
+    void fonts.ready.then(() => {
+      if (observerRef.current === observer) choose()
+    })
+    return () => {
+      observer.disconnect()
+      observerRef.current = null
+      fonts.removeEventListener('loadingdone', onFonts)
+    }
   }, [choose])
+  // After each render: choose the view, and observe each measure copy. A copy has its natural
+  // width, so its size changes when its text width changes. A second observe of a copy does
+  // nothing.
+  useLayoutEffect(() => {
+    choose()
+    const el = panel.current
+    const observer = observerRef.current
+    if (!el || !observer) return
+    for (const row of el.querySelectorAll('[data-service-measure]')) observer.observe(row)
+  })
 
   const newest = list.reduce((max, s) => Math.max(max, s.checkedAt), 0)
   return (
