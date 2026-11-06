@@ -466,7 +466,7 @@ Send box rules:
 - During Take control, the chat window shows the Take control loader in place of the terminal (section 9.2).
 - The terminal has a transparent background (user decision, 2026-11-06). The frame colour and its blur show through, so the "Panel transparency" setting also applies to chat windows. The token `--color-terminal-bg` is fully transparent, and xterm.js has `allowTransparency`. The WebGL renderer and the DOM renderer both draw the transparent background, also after a WebGL context loss. `app.css` replaces the black viewport and the native scroll bar of `xterm.css`.
 - The blur behind a chat window is light: 8 pixels (`backdrop-blur-sm`). The other panels keep 12 pixels. So it is clear when a chat window is over another panel, as in EVE.
-- The terminal text stays easy to read. A test checks the contrast of white text and of a mid-grey dim text on the panel colour at each transparency, over the blurred text of another panel.
+- The terminal text stays easy to read. A test checks the contrast of white text (7:1 or more) and of a mid-grey dim text (4.5:1 or more) on the panel colour at each transparency. The backdrops are the blurred text of another panel, a white watch row, a selected row and the rainbow of another loader.
 
 Size rule (the user approved this on 2026-11-04; M3 builds it):
 
