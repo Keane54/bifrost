@@ -2,6 +2,7 @@
 
 import type { PrInfo, RateWindow, SessionRow } from '../../../shared/types'
 import { worktreeOf } from '../../../shared/worktree'
+import { friendlyError } from '../actions/errors'
 import { formatClock, formatDuration, sameDay, timeParts } from '../lib/time'
 import { formatCost, formatPercent } from '../overview/format'
 
@@ -143,4 +144,10 @@ export function infoSections(
       title: 'Limits and version',
     },
   ]
+}
+
+// The PR line when the call to the main process fails. A refusal code gets its friendly text
+// (final wave item 10).
+export function prFailure(message: string): PrInfo {
+  return { kind: 'unavailable', reason: friendlyError(message) }
 }

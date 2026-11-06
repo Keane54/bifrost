@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { REASON_GONE } from '../../../src/renderer/src/actions/reasons'
 import {
   formatDuration,
   formatTokens,
   formatWhen,
   type InfoSection,
   infoSections,
+  prFailure,
   showInfoPanelId,
   showInfoSessionId,
 } from '../../../src/renderer/src/info/show-info'
@@ -236,5 +238,19 @@ describe('formats', () => {
     const ms = Date.UTC(2026, 10, 4, 23, 30)
     expect(formatWhen(ms, NOW, 'Asia/Tokyo')).toBe('08:30')
     expect(formatWhen(ms, NOW, UTC)).toBe('Wed 4 Nov 23:30')
+  })
+})
+
+describe('prFailure (final wave item 10)', () => {
+  it('a refusal of the main process gives the friendly text, not the code', () => {
+    expect(prFailure('refused: unknown session')).toEqual({
+      kind: 'unavailable',
+      reason: REASON_GONE,
+    })
+    expect(prFailure('refused: bad session ID').reason).not.toContain('refused:')
+  })
+
+  it('another message stays as it is', () => {
+    expect(prFailure('gh broke')).toEqual({ kind: 'unavailable', reason: 'gh broke' })
   })
 })

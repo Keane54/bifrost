@@ -10,7 +10,7 @@ import { ErrorLine } from '../lib/ErrorLine'
 import { errorMessage } from '../lib/error-message'
 import { Tip } from '../lib/menu'
 import { useNow } from '../lib/use-now'
-import { type InfoItem, infoSections, showInfoSessionId } from './show-info'
+import { type InfoItem, infoSections, prFailure, showInfoSessionId } from './show-info'
 
 const LIVE_HINT = 'Turn on Live details in Settings to see the model, effort, cost and limits.'
 const WAITING = 'Waiting for the session list...'
@@ -32,7 +32,7 @@ function usePr(sessionId: string | null, cwd: string | undefined, branch: string
         if (active) setPr(value)
       },
       err => {
-        if (active) setPr({ kind: 'unavailable', reason: errorMessage(err) })
+        if (active) setPr(prFailure(errorMessage(err)))
       },
     )
     return () => {
