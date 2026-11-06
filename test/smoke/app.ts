@@ -3,11 +3,14 @@
 //
 // Without BIFROST_SMOKE_APP, a test starts the build in out/ with the Electron of the
 // repository. With BIFROST_SMOKE_APP=<path of Bifrost.app>, it starts that packaged app.
-// BIFROST_SMOKE_ARCH=x86_64 also starts the packaged app under Rosetta.
+//
+// No test starts Bifrost under Rosetta. On an Apple Silicon Mac, macOS 26 then shows a notice
+// that Bifrost "includes a component that will not work with a future release of macOS"
+// (spec 14.1).
 
 import { createHash } from 'node:crypto'
 import type { Dirent } from 'node:fs'
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { _electron } from '@playwright/test'
@@ -144,15 +147,6 @@ function launchEnv(testHome: string): Record<string, string> {
   return env
 }
 
-// Playwright puts its own flags before the args. "/usr/bin/arch --inspect=0 ..." then fails. So
-// a small sh file starts the app under Rosetta and gives it all flags.
-async function rosettaStarter(testHome: string, bin: string): Promise<string> {
-  const path = join(testHome, 'start-x86_64.sh')
-  const quoted = `'${bin.replaceAll("'", "'\\''")}'`
-  await writeFile(path, `#!/bin/sh\nexec /usr/bin/arch -x86_64 ${quoted} "$@"\n`, { mode: 0o755 })
-  return path
-}
-
 // The last argument is always the user data folder in the test home (Global Constraints).
 export async function launchOptions(testHome: string): Promise<LaunchOptions> {
   const userData = `--user-data-dir=${join(testHome, 'user-data')}`
@@ -162,8 +156,5 @@ export async function launchOptions(testHome: string): Promise<LaunchOptions> {
     return { ...base, args: ['out/main/index.js', userData] }
   }
   const bin = join(appPath, 'Contents', 'MacOS', 'Bifrost')
-  if (process.env.BIFROST_SMOKE_ARCH === 'x86_64') {
-    return { ...base, args: [userData], executablePath: await rosettaStarter(testHome, bin) }
-  }
   return { ...base, args: [userData], executablePath: bin }
 }

@@ -3,8 +3,7 @@
 // the real Claude files and ~/.bifrost did not change, and that the fake claude got no unknown
 // call.
 //
-// app.ts tells how to start the build in out/, the packaged app, or the packaged app under
-// Rosetta.
+// app.ts tells how to start the build in out/ or the packaged app.
 
 import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
