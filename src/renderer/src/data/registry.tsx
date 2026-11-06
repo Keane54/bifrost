@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { SessionRow } from '../../../shared/types'
 import { errorMessage } from '../lib/error-message'
+import { INITIAL_REGISTRY, type RegistryState, withFirstRows, withUpdate } from './registry-state'
 
 export interface RegistryValue {
   rows: SessionRow[]
   error: string | null
-  // True after the first update from the main process.
+  // True after the first rows come: the answer of registry.rows() or an update (bug B1).
   loaded: boolean
   selectedId: string | null
   select(id: string | null): void
@@ -15,24 +16,19 @@ const RegistryContext = createContext<RegistryValue | null>(null)
 
 // One subscription to the session registry for the whole app. It also keeps the selection.
 export function RegistryProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const [rows, setRows] = useState<SessionRow[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loaded, setLoaded] = useState(false)
+  const [state, setState] = useState<RegistryState>(INITIAL_REGISTRY)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
-    let updated = false
-    // One call at mount. An update that arrived first is newer, so keep it.
+    // One call at mount. Its answer also sets loaded, because the main process sends no update
+    // when the rows do not change (bug B1).
     window.bifrost.registry
       .rows()
-      .then(r => active && !updated && setRows(r))
+      .then(r => active && setState(s => withFirstRows(s, r)))
       .catch(() => {})
     const unsubscribe = window.bifrost.registry.onUpdate((r, e) => {
-      updated = true
-      setRows(r)
-      setError(e)
-      setLoaded(true)
+      setState(s => withUpdate(s, r, e))
     })
     return () => {
       active = false
@@ -44,9 +40,12 @@ export function RegistryProvider({ children }: { children: React.ReactNode }): R
   const select = useCallback((id: string | null) => {
     setSelectedId(id)
     if (id === null) return
-    window.bifrost.registry.acknowledge(id).catch(err => setError(errorMessage(err)))
+    window.bifrost.registry
+      .acknowledge(id)
+      .catch(err => setState(s => ({ ...s, error: errorMessage(err) })))
   }, [])
 
+  const { error, loaded, rows } = state
   const value = useMemo(
     () => ({ error, loaded, rows, select, selectedId }),
     [error, loaded, rows, select, selectedId],

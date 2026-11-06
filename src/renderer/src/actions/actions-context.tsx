@@ -454,7 +454,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     [openNotified],
   )
 
-  // New rows or the first registry update can end the wait.
+  // New rows or the first load of the registry can end the wait.
   // biome-ignore lint/correctness/useExhaustiveDependencies: each change of the rows can end the wait.
   useEffect(() => openNotified(), [loaded, rows, openNotified])
 

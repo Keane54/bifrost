@@ -243,7 +243,7 @@ describe('notifiedOpenStep', () => {
     expect(notifiedOpenStep('S1', rows, true)).toBe('open')
   })
 
-  it('waits for the row until the first registry update (final review Minor 6)', () => {
+  it('waits for the row until the registry has loaded (final review Minor 6)', () => {
     expect(notifiedOpenStep('S1', [], false)).toBe('wait')
     expect(notifiedOpenStep('S9', rows, false)).toBe('wait')
   })
