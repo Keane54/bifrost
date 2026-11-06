@@ -252,8 +252,9 @@ Statusline in chat windows (O4, 2026-11-05):
 
 - Bifrost no longer installs the wrapper. So Claude Code runs your own statusLine command in each session again.
 - A mod cannot stop that command, because the mod API has no statusline hook.
-- Bifrost starts each new session, and each session that it resumes or takes over, with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. The chat window then shows no statusline row.
-- Resume and Take control run `claude --bg --settings '{...}' --resume <session-id>`, with the same flag. So a session that Take control moved from a terminal app also shows no statusline row in its chat window (D13).
+- Bifrost starts each new session, and each session that Take control moves, with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. The chat window then shows no statusline row.
+- Resume and Resume all add no flag. A resume with a new flag on a stopped background session starts a copy with a new session ID (test of 2026-11-05). A background session keeps its saved options, so it keeps the hidden statusline.
+- Take control passes the same flag: `claude --bg --settings '{...}' --resume <session-id>`. Take control only accepts an external session, which runs in the foreground, and a foreground session has no saved options. Test of 2026-11-06: a foreground session, SIGTERM, then this command gave the same session ID, kind background, and no statusline row.
 - Sessions in a terminal app, for example Warp, keep your statusline.
 
 ### 6.4 Git branch
@@ -557,7 +558,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Interrupt | Full stop | Owned | Send Esc to the session. |
 | Rename | Set callsign | Owned | Type `/rename <name>` into the session. |
 | Set priority | Set threat level | All | Bifrost data only. |
-| Resume | Reactivate | Parked | `claude --bg --settings <statusline override> --resume <session-id>`. |
+| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. It adds no flag (D13). |
 | Resume all | Reactivate all | Parked | Resume each parked session that was active when Bifrost last ran. |
 | Show Info | Scan | All | Open the Show Info panel. |
 | Copy session ID | Copy transponder ID | All | Copy to the clipboard. |
@@ -1058,12 +1059,12 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 10. D10: Install and Turn on remove an old hook install before the first `claude plugin` command. A failure stops the action. Remove does the old removal last, after the plugin steps and the delete of the mod folder (controller ruling). The reason: a failed removal of the old install must not leave the mod installed. Bifrost keeps `statusline-original.json` and the backups.
 11. D11: The API for M5a is `live.status()`, `live.install()`, `live.enable()`, `live.disable()` and `live.uninstall()`. `enable` refuses when the plugin is not installed.
 12. D12: The parser keeps `five_hour` and `seven_day` as the rate limits and drops other windows. This work adds no Usage HUD.
-13. D13: Bifrost turns the statusline off for each session that it starts or resumes. A new session always gets the `--settings` statusLine override. Resume and Take control pass the same override with `--resume`. Section 22 item 1 passed it only without the wrapper.
+13. D13: A new session always gets the `--settings` statusLine override. Take control passes it too, because it starts from a foreground session: the session ID stays the same and the statusline goes away (test of 2026-11-06). Resume and Resume all add no flag, because a resume with a new flag on a background session starts a copy with a new session ID. Section 22 item 1 passed the override only without the wrapper.
 14. D14: This section holds the decisions of the Live details work. Section 22 keeps its text, with a note that this section changes its statusline line.
 15. O1: Yes. A controller task installs the mod at user scope for a short time (Part B of the check). It saves backups and SHA-256 values first, and it runs no `/reload-plugins` in a session of the user.
 16. O2: The guard `cc-plugin-sec-default` is not in the list of the user. The `classic.*` events are usable.
 17. O3: Yes. With no mod, a change of `status` from `busy` or `waiting` to `idle` seen by the poll sets a yellow box (section 7, rule 11). The O3 question named both changes.
-18. O4: Option a. New sessions start with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. Resume and Take control also pass the flag (D13). Spec 20 item 1 goes away (section 6.3).
+18. O4: Option a. New sessions start with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. Take control also passes the flag. Resume adds no flag (D13). Spec 20 item 1 goes away (section 6.3).
 19. Ask order: the mod queues the `ask` line before the tool runs. The line has a lower `seq` than `tool.done`. The mod does not wait for the send.
 20. Socket server: a stop during a start wins. The server never deletes a file that is not a socket. It never deletes a socket that answers (section 11.2).
 21. Live flags: Turn off and Remove end the live flag of each row directly after the server stops. The usage stays. The poll yellow box then applies at once, and the status gives 0 live sessions (section 11.2).

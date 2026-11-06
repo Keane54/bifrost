@@ -138,9 +138,17 @@ export interface SessionActions {
   dirInfo(dir: unknown): Promise<DirInfo>
 }
 
-// The arguments of "claude --bg --resume" for Resume and Take control.
-// A session that Bifrost starts or resumes always gets the statusline override (D13).
+// The arguments of "claude --bg --resume" for Resume and Resume all.
+// They add no flag. A resume with a new flag on a stopped background session starts a copy with a
+// new session ID. A background session keeps its saved options, so it keeps the hidden statusline.
 export function resumeArgs(sessionId: string): string[] {
+  return ['--bg', '--resume', sessionId]
+}
+
+// The arguments of "claude --bg --resume" for Take control (D13).
+// Take control only starts from an external session, which runs in the foreground. A foreground
+// session has no saved options, so the resume keeps the same session ID and the override works.
+export function takeControlArgs(sessionId: string): string[] {
   return ['--bg', '--settings', NO_STATUSLINE_SETTINGS, '--resume', sessionId]
 }
 
@@ -593,7 +601,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (!(await waitForEnd(pid))) throw new Error(REASON_NOT_ENDED)
         // A started session parks when it ends. So a failed resume leaves a parked row (D6).
         deps.markStarted(row.sessionId)
-        await start(run, resumeArgs(row.sessionId), cwd, 'claude --bg --resume')
+        await start(run, takeControlArgs(row.sessionId), cwd, 'claude --bg --resume')
         await waitResumed(row.sessionId)
         // The resumed session must still run after RESUME_SETTLE_MS. Else it ended or parked
         // before it ran.
