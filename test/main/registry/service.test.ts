@@ -712,10 +712,15 @@ describe('the newest rate limits (M5b Task 1)', () => {
     const deps = fakeDeps({ listActive: async () => ({ entries: [bg()] }) })
     const started = startService(deps)
     const usages: (UsageSnapshot | null)[] = []
-    started.service.onUsage(usage => usages.push(usage))
+    // The time of each onUsage call.
+    const times: number[] = []
+    started.service.onUsage(usage => {
+      usages.push(usage)
+      times.push(Date.now())
+    })
     // The first poll ends and the update gap ends.
     await vi.advanceTimersByTimeAsync(1000)
-    return { ...started, usages }
+    return { ...started, times, usages }
   }
 
   test('the service sends the usage when a line changes it', async () => {
@@ -728,6 +733,7 @@ describe('the newest rate limits (M5b Task 1)', () => {
     // changes nothing.
     service.pushLive(usageLine('s1', START, { rateLimits: limits }))
     service.pushLive(usageLine('s2', START + 10, { costUsd: 0.1 }))
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.minUpdateGapMs)
     expect(usages.length).toBe(1)
     // A newer line with the same limits changes the time.
     service.pushLive(usageLine('s1', START + 30_000, { rateLimits: limits }))
@@ -748,8 +754,33 @@ describe('the newest rate limits (M5b Task 1)', () => {
     const { service, usages } = await ready()
     service.pushLive(usageLine('s1', START, { rateLimits: limits }))
     service.forget('s1')
+    // The forget comes in the update gap. The end of the gap sends it.
+    expect(usages.length).toBe(1)
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.minUpdateGapMs)
     expect(usages.at(-1)).toBeNull()
     expect(usages.length).toBe(2)
+  })
+
+  test('the service sends the usage at most 4 times each second, and the last value wins', async () => {
+    const { service, times, usages } = await ready()
+    const start = Date.now()
+    // 20 lines in 1 s, each with a new value.
+    for (let i = 0; i < 20; i++) {
+      const sevenDay = { resetsAt: 9_000_000, usedPercent: i }
+      service.pushLive(usageLine('s1', start + i * 50, { rateLimits: { sevenDay } }))
+      await vi.advanceTimersByTimeAsync(50)
+    }
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.minUpdateGapMs)
+    expect(times.length).toBe(5)
+    for (let k = 1; k < times.length; k++) {
+      expect((times[k] ?? 0) - (times[k - 1] ?? 0)).toBeGreaterThanOrEqual(
+        SERVICE_TIMING.minUpdateGapMs,
+      )
+    }
+    expect(usages.at(-1)).toMatchObject({
+      limits: { sevenDay: { usedPercent: 19 } },
+      updatedAt: start + 19 * 50,
+    })
   })
 
   test('the tick sends the usage when the row name changes it', async () => {

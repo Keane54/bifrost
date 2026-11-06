@@ -1580,18 +1580,49 @@ describe('session details and the newest rate limits (M5b Task 1)', () => {
       rateLimits: limits(40),
       transcriptPath: '/h/.claude/projects/p/s1.jsonl',
     })
-    // A line without the details leaves the fields out.
+    // A line without the details leaves the fields out. The rate limits stay (ruling 4).
     r.applyUsage('s1', { costUsd: 0.1 }, 300)
     for (const field of [
       'claudeVersion',
       'contextWindowSize',
       'effort',
       'permissionMode',
-      'rateLimits',
       'transcriptPath',
     ]) {
       expect(rowOf(r)).not.toHaveProperty(field)
     }
+    expect(rowOf(r)?.rateLimits).toEqual(limits(40))
+  })
+
+  test('a usage line without rate limits keeps the last rate limits of the session', () => {
+    const r = registry()
+    r.applyAgents(
+      [
+        bg({ id: 'aa', name: 'alpha', sessionId: 'a' }),
+        bg({ id: 'cc', name: 'gamma', sessionId: 'c' }),
+      ],
+      100,
+    )
+    r.applyUsage('a', { rateLimits: limits(10) }, 1000)
+    r.applyUsage('c', { rateLimits: limits(30) }, 1500)
+    r.applyUsage('a', { costUsd: 0.2 }, 2000)
+    expect(rowOf(r, 'a')).toMatchObject({ costUsd: 0.2, rateLimits: limits(10) })
+    // The time of the kept limits is the time of the line that had them. So C stays the newest.
+    expect(r.usage()).toEqual({
+      limits: limits(30),
+      name: 'gamma',
+      sessionId: 'c',
+      updatedAt: 1500,
+    })
+    // Only a line with rate limits replaces them.
+    r.applyUsage('a', { rateLimits: limits(60) }, 2500)
+    expect(rowOf(r, 'a')?.rateLimits).toEqual(limits(60))
+    expect(r.usage()).toEqual({
+      limits: limits(60),
+      name: 'alpha',
+      sessionId: 'a',
+      updatedAt: 2500,
+    })
   })
 
   test('usage gives the newest usage line with rate limits', () => {
@@ -1636,10 +1667,11 @@ describe('session details and the newest rate limits (M5b Task 1)', () => {
     r.applyAgents([bg()], 100)
     r.applyUsage('s1', { contextPercent: 5, costUsd: 0.1 }, 200)
     expect(r.usage()).toBeNull()
-    // A later line without rate limits replaces a line with them.
+    // forget removes the kept rate limits.
     r.applyUsage('s1', { rateLimits: limits(10) }, 300)
-    expect(r.usage()).not.toBeNull()
     r.applyUsage('s1', { costUsd: 0.2 }, 400)
+    expect(r.usage()).toMatchObject({ sessionId: 's1', updatedAt: 300 })
+    r.forget('s1')
     expect(r.usage()).toBeNull()
   })
 })

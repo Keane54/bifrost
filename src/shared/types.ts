@@ -155,7 +155,8 @@ export interface RateLimits {
 
 // The newest rate limits: those of the newest usage line with rate limits, of all sessions.
 // The session can be a session that is not a row. name is the row name, or the first 8
-// characters of the session ID when the session is not a row. updatedAt is the time of the line.
+// characters of the session ID when the session is not a row. updatedAt is the time of the line
+// that had the rate limits. A later line without rate limits does not change it.
 export interface UsageSnapshot {
   sessionId: string
   name: string

@@ -47,8 +47,8 @@ export interface BifrostApi {
   // null means that no usage line has rate limits, for example with Live details off.
   usage: {
     get(): Promise<UsageSnapshot | null>
-    // The main process sends the value after each change. The returned function removes only
-    // this listener.
+    // The main process sends the value after a change, a maximum of 4 times each second. The
+    // last value always goes out. The returned function removes only this listener.
     onUpdate(cb: (usage: UsageSnapshot | null) => void): () => void
   }
   actions: {

@@ -113,8 +113,11 @@ function copyEntry(s: Session, entry: AgentEntry): void {
 }
 
 // The last usage line of a session. updatedAt is the time of the line.
+// A line without rate limits keeps the rate limits of the session. limitsAt is the time of the
+// line that had them.
 interface Usage extends LiveUsage {
   updatedAt: number
+  limitsAt?: number
 }
 
 // Merge the session list, the state events and the usage lines of the mod, and the git branches
@@ -291,30 +294,37 @@ export class SessionRegistry {
 
   // Keep the newest usage line of a session. The session can be unknown. Then its row gets the
   // usage when it shows. A usage line is not activity (D8), so it does not change lastEventAt.
+  // A line without rate limits keeps the last rate limits of the session and their time. Only a
+  // line with rate limits replaces them.
   applyUsage(sessionId: string, usage: LiveUsage, at: number): void {
     this.advance(at)
     this.touch(sessionId, at)
     const old = this.usageLines.get(sessionId)
     if (old !== undefined && at < old.updatedAt) return
-    this.usageLines.set(sessionId, { ...usage, updatedAt: at })
+    const line: Usage = { ...usage, updatedAt: at }
+    if (line.rateLimits !== undefined) line.limitsAt = at
+    else if (old?.rateLimits !== undefined) {
+      line.rateLimits = old.rateLimits
+      line.limitsAt = old.limitsAt
+    }
+    this.usageLines.set(sessionId, line)
   }
 
-  // Return the newest rate limits: the usage line with rate limits that has the largest
-  // updatedAt, of all sessions. A session that is not a row also counts. The name is the row
-  // name, or the first 8 characters of the session ID when the session is not a row.
-  // Each session keeps only its last usage line. So a later line without rate limits removes the
-  // rate limits of that session. Return null when no usage line has rate limits.
+  // Return the newest rate limits: the rate limits with the newest time (limitsAt), of all
+  // sessions. A session that is not a row also counts. The name is the row name, or the first 8
+  // characters of the session ID when the session is not a row. updatedAt is the time of the
+  // line that had the rate limits. Return null when no session has rate limits.
   usage(): UsageSnapshot | null {
     let newest: UsageSnapshot | null = null
     for (const [sessionId, line] of this.usageLines) {
-      if (line.rateLimits === undefined) continue
-      if (newest !== null && line.updatedAt <= newest.updatedAt) continue
+      if (line.rateLimits === undefined || line.limitsAt === undefined) continue
+      if (newest !== null && line.limitsAt <= newest.updatedAt) continue
       const s = this.sessions.get(sessionId)
       newest = {
         limits: line.rateLimits,
         name: s ? this.nameOf(s) : sessionId.slice(0, 8),
         sessionId,
-        updatedAt: line.updatedAt,
+        updatedAt: line.limitsAt,
       }
     }
     return newest

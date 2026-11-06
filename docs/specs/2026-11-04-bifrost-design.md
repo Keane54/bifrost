@@ -196,7 +196,7 @@ Rules for the live lines:
 - No `classic.*` kind goes on the wire. The mod hooks `classic.PermissionRequest` and `classic.StopFailure` as a fallback (D5). It also hooks `classic.Stop` for the usage data (M5b D28).
 - `classic.PermissionRequest` sends the kind `permission`. It only makes the red box for a permission prompt earlier.
 - `classic.StopFailure` sends the kind `stop.failure`. It only repeats the error of `turn.complete`.
-- `classic.Stop` sends nothing and waits for nothing. It keeps `effort.level`, `permission_mode` and `transcript_path` of its input for the next `usage` line (section 6.3).
+- `classic.Stop` sends nothing and waits for nothing. It keeps `effort.level`, `permission_mode` and `transcript_path` of its input for the next `usage` line of the same session (section 6.3).
 - The mod does not use `tool.check`. In auto mode, an `ask` goes to the classifier, so it is not a prompt.
 - Where `classic.*` hooks do not run, the poll gives the red box for a permission prompt within 2 s. Nothing else changes.
 - Ask order: the mod queues the `ask` line before the tool runs. The line has a lower `seq` than `tool.done`. The mod does not wait for the send.
@@ -213,10 +213,10 @@ A `usage` line also has four optional fields (M5b D28). Show Info shows them (se
 
 | Field | Source |
 |---|---|
-| `version` | The `version` of `$.session.version()`. The mod reads it one time for each module load. A rejection gives no version. |
-| `effort` | `effort.level` of the newest `classic.Stop` input. |
-| `permissionMode` | `permission_mode` of the newest `classic.Stop` input. |
-| `transcriptPath` | `transcript_path` of the newest `classic.Stop` input. |
+| `version` | The `version` of `$.session.version()`. The mod keeps it after the first answer. A usage line waits at most 500 ms for a read. A read that does not settle in that time stays open, and the line goes out without `version`. The next line waits for the same read again. A rejection gives no version, and the next line reads again. |
+| `effort` | `effort.level` of the newest `classic.Stop` input of the session of the line. |
+| `permissionMode` | `permission_mode` of the newest `classic.Stop` input of the session of the line. |
+| `transcriptPath` | `transcript_path` of the newest `classic.Stop` input of the session of the line. |
 
 The mod sends a `usage` line at these times:
 
@@ -234,13 +234,13 @@ Rules for the usage data:
 - The parser keeps the windows `five_hour` and `seven_day` of the rate limits. It drops other windows.
 - The mod gives a model ID. The registry maps it to a name with `modelName`: `claude-haiku-5-5` gives `Haiku 5.5`. The suffix `[1m]` adds ` (1M context)`. An ID with an unknown form stays as it is.
 - The mod cannot read the session name. The name comes from `claude agents --json`.
-- The mod sends each of the four optional fields only when it knows the value. A line before the first `classic.Stop` of a module load has no `effort`, `permissionMode` or `transcriptPath`. A line of an older mod has none of the four fields.
-- The mod keeps the three `classic.Stop` values for the module load, not for each session. After `/clear`, the line of the new session ID has the old transcript path until the next `classic.Stop`.
+- The mod sends each of the four optional fields only when it knows the value. A line before the first `classic.Stop` of its session has no `effort`, `permissionMode` or `transcriptPath`. A line of an older mod has none of the four fields.
+- The mod keeps the three `classic.Stop` values for each session ID (`session_id` of the input). `session.end` removes the values of its session. So after `/clear`, a line of the new session ID never has the values of the old session.
 - The parser keeps `version`, `effort` and `permissionMode` when each is a text that is not empty. It cuts each to 200 characters. It keeps `transcriptPath` only when the path starts with `/`, has no line break and has at most 1,024 characters. It leaves out a bad field and keeps the line.
-- Each row gets these fields from its last `usage` line: `contextWindowSize` (from `context.window`), `rateLimits`, `claudeVersion` (from `version`), `effort`, `permissionMode` and `transcriptPath`. A missing value leaves the field out.
-- The newest rate limits (M5b D19) come from the `usage` line with `rateLimits` that has the newest `at`, of all sessions. A session that is not a row also counts, until the registry forgets it. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No line with `rateLimits` gives null.
-- The registry keeps only the last `usage` line of each session. So a later line without `rateLimits` removes the rate limits of that session.
-- The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line, so a newer line with the same limits is a change. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
+- Each row gets these fields from its last `usage` line: `contextWindowSize` (from `context.window`), `rateLimits`, `claudeVersion` (from `version`), `effort`, `permissionMode` and `transcriptPath`. A missing value leaves the field out. The rate limits are different (next rule).
+- A `usage` line without `rateLimits` keeps the last rate limits of its session and the time of the line that had them. Only a line with `rateLimits` replaces them.
+- The newest rate limits (M5b D19) are the rate limits with the newest time, of all sessions. The time is the `at` of the line that had them. A session that is not a row also counts, until the registry forgets it. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
+- The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line that had them, so a newer line with the same limits is a change. The update limit is that of the rows: at most 4 updates each second, and the last value always goes out. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
 - Without the mod, Bifrost shows no model, context %, cost, rate limit, context window size, Claude Code version, effort, permission mode or transcript path.
 
 Statusline in chat windows (O4, 2026-11-05):

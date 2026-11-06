@@ -18,6 +18,8 @@ const TRANSCRIPT_PATH_MAX = 1024
 const USAGE_DELAY_MS = 2500
 const HEARTBEAT_MS = 30_000
 const END_WAIT_MS = 200
+// The longest wait for the Claude Code version. Then the usage line goes out without it.
+const VERSION_WAIT_MS = 500
 // The time from /clear to the usage line of the new session ID. The row of the new ID then gets
 // its model and cost before its first prompt.
 const CLEAR_USAGE_DELAY_MS = 1000
@@ -40,18 +42,27 @@ type Kind =
 type Data = Record<string, unknown>
 type Figures = Pick<SessionUsage, 'context' | 'cost' | 'rateLimits'>
 
+// The values of the newest classic.Stop input of one session.
+interface Details {
+  effort?: string
+  permissionMode?: string
+  transcriptPath?: string
+}
+
 // The order number of each line. It increases for each send of this module load.
 let seq = 0
 // HOME, read one time for each module load.
 let home: Promise<string | undefined> | undefined
 // The number of sends that have not settled.
 let inFlight = 0
-// The Claude Code version, read one time for each module load.
-let claudeVersion: Promise<string | undefined> | undefined
-// The values of the newest classic.Stop input. Each is undefined until a classic.Stop gives it.
-let effort: string | undefined
-let permissionMode: string | undefined
-let transcriptPath: string | undefined
+// The Claude Code version, after the first answer of $.session.version().
+let claudeVersion: string | undefined
+// The version read that did not settle yet. The next usage line waits for it again.
+let versionRead: Promise<void> | undefined
+// The values of each session, by session ID. A session has no entry until its first
+// classic.Stop. session.end removes the entry of its session. So after /clear, a line of the
+// new session ID never has the values of the old session.
+const details = new Map<string, Details>()
 
 function cut(value: unknown, max = TEXT_MAX): string {
   return String(value).slice(0, max)
@@ -67,18 +78,34 @@ function readHome($: EngineInterface): Promise<string | undefined> {
   return home
 }
 
-// A rejection gives no version.
-function readVersion($: EngineInterface): Promise<string | undefined> {
-  claudeVersion ??= $.session
+// Return the Claude Code version, or undefined. The promise never rejects.
+// The mod waits at most VERSION_WAIT_MS for a read. A read that does not settle in that time
+// stays open, and the next usage line waits for the same read again. So a read that never settles
+// never stops a usage line. A rejection gives no version, and the next usage line reads again.
+async function readVersion($: EngineInterface): Promise<string | undefined> {
+  if (claudeVersion !== undefined) return claudeVersion
+  versionRead ??= $.session
     .version()
-    .then(result => (typeof result.version === 'string' ? result.version : undefined))
-    .catch(() => undefined)
+    .then(result => {
+      if (typeof result.version === 'string') claudeVersion = result.version
+    })
+    .catch(() => {})
+    .finally(() => {
+      versionRead = undefined
+    })
+  await Promise.race([versionRead, $.clock.sleep(VERSION_WAIT_MS).catch(() => {})])
   return claudeVersion
 }
 
 // Send one line. The promise never rejects.
 // At MAX_IN_FLIGHT sends that have not settled, the mod drops the line and returns at once.
-async function send($: EngineInterface, kind: Kind, data: Data = {}, sid?: string) {
+// When data is a function, send gives it the session ID of the line.
+async function send(
+  $: EngineInterface,
+  kind: Kind,
+  data: Data | ((sid: string) => Data) = {},
+  sid?: string,
+) {
   if (inFlight >= MAX_IN_FLIGHT) return
   inFlight++
   const at = Date.now()
@@ -87,8 +114,9 @@ async function send($: EngineInterface, kind: Kind, data: Data = {}, sid?: strin
     const dir = await readHome($)
     if (!dir) return
     const id = sid ?? (await $.session.id())
+    const fields = typeof data === 'function' ? data(id) : data
     await $.http.fetch(URL, {
-      body: JSON.stringify({ at, kind, seq: order, sid: id, v: VERSION, ...data }),
+      body: JSON.stringify({ at, kind, seq: order, sid: id, v: VERSION, ...fields }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
       socketPath: `${dir}${SOCKET}`,
@@ -102,8 +130,8 @@ async function send($: EngineInterface, kind: Kind, data: Data = {}, sid?: strin
 
 // Send the model, the context, the cost and the rate limits. The promise never rejects.
 // Without figures, the mod reads them from $.session.usage().
-// The line also has the Claude Code version and the values of the newest classic.Stop input,
-// when the mod knows them.
+// The line also has the Claude Code version and the values of the newest classic.Stop input of
+// its session, when the mod knows them. The values come from the session ID of the line.
 async function sendUsage($: EngineInterface, figures?: Figures) {
   // The line would be dropped. So do not read the usage.
   if (inFlight >= MAX_IN_FLIGHT) return
@@ -114,19 +142,23 @@ async function sendUsage($: EngineInterface, figures?: Figures) {
       readVersion($),
     ])
     const { percent, tokens, window } = usage.context
-    await send($, 'usage', {
-      context: { percent, tokens, window },
-      costUsd: usage.cost?.usd,
-      effort: cutKnown(effort),
-      model: cutKnown(model),
-      permissionMode: cutKnown(permissionMode),
-      rateLimits: usage.rateLimits.map(limit => ({
-        kind: cut(limit.kind),
-        percentUsed: limit.percentUsed,
-        resetsAt: cutKnown(limit.resetsAt),
-      })),
-      transcriptPath: cutKnown(transcriptPath, TRANSCRIPT_PATH_MAX),
-      version: cutKnown(version),
+    const rateLimits = usage.rateLimits.map(limit => ({
+      kind: cut(limit.kind),
+      percentUsed: limit.percentUsed,
+      resetsAt: cutKnown(limit.resetsAt),
+    }))
+    await send($, 'usage', sid => {
+      const kept = details.get(sid) ?? {}
+      return {
+        context: { percent, tokens, window },
+        costUsd: usage.cost?.usd,
+        effort: cutKnown(kept.effort),
+        model: cutKnown(model),
+        permissionMode: cutKnown(kept.permissionMode),
+        rateLimits,
+        transcriptPath: cutKnown(kept.transcriptPath, TRANSCRIPT_PATH_MAX),
+        version: cutKnown(version),
+      }
     })
   } catch {
     // The engine gave no usage. Send nothing.
@@ -144,6 +176,8 @@ export const register: Register = on => {
 
   // This is the only hook that waits for its send. It waits for at most END_WAIT_MS.
   on('session.end', async ($, e, next) => {
+    // The values of the ending session go away before any other step.
+    details.delete(e.sessionId)
     const result = await next(e)
     await Promise.race([
       send($, 'session.end', { reason: cut(e.reason) }, e.sessionId),
@@ -189,12 +223,16 @@ export const register: Register = on => {
     return next(e)
   }).catch((_, e, next) => next(e))
 
-  // Keep the effort, the permission mode and the transcript path for the next usage line.
-  // This hook sends nothing and waits for nothing.
+  // Keep the effort, the permission mode and the transcript path for the next usage line of the
+  // same session. This hook sends nothing and waits for nothing.
   on('classic.Stop', (_, e, next) => {
-    if (typeof e.effort?.level === 'string') effort = e.effort.level
-    if (typeof e.permission_mode === 'string') permissionMode = e.permission_mode
-    if (typeof e.transcript_path === 'string') transcriptPath = e.transcript_path
+    if (typeof e.session_id === 'string') {
+      const kept = details.get(e.session_id) ?? {}
+      if (typeof e.effort?.level === 'string') kept.effort = e.effort.level
+      if (typeof e.permission_mode === 'string') kept.permissionMode = e.permission_mode
+      if (typeof e.transcript_path === 'string') kept.transcriptPath = e.transcript_path
+      details.set(e.session_id, kept)
+    }
     return next(e)
   }).catch((_, e, next) => next(e))
 }

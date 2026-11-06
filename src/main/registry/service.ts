@@ -46,6 +46,11 @@ export class RegistryService {
   // The newest rate limits of the last onUsage call, as JSON. The JSON has updatedAt, so a newer
   // line with the same limits is a change. The start value is that of no rate limits.
   private lastUsage = 'null'
+  // True for minUpdateGapMs after each onUsage call. The rate limits have their own gap, with the
+  // same time as the gap of the rows.
+  private usageInGap = false
+  // True when a usage check came during the gap of the rate limits.
+  private usageCheckedInGap = false
   private waiters: RowWaiter[] = []
   // True while a process table read runs.
   private readingTable = false
@@ -139,7 +144,7 @@ export class RegistryService {
 
   // Apply one line of the mod. A state event goes to the state machine. A usage line goes to
   // the usage of the session. The update limit of changed() applies to the rows. The newest
-  // rate limits go out at once when the line changes them.
+  // rate limits go out when the line changes them, with the same update limit.
   pushLive(ev: LiveEvent): void {
     if (this.stopped) return
     if (ev.type === 'state') this.registry.applyEvents([ev.event], this.deps.now())
@@ -356,12 +361,25 @@ export class RegistryService {
 
   // Call each onUsage listener when the newest rate limits differ from the last value that the
   // service sent. The rows can stay the same, so this check does not use send().
+  // The update limit is that of the rows: at most one call each minUpdateGapMs. A check during
+  // the gap runs again at the end of the gap, so the last value goes out.
   private checkUsage(): void {
     if (this.stopped) return
+    if (this.usageInGap) {
+      this.usageCheckedInGap = true
+      return
+    }
     const usage = this.registry.usage()
     const json = JSON.stringify(usage)
     if (json === this.lastUsage) return
     this.lastUsage = json
+    this.usageInGap = true
+    this.later(this.timing.minUpdateGapMs, () => {
+      this.usageInGap = false
+      if (!this.usageCheckedInGap) return
+      this.usageCheckedInGap = false
+      this.checkUsage()
+    })
     for (const cb of this.usageCallbacks) cb(usage)
   }
 

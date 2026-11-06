@@ -33,6 +33,8 @@ interface Options {
   usage?: SessionUsage
   // The version in the answer of $.session.version(). Without it, the engine part fails.
   version?: string
+  // The engine part of session.version waits for this promise before it answers.
+  versionWait?: Promise<void>
   // The engine part of session.end calls this function.
   onSessionEnd?: () => void
 }
@@ -41,6 +43,8 @@ interface World {
   clock: MockClock
   lines: Line[]
   kinds: () => string[]
+  // The number of calls of $.session.version().
+  versionCalls: () => number
 }
 
 // Register the hooks that stand for the engine. The http.fetch hook records what the plugin sends.
@@ -63,7 +67,10 @@ function world(on: On, options: Options = {}): World {
   on('session.id', () => ({ value: options.sessionId ? options.sessionId() : S }))
   on('session.model', () => ({ value: MODEL }))
   on('session.usage', () => ({ value: options.usage ?? USAGE }))
-  on('session.version', () => {
+  let versionCalls = 0
+  on('session.version', async () => {
+    versionCalls++
+    await options.versionWait
     if (options.version === undefined) throw new Error('no version')
     return { value: { version: options.version } }
   })
@@ -78,7 +85,12 @@ function world(on: On, options: Options = {}): World {
   on('classic.PermissionRequest', () => ({}))
   on('classic.StopFailure', () => ({}))
   on('classic.Stop', () => ({}))
-  return { clock, kinds: () => lines.map(line => line.kind), lines }
+  return {
+    clock,
+    kinds: () => lines.map(line => line.kind),
+    lines,
+    versionCalls: () => versionCalls,
+  }
 }
 
 const START = { cwd: '/', isInteractive: true, surface: 'terminal' } as const
@@ -399,10 +411,11 @@ test('no HOME gives no send', async ($, on) => {
   expect(w.lines).toEqual([])
 })
 
-// The input of a classic.Stop hook. The engine stamps the session ID and the folder.
+// The input of a classic.Stop hook of the session S. The engine stamps the folder.
 const STOP = {
   effort: { level: 'xhigh' },
   permission_mode: 'acceptEdits',
+  session_id: S,
   stop_hook_active: false,
   transcript_path: TRANSCRIPT,
 }
@@ -449,6 +462,7 @@ test('the usage line cuts the version, the effort, the permission mode and the t
   await $.classic.Stop({
     effort: { level: 'e'.repeat(300) },
     permission_mode: 'p'.repeat(300),
+    session_id: S,
     stop_hook_active: false,
     transcript_path: `/${'t'.repeat(2000)}`,
   })
@@ -461,4 +475,105 @@ test('the usage line cuts the version, the effort, the permission mode and the t
     transcriptPath: `/${'t'.repeat(1023)}`,
     version: 'v'.repeat(200),
   })
+})
+
+test('a version read that never settles does not stop the usage lines', async ($, on) => {
+  const w = world(on, { version: CLAUDE_VERSION, versionWait: new Promise<void>(() => {}) })
+  await $.session.start(START)
+  await w.clock.settle()
+  expect(w.kinds()).toEqual(['session.start'])
+  // The mod waits at most 500 ms for the version. Then it sends the line without it.
+  await w.clock.advance(500)
+  expect(w.kinds()).toEqual(['session.start', 'usage'])
+  expect(w.lines[1]).not.toHaveProperty('version')
+  // The heartbeat line waits for the same read again. It also comes.
+  await w.clock.advance(30_000)
+  expect(w.kinds()).toEqual(['session.start', 'usage', 'usage'])
+  expect(w.lines[2]).not.toHaveProperty('version')
+  expect(w.versionCalls()).toBe(1)
+})
+
+test('a version that comes late goes into the next usage line', async ($, on) => {
+  let release = () => {}
+  const versionWait = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const w = world(on, { version: CLAUDE_VERSION, versionWait })
+  await $.session.start(START)
+  await w.clock.settle()
+  await w.clock.advance(500)
+  expect(w.kinds()).toEqual(['session.start', 'usage'])
+  expect(w.lines[1]).not.toHaveProperty('version')
+  release()
+  await w.clock.settle()
+  await w.clock.advance(29_500)
+  expect(w.kinds()).toEqual(['session.start', 'usage', 'usage'])
+  expect(w.lines[2]?.version).toBe(CLAUDE_VERSION)
+  expect(w.versionCalls()).toBe(1)
+})
+
+test('a usage line after /clear has no classic.Stop values of the old session', async ($, on) => {
+  let current = S1
+  const w = world(on, {
+    onSessionEnd: () => {
+      current = S2
+    },
+    sessionId: () => current,
+  })
+  await $.classic.Stop({ ...STOP, session_id: S1 })
+  await $.session.end({ reason: 'clear', resume: { id: S1 }, sessionId: S1 })
+  await w.clock.settle()
+  await w.clock.advance(1000)
+  expect(w.lines.map(line => [line.kind, line.sid])).toEqual([
+    ['session.end', S1],
+    ['usage', S2],
+  ])
+  expect(w.lines[1]).not.toHaveProperty('effort')
+  expect(w.lines[1]).not.toHaveProperty('permissionMode')
+  expect(w.lines[1]).not.toHaveProperty('transcriptPath')
+  // The first classic.Stop of the new session gives its own values.
+  const path = '/h/.claude/projects/p/S2.jsonl'
+  await $.classic.Stop({ ...STOP, session_id: S2, transcript_path: path })
+  await $.turn.complete(turnEnd('ALPHA'))
+  await w.clock.settle()
+  await w.clock.advance(2500)
+  expect(w.lines.at(-1)).toMatchObject({
+    effort: 'xhigh',
+    kind: 'usage',
+    sid: S2,
+    transcriptPath: path,
+  })
+})
+
+test('session.end removes the classic.Stop values of its session', async ($, on) => {
+  const w = world(on)
+  await $.classic.Stop(STOP)
+  await $.session.end({ reason: 'other', resume: { id: S }, sessionId: S })
+  // A later line of the same session ID has none of the old values.
+  await $.turn.complete(turnEnd('ALPHA'))
+  await w.clock.settle()
+  await w.clock.advance(2500)
+  expect(w.kinds()).toEqual(['session.end', 'turn.complete', 'usage'])
+  expect(w.lines[2]).not.toHaveProperty('effort')
+  expect(w.lines[2]).not.toHaveProperty('transcriptPath')
+})
+
+test('a late classic.Stop of the old session does not go into a line of the new session', async ($, on) => {
+  let current = S1
+  const w = world(on, {
+    onSessionEnd: () => {
+      current = S2
+    },
+    sessionId: () => current,
+  })
+  await $.session.end({ reason: 'clear', resume: { id: S1 }, sessionId: S1 })
+  await $.classic.Stop({ ...STOP, session_id: S1 })
+  await w.clock.settle()
+  await w.clock.advance(1000)
+  expect(w.lines.map(line => [line.kind, line.sid])).toEqual([
+    ['session.end', S1],
+    ['usage', S2],
+  ])
+  expect(w.lines[1]).not.toHaveProperty('effort')
+  expect(w.lines[1]).not.toHaveProperty('transcriptPath')
 })
