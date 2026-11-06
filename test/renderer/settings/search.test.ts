@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { GENERAL_ROWS } from '../../../src/renderer/src/settings/general-rows'
 import { keyGroups } from '../../../src/renderer/src/settings/key-editor'
 import {
+  focusLost,
   GENERAL_LABELS,
   keyMatches,
   noMatchText,
@@ -204,6 +205,19 @@ describe('the texts and the keys of the search field', () => {
     expect(resultCountText([], 'xyz')).toBe('No settings match "xyz".')
     expect(resultCountText([hit(['a'])], 'a')).toBe('1 setting matches.')
     expect(resultCountText([hit(['a', 'b']), hit(['c'])], 'a')).toBe('3 settings match.')
+  })
+
+  // Review Minor 6: a change of a setting can remove the result that has the focus.
+  it('the focus needs a new place only when the last focused result went away', () => {
+    const body = { isConnected: true }
+    const removed = { isConnected: false }
+    const present = { isConnected: true }
+    expect(focusLost(removed, body, body)).toBe(true)
+    expect(focusLost(removed, null, body)).toBe(true)
+    // The focus is already in another place.
+    expect(focusLost(removed, present, body)).toBe(false)
+    expect(focusLost(present, body, body)).toBe(false)
+    expect(focusLost(null, body, body)).toBe(false)
   })
 
   it('names the query in the no-match line', () => {

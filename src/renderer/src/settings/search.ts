@@ -203,6 +203,16 @@ export function searchEscape(value: string, composing: boolean): 'clear' | 'clos
   return value === '' ? 'close' : 'clear'
 }
 
+// True when the last focused element of the results went away and the focus is nowhere: a
+// change of a setting can remove a result (review Minor 6). Then the focus needs a new place.
+export function focusLost(
+  last: { isConnected: boolean } | null,
+  active: unknown,
+  body: unknown,
+): boolean {
+  return last !== null && !last.isConnected && (active === null || active === body)
+}
+
 // True for Cmd+F with no other modifier, while Settings has the focus. With no focus at all,
 // Settings must be the front panel.
 export function searchShortcut(

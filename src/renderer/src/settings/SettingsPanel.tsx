@@ -2,7 +2,7 @@
 // area, and a footer with the Save button. During a search, the scroll area shows the matches of
 // all sections in one list, each section under a small heading.
 import { Search } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DIALOG_BUTTON } from '../actions/ConfirmDialog'
 import { cx } from '../lib/cx'
 import { useWmControls } from '../wm/context'
@@ -17,6 +17,7 @@ import SlashSection from './SlashSection'
 import { SaveTrackerContext } from './save-context'
 import { SaveTracker } from './save-tracker'
 import {
+  focusLost,
   noMatchText,
   resultCountText,
   SECTION_TITLES,
@@ -109,6 +110,40 @@ export default function SettingsPanel(): React.JSX.Element {
     ],
   )
   const hits = useMemo(() => searchSettings(query, index), [index, query])
+
+  // The last focused element in the scroll area. A change of a setting can remove a result with
+  // the focus. Then the focus goes to the search field during a search, else to the panel. So the
+  // focus does not fall to the page, where the single keys act (review Minor 6).
+  const lastFocus = useRef<Element | null>(null)
+  useEffect(() => {
+    const area = content.current
+    if (!area) return
+    const onFocusIn = (event: FocusEvent): void => {
+      lastFocus.current = event.target instanceof Element ? event.target : null
+    }
+    // A focus that leaves the area to another place, or to the page while the element stays,
+    // needs no help. A removed element keeps its record.
+    const onFocusOut = (event: FocusEvent): void => {
+      const target = event.target instanceof Element ? event.target : null
+      const next = event.relatedTarget instanceof Node ? event.relatedTarget : null
+      if (next !== null && area.contains(next)) return
+      queueMicrotask(() => {
+        if (target?.isConnected && lastFocus.current === target) lastFocus.current = null
+      })
+    }
+    area.addEventListener('focusin', onFocusIn)
+    area.addEventListener('focusout', onFocusOut)
+    return () => {
+      area.removeEventListener('focusin', onFocusIn)
+      area.removeEventListener('focusout', onFocusOut)
+    }
+  }, [])
+  useLayoutEffect(() => {
+    if (!focusLost(lastFocus.current, document.activeElement, document.body)) return
+    lastFocus.current = null
+    if (hits !== null) searchField.current?.focus()
+    else root.current?.focus()
+  })
 
   // Cmd+F moves the focus to the search field while Settings has the focus (spec 12). A key of
   // the key map that uses Cmd+F runs first and stops the event.
