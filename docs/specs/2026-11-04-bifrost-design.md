@@ -423,10 +423,11 @@ The panel shows these items, from top to bottom:
 
 1. The name, the state and the priority. A row with no priority shows no priority.
 2. A row of icon buttons: Open, Send message, Run slash command, Interrupt, Show Info, Open in terminal and Stop session.
-3. The project, the branch and the model.
-4. A context bar and the cost.
-5. The first 3 lines of the last Claude reply. The `turn.complete` event supplies this text.
-6. The send box.
+3. The project, the branch, the model and the cost. The Model row shows the model name, then the context bar, then the context percent with the word "context", for example `Opus 5.5  [bar]  28% context`. The bar takes the free width. The model name keeps its width and is cut off only when the row is too narrow. With no percent, the bar is empty and the text is `-`. The cost has its own row.
+4. The first 3 lines of the last Claude reply. The `turn.complete` event supplies this text.
+5. The send box.
+
+The context bar has three colour bands, as in the statusline. Below 40% the bar is green. From 40% to below 70% it is amber. From 70% it is red. The tokens are `--color-ctx-low`, `--color-ctx-mid` and `--color-ctx-high`. Each token differs from the box yellow and the box red by 0.10 or more in OKLab.
 
 Send box rules:
 
@@ -520,7 +521,7 @@ Dialog rules:
 - Bifrost uses its own icons and fonts. It does not copy EVE art, icons or fonts.
 - One file holds all colour tokens.
 - The box yellow, the box red and the parked grey are reserved shades. Other Overview colours can be red, amber or yellow. Each of them differs clearly from the box shades (OKLab distance 0.10 or more). A test checks this.
-- The Overview uses no purple for now. The user keeps purple for a later feature (fleets, as in EVE) (user decision, 2026-11-05).
+- The Overview uses no purple and no pink for now. The user keeps purple for a later feature (fleets, as in EVE) (user decision, 2026-11-05). The rule covers only the Overview colours: the `project`, `tab` and `prio` tokens. Other panels may use purple and pink, for example the Watchlist, the Usage HUD and Service status (user decision, 2026-11-06). A test checks the three Overview families only. The M5b panels keep their colours for now.
 - The terminal font is a setting.
 
 ### 8.12 Watchlist
@@ -1098,7 +1099,7 @@ The controller made these decisions in M5a. The M5a ledger, `docs/m5-findings.md
 
 The controller made these decisions in M5b. The M5b rulings, `docs/m5-findings.md` and the final review give the reasons.
 
-1. R4: The high bar of the Usage HUD uses amber `#d4730a` (`usage-high`). The Service status colours are greens, teals, blues and amber `#d4730a`. They have no yellow, red, grey, purple or pink. Each one is at least 0.10 from the box red and the box yellow in OKLab. This replaces the colours of D21 and D30 (section 8.11).
+1. R4: The high bar of the Usage HUD uses amber `#d4730a` (`usage-high`). The Service status colours are greens, teals, blues and amber `#d4730a`. They have no yellow, red or grey. Each one is at least 0.10 from the box red and the box yellow in OKLab. This replaces the colours of D21 and D30 (section 8.11). The user changed the purple and pink part on 2026-11-06: the rule of no purple and no pink covers only the Overview (section 8.10). The M5b panels keep their colours for now.
 2. R6: The app bundle has no `node-pty/build` folder. So each chip loads its own node-pty prebuild (section 14.1).
 3. R7: The fake `claude` of the smoke test writes the attach line to `attach.log` in the test home. The test reads that file, because WebGL draws the terminal text and the DOM has no text to read (section 15).
 4. R13: A check of the app in the real home records a list of `~/.bifrost` with the size and the SHA-256 of each file (not `live.sock`), before and after the run. The smoke test does this check too, in addition to the three Claude files.

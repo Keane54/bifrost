@@ -16,7 +16,7 @@ function token(name: string): string {
 }
 
 // The colour families that the hue and distance checks read.
-const FAMILIES = ['project', 'tab', 'watch', 'prio', 'svc', 'usage'] as const
+const FAMILIES = ['project', 'tab', 'watch', 'prio', 'svc', 'usage', 'ctx'] as const
 const SVC_USAGE = [
   'svc-ok',
   'svc-minor',
@@ -325,16 +325,14 @@ describe('theme', () => {
     expect(CSS).not.toMatch(/saira|font-narrow/i)
   })
 
-  it('the project, tab, watch, prio, svc and usage tokens have no purple or pink', () => {
-    const tokens = [
-      ...CSS.matchAll(
-        /--color-((?:project|tab|watch|prio|svc|usage)-?[\w-]*):\s*(#[0-9a-fA-F]{6})/g,
-      ),
-    ]
+  // the user, 2026-11-06: purple and pink must not show on the Overview. Other panels may use them.
+  // So this check covers only the families that the Overview uses.
+  it('the project, tab and prio tokens have no purple or pink', () => {
+    const tokens = [...CSS.matchAll(/--color-((?:project|tab|prio)-?[\w-]*):\s*(#[0-9a-fA-F]{6})/g)]
     // Each token of the families is hex, so the check reads all of them.
-    const all = [...CSS.matchAll(/--color-(?:project|tab|watch|prio|svc|usage)[\w-]*:/g)]
+    const all = [...CSS.matchAll(/--color-(?:project|tab|prio)[\w-]*:/g)]
     expect(tokens.length).toBe(all.length)
-    expect(tokens.length).toBeGreaterThanOrEqual(40)
+    expect(tokens.length).toBeGreaterThanOrEqual(25)
     const bad = tokens
       .filter(([, , hex]) => {
         const hue = hsl(hex).h
@@ -407,12 +405,15 @@ describe('theme', () => {
 
   // the user, 2026-11-05: reds, ambers and yellows can be Overview colours. The box red and the box
   // yellow stay reserved shades.
-  it('each project, tab, watch, prio, svc and usage colour differs clearly from the box colours', () => {
+  it('each project, tab, watch, prio, svc, usage and ctx colour differs clearly from the box colours', () => {
     const tokens = [
       ...CSS.matchAll(
-        /--color-((?:tab|prio|project|watch|svc|usage)-?[\w-]*):\s*(#[0-9a-fA-F]{6})/g,
+        /--color-((?:tab|prio|project|watch|svc|usage|ctx)-?[\w-]*):\s*(#[0-9a-fA-F]{6})/g,
       ),
     ]
+    expect(tokens.map(t => t[1])).toEqual(
+      expect.arrayContaining(['ctx-low', 'ctx-mid', 'ctx-high']),
+    )
     const bad = tokens.flatMap(([, name, value]) =>
       ['box-red', 'box-yellow']
         .map(box => ({ box, d: distance(value, token(box)) }))
@@ -428,6 +429,12 @@ describe('theme', () => {
         expect(contrast(token(`tab-${i}`), panel), `tab-${i} on ${panel}`).toBeGreaterThanOrEqual(4)
       }
     }
+  })
+
+  it('defines the three context bar colours: green, amber and red', () => {
+    expect(token('ctx-low')).toBe('#22c55e')
+    expect(token('ctx-mid')).toBe('#d4730a')
+    expect(token('ctx-high')).toBe('#dc2626')
   })
 
   it('defines 12 tab colours', () => {

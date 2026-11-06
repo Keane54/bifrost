@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   barFill,
+  contextBand,
   formatAge,
   formatCost,
   formatPercent,
@@ -11,6 +12,17 @@ import {
 } from '../../../src/renderer/src/overview/format'
 
 describe('format', () => {
+  it('contextBand gives low below 40, mid from 40 to below 70, and high from 70', () => {
+    expect(contextBand(0)).toBe('low')
+    expect(contextBand(39.9)).toBe('low')
+    expect(contextBand(40)).toBe('mid')
+    expect(contextBand(69.9)).toBe('mid')
+    expect(contextBand(70)).toBe('high')
+    expect(contextBand(100)).toBe('high')
+    expect(contextBand(undefined)).toBeNull()
+    expect(contextBand(Number.NaN)).toBeNull()
+  })
+
   it('projectLabel gives the last two parts of the path', () => {
     expect(projectLabel('/Users/o/Developer/bifrost')).toBe('Developer/bifrost')
     expect(projectLabel('/a')).toBe('a')

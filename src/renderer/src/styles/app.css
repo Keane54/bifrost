@@ -76,6 +76,12 @@
   --color-usage: #5fb3c9;
   --color-usage-high: #d4730a;
 
+  /* The context bar of the Selected Item panel, as in the statusline: below 40% green, from 40%
+     amber, from 70% red. Each is clear of the box yellow and the box red. */
+  --color-ctx-low: #22c55e;
+  --color-ctx-mid: #d4730a;
+  --color-ctx-high: #dc2626;
+
   /* The Service status levels (spec 8.11, ruling R4). Greens, teals, blues and amber only: no
      yellow, red, grey, purple or pink. Critical is the amber. No two tokens are alike. */
   --color-svc-ok: #86c48f;

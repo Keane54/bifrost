@@ -35,6 +35,16 @@ export function barFill(p?: number): number {
   return typeof p !== 'number' || !Number.isFinite(p) ? 0 : Math.min(100, Math.max(0, p))
 }
 
+export type ContextBand = 'low' | 'mid' | 'high'
+
+// The colour band of the context bar: below 40 low, from 40 to below 70 mid, from 70 high.
+// A value that is not a finite number has no band.
+export function contextBand(p?: number): ContextBand | null {
+  if (typeof p !== 'number' || !Number.isFinite(p)) return null
+  if (p < 40) return 'low'
+  return p < 70 ? 'mid' : 'high'
+}
+
 // Both times are in milliseconds.
 export function formatAge(since: number, now: number): string {
   const s = Math.max(0, Math.floor((now - since) / 1000))
