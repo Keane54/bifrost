@@ -48,7 +48,7 @@ export function formatAge(since: number, now: number): string {
 const STATE_LABELS: Record<SessionState, string> = {
   error: 'Error',
   idle: 'Idle',
-  'needs-you': 'Needs you',
+  'needs-you': 'Alert',
   parked: 'Parked',
   working: 'Working',
 }

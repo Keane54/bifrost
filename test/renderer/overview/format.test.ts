@@ -47,7 +47,7 @@ describe('format', () => {
   })
 
   it('stateLabel gives the label of each state', () => {
-    expect(stateLabel('needs-you')).toBe('Needs you')
+    expect(stateLabel('needs-you')).toBe('Alert')
     expect(stateLabel('parked')).toBe('Parked')
   })
 

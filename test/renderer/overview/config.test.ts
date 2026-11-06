@@ -17,6 +17,23 @@ const base = (): OverviewConfig => defaultOverviewConfig()
 const tabIds = (c: OverviewConfig) => c.tabs.map(t => t.id)
 
 describe('overview config', () => {
+  it('renames a saved tab t2 named Needs you to Alerts and keeps every other name', () => {
+    const tabs = (t2: string, t7: string) => [
+      { id: 't1', name: 'All' },
+      { id: 't2', name: t2 },
+      { id: 't7', name: t7 },
+    ]
+    const names = (data: unknown) =>
+      (parseOverviewConfig(data) as OverviewConfig).tabs.map(t => t.name)
+    expect(names({ nextTab: 8, tabs: tabs('Needs you', 'Needs you') })).toEqual([
+      'All',
+      'Alerts',
+      'Needs you',
+    ])
+    expect(names({ nextTab: 8, tabs: tabs('My alerts', 'x') })).toEqual(['All', 'My alerts', 'x'])
+    expect(names({ nextTab: 8, tabs: tabs('needs you', 'x') })).toEqual(['All', 'needs you', 'x'])
+  })
+
   it('defaultOverviewConfig has the 6 tabs of spec 8.3 and the Watched tab with the default columns and Name ascending', () => {
     const c = defaultOverviewConfig()
     expect(c.name).toBe('Default')
@@ -24,7 +41,7 @@ describe('overview config', () => {
     expect(c.nextTab).toBe(6)
     expect(c.tabs.map(t => [t.id, t.name, t.color, t.filter.boxOnly])).toEqual([
       ['t1', 'All', 0, false],
-      ['t2', 'Needs you', 1, true],
+      ['t2', 'Alerts', 1, true],
       ['t0', 'Watched', 5, false],
       ['t3', 'Working', 2, false],
       ['t4', 'Idle', 3, false],

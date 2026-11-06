@@ -268,8 +268,8 @@ Bifrost runs `git -C <cwd> rev-parse --abbrev-ref HEAD` every 10 seconds for eac
 | State | Box | Cause |
 |---|---|---|
 | Working | None | `status` is `busy`, or a `turn.start` or `tool.done` event. |
-| Needs you | Yellow | A `turn.complete` event with the reason `answer` or `refusal`. Claude finished its turn. Rule 11 also sets it. |
-| Needs you | Red | `status` is `waiting` with a `waitingFor` value (also without the mod), a `permission` event, an `ask` event, or an old yellow box (rule 4). |
+| Alert | Yellow | A `turn.complete` event with the reason `answer` or `refusal`. Claude finished its turn. Rule 11 also sets it. |
+| Alert | Red | `status` is `waiting` with a `waitingFor` value (also without the mod), a `permission` event, an `ask` event, or an old yellow box (rule 4). |
 | Error | Red | A `turn.complete` event with the reason `error`, or a `stop.failure` event. |
 | Idle | None | `status` is `idle`, and no event set a box. Examples are a new session before the first prompt, and a stopped turn (rule 12). |
 | Parked | None | The session has no process. The row is grey. The cause is `claude stop`, a restart of the computer, or a process that ends. |
@@ -392,10 +392,12 @@ Default tabs:
 | Tab | Rows |
 |---|---|
 | All | All sessions except parked sessions. |
-| Needs you | Rows with a yellow or red box. |
+| Alerts | Rows with a yellow or red box. |
 | Working | Rows with the state Working. |
 | Idle | Rows with the state Idle. |
 | Parked | Parked sessions. |
+
+The state Alert has the internal ID `needs-you`. Older versions named the second tab "Needs you". When Bifrost loads a saved config, it renames the tab `t2` with that exact name to "Alerts". It changes no other tab name.
 
 Tab rules:
 
