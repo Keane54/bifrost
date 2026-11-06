@@ -14,16 +14,10 @@ import {
   REASON_PROMPT_IS_COMMAND,
   worktreeName,
 } from '../../shared/new-session'
-import type {
-  IntegrationStatus,
-  ResumeAllResult,
-  SeenCounts,
-  SessionRow,
-  WorktreeCheck,
-} from '../../shared/types'
+import type { ResumeAllResult, SeenCounts, SessionRow, WorktreeCheck } from '../../shared/types'
+import { UUID_PATTERN } from '../../shared/uuid'
 import { worktreeOf, worktreeRoot } from '../../shared/worktree'
 import type { ExecResult, RunClaude } from '../claude/cli'
-import { UUID_PATTERN } from '../integration/scripts'
 import {
   claudeFailure,
   isTrustError,
@@ -61,9 +55,6 @@ export const RESUME_SETTLE_MS = 3000
 
 // A new session gets a statusLine command that prints nothing (controller ruling, O4). So the
 // chat window does not show the statusline of the user. A resume keeps the setting.
-// The Bifrost wrapper is the statusLine command, and it writes the status file of the session.
-// So the override goes in only when the wrapper is not installed (user decision, 2026-11-05). When the
-// wrapper is installed, the quiet file stops the statusline of the user in the chat window.
 // This is one argument. No shell reads it.
 export const NO_STATUSLINE_SETTINGS = '{"statusLine":{"type":"command","command":"true"}}'
 
@@ -131,8 +122,6 @@ export interface SessionActionDeps {
   rememberWorktree(sessionId: string, worktree: string): void
   // True when the transcript of the session has a user message. A read error gives true.
   hasMessages(sessionId: string): Promise<boolean>
-  // The status that the Integration panel shows (integrationStatus in integration.ts).
-  integrationStatus(): Promise<IntegrationStatus>
 }
 
 export interface SessionActions {
@@ -154,15 +143,14 @@ export interface SessionActions {
 // The permission mode must be in the list. So Bifrost never passes bypassPermissions.
 // The prompt cannot start with "-" or be only a command name, so it cannot change the command.
 // checkNewSessionSpec refuses these values first. These checks stop a caller that skips it.
-// wrapper is true when the Bifrost statusline wrapper is installed. Then the statusline override
-// does not go in.
-export function newSessionArgs(spec: NewSessionSpec, wrapper: boolean): string[] {
+// A new session always gets the statusline override (D13).
+export function newSessionArgs(spec: NewSessionSpec): string[] {
   if (spec.permissionMode !== '' && !PERMISSION_MODES.includes(spec.permissionMode)) {
     throw new Error('refused: unknown permission mode')
   }
   if (spec.prompt.trimStart().startsWith('-')) throw new Error(REASON_PROMPT_FLAG)
   if (isClaudeCommand(spec.prompt)) throw new Error(REASON_PROMPT_IS_COMMAND)
-  const args = wrapper ? ['--bg'] : ['--bg', '--settings', NO_STATUSLINE_SETTINGS]
+  const args = ['--bg', '--settings', NO_STATUSLINE_SETTINGS]
   if (spec.worktree) args.push('--worktree', worktreeName(spec.name))
   if (spec.model !== '') args.push('--model', spec.model)
   if (spec.permissionMode !== '') args.push('--permission-mode', spec.permissionMode)
@@ -285,17 +273,6 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     }
     if (result.code !== 0) throw new Error(claudeFailure(result, what))
     return result
-  }
-
-  // True when the statusLine is the Bifrost wrapper, as the Integration panel shows it.
-  // A failed status read counts as "not installed". Then the override goes in.
-  const wrapperInstalled = async (): Promise<boolean> => {
-    try {
-      const status = await deps.integrationStatus()
-      return status.error === undefined && status.statusLineInstalled === true
-    } catch {
-      return false
-    }
   }
 
   const checkProjectDir = async (cwd: string): Promise<void> => {
@@ -430,7 +407,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (dir.kind !== 'dir') throw new Error(REASON_DIR_MISSING)
     if (spec.worktree && !dir.git) throw new Error(REASON_NO_GIT)
     const run = await claude()
-    const args = newSessionArgs(spec, await wrapperInstalled())
+    const args = newSessionArgs(spec)
     const result = await start(run, args, spec.cwd, 'claude --bg')
     const id = parseShortId(result.stdout)
     if (id === null) throw new Error(REASON_NO_SHORT_ID)

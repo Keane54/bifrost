@@ -1,22 +1,5 @@
 // Types that the main process and the renderer share.
 
-export interface IntegrationStatus {
-  // True when no hook is missing, Bifrost set the wrapper and both scripts are current.
-  installed: boolean
-  missingHooks: string[]
-  statusLineInstalled: boolean
-  scriptsPresent: boolean
-  // True when both scripts have the text that an install writes now.
-  scriptsCurrent: boolean
-  error?: string
-}
-
-export interface InstallPreview {
-  changes: string[]
-  backupPath: string | null
-  originalCommand: string | null
-}
-
 export interface ClaudeVersion {
   // The version that claude reports, or null when it did not report one.
   version: string | null

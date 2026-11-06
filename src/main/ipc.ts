@@ -31,14 +31,10 @@ import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
 import { loadLoginEnv } from './env/login-env'
 import {
   defaultPaths,
-  type IntegrationPaths,
-  install,
-  integrationStatus,
   oldInstallStatus,
-  previewInstall,
+  removeOldHookData,
   uninstall,
 } from './integration/integration'
-import { createQuietMarker } from './integration/quiet-marker'
 import { createSerialRunner } from './integration/serial'
 import { createLiveControl, LIVE_MIN_CLAUDE_VERSION, type LiveControl } from './live/live-control'
 import { createLiveServer } from './live/live-server'
@@ -130,10 +126,7 @@ export function send(channel: string, ...args: unknown[]): void {
 // Load the store and start the registry service.
 // The service sends each update of the rows to the current window.
 // If the store cannot be read, the service runs with an empty store and does not save.
-async function startService(
-  run: Promise<RunClaude | null>,
-  paths: IntegrationPaths,
-): Promise<RegistryService> {
+async function startService(run: Promise<RunClaude | null>): Promise<RegistryService> {
   const opened = await openStore(join(app.getPath('userData'), 'registry.json'))
   const list = async (all: boolean): Promise<AgentList> => {
     const runClaude = await run
@@ -141,7 +134,6 @@ async function startService(
     return listAgents(runClaude, { all })
   }
   const now = (): number => Date.now()
-  const sessionsDir = join(paths.bifrostHome, 'sessions')
   const deps: ServiceDeps = {
     listActive: () => list(false),
     listAll: () => list(true),
@@ -154,12 +146,8 @@ async function startService(
     new SessionRegistry({ escalationMs: ESCALATION_MS, store: opened.store }),
     deps,
   )
-  // Owned sessions get the quiet file, so the wrapper does not run the original command for them.
-  // mark never rejects. Do not wait for it.
-  const quiet = createQuietMarker(sessionsDir)
   service.onUpdate((rows, error) => {
     send('registry:update', rows, error)
-    void quiet.mark(rows)
   })
   liveService = service
   // The app can quit before the store loads. Then do not start the service.
@@ -214,7 +202,7 @@ export function registerIpc(): void {
     return m
   })
   const paths = defaultPaths(homedir())
-  const service = startService(run, paths)
+  const service = startService(run)
   // The UI store opens one time. The handlers use the same store.
   const uiStore = openUiStore(join(app.getPath('userData'), 'ui-state.json'))
   ipcMain.handle('ui:load', e => fromPage(e, async () => (await uiStore).load()))
@@ -353,8 +341,6 @@ export function registerIpc(): void {
     dirInfo: dir => dirInfo(execFile, stat, dir),
     forget: id => liveService?.forget(id),
     hasMessages: id => hasMessages(projectsDir, id),
-    // New session reads the status of the Integration panel for the statusline override.
-    integrationStatus: () => integrationStatus(paths),
     isAlive: pid => isAlive(kill, pid),
     markStarted: id => liveService?.markStarted(id),
     markStopped: id => liveService?.markStopped(id),
@@ -409,23 +395,11 @@ export function registerIpc(): void {
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
   )
-  // Only one of preview, install and uninstall runs at a time. A second call rejects.
-  // These three handlers also reject for a settings file that is not valid.
-  // The renderer gets the message of the Error as the rejection.
-  const integration = createSerialRunner()
-  ipcMain.handle('integration:status', e => fromPage(e, () => integrationStatus(paths)))
-  ipcMain.handle('integration:preview', e =>
-    fromPage(e, () => integration.run(() => previewInstall(paths, new Date()))),
-  )
-  ipcMain.handle('integration:install', e =>
-    fromPage(e, () => integration.run(() => install(paths, new Date()))),
-  )
-  ipcMain.handle('integration:uninstall', e =>
-    fromPage(e, () => integration.run(() => uninstall(paths, new Date()))),
-  )
+  // Only one Live details action runs at a time. A second call rejects.
+  const serial = createSerialRunner()
   // Live details. One server listens for the lines of the mod (D9).
-  // The four actions use the serial runner of the integration handlers. Then the removal of an
-  // old hook install and a plugin command never run at the same time.
+  // The four actions use one serial runner. Then the removal of an old hook install and a plugin
+  // command never run at the same time.
   const liveServer = createLiveServer({
     now: () => Date.now(),
     onEvent: ev => liveService?.pushLive(ev),
@@ -441,7 +415,7 @@ export function registerIpc(): void {
     modDir: join(paths.bifrostHome, 'mod'),
     modSource: modSourceDir(app.getAppPath()),
     oldInstall: () => oldInstallStatus(paths),
-    removeOldInstall: () => uninstall(paths, new Date()).then(() => {}),
+    removeOldInstall: () => uninstall(paths, new Date()),
     server: liveServer,
     version: async (): Promise<ClaudeVersion> => {
       const runClaude = await run
@@ -450,13 +424,28 @@ export function registerIpc(): void {
     },
   })
   liveControl = live
+  // Nothing else cleans the data of the old hooks. Remove it one time at start, before the live
+  // control starts. Old hook entries in the settings still run bin/, so keep bin/ for them.
+  // A failure never stops the start.
+  const cleanOldHookData = async (): Promise<void> => {
+    try {
+      const old = await oldInstallStatus(paths)
+      await removeOldHookData(paths.bifrostHome, old.found || old.error !== undefined)
+    } catch (err) {
+      console.warn('Live details: the clean-up of old hook data failed.', err)
+    }
+  }
   // Start after the service loads, so an event finds the service.
   // Do not start when the app quits before the store loads.
   void service
-    .then(() => (serviceStopped ? undefined : live.start()))
+    .then(async () => {
+      if (serviceStopped) return
+      await cleanOldHookData()
+      if (!serviceStopped) await live.start()
+    })
     .catch(err => console.warn('Live details: the start failed.', err))
   const liveAction = (channel: string, fn: () => Promise<LiveStatus>): void => {
-    ipcMain.handle(channel, e => fromPage(e, () => integration.run(fn)))
+    ipcMain.handle(channel, e => fromPage(e, () => serial.run(fn)))
   }
   ipcMain.handle('live:status', e => fromPage(e, () => live.status()))
   liveAction('live:install', () => live.install())

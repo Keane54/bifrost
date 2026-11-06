@@ -6,13 +6,10 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, open, readdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { InstallPreview, IntegrationStatus } from '../../shared/types'
-import { HOOK_SCRIPT, statuslineScript } from './scripts'
 import {
   type ClaudeSettings,
   checkInstall,
   hasBifrostEntry,
-  planInstall,
   planUninstall,
   type StatusLineSetting,
 } from './settings-plan'
@@ -35,8 +32,6 @@ export function defaultPaths(home: string): IntegrationPaths {
 }
 
 interface Files {
-  hook: string
-  statusline: string
   original: string
   backups: string
 }
@@ -45,9 +40,7 @@ function filesOf(paths: IntegrationPaths): Files {
   const home = paths.bifrostHome
   return {
     backups: join(home, 'backups'),
-    hook: join(home, 'bin', 'bifrost-hook'),
     original: join(home, 'statusline-original.json'),
-    statusline: join(home, 'bin', 'bifrost-statusline'),
   }
 }
 
@@ -236,84 +229,22 @@ async function missingOriginalError(files: Files): Promise<Error> {
   )
 }
 
-function scriptTexts(original: StatusLineSetting | null): { hook: string; statusline: string } {
-  return { hook: HOOK_SCRIPT, statusline: statuslineScript(original?.command ?? null) }
-}
-
-async function scriptsCurrent(files: Files, original: StatusLineSetting | null): Promise<boolean> {
-  const texts = scriptTexts(original)
-  return (
-    (await readText(files.hook)) === texts.hook &&
-    (await readText(files.statusline)) === texts.statusline
-  )
-}
-
 function isWrapperNow(settings: ClaudeSettings): boolean {
   return checkInstall(settings).statusLineInstalled
-}
-
-// The preview refuses in the same cases as the install. Then the user sees the reason first.
-export async function previewInstall(paths: IntegrationPaths, now: Date): Promise<InstallPreview> {
-  const files = filesOf(paths)
-  const { settings, bytes } = await readSettings(paths.claudeSettings)
-  const plan = planInstall(settings, await readSavedOriginal(files.original))
-  if (plan.original === undefined) throw await missingOriginalError(files)
-  const changes = plan.changes.length > 0
-  return {
-    backupPath: bytes !== null && changes ? backupPathFor(files, now) : null,
-    changes: plan.changes,
-    originalCommand: plan.original?.command ?? null,
-  }
-}
-
-export async function install(
-  paths: IntegrationPaths,
-  now: Date,
-  hooks: InstallHooks = {},
-): Promise<IntegrationStatus> {
-  const files = filesOf(paths)
-  const { settings, bytes } = await readSettings(paths.claudeSettings)
-  const saved = await readSavedOriginal(files.original)
-  // This call can throw. If it throws, Bifrost writes nothing.
-  const plan = planInstall(settings, saved)
-  // A Repair without the saved original would lose the command of the user. Write nothing.
-  const original = plan.original
-  if (original === undefined) throw await missingOriginalError(files)
-
-  const settingsChange = plan.changes.length > 0
-  if (settingsChange || !(await scriptsCurrent(files, original))) {
-    const staged = settingsChange
-      ? await stageSettings(paths.claudeSettings, plan.next, bytes, hooks)
-      : null
-    try {
-      if (bytes !== null && settingsChange) await writeAtomic(backupPathFor(files, now), bytes)
-      const texts = scriptTexts(original)
-      await writeAtomic(files.hook, texts.hook, 0o755)
-      await writeAtomic(files.statusline, texts.statusline, 0o755)
-      if (!isWrapperNow(settings)) {
-        await writeAtomic(files.original, `${JSON.stringify(original)}\n`)
-      }
-    } catch (error) {
-      await staged?.discard()
-      throw error
-    }
-    await staged?.commit()
-  }
-  return integrationStatus(paths)
 }
 
 export async function uninstall(
   paths: IntegrationPaths,
   now: Date,
   hooks: InstallHooks = {},
-): Promise<IntegrationStatus> {
+): Promise<void> {
   const files = filesOf(paths)
   const { settings, bytes } = await readSettings(paths.claudeSettings)
   const saved = await readSavedOriginal(files.original)
   // Without the saved original, the uninstall would delete the statusLine of the user. Write nothing.
   if (isWrapperNow(settings) && saved === undefined) throw await missingOriginalError(files)
   const next = planUninstall(settings, saved ?? null)
-  // Keep statusline-original.json. A later install overwrites it when it must.
+  // Keep statusline-original.json.
   if (bytes !== null && JSON.stringify(next) !== JSON.stringify(settings)) {
     const staged = await stageSettings(paths.claudeSettings, next, bytes, hooks)
     try {
@@ -324,7 +255,6 @@ export async function uninstall(
     }
     await staged.commit()
   }
-  return integrationStatus(paths)
 }
 
 // Find an old hook install: each entry that uninstall removes. This is a Bifrost hook under any
@@ -341,33 +271,15 @@ export async function oldInstallStatus(
   }
 }
 
-// The scripts are current when their text is the text that an install writes now.
-// An install with older scripts, or with a missing saved original, is not current.
-// Then the status is not "installed", and Settings shows the Repair button.
-export async function integrationStatus(paths: IntegrationPaths): Promise<IntegrationStatus> {
-  const files = filesOf(paths)
-  const scriptsPresent = existsSync(files.hook) && existsSync(files.statusline)
-  try {
-    const { settings } = await readSettings(paths.claudeSettings)
-    const check = checkInstall(settings)
-    const saved = await readSavedOriginal(files.original)
-    const current = scriptsPresent && saved !== undefined && (await scriptsCurrent(files, saved))
-    return {
-      installed:
-        check.missingHooks.length === 0 && check.statusLineInstalled && scriptsPresent && current,
-      missingHooks: check.missingHooks,
-      scriptsCurrent: current,
-      scriptsPresent,
-      statusLineInstalled: check.statusLineInstalled,
-    }
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : String(error),
-      installed: false,
-      missingHooks: [],
-      scriptsCurrent: false,
-      scriptsPresent,
-      statusLineInstalled: false,
-    }
+const OLD_DATA = ['active', 'events', 'sessions']
+
+// Remove the data that the old hooks and the old app wrote: active, events/ and sessions/.
+// Nothing else cleans these paths. A missing path is fine.
+// bin/ holds the scripts that old hook entries in the settings still run. So remove bin/ only
+// when keepScripts is false. Never touch mod/, live.sock, statusline-original.json or backups/.
+export async function removeOldHookData(bifrostHome: string, keepScripts: boolean): Promise<void> {
+  const names = keepScripts ? OLD_DATA : [...OLD_DATA, 'bin']
+  for (const name of names) {
+    await rm(join(bifrostHome, name), { force: true, recursive: true })
   }
 }

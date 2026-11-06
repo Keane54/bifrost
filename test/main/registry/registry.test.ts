@@ -1315,6 +1315,17 @@ describe('live events and usage lines (Task 4)', () => {
     expect(rowOf(r)).toMatchObject({ box: 'yellow', boxSince: 300, lastActivity: 300 })
   })
 
+  // D7, Review Focus 4: the mod sends session.start again at each reload.
+  test('a mod SessionStart keeps the box and boxSince of a running row', () => {
+    const r = registry()
+    r.applyAgents([bg({ status: 'busy' })], 100)
+    r.applyEvents([seqEv('Stop', 300, 1)], 300)
+    const before = rowOf(r)
+    expect(before).toMatchObject({ box: 'yellow', boxSince: 300 })
+    r.applyEvents([seqEv('SessionStart', 400, 2)], 400)
+    expect(rowOf(r)).toMatchObject({ box: 'yellow', boxSince: 300, state: before?.state })
+  })
+
   test('applyEvents uses seq for two events with the same time', () => {
     const r = registry()
     r.applyAgents([bg()], 100)

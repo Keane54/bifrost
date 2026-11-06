@@ -2,8 +2,6 @@ import type { DirInfo, NewSessionSpec } from './new-session'
 import type {
   ClaudeVersion,
   DisplayMode,
-  InstallPreview,
-  IntegrationStatus,
   LiveStatus,
   Priority,
   ProjectApp,
@@ -95,13 +93,6 @@ export interface BifrostApi {
     dirInfo(dir: string): Promise<DirInfo>
     // Show the directory picker. This resolves with null after a cancel.
     pickDirectory(defaultPath: string | null): Promise<string | null>
-  }
-  integration: {
-    status(): Promise<IntegrationStatus>
-    preview(): Promise<InstallPreview>
-    // install and uninstall reject when the settings file is not valid.
-    install(): Promise<IntegrationStatus>
-    uninstall(): Promise<IntegrationStatus>
   }
   // Live details (D11). Each action resolves with the new status. It rejects with the message
   // of its failure. A switch calls install when plugin is not-installed, else enable or disable.

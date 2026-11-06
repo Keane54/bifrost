@@ -4,7 +4,7 @@
 // This module only reads.
 import { open, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { UUID_PATTERN } from '../integration/scripts'
+import { UUID_PATTERN } from '../../shared/uuid'
 
 // Bifrost reads at most this part of a transcript.
 export const TRANSCRIPT_READ_BYTES = 256 * 1024

@@ -5,6 +5,7 @@ import {
   DELETE_END_WAIT_MS,
   END_POLL_MS,
   END_WAIT_MS,
+  NO_STATUSLINE_SETTINGS,
   newSessionArgs,
   RESUME_SETTLE_MS,
   RM_GRACE_MS,
@@ -19,7 +20,7 @@ import {
   type NewSessionSpec,
   REASON_PROMPT_IS_COMMAND,
 } from '../../../src/shared/new-session'
-import type { IntegrationStatus, SessionRow, WorktreeCheck } from '../../../src/shared/types'
+import type { SessionRow, WorktreeCheck } from '../../../src/shared/types'
 import { worktreeOf } from '../../../src/shared/worktree'
 import {
   CHANGES_SHORT_ID,
@@ -80,16 +81,6 @@ const parked = (o: Partial<SessionRow> = {}): SessionRow =>
 const external = (o: Partial<SessionRow> = {}): SessionRow =>
   row({ kind: 'external', shortId: undefined, ...o })
 
-// The status of the Integration panel. wrapper is true when the statusLine is the Bifrost wrapper.
-const integration = (wrapper: boolean, o: Partial<IntegrationStatus> = {}): IntegrationStatus => ({
-  installed: wrapper,
-  missingHooks: [],
-  scriptsCurrent: true,
-  scriptsPresent: true,
-  statusLineInstalled: wrapper,
-  ...o,
-})
-
 const newSpec = (o: Partial<NewSessionSpec> = {}): NewSessionSpec => ({
   cwd: '/p',
   model: 'haiku',
@@ -120,8 +111,6 @@ class Fake {
   check: (path: string) => (WorktreeCheck & { head: string }) | null = () => null
   // The count of the tracked changed files of a worktree before the stop. null is a git failure.
   tracked: (path: string) => number | null = () => 0
-  // The integration status of the Integration panel. The default has no wrapper.
-  status: () => IntegrationStatus = () => integration(false)
   base = Date.now()
 
   private add(op: string, ...args: unknown[]): void {
@@ -158,10 +147,6 @@ class Fake {
       hasMessages: async id => {
         this.add('hasMessages', id)
         return this.messages
-      },
-      integrationStatus: async () => {
-        this.add('integrationStatus')
-        return this.status()
       },
       isAlive: pid => {
         this.add('isAlive', pid)
@@ -231,7 +216,6 @@ describe('newSessionArgs', () => {
           prompt: 'Reply',
           worktree: true,
         }),
-        false,
       ),
     ).toEqual([
       '--bg',
@@ -246,13 +230,13 @@ describe('newSessionArgs', () => {
       'n1',
       'Reply',
     ])
-    expect(newSessionArgs(newSpec({ model: '', name: 'n1' }), false)).toEqual([
+    expect(newSessionArgs(newSpec({ model: '', name: 'n1' }))).toEqual([
       '--bg',
       ...SETTINGS,
       '--name',
       'n1',
     ])
-    expect(newSessionArgs(newSpec({ model: '', name: 'My Name', worktree: true }), false)).toEqual([
+    expect(newSessionArgs(newSpec({ model: '', name: 'My Name', worktree: true }))).toEqual([
       '--bg',
       ...SETTINGS,
       '--worktree',
@@ -263,38 +247,32 @@ describe('newSessionArgs', () => {
   })
 
   test('newSessionArgs never passes a permission mode outside the list', () => {
-    expect(() => newSessionArgs(newSpec({ permissionMode: 'bypassPermissions' }), false)).toThrow(
+    expect(() => newSessionArgs(newSpec({ permissionMode: 'bypassPermissions' }))).toThrow(
       'refused: unknown permission mode',
     )
   })
 
   test('newSessionArgs gives the statusline override as one argument', () => {
-    const args = newSessionArgs(newSpec({ name: 'n1', prompt: 'Reply' }), false)
+    const args = newSessionArgs(newSpec({ name: 'n1', prompt: 'Reply' }))
     const at = args.indexOf('--settings')
     expect(at).toBeGreaterThan(0)
     expect(JSON.parse(args[at + 1])).toEqual({ statusLine: { command: 'true', type: 'command' } })
     expect(args.filter(arg => arg === '--settings')).toHaveLength(1)
   })
 
-  test('newSessionArgs gives no statusline override when the Bifrost wrapper is installed', () => {
-    expect(newSessionArgs(newSpec({ model: '', name: 'n1', prompt: 'Reply' }), true)).toEqual([
-      '--bg',
-      '--name',
-      'n1',
-      'Reply',
-    ])
+  test('newSessionArgs always turns the statusline off for a new session', () => {
+    const args = newSessionArgs(newSpec({ model: '', name: 'n1', prompt: 'Reply' }))
+    expect(args.slice(0, 3)).toEqual(['--bg', '--settings', NO_STATUSLINE_SETTINGS])
   })
 
   test('newSessionArgs never passes a command name or a flag as the prompt', () => {
     for (const prompt of ['update', ' help ', 'stop', 'migrate-installer']) {
-      expect(() => newSessionArgs(newSpec({ prompt }), false), prompt).toThrow(
-        REASON_PROMPT_IS_COMMAND,
-      )
+      expect(() => newSessionArgs(newSpec({ prompt })), prompt).toThrow(REASON_PROMPT_IS_COMMAND)
     }
-    expect(() => newSessionArgs(newSpec({ prompt: '-p' }), false)).toThrow(
+    expect(() => newSessionArgs(newSpec({ prompt: '-p' }))).toThrow(
       'The first prompt cannot start with "-".',
     )
-    expect(newSessionArgs(newSpec({ name: 'n1', prompt: 'update the docs' }), false).at(-1)).toBe(
+    expect(newSessionArgs(newSpec({ name: 'n1', prompt: 'update the docs' })).at(-1)).toBe(
       'update the docs',
     )
   })
@@ -316,7 +294,6 @@ describe('create', () => {
     ).resolves.toEqual({ sessionId: S })
     expect(f.ops()).toEqual([
       '0 dirInfo /p',
-      '0 integrationStatus',
       `0 run ${JSON.stringify([
         '--bg',
         ...SETTINGS,
@@ -333,46 +310,21 @@ describe('create', () => {
     ])
   })
 
-  // the user, 2026-11-05 (I2): the override goes in only when the Bifrost wrapper is not installed.
-  // The wrapper is the statusLine command. The override would stop it for the life of the
-  // session, and the session would give no status data.
-  const createArgs = async (): Promise<string[]> => {
+  test('create always passes the statusline override', async () => {
     f.log = []
     f.exec = () => STARTED
     f.appear = [row({ shortId: NEW_SHORT })]
     await expect(actions.create(newSpec())).resolves.toEqual({ sessionId: S })
     const runs = f.ops('run')
     expect(runs).toHaveLength(1)
-    return JSON.parse(runs[0].split(' ')[2]) as string[]
-  }
-  const PLAIN = ['--bg', '--model', 'haiku', '--name', 'bifrost-test-n']
-
-  test('create passes no statusline override when the Bifrost wrapper is installed', async () => {
-    f.status = () => integration(true)
-    expect(await createArgs()).toEqual(PLAIN)
-    // The Integration panel status counts, also when a hook or a script is missing.
-    f.status = () => integration(true, { installed: false, missingHooks: ['Stop'] })
-    expect(await createArgs()).toEqual(PLAIN)
-    expect(f.ops('integrationStatus')).toEqual(['0 integrationStatus'])
-  })
-
-  test('create passes the statusline override when the Bifrost wrapper is not installed', async () => {
-    f.status = () => integration(false)
-    expect(await createArgs()).toEqual(['--bg', ...SETTINGS, ...PLAIN.slice(1)])
-    // Hooks without the wrapper do not count.
-    f.status = () => integration(false, { installed: false, scriptsPresent: true })
-    expect(await createArgs()).toEqual(['--bg', ...SETTINGS, ...PLAIN.slice(1)])
-  })
-
-  test('a failed status read counts as not installed, so the override goes in', async () => {
-    // integrationStatus gives an error for a settings file that is not valid JSON.
-    f.status = () => integration(true, { error: 'The file is not valid JSON.' })
-    expect(await createArgs()).toEqual(['--bg', ...SETTINGS, ...PLAIN.slice(1)])
-    // A read that rejects.
-    f.status = () => {
-      throw new Error('EACCES')
-    }
-    expect(await createArgs()).toEqual(['--bg', ...SETTINGS, ...PLAIN.slice(1)])
+    expect(JSON.parse(runs[0].split(' ')[2])).toEqual([
+      '--bg',
+      ...SETTINGS,
+      '--model',
+      'haiku',
+      '--name',
+      'bifrost-test-n',
+    ])
   })
 
   test('create shows the trust error with the instruction', async () => {
@@ -1531,10 +1483,9 @@ describe('takeControl', () => {
 
   test('resume, Resume all and Take control pass no extra flags', async () => {
     // A resume with a new flag starts a copy with a new session ID (controller ruling).
-    // The statusline override is for New session only. Each wrapper state gives no flag.
-    for (const wrapper of [false, true]) {
+    // The statusline override is for New session only.
+    for (const _round of [0, 1]) {
       f.log = []
-      f.status = () => integration(wrapper)
       f.appear = [row()]
       f.rows = [parked({ resumable: true })]
       await actions.resume(S)
@@ -1549,7 +1500,6 @@ describe('takeControl', () => {
       await done
       const runs = f.ops('run').map(line => line.split(' ')[2])
       expect(runs).toEqual(Array(3).fill(JSON.stringify(['--bg', '--resume', S])))
-      expect(f.ops('integrationStatus')).toEqual([])
     }
   })
 })

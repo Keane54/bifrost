@@ -44,12 +44,6 @@ const api: BifrostApi = {
     interrupt: sessionId => invoke('input:interrupt', sessionId),
     send: (sessionId, text) => invoke('input:send', sessionId, text),
   },
-  integration: {
-    install: () => invoke('integration:install'),
-    preview: () => invoke('integration:preview'),
-    status: () => invoke('integration:status'),
-    uninstall: () => invoke('integration:uninstall'),
-  },
   live: {
     disable: () => invoke('live:disable'),
     enable: () => invoke('live:enable'),
