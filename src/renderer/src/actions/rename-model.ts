@@ -66,3 +66,15 @@ export function planRename(
   if (!result.ok) return result
   return { alias: result.name === '' ? null : result.name, ok: true, send: null }
 }
+
+// A /rename command, also with spaces before it.
+const RENAME_COMMAND = /^\/rename(?:\s|$)/
+
+// What Bifrost does after a send of the send box or of Run slash command (spec 9.1).
+// A /rename changes the real name. So it clears the local name, as the check box of the Rename
+// dialog does (ruling of 2026-11-06). A /rename does not go into the recent slash commands,
+// because a click on it in the submenu would give its name to another session.
+export function afterSend(text: string): { clearAlias: boolean; rememberSlash: boolean } {
+  const rename = RENAME_COMMAND.test(text.trim())
+  return { clearAlias: rename, rememberSlash: !rename }
+}

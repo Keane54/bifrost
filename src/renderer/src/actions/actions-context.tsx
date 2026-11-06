@@ -38,15 +38,12 @@ import { confirmFor } from './confirm'
 import { createDeleteNotices } from './delete-notice'
 import { friendlyError } from './errors'
 import RenameDialog from './RenameDialog'
+import { afterSend } from './rename-model'
 import { type FocusRequest, notifiedOpenStep, planRun, type RunPlan } from './run-plan'
 
 // A notice of an action shows for 5 seconds. An error stays until the user closes it, because a
 // Delete error can be long (Task 17).
 const MESSAGE_MS = 5000
-
-// A rename command does not go into the recent slash commands.
-// A click on it in the submenu would give its name to another session.
-const RENAME_COMMAND = /^\/rename(?:\s|$)/
 
 // The notice while the unmerged-work check of a Delete runs (Task 13).
 const CHECKING_NOTICE = 'Checking for unmerged work...'
@@ -248,8 +245,11 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const send = useCallback(
     async (sessionId: string, text: string): Promise<void> => {
       await window.bifrost.input.send(sessionId, text)
+      const after = afterSend(text)
+      // The real name changed, so the local name goes away. A failed clear changes nothing.
+      if (after.clearAlias) window.bifrost.registry.setAlias(sessionId, null).catch(() => {})
       // rememberSlash keeps only a slash command. Other text gives the same history.
-      if (!RENAME_COMMAND.test(text.trim())) updateHistory(h => rememberSlash(h, text))
+      if (after.rememberSlash) updateHistory(h => rememberSlash(h, text))
     },
     [updateHistory],
   )

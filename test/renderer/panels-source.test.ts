@@ -23,3 +23,18 @@ describe('SelectedItemPanel name tooltip', () => {
     expect(PANEL).toContain('title={aliasTip(row)}')
   })
 })
+
+// The send of the send box and of Run slash command (ruling of 2026-11-06).
+const ACTIONS = readFileSync(
+  join(__dirname, '../../src/renderer/src/actions/actions-context.tsx'),
+  'utf8',
+)
+
+describe('ActionsProvider send source', () => {
+  it('clears the local name when afterSend says so', () => {
+    expect(ACTIONS).toContain('const after = afterSend(text)')
+    expect(ACTIONS).toContain(
+      'if (after.clearAlias) window.bifrost.registry.setAlias(sessionId, null)',
+    )
+  })
+})

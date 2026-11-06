@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as R from '../../../src/renderer/src/actions/reasons'
 import {
+  afterSend,
   CLAUDE_BOX_LOST_NOTE,
   claudeBoxLostNote,
   effectiveAlsoClaude,
@@ -117,5 +118,19 @@ describe('effectiveAlsoClaude', () => {
     expect(claudeBoxLostNote(red, true)).toBe(CLAUDE_BOX_LOST_NOTE)
     expect(claudeBoxLostNote(red, false)).toBeNull()
     expect(claudeBoxLostNote(owned, true)).toBeNull()
+  })
+})
+
+describe('afterSend (ruling of 2026-11-06)', () => {
+  it('clears the local name after a /rename from the send box or Run slash command', () => {
+    for (const text of ['/rename work', '  /rename work  ', '/rename', '/rename\twork']) {
+      expect(afterSend(text)).toEqual({ clearAlias: true, rememberSlash: false })
+    }
+  })
+
+  it('keeps the local name and remembers the text after any other send', () => {
+    for (const text of ['/renamex', '/compact', 'please /rename it', 'hello']) {
+      expect(afterSend(text)).toEqual({ clearAlias: false, rememberSlash: true })
+    }
   })
 })

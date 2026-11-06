@@ -641,6 +641,7 @@ Rename sets a local name. Bifrost keeps the local name for the row ID (section 6
 - The row field `name` is the local name when one exists. The Overview, the chat window titles, the Watchlist, notifications, the Event log and the Usage HUD show it. Show Info also shows `claudeName`.
 - When Bifrost deletes a session for good, it removes the local name too, as it removes the priority.
 - A new Claude Code name that equals the local name removes the local name.
+- A `/rename` that Bifrost sends from the send box or from Run slash command clears the local name, as the check box of the Rename dialog does (ruling of 2026-11-06). A `/rename` that you type in a chat window does not clear it, because Bifrost does not read that input.
 - Bifrost forgets the local name of an external session soon after the session ends, as it forgets the priority.
 - The IPC call `registry:set-alias` takes the session ID and a name or `null`. The main process checks both.
 
@@ -1214,3 +1215,4 @@ The user decided that a session keeps one row across `/clear`. Tests with backgr
 2. A background entry finds its row by its short ID first, in the active list and in `--all`. The store keeps the short ID of each background row (`jobs`) and each current ID that is not a row ID (`current`).
 3. An interactive entry finds its row by its `pid` and its folder, with a 1:1 match (section 6.1, rule 3).
 4. Resume of an owned row passes the original session ID of the job. Take control passes the current ID. Copy session ID and Show Info give the current ID (section 9.1).
+5. A `/rename` from the send box or from Run slash command clears the local name (section 9.1).
