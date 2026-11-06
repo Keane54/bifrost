@@ -589,6 +589,8 @@ A red prompt box does not block Rename, because the local name types nothing. Th
 - When a local name exists: the button "Use the Claude Code name". It clears the local name.
 - Esc closes the dialog. The focus goes back to the Overview rows.
 
+The Stop, Delete and Take control confirmations name the session without doubt. When a local name exists, they show the local name, then the Claude Code name in brackets: `my-alias (Claude Code name: claude-a1)`. The chat window titles keep the local name only.
+
 In the Selected Item panel, a hover over the name shows a tooltip. With a local name, the tooltip is `Claude Code name: <name>`. Without one, it is the name itself, so a cut-off name can be read.
 
 The "Labels" setting selects plain labels or space labels. The setting applies to menus, buttons, tooltips and dialogs.
