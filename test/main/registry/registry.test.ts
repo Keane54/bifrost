@@ -1625,7 +1625,7 @@ describe('session details and the newest rate limits (M5b Task 1)', () => {
     })
   })
 
-  test('usage gives the newest usage line with rate limits', () => {
+  test('usage gives the window with the highest use when the reset times match', () => {
     const r = registry()
     r.applyAgents(
       [
@@ -1638,13 +1638,82 @@ describe('session details and the newest rate limits (M5b Task 1)', () => {
     r.applyUsage('a', { rateLimits: limits(10) }, 1000)
     r.applyUsage('b', { costUsd: 0.2 }, 2000)
     r.applyUsage('c', { rateLimits: limits(30) }, 1500)
-    // A line that comes last but has an older time does not win.
-    r.applyUsage('d', { rateLimits: limits(50) }, 1200)
+    // A line that comes last but has a lower use does not win.
+    r.applyUsage('d', { rateLimits: limits(20) }, 2500)
     expect(r.usage()).toEqual({
       limits: limits(30),
       name: 'gamma',
       sessionId: 'c',
       updatedAt: 1500,
+    })
+  })
+
+  describe('usage picks each window on its own', () => {
+    const win = (usedPercent: number, resetsAt: number) => ({ resetsAt, usedPercent })
+    const HOUR = 3_600_000
+
+    test('an idle session with an old lower value that sends last does not win', () => {
+      const r = registry()
+      r.applyAgents([bg({ id: 'aa', name: 'alpha', sessionId: 'a' })], 100)
+      r.applyUsage('a', { rateLimits: { sevenDay: win(34, 9 * HOUR) } }, 1000)
+      r.applyUsage('b', { rateLimits: { sevenDay: win(4, 9 * HOUR) } }, 2000)
+      expect(r.usage()).toEqual({
+        limits: { sevenDay: win(34, 9 * HOUR) },
+        name: 'alpha',
+        sessionId: 'a',
+        updatedAt: 1000,
+      })
+    })
+
+    test('a new window wins over a higher value of the old window', () => {
+      const r = registry()
+      r.applyUsage('a', { rateLimits: { fiveHour: win(90, 5 * HOUR) } }, 1000)
+      r.applyUsage('b', { rateLimits: { fiveHour: win(2, 10 * HOUR) } }, 2000)
+      expect(r.usage()?.limits.fiveHour).toEqual(win(2, 10 * HOUR))
+    })
+
+    test('two readings 5 minutes apart in resetsAt count as one window', () => {
+      const r = registry()
+      r.applyUsage('a', { rateLimits: { sevenDay: win(50, 9 * HOUR) } }, 1000)
+      r.applyUsage('b', { rateLimits: { sevenDay: win(20, 9 * HOUR + 300_000) } }, 2000)
+      expect(r.usage()?.limits.sevenDay).toEqual(win(50, 9 * HOUR))
+      r.applyUsage('c', { rateLimits: { sevenDay: win(60, 9 * HOUR - 300_000) } }, 3000)
+      expect(r.usage()?.limits.sevenDay).toEqual(win(60, 9 * HOUR - 300_000))
+    })
+
+    test('readings more than 10 minutes apart are different windows', () => {
+      const r = registry()
+      r.applyUsage('a', { rateLimits: { sevenDay: win(50, 9 * HOUR) } }, 1000)
+      r.applyUsage('b', { rateLimits: { sevenDay: win(5, 9 * HOUR + 11 * 60_000) } }, 2000)
+      expect(r.usage()?.limits.sevenDay).toEqual(win(5, 9 * HOUR + 11 * 60_000))
+    })
+
+    test('a value that is not a finite number never wins over a finite one', () => {
+      const r = registry()
+      r.applyUsage('a', { rateLimits: { sevenDay: win(10, 9 * HOUR) } }, 1000)
+      r.applyUsage('b', { rateLimits: { sevenDay: win(Number.NaN, 9 * HOUR) } }, 2000)
+      expect(r.usage()?.limits.sevenDay).toEqual(win(10, 9 * HOUR))
+    })
+
+    test('the 5-hour and the 7-day value can come from different sessions', () => {
+      const r = registry()
+      r.applyAgents([bg({ id: 'bb', name: 'beta', sessionId: 'b' })], 100)
+      r.applyUsage(
+        'a',
+        { rateLimits: { fiveHour: win(10, 5 * HOUR), sevenDay: win(5, 9 * HOUR) } },
+        1000,
+      )
+      r.applyUsage(
+        'b',
+        { rateLimits: { fiveHour: win(3, 8 * HOUR), sevenDay: win(34, 9 * HOUR) } },
+        900,
+      )
+      expect(r.usage()).toEqual({
+        limits: { fiveHour: win(3, 8 * HOUR), sevenDay: win(34, 9 * HOUR) },
+        name: 'beta',
+        sessionId: 'b',
+        updatedAt: 900,
+      })
     })
   })
 

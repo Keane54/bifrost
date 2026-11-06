@@ -1,5 +1,7 @@
 import type {
   Priority,
+  RateLimits,
+  RateWindow,
   SessionKind,
   SessionRow,
   UsageSnapshot,
@@ -110,6 +112,16 @@ function copyEntry(s: Session, entry: AgentEntry): void {
   s.status = entry.status
   s.waitingFor = entry.waitingFor
   s.startedAt = entry.startedAt
+}
+
+// Two rate window readings with resetsAt values within this time are the same window.
+const WINDOW_SAME_MS = 10 * 60 * 1000
+
+// True when the use value a is higher than b. A value that is not a finite number never wins
+// over a finite one.
+function beats(a: number, b: number): boolean {
+  if (!Number.isFinite(a)) return false
+  return !Number.isFinite(b) || a > b
 }
 
 // The last usage line of a session. updatedAt is the time of the line.
@@ -310,24 +322,59 @@ export class SessionRegistry {
     this.usageLines.set(sessionId, line)
   }
 
-  // Return the newest rate limits: the rate limits with the newest time (limitsAt), of all
-  // sessions. A session that is not a row also counts. The name is the row name, or the first 8
-  // characters of the session ID when the session is not a row. updatedAt is the time of the
-  // line that had the rate limits. Return null when no session has rate limits.
+  // Return the newest value of each window (fiveHour, sevenDay), chosen on its own from the usage
+  // lines of all sessions. A session that is not a row also counts. Each Claude Code process keeps
+  // the rate limits of its own last reply, so an idle session sends old values with a new time.
+  // So the time of the line says nothing about the data. The choice is:
+  // 1. The newest window wins: the reading with the latest resetsAt.
+  // 2. Two readings with resetsAt values within WINDOW_SAME_MS are the same window.
+  // 3. In the same window, the highest usedPercent wins, because use only grows in a window.
+  //    A value that is not a finite number never wins over a finite one.
+  // name, sessionId and updatedAt come from the line that gave the 7-day value, else the 5-hour
+  // value. The name is the row name, or the first 8 characters of the session ID when the session
+  // is not a row. updatedAt is the time of that line. Return null when no session has a window.
   usage(): UsageSnapshot | null {
-    let newest: UsageSnapshot | null = null
+    const fiveHour = this.pickWindow('fiveHour')
+    const sevenDay = this.pickWindow('sevenDay')
+    const source = sevenDay ?? fiveHour
+    if (source === null) return null
+    const limits: RateLimits = {}
+    if (fiveHour !== null) limits.fiveHour = fiveHour.window
+    if (sevenDay !== null) limits.sevenDay = sevenDay.window
+    const s = this.sessions.get(source.sessionId)
+    return {
+      limits,
+      name: s ? this.nameOf(s) : source.sessionId.slice(0, 8),
+      sessionId: source.sessionId,
+      updatedAt: source.at,
+    }
+  }
+
+  // Choose the reading of one window, by the rules of usage().
+  private pickWindow(
+    key: 'fiveHour' | 'sevenDay',
+  ): { window: RateWindow; sessionId: string; at: number } | null {
+    const readings: { window: RateWindow; sessionId: string; at: number }[] = []
     for (const [sessionId, line] of this.usageLines) {
-      if (line.rateLimits === undefined || line.limitsAt === undefined) continue
-      if (newest !== null && line.limitsAt <= newest.updatedAt) continue
-      const s = this.sessions.get(sessionId)
-      newest = {
-        limits: line.rateLimits,
-        name: s ? this.nameOf(s) : sessionId.slice(0, 8),
-        sessionId,
-        updatedAt: line.limitsAt,
+      const window = line.rateLimits?.[key]
+      if (window === undefined || line.limitsAt === undefined) continue
+      if (!Number.isFinite(window.resetsAt)) continue
+      readings.push({ at: line.limitsAt, sessionId, window })
+    }
+    if (readings.length === 0) return null
+    const latestReset = Math.max(...readings.map(r => r.window.resetsAt))
+    let best: (typeof readings)[number] | null = null
+    for (const r of readings) {
+      if (r.window.resetsAt < latestReset - WINDOW_SAME_MS) continue
+      if (
+        best === null ||
+        beats(r.window.usedPercent, best.window.usedPercent) ||
+        (r.window.usedPercent === best.window.usedPercent && r.at > best.at)
+      ) {
+        best = r
       }
     }
-    return newest
+    return best
   }
 
   // Return the number of rows that are live and not parked.

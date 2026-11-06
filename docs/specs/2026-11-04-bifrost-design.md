@@ -239,8 +239,13 @@ Rules for the usage data:
 - The parser keeps `version`, `effort` and `permissionMode` when each is a text that is not empty. It cuts each to 200 characters. It keeps `transcriptPath` only when the path starts with `/`, has at most 1,024 characters, and has no C0 control (U+0000 to U+001F, also the line breaks), no DEL (U+007F) and no bidi control (U+202A to U+202E, U+2066 to U+2069). A bidi control can make a path look like another path. It leaves out a bad field and keeps the line.
 - Each row gets these fields from its last `usage` line: `contextWindowSize` (from `context.window`), `rateLimits`, `claudeVersion` (from `version`), `effort`, `permissionMode` and `transcriptPath`. A missing value leaves the field out. The rate limits are different (next rule).
 - A `usage` line without `rateLimits` keeps the last rate limits of its session and the time of the line that had them. Only a line with `rateLimits` replaces them.
-- The newest rate limits (M5b D19) are the rate limits with the newest time, of all sessions. The time is the `at` of the line that had them. A session that is not a row also counts, until the registry forgets it. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
-- The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line that had them, so a newer line with the same limits is a change. The update limit is that of the rows: at most 4 updates each second, and the last value always goes out. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
+- The newest rate limits (M5b D19) are chosen for each window (5-hour and 7-day) on its own, from the usage lines of all sessions. Each Claude Code process keeps the rate limits of its own last reply. An idle session sends old values with a new time. So the time of the line says nothing about the data. The rules are:
+  1. The newest window wins: the reading with the latest reset time.
+  2. Two readings are the same window when their reset times are within 10 minutes.
+  3. In the same window, the highest use wins, because use only grows in a window. A use value that is not a finite number never wins over a finite one.
+  4. A session that is not a row also counts, until the registry forgets it.
+  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
+- The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line that gave the 7-day value (else the 5-hour value), so a newer line from that session with the same limits is a change. The update limit is that of the rows: at most 4 updates each second, and the last value always goes out. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
 - Without the mod, Bifrost shows no model, context %, cost, rate limit, context window size, Claude Code version, effort, permission mode or transcript path.
 
 Statusline in chat windows (O4, 2026-11-05):
@@ -485,7 +490,7 @@ The Event log shows the live state events with the time, the session and the eve
 
 ### 8.8 Usage HUD
 
-The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. The data comes from the newest live usage line.
+The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. Bifrost chooses each bar on its own from all live usage lines. The newest window wins, and in the same window the highest use wins. An idle session can send an old value, and this rule stops that value from replacing a newer one (section 6).
 
 ### 8.9 New session dialog
 
