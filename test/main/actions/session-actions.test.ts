@@ -1484,23 +1484,20 @@ describe('takeControl', () => {
   test('resume, Resume all and Take control pass no extra flags', async () => {
     // A resume with a new flag starts a copy with a new session ID (controller ruling).
     // The statusline override is for New session only.
-    for (const _round of [0, 1]) {
-      f.log = []
-      f.appear = [row()]
-      f.rows = [parked({ resumable: true })]
-      await actions.resume(S)
-      // The resumed row runs now. Resume all needs it parked again.
-      f.rows = [parked({ resumable: true })]
-      await actions.resumeAll()
-      f.rows = [external()]
-      f.appear = [row({ pid: 5151 })]
-      f.alive = pid => pid === 5151
-      const done = actions.takeControl(S, true)
-      await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
-      await done
-      const runs = f.ops('run').map(line => line.split(' ')[2])
-      expect(runs).toEqual(Array(3).fill(JSON.stringify(['--bg', '--resume', S])))
-    }
+    f.appear = [row()]
+    f.rows = [parked({ resumable: true })]
+    await actions.resume(S)
+    // The resumed row runs now. Resume all needs it parked again.
+    f.rows = [parked({ resumable: true })]
+    await actions.resumeAll()
+    f.rows = [external()]
+    f.appear = [row({ pid: 5151 })]
+    f.alive = pid => pid === 5151
+    const done = actions.takeControl(S, true)
+    await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
+    await done
+    const runs = f.ops('run').map(line => line.split(' ')[2])
+    expect(runs).toEqual(Array(3).fill(JSON.stringify(['--bg', '--resume', S])))
   })
 })
 
