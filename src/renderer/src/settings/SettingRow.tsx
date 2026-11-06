@@ -51,12 +51,20 @@ export interface RowSave {
 // The error state of one row. The error stays until the user closes it or the next save works.
 // In the Settings panel, the Save button waits for each save of a row. The tracker keeps the
 // state of the row, so Save stays open only while the row has a failed save (spec 12).
-export function useRowSave(): RowSave {
+// label: the label of a General row. While a search hides that row, the row acts as unmounted:
+// its save state goes away, and its error does not show again.
+export function useRowSave(label: string | null = null): RowSave {
   const tracker = useSaveTracker()
+  const shown = useRowShown(label)
   // The key of this row in the tracker.
   const [key] = useState(() => ({}))
   const [error, setError] = useState<string | null>(null)
   useEffect(() => () => tracker?.remove(key), [tracker, key])
+  useEffect(() => {
+    if (shown) return
+    tracker?.remove(key)
+    setError(null)
+  }, [shown, tracker, key])
   const closeError = useCallback(() => {
     setError(null)
     tracker?.forget(key)

@@ -43,6 +43,9 @@ export default function KeysSection({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [rejection, setRejection] = useState<string | null>(null)
   const [errorId, setErrorId] = useState<string | null>(null)
+  // The error shows at the top for a change of all keys, and when a search hides the row of the
+  // error. So a failed save never keeps Settings open with no error on the screen.
+  const errorShownAtTop = errorId === null || (only !== null && !only.has(errorId))
   // The recorder callbacks read the newest values from this ref.
   const latest = useRef({ activeId, custom, labels: settings.labels })
   latest.current = { activeId, custom, labels: settings.labels }
@@ -171,7 +174,9 @@ export default function KeysSection({
         {recording && rejection !== null && (
           <p className='px-3 pb-1 text-text-dim text-xs'>{rejection}</p>
         )}
-        {errorId === slot.id && <ErrorLine message={save.error} onClose={save.closeError} />}
+        {errorId === slot.id && !errorShownAtTop && (
+          <ErrorLine message={save.error} onClose={save.closeError} />
+        )}
       </li>
     )
   }
@@ -189,7 +194,7 @@ export default function KeysSection({
           </button>
         </div>
       )}
-      {errorId === null && <ErrorLine message={save.error} onClose={save.closeError} />}
+      {errorShownAtTop && <ErrorLine message={save.error} onClose={save.closeError} />}
       {groups.map(group => (
         <section data-key-group={group.group} key={group.group}>
           <h3 className={cx('border-panel-edge border-y bg-title px-3 py-1 text-text-dim text-xs')}>

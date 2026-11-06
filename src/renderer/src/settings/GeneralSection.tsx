@@ -125,7 +125,7 @@ function NumberRow(props: {
   hint?: string
   save(value: number): Promise<void>
 }): React.JSX.Element {
-  const row = useRowSave()
+  const row = useRowSave(props.label)
   const { save } = props
   return (
     <SettingRow
@@ -163,7 +163,7 @@ function CheckRow(props: {
   hint?: string
   save(value: boolean): Promise<void>
 }): React.JSX.Element {
-  const row = useRowSave()
+  const row = useRowSave(props.label)
   const { save } = props
   return (
     <SettingRow
@@ -193,7 +193,7 @@ function SelectRow(props: {
   text(value: number): string
   save(value: number): Promise<void>
 }): React.JSX.Element {
-  const row = useRowSave()
+  const row = useRowSave(props.label)
   const { save } = props
   return (
     <SettingRow error={row.error} label={props.label} onCloseError={row.closeError}>
@@ -269,11 +269,11 @@ export default function GeneralSection({
   const { apps: projectApps } = useActions()
   const [info, setInfo] = useState<{ packaged: boolean; version: string } | null>(null)
   const [mode, setMode] = useState<DisplayMode>('window')
-  const labelsRow = useRowSave()
-  const terminalRow = useRowSave()
-  const projectRow = useRowSave()
-  const fontRow = useRowSave()
-  const modeRow = useRowSave()
+  const labelsRow = useRowSave(GENERAL_ROWS.labels)
+  const terminalRow = useRowSave(GENERAL_ROWS.terminalApp)
+  const projectRow = useRowSave(GENERAL_ROWS.projectApp)
+  const fontRow = useRowSave(GENERAL_ROWS.font)
+  const modeRow = useRowSave(GENERAL_ROWS.displayMode)
 
   useEffect(() => {
     let active = true
