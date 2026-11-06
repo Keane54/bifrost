@@ -2,6 +2,7 @@
 // The search finds the rows of all sections by their label. In Keys, it also finds a row by its
 // key, in the shown form (for example "⇧ ⌘ T") or in a typed form (for example "cmd shift t").
 import { parseBinding } from '../../../shared/keys'
+import { GENERAL_ROWS } from './general-rows'
 import type { KeyRow } from './key-editor'
 import type { SettingsSection } from './settings-nav'
 
@@ -14,25 +15,8 @@ export const SECTION_TITLES: Readonly<Record<SettingsSection, string>> = {
 }
 const SECTION_ORDER: readonly SettingsSection[] = ['general', 'slash', 'keys', 'live']
 
-// The label of each row of Settings > General, in order. A test checks this list against the
-// source of the section. Add the label of a new row here, or the search cannot find the row.
-export const GENERAL_LABELS: readonly string[] = [
-  'Labels',
-  'Terminal app',
-  'Default app for "Open project"',
-  'Escalation time',
-  'Row flash',
-  'macOS notification',
-  'Sound for a red box',
-  'Start at login',
-  'Poll interval',
-  'Snap distance',
-  'Panel transparency',
-  'Interface scale',
-  'Terminal font',
-  'Display mode',
-  'Introduction',
-]
+// The labels of the rows of Settings > General. GENERAL_ROWS is their one source.
+export const GENERAL_LABELS: readonly string[] = Object.values(GENERAL_ROWS)
 
 // One row that the search can find. The ID is the label of a General row, the slash command, the
 // slot ID of a key, or "live" for Live details.

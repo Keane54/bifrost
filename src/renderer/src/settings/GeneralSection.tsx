@@ -23,6 +23,7 @@ import { useActions } from '../actions/actions-context'
 import { CheckBox } from '../lib/CheckBox'
 import { cx } from '../lib/cx'
 import { draftToSave } from './draft'
+import { GENERAL_ROWS } from './general-rows'
 import IntroRow from './IntroRow'
 import { useLive } from './live-context'
 import { claudeVersionNotice } from './live-notice'
@@ -308,10 +309,14 @@ export default function GeneralSection({
             {versionText}
           </p>
         )}
-        <SettingRow error={labelsRow.error} label='Labels' onCloseError={labelsRow.closeError}>
+        <SettingRow
+          error={labelsRow.error}
+          label={GENERAL_ROWS.labels}
+          onCloseError={labelsRow.closeError}
+        >
           <Choices
             choices={LABEL_CHOICES}
-            label='Labels'
+            label={GENERAL_ROWS.labels}
             onChange={value => {
               labelsRow.save(() => update({ labels: value as LabelSet }))
             }}
@@ -320,13 +325,13 @@ export default function GeneralSection({
         </SettingRow>
         <SettingRow
           error={terminalRow.error}
-          label='Terminal app'
+          label={GENERAL_ROWS.terminalApp}
           onCloseError={terminalRow.closeError}
         >
           <AppSelect
             apps={terminalApps}
             auto={AUTO_TERMINAL}
-            label='Terminal app'
+            label={GENERAL_ROWS.terminalApp}
             onChange={id => {
               const terminalApp = TERMINAL_APP_IDS.find(t => t === id) ?? null
               terminalRow.save(() => update({ terminalApp: terminalApp as TerminalAppId | null }))
@@ -336,13 +341,13 @@ export default function GeneralSection({
         </SettingRow>
         <SettingRow
           error={projectRow.error}
-          label='Default app for "Open project"'
+          label={GENERAL_ROWS.projectApp}
           onCloseError={projectRow.closeError}
         >
           <AppSelect
             apps={projectAppChoices(projectApps)}
             auto={AUTO_PROJECT}
-            label='Default app for "Open project"'
+            label={GENERAL_ROWS.projectApp}
             onChange={id => {
               projectRow.save(() => update({ projectApp: id as ProjectAppId | null }))
             }}
@@ -350,7 +355,7 @@ export default function GeneralSection({
           />
         </SettingRow>
         <NumberRow
-          label='Escalation time'
+          label={GENERAL_ROWS.escalation}
           max={MAX_ESCALATION_MINUTES}
           min={0}
           save={value => update({ escalationMinutes: value })}
@@ -359,35 +364,35 @@ export default function GeneralSection({
         />
         <CheckRow
           checked={settings.rowFlash}
-          label='Row flash'
+          label={GENERAL_ROWS.rowFlash}
           save={value => update({ rowFlash: value })}
         />
         <CheckRow
           checked={settings.notifications}
-          label='macOS notification'
+          label={GENERAL_ROWS.notifications}
           save={value => update({ notifications: value })}
         />
         <CheckRow
           checked={settings.redBoxSound}
-          label='Sound for a red box'
+          label={GENERAL_ROWS.redBoxSound}
           save={value => update({ redBoxSound: value })}
         />
         <CheckRow
           checked={settings.startAtLogin}
           disabled={info !== null && !info.packaged}
           hint={info !== null && !info.packaged ? 'Only works in the installed app.' : undefined}
-          label='Start at login'
+          label={GENERAL_ROWS.startAtLogin}
           save={value => update({ startAtLogin: value })}
         />
         <SelectRow
           choices={POLL_CHOICES}
-          label='Poll interval'
+          label={GENERAL_ROWS.poll}
           save={value => update({ pollSeconds: value })}
           text={seconds => (seconds === 1 ? '1 second' : `${seconds} seconds`)}
           value={settings.pollSeconds}
         />
         <NumberRow
-          label='Snap distance'
+          label={GENERAL_ROWS.snap}
           max={MAX_SNAP}
           min={0}
           save={value => update({ snapDistance: value })}
@@ -396,19 +401,23 @@ export default function GeneralSection({
         />
         <SelectRow
           choices={PANEL_TRANSPARENCY_CHOICES}
-          label='Panel transparency'
+          label={GENERAL_ROWS.transparency}
           save={value => update({ panelTransparency: value })}
           text={percent => (percent === 0 ? '0% (solid)' : `${percent}%`)}
           value={settings.panelTransparency}
         />
         <SelectRow
           choices={INTERFACE_SCALE_CHOICES}
-          label='Interface scale'
+          label={GENERAL_ROWS.scale}
           save={value => update({ interfaceScale: value })}
           text={percent => `${percent}%`}
           value={settings.interfaceScale}
         />
-        <SettingRow error={fontRow.error} label='Terminal font' onCloseError={fontRow.closeError}>
+        <SettingRow
+          error={fontRow.error}
+          label={GENERAL_ROWS.font}
+          onCloseError={fontRow.closeError}
+        >
           <datalist id='settings-font-families'>
             {FONT_FAMILIES.map(family => (
               <option key={family} value={family} />
@@ -445,10 +454,14 @@ export default function GeneralSection({
           />
           <span className='text-text-dim'>pt</span>
         </SettingRow>
-        <SettingRow error={modeRow.error} label='Display mode' onCloseError={modeRow.closeError}>
+        <SettingRow
+          error={modeRow.error}
+          label={GENERAL_ROWS.displayMode}
+          onCloseError={modeRow.closeError}
+        >
           <Choices
             choices={DISPLAY_CHOICES}
-            label='Display mode'
+            label={GENERAL_ROWS.displayMode}
             onChange={value => {
               modeRow.save(() => window.bifrost.display.set(value as DisplayMode))
             }}

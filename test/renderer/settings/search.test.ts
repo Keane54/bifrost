@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { GENERAL_ROWS } from '../../../src/renderer/src/settings/general-rows'
 import { keyGroups } from '../../../src/renderer/src/settings/key-editor'
 import {
   GENERAL_LABELS,
@@ -181,20 +182,110 @@ describe('the texts and the keys of the search field', () => {
   })
 })
 
-// The repository has no DOM test. So this check reads the source text: the search finds each
-// row of Settings > General only when its label is in GENERAL_LABELS.
-describe('GENERAL_LABELS', () => {
-  it('has the label of each row of Settings > General, in order', () => {
-    const labels: string[] = []
-    for (const file of ['GeneralSection.tsx', 'IntroRow.tsx']) {
-      const text = readFileSync(join(SETTINGS, file), 'utf8')
-      const rows = text.matchAll(/<(?:SettingRow|CheckRow|NumberRow|SelectRow)\b/g)
-      for (const row of rows) {
-        const rest = text.slice(row.index)
-        const label = rest.match(/(?<![\w-])label=(?:'([^']*)'|\{props\.label\})/)
-        if (label?.[1] !== undefined) labels.push(label[1])
+// Review Important 1: the labels of Settings > General have one source, GENERAL_ROWS. The
+// repository has no DOM test, so this check reads the source text of Settings > General and of
+// each local file that it imports, at each depth. Each tag whose name ends with "Row" must have
+// the label GENERAL_ROWS.<name>, or pass on props.label in a row component. The check fails on
+// each other form. So a new row needs one line in GENERAL_ROWS, or this test fails.
+describe('GENERAL_ROWS', () => {
+  // The source files of Settings > General: GeneralSection.tsx and its local imports.
+  function generalFiles(): { name: string; text: string }[] {
+    const files: { name: string; text: string }[] = []
+    const queue = ['GeneralSection']
+    const seen = new Set<string>()
+    while (queue.length > 0) {
+      const base = queue.shift() as string
+      if (seen.has(base)) continue
+      seen.add(base)
+      const path = ['.tsx', '.ts'].map(ext => join(SETTINGS, base + ext)).find(existsSync)
+      if (path === undefined) throw new Error(`No source file for ./${base}`)
+      const text = readFileSync(path, 'utf8')
+      files.push({ name: base, text })
+      for (const match of text.matchAll(/from '\.\/([\w-]+)'/g)) queue.push(match[1])
+    }
+    return files
+  }
+
+  // The text of each JSX tag whose name ends with "Row". The scan skips braces and quotes, so an
+  // arrow function in a prop does not end the tag.
+  function rowTags(text: string): { name: string; tag: string }[] {
+    const tags: { name: string; tag: string }[] = []
+    for (const match of text.matchAll(/<([A-Z]\w*Row)\b/g)) {
+      let depth = 0
+      let quote: string | null = null
+      let i = match.index + match[0].length
+      for (; i < text.length; i++) {
+        const c = text[i]
+        if (quote !== null) {
+          if (c === quote) quote = null
+        } else if (c === "'" || c === '"' || c === '`') {
+          quote = c
+        } else if (c === '{') {
+          depth++
+        } else if (c === '}') {
+          depth--
+        } else if (c === '>' && depth === 0) {
+          break
+        }
+      }
+      tags.push({ name: match[1], tag: text.slice(match.index, i + 1) })
+    }
+    return tags
+  }
+
+  // The names of the GENERAL_ROWS constants that the rows use, and each row tag that breaks the
+  // rule.
+  function readRows(files: { name: string; text: string }[]): { used: string[]; bad: string[] } {
+    const used: string[] = []
+    const bad: string[] = []
+    const components = new Set(
+      files.flatMap(f => [...f.text.matchAll(/function ([A-Z]\w*Row)\b/g)].map(m => m[1])),
+    )
+    for (const file of files) {
+      for (const { name, tag } of rowTags(file.text)) {
+        const label = tag.match(/(?<![\w-])label=(\{[^}]*\}|'[^']*'|"[^"]*")/)
+        if (label === null) {
+          // A row component with no label prop has its rows in a scanned file.
+          if (!components.has(name) && !files.some(f => f.name === name)) {
+            bad.push(`${file.name}: ${name} has no label`)
+          }
+          continue
+        }
+        const constant = label[1].match(/^\{GENERAL_ROWS\.(\w+)\}$/)
+        if (constant !== null) used.push(constant[1])
+        else if (label[1] !== '{props.label}') bad.push(`${file.name}: ${name} label=${label[1]}`)
       }
     }
-    expect(labels).toEqual([...GENERAL_LABELS])
+    return { bad, used }
+  }
+
+  it('each row of Settings > General has its label from GENERAL_ROWS', () => {
+    const { bad, used } = readRows(generalFiles())
+    expect(bad).toEqual([])
+    expect(new Set(used)).toEqual(new Set(Object.keys(GENERAL_ROWS)))
+    expect([...GENERAL_LABELS].sort()).toEqual(Object.values(GENERAL_ROWS).sort())
+    expect(GENERAL_LABELS).toHaveLength(15)
+  })
+
+  it('fails on a row label in another form, also in a row of a new file (guard)', () => {
+    const main = {
+      name: 'GeneralSection',
+      text: '<CheckRow label={GENERAL_ROWS.rowFlash} save={value => update({ a: value })} />',
+    }
+    expect(readRows([main]).bad).toEqual([])
+    const literal = { ...main, text: "<ToggleRow label='Animated background' />" }
+    expect(readRows([literal]).bad).toEqual([
+      "GeneralSection: ToggleRow label='Animated background'",
+    ])
+    const constant = { ...main, text: '<SettingRow label={USAGE_LABEL}>' }
+    expect(readRows([constant]).bad).toEqual(['GeneralSection: SettingRow label={USAGE_LABEL}'])
+    const usage = { name: 'UsageRow', text: "<SettingRow label='Account usage from Anthropic'>" }
+    const withFile = [{ ...main, text: '<UsageRow />' }, usage]
+    expect(readRows(withFile).bad).toEqual([
+      "UsageRow: SettingRow label='Account usage from Anthropic'",
+    ])
+    expect(readRows([{ ...main, text: '<UsageRow />' }]).bad).toEqual([
+      'GeneralSection: UsageRow has no label',
+    ])
   })
 })
