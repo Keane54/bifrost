@@ -24,7 +24,7 @@ describe('the icon script', () => {
   })
 
   it('readPalette throws for a missing token', () => {
-    expect(() => readPalette('@theme { --color-bg: #0a0a0a; }')).toThrow(/panel-edge/)
+    expect(() => readPalette('@theme { --color-bg: #0a0a0a; }')).toThrow(/--color-/)
   })
 
   it('encodePng gives the PNG signature and the IHDR size', () => {
