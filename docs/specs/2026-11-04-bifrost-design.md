@@ -845,7 +845,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 |---|---|
 | Labels | Plain |
 | Terminal app | The first installed app from this list: Warp, Ghostty, iTerm2, Terminal. |
-| Default app for "Open project" | VS Code if installed, or else Finder. |
+| Default app for "Open project" | Automatic: VS Code, else Zed, else your terminal app. The select does not list Finder. A saved value `finder` acts as Automatic. The right-click `Open project` submenu still lists Finder. |
 | Escalation time | 10 minutes. The value 0 stops the escalation. |
 | Row flash | On |
 | macOS notification | On |

@@ -10,11 +10,13 @@ import {
   PANEL_TRANSPARENCY_CHOICES,
   POLL_CHOICES,
   parseSettings,
+  projectAppChoices,
   REASON_FONT,
   REASON_SLASH_LINE,
   REASON_SLASH_LONG,
   REASON_SLASH_START,
   type Settings,
+  shownProjectApp,
   TERMINAL_APP_IDS,
 } from '../../src/shared/settings'
 import { TERMINAL_ORDER } from '../../src/shared/terminal-order'
@@ -332,15 +334,39 @@ describe('the other helpers', () => {
     )
   })
 
-  test('defaultProjectApp uses the setting, then VS Code, then Finder', () => {
-    const finder: ProjectApp = { id: 'finder', label: 'Finder' }
-    const vscode: ProjectApp = { id: 'vscode', label: 'VS Code' }
-    const zed: ProjectApp = { id: 'zed', label: 'Zed' }
-    expect(defaultProjectApp([finder, zed], 'vscode')).toBe('finder')
+  const finder: ProjectApp = { id: 'finder', label: 'Finder' }
+  const vscode: ProjectApp = { id: 'vscode', label: 'VS Code' }
+  const zed: ProjectApp = { id: 'zed', label: 'Zed' }
+  const warp: ProjectApp = { id: 'warp', label: 'Warp' }
+  const term: ProjectApp = { id: 'terminal', label: 'Terminal' }
+
+  test('defaultProjectApp uses the setting, then VS Code, then Zed, then a terminal app', () => {
+    expect(defaultProjectApp([finder, zed], 'vscode')).toBe('zed')
     expect(defaultProjectApp([finder, vscode, zed], 'zed')).toBe('zed')
     expect(defaultProjectApp([finder, vscode, zed], null)).toBe('vscode')
-    expect(defaultProjectApp([zed], null)).toBeNull()
+    expect(defaultProjectApp([finder, zed, term], null)).toBe('zed')
+    expect(defaultProjectApp([finder, term, warp], null)).toBe('terminal')
+    expect(defaultProjectApp([finder, warp, term], 'vscode')).toBe('warp')
+    expect(defaultProjectApp([finder, vscode], 'warp')).toBe('vscode')
+  })
+
+  test('defaultProjectApp never returns Finder', () => {
+    expect(defaultProjectApp([finder], null)).toBeNull()
+    expect(defaultProjectApp([finder, zed], 'finder')).toBe('zed')
+    expect(defaultProjectApp([finder, vscode, zed], 'finder')).toBe('vscode')
+    expect(defaultProjectApp([zed], null)).toBe('zed')
     expect(defaultProjectApp([], 'zed')).toBeNull()
+  })
+
+  test('the Settings select has no Finder choice and shows a saved Finder as Automatic', () => {
+    expect(projectAppChoices([finder, vscode, zed]).map(a => a.id)).toEqual(['vscode', 'zed'])
+    expect(shownProjectApp('finder')).toBeNull()
+    expect(shownProjectApp('zed')).toBe('zed')
+    expect(shownProjectApp(null)).toBeNull()
+  })
+
+  test('a saved projectApp finder still loads', () => {
+    expect(parseSettings({ projectApp: 'finder', version: 1 }).projectApp).toBe('finder')
   })
 
   test('TERMINAL_APP_IDS equals TERMINAL_ORDER', () => {
