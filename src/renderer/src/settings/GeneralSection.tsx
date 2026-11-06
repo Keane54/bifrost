@@ -23,6 +23,7 @@ import { useActions } from '../actions/actions-context'
 import { CheckBox } from '../lib/CheckBox'
 import { cx } from '../lib/cx'
 import { draftToSave } from './draft'
+import IntroRow from './IntroRow'
 import { useLive } from './live-context'
 import { claudeVersionNotice } from './live-notice'
 import { ROW_FIELD, SettingRow, useRowSave } from './SettingRow'
@@ -444,6 +445,8 @@ export default function GeneralSection(): React.JSX.Element {
           value={mode}
         />
       </SettingRow>
+      {/* Show the setup dialog again (spec 11.1). */}
+      <IntroRow />
       <p className='mt-auto px-3 py-2 text-text-dim text-xs' data-settings-version={true}>
         {info === null ? 'Bifrost' : `Bifrost ${info.version}`}
       </p>

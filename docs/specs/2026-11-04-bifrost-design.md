@@ -753,6 +753,13 @@ You select "Turn on Live details" or "Skip". "Turn on Live details" runs Install
 
 The dialog shows only when no choice is saved and the plugin is not installed, or Bifrost cannot read its state. An installed plugin, on or off, is already a choice. Then Bifrost saves the choice and shows no dialog. Esc and a click outside the dialog do nothing.
 
+Show the introduction again (2026-11-06):
+
+- Settings > General has the row "Introduction" with the button "Show introduction". The button opens the setup dialog again.
+- The open never changes the saved choice by itself.
+- When the plugin is installed, on or off, the dialog does not offer Install again. It shows the text about Live details, a state line (for example "Live details: On. 2 sessions are sending live details.") and a Done button.
+- When the plugin is not installed, or Bifrost cannot read its state, the dialog offers "Turn on Live details" and "Skip", as at the first start. Skip then only closes the dialog. A good Install saves the choice, as at the first start.
+
 ### 11.2 Live details actions
 
 Live details needs Claude Code 2.1.290 or later. Bifrost runs `claude plugin` only with the arguments below. Each command has a timeout of 30,000 ms. The API for M5a is `live.status()`, `live.install()`, `live.enable()`, `live.disable()` and `live.uninstall()`.
