@@ -45,8 +45,8 @@ Bifrost uses the mechanics of the EVE interface. It does not copy EVE art, icons
 | Supervisor | The Claude Code background service that runs owned sessions. |
 | Panel | An internal window inside the Bifrost window. |
 | Box | An attention mark on an Overview row. A box is yellow or red. |
-| Event directory | The directory where the hook script writes one file for each hook event. |
-| Status file | The file where the statusline wrapper writes the latest statusLine JSON of a session. |
+| Live details | The optional Claude Code mod `bifrost-live`. It sends live lines to Bifrost over a socket. |
+| Live line | One JSON object that the mod sends for one event or one usage reading (section 6.2). |
 
 ## 3. Summary of decisions
 
@@ -57,7 +57,7 @@ Bifrost uses the mechanics of the EVE interface. It does not copy EVE art, icons
 | Window model | One app window. Internal panels float inside it. |
 | Session hosting | Bifrost starts sessions with `claude --bg`. Each chat window runs `claude attach <id>`. |
 | External sessions | Status only. The "Take control" action moves them to the supervisor. |
-| Data | Global hooks, a statusline wrapper and `claude agents --json`. |
+| Data | `claude agents --json` is the base. The optional Live details mod adds events and usage data. |
 | Labels | Plain labels and space labels. A setting selects the set. |
 | Alerts | Yellow and red boxes flash. A macOS notification and a sound are optional. |
 | Scale | 20 sessions and 8 visible chat windows. |
@@ -91,6 +91,12 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 - A restart of the computer stops all background sessions.
 - Hooks in `~/.claude/settings.json` apply to all local sessions.
 - The statusLine command gets the session JSON on stdin. The JSON includes the model, the cost, the context window and the rate limits.
+- A mod loads at the session start or at `/reload-plugins`. A running session does not load a new mod before one of these.
+- `session.start` cannot tell a background session from an interactive one. Both give `isInteractive` `true`.
+- `$.session.model()` gives a model ID, not a display name.
+- The cost can change about 2 s after a turn ends. A side request of Claude Code makes this cost.
+- `classic.*` hooks do not run where the guard `cc-plugin-sec-default` loads. The user checked on 2026-11-05 that this guard is not in his list.
+- A send to a missing socket fails in about 1 ms with no message on the screen.
 - No documented API lets a program type into an interactive session that a terminal owns.
 - The transcript JSONL format is internal. Bifrost does not read transcripts.
 
@@ -104,26 +110,25 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 |                          ^ typed IPC (preload)                         |
 | Main process (Node)                                                    |
 |   Session registry <-- poll:  claude agents --json                     |
-|                    <-- watch: ~/.bifrost/events/                       |
-|                    <-- watch: ~/.bifrost/sessions/*/status.json        |
+|                    <-- listen: ~/.bifrost/live.sock                    |
 |   PTY manager      --> node-pty: claude attach <id>                    |
 |   Action runner    --> claude --bg / stop / rm, signals, open -a       |
-|   Integration      --> ~/.claude/settings.json (install, uninstall)    |
+|   Integration      --> claude plugin ... (install, turn on/off, remove)|
 +------------------------------------------------------------------------+
-         ^ hook events                         ^ statusLine JSON
-  ~/.bifrost/bin/bifrost-hook        ~/.bifrost/bin/bifrost-statusline
-         ^                                     ^
-         +--------- Claude Code sessions ------+
+                  ^ live lines (HTTP over the socket)
+          Live details mod (~/.bifrost/mod, plugin bifrost-live)
+                  ^
+                  +--------- Claude Code sessions
 ```
 
 ### 5.1 Main process
 
 | Part | Function |
 |---|---|
-| Session registry | Merges all data sources into one list of sessions. Runs the state machine. |
+| Session registry | Merges all data sources into one list of sessions. Runs the state machine. Listens on `~/.bifrost/live.sock`. |
 | PTY manager | Starts one `claude attach <id>` process for each open chat window. Also starts the hidden attach for the send box. |
 | Action runner | Runs Claude Code commands, sends signals and opens other apps. |
-| Integration | Installs, repairs and removes the hooks and the statusline wrapper. |
+| Integration | Installs, turns on, turns off and removes the Live details mod. Removes an old hook install. |
 | Store | Keeps the settings, layouts, priorities and panel positions on disk. |
 
 ### 5.2 Renderer
@@ -136,17 +141,13 @@ Context isolation is on. The preload script supplies a typed API. The renderer h
 
 | Path | Content |
 |---|---|
-| `~/.bifrost/bin/bifrost-hook` | The hook script. |
-| `~/.bifrost/bin/bifrost-statusline` | The statusline wrapper. |
-| `~/.bifrost/events/` | The event directory. Bifrost deletes each file after it reads it. |
-| `~/.bifrost/sessions/<session-id>/status.json` | The status file of the session. |
-| `~/.bifrost/statusline-original.json` | Your statusLine setting from before the install. |
-| `~/.bifrost/active` | Exists while Bifrost runs. The scripts do their work only when it exists. |
-| `~/.bifrost/sessions/<session-id>/quiet` | Bifrost makes this file for each owned session. The wrapper then does not run your statusLine command. |
-| `~/.bifrost/backups/` | Copies of `settings.json` from before each change. |
+| `~/.bifrost/mod/` | The four files of the Live details mod. Folders have mode 0700 and files have mode 0600. |
+| `~/.bifrost/live.sock` | The socket where Bifrost listens for live lines. Mode 0600, in a folder with mode 0700. |
+| `~/.bifrost/statusline-original.json` | Your statusLine setting from before an old hook install. Bifrost needs it to remove that install. |
+| `~/.bifrost/backups/` | Copies of `settings.json` from before each change. Bifrost needs them to remove an old hook install. |
 | `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities and panel positions. |
 
-The scripts use `~/.bifrost/` because that path has no spaces. So the commands in `settings.json` stay simple.
+Bifrost uses `~/.bifrost/` because that path has no spaces. The mod folder is also the marketplace folder of the mod, so a simple path is important.
 
 ## 6. Data sources
 
@@ -162,63 +163,67 @@ Bifrost runs `claude agents --json --all` every 30 seconds. This gives the parke
 
 The `kind` field shows the type of the session: owned or external. Bifrost also keeps a list of the sessions that it started. If one of these sessions is not active, Bifrost shows it as parked.
 
-### 6.2 Hook events
+### 6.2 Live events
 
-The installer adds one hook entry for each row below. All entries run the same script, `~/.bifrost/bin/bifrost-hook`.
+The Live details mod sends one live line for each event. The mod sends facts. Bifrost maps each fact to an event. The table gives the result of each kind. The same table is in `src/main/live/live-event.ts`.
 
-| Event | Matcher | Result |
+| Kind | Fields | Result |
 |---|---|---|
-| `SessionStart` | All | Adds the session. Clears the parked state. |
-| `SessionEnd` | All | Marks the end of the session. |
-| `UserPromptSubmit` | All | Sets the state to Working. Clears the box. |
-| `PreToolUse` | `AskUserQuestion` | Sets a red box. Claude asks you a question. |
-| `PermissionRequest` | All | Sets a red box. |
-| `PostToolUse` | All | Sets the state to Working. Clears a red box after you answer a prompt. |
-| `Notification` | `permission_prompt` | Sets a red box. |
-| `Notification` | `idle_prompt` | Keeps the yellow box. |
-| `Stop` | All | Sets a yellow box. Keeps `last_assistant_message` for the preview. |
-| `StopFailure` | All | Sets a red box and the state Error. |
+| `session.start` | None | Adds the session. Ends the parked state. |
+| `session.end` | `reason` | Marks the end of the session. |
+| `turn.start` | None | Sets the state to Working. Clears the box. |
+| `ask` | None | Sets a red box. Claude asks you a question (`AskUserQuestion`). |
+| `tool.done` | `tool` | Sets the state to Working. Clears a red box after you answer a prompt. |
+| `permission` | `tool` | Sets a red box. |
+| `turn.complete` | `reason` `answer` or `refusal`, `answer` | Sets a yellow box. Keeps `answer` as the last message for the preview. |
+| `turn.complete` | `reason` `aborted`, `answer` | Sets the state to Idle with no box. Keeps the partial answer as the last message. |
+| `turn.complete` | `reason` `error` | Sets a red box and the state Error. |
+| `stop.failure` | `error` | Sets a red box and the state Error. |
+| `usage` | `model`, `context`, `costUsd`, `rateLimits` | Updates the usage data (section 6.3). It is not an event. |
 
-Rules for the hook script:
+Each line also has `v`, `kind`, `sid`, `at` and `seq`. The field `seq` is the order number of the session.
 
-- The script is POSIX `sh`. It does not need `jq`, Node or Python.
-- If the file `~/.bifrost/active` does not exist, the script exits at once. Bifrost makes this file at start and deletes it when it quits. So no event files collect while Bifrost is closed.
-- The script writes its stdin with one `cat` to a new file in the event directory. The file name is `<parent PID>-<PID>.json`. Bifrost sorts the files by their change time.
-- The cost of the script does not grow with the size of its input. A tool event can carry 500 KB.
-- Bifrost does not use a partial file. A file that is not valid JSON and is younger than 5 seconds stays for the next read. Bifrost deletes an older one.
-- At start, Bifrost deletes event files older than 60 seconds and does not read them.
-- The script never writes to stdout. Claude Code adds hook stdout to the context for some events.
-- The script makes its files with mode 0600 (`umask 077`), because the files hold tool input and output.
-- The script always exits with code 0.
-- The median time of the script is less than 50 ms. The script adds less than 20 ms to the start of an empty `sh` (M1 measured the maximum at 96 to 106 ms under load, against 85 ms for an empty `sh`).
-- The hooks are not `async`. An async hook can write its file after the file of a later event, and the box rules need the correct order.
+Rules for the live lines:
 
-M1 measures the cost of the `PostToolUse` hook. If the cost is too high, Bifrost uses the busy status from `claude agents --json`.
+- The mod sends one line for each event. It sends the line with `POST http://bifrost/v1/event` over the socket.
+- A hook does not wait for a send, because a send can fail or take long. The one exception is `session.end`, which waits at most 200 ms.
+- Each line has `v: 1`. Bifrost ignores a line with another version, and a line that is not valid.
+- The server accepts a body of at most 65,536 bytes. The mod cuts `answer` to 4,000 characters and each other text to 200 characters.
+- The server closes a request that has no end after 5,000 ms.
+- Order rule (D4): Bifrost drops a state event that is older than the newest applied event of the session. It compares `at`, then `seq` when both events have one.
+- A turn end of a subagent (`agentId`) changes nothing. A `tool.done` event of any loop sets the state to Working.
+- The mod also sends `classic.*` events. They are a fallback (D5). `classic.PermissionRequest` only makes the red box for a permission prompt earlier. `classic.StopFailure` only repeats the error of `turn.complete`. `tool.check` gives no box, because in auto mode an `ask` goes to the classifier.
+- Where `classic.*` hooks do not run, the poll gives the red box for a permission prompt within 2 s. Nothing else changes.
+- The mod starts no process and reads no transcript.
 
-### 6.3 Statusline wrapper
+### 6.3 Usage data
 
-Claude Code sends the live session data only to the statusLine command. The wrapper copies this data for Bifrost.
+The mod sends the usage data of each session. This data is the model, the context, the cost and the rate limits. A `usage` line holds them.
 
-The wrapper does these steps:
+The mod sends a `usage` line at these times:
 
-1. Read all of stdin.
-2. Find the `session_id` with a strict UUID pattern.
-3. Write the JSON to a temporary file.
-4. Move the temporary file to the status file.
-5. If the session directory has the file `quiet`, stop. Bifrost writes this file for each owned session.
-6. Run your original statusLine command with the same stdin.
-7. Send the output of your command to stdout without changes.
+- At `session.start` and at `session.measure`.
+- 2,500 ms after each `turn.complete` of the main loop. The cost can change about 2 s after a turn.
+- Each 30,000 ms (the heartbeat). Without it, an idle row has no data after a start of Bifrost.
 
-If you had no statusLine command, the wrapper writes nothing to stdout. The installer keeps your `refreshInterval` and `padding` values.
+Rules for the usage data:
 
-The status file supplies these values: model, context %, cost, session name and rate limits.
+- The registry keeps the last `usage` line of each session.
+- A `usage` line is not activity. The column "Last activity" ignores it.
+- A row is live for 90,000 ms after its last live line. The heartbeat keeps an idle row live.
+- The parser keeps the windows `five_hour` and `seven_day` of the rate limits. It drops other windows.
+- The mod gives a model ID. The registry maps it to a name with `modelName`: `claude-haiku-5-5` gives `Haiku 5.5`. The suffix `[1m]` adds ` (1M context)`. An ID with an unknown form stays as it is.
+- The mod cannot read the session name. The name comes from `claude agents --json`.
+- Without the mod, Bifrost shows no model, context %, cost or rate limit.
 
-Rules for the wrapper:
+Statusline in chat windows (O4, 2026-11-05):
 
-- Claude Code runs the wrapper for each session again and again, for example each second. So the wrapper starts few programs: `cat` one time to read stdin and `mv` one time to write the status file. It starts `mkdir` only for a new session.
-- If the file `~/.bifrost/active` does not exist, the wrapper only runs your original command. It does steps 1 to 5 only while Bifrost runs.
-- The wrapper makes its files with mode 0600 (`umask 077`).
-- Chat windows in Bifrost show no statusline row. The Overview, the Selected Item panel and the global panels show the data (section 20).
+- Bifrost no longer installs the wrapper. So Claude Code runs your own statusLine command in each session again.
+- A mod cannot stop that command, because the mod API has no statusline hook.
+- Bifrost starts each new session with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. The chat window then shows no statusline row.
+- Resume and Take control add no flags. A resume with the flag starts a copy with a new session ID.
+- A session that Bifrost started with the flag keeps the hidden statusline when it resumes without the flag.
+- A session that Take control moved keeps your statusline in its chat window. The user accepted this.
 - Sessions in a terminal app, for example Warp, keep your statusline.
 
 ### 6.4 Git branch
@@ -235,11 +240,11 @@ Bifrost runs `git -C <cwd> rev-parse --abbrev-ref HEAD` every 10 seconds for eac
 
 | State | Box | Cause |
 |---|---|---|
-| Working | None | `status` is `busy`, or a `UserPromptSubmit` or `PostToolUse` event. |
-| Needs you | Yellow | A `Stop` event. Claude finished its turn. |
-| Needs you | Red | `status` is `waiting` with a `waitingFor` value (also without a hook), a permission prompt, an `AskUserQuestion` call, or an old yellow box (rule 4). |
-| Error | Red | A `StopFailure` event. |
-| Idle | None | `status` is `idle`, and no event set a box. An example is a new session before the first prompt. |
+| Working | None | `status` is `busy`, or a `turn.start` or `tool.done` event. |
+| Needs you | Yellow | A `turn.complete` event with the reason `answer` or `refusal`. Claude finished its turn. Rule 11 also sets it. |
+| Needs you | Red | `status` is `waiting` with a `waitingFor` value (also without the mod), a `permission` event, an `ask` event, or an old yellow box (rule 4). |
+| Error | Red | A `turn.complete` event with the reason `error`, or a `stop.failure` event. |
+| Idle | None | `status` is `idle`, and no event set a box. Examples are a new session before the first prompt, and a stopped turn (rule 12). |
 | Parked | None | The session has no process. The row is grey. The cause is `claude stop`, a restart of the computer, or a process that ends. |
 
 Box rules:
@@ -250,10 +255,13 @@ Box rules:
 4. A yellow box changes to red after 10 minutes. The timer starts with the yellow box.
 5. The "Escalation time" setting changes the time. The value 0 stops the escalation.
 6. Bifrost does not move a row because of a box. Only the sort column of the tab sets the row order.
-7. External sessions also get boxes, because the hooks are global.
+7. External sessions also get boxes from the mod, because the mod is installed at user scope. Each local session loads it.
 8. Parked sessions never get a box.
 9. A red box also clears when `status` is no longer `waiting`. Another client can answer a prompt. Examples are the agent view, a terminal and a phone.
-10. A `status` sample clears a box only after a sample confirmed that box. `idle` confirms a yellow box and an error box. `waiting` confirms a red prompt box. The reason: Claude Code can report `busy` while the Stop hooks run. Hook events clear a box at all times.
+10. A `status` sample clears a box only after a sample confirmed that box. `idle` confirms a yellow box and an error box. `waiting` confirms a red prompt box. The reason: Claude Code can report `busy` while the Stop hooks run. Live events clear a box at all times.
+11. A session with no live line can get a yellow box from the poll alone (O3). A change of `status` from `busy` to `idle` sets it. A session that is idle at the first poll gets no box. A turn that starts and ends between two polls gives no box. A later `busy` sample clears the box. With the mod on, `turn.complete` sets the box and this rule adds nothing.
+12. A stopped turn (Esc, or Interrupt in Bifrost) in a live session gives `turn.complete` with the reason `aborted`. The session goes to Idle with no box. The poll gives no yellow box for a live session (D6).
+13. `session.start` from the mod only ends the parked state. For a running session it changes nothing. The mod runs `session.start` again at each `/reload-plugins`, and a reload must not clear a box (D7).
 
 ## 8. User interface
 
@@ -311,7 +319,7 @@ Bifrost uses its own window manager, because the snap and stack rules are specif
 | Selected Item | The selected session, its action buttons and the send box. |
 | Chat window | The Claude Code terminal UI of one session. |
 | Show Info | All details of one session. |
-| Event log | All hook events, with their times. |
+| Event log | All live state events, with their times. |
 | Usage HUD | The 5-hour and 7-day rate limits. |
 | Watchlist | The sessions that you track, in your own order and colours. |
 | Service status | The status of Claude, GitHub and Sentry. |
@@ -337,14 +345,14 @@ Columns:
 | Column | Source |
 |---|---|
 | Kind icon | `kind`. External rows show the icon of their terminal app (for example Warp or Terminal). An external row with an unknown terminal app shows a `>_` icon. A session that Bifrost started or controls shows the Bifrost logo (a placeholder mark until the logo exists) (user decision, 2026-11-05). |
-| Name | `name`, or `session_name` from the status file. |
+| Name | `name`. |
 | Priority | Bifrost. Values 1 to 5, or none. Each value has a colour. |
 | State | The state machine (section 7). |
 | Project | `cwd`. The column shows the last two parts of the path. |
 | Branch | Git (section 6.4). |
-| Model | `model.display_name` from the status file. |
-| Context % | `context_window.used_percentage` from the status file. |
-| Cost | `cost.total_cost_usd` from the status file. |
+| Model | The model name from the newest live usage line (section 6.3). |
+| Context % | The context percent from the newest live usage line. |
+| Cost | The cost from the newest live usage line. |
 | Last activity | The time of the latest event from any source. |
 
 Default tabs:
@@ -383,7 +391,7 @@ The panel shows these items, from top to bottom:
 2. A row of icon buttons: Open, Send message, Run slash command, Interrupt, Show Info, Open in terminal and Stop session.
 3. The project, the branch and the model.
 4. A context bar and the cost.
-5. The first 3 lines of the last Claude reply. The `Stop` hook supplies this text.
+5. The first 3 lines of the last Claude reply. The `turn.complete` event supplies this text.
 6. The send box.
 
 Send box rules:
@@ -413,7 +421,7 @@ Send box rules:
 - Bifrost sends the replies of the xterm.js terminal to the PTY.
 - Bifrost never sends the ← key.
 - If the user opens the agent view in a chat window, Bifrost detects it and attaches to the session again.
-- The chat window shows no statusline row (section 6.3).
+- A new session of Bifrost shows no statusline row in its chat window (section 6.3).
 - Visible chat windows use the WebGL renderer.
 - A chat window in a back tab, or a minimised chat window, releases its WebGL context.
 
@@ -441,11 +449,11 @@ You can open one Show Info panel for each session.
 
 ### 8.7 Event log
 
-The Event log shows all hook events with the time, the session and the event name. You can filter it by session. It keeps the last 5,000 events in memory. It does not keep events on disk.
+The Event log shows the live state events with the time, the session and the event name. A `usage` line is not in the log. You can filter it by session. It keeps the last 5,000 events in memory. It does not keep events on disk.
 
 ### 8.8 Usage HUD
 
-The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. The data comes from the newest status file.
+The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. The data comes from the newest live usage line.
 
 ### 8.9 New session dialog
 
@@ -690,42 +698,77 @@ Click a notification to select the session and open its chat window.
 
 ### 11.1 Setup dialog
 
-At the first start, Bifrost shows the setup dialog. The dialog shows each change before Bifrost makes it:
+At the first start, Bifrost shows the setup dialog (M5a builds it). The dialog shows each change before Bifrost makes it:
 
-1. The hook entries that Bifrost adds to `~/.claude/settings.json`.
-2. The new statusLine command, and your current statusLine command that the wrapper runs.
-3. The backup directory. The file name has the time of the install.
+1. The plugin `bifrost-live@bifrost-local` and the marketplace `bifrost-local`, both at user scope.
+2. The folder `~/.bifrost/mod`, where Bifrost copies the four files of the mod.
+3. The removal of an old hook install, if Bifrost finds one (section 11.3).
 
-You select "Install" or "Skip".
+You select "Live details" or "Skip".
 
-### 11.2 Install
+### 11.2 Live details actions
 
-Bifrost does these steps:
+Live details needs Claude Code 2.1.290 or later. Bifrost runs `claude plugin` only with the arguments below. Each command has a timeout of 30,000 ms. The API for M5a is `live.status()`, `live.install()`, `live.enable()`, `live.disable()` and `live.uninstall()`.
 
-1. Read `~/.claude/settings.json`. If the file is not valid JSON, stop and show an error.
-2. Copy the file to `~/.bifrost/backups/settings-<time>.json`.
-3. Add the hook entries. Keep all your current hooks.
-4. Save your statusLine setting to `~/.bifrost/statusline-original.json`.
-5. Set the statusLine command to the wrapper. Keep `refreshInterval` and `padding`.
-6. Write the new file to a temporary name.
-7. Move the temporary file to `~/.claude/settings.json`.
+Install:
 
-### 11.3 Uninstall
+1. Remove an old hook install (section 11.3). If this fails, stop. Bifrost then runs no `claude plugin` command.
+2. Copy the four files of `resources/live-mod/` to `~/.bifrost/mod`.
+3. Run `plugin marketplace list --json`. If `bifrost-local` has another path, stop and show an error.
+4. Run `plugin marketplace add <mod folder> --scope user --json`.
+5. Run `plugin install bifrost-live@bifrost-local --scope user --json`.
+6. Start the socket server.
 
-Bifrost does these steps:
+Turn on:
 
-1. Make a new backup.
+1. Remove an old hook install.
+2. Run `plugin enable bifrost-live@bifrost-local --scope user --json`.
+3. Start the socket server.
+
+Turn on refuses when the plugin is not installed. A Live details switch calls Install when `plugin` is `not-installed`. Otherwise it calls Turn on or Turn off.
+
+Turn off:
+
+1. Run `plugin disable bifrost-live@bifrost-local --scope user --json`.
+2. Stop the socket server at once.
+
+Remove:
+
+1. Remove an old hook install.
+2. Run `plugin uninstall bifrost-live@bifrost-local --scope user --json`.
+3. Run `plugin marketplace remove bifrost-local --scope user --json`. This also uninstalls each other plugin of that marketplace.
+4. Stop the socket server. Delete `~/.bifrost/mod`.
+
+Rules:
+
+- Bifrost listens on the socket only while the plugin is on (D9). It also listens when the plugin state is unknown and the mod folder exists. `BIFROST_LIVE_LISTEN=1` forces it for a check.
+- After Turn off, the sends of running sessions fail in about 1 ms. A running session keeps the mod until a restart or `/reload-plugins`.
+- A running session loads a new or changed mod only at its start or at `/reload-plugins`. After Install or Turn on, Bifrost tells the user this.
+- Bifrost does not run `/reload-plugins` in a session.
+- The name `bifrost-local` is not `bifrost`, so a clash with another marketplace is less likely.
+
+### 11.3 Remove an old hook install
+
+Bifrost no longer installs hooks or the statusline wrapper. It makes no `active` file, reads no event files or status files, and writes no `quiet` files. An old install without `active` does nothing.
+
+If `~/.claude/settings.json` has hook entries that run `~/.bifrost/bin/bifrost-hook`, Bifrost removes them. Bifrost does these steps:
+
+1. Make a new backup in `~/.bifrost/backups/`.
 2. Remove each hook entry that runs `~/.bifrost/bin/bifrost-hook`.
 3. Restore your statusLine setting from `~/.bifrost/statusline-original.json`.
 
+Bifrost keeps `statusline-original.json` and `backups/` for this step.
+
 ### 11.4 Skip
 
-If you select "Skip", Bifrost shows only the data from `claude agents --json`. This data is the name, the project and the `status`. Bifrost then shows no boxes, cost or context %. Settings > Integration can run the install later.
+If you select "Skip", Bifrost shows only the data from `claude agents --json`. This data is the name, the project and the `status`. Bifrost then shows the red box for a `waiting` session and the poll yellow box (section 7, rule 11). It shows no model, cost or context %.
 
 ### 11.5 Checks at start
 
-- Bifrost checks the integration at each start. If Bifrost cannot find an entry, Settings shows a warning and a Repair button.
+- Bifrost runs `claude plugin list --json` at each start. If the plugin is on and the mod folder differs from the app files, Bifrost copies the four files again.
+- A running session gets the new files after `/reload-plugins` or a restart.
 - Bifrost reads `claude --version` at each start. Below the minimum version, Bifrost shows a warning. The minimum version is 2.1.281.
+- Live details needs version 2.1.290. Below it, Bifrost shows a warning and does not install the mod.
 
 ## 12. Settings
 
@@ -747,7 +790,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Terminal font | SF Mono, 13 pt |
 | Display mode | Window |
 | Keys | Section 9.4 |
-| Integration | Install, Repair, Uninstall |
+| Integration | Live details: Install, Turn on, Turn off, Remove |
 
 ## 13. Performance targets
 
@@ -757,6 +800,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 - A maximum of 4 registry updates to the renderer each second.
 - Less than 800 MB of memory with 8 open chat windows.
 - One `claude agents --json` process at a time. A new poll starts only after the last poll ends.
+- The mod starts no process. A hook spends less than 1 ms before next.
 
 ## 14. Build and release
 
@@ -813,7 +857,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | Level | Tool | Scope |
 |---|---|---|
 | Unit | Vitest | The state machine, the registry merge, install and uninstall, and key map conflicts. |
-| Script | Vitest and `sh` | The hook script and the wrapper, with sample JSON. |
+| Mod | `claude plugin test` | The hooks module, with a fake `http.fetch`. |
 | Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. |
 | Manual | Checklist | The M0 questions, Take control and the DMG. |
 
@@ -826,6 +870,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | M2 - Window manager | Panels, drag, resize, snap, stacks, position memory, layouts, display modes. | All panel functions in section 8.1 work. |
 | M3 - Core panels | Overview (with the visual layout of section 8.3), Selected Item, right-click menu, chat windows. | You can select, open and use sessions. |
 | M4 - Actions | Send box, slash commands, stop, delete, new session, Take control, parked sessions, Resume all. | All actions in section 9.1 work. |
+| Live - Live details | The Live details mod, the socket server, the live registry rules, and Install, Turn on, Turn off and Remove. | Part A and Part B of the check with real test sessions pass (`docs/live-findings.md`). Part A: yellow, red and stopped-turn rows, the heartbeat, a closed Bifrost, and the poll-only yellow box. Part B: Install, Turn on, Turn off and Remove, and `settings.json` has no change. |
 | M5 - Finish | Keys, label toggle, alerts, Show Info, Event log, Usage HUD, Service status, theme, DMG. | You install the DMG on your Mac and use Bifrost. |
 
 ## 17. Questions for M0
@@ -884,6 +929,7 @@ The user approved these changes on 2026-11-04. The M0 findings are in `docs/m0-f
 The user gave these directions on 2026-11-04:
 
 1. Chat windows show no statusline. The wrapper does not run your statusLine command for owned sessions (section 6.3). The reason is the cost: with 10 sessions, each statusline starts many processes each second.
+   Section 23 changes this item. The wrapper is gone. Bifrost passes a `--settings` flag to each new session instead.
 2. Data that is the same for all sessions goes in separate panels: the Usage HUD and the Service status panel (sections 8.8 and 8.11).
 3. Data for one session goes in the Overview and the Selected Item panel (sections 8.3 and 8.4).
 
@@ -907,6 +953,7 @@ The user gave these directions after he used the M2 build:
 The user made decisions 1 to 3. The controller made the others during M4. The M4 ledger and `docs/m4-findings.md` give the reasons.
 
 1. A session that Bifrost starts gets the flag that turns its statusline off only when the Bifrost statusline wrapper is not installed. With the wrapper, the `quiet` file hides the statusline in chat windows, and Bifrost still gets the status data (section 6.3).
+   Section 23 changes this item (D13). Bifrost now passes the flag for every new session.
 2. A watched row has a soft tint and a 3 px stripe in the full watch colour at its left edge. The yellow box and the red box keep a contrast of 3:1 or more on each watched row, also when it is selected or under the pointer. The watch red and yellow are a different shade from the box colours. The red box is `#f5766d`.
 3. The focused panel is darker than the other panels. Its glow is above the top edge only. The change takes 250 ms.
 4. Text that users read in the app says "folder", not "directory". An error stays until the user closes it. A notice goes away after 5 s. The notice "Deleting the session..." stays while a Delete runs.
@@ -922,3 +969,28 @@ The user made decisions 1 to 3. The controller made the others during M4. The M4
 9. The terminal icon is the thumbnail of the app bundle, then the file icon of the system.
 10. The Watched tab has the id `t0`, so a tab that the user adds can never get the same id. It is the third tab. A saved Overview keeps its tabs. The filter "Only watched sessions" makes such a tab.
 11. You can choose the text colour of each Overview tab from 12 colours. Red, amber and yellow are normal Overview colours, but the box red and the box yellow stay reserved shades. Each other colour has an OKLab distance of 0.10 or more from them, so the amber is darker. The project icon colours stay blue and green. A new tab cycles through the first six colours only (user decision, 2026-11-05).
+
+## 23. Decisions on 2026-11-05 (Live details)
+
+The user decided to replace the global hooks and the statusLine wrapper with a Claude Code mod. The poll of `claude agents --json` stays the base. The plan is `docs/plans/2026-11-05-bifrost-live-mod.md`.
+
+1. D1: The plugin is `bifrost-live`, the marketplace is `bifrost-local`, and the scope is `user`. Bifrost refuses a `bifrost-local` marketplace that has another path.
+2. D2: The source of the mod is `resources/live-mod/`. Bifrost copies four files to `~/.bifrost/mod` and adds that folder as the marketplace. At each start, Bifrost copies the files again when they differ.
+3. D3: The wire kinds are `session.start`, `session.end`, `turn.start`, `ask`, `tool.done`, `permission`, `turn.complete`, `stop.failure` and `usage`. The mod sends facts, and the main process maps them (section 6.2).
+4. D4: The registry drops a state event that is older than the newest applied event of the session. It compares `at`, then `seq`.
+5. D5: Events that are not `classic.*` give all states. `classic.*` events only make a permission box earlier and repeat an error. Where they do not run, the poll gives the permission red box within 2 s.
+6. D6: `answer` and `refusal` give a yellow box. `aborted` gives Idle with no box. `error` gives the red error box. A subagent turn changes nothing.
+7. D7: `session.start` from the mod only ends the parked state. A reload does not clear a box.
+8. D8: Usage comes from `session.start`, `session.measure`, one read 2,500 ms after each main-loop `turn.complete`, and a heartbeat each 30 s. A usage line is not activity.
+9. D9: Bifrost listens on the socket only while the plugin is on. It also listens while the plugin state is unknown and the mod folder exists. Turn off stops the server at once.
+10. D10: Install, Turn on and Remove first remove an old hook install. A failure stops the action. Bifrost keeps `statusline-original.json` and the backups.
+11. D11: The API for M5a is `live.status()`, `live.install()`, `live.enable()`, `live.disable()` and `live.uninstall()`. `enable` refuses when the plugin is not installed.
+12. D12: The parser keeps `five_hour` and `seven_day` as the rate limits and drops other windows. This work adds no Usage HUD.
+13. D13: A new session always gets the `--settings` statusLine override. Section 22 item 1 passed it only without the wrapper. Resume and Take control add no flags.
+14. D14: This section holds the decisions of the Live details work. Section 22 keeps its text, with a note that this section changes its statusline line.
+15. O1: Yes. A controller task installs the mod at user scope for a short time (Part B of the check). It saves backups and SHA-256 values first, and it runs no `/reload-plugins` in a session of the user.
+16. O2: The guard `cc-plugin-sec-default` is not in the list of the user. The `classic.*` events are usable.
+17. O3: Yes. With no mod, a change of `status` from `busy` to `idle` seen by the poll sets a yellow box (section 7, rule 11).
+18. O4: Option a. New sessions start with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. Resume and Take control add no flags. A taken-over session keeps your statusline. Spec 20 item 1 goes away (section 6.3).
+19. Ask order: the mod queues the `ask` line before the tool runs. The line has a lower `seq` than `tool.done`. The mod does not wait for the send.
+20. Socket server: a stop during a start wins. The server never deletes a file that is not a socket. It never deletes a socket that answers.
