@@ -9,6 +9,7 @@ import { useLive } from './live-context'
 import {
   claudeVersionLine,
   claudeVersionNotice,
+  LIVE_ACTION_LABELS,
   type LiveActionId,
   liveActions,
   liveStateLine,
@@ -18,14 +19,6 @@ import {
   REMOVE_CONFIRM,
   WITHOUT_LIVE,
 } from './live-notice'
-
-const LABELS: Record<LiveActionId, string> = {
-  disable: 'Turn off',
-  enable: 'Turn on',
-  install: 'Install',
-  remove: 'Remove',
-  retry: 'Try again',
-}
 
 function Note({ text, name }: { text: string | null; name: string }): React.JSX.Element | null {
   if (text === null) return null
@@ -139,7 +132,7 @@ export default function LiveSection(): React.JSX.Element {
                   onClick={() => onAction(id)}
                   type='button'
                 >
-                  {LABELS[id]}
+                  {LIVE_ACTION_LABELS[id]}
                 </button>
               ))}
             </div>

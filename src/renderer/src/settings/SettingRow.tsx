@@ -1,10 +1,12 @@
 // One row of the Settings panel: the label on the left, the control on the right (spec 12).
 // An optional hint shows under the row. An optional error shows under the hint.
+// During a search, a row that does not match shows nothing.
 import { useCallback, useState } from 'react'
 import { friendlyError } from '../actions/errors'
 import { cx } from '../lib/cx'
 import { ErrorLine } from '../lib/ErrorLine'
 import { errorMessage } from '../lib/error-message'
+import { useRowShown } from './row-filter'
 import { useSaveTracker } from './save-context'
 
 // The field style of the dialogs, in a smaller size for a row.
@@ -23,7 +25,8 @@ export function SettingRow({
   error?: string | null
   onCloseError?: () => void
   children: React.ReactNode
-}): React.JSX.Element {
+}): React.JSX.Element | null {
+  if (!useRowShown(label)) return null
   return (
     <div className='border-panel-edge border-b' data-setting-row={label}>
       <div className='flex min-h-7 items-center justify-between gap-3 px-3'>

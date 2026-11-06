@@ -914,6 +914,17 @@ Save rules (user decision, 2026-11-06):
 - A click on Save blurs the focused field, so that its draft saves. Save also adds a slash command that you typed and did not add.
 - Save waits for each save that runs. If a save fails, Settings stays open, and the row shows the error. Else Save closes the Settings panel.
 
+Search (user decision, 2026-11-06):
+
+- A search field is at the top of the Settings panel, above the section tabs. Its placeholder is "Search settings".
+- The search finds the rows of all sections by their label, case-insensitive, with the words in any order. With a search, the panel shows the matches of all sections in one list. Each section with a match has a small heading. A section with no match does not show. No tab is active. A click on a tab ends the search and opens that section.
+- The rows: General finds a row by its label. Slash commands finds a command. Keys finds a row by its command label or by its key. Live details shows as one block, and the search reads its title, its state line and the labels of its buttons. A query that matches the title of a section shows the whole section.
+- A key search accepts the shown form (for example "⇧ ⌘ T" or "⌘⇧T") and a typed form (for example "cmd shift t", "cmd+shift+t", "ctrl" or "opt"). Each part of the query must name a part of the key, in any order. A part of one character must be the key itself. A longer part can be the start of a name, for example "sh" for Shift or "ta" for Tab.
+- When nothing matches, the panel shows "No settings match "<query>"."
+- Esc in the search field clears the query first, and the event stops there. Esc in an empty search field closes Settings, as the Esc key does (section 9.4).
+- Cmd+F moves the focus to the search field while Settings has the focus. A click on a part of the panel with no control gives the focus to the panel. With no focus at all, Cmd+F works when Settings is the front panel. The key map has no Cmd+F. If a user binds Cmd+F to a command in Settings > Keys, that command runs first.
+- The list of the General labels is in `settings/search.ts`. A source test checks it against Settings > General. A new row of General must add its label to that list.
+
 ## 13. Performance targets
 
 - 20 sessions in the registry.

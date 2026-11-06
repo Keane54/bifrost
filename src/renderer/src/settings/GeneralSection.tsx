@@ -26,6 +26,7 @@ import { draftToSave } from './draft'
 import IntroRow from './IntroRow'
 import { useLive } from './live-context'
 import { claudeVersionNotice } from './live-notice'
+import { RowFilterContext } from './row-filter'
 import { ROW_FIELD, SettingRow, useRowSave } from './SettingRow'
 import { useSettings } from './settings-context'
 
@@ -250,7 +251,13 @@ const LABEL_CHOICES: { label: string; value: LabelSet }[] = [
   { label: 'Space', value: 'space' },
 ]
 
-export default function GeneralSection(): React.JSX.Element {
+// only: during a search, the labels of the rows that show (spec 12). The notice and the version
+// line then do not show.
+export default function GeneralSection({
+  only = null,
+}: {
+  only?: ReadonlySet<string> | null
+}): React.JSX.Element {
   const { settings, update } = useSettings()
   // The general warning for the version of Claude Code (spec 11.5, ruling C5). A failed check
   // warns too.
@@ -291,165 +298,171 @@ export default function GeneralSection(): React.JSX.Element {
 
   const font = settings.terminalFont
   return (
-    <div className='flex min-h-full flex-col'>
-      {versionText !== null && (
-        <p
-          className='select-text border-panel-edge border-b px-3 py-2 text-text text-xs'
-          data-settings-version-notice={true}
-        >
-          {versionText}
-        </p>
-      )}
-      <SettingRow error={labelsRow.error} label='Labels' onCloseError={labelsRow.closeError}>
-        <Choices
-          choices={LABEL_CHOICES}
-          label='Labels'
-          onChange={value => {
-            labelsRow.save(() => update({ labels: value as LabelSet }))
-          }}
-          value={settings.labels}
-        />
-      </SettingRow>
-      <SettingRow
-        error={terminalRow.error}
-        label='Terminal app'
-        onCloseError={terminalRow.closeError}
-      >
-        <AppSelect
-          apps={terminalApps}
-          auto={AUTO_TERMINAL}
+    <RowFilterContext value={only}>
+      <div className='flex min-h-full flex-col'>
+        {only === null && versionText !== null && (
+          <p
+            className='select-text border-panel-edge border-b px-3 py-2 text-text text-xs'
+            data-settings-version-notice={true}
+          >
+            {versionText}
+          </p>
+        )}
+        <SettingRow error={labelsRow.error} label='Labels' onCloseError={labelsRow.closeError}>
+          <Choices
+            choices={LABEL_CHOICES}
+            label='Labels'
+            onChange={value => {
+              labelsRow.save(() => update({ labels: value as LabelSet }))
+            }}
+            value={settings.labels}
+          />
+        </SettingRow>
+        <SettingRow
+          error={terminalRow.error}
           label='Terminal app'
-          onChange={id => {
-            const terminalApp = TERMINAL_APP_IDS.find(t => t === id) ?? null
-            terminalRow.save(() => update({ terminalApp: terminalApp as TerminalAppId | null }))
-          }}
-          value={settings.terminalApp}
-        />
-      </SettingRow>
-      <SettingRow
-        error={projectRow.error}
-        label='Default app for "Open project"'
-        onCloseError={projectRow.closeError}
-      >
-        <AppSelect
-          apps={projectAppChoices(projectApps)}
-          auto={AUTO_PROJECT}
+          onCloseError={terminalRow.closeError}
+        >
+          <AppSelect
+            apps={terminalApps}
+            auto={AUTO_TERMINAL}
+            label='Terminal app'
+            onChange={id => {
+              const terminalApp = TERMINAL_APP_IDS.find(t => t === id) ?? null
+              terminalRow.save(() => update({ terminalApp: terminalApp as TerminalAppId | null }))
+            }}
+            value={settings.terminalApp}
+          />
+        </SettingRow>
+        <SettingRow
+          error={projectRow.error}
           label='Default app for "Open project"'
-          onChange={id => {
-            projectRow.save(() => update({ projectApp: id as ProjectAppId | null }))
-          }}
-          value={shownProjectApp(settings.projectApp)}
+          onCloseError={projectRow.closeError}
+        >
+          <AppSelect
+            apps={projectAppChoices(projectApps)}
+            auto={AUTO_PROJECT}
+            label='Default app for "Open project"'
+            onChange={id => {
+              projectRow.save(() => update({ projectApp: id as ProjectAppId | null }))
+            }}
+            value={shownProjectApp(settings.projectApp)}
+          />
+        </SettingRow>
+        <NumberRow
+          label='Escalation time'
+          max={MAX_ESCALATION_MINUTES}
+          min={0}
+          save={value => update({ escalationMinutes: value })}
+          unit='minutes (0 turns escalation off)'
+          value={settings.escalationMinutes}
         />
-      </SettingRow>
-      <NumberRow
-        label='Escalation time'
-        max={MAX_ESCALATION_MINUTES}
-        min={0}
-        save={value => update({ escalationMinutes: value })}
-        unit='minutes (0 turns escalation off)'
-        value={settings.escalationMinutes}
-      />
-      <CheckRow
-        checked={settings.rowFlash}
-        label='Row flash'
-        save={value => update({ rowFlash: value })}
-      />
-      <CheckRow
-        checked={settings.notifications}
-        label='macOS notification'
-        save={value => update({ notifications: value })}
-      />
-      <CheckRow
-        checked={settings.redBoxSound}
-        label='Sound for a red box'
-        save={value => update({ redBoxSound: value })}
-      />
-      <CheckRow
-        checked={settings.startAtLogin}
-        disabled={info !== null && !info.packaged}
-        hint={info !== null && !info.packaged ? 'Only works in the installed app.' : undefined}
-        label='Start at login'
-        save={value => update({ startAtLogin: value })}
-      />
-      <SelectRow
-        choices={POLL_CHOICES}
-        label='Poll interval'
-        save={value => update({ pollSeconds: value })}
-        text={seconds => (seconds === 1 ? '1 second' : `${seconds} seconds`)}
-        value={settings.pollSeconds}
-      />
-      <NumberRow
-        label='Snap distance'
-        max={MAX_SNAP}
-        min={0}
-        save={value => update({ snapDistance: value })}
-        unit='pixels'
-        value={settings.snapDistance}
-      />
-      <SelectRow
-        choices={PANEL_TRANSPARENCY_CHOICES}
-        label='Panel transparency'
-        save={value => update({ panelTransparency: value })}
-        text={percent => (percent === 0 ? '0% (solid)' : `${percent}%`)}
-        value={settings.panelTransparency}
-      />
-      <SelectRow
-        choices={INTERFACE_SCALE_CHOICES}
-        label='Interface scale'
-        save={value => update({ interfaceScale: value })}
-        text={percent => `${percent}%`}
-        value={settings.interfaceScale}
-      />
-      <SettingRow error={fontRow.error} label='Terminal font' onCloseError={fontRow.closeError}>
-        <datalist id='settings-font-families'>
-          {FONT_FAMILIES.map(family => (
-            <option key={family} value={family} />
-          ))}
-        </datalist>
-        <DraftField
-          label='Terminal font family'
-          list='settings-font-families'
-          onCommit={text => fontRow.save(() => update({ terminalFont: { ...font, family: text } }))}
-          type='text'
-          value={font.family}
-          width='w-36'
+        <CheckRow
+          checked={settings.rowFlash}
+          label='Row flash'
+          save={value => update({ rowFlash: value })}
         />
-        <DraftField
-          label='Terminal font size'
-          max={FONT_SIZE_MAX}
-          min={FONT_SIZE_MIN}
-          onCommit={text => {
-            const size = Number(text)
-            if (text.trim() === '' || !Number.isInteger(size)) {
-              return fontRow.save(() =>
-                Promise.reject(
-                  new Error(`Enter a whole number from ${FONT_SIZE_MIN} to ${FONT_SIZE_MAX}.`),
-                ),
-              )
+        <CheckRow
+          checked={settings.notifications}
+          label='macOS notification'
+          save={value => update({ notifications: value })}
+        />
+        <CheckRow
+          checked={settings.redBoxSound}
+          label='Sound for a red box'
+          save={value => update({ redBoxSound: value })}
+        />
+        <CheckRow
+          checked={settings.startAtLogin}
+          disabled={info !== null && !info.packaged}
+          hint={info !== null && !info.packaged ? 'Only works in the installed app.' : undefined}
+          label='Start at login'
+          save={value => update({ startAtLogin: value })}
+        />
+        <SelectRow
+          choices={POLL_CHOICES}
+          label='Poll interval'
+          save={value => update({ pollSeconds: value })}
+          text={seconds => (seconds === 1 ? '1 second' : `${seconds} seconds`)}
+          value={settings.pollSeconds}
+        />
+        <NumberRow
+          label='Snap distance'
+          max={MAX_SNAP}
+          min={0}
+          save={value => update({ snapDistance: value })}
+          unit='pixels'
+          value={settings.snapDistance}
+        />
+        <SelectRow
+          choices={PANEL_TRANSPARENCY_CHOICES}
+          label='Panel transparency'
+          save={value => update({ panelTransparency: value })}
+          text={percent => (percent === 0 ? '0% (solid)' : `${percent}%`)}
+          value={settings.panelTransparency}
+        />
+        <SelectRow
+          choices={INTERFACE_SCALE_CHOICES}
+          label='Interface scale'
+          save={value => update({ interfaceScale: value })}
+          text={percent => `${percent}%`}
+          value={settings.interfaceScale}
+        />
+        <SettingRow error={fontRow.error} label='Terminal font' onCloseError={fontRow.closeError}>
+          <datalist id='settings-font-families'>
+            {FONT_FAMILIES.map(family => (
+              <option key={family} value={family} />
+            ))}
+          </datalist>
+          <DraftField
+            label='Terminal font family'
+            list='settings-font-families'
+            onCommit={text =>
+              fontRow.save(() => update({ terminalFont: { ...font, family: text } }))
             }
-            return fontRow.save(() => update({ terminalFont: { ...font, size } }))
-          }}
-          type='number'
-          value={String(font.size)}
-          width='w-14'
-        />
-        <span className='text-text-dim'>pt</span>
-      </SettingRow>
-      <SettingRow error={modeRow.error} label='Display mode' onCloseError={modeRow.closeError}>
-        <Choices
-          choices={DISPLAY_CHOICES}
-          label='Display mode'
-          onChange={value => {
-            modeRow.save(() => window.bifrost.display.set(value as DisplayMode))
-          }}
-          value={mode}
-        />
-      </SettingRow>
-      {/* Show the setup dialog again (spec 11.1). */}
-      <IntroRow />
-      <p className='mt-auto px-3 py-2 text-text-dim text-xs' data-settings-version={true}>
-        {info === null ? 'Bifrost' : `Bifrost ${info.version}`}
-      </p>
-    </div>
+            type='text'
+            value={font.family}
+            width='w-36'
+          />
+          <DraftField
+            label='Terminal font size'
+            max={FONT_SIZE_MAX}
+            min={FONT_SIZE_MIN}
+            onCommit={text => {
+              const size = Number(text)
+              if (text.trim() === '' || !Number.isInteger(size)) {
+                return fontRow.save(() =>
+                  Promise.reject(
+                    new Error(`Enter a whole number from ${FONT_SIZE_MIN} to ${FONT_SIZE_MAX}.`),
+                  ),
+                )
+              }
+              return fontRow.save(() => update({ terminalFont: { ...font, size } }))
+            }}
+            type='number'
+            value={String(font.size)}
+            width='w-14'
+          />
+          <span className='text-text-dim'>pt</span>
+        </SettingRow>
+        <SettingRow error={modeRow.error} label='Display mode' onCloseError={modeRow.closeError}>
+          <Choices
+            choices={DISPLAY_CHOICES}
+            label='Display mode'
+            onChange={value => {
+              modeRow.save(() => window.bifrost.display.set(value as DisplayMode))
+            }}
+            value={mode}
+          />
+        </SettingRow>
+        {/* Show the setup dialog again (spec 11.1). */}
+        <IntroRow />
+        {only === null && (
+          <p className='mt-auto px-3 py-2 text-text-dim text-xs' data-settings-version={true}>
+            {info === null ? 'Bifrost' : `Bifrost ${info.version}`}
+          </p>
+        )}
+      </div>
+    </RowFilterContext>
   )
 }
