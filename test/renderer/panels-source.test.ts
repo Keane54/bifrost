@@ -24,6 +24,28 @@ describe('SelectedItemPanel source', () => {
   })
 })
 
+// the user (2026-11-06): the texts show in a status icon of the name line, not under the send box.
+describe('SelectedItemPanel status icon source', () => {
+  const body = PANEL.split('\n')
+    .filter(line => !line.startsWith('import '))
+    .join('\n')
+  const selected = body.slice(0, body.indexOf('function NoSelection'))
+  const SEND_BOX = readFileSync(
+    join(__dirname, '../../src/renderer/src/panels/SendBox.tsx'),
+    'utf8',
+  )
+
+  it('renders no NoticeLine or ErrorLine in the selected-row branch', () => {
+    expect(selected).not.toContain('NoticeLine')
+    expect(selected).not.toContain('ErrorLine')
+    expect(body.slice(body.indexOf('function NoSelection'))).toContain('NoticeLine')
+  })
+
+  it('renders no send line in the send box', () => {
+    expect(SEND_BOX).not.toContain('data-send-line')
+  })
+})
+
 describe('SelectedItemPanel name tooltip', () => {
   it('gives the name a title from aliasTip', () => {
     expect(PANEL).toContain('title={aliasTip(row)}')

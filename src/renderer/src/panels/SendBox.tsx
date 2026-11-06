@@ -1,23 +1,37 @@
 // The send box of the Selected Item panel (spec 8.4 item 6). Enter sends. Shift+Enter adds a line.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { isSendKey } from '../../../shared/input'
 import type { SessionRow } from '../../../shared/types'
 import { actionLabel, actionStateFor } from '../actions/action-model'
 import { useActions } from '../actions/actions-context'
 import { friendlyError } from '../actions/errors'
 import { focusRequestUsable } from '../actions/run-plan'
-import { cx } from '../lib/cx'
 import { errorMessage } from '../lib/error-message'
 
 const SENDING = 'Sending...'
 const SLASH_HINT = 'This runs as a slash command.'
+
+// The line of the send box. The panel shows it in its status icon.
+export interface SendLine {
+  text: string
+  // True for a failed send.
+  failed: boolean
+  // Clears the failed send.
+  clearFailure: () => void
+}
 
 interface Failure {
   sessionId: string
   message: string
 }
 
-export default function SendBox({ row }: { row: SessionRow }): React.JSX.Element {
+export default function SendBox({
+  onLine,
+  row,
+}: {
+  onLine: (line: SendLine | null) => void
+  row: SessionRow
+}): React.JSX.Element {
   const { clearFocusRequest, contextFor, focusRequest, send } = useActions()
   const sessionId = row.sessionId
   const ctx = contextFor(sessionId)
@@ -105,12 +119,22 @@ export default function SendBox({ row }: { row: SessionRow }): React.JSX.Element
     })
   }, [clearFocusRequest, focusRequest, sessionId])
 
-  // One line under the field. The disabled reason comes first.
-  let line: { text: string; dim: boolean } | null = null
-  if (!state.enabled && state.reason !== null) line = { dim: true, text: state.reason }
-  else if (isSending) line = { dim: true, text: SENDING }
-  else if (failure?.sessionId === sessionId) line = { dim: false, text: failure.message }
-  else if (draft.trimStart().startsWith('/')) line = { dim: true, text: SLASH_HINT }
+  // One line for the panel. The disabled reason comes first.
+  let text: string | null = null
+  let failed = false
+  if (!state.enabled && state.reason !== null) text = state.reason
+  else if (isSending) text = SENDING
+  else if (failure?.sessionId === sessionId) {
+    text = failure.message
+    failed = true
+  } else if (draft.trimStart().startsWith('/')) text = SLASH_HINT
+
+  const clearFailure = useCallback(() => setFailure(null), [])
+  // The panel gets the line after each change. When the box goes away, the line goes away.
+  useEffect(() => {
+    onLine(text === null ? null : { clearFailure, failed, text })
+  }, [clearFailure, failed, onLine, text])
+  useEffect(() => () => onLine(null), [onLine])
 
   return (
     <div className='flex flex-col gap-1' data-send-box={true}>
@@ -135,14 +159,6 @@ export default function SendBox({ row }: { row: SessionRow }): React.JSX.Element
         spellCheck={false}
         value={draft}
       />
-      {line !== null && (
-        <p
-          className={cx('min-w-0 whitespace-pre-line', line.dim ? 'text-text-dim' : 'text-text')}
-          data-send-line={true}
-        >
-          {line.text}
-        </p>
-      )}
     </div>
   )
 }
