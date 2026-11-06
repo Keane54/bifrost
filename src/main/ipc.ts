@@ -421,7 +421,11 @@ export function registerIpc(home: TestHome | null = null): void {
     fromPage(e, async () => (await settings).update(patch)),
   )
   ipcMain.handle('system:info', e =>
-    fromPage(e, async () => ({ packaged: app.isPackaged, version: app.getVersion() })),
+    fromPage(e, async () => ({
+      packaged: app.isPackaged,
+      testHome: testHome !== null,
+      version: app.getVersion(),
+    })),
   )
   // The UI store opens one time. The handlers use the same store.
   const uiStore = openUiStore(join(app.getPath('userData'), 'ui-state.json'))

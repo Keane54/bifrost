@@ -463,6 +463,7 @@ Send box rules:
 - A new session of Bifrost shows no statusline row in its chat window (section 6.3).
 - Visible chat windows use the WebGL renderer.
 - A chat window in a back tab, or a minimised chat window, releases its WebGL context.
+- During Take control, the chat window shows the Take control loader in place of the terminal (section 9.2).
 
 Size rule (the user approved this on 2026-11-04; M3 builds it):
 
@@ -590,13 +591,24 @@ Bifrost does these steps:
 
 1. Find the terminal app from the parent processes of the session. Use the `.app` part of the process path for the app name.
 2. Show the confirmation: "This ends the {terminal} process and hands control to Bifrost."
-3. Send SIGTERM to the session process.
-4. Wait for the process to end, for a maximum of 5 seconds.
-5. Run `claude --bg --settings <statusline override> --resume <session-id>` in the session directory (D13).
-6. Find the new entry by `sessionId`, not by name.
-7. Open the chat window of the session.
+3. Open the chat window of the session at once, and select the row. The window shows the Take control loader.
+4. Send SIGTERM to the session process.
+5. Wait for the process to end, for a maximum of 5 seconds.
+6. Run `claude --bg --settings <statusline override> --resume <session-id>` in the session directory (D13).
+7. Find the new entry by `sessionId`, not by name.
+8. The chat window attaches to the session. The loader goes away when the terminal shows its first output from Claude.
 
 If the process does not end in 5 seconds, Bifrost stops and shows an error. It does not start a copy of the session.
+
+If Take control fails, Bifrost removes the loader, closes the chat window and shows the error. If you close the chat window during Take control, it stays closed.
+
+The Take control loader (user decision, 2026-11-06):
+
+- The loader shows in the chat window while Take control runs, and until the terminal shows its first output from Claude. A terminal that ends also removes the loader, so the window shows why it ended.
+- During that time, the chat window hides the terminal. The terminal keeps its size and its focus.
+- The top two thirds of the window show the normal panel background and the line "Taking control of <name>...".
+- The bottom third shows a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge, so it has no hard line. It is at 40% opacity.
+- A CSS animation shifts the gradient slowly: 12 seconds from one end to the other, and back. With `prefers-reduced-motion: reduce`, the gradient does not move.
 
 ### 9.3 Key rules
 
@@ -960,6 +972,8 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | Unit | Vitest | The state machine, the registry merge, install and uninstall, and key map conflicts. |
 | Mod | `claude plugin test` | The hooks module, with a fake `http.fetch`. |
 | Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. |
+
+With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)` and `stopLoader(sessionId)` show and remove the Take control loader with no real Take control. A visual check uses it. An app with the real home has no hook.
 | Manual | Checklist | The M0 questions, Take control and the DMG. |
 
 ## 16. Milestones

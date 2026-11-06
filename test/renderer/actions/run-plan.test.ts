@@ -93,10 +93,11 @@ describe('planRun', () => {
     })
   })
 
-  it('Take control asks with the terminal name and opens the chat window after', () => {
+  // The provider opens the chat window before the call, with the loader (spec 9.2).
+  it('Take control asks with the terminal name and needs no step after the call', () => {
     const plan = planRun('take-control', external, ctx())
     expect(plan).toEqual({
-      after: 'open-chat',
+      after: 'none',
       call: 'take-control',
       confirm: confirmFor('take-control', external, 'plain'),
       kind: 'call',
