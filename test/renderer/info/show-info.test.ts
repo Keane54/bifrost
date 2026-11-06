@@ -68,17 +68,43 @@ describe('infoSections', () => {
     expect(item(sections, 'Session', 'Claude Code name')).toBe('fix-a')
   })
 
-  it('gives the current ID as the session ID, then the first session ID, after a /clear', () => {
-    const NEW = '1db82d17-d5fd-4e53-a042-7dd67ea654d8'
+  // Ruling of 2026-11-06: Session ID is the ID that claude --resume needs.
+  const NEW = '1db82d17-d5fd-4e53-a042-7dd67ea654d8'
+  const JOB = '2f493bf0-1598-4b3b-b419-8acb9cb11bcb'
+
+  it('gives the current ID of an interactive row after a /clear as its session ID', () => {
     const sections = infoSections({ ...full, currentId: NEW }, NOW, null, UTC)
+    expect(sections[0].items.map(i => i.label)).toEqual([
+      'Name',
+      'Session ID',
+      'Short ID',
+      'Kind',
+      'PID',
+    ])
+    expect(item(sections, 'Session', 'Session ID')).toBe(NEW)
+  })
+
+  it('gives the resume ID of a background row, then its current conversation', () => {
+    const job = { ...full, currentId: NEW, kind: 'owned' as const, resumeId: JOB }
+    const sections = infoSections(job, NOW, null, UTC)
     expect(sections[0].items.map(i => i.label).slice(0, 3)).toEqual([
       'Name',
       'Session ID',
-      'First session ID',
+      'Current conversation',
     ])
-    expect(item(sections, 'Session', 'Session ID')).toBe(NEW)
-    expect(item(sections, 'Session', 'First session ID')).toBe(ID)
-    expect(sections[0].items.find(i => i.label === 'First session ID')?.mono).toBe(true)
+    expect(item(sections, 'Session', 'Session ID')).toBe(JOB)
+    expect(item(sections, 'Session', 'Current conversation')).toBe(NEW)
+    expect(sections[0].items.find(i => i.label === 'Current conversation')?.mono).toBe(true)
+    // A background row with no /clear shows one ID only.
+    const plain = infoSections({ ...full, kind: 'owned', resumeId: ID }, NOW, null, UTC)
+    expect(plain[0].items.map(i => i.label)).not.toContain('Current conversation')
+  })
+
+  it('shows - as the session ID of a background row whose resume ID is not known yet', () => {
+    const job = { ...full, currentId: NEW, kind: 'owned' as const }
+    const sections = infoSections(job, NOW, null, UTC)
+    expect(item(sections, 'Session', 'Session ID')).toBe('-')
+    expect(item(sections, 'Session', 'Current conversation')).toBe(NEW)
   })
 
   it('infoSections gives the values of spec 8.6 in order', () => {

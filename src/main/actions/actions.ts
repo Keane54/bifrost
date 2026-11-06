@@ -1,3 +1,4 @@
+import { continueIdOf, REFUSED_NO_RESUME_ID } from '../../shared/session-ids'
 import type { ProjectApp, SessionRow } from '../../shared/types'
 import type { ExecFn } from '../claude/cli'
 import type { InstalledApp } from './project-apps'
@@ -25,10 +26,12 @@ export function createActions(deps: ActionDeps): Actions {
     return row
   }
   return {
-    // The copy is the current ID: the conversation that the row shows now (spec 6.1).
+    // The copy is the ID that claude --resume needs to continue the session (ruling of
+    // 2026-11-06). Bifrost copies nothing while it does not know the resume ID of a job.
     async copySessionId(sessionId) {
-      const row = find(sessionId)
-      deps.writeClipboard(row.currentId ?? row.sessionId)
+      const id = continueIdOf(find(sessionId))
+      if (id === undefined) throw new Error(REFUSED_NO_RESUME_ID)
+      deps.writeClipboard(id)
     },
     async listApps() {
       return (await deps.apps()).map(({ id, label }) => ({ id, label }))

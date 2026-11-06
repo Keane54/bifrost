@@ -14,6 +14,7 @@ import {
   REASON_PROMPT_IS_COMMAND,
   worktreeName,
 } from '../../shared/new-session'
+import { continueIdOf, currentIdOf, REFUSED_NO_RESUME_ID } from '../../shared/session-ids'
 import type { ResumeAllResult, SeenCounts, SessionRow, WorktreeCheck } from '../../shared/types'
 import { UUID_PATTERN } from '../../shared/uuid'
 import { worktreeOf, worktreeRoot } from '../../shared/worktree'
@@ -85,7 +86,6 @@ const REFUSED_RM_SLOW = 'refused: claude rm took too long'
 const REFUSED_WORKTREE_CHANGED = 'refused: the worktree changed after the check'
 const REFUSED_NOT_STOPPED = 'refused: the session did not stop'
 const REFUSED_NO_MESSAGES = 'refused: the session has no messages yet'
-const REFUSED_NO_RESUME_ID = 'refused: the ID that resumes this session is not known yet'
 const REASON_NO_SHORT_ID = 'claude --bg did not give a session ID.'
 const REASON_CREATING = 'A new session is already starting. Please wait.'
 const REASON_NO_CWD = "Bifrost doesn't know the project folder of this session."
@@ -141,20 +141,15 @@ export interface SessionActions {
 
 type ResumeRow = Pick<SessionRow, 'currentId' | 'kind' | 'resumeId' | 'sessionId'>
 
-// The session ID of the conversation that a row shows now (spec 6.1). A /clear changes it.
-function currentIdOf(row: Pick<SessionRow, 'currentId' | 'sessionId'>): string {
-  return row.currentId ?? row.sessionId
-}
-
-// The session ID that Resume and Resume all pass (spec 9.1).
+// The session ID that Resume and Resume all pass (spec 9.1): the ID that claude --resume needs.
 // An owned row uses the resume ID of the registry: the original session ID of the job. A resume
 // by the ID after a /clear starts a second job (test of 2026-11-06). So Bifrost refuses when it
 // does not know the resume ID yet.
 // An external row uses its current ID, as Take control does.
 function resumeIdOf(row: ResumeRow): string {
-  if (row.kind === 'external') return currentIdOf(row)
-  if (row.resumeId === undefined) throw new Error(REFUSED_NO_RESUME_ID)
-  return row.resumeId
+  const id = continueIdOf(row)
+  if (id === undefined) throw new Error(REFUSED_NO_RESUME_ID)
+  return id
 }
 
 // The arguments of "claude --bg --resume" for Resume and Resume all.

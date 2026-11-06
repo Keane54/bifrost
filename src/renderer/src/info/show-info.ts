@@ -1,5 +1,6 @@
 // The values of the Show Info panel (spec 8.6). The module is pure.
 
+import { continueIdOf, currentIdOf } from '../../../shared/session-ids'
 import type { PrInfo, RateWindow, SessionRow } from '../../../shared/types'
 import { worktreeOf } from '../../../shared/worktree'
 import { friendlyError } from '../actions/errors'
@@ -85,11 +86,12 @@ export function infoSections(
         ...(row.name === row.claudeName
           ? []
           : [{ label: 'Claude Code name', value: dash(row.claudeName) }]),
-        // After a /clear, the session ID is the current ID, and the row ID is the first one.
-        { label: 'Session ID', mono: true, value: dash(row.currentId ?? row.sessionId) },
-        ...(row.currentId === undefined
+        // The session ID is the ID that claude --resume needs (ruling of 2026-11-06). For a job
+        // after a /clear, that is not the conversation that the row shows now.
+        { label: 'Session ID', mono: true, value: dash(continueIdOf(row)) },
+        ...(continueIdOf(row) === currentIdOf(row)
           ? []
-          : [{ label: 'First session ID', mono: true as const, value: row.sessionId }]),
+          : [{ label: 'Current conversation', mono: true as const, value: currentIdOf(row) }]),
         { label: 'Short ID', mono: true, value: dash(row.shortId) },
         { label: 'Kind', value: kind },
         { label: 'PID', value: row.pid === undefined ? '-' : String(row.pid) },
