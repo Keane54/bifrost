@@ -139,10 +139,15 @@ export interface SessionActions {
 }
 
 // The arguments of "claude --bg --resume" for Resume and Resume all.
-// They add no flag. A resume with a new flag on a stopped background session starts a copy with a
-// new session ID. A background session keeps its saved options, so it keeps the hidden statusline.
-export function resumeArgs(sessionId: string): string[] {
-  return ['--bg', '--resume', sessionId]
+// An owned row adds no flag. A resume with a new flag on a stopped background session starts a
+// copy with a new session ID. A background session keeps its saved options, so a session that
+// Bifrost started keeps the hidden statusline.
+// An external row is parked only after a failed Take control. Its last entry was in the
+// foreground, so it has no saved options. It gets the Take control arguments, which hide the
+// statusline and keep the same session ID.
+export function resumeArgs(row: Pick<SessionRow, 'kind' | 'sessionId'>): string[] {
+  if (row.kind === 'external') return takeControlArgs(row.sessionId)
+  return ['--bg', '--resume', row.sessionId]
 }
 
 // The arguments of "claude --bg --resume" for Take control (D13).
@@ -400,7 +405,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (row.state !== 'parked') throw new Error(REFUSED_NOT_PARKED)
     checkSessionId(row)
     await checkProjectDir(row.cwd)
-    await start(run, resumeArgs(row.sessionId), row.cwd, 'claude --bg --resume')
+    await start(run, resumeArgs(row), row.cwd, 'claude --bg --resume')
   }
 
   // Check isAlive each END_POLL_MS for up to limitMs. Return true when the process ended.

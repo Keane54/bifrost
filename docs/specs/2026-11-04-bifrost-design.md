@@ -561,7 +561,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Interrupt | Full stop | Owned | Send Esc to the session. |
 | Rename | Set callsign | Owned | Type `/rename <name>` into the session. |
 | Set priority | Set threat level | All | Bifrost data only. |
-| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. It adds no flag (D13). |
+| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. An owned row adds no flag. A parked external row (after a failed Take control) gets the statusline override, as Take control does (D13). |
 | Resume all | Reactivate all | Parked | Resume each parked session that was active when Bifrost last ran. |
 | Show Info | Scan | All | Open the Show Info panel. |
 | Copy session ID | Copy transponder ID | All | Copy to the clipboard. |
@@ -1062,7 +1062,7 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 10. D10: Install and Turn on remove an old hook install before the first `claude plugin` command. A failure stops the action. Remove does the old removal last, after the plugin steps and the delete of the mod folder (controller ruling). The reason: a failed removal of the old install must not leave the mod installed. Bifrost keeps `statusline-original.json` and the backups.
 11. D11: The API for M5a is `live.status()`, `live.install()`, `live.enable()`, `live.disable()` and `live.uninstall()`. `enable` refuses when the plugin is not installed.
 12. D12: The parser keeps `five_hour` and `seven_day` as the rate limits and drops other windows. This work adds no Usage HUD.
-13. D13: A new session always gets the `--settings` statusLine override. Take control passes it too, because it starts from a foreground session: the session ID stays the same and the statusline goes away (test of 2026-11-06). Resume and Resume all add no flag, because a resume with a new flag on a background session starts a copy with a new session ID. Section 22 item 1 passed the override only without the wrapper.
+13. D13: A new session always gets the `--settings` statusLine override. Take control passes it too, because it starts from a foreground session: the session ID stays the same and the statusline goes away (test of 2026-11-06). Resume and Resume all add no flag to an owned row, because a resume with a new flag on a background session starts a copy with a new session ID. A parked external row exists only after a failed Take control. Its last entry was in the foreground, so Resume passes the override for it, as Take control does. A Warp session that ends with no Take control does not become a parked row, so Bifrost cannot resume it. Section 22 item 1 passed the override only without the wrapper.
 14. D14: This section holds the decisions of the Live details work. Section 22 keeps its text, with a note that this section changes its statusline line.
 15. O1: Yes. A controller task installs the mod at user scope for a short time (Part B of the check). It saves backups and SHA-256 values first, and it runs no `/reload-plugins` in a session of the user.
 16. O2: The guard `cc-plugin-sec-default` is not in the list of the user. The `classic.*` events are usable.

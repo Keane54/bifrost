@@ -219,7 +219,13 @@ const expectedTakeControl = (id: string): string[] => [
 
 describe('resumeArgs and takeControlArgs', () => {
   test('Resume and Resume all add no flag, because a flag on a background session starts a copy', () => {
-    expect(resumeArgs('S1')).toEqual(expectedResume('S1'))
+    expect(resumeArgs({ kind: 'owned', sessionId: 'S1' })).toEqual(expectedResume('S1'))
+  })
+
+  test('Resume of a parked foreground session turns the statusline off, as Take control does', () => {
+    // A failed Take control parks a session whose last entry was in the foreground. It has no
+    // saved options, so the flag keeps the same session ID (test of 2026-11-06).
+    expect(resumeArgs({ kind: 'external', sessionId: 'S1' })).toEqual(expectedTakeControl('S1'))
   })
 
   test('Take control turns the statusline off, because the session was in the foreground', () => {
