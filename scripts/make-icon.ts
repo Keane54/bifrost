@@ -15,12 +15,16 @@ function png(size: number): Buffer {
 
 const iconset = join(ROOT, 'build/icon.iconset')
 rmSync(iconset, { force: true, recursive: true })
-mkdirSync(iconset, { recursive: true })
-for (const size of [16, 32, 128, 256, 512]) {
-  writeFileSync(join(iconset, `icon_${size}x${size}.png`), png(size))
-  writeFileSync(join(iconset, `icon_${size}x${size}@2x.png`), png(size * 2))
+// The finally block removes the iconset folder also when a step fails.
+try {
+  mkdirSync(iconset, { recursive: true })
+  for (const size of [16, 32, 128, 256, 512]) {
+    writeFileSync(join(iconset, `icon_${size}x${size}.png`), png(size))
+    writeFileSync(join(iconset, `icon_${size}x${size}@2x.png`), png(size * 2))
+  }
+  writeFileSync(join(ROOT, 'build/icon.png'), png(1024))
+  writeFileSync(join(ROOT, 'resources/icon.png'), png(512))
+  execFileSync('iconutil', ['-c', 'icns', iconset, '-o', join(ROOT, 'build/icon.icns')])
+} finally {
+  rmSync(iconset, { force: true, recursive: true })
 }
-writeFileSync(join(ROOT, 'build/icon.png'), png(1024))
-writeFileSync(join(ROOT, 'resources/icon.png'), png(512))
-execFileSync('iconutil', ['-c', 'icns', iconset, '-o', join(ROOT, 'build/icon.icns')])
-rmSync(iconset, { force: true, recursive: true })

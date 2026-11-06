@@ -19,8 +19,26 @@ describe('the icon script', () => {
   it('readPalette reads the tokens of app.css', () => {
     const palette = readPalette(CSS)
     expect(palette.bg).toEqual([10, 10, 10])
-    expect(palette.edge).toEqual([255, 255, 255])
     expect(palette.bands).toHaveLength(3)
+  })
+
+  it('readPalette blends the 10% alpha of the edge over the background (Task 6 ruling)', () => {
+    // --color-panel-edge is rgb(255 255 255 / 0.1) and --color-bg is #0a0a0a.
+    // 10 + (255 - 10) * 0.1 = 34.5, which rounds to 35.
+    expect(readPalette(CSS).edge).toEqual([35, 35, 35])
+    const css = '--color-bg: #000000; --color-panel-edge: rgb(200 100 0 / 0.5);'
+    const bands = '--color-tab-1: #010101; --color-tab-4: #020202; --color-tab-2: #030303;'
+    expect(readPalette(css + bands).edge).toEqual([100, 50, 0])
+    // A token without alpha is opaque.
+    const solid = '--color-bg: #000000; --color-panel-edge: #ffffff;'
+    expect(readPalette(solid + bands).edge).toEqual([255, 255, 255])
+  })
+
+  it('drawIcon draws a subtle edge in the blended colour, not opaque white', () => {
+    const size = 64
+    const pixels = drawIcon(size, readPalette(CSS))
+    const i = (0 * size + 32) * 4
+    expect([...pixels.subarray(i, i + 4)]).toEqual([35, 35, 35, 255])
   })
 
   it('readPalette throws for a missing token', () => {

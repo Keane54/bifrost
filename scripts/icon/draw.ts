@@ -9,23 +9,43 @@ export interface IconPalette {
   bands: Rgb[]
 }
 
-// Read the value of a colour token. It accepts #rrggbb and rgb(r g b / a).
-function readColour(css: string, name: string): Rgb {
+// A colour and its alpha from 0 to 1.
+interface Rgba {
+  rgb: Rgb
+  alpha: number
+}
+
+// Read the value of a colour token. It accepts #rrggbb and rgb(r g b / a). Without an alpha, the
+// colour is opaque.
+function readColour(css: string, name: string): Rgba {
   const match = css.match(new RegExp(`--color-${name}:\\s*([^;]+);`))
   if (!match) throw new Error(`No colour token --color-${name}`)
   const value = match[1].trim()
   const hex = value.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/)
-  if (hex) return [hex[1], hex[2], hex[3]].map(h => Number.parseInt(h, 16)) as Rgb
-  const fn = value.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/)
-  if (fn) return [Number(fn[1]), Number(fn[2]), Number(fn[3])]
+  if (hex) {
+    return { alpha: 1, rgb: [hex[1], hex[2], hex[3]].map(h => Number.parseInt(h, 16)) as Rgb }
+  }
+  const fn = value.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)(?:\s*[/,]\s*([\d.]+))?/)
+  if (fn) {
+    const alpha = fn[4] === undefined ? 1 : Math.min(1, Math.max(0, Number(fn[4])))
+    return { alpha, rgb: [Number(fn[1]), Number(fn[2]), Number(fn[3])] }
+  }
   throw new Error(`The token --color-${name} has a form that this script cannot read: ${value}`)
 }
 
+// The colour of a translucent colour over an opaque background.
+function blend(top: Rgba, under: Rgb): Rgb {
+  return top.rgb.map((c, i) => Math.round(under[i] + (c - under[i]) * top.alpha)) as Rgb
+}
+
+// The edge token is translucent white. The icon blends it over the background, the same as the
+// app shows a panel edge. So the edge is subtle on a dark Dock (Task 6 ruling).
 export function readPalette(css: string): IconPalette {
+  const bg = blend(readColour(css, 'bg'), [0, 0, 0])
   return {
-    bands: ['tab-1', 'tab-4', 'tab-2'].map(name => readColour(css, name)),
-    bg: readColour(css, 'bg'),
-    edge: readColour(css, 'panel-edge'),
+    bands: ['tab-1', 'tab-4', 'tab-2'].map(name => blend(readColour(css, name), bg)),
+    bg,
+    edge: blend(readColour(css, 'panel-edge'), bg),
   }
 }
 
