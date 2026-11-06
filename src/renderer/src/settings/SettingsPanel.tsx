@@ -152,9 +152,11 @@ export default function SettingsPanel(): React.JSX.Element {
             // event stops here, so no other Esc acts on it.
             onKeyDown={e => {
               if (e.key !== 'Escape') return
+              const action = searchEscape(query, e.nativeEvent.isComposing)
+              if (action === 'ignore') return
               e.preventDefault()
               e.stopPropagation()
-              if (searchEscape(query) === 'clear') setQuery('')
+              if (action === 'clear') setQuery('')
               else close()
             }}
             placeholder='Search settings'

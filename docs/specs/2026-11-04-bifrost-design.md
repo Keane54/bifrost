@@ -925,7 +925,7 @@ Search (user decision, 2026-11-06):
 - A query can also mix the words: each word can match the title of the section, the label of the row or a part of its key, for example "keys take", "general flash" or "take cmd". In a mix, a word of one character must be a key name, so "cmd shift t" finds only Cmd+Shift+T.
 - When nothing matches, the panel shows "No settings match "<query>"."
 - A row that the search hides acts as unmounted for the Save rules: its failed save does not keep Settings open, and its error does not show again. In Keys, the error of a hidden row shows at the top of the section.
-- Esc in the search field clears the query first, and the event stops there. Esc in an empty search field closes Settings, as the Esc key does (section 9.4).
+- Esc in the search field clears the query first, and the event stops there. Esc in an empty search field closes Settings, as the Esc key does (section 9.4). During an IME composition, Esc only cancels the composition.
 - Cmd+F moves the focus to the search field while Settings has the focus. A click on a part of the panel with no control gives the focus to the panel. With no focus at all, Cmd+F works when Settings is the front panel. The key map has no Cmd+F. If a user binds Cmd+F to a command in Settings > Keys, that command runs first.
 - The list of the General labels is in `settings/search.ts`. A source test checks it against Settings > General. A new row of General must add its label to that list.
 

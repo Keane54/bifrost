@@ -200,8 +200,14 @@ describe('the texts and the keys of the search field', () => {
   })
 
   it('Esc clears a query first, and closes Settings from an empty field', () => {
-    expect(searchEscape('flash')).toBe('clear')
-    expect(searchEscape('')).toBe('close')
+    expect(searchEscape('flash', false)).toBe('clear')
+    expect(searchEscape('', false)).toBe('close')
+  })
+
+  // Review Minor 2: during an IME composition, Esc cancels the composition only.
+  it('Esc does nothing more during an IME composition', () => {
+    expect(searchEscape('flash', true)).toBe('ignore')
+    expect(searchEscape('', true)).toBe('ignore')
   })
 
   it('Cmd+F moves the focus to the search field while Settings has the focus', () => {

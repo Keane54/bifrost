@@ -187,8 +187,10 @@ export function noMatchText(query: string): string {
 }
 
 // Esc in the search field clears the query first. In an empty field, Esc closes Settings, as the
-// Esc key does outside a text field (spec 9.4).
-export function searchEscape(value: string): 'clear' | 'close' {
+// Esc key does outside a text field (spec 9.4). During an IME composition, Esc only cancels the
+// composition (review Minor 2).
+export function searchEscape(value: string, composing: boolean): 'clear' | 'close' | 'ignore' {
+  if (composing) return 'ignore'
   return value === '' ? 'close' : 'clear'
 }
 
