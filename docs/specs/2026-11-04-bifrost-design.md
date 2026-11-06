@@ -1090,3 +1090,16 @@ The controller made these decisions in M5a. The M5a ledger, `docs/m5-findings.md
 13. C4: The Bifrost shortcuts pause while the key recorder of Settings > Keys records. The app menu also gives its keys to the recorder during that time.
 14. C7: Settings > Keys refuses a key only when the key adds a conflict that the keys did not have. A conflict in the settings file stays.
 15. C9: The setup dialog lists the changes in the order of Install (section 11.1).
+
+## 25. Decisions in M5b (2026-11-06)
+
+The controller made these decisions in M5b. The M5b rulings, `docs/m5-findings.md` and the final review give the reasons.
+
+1. R4: The high bar of the Usage HUD uses amber `#d4730a` (`usage-high`). The Service status colours are greens, teals, blues and amber `#d4730a`. They have no yellow, red, grey, purple or pink. Each one is at least 0.10 from the box red and the box yellow in OKLab. This replaces the colours of D21 and D30 (section 8.11).
+2. R6: The app bundle has no `node-pty/build` folder. So each chip loads its own node-pty prebuild (section 14.1).
+3. R7: The fake `claude` of the smoke test writes the attach line to `attach.log` in the test home. The test reads that file, because WebGL draws the terminal text and the DOM has no text to read (section 15).
+4. R13: A check of the app in the real home records a list of `~/.bifrost` with the size and the SHA-256 of each file (not `live.sock`), before and after the run. The smoke test does this check too, in addition to the three Claude files.
+5. R18: The DMG has an ad-hoc signature only (`codesign -s -`). Bifrost uses no keychain identity, no notarisation and no upload (section 14.1).
+6. A click on the PR in Show Info runs the PR lookup again. The lookup uses the cache while it is fresh. Else `gh` runs again. So the link works also after 5 minutes (section 8.6).
+7. A limit whose reset time has passed shows `-` and the reset time, in the Usage HUD and in Show Info. The use of the new window is not known until the next message. This replaces the 0% of D19. A use value that is not a finite number also shows `-` (section 8.8).
+8. The Service status panel shows "since <time>" after the level of a service that is not ok. The time is the start of the oldest incident at that level (section 8.11).
