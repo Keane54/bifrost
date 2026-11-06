@@ -23,8 +23,8 @@ cat >"$dir/$PPID-$$.json"
 exit 0
 `
 
-export const UUID_PATTERN =
-  '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+// The definition lives in the shared folder. This line keeps the old imports working.
+export { UUID_PATTERN } from '../../shared/uuid'
 
 // One hex digit as a sh case pattern.
 // The pattern has no range, because the locale can change the characters in a range.

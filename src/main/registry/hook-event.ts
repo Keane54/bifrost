@@ -8,11 +8,15 @@ export type HookEventName =
   | 'Notification'
   | 'Stop'
   | 'StopFailure'
+  // No hook has this name. The mod gives it for a turn that the user stopped.
+  | 'TurnAborted'
 
 export interface HookEvent {
   name: HookEventName
   sessionId: string
   at: number
+  // The order number of the mod for one session. Only lines of the mod have it.
+  seq?: number
   cwd?: string
   toolName?: string
   notificationType?: string

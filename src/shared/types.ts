@@ -127,3 +127,15 @@ export interface ProjectApp {
   id: ProjectAppId
   label: string
 }
+
+// One usage window of the plan. resetsAt is in milliseconds.
+export interface RateWindow {
+  usedPercent: number
+  resetsAt: number
+}
+
+// The usage windows of the plan. A plan can lack a window.
+export interface RateLimits {
+  fiveHour?: RateWindow
+  sevenDay?: RateWindow
+}
