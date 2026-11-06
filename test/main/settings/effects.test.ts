@@ -43,6 +43,7 @@ describe('settingsEffects', () => {
     expect(settingsEffects(prev, { ...prev, terminalApp: 'warp' })).toEqual([])
     const others: Settings = {
       ...prev,
+      animatedBackground: false,
       labels: 'space',
       notifications: false,
       panelTransparency: 30,

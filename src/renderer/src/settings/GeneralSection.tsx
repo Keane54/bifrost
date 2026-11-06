@@ -393,6 +393,13 @@ export default function GeneralSection(): React.JSX.Element {
         text={percent => (percent === 0 ? '0% (solid)' : `${percent}%`)}
         value={settings.panelTransparency}
       />
+      {/* The motion of the background behind the panels (spec 8.10). Off keeps the colours still. */}
+      <CheckRow
+        checked={settings.animatedBackground}
+        hint='Slowly shifting colours behind the panels. Turn it off to save battery.'
+        label='Animated background'
+        save={value => update({ animatedBackground: value })}
+      />
       <SelectRow
         choices={INTERFACE_SCALE_CHOICES}
         label='Interface scale'

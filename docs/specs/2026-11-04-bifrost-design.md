@@ -900,6 +900,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Poll interval | 2 seconds |
 | Snap distance | 8 pixels |
 | Panel transparency | 15%. A select from 0% to 50% in steps of 5% (the background of all panels; 0% is solid). |
+| Animated background | On. The colour fields of the background move slowly. Off keeps them still (section 8.10). |
 | Interface scale | 100%. A select from 80% to 150% in steps of 10% (Electron zooms the whole page; View menu Zoom In Cmd+=, Zoom Out Cmd+-, Actual Size). |
 | Slash commands | `/compact`, `/clear`, `/context` |
 | Terminal font | SF Mono, 13 pt |
