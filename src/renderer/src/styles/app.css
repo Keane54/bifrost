@@ -171,7 +171,7 @@
 
 @layer components {
   /* The Take control loader (spec 9.2, the user 2026-11-06): a soft rainbow of the app icon colours
-     in the bottom third of a chat window, as in the app icon: violet on the left, red on the
+     in the bottom two fifths of a chat window, as in the app icon: violet on the left, red on the
      right. The colours blend in OKLab, as in the icon. The gradient is two times the width, so
      the animation can shift it. The mask fades it in from transparent at its top edge, on an
      eased curve over the whole height: the upper half stays faint, and the colour is at full
@@ -190,12 +190,12 @@
     mask-image: linear-gradient(
       to bottom,
       transparent,
-      rgb(0 0 0 / 0.02) 15%,
-      rgb(0 0 0 / 0.07) 30%,
-      rgb(0 0 0 / 0.15) 45%,
-      rgb(0 0 0 / 0.3) 60%,
-      rgb(0 0 0 / 0.5) 75%,
-      rgb(0 0 0 / 0.78) 90%,
+      rgb(0 0 0 / 0.03) 15%,
+      rgb(0 0 0 / 0.1) 30%,
+      rgb(0 0 0 / 0.2) 45%,
+      rgb(0 0 0 / 0.38) 60%,
+      rgb(0 0 0 / 0.6) 75%,
+      rgb(0 0 0 / 0.85) 90%,
       black 100%
     );
   }

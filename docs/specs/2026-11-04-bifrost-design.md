@@ -618,8 +618,8 @@ The Take control loader (user decision, 2026-11-06):
 
 - The loader shows in the chat window while Take control runs, and until the terminal shows its first output from Claude. A terminal that ends also removes the loader, so the window shows why it ended.
 - During that time, the chat window hides the terminal. The terminal keeps its size and its focus.
-- The top two thirds of the window show the normal panel background and the line "Taking control of <name>...".
-- The bottom third shows a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge, so it has no hard line. It is at 40% opacity.
+- The window shows the normal panel background and the line "Taking control of <name>...".
+- The bottom two fifths show a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge on an eased curve: the upper half stays faint, and the colour reaches full strength only at the bottom edge. It is at 25% opacity (the user, 2026-11-06: softer, a more gradual fade, and a slightly taller band).
 - A CSS animation shifts the gradient slowly: 12 seconds from one end to the other, and back. With `prefers-reduced-motion: reduce`, the gradient does not move.
 
 ### 9.3 Key rules

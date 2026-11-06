@@ -52,7 +52,7 @@ describe('loaderStep', () => {
   })
 })
 
-// the user, 2026-11-06: no spaceship. A soft rainbow of the app icon colours fills the bottom third.
+// the user, 2026-11-06: no spaceship. A soft rainbow of the app icon colours fills the bottom of the window.
 describe('the rainbow of the loader', () => {
   it('uses the six icon tokens and adds no colour token of its own', () => {
     const rule = rainbowRule()
@@ -88,8 +88,9 @@ describe('the rainbow of the loader', () => {
     expect(LOADER).toContain('motion-reduce:animate-none')
   })
 
-  it('fills only the bottom third, softly, and draws no canvas', () => {
-    expect(LOADER).toMatch(/bottom-0[^']*h-1\/3|h-1\/3[^']*bottom-0/)
+  // the user (2026-11-06): the band was a little small, so it fills the bottom two fifths.
+  it('fills only the bottom two fifths, softly, and draws no canvas', () => {
+    expect(LOADER).toMatch(/bottom-0[^']*h-2\/5|h-2\/5[^']*bottom-0/)
     expect(LOADER).toMatch(/loader-rainbow[^']*opacity-(\d+)|opacity-(\d+)[^']*loader-rainbow/)
     const opacity = Number(LOADER.match(/opacity-(\d+)/)?.[1])
     expect(opacity).toBeLessThanOrEqual(25)
