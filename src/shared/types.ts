@@ -78,7 +78,14 @@ export type SeenCounts = Pick<WorktreeCheck, 'unmergedCommits' | 'changedFiles'>
 
 // One row of the session list. The main process sends rows to the renderer.
 export interface SessionRow {
+  // The row ID: the first session ID that Bifrost saw for the session (spec 6.1). It never
+  // changes, also when a /clear gives the process a new session ID. All renderer IDs use it.
   sessionId: string
+  // The session ID of the conversation that the row shows now, when it is not sessionId.
+  currentId?: string
+  // For an owned row: the session ID that Resume passes. It is missing when Bifrost does not know
+  // it yet.
+  resumeId?: string
   shortId?: string
   // The name that Bifrost shows. It is the local name when one exists, else claudeName.
   name: string

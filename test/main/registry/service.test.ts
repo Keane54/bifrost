@@ -438,6 +438,8 @@ describe('updates and the store', () => {
     expect(saveStore).toHaveBeenCalledTimes(1)
     expect(saveStore).toHaveBeenCalledWith({
       aliases: {},
+      current: {},
+      jobs: { s1: 'aa' },
       lastActive: ['s1'],
       names: { s1: 'alpha' },
       priorities: {},
@@ -463,6 +465,8 @@ describe('updates and the store', () => {
     expect(saveStore).toHaveBeenCalledTimes(2)
     expect(saveStore).toHaveBeenLastCalledWith({
       aliases: {},
+      current: {},
+      jobs: { s1: 'aa' },
       lastActive: ['s1'],
       names: { s1: 'alpha' },
       priorities: {},
@@ -492,6 +496,8 @@ describe('updates and the store', () => {
     expect(saveStore).toHaveBeenCalledTimes(2)
     expect(saveStore).toHaveBeenLastCalledWith({
       aliases: {},
+      current: {},
+      jobs: { s1: 'aa' },
       lastActive: ['s1'],
       names: { s1: 'beta' },
       priorities: {},
@@ -699,6 +705,23 @@ describe('live lines (Task 4)', () => {
     const other = { at: Date.now(), name: 'UserPromptSubmit' as const, sessionId: 'new' }
     service.pushLive({ event: other, type: 'state' })
     expect(calls).toEqual([[stop], [other]])
+  })
+
+  test('onEvents gives the row ID of an event of a current ID (2026-11-06)', async () => {
+    // A /clear in a job: the session ID changes, the short ID stays.
+    const listActive = vi
+      .fn<() => Promise<AgentList>>()
+      .mockResolvedValueOnce({ entries: [bg()] })
+      .mockResolvedValue({ entries: [bg({ sessionId: 's2' })] })
+    const { service } = startService(fakeDeps({ listActive }))
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.activeMs)
+    expect(service.rows().map(row => [row.sessionId, row.currentId])).toEqual([['s1', 's2']])
+    const calls: unknown[] = []
+    service.onEvents(events => calls.push(events))
+    const stop = { at: Date.now(), name: 'Stop' as const, sessionId: 's2' }
+    service.pushLive({ event: stop, type: 'state' })
+    expect(calls).toEqual([[{ ...stop, sessionId: 's1' }]])
+    expect(service.rows()[0]).toMatchObject({ box: 'yellow', sessionId: 's1' })
   })
 
   test('onEvents listeners run after the state event is applied (final review Minor 4)', async () => {

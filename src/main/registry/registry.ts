@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { cleanAlias } from '../../shared/alias'
 import type {
   Priority,
@@ -23,10 +24,16 @@ import {
 } from './state-machine'
 import type { TerminalApp } from './terminal-app'
 
-// The data that the registry saves between runs of Bifrost.
+// The data that the registry saves between runs of Bifrost. Each key is a row ID (spec 6.1).
 export interface RegistryStore {
   // The local name of each session. Bifrost shows it and never sends it to Claude Code.
   aliases: Record<string, string>
+  // The current ID of each row whose current ID is not its row ID. A /clear gives the process a
+  // new session ID. A restart finds the row of that ID with this map.
+  current: Record<string, string>
+  // The short ID of each background row. A restart finds the row of a job with it, also after a
+  // /clear changed the session ID of the job.
+  jobs: Record<string, string>
   // The sessions that ran in the last run. Resume all uses them.
   lastActive: string[]
   names: Record<string, string>
@@ -37,6 +44,16 @@ export interface RegistryStore {
   // The worktree root of each session, from a sample while the session ran.
   worktrees: { sessionId: string; path: string }[]
 }
+
+// The store fields that an older store can lack.
+type OptionalStoreKey =
+  | 'aliases'
+  | 'current'
+  | 'jobs'
+  | 'priorities'
+  | 'lastActive'
+  | 'watch'
+  | 'worktrees'
 
 // A state event for an unknown session waits this long for the session to show.
 export const PENDING_EVENT_MS = 60_000
@@ -54,9 +71,14 @@ export const LAST_ACTIVE_GRACE_MS = 60_000
 export const GONE_LISTS = 2
 
 // The data that the registry keeps for one session.
+// sessionId is the row ID: the first session ID that Bifrost saw for the session (spec 6.1). It
+// never changes. The current ID is in the currents map of the registry.
 interface Session {
   sessionId: string
   shortId?: string
+  // The session ID of the --all entry of the stopped job, when it starts with the short ID. It is
+  // the original session ID of the job. A resume by this ID wakes the same job.
+  jobId?: string
   kind: SessionKind
   pid?: number
   cwd: string
@@ -99,6 +121,19 @@ function isOlder(ev: HookEvent, s: Session): boolean {
   return ev.seq !== undefined && s.lastEventSeq !== undefined && ev.seq <= s.lastEventSeq
 }
 
+// The same place in the main checkout for a folder in a worktree. Other folders stay the same.
+function checkoutPlace(cwd: string): string {
+  const root = worktreeRoot(cwd)
+  return root === null ? cwd : root.repo + cwd.slice(root.worktree.length)
+}
+
+// True when two folders can be the folder of one job. A stopped job reports its start folder,
+// and a running job can be in a worktree of that folder (M4 controller check). An empty folder
+// is not known, so it does not block.
+function sameFolder(a: string, b: string): boolean {
+  return a === '' || b === '' || checkoutPlace(a) === checkoutPlace(b)
+}
+
 function compareSessions(a: Session, b: Session): number {
   if (a.startedAt !== b.startedAt) return a.startedAt - b.startedAt
   if (a.sessionId === b.sessionId) return 0
@@ -134,6 +169,13 @@ interface Usage extends LiveUsage {
   limitsAt?: number
 }
 
+// The row of an entry of a list. isNew is true for a row that the entry starts.
+interface Match {
+  entry: AgentEntry
+  rowId: string
+  isNew: boolean
+}
+
 // Merge the session list, the state events and the usage lines of the mod, and the git branches
 // into rows. Each session has its own state machine.
 export class SessionRegistry {
@@ -148,6 +190,11 @@ export class SessionRegistry {
   // The worktree root of each session that ran in a worktree. A stopped session reports its
   // start folder as its cwd (M4 controller check). So the registry keeps the root.
   private readonly worktrees: Map<string, string>
+  // The current ID of each row whose current ID is not its row ID. byCurrent is the reverse map.
+  private readonly currents: Map<string, string>
+  private readonly byCurrent = new Map<string, string>()
+  // The short ID of each background row.
+  private readonly jobs: Map<string, string>
   // The sessions with a process in the last samples. The store keeps them.
   private readonly lastActive: Set<string>
   // The sessions of lastActive at the start. Resume all can resume them. Not saved.
@@ -161,8 +208,10 @@ export class SessionRegistry {
   private readonly terminals = new Map<number, TerminalApp | null>()
   private changed = false
   private readonly sessions = new Map<string, Session>()
-  // The session ids of the last active list.
+  // The row IDs of the last active list.
   private active = new Set<string>()
+  // The session IDs of the entries of the last active list.
+  private lastSample = new Set<string>()
   // The background session ids of the last counted --all list, and of each later --all list
   // that did not count. A list that does not count adds its IDs and removes none.
   private all = new Set<string>()
@@ -179,14 +228,21 @@ export class SessionRegistry {
   private clock = 0
   private readonly branches = new Map<string, string>()
 
-  // A store without aliases, priorities, lastActive, watch or worktrees (from an older version)
-  // is valid.
+  // A store without aliases, current, jobs, priorities, lastActive, watch or worktrees (from an
+  // older version) is valid.
   constructor(opts: {
-    store: Omit<RegistryStore, 'aliases' | 'priorities' | 'lastActive' | 'watch' | 'worktrees'> &
-      Partial<Pick<RegistryStore, 'aliases' | 'priorities' | 'lastActive' | 'watch' | 'worktrees'>>
+    store: Omit<RegistryStore, OptionalStoreKey> & Partial<Pick<RegistryStore, OptionalStoreKey>>
     escalationMs: number
   }) {
     this.escalationMs = opts.escalationMs
+    this.jobs = new Map(Object.entries(opts.store.jobs ?? {}))
+    this.currents = new Map()
+    for (const [rowId, id] of Object.entries(opts.store.current ?? {})) {
+      // A current ID equal to the row ID is the default. Two rows cannot have one current ID.
+      if (id === rowId || this.byCurrent.has(id)) continue
+      this.currents.set(rowId, id)
+      this.byCurrent.set(id, rowId)
+    }
     this.names = new Map(Object.entries(opts.store.names))
     this.started = new Set(opts.store.started)
     this.aliases = new Map(Object.entries(opts.store.aliases ?? {}))
@@ -199,13 +255,17 @@ export class SessionRegistry {
   }
 
   // Apply the output of "claude agents --json". sampledAt is the time when the poll started.
+  // match gives the row of each entry. The session ID of the entry is the current ID of its row.
   applyAgents(entries: AgentEntry[], sampledAt: number): void {
     this.advance(sampledAt)
-    const ids = new Set(entries.map(entry => entry.sessionId))
-    for (const entry of entries) {
-      this.keepName(entry)
-      const known = this.sessions.get(entry.sessionId)
-      const s = known ?? this.add(entry.sessionId)
+    const matches = this.match(entries, true)
+    const ids = new Set(matches.map(m => m.rowId))
+    for (const { entry, rowId } of matches) {
+      const known = this.sessions.get(rowId)
+      const s = known ?? this.add(rowId)
+      this.setCurrent(rowId, entry.sessionId)
+      this.keepName(rowId, entry)
+      this.keepJob(rowId, entry)
       // The status before this sample. A new session has none. A parked session has ''.
       const prevStatus = known?.status
       // A new status is activity. The first sample of a session is not a change.
@@ -224,7 +284,7 @@ export class SessionRegistry {
       }
       copyEntry(s, entry)
       s.machine = onStatus(s.machine, {
-        live: this.isLive(s.sessionId),
+        live: this.isLive(entry.sessionId),
         prevStatus,
         sampledAt,
         status: entry.status,
@@ -236,27 +296,191 @@ export class SessionRegistry {
       if (!ids.has(id)) this.leave(id, sampledAt)
     }
     this.active = ids
+    this.lastSample = new Set(entries.map(entry => entry.sessionId))
     this.activeBackground = new Set(
-      entries.filter(entry => entry.kind === 'background').map(entry => entry.sessionId),
+      matches.filter(m => m.entry.kind === 'background').map(m => m.rowId),
     )
     // A session in the active list exists. Its count of --all lists without it goes back to 0.
     for (const id of ids) this.missing.delete(id)
     this.parkStarted(sampledAt)
-    this.trackLastActive(entries, sampledAt)
+    this.trackLastActive(matches, sampledAt)
+  }
+
+  // Find the row of each entry of a list (spec 6.1). The rules come in this order:
+  // 1. A background entry goes to the one row with its short ID, when the folder agrees. Only one
+  //    entry of the list can have that short ID. A /clear keeps the short ID of a job.
+  // 2. An entry goes to the known row whose current ID is the session ID of the entry. A
+  //    background entry with another short ID than that row is another job, so it does not go.
+  // 3. Only with link (the active list): links finds a /clear of a session with no short ID.
+  // 4. A new row. Its row ID is the session ID of the entry. When a row or a stored value has
+  //    that ID already, the row ID is a new UUID.
+  private match(entries: AgentEntry[], link: boolean): Match[] {
+    const found = new Map<AgentEntry, Match>()
+    // The session ID of the entry that took each row in this list.
+    const taken = new Map<string, string>()
+    const take = (entry: AgentEntry, rowId: string, isNew: boolean): void => {
+      found.set(entry, { entry, isNew, rowId })
+      taken.set(rowId, entry.sessionId)
+    }
+    const shortIds = new Map<string, number>()
+    for (const { id } of entries) if (id) shortIds.set(id, (shortIds.get(id) ?? 0) + 1)
+    for (const entry of entries) {
+      if (entry.kind !== 'background' || !entry.id || shortIds.get(entry.id) !== 1) continue
+      const rowId = this.jobRow(entry.id)
+      if (rowId === undefined || taken.has(rowId)) continue
+      if (!sameFolder(this.sessions.get(rowId)?.cwd ?? '', entry.cwd)) continue
+      take(entry, rowId, false)
+    }
+    for (const entry of entries) {
+      if (found.has(entry)) continue
+      const rowId = this.rowOf(entry.sessionId)
+      if (rowId === undefined || !this.isKnown(rowId)) continue
+      const by = taken.get(rowId)
+      if (by !== undefined && by !== entry.sessionId) continue
+      const job = this.jobs.get(rowId)
+      if (entry.kind === 'background' && entry.id && job !== undefined && job !== entry.id) continue
+      take(entry, rowId, false)
+    }
+    if (link) {
+      for (const [entry, rowId] of this.links(entries, found, taken)) take(entry, rowId, false)
+    }
+    // The new rows of this list, by session ID. Two entries with one session ID share a row.
+    const added = new Map<string, string>()
+    for (const entry of entries) {
+      if (found.has(entry)) continue
+      const id = entry.sessionId
+      const free = !taken.has(id) && !this.isKnown(id)
+      const rowId = added.get(id) ?? (free ? id : randomUUID())
+      added.set(id, rowId)
+      take(entry, rowId, true)
+    }
+    return entries.map(entry => found.get(entry) as Match)
+  }
+
+  // Rule 3 of match: a /clear of a session with no short ID (an interactive session) gives the
+  // same process a new session ID (spec 6.1). Link the entry to a row when all of these are true:
+  // - The entry has no short ID, a positive pid and a folder. Its session ID is not the current
+  //   ID of a known row.
+  // - The row has no short ID, the same pid and the same folder.
+  // - The current ID of the row was in the last active list and is not in this list.
+  // - One entry matches one row, and one row matches one entry. Any other case links nothing.
+  private links(
+    entries: AgentEntry[],
+    found: Map<AgentEntry, Match>,
+    taken: Map<string, string>,
+  ): [AgentEntry, string][] {
+    const sample = new Set(entries.map(entry => entry.sessionId))
+    const pairs: [AgentEntry, string][] = []
+    for (const entry of entries) {
+      const { pid } = entry
+      if (found.has(entry) || entry.id || pid === undefined || !(pid > 0) || entry.cwd === '') {
+        continue
+      }
+      const own = this.rowOf(entry.sessionId)
+      if (own !== undefined && this.isKnown(own)) continue
+      for (const s of this.sessions.values()) {
+        const current = this.currentOf(s.sessionId)
+        if (taken.has(s.sessionId) || s.shortId !== undefined) continue
+        if (!this.lastSample.has(current) || sample.has(current)) continue
+        if (s.pid === pid && s.cwd === entry.cwd) pairs.push([entry, s.sessionId])
+      }
+    }
+    const once = <T>(values: T[], value: T): boolean => values.filter(v => v === value).length === 1
+    const pairEntries = pairs.map(pair => pair[0])
+    const pairRows = pairs.map(pair => pair[1])
+    return pairs.filter(([entry, rowId]) => once(pairEntries, entry) && once(pairRows, rowId))
+  }
+
+  // The one row with this short ID. undefined when no row or more than one row has it.
+  private jobRow(shortId: string): string | undefined {
+    let found: string | undefined
+    for (const [rowId, id] of this.jobs) {
+      if (id !== shortId) continue
+      if (found !== undefined) return undefined
+      found = rowId
+    }
+    return found
+  }
+
+  // True when the registry has a row or a stored value with this row ID.
+  private isKnown(rowId: string): boolean {
+    return (
+      this.sessions.has(rowId) ||
+      this.names.has(rowId) ||
+      this.aliases.has(rowId) ||
+      this.priorities.has(rowId) ||
+      this.watched.has(rowId) ||
+      this.worktrees.has(rowId) ||
+      this.started.has(rowId) ||
+      this.lastActive.has(rowId) ||
+      this.jobs.has(rowId) ||
+      this.currents.has(rowId)
+    )
+  }
+
+  // The current ID of a row.
+  private currentOf(rowId: string): string {
+    return this.currents.get(rowId) ?? rowId
+  }
+
+  // The row ID of the row whose current ID is sessionId. The row can be a stored row only.
+  // undefined when sessionId is the row ID of a row with another current ID. Then sessionId is the
+  // old conversation of that row, for example the ID before a /clear.
+  private rowOf(sessionId: string): string | undefined {
+    const rowId = this.byCurrent.get(sessionId)
+    if (rowId !== undefined) return rowId
+    return this.currents.has(sessionId) ? undefined : sessionId
+  }
+
+  // The row ID that the Event log and the Usage HUD use for a session ID of the mod. The old
+  // conversation of a row also gives that row. An unknown ID stays as it is.
+  rowIdOf(sessionId: string): string {
+    return this.byCurrent.get(sessionId) ?? sessionId
+  }
+
+  // Make id the current ID of a row. Another row with this current ID loses it.
+  // The process or the job of the old ID now runs the new ID. So the time of the newest line of
+  // the mod carries over, and the state events that wait for the new ID apply to the row.
+  private setCurrent(rowId: string, id: string): void {
+    if (this.rowOf(id) === rowId && this.currentOf(rowId) === id) return
+    const old = this.currentOf(rowId)
+    const other = this.byCurrent.get(id)
+    if (other !== undefined) {
+      this.currents.delete(other)
+      this.byCurrent.delete(id)
+    }
+    if (this.byCurrent.get(old) === rowId) this.byCurrent.delete(old)
+    if (id === rowId) this.currents.delete(rowId)
+    else {
+      this.currents.set(rowId, id)
+      this.byCurrent.set(id, rowId)
+    }
+    this.changed = true
+    const at = this.liveAt.get(old)
+    if (old !== id && at !== undefined) this.touch(id, at)
+    const s = this.sessions.get(rowId)
+    if (s) this.applyPending(s, id)
+  }
+
+  // Keep the short ID of a background row.
+  private keepJob(rowId: string, entry: AgentEntry): void {
+    if (entry.kind !== 'background' || !entry.id || this.jobs.get(rowId) === entry.id) return
+    this.jobs.set(rowId, entry.id)
+    this.changed = true
   }
 
   // A background entry with a pid is active. The other sessions of lastActive start a grace time.
-  private trackLastActive(entries: AgentEntry[], sampledAt: number): void {
+  private trackLastActive(matches: Match[], sampledAt: number): void {
     const running = new Set<string>()
-    for (const entry of entries) {
+    for (const { entry, rowId } of matches) {
       if (entry.kind !== 'background' || entry.pid === undefined) continue
-      running.add(entry.sessionId)
-      if (!this.lastActive.has(entry.sessionId)) {
-        this.lastActive.add(entry.sessionId)
+      running.add(rowId)
+      if (!this.lastActive.has(rowId)) {
+        this.lastActive.add(rowId)
         this.changed = true
       }
-      this.resumable.delete(entry.sessionId)
-      this.inactiveSince.delete(entry.sessionId)
+      this.resumable.delete(rowId)
+      this.inactiveSince.delete(rowId)
     }
     for (const id of this.lastActive) {
       if (!running.has(id) && !this.inactiveSince.has(id)) this.inactiveSince.set(id, sampledAt)
@@ -272,37 +496,49 @@ export class SessionRegistry {
   // the registry knows a parked owned session (final review M1). The background service can
   // start slowly, for example after a restart of the computer. A list that does not count only
   // adds rows and names. Its background IDs join the IDs of all, so leave() parks those sessions.
+  // match gives the row of each background entry. A stopped job shows its original session ID
+  // here, and its short ID gives its row (spec 6.1). This list does not change a current ID.
   applyAllAgents(entries: AgentEntry[], complete: boolean): void {
-    const listed = new Set(entries.map(entry => entry.sessionId))
     // An interactive session that ended must not come back as a parked row.
     // So the registry uses only the background entries.
     const owned = entries.filter(entry => entry.kind === 'background')
-    const ownedIds = owned.map(entry => entry.sessionId)
+    const matches = this.match(owned, false)
+    const ownedIds = matches.map(m => m.rowId)
+    const listed = new Set(ownedIds)
+    for (const entry of entries) {
+      if (entry.kind !== 'background') listed.add(this.rowIdOf(entry.sessionId))
+    }
     const counts =
       complete &&
       entries.length > 0 &&
       [...this.activeBackground].every(id => listed.has(id)) &&
       (owned.length > 0 || !this.knowsParkedOwned())
     this.all = counts ? new Set(ownedIds) : new Set([...this.all, ...ownedIds])
-    for (const entry of owned) {
-      this.keepName(entry)
+    for (const { entry, isNew, rowId } of matches) {
+      this.keepName(rowId, entry)
+      this.keepJob(rowId, entry)
       // An entry with a pid has a process. The active list gives its data.
-      if (entry.pid !== undefined || this.active.has(entry.sessionId)) continue
-      const s = this.sessions.get(entry.sessionId) ?? this.add(entry.sessionId)
+      if (entry.pid !== undefined || this.active.has(rowId)) continue
+      const s = this.sessions.get(rowId) ?? this.add(rowId)
+      if (isNew) this.setCurrent(rowId, entry.sessionId)
       copyEntry(s, entry)
+      if (entry.id && entry.sessionId.startsWith(entry.id)) s.jobId = entry.sessionId
       this.park(s)
     }
     if (counts) this.forgetGone(listed)
   }
 
-  // Apply state events. An event for an unknown session waits until the session shows.
+  // Apply state events. An event goes to the row whose current ID is its session ID. An event for
+  // an unknown session waits until the session shows. An event of the old conversation of a row
+  // also waits, and the registry drops it after PENDING_EVENT_MS.
   // Each event makes its session live. applyEvent skips an event that is older than the last
   // applied event of the session (D4).
   applyEvents(events: HookEvent[], now: number): void {
     this.advance(now)
     for (const ev of events) {
       this.touch(ev.sessionId, ev.at)
-      const s = this.sessions.get(ev.sessionId)
+      const rowId = this.rowOf(ev.sessionId)
+      const s = rowId === undefined ? undefined : this.sessions.get(rowId)
       if (s) this.applyEvent(s, ev)
       else this.pending.push(ev)
     }
@@ -337,7 +573,8 @@ export class SessionRegistry {
   //    A value that is not a finite number never wins over a finite one.
   // name, sessionId and updatedAt come from the line that gave the 7-day value, else the 5-hour
   // value. The name is the row name, or the first 8 characters of the session ID when the session
-  // is not a row. updatedAt is the time of that line. Return null when no session has a window.
+  // is not a row. The session ID is the row ID of a row. updatedAt is the time of that line.
+  // Return null when no session has a window.
   usage(): UsageSnapshot | null {
     const fiveHour = this.pickWindow('fiveHour')
     const sevenDay = this.pickWindow('sevenDay')
@@ -346,11 +583,11 @@ export class SessionRegistry {
     const limits: RateLimits = {}
     if (fiveHour !== null) limits.fiveHour = fiveHour.window
     if (sevenDay !== null) limits.sevenDay = sevenDay.window
-    const s = this.sessions.get(source.sessionId)
+    const s = this.sessions.get(this.rowIdOf(source.sessionId))
     return {
       limits,
       name: s ? this.shownName(s) : source.sessionId.slice(0, 8),
-      sessionId: source.sessionId,
+      sessionId: s ? s.sessionId : source.sessionId,
       updatedAt: source.at,
     }
   }
@@ -386,7 +623,7 @@ export class SessionRegistry {
   liveCount(): number {
     let count = 0
     for (const s of this.sessions.values()) {
-      if (s.machine.state !== 'parked' && this.isLive(s.sessionId)) count += 1
+      if (s.machine.state !== 'parked' && this.isLive(this.currentOf(s.sessionId))) count += 1
     }
     return count
   }
@@ -404,12 +641,19 @@ export class SessionRegistry {
     else this.branches.set(cwd, branch)
   }
 
-  // Remove a session and all values that the registry keeps for it.
+  // Remove a session and all values that the registry keeps for it. sessionId is a row ID.
+  // The lines of the mod of its current ID go too. The lines of its row ID go when no other row
+  // has that ID as its current ID.
   forget(sessionId: string): void {
+    const current = this.currentOf(sessionId)
+    for (const id of new Set([sessionId, current])) {
+      if ((this.byCurrent.get(id) ?? sessionId) !== sessionId) continue
+      this.pending = this.pending.filter(ev => ev.sessionId !== id)
+      this.usageLines.delete(id)
+      this.liveAt.delete(id)
+    }
+    if (this.byCurrent.get(current) === sessionId) this.byCurrent.delete(current)
     this.sessions.delete(sessionId)
-    this.pending = this.pending.filter(ev => ev.sessionId !== sessionId)
-    this.usageLines.delete(sessionId)
-    this.liveAt.delete(sessionId)
     this.active.delete(sessionId)
     this.all.delete(sessionId)
     this.resumable.delete(sessionId)
@@ -424,6 +668,8 @@ export class SessionRegistry {
       this.watched.delete(sessionId),
       this.worktrees.delete(sessionId),
       this.lastActive.delete(sessionId),
+      this.currents.delete(sessionId),
+      this.jobs.delete(sessionId),
     ]
     if (removed.some(Boolean)) this.changed = true
   }
@@ -604,6 +850,8 @@ export class SessionRegistry {
   store(): RegistryStore {
     return {
       aliases: Object.fromEntries(this.aliases),
+      current: Object.fromEntries(this.currents),
+      jobs: Object.fromEntries(this.jobs),
       lastActive: [...this.lastActive],
       names: Object.fromEntries(this.names),
       priorities: Object.fromEntries(this.priorities),
@@ -620,7 +868,7 @@ export class SessionRegistry {
     return changed
   }
 
-  // Add a session with the initial state. Apply the state events that wait for it.
+  // Add a session with the initial state. Apply the state events that wait for its current ID.
   private add(sessionId: string): Session {
     const s: Session = {
       cwd: '',
@@ -634,10 +882,16 @@ export class SessionRegistry {
       statusChangedAt: 0,
     }
     this.sessions.set(sessionId, s)
-    const waiting = this.pending.filter(ev => ev.sessionId === sessionId)
-    this.pending = this.pending.filter(ev => ev.sessionId !== sessionId)
-    for (const ev of waiting) this.applyEvent(s, ev)
+    this.applyPending(s, this.currentOf(sessionId))
     return s
+  }
+
+  // Apply the state events that wait for a session ID to a row.
+  private applyPending(s: Session, id: string): void {
+    const waiting = this.pending.filter(ev => ev.sessionId === id)
+    if (waiting.length === 0) return
+    this.pending = this.pending.filter(ev => ev.sessionId !== id)
+    for (const ev of waiting) this.applyEvent(s, ev)
   }
 
   // Apply one state event. Skip an event that is older than the last applied event (D4).
@@ -659,7 +913,8 @@ export class SessionRegistry {
     this.liveAt.set(sessionId, Math.max(this.liveAt.get(sessionId) ?? at, at))
   }
 
-  // A session is live when the mod sent a line for it in the last LIVE_FRESH_MS.
+  // A session ID is live when the mod sent a line for it in the last LIVE_FRESH_MS. A row is live
+  // when its current ID is live.
   private isLive(sessionId: string): boolean {
     const at = this.liveAt.get(sessionId)
     return at !== undefined && this.clock - at <= LIVE_FRESH_MS
@@ -685,13 +940,13 @@ export class SessionRegistry {
     return this.worktrees.get(s.sessionId) ?? s.cwd
   }
 
-  private keepName(entry: AgentEntry): void {
+  private keepName(rowId: string, entry: AgentEntry): void {
     const name = realName(entry)
-    if (name === undefined || this.names.get(entry.sessionId) === name) return
-    this.names.set(entry.sessionId, name)
+    if (name === undefined || this.names.get(rowId) === name) return
+    this.names.set(rowId, name)
     this.changed = true
     // A local name equal to the new Claude Code name has no use. It would come back later.
-    if (this.aliases.get(entry.sessionId) === name) this.aliases.delete(entry.sessionId)
+    if (this.aliases.get(rowId) === name) this.aliases.delete(rowId)
   }
 
   // Apply the rules for a session that left the active list.
@@ -709,8 +964,9 @@ export class SessionRegistry {
   // GONE_LISTS counted lists in a row without it. This is the only forget that an --all list
   // gives (Task 17 bug 3, Task 18 fix round 1). It also limits the size of the store.
   // The sessions are the owned rows, the started sessions, and each session with a stored name,
-  // local name, priority, watch colour or worktree. Each session with a usage line or a line time
-  // of the mod is also in the list, so these two maps do not grow without limit.
+  // local name, priority, watch colour, worktree, short ID or current ID. Each session with a usage
+  // line or a line time of the mod is also in the list, so these two maps do not grow without
+  // limit. A line of a current ID or of an old conversation counts for its row.
   // The count of a session goes back to 0 when the last active list has it, when this list has
   // its background entry, or when this list has an entry of any kind for a started session.
   // A failed Take control leaves a started session with an interactive entry (D6).
@@ -724,9 +980,10 @@ export class SessionRegistry {
       ...this.priorities.keys(),
       ...this.watched.keys(),
       ...this.worktrees.keys(),
-      ...this.usageLines.keys(),
-      ...this.liveAt.keys(),
+      ...this.jobs.keys(),
+      ...this.currents.keys(),
     ])
+    for (const id of [...this.usageLines.keys(), ...this.liveAt.keys()]) ids.add(this.rowIdOf(id))
     for (const s of this.sessions.values()) {
       if (s.kind === 'owned') ids.add(s.sessionId)
     }
@@ -780,6 +1037,17 @@ export class SessionRegistry {
     return [...this.sessions.values()].sort(compareSessions)
   }
 
+  // The session ID that resumes an owned row (spec 9.1). A stopped job wakes only by its original
+  // session ID: the ID that starts with its short ID (test of 2026-11-06). A resume by another ID
+  // starts a second job. So the ID is the --all ID of the stopped job, the row ID or the current
+  // ID, the first one that starts with the short ID. undefined when Bifrost does not know it yet.
+  // A row with no known short ID uses its row ID.
+  private resumeIdOf(s: Session): string | undefined {
+    const short = s.shortId ?? this.jobs.get(s.sessionId)
+    if (!short) return s.sessionId
+    return [s.jobId, s.sessionId, this.currentOf(s.sessionId)].find(id => id?.startsWith(short))
+  }
+
   // The name that Bifrost shows: the local name when one exists, else the Claude Code name.
   private shownName(s: Session): string {
     return this.aliases.get(s.sessionId) ?? this.nameOf(s)
@@ -789,9 +1057,11 @@ export class SessionRegistry {
     return rowName(s.sessionId, this.names.get(s.sessionId), s.shortId)
   }
 
+  // The session ID of a row is its row ID. The usage and the live flag come from its current ID.
   private toRow(s: Session): SessionRow {
     const m = s.machine
-    const usage = this.usageLines.get(s.sessionId)
+    const current = this.currentOf(s.sessionId)
+    const usage = this.usageLines.get(current)
     const row: SessionRow = {
       box: m.box,
       boxSince: m.boxSince,
@@ -809,7 +1079,12 @@ export class SessionRegistry {
     }
     // The input code needs the cause of a red box. Only a prompt box blocks a send.
     if (m.box === 'red' && m.redReason !== undefined) row.boxReason = m.redReason
+    if (current !== s.sessionId) row.currentId = current
     if (s.shortId !== undefined) row.shortId = s.shortId
+    if (s.kind === 'owned') {
+      const resumeId = this.resumeIdOf(s)
+      if (resumeId !== undefined) row.resumeId = resumeId
+    }
     if (s.pid !== undefined) row.pid = s.pid
     if (s.waitingFor !== undefined) row.waitingFor = s.waitingFor
     if (m.lastMessage !== undefined) row.lastMessage = m.lastMessage
@@ -823,7 +1098,7 @@ export class SessionRegistry {
     if (usage?.effort !== undefined) row.effort = usage.effort
     if (usage?.permissionMode !== undefined) row.permissionMode = usage.permissionMode
     if (usage?.transcriptPath !== undefined) row.transcriptPath = usage.transcriptPath
-    if (this.isLive(s.sessionId)) row.live = true
+    if (this.isLive(current)) row.live = true
     const branch = this.branches.get(this.branchDir(s))
     if (branch !== undefined) row.branch = branch
     const worktree = this.worktrees.get(s.sessionId)

@@ -1,0 +1,39 @@
+{
+  "clearRunning": {
+    "after": [
+      {
+        "cwd": "/Users/o/Developer/bifrost/.m0-sandbox",
+        "id": "2f493bf0",
+        "kind": "background",
+        "name": "bifrost-test-cl1",
+        "pid": 22289,
+        "sessionId": "1db82d17-d5fd-4e53-a042-7dd67ea654d8",
+        "startedAt": 1793957986743,
+        "status": "idle"
+      }
+    ],
+    "before": [
+      {
+        "cwd": "/Users/o/Developer/bifrost/.m0-sandbox",
+        "id": "2f493bf0",
+        "kind": "background",
+        "name": "bifrost-test-cl1",
+        "pid": 22289,
+        "sessionId": "2f493bf0-1598-4b3b-b419-8acb9cb11bcb",
+        "startedAt": 1793957986743,
+        "status": "idle"
+      }
+    ]
+  },
+  "note": "Real entries of claude agents --json from claude 2.1.319, with background test sessions (2026-11-06). clearRunning: one job before and after /clear, in the active list. Only sessionId changes. stoppedAfterClear: the --all entry of another job after /clear and claude stop. It shows the original session ID of the job again, and the short ID is the first 8 characters of that ID.",
+  "stoppedAfterClear": [
+    {
+      "id": "95f9c1b7",
+      "kind": "background",
+      "pid": null,
+      "sessionId": "95f9c1b7-b71e-4f64-9523-348d7aea46dc",
+      "state": "done",
+      "status": null
+    }
+  ]
+}

@@ -17,6 +17,8 @@ afterEach(async () => {
 test('loadStore returns an empty store for a missing or bad file', async () => {
   const emptyStore = {
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: {},
     priorities: {},
@@ -50,6 +52,8 @@ test('loadStore removes the values that have the wrong type', async () => {
   )
   expect(await loadStore(file)).toEqual({
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: { s1: 'alpha' },
     priorities: {},
@@ -61,6 +65,8 @@ test('loadStore removes the values that have the wrong type', async () => {
   await writeFile(file, JSON.stringify({ names: ['x'], priorities: {}, started: 'x' }))
   expect(await loadStore(file)).toEqual({
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: {},
     priorities: {},
@@ -74,6 +80,8 @@ test('saveStore then loadStore gives the same store', async () => {
   const file = join(dir, 'registry.json')
   const store = {
     aliases: { s1: 'Work' },
+    current: {},
+    jobs: {},
     lastActive: [],
     names: { s1: 'alpha', s2: 'beta' },
     priorities: {},
@@ -86,6 +94,8 @@ test('saveStore then loadStore gives the same store', async () => {
 
   const next = {
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: { s3: 'gamma' },
     priorities: {},
@@ -139,6 +149,8 @@ test('openStore loads the file and saves to it', async () => {
   const opened = await openStore(file, log)
   expect(opened.store).toEqual({
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: { s1: 'alpha' },
     priorities: {},
@@ -156,6 +168,8 @@ test('openStore loads the file and saves to it', async () => {
   })
   expect(await loadStore(file)).toEqual({
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: { s2: 'beta' },
     priorities: {},
@@ -173,6 +187,8 @@ test('openStore uses an empty store and does not save when it cannot read the fi
   const opened = await openStore(file, log)
   expect(opened.store).toEqual({
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: {},
     priorities: {},
@@ -199,6 +215,8 @@ test('loadStore reads an M1 file without priorities', async () => {
   await writeFile(file, JSON.stringify({ names: { a: 'x' }, started: [] }))
   expect(await loadStore(file)).toEqual({
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: { a: 'x' },
     priorities: {},
@@ -220,6 +238,8 @@ test('loadStore reads a file without lastActive', async () => {
   await writeFile(file, JSON.stringify({ names: { a: 'x' }, priorities: { a: 2 }, started: [] }))
   expect(await loadStore(file)).toEqual({
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: { a: 'x' },
     priorities: { a: 2 },
@@ -300,7 +320,14 @@ test('loadStore keeps a full M3 file that has no watch', async () => {
     started: ['s1'],
   }
   await writeFile(file, JSON.stringify(m3))
-  expect(await loadStore(file)).toEqual({ ...m3, aliases: {}, watch: [], worktrees: [] })
+  expect(await loadStore(file)).toEqual({
+    ...m3,
+    aliases: {},
+    current: {},
+    jobs: {},
+    watch: [],
+    worktrees: [],
+  })
 })
 
 test('loadStore keeps the other fields when watch is damaged', async () => {
@@ -312,9 +339,23 @@ test('loadStore keeps the other fields when watch is damaged', async () => {
     started: ['s1'],
   }
   await writeFile(file, JSON.stringify({ ...rest, watch: 'broken' }))
-  expect(await loadStore(file)).toEqual({ ...rest, aliases: {}, watch: [], worktrees: [] })
+  expect(await loadStore(file)).toEqual({
+    ...rest,
+    aliases: {},
+    current: {},
+    jobs: {},
+    watch: [],
+    worktrees: [],
+  })
   await writeFile(file, JSON.stringify({ ...rest, watch: [1, null, { colour: 'red' }, []] }))
-  expect(await loadStore(file)).toEqual({ ...rest, aliases: {}, watch: [], worktrees: [] })
+  expect(await loadStore(file)).toEqual({
+    ...rest,
+    aliases: {},
+    current: {},
+    jobs: {},
+    watch: [],
+    worktrees: [],
+  })
 })
 
 test('loadStore gives no worktrees for a file without worktrees', async () => {
@@ -350,6 +391,8 @@ test('saveStore then loadStore keeps the worktrees', async () => {
   const file = join(dir, 'registry.json')
   const store = {
     aliases: {},
+    current: {},
+    jobs: {},
     lastActive: [],
     names: {},
     priorities: {},
@@ -379,4 +422,49 @@ test('loadStore keeps good aliases and drops bad values', async () => {
   expect((await loadStore(file)).aliases).toEqual({ s1: 'Work', s6: 'pad' })
   await writeFile(file, JSON.stringify({ aliases: ['x'], names: {} }))
   expect((await loadStore(file)).aliases).toEqual({})
+})
+
+test('loadStore gives no current IDs and no short IDs for a file without the fields', async () => {
+  const file = join(dir, 'old.json')
+  await writeFile(file, JSON.stringify({ names: {}, started: [] }))
+  const store = await loadStore(file)
+  expect(store.current).toEqual({})
+  expect(store.jobs).toEqual({})
+})
+
+test('loadStore keeps good current IDs and short IDs and drops bad values', async () => {
+  const A = '2f493bf0-1598-4b3b-b419-8acb9cb11bcb'
+  const B = '1db82d17-d5fd-4e53-a042-7dd67ea654d8'
+  const file = join(dir, 'current.json')
+  await writeFile(
+    file,
+    JSON.stringify({
+      // r2 has the same current ID as r1, r3 has its own row ID, r4 is not a UUID, r5 is no text.
+      current: { r1: B, r2: B, [A]: A, r4: 'not-a-uuid', r5: 7 },
+      jobs: { [A]: '2f493bf0', r2: 'ABCDEF12', r3: '123', r4: 9, r5: '' },
+      names: {},
+    }),
+  )
+  const store = await loadStore(file)
+  expect(store.current).toEqual({ r1: B })
+  expect(store.jobs).toEqual({ [A]: '2f493bf0' })
+  await writeFile(file, JSON.stringify({ current: ['x'], jobs: 'x', names: {} }))
+  expect(await loadStore(file)).toMatchObject({ current: {}, jobs: {} })
+})
+
+test('saveStore then loadStore keeps the current IDs and the short IDs', async () => {
+  const file = join(dir, 'registry.json')
+  const store = {
+    aliases: {},
+    current: { '2f493bf0-1598-4b3b-b419-8acb9cb11bcb': '1db82d17-d5fd-4e53-a042-7dd67ea654d8' },
+    jobs: { '2f493bf0-1598-4b3b-b419-8acb9cb11bcb': '2f493bf0' },
+    lastActive: [],
+    names: {},
+    priorities: {},
+    started: [],
+    watch: [],
+    worktrees: [],
+  }
+  await saveStore(file, store)
+  expect(await loadStore(file)).toEqual(store)
 })

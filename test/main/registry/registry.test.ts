@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import type { AgentEntry } from '../../../src/main/claude/agents'
+import { type AgentEntry, parseAgents } from '../../../src/main/claude/agents'
 import type { HookEvent, HookEventName } from '../../../src/main/registry/hook-event'
 import {
   LAST_ACTIVE_GRACE_MS,
@@ -374,6 +375,8 @@ describe('store', () => {
     expect(r.storeChanged()).toBe(false)
     expect(r.store()).toEqual({
       aliases: {},
+      current: {},
+      jobs: { s1: 'aa' },
       lastActive: ['s1'],
       names: { s1: 'alpha' },
       priorities: {},
@@ -407,6 +410,7 @@ describe('store', () => {
 
   test('applyAllAgents keeps the names of active, --all and started sessions', () => {
     const r = registry({
+      jobs: { s1: 'aa', s2: 'bb' },
       lastActive: ['s1'],
       names: { s1: 'one', s2: 'two', s3: 'three' },
       priorities: {},
@@ -416,7 +420,10 @@ describe('store', () => {
     r.applyAgents([bg({ name: 'one' })], 100)
     // The list has the active session s1, so it counts.
     r.applyAllAgents(
-      [bg({ name: 'one' }), bg({ name: '', pid: undefined, sessionId: 's2', status: '' })],
+      [
+        bg({ name: 'one' }),
+        bg({ id: 'bb', name: '', pid: undefined, sessionId: 's2', status: '' }),
+      ],
       true,
     )
     expect(r.store().names).toEqual({ s1: 'one', s2: 'two', s3: 'three' })
@@ -454,6 +461,8 @@ describe('store', () => {
     copy.started.push('s8')
     expect(r.store()).toEqual({
       aliases: {},
+      current: {},
+      jobs: {},
       lastActive: [],
       names: { s1: 'alpha' },
       priorities: {},
@@ -1047,6 +1056,8 @@ describe('a session that is gone (Task 17 bug 3)', () => {
     expect(ids(r)).toEqual(['o1'])
     expect(r.store()).toEqual({
       aliases: {},
+      current: {},
+      jobs: { o1: 'bb' },
       lastActive: [],
       names: { o1: 'beta' },
       priorities: {},
@@ -1881,5 +1892,388 @@ describe('local name (alias)', () => {
     r.setAlias('s1', 'Work')
     r.forget('s1')
     expect(r.store().aliases).toEqual({})
+  })
+})
+
+// Real entries of claude agents --json (test of 2026-11-06, claude 2.1.319).
+const clearFixture = JSON.parse(
+  readFileSync(new URL('../../fixtures/clear-agents.json', import.meta.url), 'utf8'),
+)
+// The parser of the app reads the entries, so a null pid or status is the same as in the app.
+const parsed = (list: unknown): AgentEntry[] => parseAgents(JSON.stringify(list)).entries
+
+describe('one row across /clear (2026-11-06)', () => {
+  const [before] = parsed(clearFixture.clearRunning.before)
+  const [after] = parsed(clearFixture.clearRunning.after)
+  const ORIGINAL = before.sessionId
+  const CLEARED = after.sessionId
+  const SHORT = '2f493bf0'
+  // A stopped job: the --all entry has the original session ID, no pid and no status (test 3).
+  const stopped: AgentEntry = { ...before, pid: undefined, status: '' }
+
+  // Give the row a local name, a priority, a watch entry and the started mark.
+  const giveValues = (r: SessionRegistry, id: string): void => {
+    expect(r.setAlias(id, 'Work')).toBe(true)
+    expect(r.setPriority(id, 2)).toBe(true)
+    expect(r.watchAdd(id, 'amber')).toBe(true)
+    r.markStarted(id)
+  }
+
+  // A job that ran, then got a /clear.
+  const cleared = (): SessionRegistry => {
+    const r = registry()
+    r.applyAgents([before], 100)
+    giveValues(r, ORIGINAL)
+    r.applyAgents([after], 2100)
+    return r
+  }
+
+  test('the fixture is a real /clear: only the session ID changes', () => {
+    expect({ ...after, sessionId: ORIGINAL }).toEqual(before)
+    expect(CLEARED).not.toBe(ORIGINAL)
+    expect(before.id).toBe(SHORT)
+  })
+
+  test('a /clear in a running job keeps one row, the row ID and the values', () => {
+    const r = cleared()
+    const rows = r.rows()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      claudeName: 'bifrost-test-cl1',
+      currentId: CLEARED,
+      name: 'Work',
+      priority: 2,
+      resumeId: ORIGINAL,
+      sessionId: ORIGINAL,
+      shortId: SHORT,
+      state: 'idle',
+      watch: { colour: 'amber', order: 0 },
+    })
+    expect(r.store()).toMatchObject({
+      aliases: { [ORIGINAL]: 'Work' },
+      current: { [ORIGINAL]: CLEARED },
+      jobs: { [ORIGINAL]: SHORT },
+      lastActive: [ORIGINAL],
+      priorities: { [ORIGINAL]: 2 },
+      started: [ORIGINAL],
+      watch: [{ colour: 'amber', sessionId: ORIGINAL }],
+    })
+  })
+
+  test('a row without a /clear has no currentId', () => {
+    const r = registry()
+    r.applyAgents([before], 100)
+    expect(r.rows()[0].currentId).toBeUndefined()
+    expect(r.rows()[0].resumeId).toBe(ORIGINAL)
+    expect(r.store().current).toEqual({})
+  })
+
+  test('the --all list while the job runs gives no second row (test 2)', () => {
+    const r = cleared()
+    r.applyAllAgents([after], true)
+    r.applyAllAgents([after], true)
+    expect(r.rows().map(row => row.sessionId)).toEqual([ORIGINAL])
+    expect(r.store().aliases).toEqual({ [ORIGINAL]: 'Work' })
+  })
+
+  test('the stopped job in --all with its original ID maps to the same row (test 3)', () => {
+    const r = cleared()
+    r.applyAgents([], 4100)
+    r.applyAllAgents([stopped], true)
+    r.applyAllAgents([stopped], true)
+    const rows = r.rows()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      currentId: CLEARED,
+      name: 'Work',
+      priority: 2,
+      resumeId: ORIGINAL,
+      sessionId: ORIGINAL,
+      state: 'parked',
+    })
+  })
+
+  test('a job that Bifrost first saw after its /clear gets the original ID from --all', () => {
+    // The real --all entry of test 3 has no cwd. The running entry is the same job before stop.
+    const [real] = parsed(clearFixture.stoppedAfterClear)
+    const running: AgentEntry = {
+      ...real,
+      cwd: '/w',
+      name: 'bifrost-test-cl3',
+      pid: 4000,
+      sessionId: 'c1ea4ed0-0000-4000-8000-000000000001',
+      status: 'idle',
+    }
+    const r = registry()
+    r.applyAgents([running], 100)
+    r.applyAllAgents([running], true)
+    // The row ID is the first ID that Bifrost saw. No ID starts with the short ID yet, so
+    // Bifrost does not know the ID that resumes the job.
+    expect(r.rows()[0]).toMatchObject({ sessionId: running.sessionId, state: 'idle' })
+    expect(r.rows()[0].resumeId).toBeUndefined()
+    r.applyAgents([], 2100)
+    r.applyAllAgents([real], true)
+    const rows = r.rows()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      resumeId: real.sessionId,
+      sessionId: running.sessionId,
+      state: 'parked',
+    })
+  })
+
+  test('the woken job maps to the same row (test 4)', () => {
+    const r = cleared()
+    r.applyAgents([], 4100)
+    r.applyAllAgents([stopped], true)
+    // claude --bg --resume <original ID> wakes the job. The active list shows the ID after the
+    // clear, with a new pid.
+    r.applyAgents([{ ...after, pid: 22400 }], 6100)
+    expect(r.rows()).toHaveLength(1)
+    expect(r.rows()[0]).toMatchObject({
+      currentId: CLEARED,
+      name: 'Work',
+      pid: 22400,
+      sessionId: ORIGINAL,
+      state: 'idle',
+    })
+  })
+
+  test('a restart while the job runs after a /clear maps the entry to the stored row', () => {
+    const next = registry(cleared().store())
+    next.applyAgents([after], 100)
+    expect(next.rows()).toHaveLength(1)
+    expect(next.rows()[0]).toMatchObject({
+      currentId: CLEARED,
+      name: 'Work',
+      priority: 2,
+      sessionId: ORIGINAL,
+      watch: { colour: 'amber', order: 0 },
+    })
+  })
+
+  test('a restart with the stored short ID only also maps the entry to the stored row', () => {
+    const next = registry({ ...cleared().store(), current: {} })
+    next.applyAgents([after], 100)
+    expect(next.rows().map(row => [row.sessionId, row.currentId, row.name])).toEqual([
+      [ORIGINAL, CLEARED, 'Work'],
+    ])
+  })
+
+  test('a restart after the stop maps the --all entry to the stored row', () => {
+    const r = cleared()
+    r.applyAgents([], 4100)
+    const next = registry(r.store())
+    next.applyAgents([], 100)
+    next.applyAllAgents([stopped], true)
+    expect(next.rows().map(row => [row.sessionId, row.resumeId, row.name, row.state])).toEqual([
+      [ORIGINAL, ORIGINAL, 'Work', 'parked'],
+    ])
+  })
+
+  test('live lines for the current ID update the row', () => {
+    const r = cleared()
+    r.applyEvents([ev('Stop', CLEARED, 3000)], 3000)
+    r.applyUsage(CLEARED, { costUsd: 0.5, model: 'claude-haiku-5-5' }, 3000)
+    expect(r.rows()[0]).toMatchObject({
+      box: 'yellow',
+      costUsd: 0.5,
+      live: true,
+      model: 'Haiku 5.5',
+      sessionId: ORIGINAL,
+    })
+    expect(r.liveCount()).toBe(1)
+    // A late line of the old conversation does not change the row.
+    r.applyEvents([ev('UserPromptSubmit', ORIGINAL, 3100)], 3100)
+    r.applyUsage(ORIGINAL, { costUsd: 9 }, 3100)
+    expect(r.rows()[0]).toMatchObject({ box: 'yellow', costUsd: 0.5 })
+  })
+
+  test('an event of the new ID before the link applies at the link', () => {
+    const r = registry()
+    r.applyAgents([before], 100)
+    r.applyEvents([ev('Stop', CLEARED, 1500)], 1500)
+    expect(r.rows()[0].box).toBe('none')
+    r.applyAgents([after], 2100)
+    expect(r.rows()[0]).toMatchObject({ box: 'yellow', sessionId: ORIGINAL })
+  })
+
+  test('the Usage HUD and the Event log get the row ID of a current ID', () => {
+    const r = cleared()
+    const limits = { fiveHour: { resetsAt: 9_000_000, usedPercent: 10 } }
+    r.applyUsage(CLEARED, { rateLimits: limits }, 3000)
+    expect(r.usage()).toMatchObject({ name: 'Work', sessionId: ORIGINAL })
+    expect(r.rowIdOf(CLEARED)).toBe(ORIGINAL)
+    expect(r.rowIdOf(ORIGINAL)).toBe(ORIGINAL)
+    expect(r.rowIdOf('other')).toBe('other')
+  })
+
+  test('forget removes the current ID, the job and the lines of the current ID', () => {
+    const r = cleared()
+    r.applyUsage(CLEARED, { costUsd: 1 }, 3000)
+    r.forget(ORIGINAL)
+    expect(r.rows()).toEqual([])
+    expect(r.store()).toMatchObject({ aliases: {}, current: {}, jobs: {} })
+    expect(r.liveCount()).toBe(0)
+    // A new entry with the cleared ID is a new row now.
+    r.applyAgents([after], 5000)
+    expect(r.rows().map(row => row.sessionId)).toEqual([CLEARED])
+  })
+
+  test('a background entry with the same short ID and another folder does not link', () => {
+    const r = registry()
+    r.applyAgents([before], 100)
+    giveValues(r, ORIGINAL)
+    r.applyAgents([{ ...after, cwd: '/somewhere/else' }], 2100)
+    const rows = r.rows()
+    expect(rows.find(row => row.sessionId === CLEARED)).toMatchObject({ name: 'bifrost-test-cl1' })
+    expect(rows.find(row => row.sessionId === CLEARED)?.priority).toBeUndefined()
+  })
+
+  test('a background entry with another short ID does not link', () => {
+    const r = registry()
+    r.applyAgents([before], 100)
+    giveValues(r, ORIGINAL)
+    r.applyAgents([{ ...after, id: 'dac563c2' }], 2100)
+    const row = r.rows().find(item => item.sessionId === CLEARED)
+    expect(row).toMatchObject({ name: 'bifrost-test-cl1', shortId: 'dac563c2' })
+    expect(row?.priority).toBeUndefined()
+  })
+
+  test('the short ID of a job in a worktree links the stop folder of --all', () => {
+    const repo = '/r'
+    const tree = `${repo}/.claude/worktrees/cl1`
+    const r = registry()
+    r.applyAgents([{ ...before, cwd: tree }], 100)
+    giveValues(r, ORIGINAL)
+    r.applyAgents([{ ...after, cwd: tree }], 2100)
+    r.applyAgents([], 4100)
+    // A stopped session reports its start folder (M4 controller check).
+    r.applyAllAgents([{ ...stopped, cwd: repo }], true)
+    expect(r.rows().map(row => [row.sessionId, row.name, row.state])).toEqual([
+      [ORIGINAL, 'Work', 'parked'],
+    ])
+  })
+})
+
+describe('one row across /clear in an interactive session (2026-11-06)', () => {
+  const OLD = 'a0a0a0a0-0000-4000-8000-000000000001'
+  const NEW = 'b1b1b1b1-0000-4000-8000-000000000002'
+  const term = (o: Partial<AgentEntry> = {}): AgentEntry =>
+    bg({
+      cwd: '/t',
+      id: undefined,
+      kind: 'interactive',
+      name: 'term',
+      pid: 77,
+      sessionId: OLD,
+      ...o,
+    })
+
+  // An interactive session with values, then a /clear. The mod sends session.end for the old ID,
+  // and a usage line for the new ID 1 s later.
+  const cleared = (): SessionRegistry => {
+    const r = registry()
+    r.applyAgents([term()], 100)
+    r.setAlias(OLD, 'Mine')
+    r.setPriority(OLD, 1)
+    r.applyEvents([ev('SessionEnd', OLD, 1000)], 1000)
+    r.applyUsage(NEW, { model: 'claude-haiku-5-5' }, 2000)
+    r.applyAgents([term({ sessionId: NEW })], 2100)
+    return r
+  }
+
+  test('a /clear links by the PID and the folder: one row, the current ID changes', () => {
+    const r = cleared()
+    const rows = r.rows()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      currentId: NEW,
+      kind: 'external',
+      live: true,
+      model: 'Haiku 5.5',
+      name: 'Mine',
+      priority: 1,
+      sessionId: OLD,
+      state: 'idle',
+    })
+    expect(rows[0].resumeId).toBeUndefined()
+  })
+
+  test('a restart maps the stored current ID to the row', () => {
+    const next = registry(cleared().store())
+    next.applyAgents([term({ sessionId: NEW })], 100)
+    expect(next.rows().map(row => [row.sessionId, row.currentId, row.name])).toEqual([
+      [OLD, NEW, 'Mine'],
+    ])
+  })
+
+  test('Take control after the /clear: the job of the current ID maps to the row', () => {
+    const r = cleared()
+    // Take control resumes the current ID. The new job gets the first 8 characters as its short ID.
+    const job = bg({ cwd: '/t', id: 'b1b1b1b1', name: 'term', pid: 900, sessionId: NEW })
+    r.applyAgents([job], 4100)
+    expect(r.rows()).toHaveLength(1)
+    expect(r.rows()[0]).toMatchObject({
+      kind: 'owned',
+      name: 'Mine',
+      pid: 900,
+      resumeId: NEW,
+      sessionId: OLD,
+      shortId: 'b1b1b1b1',
+    })
+  })
+
+  test('no link when the folder differs', () => {
+    const r = registry()
+    r.applyAgents([term()], 100)
+    r.setAlias(OLD, 'Mine')
+    r.applyAgents([term({ cwd: '/other', sessionId: NEW })], 2100)
+    expect(r.rows().map(row => [row.sessionId, row.name])).toEqual([[NEW, 'term']])
+  })
+
+  test('no link when the PID differs or is not positive', () => {
+    for (const pid of [78, 0, -1]) {
+      const r = registry()
+      r.applyAgents([term({ pid: pid <= 0 ? pid : 77 })], 100)
+      r.setAlias(OLD, 'Mine')
+      r.applyAgents([term({ pid, sessionId: NEW })], 2100)
+      expect(r.rows().map(row => [row.sessionId, row.name])).toEqual([[NEW, 'term']])
+    }
+  })
+
+  test('no link when the match is not 1:1', () => {
+    const NEW2 = 'c2c2c2c2-0000-4000-8000-000000000003'
+    const r = registry()
+    r.applyAgents([term()], 100)
+    r.setAlias(OLD, 'Mine')
+    r.applyAgents([term({ sessionId: NEW }), term({ sessionId: NEW2 })], 2100)
+    const names = r.rows().map(row => row.name)
+    expect(names).toEqual(['term', 'term'])
+  })
+
+  test('no link when the old ID is still in the sample', () => {
+    const r = registry()
+    r.applyAgents([term()], 100)
+    r.setAlias(OLD, 'Mine')
+    r.applyAgents([term(), term({ sessionId: NEW })], 2100)
+    expect(r.rows().map(row => [row.sessionId, row.name])).toEqual([
+      [OLD, 'Mine'],
+      [NEW, 'term'],
+    ])
+  })
+
+  test('the old conversation in another process gets its own row', () => {
+    const r = cleared()
+    // claude --resume <old ID> in another terminal.
+    r.applyAgents([term({ sessionId: NEW }), term({ pid: 81 })], 4100)
+    const rows = r.rows()
+    expect(rows).toHaveLength(2)
+    const mine = rows.find(row => row.sessionId === OLD)
+    const other = rows.find(row => row.sessionId !== OLD)
+    expect(mine).toMatchObject({ currentId: NEW, name: 'Mine', pid: 77 })
+    expect(other).toMatchObject({ currentId: OLD, name: 'term', pid: 81 })
+    expect(other?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
+    expect(other?.priority).toBeUndefined()
   })
 })

@@ -100,6 +100,15 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 - No documented API lets a program type into an interactive session that a terminal owns.
 - The transcript JSONL format is internal. Bifrost does not read transcripts.
 
+These facts come from tests with background test sessions on Claude Code 2.1.319, on 2026-11-06:
+
+- A `/clear` keeps the process of the session and gives it a new session ID. In the active list, the entry of a background session keeps `pid`, `id`, `name`, `cwd` and `startedAt`. Only `sessionId` changes.
+- While a background session runs after a `/clear`, `--all` lists it one time, with the new session ID.
+- After `claude stop`, `--all` lists the stopped background session with its original session ID: the ID from before the `/clear`. The short ID is the first 8 characters of that ID.
+- `claude --bg --resume <original session ID>` wakes the same background session (same short ID). The active list then shows the session ID from after the `/clear`, with that conversation.
+- `claude --bg --resume <session ID after the /clear>` starts a second background session with a new short ID. The first one stays in the list, stopped.
+- An interactive session keeps its process and its PID after a `/clear`. Its entry has no short ID (`id` is null).
+
 ## 5. Architecture
 
 ```text
@@ -155,7 +164,36 @@ Bifrost uses `~/.bifrost/` because that path has no spaces. The mod folder is al
 
 Bifrost runs `claude agents --json` every 2 seconds. This gives the active sessions and their `status`: `busy`, `idle` or `waiting`.
 
-Bifrost keeps an entry that has no `pid`. Bifrost keys all entries by `sessionId`.
+Bifrost keeps an entry that has no `pid`.
+
+Row ID and current ID (the user, 2026-11-06: one row for a session across `/clear`):
+
+- A `/clear` gives the process a new session ID (section 4). Bifrost shows one row for the session, not a new row and a parked copy. The old conversation stays in Claude Code.
+- Each row has a row ID. It is the first session ID that Bifrost saw for the session. It never changes. The row field `sessionId` is the row ID.
+- All stored values use the row ID: the local name, the priority, the watch entry, the worktree record, the "started by Bifrost" mark, `lastActive` and the names. All renderer IDs use it too: the chat panels, the Show Info panels, the selection and the Event log. So a `/clear` moves no value and changes no panel.
+- Each row also has a current ID. It is the session ID of the entry of the row in the newest active list. The row field `currentId` gives it when it is not the row ID. An `--all` entry does not change it.
+- The live lines of the mod come with the current ID. A line goes to the row whose current ID is its session ID. The usage data and the live flag of a row come from its current ID. A line of the old conversation of a row goes to no row.
+- The registry store keeps the current ID of each row where it is not the row ID (`current`), and the short ID of each background row (`jobs`). A store without these fields is valid. After a restart, Bifrost uses them to find the row of an entry.
+
+Bifrost finds the row of each entry of a list with these rules, in this order. The first rule that matches gives the row.
+
+1. A background entry goes to the row with the same short ID. Only one row can have that short ID, and only one entry of the list. The folders must agree. A stopped job reports its start folder, so a folder in a worktree agrees with the same place in the main checkout. An empty folder is not known, so it agrees. This rule applies to the active list and to `--all`.
+2. An entry goes to the known row whose current ID is the session ID of the entry. A background entry with a different short ID from that row is another job. This rule does not apply to it.
+3. Only in the active list: an entry with no short ID goes to a row when all of these are true:
+   - The `pid` of the entry is a positive number and equals the `pid` of the row.
+   - The `cwd` is not empty and is equal.
+   - The row has no short ID. The current ID of the row was in the last active list and is not in this list.
+   - The session ID of the entry is not the current ID of a known row.
+   - One entry matches one row, and one row matches one entry. Any other case links nothing.
+4. Else the entry starts a new row. The row ID is the session ID of the entry. When a row or a stored value has that ID already, the row ID is a new UUID. This occurs when another process resumes the old conversation of a row, for example `claude --resume <ID before the /clear>`.
+
+The rules need no line of the mod. So a session without the mod also keeps its row. The mod sends `session.end` for the old ID at a `/clear`. That event can park the row until the next poll links the new ID (2 s or less).
+
+Limits of the rules:
+
+- Bifrost does not link a `/clear` that occurs while Bifrost does not run. The first poll after a start links nothing by `pid`. A background job still finds its row by its stored short ID.
+- Rule 3 and rule 1 also link an in-session `/resume`, because the list cannot show the difference from a `/clear`.
+- A background entry with the short ID of a row and a folder of another project starts a new row.
 
 Bifrost uses `status` for the state machine. It does not use `state`.
 
@@ -222,7 +260,7 @@ The mod sends a `usage` line at these times:
 
 - At `session.start` and at `session.measure`.
 - 2,500 ms after each `turn.complete` of the main loop. The cost can change about 2 s after a turn.
-- 1,000 ms after `session.end` with the reason `clear`. The line has the new session ID. After `/clear`, no `session.start` comes for the new ID. Without this line, the row of the new ID has no live flag, model or cost until the next prompt.
+- 1,000 ms after `session.end` with the reason `clear`. The line has the new session ID. After `/clear`, no `session.start` comes for the new ID. Without this line, the row has no live flag, model or cost for its new current ID (section 6.1) until the next prompt.
 - Each 30,000 ms (the heartbeat). Without it, an idle row has no data after a start of Bifrost.
 
 Rules for the usage data:
@@ -244,7 +282,7 @@ Rules for the usage data:
   2. Two readings are the same window when their reset times are within 10 minutes.
   3. In the same window, the highest use wins, because use only grows in a window. A use value that is not a finite number never wins over a finite one.
   4. A session that is not a row also counts, until the registry forgets it.
-  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name (the local name when one exists), or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
+  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name (the local name when one exists), or the first 8 characters of the session ID when the session is not a row. For a row, the session ID is the row ID (section 6.1). No session with rate limits gives null.
 - The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line that gave the 7-day value (else the 5-hour value), so a newer line from that session with the same limits is a change. The update limit is that of the rows: at most 4 updates each second, and the last value always goes out. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
 - Without the mod, Bifrost shows no model, context %, cost, rate limit, context window size, Claude Code version, effort, permission mode or transcript path.
 
@@ -488,7 +526,7 @@ You can open one Show Info panel for each session.
 
 ### 8.7 Event log
 
-The Event log shows the live state events with the time, the session and the event name. A `usage` line is not in the log. You can filter it by session. It keeps the last 5,000 events in memory. It does not keep events on disk.
+The Event log shows the live state events with the time, the session and the event name. Each event has the row ID of its row (section 6.1), so the log keeps one session across a `/clear`. A `usage` line is not in the log. You can filter it by session. It keeps the last 5,000 events in memory. It does not keep events on disk.
 
 ### 8.8 Usage HUD
 
@@ -1155,3 +1193,11 @@ The controller made these decisions in M5b. The M5b rulings, `docs/m5-findings.m
 6. A click on the PR in Show Info runs the PR lookup again. The lookup uses the cache while it is fresh. Else `gh` runs again. So the link works also after 5 minutes (section 8.6).
 7. A limit whose reset time has passed shows `-` and the reset time, in the Usage HUD and in Show Info. The use of the new window is not known until the next message. This replaces the 0% of D19. A use value that is not a finite number also shows `-` (section 8.8).
 8. The Service status panel shows "since <time>" after the level of a service that is not ok. The time is the start of the oldest incident at that level (section 8.11).
+
+## 26. Decisions on 2026-11-06 (one row across `/clear`)
+
+The user decided that a session keeps one row across `/clear`. Tests with background test sessions on Claude Code 2.1.319 gave the facts (section 4). A first design moved the values to the new session ID. It failed, because a stopped job shows its original ID in `--all` again, and a resume by the new ID starts a second job.
+
+1. Each row has a stable row ID and a current ID. The values stay with the row ID and never move (section 6.1).
+2. A background entry finds its row by its short ID first, in the active list and in `--all`. The store keeps the short ID of each background row (`jobs`) and each current ID that is not a row ID (`current`).
+3. An interactive entry finds its row by its `pid` and its folder, with a 1:1 match (section 6.1, rule 3).
