@@ -197,6 +197,59 @@ test('a failed send changes nothing', async ($, on) => {
   expect(w.kinds()).toContain('session.end')
 })
 
+test('at 32 sends in flight, a new line is not sent and each hook still returns', async ($, on) => {
+  const w = world(on, { fetch: 'hang' })
+  on('tool.call', () => ({ result: {} }))
+  for (let i = 1; i <= 33; i++) {
+    expect(await $.turn.start({ text: 'go', turnId: `t${i}` })).toEqual({ turnId: `t${i}` })
+  }
+  await w.clock.settle()
+  expect(w.lines.length).toBe(32)
+  expect(await $.tool.call({ command: 'ls', tool: 'Bash' })).toEqual({ result: {} })
+  expect(await $.turn.complete(turnEnd('ALPHA'))).toEqual({ text: 'ALPHA' })
+  expect(await $.session.measure({ changed: ['cost'], cost: { usd: 1 } })).toEqual({
+    changed: ['cost'],
+  })
+  // The send of session.end returns at once, so the hook does not wait for its 200 ms.
+  expect(await $.session.end({ reason: 'other', resume: { id: S }, sessionId: S })).toEqual({
+    sessionId: S,
+  })
+  await w.clock.settle()
+  await w.clock.advance(2500)
+  expect(w.lines.length).toBe(32)
+  expect(new Set(w.kinds())).toEqual(new Set(['turn.start']))
+})
+
+test('session.end with the reason clear sends usage for the new session after 1 s', async ($, on) => {
+  let current = S1
+  const w = world(on, {
+    onSessionEnd: () => {
+      current = S2
+    },
+    sessionId: () => current,
+  })
+  expect(await $.session.end({ reason: 'clear', resume: { id: S1 }, sessionId: S1 })).toEqual({
+    sessionId: S1,
+  })
+  await w.clock.settle()
+  await w.clock.advance(999)
+  expect(w.kinds()).toEqual(['session.end'])
+  await w.clock.advance(1)
+  expect(w.lines.map(line => [line.kind, line.sid])).toEqual([
+    ['session.end', S1],
+    ['usage', S2],
+  ])
+  expect(w.lines[1]).toMatchObject({ costUsd: 0.0069, model: MODEL })
+})
+
+test('session.end with another reason sends no usage', async ($, on) => {
+  const w = world(on)
+  await $.session.end({ reason: 'prompt_input_exit', resume: { id: S }, sessionId: S })
+  await w.clock.settle()
+  await w.clock.advance(5000)
+  expect(w.kinds()).toEqual(['session.end'])
+})
+
 test('each line carries the session id at the time of the send', async ($, on) => {
   let current = S1
   const w = world(on, {

@@ -17,6 +17,13 @@ const TEXT_MAX = 200
 const USAGE_DELAY_MS = 2500
 const HEARTBEAT_MS = 30_000
 const END_WAIT_MS = 200
+// The time from /clear to the usage line of the new session ID. The row of the new ID then gets
+// its model and cost before its first prompt.
+const CLEAR_USAGE_DELAY_MS = 1000
+// The limit of sends that have not settled. A Bifrost that hangs never answers a send. The mod
+// then drops new lines and does not open more connections. Bifrost gets the state again at the
+// next line or the next heartbeat.
+const MAX_IN_FLIGHT = 32
 
 type Kind =
   | 'session.start'
@@ -36,6 +43,8 @@ type Figures = Pick<SessionUsage, 'context' | 'cost' | 'rateLimits'>
 let seq = 0
 // HOME, read one time for each module load.
 let home: Promise<string | undefined> | undefined
+// The number of sends that have not settled.
+let inFlight = 0
 
 function cut(value: unknown, max = TEXT_MAX): string {
   return String(value).slice(0, max)
@@ -47,7 +56,10 @@ function readHome($: EngineInterface): Promise<string | undefined> {
 }
 
 // Send one line. The promise never rejects.
+// At MAX_IN_FLIGHT sends that have not settled, the mod drops the line and returns at once.
 async function send($: EngineInterface, kind: Kind, data: Data = {}, sid?: string) {
+  if (inFlight >= MAX_IN_FLIGHT) return
+  inFlight++
   const at = Date.now()
   const order = ++seq
   try {
@@ -62,12 +74,16 @@ async function send($: EngineInterface, kind: Kind, data: Data = {}, sid?: strin
     })
   } catch {
     // Bifrost is not open, or the socket does not answer. Show nothing.
+  } finally {
+    inFlight--
   }
 }
 
 // Send the model, the context, the cost and the rate limits. The promise never rejects.
 // Without figures, the mod reads them from $.session.usage().
 async function sendUsage($: EngineInterface, figures?: Figures) {
+  // The line would be dropped. So do not read the usage.
+  if (inFlight >= MAX_IN_FLIGHT) return
   try {
     const [model, usage] = await Promise.all([
       $.session.model().catch(() => undefined),
@@ -105,6 +121,8 @@ export const register: Register = on => {
       send($, 'session.end', { reason: cut(e.reason) }, e.sessionId),
       $.clock.sleep(END_WAIT_MS).catch(() => {}),
     ])
+    // After /clear, the same process runs the new session. No session.start comes for it.
+    if (e.reason === 'clear') $.clock.after(CLEAR_USAGE_DELAY_MS, () => void sendUsage($))
     return result
   }).catch((_, e, next) => next(e))
 
