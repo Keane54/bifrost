@@ -12,7 +12,9 @@ export const POLL_INTERVAL_MS = 5 * 60_000
 export const HUD_GAP_MS = 60_000
 export const RATE_LIMIT_WAIT_MS = 15 * 60_000
 export const REQUEST_TIMEOUT_MS = 10_000
-const MAX_BODY_CHARS = 1_000_000
+// A poll ends at this time, even when the request does not.
+export const POLL_DEADLINE_MS = 25_000
+export const MAX_BODY_BYTES = 1_000_000
 
 export interface PollerDeps {
   // The access token, or null for "no token".
@@ -36,6 +38,10 @@ export interface AccountUsagePoller {
 export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
   let running = false
   let busy = false
+  // Each start and each stop makes a new generation. A poll of an old generation sends nothing,
+  // changes nothing and sets no timer.
+  let generation = 0
+  let controller: AbortController | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
   let lastPollAt = Number.NEGATIVE_INFINITY
   let waitUntil = Number.NEGATIVE_INFINITY
@@ -53,12 +59,18 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
   }
 
   // One request. Return the new values, null for "no data", or undefined to keep the old values.
-  async function request(): Promise<AccountUsage | null | undefined> {
+  async function request(
+    gen: number,
+    abort: AbortController,
+  ): Promise<AccountUsage | null | undefined> {
     const token = await deps.readToken()
-    if (token === null) return undefined
+    // The setting can go off during the Keychain read. Then drop the token and send nothing.
+    if (token === null || !running || gen !== generation) return undefined
     let res: Response
     try {
       res = await deps.fetch(ACCOUNT_USAGE_URL, {
+        cache: 'no-store',
+        credentials: 'omit',
         headers: {
           Authorization: `Bearer ${token}`,
           'anthropic-beta': 'oauth-2025-04-20',
@@ -66,7 +78,7 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
         },
         method: 'GET',
         redirect: 'error',
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.any([abort.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),
       })
     } catch {
       // The error text can hold request data, so it goes nowhere.
@@ -78,9 +90,21 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
       return undefined
     }
     if (!res.ok) return undefined
+    // An answer that is too large is a bad answer.
+    const length = Number(res.headers.get('content-length'))
+    if (Number.isFinite(length) && length > MAX_BODY_BYTES) {
+      await res.body?.cancel().catch(() => {})
+      return null
+    }
+    let text: string
     try {
-      const text = await res.text()
-      if (text.length > MAX_BODY_CHARS) return null
+      text = await res.text()
+    } catch {
+      // A read error is not a bad answer, so the old values stay.
+      return undefined
+    }
+    try {
+      if (text.length > MAX_BODY_BYTES) return null
       const limits = parseAccountUsage(JSON.parse(text))
       return limits ? { fetchedAt: deps.now(), limits } : null
     } catch {
@@ -88,17 +112,34 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
     }
   }
 
+  // A poll never lasts longer than the deadline, so a hung request cannot stop all later polls.
   async function poll(): Promise<void> {
     if (!running || busy) return
     busy = true
+    const gen = generation
+    const abort = new AbortController()
+    controller = abort
     lastPollAt = deps.now()
+    let deadline: ReturnType<typeof setTimeout> | undefined
     try {
-      const result = await request()
-      if (!running) return
+      const result = await Promise.race([
+        request(gen, abort),
+        new Promise<undefined>(resolve => {
+          deadline = setTimeout(() => resolve(undefined), POLL_DEADLINE_MS)
+        }),
+      ])
+      if (!running || gen !== generation) return
       if (result !== undefined && (result !== null || value !== null)) set(result)
+    } catch {
+      // request() does not throw. A throw here keeps the old values.
     } finally {
-      busy = false
-      if (running) schedule()
+      clearTimeout(deadline)
+      if (gen === generation) {
+        abort.abort()
+        controller = null
+        busy = false
+        if (running) schedule()
+      }
     }
   }
 
@@ -113,13 +154,19 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
     start() {
       if (running) return
       running = true
-      void poll()
+      generation += 1
+      // A 429 wait from before a stop still holds.
+      if (deps.now() < waitUntil) schedule()
+      else void poll()
     },
     stop() {
       running = false
+      generation += 1
+      controller?.abort()
+      controller = null
+      busy = false
       if (timer) clearTimeout(timer)
       timer = null
-      waitUntil = Number.NEGATIVE_INFINITY
       lastPollAt = Number.NEGATIVE_INFINITY
       if (value !== null) set(null)
     },

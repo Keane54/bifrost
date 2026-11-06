@@ -48,6 +48,14 @@ describe('parseAccountUsage', () => {
     expect(parseAccountUsage(data)?.sevenDay?.usedPercent).toBe(5)
   })
 
+  test('a seven_day object that is bad also falls back to limits', () => {
+    const data = {
+      limits: [{ kind: 'weekly_all', percent: 22, resets_at: '2026-11-08T00:00:00+00:00' }],
+      seven_day: { resets_at: '2026-11-09T00:00:00+00:00', utilization: null },
+    }
+    expect(parseAccountUsage(data)?.sevenDay?.usedPercent).toBe(22)
+  })
+
   test('a percent above 100 is capped and a negative percent is dropped', () => {
     const over = { seven_day: { resets_at: '2026-11-09T00:00:00+00:00', utilization: 130 } }
     expect(parseAccountUsage(over)?.sevenDay?.usedPercent).toBe(100)

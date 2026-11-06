@@ -13,6 +13,7 @@ export const KEYCHAIN_ARGS: readonly string[] = [
   '-w',
 ]
 export const KEYCHAIN_TIMEOUT_MS = 10_000
+export const EXPIRY_MARGIN_MS = 60_000
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -29,10 +30,10 @@ export async function readAccessToken(exec: ExecFn, now: number): Promise<string
     if (!isRecord(data) || !isRecord(data.claudeAiOauth)) return null
     const { accessToken, expiresAt } = data.claudeAiOauth
     if (typeof accessToken !== 'string' || accessToken === '') return null
-    if (expiresAt !== undefined) {
-      if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) return null
-      if (expiresAt <= now) return null
-    }
+    // A token with no expiry time is another shape. A token that ends within the margin could
+    // expire during the request, so it counts as expired.
+    if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) return null
+    if (expiresAt <= now + EXPIRY_MARGIN_MS) return null
     return accessToken
   } catch {
     return null

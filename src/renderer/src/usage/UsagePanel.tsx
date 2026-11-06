@@ -1,6 +1,6 @@
 // The Usage HUD panel (spec 8.8): the 5-hour and the 7-day limit, each with the use and the
 // reset time.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AccountUsage, UsageSnapshot } from '../../../shared/types'
 import { cx } from '../lib/cx'
 import { useNow } from '../lib/use-now'
@@ -44,11 +44,29 @@ export default function UsagePanel(): React.JSX.Element {
       },
       () => {},
     )
-    window.bifrost.usage.hudOpened().catch(() => {})
     return () => {
       active = false
       off()
     }
+  }, [])
+
+  // The HUD opens when it mounts and when it becomes visible again (a minimised or hidden frame
+  // stays mounted). Then the main process polls. It polls at most one time in 60 seconds.
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const ask = (): void => {
+      window.bifrost.usage.hudOpened().catch(() => {})
+    }
+    const element = root.current
+    if (!element || typeof IntersectionObserver === 'undefined') {
+      ask()
+      return
+    }
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) ask()
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
   }, [])
 
   // Subscribe first, then load the value. An update that comes before the first answer wins.
@@ -73,7 +91,7 @@ export default function UsagePanel(): React.JSX.Element {
 
   const view = usageView(snapshot, now, undefined, account)
   return (
-    <div className='flex h-full flex-col gap-3 p-3 text-text' data-usage-hud={true}>
+    <div className='flex h-full flex-col gap-3 p-3 text-text' data-usage-hud={true} ref={root}>
       <Bar bar={view.bars[0]} />
       <Bar bar={view.bars[1]} />
       <div className='mt-auto text-[11px] text-text-dim'>{view.source}</div>

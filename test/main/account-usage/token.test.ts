@@ -16,12 +16,12 @@ const json = (oauth: unknown): string => JSON.stringify({ claudeAiOauth: oauth }
 
 describe('readAccessToken', () => {
   test('a good item gives the token', async () => {
-    const exec = answer(json({ accessToken: FAKE, expiresAt: NOW + 60_000 }))
+    const exec = answer(json({ accessToken: FAKE, expiresAt: NOW + 120_000 }))
     expect(await readAccessToken(exec, NOW)).toBe(FAKE)
   })
 
   test('the command has fixed arguments and a 10 second limit', async () => {
-    const exec = answer(json({ accessToken: FAKE, expiresAt: NOW + 1 }))
+    const exec = answer(json({ accessToken: FAKE, expiresAt: NOW + 120_000 }))
     await readAccessToken(exec, NOW)
     expect(exec).toHaveBeenCalledWith(
       '/usr/bin/security',
@@ -31,8 +31,17 @@ describe('readAccessToken', () => {
     expect(KEYCHAIN_ARGS).toEqual(['find-generic-password', '-s', 'Claude Code-credentials', '-w'])
   })
 
-  test('an item without expiresAt still gives the token', async () => {
-    expect(await readAccessToken(answer(json({ accessToken: FAKE })), NOW)).toBe(FAKE)
+  test('an item without expiresAt gives null', async () => {
+    expect(await readAccessToken(answer(json({ accessToken: FAKE })), NOW)).toBeNull()
+  })
+
+  test('a token that expires within 60 seconds gives null', async () => {
+    expect(
+      await readAccessToken(answer(json({ accessToken: FAKE, expiresAt: NOW + 60_000 })), NOW),
+    ).toBeNull()
+    expect(
+      await readAccessToken(answer(json({ accessToken: FAKE, expiresAt: NOW + 60_001 })), NOW),
+    ).toBe(FAKE)
   })
 
   test('an expired token gives null', async () => {

@@ -4,6 +4,8 @@ import {
   ACCOUNT_USAGE_URL,
   createAccountUsagePoller,
   HUD_GAP_MS,
+  MAX_BODY_BYTES,
+  POLL_DEADLINE_MS,
   POLL_INTERVAL_MS,
   RATE_LIMIT_WAIT_MS,
 } from '../../../src/main/account-usage/poller'
@@ -89,6 +91,8 @@ describe('createAccountUsagePoller', () => {
       'User-Agent': 'Bifrost',
     })
     expect(init?.redirect).toBe('error')
+    expect(init?.credentials).toBe('omit')
+    expect(init?.cache).toBe('no-store')
     expect(init?.signal).toBeInstanceOf(AbortSignal)
     poller.stop()
   })
@@ -149,7 +153,7 @@ describe('createAccountUsagePoller', () => {
         }),
     )
     poller.start()
-    await vi.advanceTimersByTimeAsync(HUD_GAP_MS + 1)
+    await vi.advanceTimersByTimeAsync(POLL_DEADLINE_MS - 1)
     poller.requestPoll()
     await vi.advanceTimersByTimeAsync(0)
     expect(fetch).toHaveBeenCalledTimes(1)
@@ -264,6 +268,121 @@ describe('createAccountUsagePoller', () => {
       expect(spy).not.toHaveBeenCalled()
       spy.mockRestore()
     }
+  })
+
+  test('stop while the Keychain read waits: no request is sent', async () => {
+    const { emitted, fetch, poller, readToken } = setup()
+    let release: (token: string | null) => void = () => {}
+    readToken.mockImplementationOnce(
+      () =>
+        new Promise<string | null>(resolve => {
+          release = resolve
+        }),
+    )
+    poller.start()
+    await vi.advanceTimersByTimeAsync(0)
+    poller.stop()
+    release(FAKE)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetch).not.toHaveBeenCalled()
+    expect(emitted.every(value => value === null)).toBe(true)
+    await vi.advanceTimersByTimeAsync(3 * POLL_INTERVAL_MS)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  test('stop aborts a request in progress', async () => {
+    const { fetch, poller } = setup()
+    let signal: AbortSignal | undefined
+    fetch.mockImplementationOnce(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          signal = init.signal ?? undefined
+          signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        }),
+    )
+    poller.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(signal?.aborted).toBe(false)
+    poller.stop()
+    expect(signal?.aborted).toBe(true)
+  })
+
+  test('stop then start while a poll waits: the old poll gives nothing, a new poll runs', async () => {
+    const { emitted, fetch, poller, readToken } = setup()
+    let release: (token: string | null) => void = () => {}
+    readToken.mockImplementationOnce(
+      () =>
+        new Promise<string | null>(resolve => {
+          release = resolve
+        }),
+    )
+    poller.start()
+    await vi.advanceTimersByTimeAsync(0)
+    poller.stop()
+    poller.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    release(FAKE)
+    await vi.advanceTimersByTimeAsync(0)
+    // The old poll sent no request and set no timer. One timer remains.
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(emitted.filter(value => value !== null)).toHaveLength(2)
+    poller.stop()
+  })
+
+  test('a poll that never ends does not stop the later polls', async () => {
+    const { fetch, poller } = setup()
+    fetch.mockImplementationOnce(() => new Promise<Response>(() => {}))
+    poller.start()
+    await vi.advanceTimersByTimeAsync(POLL_DEADLINE_MS + 1)
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(poller.current()).not.toBeNull()
+    poller.stop()
+  })
+
+  test('a failed body read keeps the last good values', async () => {
+    const { fetch, poller } = setup()
+    poller.start()
+    await vi.advanceTimersByTimeAsync(0)
+    const first = poller.current()
+    const broken = new Response(sample, { status: 200 })
+    vi.spyOn(broken, 'text').mockRejectedValue(new Error(`read ${FAKE}`))
+    fetch.mockResolvedValueOnce(broken)
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    expect(poller.current()).toEqual(first)
+    poller.stop()
+  })
+
+  test('a body over the limit is not read', async () => {
+    const { poller, fetch } = setup()
+    const big = new Response('{}', {
+      headers: { 'content-length': String(MAX_BODY_BYTES + 1) },
+      status: 200,
+    })
+    const text = vi.spyOn(big, 'text')
+    fetch.mockResolvedValueOnce(big)
+    poller.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(text).not.toHaveBeenCalled()
+    expect(poller.current()).toBeNull()
+    poller.stop()
+  })
+
+  test('off then on keeps the 15 minute wait after a 429', async () => {
+    const { fetch, poller, replies } = setup()
+    replies.push({ body: '', status: 429 })
+    poller.start()
+    await vi.advanceTimersByTimeAsync(0)
+    poller.stop()
+    poller.start()
+    await vi.advanceTimersByTimeAsync(RATE_LIMIT_WAIT_MS - 1)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    poller.stop()
   })
 
   test('start twice does not start two timers', async () => {
