@@ -5,6 +5,10 @@ export const PLUGIN_NAME = 'bifrost-live'
 export const MARKETPLACE_NAME = 'bifrost-local'
 export const PLUGIN_ID = 'bifrost-live@bifrost-local'
 export const PLUGIN_TIMEOUT_MS = 30_000
+// A write command gets SIGTERM at the timeout. Node then waits for the end of the process.
+// Bifrost waits this time more. Then the command rejects and frees the serial runner.
+export const PLUGIN_GRACE_MS = 10_000
+export const TIMEOUT_MESSAGE = "Claude Code didn't finish in 30 seconds."
 
 export interface PluginEntry {
   enabled: boolean
@@ -74,10 +78,34 @@ function readList(result: ExecResult): Record<string, unknown>[] {
   )
 }
 
+// The options of a write command. A write command changes the settings or the plugin files.
+// A SIGKILL can leave it half done, so it gets SIGTERM (see execFile in claude/cli.ts).
+const WRITE_OPTS = { killSignal: 'SIGTERM', timeoutMs: PLUGIN_TIMEOUT_MS } as const
+
 export function createPluginCli(run: RunClaude): PluginCli {
-  const exec = (args: string[]) => run(args, { timeoutMs: PLUGIN_TIMEOUT_MS })
+  // The output of a command that the timeout stopped is not complete. So Bifrost does not use it.
+  const exec = async (args: string[]): Promise<ExecResult> => {
+    const result = await run(args, { timeoutMs: PLUGIN_TIMEOUT_MS })
+    if (result.timedOut === true) throw new Error(TIMEOUT_MESSAGE)
+    return result
+  }
+  // Run a write command. A command that has not ended PLUGIN_GRACE_MS after the SIGTERM also
+  // rejects with the timeout text.
   const command = async (args: string[]): Promise<void> => {
-    checkCliResult(await exec(args))
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const limit = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(TIMEOUT_MESSAGE)),
+        PLUGIN_TIMEOUT_MS + PLUGIN_GRACE_MS,
+      )
+    })
+    try {
+      const result = await Promise.race([run(args, WRITE_OPTS), limit])
+      if (result.timedOut === true) throw new Error(TIMEOUT_MESSAGE)
+      checkCliResult(result)
+    } finally {
+      clearTimeout(timer)
+    }
   }
   const scope = ['--scope', 'user', '--json']
   return {

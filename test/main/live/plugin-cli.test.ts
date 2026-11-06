@@ -1,8 +1,18 @@
-import { describe, expect, test } from 'vitest'
-import type { ExecResult, RunClaude } from '../../../src/main/claude/cli'
-import { checkCliResult, createPluginCli } from '../../../src/main/live/plugin-cli'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import type { ExecResult, KillSignal, RunClaude } from '../../../src/main/claude/cli'
+import {
+  checkCliResult,
+  createPluginCli,
+  PLUGIN_GRACE_MS,
+  PLUGIN_TIMEOUT_MS,
+  TIMEOUT_MESSAGE,
+} from '../../../src/main/live/plugin-cli'
 
-type Call = { args: string[]; opts?: { timeoutMs?: number } }
+type Call = { args: string[]; opts?: { timeoutMs?: number; killSignal?: KillSignal } }
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 function fake(result: Partial<ExecResult> = {}) {
   const calls: Call[] = []
@@ -81,10 +91,36 @@ describe('commands', () => {
       (c: ReturnType<typeof fake>['cli']) => c.removeMarketplace(),
       ['plugin', 'marketplace', 'remove', 'bifrost-local', '--scope', 'user', '--json'],
     ],
-  ])('each command uses the exact arguments: %s', async (_name, call, args) => {
-    const { calls, cli } = fake({ stdout: '{"outcome":"ok"}' })
-    await call(cli)
-    expect(calls).toEqual([{ args, opts: { timeoutMs: 30000 } }])
+  ])(
+    'each command uses the exact arguments and SIGTERM at the timeout: %s',
+    async (_name, call, args) => {
+      const { calls, cli } = fake({ stdout: '{"outcome":"ok"}' })
+      await call(cli)
+      expect(calls).toEqual([{ args, opts: { killSignal: 'SIGTERM', timeoutMs: 30000 } }])
+    },
+  )
+  test('the timeout text is plain and names the time', () => {
+    expect(TIMEOUT_MESSAGE).toBe("Claude Code didn't finish in 30 seconds.")
+  })
+  test('a command or a list that the timeout stopped rejects with the timeout text', async () => {
+    const { cli } = fake({ code: 143, stdout: '{"outcome":"ok"}', timedOut: true })
+    await expect(cli.install()).rejects.toThrow(TIMEOUT_MESSAGE)
+    await expect(cli.plugin()).rejects.toThrow(TIMEOUT_MESSAGE)
+    await expect(cli.marketplace()).rejects.toThrow(TIMEOUT_MESSAGE)
+  })
+  test('a command that does not end after the SIGTERM rejects after the grace time', async () => {
+    vi.useFakeTimers()
+    const run: RunClaude = () => new Promise<ExecResult>(() => {})
+    const cli = createPluginCli(run)
+    const done = cli.disable()
+    let failed: unknown
+    done.catch(err => {
+      failed = err
+    })
+    await vi.advanceTimersByTimeAsync(PLUGIN_TIMEOUT_MS + PLUGIN_GRACE_MS - 1)
+    expect(failed).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(failed).toEqual(new Error(TIMEOUT_MESSAGE))
   })
   test('enable and disable pass for already_in_goal_state', async () => {
     const line =
