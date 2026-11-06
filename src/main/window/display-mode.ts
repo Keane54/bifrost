@@ -2,6 +2,7 @@ import type { DisplayMode } from '../../shared/types'
 
 // The parts of BrowserWindow that the mode controller uses.
 export interface ModeWindow {
+  isDestroyed(): boolean
   isFullScreen(): boolean
   setFullScreen(on: boolean): void
   isSimpleFullScreen(): boolean
@@ -23,12 +24,17 @@ export function createModeController(
   onChange: (mode: DisplayMode) => void,
   waitMs = 3000,
 ): ModeController {
+  // The last mode that sync saw.
+  let last: DisplayMode = 'window'
+  // A closed window throws on each read. The closed event can build the menu again, and the menu
+  // reads the mode. So a closed window gives the last mode.
   const get = (): DisplayMode => {
+    if (win.isDestroyed()) return last
     if (win.isFullScreen()) return 'fullscreen'
     if (win.isSimpleFullScreen()) return 'borderless'
     return 'window'
   }
-  let last = get()
+  last = get()
   // The mode before the last start of Fullscreen.
   let before: DisplayMode = 'window'
   let queue: Promise<void> = Promise.resolve()

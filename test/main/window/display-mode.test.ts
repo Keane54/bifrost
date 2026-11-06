@@ -6,9 +6,18 @@ type Event = 'enter-full-screen' | 'leave-full-screen'
 
 // A fake window. It records each call and changes its flags at once.
 // The events fire only when the test calls fire().
-function fakeWindow(): ModeWindow & { calls: string[]; fire(event: Event): void } {
+// destroy() acts as a closed BrowserWindow: each read then throws.
+function fakeWindow(): ModeWindow & {
+  calls: string[]
+  fire(event: Event): void
+  destroy(): void
+} {
   let full = false
   let simple = false
+  let destroyed = false
+  const alive = (): void => {
+    if (destroyed) throw new TypeError('Object has been destroyed')
+  }
   const calls: string[] = []
   const listeners: Record<Event, Array<() => void>> = {
     'enter-full-screen': [],
@@ -16,12 +25,22 @@ function fakeWindow(): ModeWindow & { calls: string[]; fire(event: Event): void 
   }
   return {
     calls,
+    destroy() {
+      destroyed = true
+    },
     fire(event) {
       const run = listeners[event].splice(0)
       for (const cb of run) cb()
     },
-    isFullScreen: () => full,
-    isSimpleFullScreen: () => simple,
+    isDestroyed: () => destroyed,
+    isFullScreen: () => {
+      alive()
+      return full
+    },
+    isSimpleFullScreen: () => {
+      alive()
+      return simple
+    },
     once(event, cb) {
       listeners[event].push(cb)
     },
@@ -47,6 +66,21 @@ test('get reads the mode from the window', () => {
   expect(controller.get()).toBe('borderless')
   win.setFullScreen(true)
   expect(controller.get()).toBe('fullscreen')
+})
+
+// The window closed event can build the menu again, for example when the key recorder of
+// Settings > Keys records. Then the menu reads the mode of a closed window.
+test('get and sync of a closed window do not throw', () => {
+  const win = fakeWindow()
+  const onChange = vi.fn()
+  const controller = createModeController(win, onChange)
+  win.setSimpleFullScreen(true)
+  controller.sync()
+  win.destroy()
+  expect(() => controller.get()).not.toThrow()
+  expect(controller.get()).toBe('borderless')
+  expect(() => controller.sync()).not.toThrow()
+  expect(onChange).toHaveBeenCalledTimes(1)
 })
 
 test('set to the current mode does nothing', async () => {
