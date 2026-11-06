@@ -1,0 +1,5 @@
+{
+  "description": "Live details for Bifrost. Sends session events to the Bifrost socket on this Mac.",
+  "name": "bifrost-live",
+  "version": "1.0.0"
+}

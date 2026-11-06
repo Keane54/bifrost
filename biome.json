@@ -25,6 +25,8 @@
       "biome.json",
       "tsconfig*.json",
       "package.json",
+      "resources/live-mod/**/*",
+      "!**/live-mod/.claude-plugin/types/**/*",
       "!**/out/**/*",
       "!**/dist/**/*",
       "!**/node_modules/**/*"
