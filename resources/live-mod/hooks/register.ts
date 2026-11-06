@@ -14,6 +14,7 @@ const SOCKET = '/.bifrost/live.sock'
 const VERSION = 1
 const ANSWER_MAX = 4000
 const TEXT_MAX = 200
+const TRANSCRIPT_PATH_MAX = 1024
 const USAGE_DELAY_MS = 2500
 const HEARTBEAT_MS = 30_000
 const END_WAIT_MS = 200
@@ -45,14 +46,34 @@ let seq = 0
 let home: Promise<string | undefined> | undefined
 // The number of sends that have not settled.
 let inFlight = 0
+// The Claude Code version, read one time for each module load.
+let claudeVersion: Promise<string | undefined> | undefined
+// The values of the newest classic.Stop input. Each is undefined until a classic.Stop gives it.
+let effort: string | undefined
+let permissionMode: string | undefined
+let transcriptPath: string | undefined
 
 function cut(value: unknown, max = TEXT_MAX): string {
   return String(value).slice(0, max)
 }
 
+// Cut a value that is known. An unknown value stays undefined, so the line does not have it.
+function cutKnown(value: string | undefined, max = TEXT_MAX): string | undefined {
+  return value === undefined ? undefined : cut(value, max)
+}
+
 function readHome($: EngineInterface): Promise<string | undefined> {
   home ??= $.env.get('HOME').catch(() => undefined)
   return home
+}
+
+// A rejection gives no version.
+function readVersion($: EngineInterface): Promise<string | undefined> {
+  claudeVersion ??= $.session
+    .version()
+    .then(result => (typeof result.version === 'string' ? result.version : undefined))
+    .catch(() => undefined)
+  return claudeVersion
 }
 
 // Send one line. The promise never rejects.
@@ -81,24 +102,31 @@ async function send($: EngineInterface, kind: Kind, data: Data = {}, sid?: strin
 
 // Send the model, the context, the cost and the rate limits. The promise never rejects.
 // Without figures, the mod reads them from $.session.usage().
+// The line also has the Claude Code version and the values of the newest classic.Stop input,
+// when the mod knows them.
 async function sendUsage($: EngineInterface, figures?: Figures) {
   // The line would be dropped. So do not read the usage.
   if (inFlight >= MAX_IN_FLIGHT) return
   try {
-    const [model, usage] = await Promise.all([
+    const [model, usage, version] = await Promise.all([
       $.session.model().catch(() => undefined),
       figures ?? $.session.usage(),
+      readVersion($),
     ])
     const { percent, tokens, window } = usage.context
     await send($, 'usage', {
       context: { percent, tokens, window },
       costUsd: usage.cost?.usd,
-      model: model === undefined ? undefined : cut(model),
+      effort: cutKnown(effort),
+      model: cutKnown(model),
+      permissionMode: cutKnown(permissionMode),
       rateLimits: usage.rateLimits.map(limit => ({
         kind: cut(limit.kind),
         percentUsed: limit.percentUsed,
-        resetsAt: limit.resetsAt === undefined ? undefined : cut(limit.resetsAt),
+        resetsAt: cutKnown(limit.resetsAt),
       })),
+      transcriptPath: cutKnown(transcriptPath, TRANSCRIPT_PATH_MAX),
+      version: cutKnown(version),
     })
   } catch {
     // The engine gave no usage. Send nothing.
@@ -158,6 +186,15 @@ export const register: Register = on => {
 
   on('classic.StopFailure', ($, e, next) => {
     void send($, 'stop.failure', { error: cut(e.error) })
+    return next(e)
+  }).catch((_, e, next) => next(e))
+
+  // Keep the effort, the permission mode and the transcript path for the next usage line.
+  // This hook sends nothing and waits for nothing.
+  on('classic.Stop', (_, e, next) => {
+    if (typeof e.effort?.level === 'string') effort = e.effort.level
+    if (typeof e.permission_mode === 'string') permissionMode = e.permission_mode
+    if (typeof e.transcript_path === 'string') transcriptPath = e.transcript_path
     return next(e)
   }).catch((_, e, next) => next(e))
 }

@@ -104,6 +104,10 @@ const api: BifrostApi = {
     load: () => invoke('ui:load'),
     save: data => invoke('ui:save', data),
   },
+  usage: {
+    get: () => invoke('usage:get'),
+    onUpdate: cb => subscribe('usage:update', cb),
+  },
   wm: {
     onClosePanel: cb => subscribe('wm:close-panel', cb),
   },

@@ -179,7 +179,7 @@ The Live details mod sends one live line for each event. The mod sends facts. Bi
 | `turn.complete` | `reason` `aborted`, `answer` | Sets the state to Idle with no box. Keeps the partial answer as the last message. |
 | `turn.complete` | `reason` `error` | Sets a red box and the state Error. |
 | `stop.failure` | `error` | Sets a red box and the state Error. |
-| `usage` | `model`, `context`, `costUsd`, `rateLimits` | Updates the usage data (section 6.3). It is not an event. |
+| `usage` | `model`, `context`, `costUsd`, `rateLimits`, and the optional `version`, `effort`, `permissionMode`, `transcriptPath` | Updates the usage data (section 6.3). It is not an event. |
 
 Each line also has `v`, `kind`, `sid`, `at` and `seq`. The field `seq` is the order number of the session.
 
@@ -188,14 +188,15 @@ Rules for the live lines:
 - The mod sends one line for each event. It sends the line with `POST http://bifrost/v1/event` over the socket.
 - A hook does not wait for a send, because a send can fail or take long. The one exception is `session.end`, which waits at most 200 ms.
 - Each line has `v: 1`. Bifrost ignores a line with another version, and a line that is not valid.
-- The server accepts a body of at most 65,536 bytes. The mod cuts `answer` to 4,000 characters and each other text to 200 characters.
+- The server accepts a body of at most 65,536 bytes. The mod cuts `answer` to 4,000 characters, `transcriptPath` to 1,024 characters and each other text to 200 characters.
 - The server closes a request that has no end after 5,000 ms.
 - The mod counts the sends that have not settled. At 32 or more, a new send or usage read sends nothing and returns at once. The line is lost. Bifrost gets the state again at the next line or the next heartbeat. The reason: a Bifrost that hangs never answers a send, and its request timeout then does not run.
 - Order rule (D4): Bifrost drops a state event that is older than the newest applied event of the session. It compares `at`, then `seq` when both events have one.
 - A turn end of a subagent (`agentId`) changes nothing. A `tool.done` event of any loop sets the state to Working.
-- No `classic.*` kind goes on the wire. The mod hooks `classic.PermissionRequest` and `classic.StopFailure` as a fallback (D5).
+- No `classic.*` kind goes on the wire. The mod hooks `classic.PermissionRequest` and `classic.StopFailure` as a fallback (D5). It also hooks `classic.Stop` for the usage data (M5b D28).
 - `classic.PermissionRequest` sends the kind `permission`. It only makes the red box for a permission prompt earlier.
 - `classic.StopFailure` sends the kind `stop.failure`. It only repeats the error of `turn.complete`.
+- `classic.Stop` sends nothing and waits for nothing. It keeps `effort.level`, `permission_mode` and `transcript_path` of its input for the next `usage` line (section 6.3).
 - The mod does not use `tool.check`. In auto mode, an `ask` goes to the classifier, so it is not a prompt.
 - Where `classic.*` hooks do not run, the poll gives the red box for a permission prompt within 2 s. Nothing else changes.
 - Ask order: the mod queues the `ask` line before the tool runs. The line has a lower `seq` than `tool.done`. The mod does not wait for the send.
@@ -207,6 +208,15 @@ Rules for the live lines:
 ### 6.3 Usage data
 
 The mod sends the usage data of each session. This data is the model, the context, the cost and the rate limits. A `usage` line holds them.
+
+A `usage` line also has four optional fields (M5b D28). Show Info shows them (section 8.6). `v` stays 1, because each new field is optional.
+
+| Field | Source |
+|---|---|
+| `version` | The `version` of `$.session.version()`. The mod reads it one time for each module load. A rejection gives no version. |
+| `effort` | `effort.level` of the newest `classic.Stop` input. |
+| `permissionMode` | `permission_mode` of the newest `classic.Stop` input. |
+| `transcriptPath` | `transcript_path` of the newest `classic.Stop` input. |
 
 The mod sends a `usage` line at these times:
 
@@ -224,7 +234,14 @@ Rules for the usage data:
 - The parser keeps the windows `five_hour` and `seven_day` of the rate limits. It drops other windows.
 - The mod gives a model ID. The registry maps it to a name with `modelName`: `claude-haiku-5-5` gives `Haiku 5.5`. The suffix `[1m]` adds ` (1M context)`. An ID with an unknown form stays as it is.
 - The mod cannot read the session name. The name comes from `claude agents --json`.
-- Without the mod, Bifrost shows no model, context %, cost or rate limit.
+- The mod sends each of the four optional fields only when it knows the value. A line before the first `classic.Stop` of a module load has no `effort`, `permissionMode` or `transcriptPath`. A line of an older mod has none of the four fields.
+- The mod keeps the three `classic.Stop` values for the module load, not for each session. After `/clear`, the line of the new session ID has the old transcript path until the next `classic.Stop`.
+- The parser keeps `version`, `effort` and `permissionMode` when each is a text that is not empty. It cuts each to 200 characters. It keeps `transcriptPath` only when the path starts with `/`, has no line break and has at most 1,024 characters. It leaves out a bad field and keeps the line.
+- Each row gets these fields from its last `usage` line: `contextWindowSize` (from `context.window`), `rateLimits`, `claudeVersion` (from `version`), `effort`, `permissionMode` and `transcriptPath`. A missing value leaves the field out.
+- The newest rate limits (M5b D19) come from the `usage` line with `rateLimits` that has the newest `at`, of all sessions. A session that is not a row also counts, until the registry forgets it. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No line with `rateLimits` gives null.
+- The registry keeps only the last `usage` line of each session. So a later line without `rateLimits` removes the rate limits of that session.
+- The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line, so a newer line with the same limits is a change. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
+- Without the mod, Bifrost shows no model, context %, cost, rate limit, context window size, Claude Code version, effort, permission mode or transcript path.
 
 Statusline in chat windows (O4, 2026-11-05):
 

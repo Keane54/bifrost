@@ -307,6 +307,7 @@ async function startService(
     send('registry:update', rows, error)
     alerts.update(rows)
   })
+  service.onUsage(usage => send('usage:update', usage))
   liveRegistry = registry
   liveService = service
   // The app can quit before the store loads. Then do not start the service.
@@ -414,6 +415,7 @@ export function registerIpc(home: TestHome | null = null): void {
     return checkClaudeVersion(runClaude)
   })
   ipcMain.handle('registry:rows', async () => (await service).rows())
+  ipcMain.handle('usage:get', e => fromPage(e, async () => (await service).usage()))
   ipcMain.handle('registry:ack', async (_e, sessionId: unknown) => {
     if (typeof sessionId === 'string') (await service).acknowledge(sessionId)
   })
@@ -725,7 +727,7 @@ export function registerIpc(home: TestHome | null = null): void {
   )
 }
 
-// Make a window the target of pty:data, pty:exit and registry:update.
+// Make a window the target of pty:data, pty:exit, registry:update and usage:update.
 // A reload or a renderer crash does not run the cleanup code of the page.
 // The main process must close the PTYs of the old page.
 // It closes all PTYs when a new page loads and when the renderer stops.

@@ -10,6 +10,8 @@ const S = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b'
 const S1 = '11111111-2222-4333-8444-555555555555'
 const S2 = '66666666-7777-4888-9999-aaaaaaaaaaaa'
 const MODEL = 'claude-haiku-5-5'
+const CLAUDE_VERSION = '2.1.318'
+const TRANSCRIPT = '/h/.claude/projects/p/S.jsonl'
 const RATE_LIMITS = [{ kind: 'seven_day', percentUsed: 15, resetsAt: '2026-11-07T02:00:00.000Z' }]
 const USAGE: SessionUsage = {
   context: { percent: 6, tokens: 58151, window: 1000000 },
@@ -29,6 +31,8 @@ interface Options {
   sessionId?: () => string
   // The answer of $.session.usage().
   usage?: SessionUsage
+  // The version in the answer of $.session.version(). Without it, the engine part fails.
+  version?: string
   // The engine part of session.end calls this function.
   onSessionEnd?: () => void
 }
@@ -59,6 +63,10 @@ function world(on: On, options: Options = {}): World {
   on('session.id', () => ({ value: options.sessionId ? options.sessionId() : S }))
   on('session.model', () => ({ value: MODEL }))
   on('session.usage', () => ({ value: options.usage ?? USAGE }))
+  on('session.version', () => {
+    if (options.version === undefined) throw new Error('no version')
+    return { value: { version: options.version } }
+  })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.end', (_, e) => {
     options.onSessionEnd?.()
@@ -69,6 +77,7 @@ function world(on: On, options: Options = {}): World {
   on('turn.complete', (_, e) => ({ text: e.answer }))
   on('classic.PermissionRequest', () => ({}))
   on('classic.StopFailure', () => ({}))
+  on('classic.Stop', () => ({}))
   return { clock, kinds: () => lines.map(line => line.kind), lines }
 }
 
@@ -207,9 +216,13 @@ test('at 32 sends in flight, a new line is not sent and each hook still returns'
   expect(w.lines.length).toBe(32)
   expect(await $.tool.call({ command: 'ls', tool: 'Bash' })).toEqual({ result: {} })
   expect(await $.turn.complete(turnEnd('ALPHA'))).toEqual({ text: 'ALPHA' })
-  expect(await $.session.measure({ changed: ['cost'], cost: { usd: 1 } })).toEqual({
+  const measure: SessionMeasureInput = {
     changed: ['cost'],
-  })
+    context: USAGE.context,
+    cost: { usd: 1 },
+    rateLimits: [],
+  }
+  expect(await $.session.measure(measure)).toEqual({ changed: ['cost'] })
   // The send of session.end returns at once, so the hook does not wait for its 200 ms.
   expect(await $.session.end({ reason: 'other', resume: { id: S }, sessionId: S })).toEqual({
     sessionId: S,
@@ -384,4 +397,68 @@ test('no HOME gives no send', async ($, on) => {
   await w.clock.settle()
   await w.clock.advance(2500)
   expect(w.lines).toEqual([])
+})
+
+// The input of a classic.Stop hook. The engine stamps the session ID and the folder.
+const STOP = {
+  effort: { level: 'xhigh' },
+  permission_mode: 'acceptEdits',
+  stop_hook_active: false,
+  transcript_path: TRANSCRIPT,
+}
+
+test('classic.Stop keeps the effort, the permission mode and the transcript path for the next usage line', async ($, on) => {
+  const w = world(on)
+  await $.session.start(START)
+  await w.clock.settle()
+  const count = w.lines.length
+  expect(await $.classic.Stop(STOP)).toEqual({})
+  await w.clock.settle()
+  // The classic.Stop hook makes no fetch.
+  expect(w.lines.length).toBe(count)
+  await w.clock.advance(30_000)
+  expect(w.kinds().slice(count)).toEqual(['usage'])
+  expect(w.lines.at(-1)).toMatchObject({
+    effort: 'xhigh',
+    permissionMode: 'acceptEdits',
+    transcriptPath: TRANSCRIPT,
+  })
+})
+
+test('the usage line carries the Claude Code version', async ($, on) => {
+  const w = world(on, { version: CLAUDE_VERSION })
+  await $.session.start(START)
+  await w.clock.settle()
+  expect(w.kinds()).toEqual(['session.start', 'usage'])
+  expect(w.lines[1]?.version).toBe(CLAUDE_VERSION)
+})
+
+test('a usage line before any classic.Stop has no effort', async ($, on) => {
+  const w = world(on, { version: CLAUDE_VERSION })
+  await $.turn.complete(turnEnd('ALPHA'))
+  await w.clock.settle()
+  await w.clock.advance(2500)
+  expect(w.kinds()).toEqual(['turn.complete', 'usage'])
+  expect(w.lines[1]).not.toHaveProperty('effort')
+  expect(w.lines[1]).not.toHaveProperty('permissionMode')
+  expect(w.lines[1]).not.toHaveProperty('transcriptPath')
+})
+
+test('the usage line cuts the version, the effort, the permission mode and the transcript path', async ($, on) => {
+  const w = world(on, { version: 'v'.repeat(300) })
+  await $.classic.Stop({
+    effort: { level: 'e'.repeat(300) },
+    permission_mode: 'p'.repeat(300),
+    stop_hook_active: false,
+    transcript_path: `/${'t'.repeat(2000)}`,
+  })
+  await $.session.start(START)
+  await w.clock.settle()
+  expect(w.kinds()).toEqual(['session.start', 'usage'])
+  expect(w.lines[1]).toMatchObject({
+    effort: 'e'.repeat(200),
+    permissionMode: 'p'.repeat(200),
+    transcriptPath: `/${'t'.repeat(1023)}`,
+    version: 'v'.repeat(200),
+  })
 })

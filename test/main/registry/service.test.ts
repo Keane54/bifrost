@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { AgentEntry, AgentList } from '../../../src/main/claude/agents'
+import type { LiveEvent, LiveUsage } from '../../../src/main/live/live-event'
 import { type RegistryStore, SessionRegistry } from '../../../src/main/registry/registry'
 import {
   RegistryService,
@@ -7,7 +8,7 @@ import {
   type ServiceDeps,
 } from '../../../src/main/registry/service'
 import { parseProcessTable } from '../../../src/main/registry/terminal-app'
-import type { SessionRow } from '../../../src/shared/types'
+import type { SessionRow, UsageSnapshot } from '../../../src/shared/types'
 
 const START = 1_000_000
 
@@ -695,5 +696,86 @@ describe('live lines (Task 4)', () => {
       'minUpdateGapMs',
       'tickMs',
     ])
+  })
+})
+
+describe('the newest rate limits (M5b Task 1)', () => {
+  const limits = { sevenDay: { resetsAt: 9_000_000, usedPercent: 15 } }
+  const usageLine = (sessionId: string, at: number, usage: LiveUsage): LiveEvent => ({
+    at,
+    sessionId,
+    type: 'usage',
+    usage,
+  })
+
+  const ready = async () => {
+    const deps = fakeDeps({ listActive: async () => ({ entries: [bg()] }) })
+    const started = startService(deps)
+    const usages: (UsageSnapshot | null)[] = []
+    started.service.onUsage(usage => usages.push(usage))
+    // The first poll ends and the update gap ends.
+    await vi.advanceTimersByTimeAsync(1000)
+    return { ...started, usages }
+  }
+
+  test('the service sends the usage when a line changes it', async () => {
+    const { service, usages } = await ready()
+    expect(service.usage()).toBeNull()
+    service.pushLive(usageLine('s1', START, { rateLimits: limits }))
+    expect(usages).toEqual([{ limits, name: 'alpha', sessionId: 's1', updatedAt: START }])
+    expect(service.usage()).toEqual(usages[0])
+    // The same line again changes nothing. A line without rate limits of another session also
+    // changes nothing.
+    service.pushLive(usageLine('s1', START, { rateLimits: limits }))
+    service.pushLive(usageLine('s2', START + 10, { costUsd: 0.1 }))
+    expect(usages.length).toBe(1)
+    // A newer line with the same limits changes the time.
+    service.pushLive(usageLine('s1', START + 30_000, { rateLimits: limits }))
+    expect(usages.length).toBe(2)
+    expect(usages[1]).toMatchObject({ updatedAt: START + 30_000 })
+  })
+
+  test('the service sends the usage when it sends no rows', async () => {
+    const { service, updates, usages } = await ready()
+    const count = updates.length
+    // A session that is not a row. Its line changes no row, so no update of the rows goes out.
+    service.pushLive(usageLine('s2', Date.now(), { rateLimits: limits }))
+    expect(updates.length).toBe(count)
+    expect(usages).toEqual([{ limits, name: 's2', sessionId: 's2', updatedAt: Date.now() }])
+  })
+
+  test('forget sends null when it removes the newest rate limits', async () => {
+    const { service, usages } = await ready()
+    service.pushLive(usageLine('s1', START, { rateLimits: limits }))
+    service.forget('s1')
+    expect(usages.at(-1)).toBeNull()
+    expect(usages.length).toBe(2)
+  })
+
+  test('the tick sends the usage when the row name changes it', async () => {
+    let name = 'alpha'
+    const deps = fakeDeps({ listActive: async () => ({ entries: [bg({ name })] }) })
+    const { service } = startService(deps)
+    const usages: (UsageSnapshot | null)[] = []
+    service.onUsage(usage => usages.push(usage))
+    await vi.advanceTimersByTimeAsync(1000)
+    service.pushLive(usageLine('s1', START, { rateLimits: limits }))
+    expect(usages.at(-1)).toMatchObject({ name: 'alpha' })
+    name = 'beta'
+    // The next active poll gives the new name. The tick after it sends the usage.
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.activeMs + SERVICE_TIMING.tickMs)
+    expect(usages.at(-1)).toMatchObject({ name: 'beta' })
+    expect(usages.length).toBe(2)
+  })
+
+  test('the service sends no usage after stop', async () => {
+    const { service, usages } = await ready()
+    service.pushLive(usageLine('s1', START, { rateLimits: limits }))
+    expect(usages.length).toBe(1)
+    service.stop()
+    // forget removes the rate limits, but the service sends nothing after stop.
+    service.forget('s1')
+    service.pushLive(usageLine('s1', START + 1, { rateLimits: limits }))
+    expect(usages.length).toBe(1)
   })
 })

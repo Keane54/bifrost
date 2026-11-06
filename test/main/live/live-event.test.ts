@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { parseLiveLine } from '../../../src/main/live/live-event'
+import { parseLiveLine, TRANSCRIPT_PATH_MAX } from '../../../src/main/live/live-event'
 
 const S = '73b5ca76-a4a8-4f97-9764-e41657296414'
 const line = (o: Record<string, unknown>) =>
@@ -102,6 +102,70 @@ describe('parseLiveLine', () => {
       sessionId: S,
       type: 'usage',
       usage: { contextTokens: 58151, contextWindow: 1000000, model: 'claude-haiku-5-5' },
+    })
+  })
+
+  test('parseLiveLine reads the four new usage fields', () => {
+    const text = line({
+      effort: 'xhigh',
+      kind: 'usage',
+      permissionMode: 'plan',
+      transcriptPath: '/h/.claude/projects/p/S.jsonl',
+      version: '2.1.318',
+    })
+    expect(parseLiveLine(text, R)).toEqual({
+      at: 1000,
+      sessionId: S,
+      type: 'usage',
+      usage: {
+        effort: 'xhigh',
+        permissionMode: 'plan',
+        transcriptPath: '/h/.claude/projects/p/S.jsonl',
+        version: '2.1.318',
+      },
+    })
+  })
+
+  test('parseLiveLine cuts the version, the effort and the permission mode', () => {
+    const text = line({
+      effort: 'e'.repeat(300),
+      kind: 'usage',
+      permissionMode: 'p'.repeat(300),
+      version: 'v'.repeat(300),
+    })
+    expect(parseLiveLine(text, R)).toMatchObject({
+      usage: { effort: 'e'.repeat(200), permissionMode: 'p'.repeat(200), version: 'v'.repeat(200) },
+    })
+  })
+
+  test.each([['rel/p.jsonl'], ['/a\nb'], ['/a\rb'], [`/${'p'.repeat(1024)}`], [42]])(
+    'parseLiveLine leaves out a bad transcript path (%j)',
+    transcriptPath => {
+      const text = line({ costUsd: 0.5, kind: 'usage', transcriptPath })
+      expect(parseLiveLine(text, R)).toEqual({
+        at: 1000,
+        sessionId: S,
+        type: 'usage',
+        usage: { costUsd: 0.5 },
+      })
+    },
+  )
+
+  test('parseLiveLine keeps a transcript path of 1,024 characters', () => {
+    expect(TRANSCRIPT_PATH_MAX).toBe(1024)
+    const path = `/${'p'.repeat(1023)}`
+    expect(parseLiveLine(line({ kind: 'usage', transcriptPath: path }), R)).toMatchObject({
+      usage: { transcriptPath: path },
+    })
+  })
+
+  test('parseLiveLine leaves out an empty or bad version, effort and permission mode', () => {
+    const text = line({ costUsd: 0.5, effort: '', kind: 'usage', permissionMode: 3, version: null })
+    expect(parseLiveLine(text, R)).toEqual({
+      at: 1000,
+      sessionId: S,
+      type: 'usage',
+      usage: { costUsd: 0.5 },
     })
   })
 

@@ -96,10 +96,17 @@ export interface SessionRow {
   lastMessage?: string
   lastActivity: number
   startedAt: number
-  // model, contextPercent and costUsd come from the last usage line of the Live details mod.
+  // The fields from model to transcriptPath come from the last usage line of the Live details
+  // mod. A line without a value leaves its field out.
   model?: string
   contextPercent?: number
   costUsd?: number
+  contextWindowSize?: number
+  rateLimits?: RateLimits
+  claudeVersion?: string
+  effort?: string
+  permissionMode?: string
+  transcriptPath?: string
   // True when the Live details mod sent a line for the session in the last 90 s.
   live?: true
   branch?: string
@@ -144,4 +151,14 @@ export interface RateWindow {
 export interface RateLimits {
   fiveHour?: RateWindow
   sevenDay?: RateWindow
+}
+
+// The newest rate limits: those of the newest usage line with rate limits, of all sessions.
+// The session can be a session that is not a row. name is the row name, or the first 8
+// characters of the session ID when the session is not a row. updatedAt is the time of the line.
+export interface UsageSnapshot {
+  sessionId: string
+  name: string
+  updatedAt: number
+  limits: RateLimits
 }

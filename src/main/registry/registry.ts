@@ -1,4 +1,10 @@
-import type { Priority, SessionKind, SessionRow, WatchColour } from '../../shared/types'
+import type {
+  Priority,
+  SessionKind,
+  SessionRow,
+  UsageSnapshot,
+  WatchColour,
+} from '../../shared/types'
 import { worktreeRoot } from '../../shared/worktree'
 import type { AgentEntry } from '../claude/agents'
 import type { LiveUsage } from '../live/live-event'
@@ -150,7 +156,7 @@ export class SessionRegistry {
   // did not show yet.
   private readonly liveAt = new Map<string, number>()
   // The newest usage line for each session. The map also keeps sessions that did not show yet.
-  private readonly usage = new Map<string, Usage>()
+  private readonly usageLines = new Map<string, Usage>()
   // The newest time that applyAgents, applyEvents, applyUsage or tick got.
   private clock = 0
   private readonly branches = new Map<string, string>()
@@ -288,9 +294,30 @@ export class SessionRegistry {
   applyUsage(sessionId: string, usage: LiveUsage, at: number): void {
     this.advance(at)
     this.touch(sessionId, at)
-    const old = this.usage.get(sessionId)
+    const old = this.usageLines.get(sessionId)
     if (old !== undefined && at < old.updatedAt) return
-    this.usage.set(sessionId, { ...usage, updatedAt: at })
+    this.usageLines.set(sessionId, { ...usage, updatedAt: at })
+  }
+
+  // Return the newest rate limits: the usage line with rate limits that has the largest
+  // updatedAt, of all sessions. A session that is not a row also counts. The name is the row
+  // name, or the first 8 characters of the session ID when the session is not a row.
+  // Each session keeps only its last usage line. So a later line without rate limits removes the
+  // rate limits of that session. Return null when no usage line has rate limits.
+  usage(): UsageSnapshot | null {
+    let newest: UsageSnapshot | null = null
+    for (const [sessionId, line] of this.usageLines) {
+      if (line.rateLimits === undefined) continue
+      if (newest !== null && line.updatedAt <= newest.updatedAt) continue
+      const s = this.sessions.get(sessionId)
+      newest = {
+        limits: line.rateLimits,
+        name: s ? this.nameOf(s) : sessionId.slice(0, 8),
+        sessionId,
+        updatedAt: line.updatedAt,
+      }
+    }
+    return newest
   }
 
   // Return the number of rows that are live and not parked.
@@ -319,7 +346,7 @@ export class SessionRegistry {
   forget(sessionId: string): void {
     this.sessions.delete(sessionId)
     this.pending = this.pending.filter(ev => ev.sessionId !== sessionId)
-    this.usage.delete(sessionId)
+    this.usageLines.delete(sessionId)
     this.liveAt.delete(sessionId)
     this.active.delete(sessionId)
     this.all.delete(sessionId)
@@ -614,7 +641,7 @@ export class SessionRegistry {
       ...this.priorities.keys(),
       ...this.watched.keys(),
       ...this.worktrees.keys(),
-      ...this.usage.keys(),
+      ...this.usageLines.keys(),
       ...this.liveAt.keys(),
     ])
     for (const s of this.sessions.values()) {
@@ -670,9 +697,13 @@ export class SessionRegistry {
     return [...this.sessions.values()].sort(compareSessions)
   }
 
+  private nameOf(s: Session): string {
+    return rowName(s.sessionId, this.names.get(s.sessionId), s.shortId)
+  }
+
   private toRow(s: Session): SessionRow {
     const m = s.machine
-    const usage = this.usage.get(s.sessionId)
+    const usage = this.usageLines.get(s.sessionId)
     const row: SessionRow = {
       box: m.box,
       boxSince: m.boxSince,
@@ -681,7 +712,7 @@ export class SessionRegistry {
       kind: s.kind,
       // A usage line is not activity (D8).
       lastActivity: Math.max(s.startedAt, s.lastEventAt, s.statusChangedAt),
-      name: rowName(s.sessionId, this.names.get(s.sessionId), s.shortId),
+      name: this.nameOf(s),
       sessionId: s.sessionId,
       startedAt: s.startedAt,
       state: m.state,
@@ -696,6 +727,13 @@ export class SessionRegistry {
     if (usage?.model !== undefined) row.model = modelName(usage.model)
     if (usage?.contextPercent !== undefined) row.contextPercent = usage.contextPercent
     if (usage?.costUsd !== undefined) row.costUsd = usage.costUsd
+    if (usage?.contextWindow !== undefined) row.contextWindowSize = usage.contextWindow
+    // The registry replaces a usage line and never changes it. So the row can share its limits.
+    if (usage?.rateLimits !== undefined) row.rateLimits = usage.rateLimits
+    if (usage?.version !== undefined) row.claudeVersion = usage.version
+    if (usage?.effort !== undefined) row.effort = usage.effort
+    if (usage?.permissionMode !== undefined) row.permissionMode = usage.permissionMode
+    if (usage?.transcriptPath !== undefined) row.transcriptPath = usage.transcriptPath
     if (this.isLive(s.sessionId)) row.live = true
     const branch = this.branches.get(this.branchDir(s))
     if (branch !== undefined) row.branch = branch

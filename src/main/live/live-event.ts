@@ -18,9 +18,12 @@
 // | stop.failure  | error (string, optional)                         | StopFailure                 |
 // | usage         | model, context { tokens?, window, percent? },    | usage line                  |
 // |               | costUsd?, rateLimits [{ kind, percentUsed,       |                             |
-// |               | resetsAt? }]                                     |                             |
+// |               | resetsAt? }], version?, effort?,                 |                             |
+// |               | permissionMode?, transcriptPath?                 |                             |
 //
 // A bad line gives null. A bad field of a usage line is left out and the line stays.
+// The mod sends version, effort, permissionMode and transcriptPath from M5b on (D28). A line of an
+// older mod does not have them. v stays 1, because each new field is optional.
 
 import type { RateLimits, RateWindow } from '../../shared/types'
 import { isUuid } from '../../shared/uuid'
@@ -29,6 +32,7 @@ import type { HookEvent } from '../registry/hook-event'
 export const LIVE_VERSION = 1
 export const ANSWER_MAX = 4000
 export const TEXT_MAX = 200
+export const TRANSCRIPT_PATH_MAX = 1024
 export const AT_DRIFT_MS = 10_000
 
 export interface LiveUsage {
@@ -38,6 +42,12 @@ export interface LiveUsage {
   contextWindow?: number
   costUsd?: number
   rateLimits?: RateLimits
+  // The Claude Code version, from $.session.version() of the mod.
+  version?: string
+  // effort, permissionMode and transcriptPath come from the newest classic.Stop input.
+  effort?: string
+  permissionMode?: string
+  transcriptPath?: string
 }
 
 export type LiveEvent =
@@ -99,7 +109,23 @@ function readUsage(raw: Raw): LiveUsage {
   }
   const rateLimits = readRateLimits(raw.rateLimits)
   if (rateLimits) usage.rateLimits = rateLimits
+  for (const key of ['version', 'effort', 'permissionMode'] as const) {
+    const text = cut(raw[key], TEXT_MAX)
+    if (text) usage[key] = text
+  }
+  if (isTranscriptPath(raw.transcriptPath)) usage.transcriptPath = raw.transcriptPath
   return usage
+}
+
+// A transcript path is absolute, has no line break and has at most TRANSCRIPT_PATH_MAX
+// characters. The parser does not cut a path, because a cut path is a different file.
+function isTranscriptPath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.startsWith('/') &&
+    !/[\n\r]/.test(value) &&
+    value.length <= TRANSCRIPT_PATH_MAX
+  )
 }
 
 // Read one line of the mod. receivedAt is the time of receipt in milliseconds.

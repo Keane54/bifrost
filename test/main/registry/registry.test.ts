@@ -1549,3 +1549,97 @@ describe('live events and usage lines (Task 4)', () => {
     expect(rowOf(r)).not.toHaveProperty('live')
   })
 })
+
+describe('session details and the newest rate limits (M5b Task 1)', () => {
+  const rowOf = (r: SessionRegistry, id = 's1') => r.rows().find(row => row.sessionId === id)
+  const limits = (usedPercent: number) => ({
+    fiveHour: { resetsAt: 5_000_000, usedPercent },
+    sevenDay: { resetsAt: 9_000_000, usedPercent: usedPercent + 1 },
+  })
+
+  test('a row gets the details of its usage line', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyUsage(
+      's1',
+      {
+        contextWindow: 1000000,
+        effort: 'xhigh',
+        permissionMode: 'plan',
+        rateLimits: limits(40),
+        transcriptPath: '/h/.claude/projects/p/s1.jsonl',
+        version: '2.1.318',
+      },
+      200,
+    )
+    expect(rowOf(r)).toMatchObject({
+      claudeVersion: '2.1.318',
+      contextWindowSize: 1000000,
+      effort: 'xhigh',
+      permissionMode: 'plan',
+      rateLimits: limits(40),
+      transcriptPath: '/h/.claude/projects/p/s1.jsonl',
+    })
+    // A line without the details leaves the fields out.
+    r.applyUsage('s1', { costUsd: 0.1 }, 300)
+    for (const field of [
+      'claudeVersion',
+      'contextWindowSize',
+      'effort',
+      'permissionMode',
+      'rateLimits',
+      'transcriptPath',
+    ]) {
+      expect(rowOf(r)).not.toHaveProperty(field)
+    }
+  })
+
+  test('usage gives the newest usage line with rate limits', () => {
+    const r = registry()
+    r.applyAgents(
+      [
+        bg({ id: 'aa', name: 'alpha', sessionId: 'a' }),
+        bg({ id: 'bb', name: 'beta', sessionId: 'b' }),
+        bg({ id: 'cc', name: 'gamma', sessionId: 'c' }),
+      ],
+      100,
+    )
+    r.applyUsage('a', { rateLimits: limits(10) }, 1000)
+    r.applyUsage('b', { costUsd: 0.2 }, 2000)
+    r.applyUsage('c', { rateLimits: limits(30) }, 1500)
+    // A line that comes last but has an older time does not win.
+    r.applyUsage('d', { rateLimits: limits(50) }, 1200)
+    expect(r.usage()).toEqual({
+      limits: limits(30),
+      name: 'gamma',
+      sessionId: 'c',
+      updatedAt: 1500,
+    })
+  })
+
+  test('usage uses the line of a session that is not a row', () => {
+    const r = registry()
+    const id = '73b5ca76-a4a8-4f97-9764-e41657296414'
+    r.applyUsage(id, { rateLimits: limits(20) }, 1000)
+    expect(r.rows()).toEqual([])
+    expect(r.usage()).toEqual({
+      limits: limits(20),
+      name: '73b5ca76',
+      sessionId: id,
+      updatedAt: 1000,
+    })
+  })
+
+  test('usage gives null without rate limits', () => {
+    const r = registry()
+    expect(r.usage()).toBeNull()
+    r.applyAgents([bg()], 100)
+    r.applyUsage('s1', { contextPercent: 5, costUsd: 0.1 }, 200)
+    expect(r.usage()).toBeNull()
+    // A later line without rate limits replaces a line with them.
+    r.applyUsage('s1', { rateLimits: limits(10) }, 300)
+    expect(r.usage()).not.toBeNull()
+    r.applyUsage('s1', { costUsd: 0.2 }, 400)
+    expect(r.usage()).toBeNull()
+  })
+})

@@ -11,6 +11,7 @@ import type {
   SeenCounts,
   SessionRow,
   TermSize,
+  UsageSnapshot,
   WatchColour,
   WorktreeCheck,
 } from './types'
@@ -41,6 +42,14 @@ export interface BifrostApi {
     // The error is the error of the last poll of the session list, or null.
     // The returned function removes only this listener.
     onUpdate(cb: (rows: SessionRow[], error: string | null) => void): () => void
+  }
+  // The newest rate limits of the plan, from the newest live usage line with rate limits.
+  // null means that no usage line has rate limits, for example with Live details off.
+  usage: {
+    get(): Promise<UsageSnapshot | null>
+    // The main process sends the value after each change. The returned function removes only
+    // this listener.
+    onUpdate(cb: (usage: UsageSnapshot | null) => void): () => void
   }
   actions: {
     // The installed apps that can open a project. The list has no paths.
