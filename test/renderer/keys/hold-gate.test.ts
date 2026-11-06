@@ -84,6 +84,53 @@ describe('HoldGate', () => {
     expect(gate.holding()).toBe(false)
   })
 
+  it('a quick hold click: down, press on the row, keyup, then click acts on that row', () => {
+    // Final review Important 2: the keyup comes before the mouse-up. The keyup must not act on
+    // the selected row, and the click must act on the pressed row.
+    const gate = new HoldGate()
+    gate.down('X', true)
+    expect(gate.press('C')).toBe('X')
+    expect(gate.up('X')).toBe(false)
+    expect(gate.release('C')).toBe('X')
+  })
+
+  it('a press with no hold key gives a plain click', () => {
+    const gate = new HoldGate()
+    expect(gate.press('C')).toBeNull()
+    expect(gate.release('C')).toBeNull()
+    gate.down('O', false)
+    expect(gate.press('C')).toBeNull()
+    expect(gate.release('C')).toBeNull()
+  })
+
+  it('a claim serves one click of the pressed row only', () => {
+    const gate = new HoldGate()
+    gate.down('O', true)
+    gate.press('C')
+    expect(gate.release('D')).toBeNull()
+    gate.press('C')
+    expect(gate.release('C')).toBe('O')
+    expect(gate.release('C')).toBeNull()
+  })
+
+  it('a new press removes the claim of an old press', () => {
+    const gate = new HoldGate()
+    gate.down('O', true)
+    gate.press('C')
+    gate.up('O')
+    expect(gate.press('D')).toBeNull()
+    expect(gate.release('C')).toBeNull()
+    expect(gate.release('D')).toBeNull()
+  })
+
+  it('clear removes the claim', () => {
+    const gate = new HoldGate()
+    gate.down('O', true)
+    gate.press('C')
+    gate.clear()
+    expect(gate.release('C')).toBeNull()
+  })
+
   it('clear forgets all keys', () => {
     const gate = new HoldGate()
     gate.down('O', true)

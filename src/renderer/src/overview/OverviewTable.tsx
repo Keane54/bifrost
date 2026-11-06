@@ -83,7 +83,7 @@ export default function OverviewTable({
   const { rows, selectedId, select } = useRegistry()
   const { frames } = useWmState()
   const { contextFor, run } = useActions()
-  const { holdClick, holding } = useKeys()
+  const { holdClick, holdPress, holding } = useKeys()
   // The rows area. Cmd+0 focuses it, so the single keys act on this Overview (spec 9.3).
   const rowsArea = useRef<HTMLDivElement>(null)
   const now = useNow()
@@ -313,6 +313,10 @@ export default function OverviewTable({
                     if (holding()) return
                     select(id)
                     run('open', id)
+                  }}
+                  onPointerDown={e => {
+                    // The pointer-down claims a held hold key for this row (D8).
+                    if (e.button === 0) holdPress(id)
                   }}
                 >
                   {item.getVisibleCells().map(cell => {

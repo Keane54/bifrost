@@ -30,7 +30,11 @@ import { HoldGate } from './hold-gate'
 import { gateChange, toRawChord } from './raw-chord'
 
 export interface KeysValue {
-  // A row click calls this first. True means that a held hold key used the click (D8).
+  // A primary pointer-down on a row calls this. It claims a held hold key for the row (D8). So a
+  // keyup before the mouse-up does not act on the selected row.
+  holdPress(sessionId: string): void
+  // A row click calls this first. True means that the pointer-down of this click claimed a held
+  // hold key. The hold command then runs on the row (D8).
   holdClick(sessionId: string): boolean
   // True while a row click is a hold click. Then a double-click does not select or open the row.
   holding(): boolean
@@ -222,8 +226,12 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
       intent(planKey(entry.slot, contextFor(zone)))
     }
 
+    const holdPress = (sessionId: string): void => {
+      gate.press(sessionId)
+    }
+
     const holdClick = (sessionId: string): boolean => {
-      const holdKey = gate.click()
+      const holdKey = gate.release(sessionId)
       if (holdKey === null) return false
       const now = latest.current
       const entry = now.bindings.find(
@@ -235,7 +243,7 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
       return true
     }
 
-    return { holdClick, holdDown, holdUp, key }
+    return { holdClick, holdDown, holdPress, holdUp, key }
   })
 
   const definitions = useMemo(() => {
@@ -306,7 +314,7 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
   }, [gate])
 
   const value = useMemo<KeysValue>(
-    () => ({ holdClick: run.holdClick, holding: () => gate.holding() }),
+    () => ({ holdClick: run.holdClick, holding: () => gate.holding(), holdPress: run.holdPress }),
     [gate, run],
   )
   return <KeysContext value={value}>{children}</KeysContext>

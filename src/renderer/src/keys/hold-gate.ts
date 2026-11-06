@@ -8,6 +8,8 @@ interface HeldKey {
 
 export class HoldGate {
   private readonly keys = new Map<string, HeldKey>()
+  // The key that the last primary pointer-down on a row claimed, and the ID of that row.
+  private claim: { key: string; target: string } | null = null
 
   // A key that is down already does nothing. This is the key repeat.
   down(key: string, active: boolean): void {
@@ -31,15 +33,33 @@ export class HoldGate {
     return key
   }
 
+  // A primary pointer-down on a row. Claim the one active key that is down for this row and mark
+  // it used. So a keyup before the mouse-up does not act on the selected row (final review
+  // Important 2). A pointer-down with no such key removes an old claim.
+  press(target: string): string | null {
+    const key = this.click()
+    this.claim = key === null ? null : { key, target }
+    return key
+  }
+
+  // The click of a row. Give the key that the pointer-down on this row claimed, then remove the
+  // claim. A click with no claim for this row gives null.
+  release(target: string): string | null {
+    const claim = this.claim
+    this.claim = null
+    return claim !== null && claim.target === target ? claim.key : null
+  }
+
   // True while exactly one active key is down. Then a row click is a hold click, also when the
   // click used the key.
   holding(): boolean {
     return [...this.keys.values()].filter(held => held.active).length === 1
   }
 
-  // Forget all keys (window blur, a hidden page, the Cmd key).
+  // Forget all keys and the claim (window blur, a hidden page, the Cmd key, the key recorder).
   clear(): void {
     this.keys.clear()
+    this.claim = null
   }
 
   isDown(key: string): boolean {

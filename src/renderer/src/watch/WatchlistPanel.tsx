@@ -56,7 +56,7 @@ interface DropMark {
 export default function WatchlistPanel(): React.JSX.Element {
   const { rows, selectedId, select } = useRegistry()
   const { contextFor, run } = useActions()
-  const { holdClick, holding } = useKeys()
+  const { holdClick, holdPress, holding } = useKeys()
   const watched = useMemo(() => watchedRows(rows), [rows])
   const list = useRef<HTMLUListElement>(null)
   // The current order, for a drag that is still on when a row changes.
@@ -209,7 +209,11 @@ export default function WatchlistPanel(): React.JSX.Element {
                       select(id)
                       run('open', id)
                     }}
-                    onPointerDown={e => startDrag(e, id)}
+                    onPointerDown={e => {
+                      // The pointer-down claims a held hold key for this row (D8).
+                      if (e.button === 0) holdPress(id)
+                      startDrag(e, id)
+                    }}
                   >
                     {/* The selection is a layer on top of the watch colour. */}
                     {id === selectedId && (
