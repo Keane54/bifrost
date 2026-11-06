@@ -5,6 +5,8 @@ import {
   focusChange,
   focusZone,
   KEY_RECORDER_ATTR,
+  OVERVIEW_ROWS_ATTR,
+  overviewRowsOf,
   SEND_BOX_ATTR,
   type ZoneElement,
 } from '../../../src/renderer/src/keys/focus-zone'
@@ -91,5 +93,18 @@ describe('focusChange', () => {
       clearGate: true,
       select: null,
     })
+  })
+})
+
+describe('overviewRowsOf (M5a carry-over 1)', () => {
+  it('gives the Overview of the rows area that has the focus', () => {
+    expect(overviewRowsOf(inside('DIV', OVERVIEW_ROWS_ATTR, 'overview:1'))).toBe('overview:1')
+    expect(overviewRowsOf(inside('TD', OVERVIEW_ROWS_ATTR, 'overview:12'))).toBe('overview:12')
+  })
+
+  it('gives null outside the rows of an Overview', () => {
+    expect(overviewRowsOf(inside('TEXTAREA', CHAT_ATTR, 'S1'))).toBeNull()
+    expect(overviewRowsOf(inside('DIV', OVERVIEW_ROWS_ATTR, ''))).toBeNull()
+    expect(overviewRowsOf(null)).toBeNull()
   })
 })

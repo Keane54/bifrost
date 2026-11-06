@@ -25,7 +25,8 @@ import { useSettings } from '../settings/settings-context'
 import { useLayouts, useWmControls, useWmState } from '../wm/context'
 import { topOverview } from '../wm/SideBar'
 import { type KeyContext, type KeyIntent, planHold, planKey } from './commands'
-import { focusChange, focusZone, OVERVIEW_ROWS_ATTR } from './focus-zone'
+import { focusOverviewRows } from './focus-rows'
+import { focusChange, focusZone } from './focus-zone'
 import { HoldGate } from './hold-gate'
 import { gateChange, toRawChord } from './raw-chord'
 
@@ -136,14 +137,6 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
       }
     }
 
-    // Focus the rows of an Overview in the next animation frame, after the panel shows.
-    const focusRows = (panelId: string): void => {
-      requestAnimationFrame(() => {
-        const selector = `[${OVERVIEW_ROWS_ATTR}="${CSS.escape(panelId)}"]`
-        document.querySelector<HTMLElement>(selector)?.focus()
-      })
-    }
-
     const intent = (next: KeyIntent): void => {
       const now = latest.current
       switch (next.kind) {
@@ -173,7 +166,7 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
           // back. With no Overview at all, overview:1 opens (D9).
           const panelId = next.panelId ?? topOverview(now.frames) ?? 'overview:1'
           now.dispatch({ panelId, type: 'open' })
-          focusRows(panelId)
+          focusOverviewRows(panelId)
           return
         }
         case 'open-panel':

@@ -73,3 +73,10 @@ export function focusChange(
   const known = sessionId !== null && rows.some(row => row.sessionId === sessionId)
   return { clearGate, select: known && sessionId !== selectedId ? sessionId : null }
 }
+
+// The panel ID of the Overview whose rows hold the element, or null. A dialog that opens from the
+// rows gives the focus back to them when it closes (M5a carry-over 1).
+export function overviewRowsOf(el: FocusElement | null): string | null {
+  const panelId = el?.closest(`[${OVERVIEW_ROWS_ATTR}]`)?.getAttribute(OVERVIEW_ROWS_ATTR)
+  return panelId ? panelId : null
+}

@@ -3,6 +3,8 @@ import { Dialog } from '@base-ui/react/dialog'
 import { useRef, useState } from 'react'
 import { MAX_RENAME, renameText } from '../../../shared/input'
 import { useRegistry } from '../data/registry'
+import { focusOverviewRows } from '../keys/focus-rows'
+import { overviewRowsOf } from '../keys/focus-zone'
 import { errorMessage } from '../lib/error-message'
 import { ACTIONS, actionStateFor } from './action-model'
 import { useActions } from './actions-context'
@@ -24,6 +26,11 @@ export default function RenameDialog({
   const [reason, setReason] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  // The Overview whose rows had the focus when the dialog opened (M5a carry-over 1). Base UI gives
+  // the focus back to the first tabbable child of an element that is not tabbable. The rows area
+  // has tabIndex -1, so the focus went to a column header button. So the dialog focuses the rows
+  // itself.
+  const [rowsPanel] = useState(() => overviewRowsOf(document.activeElement))
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault()
@@ -63,6 +70,11 @@ export default function RenameDialog({
         <Dialog.Popup
           className={DIALOG_POPUP}
           data-rename-dialog={sessionId}
+          finalFocus={() => {
+            if (rowsPanel === null) return true
+            focusOverviewRows(rowsPanel)
+            return false
+          }}
           initialFocus={inputRef}
         >
           <Dialog.Title className='font-semibold text-text-strong'>{title}</Dialog.Title>
