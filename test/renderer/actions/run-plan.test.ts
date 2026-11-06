@@ -6,6 +6,7 @@ import { CONFIRM_AGAIN_WAIT_MS, confirmStep } from '../../../src/renderer/src/ac
 import {
   FOCUS_REQUEST_MS,
   focusRequestUsable,
+  notifiedOpenStep,
   planRun,
 } from '../../../src/renderer/src/actions/run-plan'
 import { row } from '../overview/fixtures'
@@ -221,5 +222,24 @@ describe('focusRequestUsable', () => {
     expect(focusRequestUsable(request, 'p', 10_000)).toBe(false)
     expect(focusRequestUsable(null, 'o', 10_000)).toBe(false)
     expect(focusRequestUsable(request, 'o', 11_001)).toBe(false)
+  })
+})
+
+describe('notifiedOpenStep', () => {
+  const rows = [row({ sessionId: 'S1' }), row({ sessionId: 'S2' })]
+
+  it('opens a session that has its row', () => {
+    expect(notifiedOpenStep('S1', rows, false)).toBe('open')
+    expect(notifiedOpenStep('S1', rows, true)).toBe('open')
+  })
+
+  it('waits for the row until the first registry update (final review Minor 6)', () => {
+    expect(notifiedOpenStep('S1', [], false)).toBe('wait')
+    expect(notifiedOpenStep('S9', rows, false)).toBe('wait')
+  })
+
+  it('stops when the registry has loaded and the row is not there', () => {
+    expect(notifiedOpenStep('S9', rows, true)).toBe('drop')
+    expect(notifiedOpenStep('S1', [], true)).toBe('drop')
   })
 })

@@ -53,6 +53,18 @@ export function focusRequestUsable(
   return request !== null && request.sessionId === sessionId && now - request.at <= FOCUS_REQUEST_MS
 }
 
+// The next step of an Open from a click on a notification (spec 10). A new window can get the
+// click before it has the rows. Then the Open waits for the row. When the first registry update
+// has come and the row is not there, the Open stops (final review Minor 6).
+export function notifiedOpenStep(
+  sessionId: string,
+  rows: readonly SessionRow[],
+  loaded: boolean,
+): 'open' | 'wait' | 'drop' {
+  if (rows.some(row => row.sessionId === sessionId)) return 'open'
+  return loaded ? 'drop' : 'wait'
+}
+
 const NONE: RunPlan = { kind: 'none' }
 
 function call(c: ApiCall, confirm: ConfirmText | null, after: After): RunPlan {

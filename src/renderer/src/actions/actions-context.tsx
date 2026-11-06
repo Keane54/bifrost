@@ -38,7 +38,7 @@ import { confirmFor } from './confirm'
 import { createDeleteNotices } from './delete-notice'
 import { friendlyError } from './errors'
 import RenameDialog from './RenameDialog'
-import { type FocusRequest, planRun, type RunPlan } from './run-plan'
+import { type FocusRequest, notifiedOpenStep, planRun, type RunPlan } from './run-plan'
 
 // A notice of an action shows for 5 seconds. An error stays until the user closes it, because a
 // Delete error can be long (Task 17).
@@ -160,7 +160,7 @@ function useTimedMessage(): TimedMessage {
 export function ActionsProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const state = useWmState()
   const { dispatch } = useWmControls()
-  const { rows, select, selectedId } = useRegistry()
+  const { loaded, rows, select, selectedId } = useRegistry()
   const { history, update: updateHistory } = useHistory()
   const confirm = useConfirm()
   const chats = useChats()
@@ -191,11 +191,11 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const [renameFor, setRenameFor] = useState<string | null>(null)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
   // run reads the data of the last render from this ref. So it checks the current row.
-  const latest = useRef({ apps, history, rows, selectedId, settings, state })
+  const latest = useRef({ apps, history, loaded, rows, selectedId, settings, state })
 
   useLayoutEffect(() => {
-    latest.current = { apps, history, rows, selectedId, settings, state }
-  }, [apps, history, rows, selectedId, settings, state])
+    latest.current = { apps, history, loaded, rows, selectedId, settings, state }
+  }, [apps, history, loaded, rows, selectedId, settings, state])
 
   // One call at mount, and one more when the Terminal app setting changes. The main process
   // builds the list with that setting. The list stays empty until the first call resolves.
@@ -417,16 +417,41 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     [dispatch, fail, runCall, select, send],
   )
 
+  // The alerts listener reads run and select from this ref. So it subscribes one time.
+  const alertsRef = useRef({ run, select })
+  useLayoutEffect(() => {
+    alertsRef.current = { run, select }
+  }, [run, select])
+  // The session of a click on a notification that waits for its row.
+  const notifiedOpen = useRef<string | null>(null)
+
+  // Open the session that waits, when its row is there (notifiedOpenStep).
+  const openNotified = useCallback(() => {
+    const sessionId = notifiedOpen.current
+    if (sessionId === null) return
+    const now = latest.current
+    const step = notifiedOpenStep(sessionId, now.rows, now.loaded)
+    if (step === 'wait') return
+    notifiedOpen.current = null
+    if (step === 'open') alertsRef.current.run('open', sessionId)
+  }, [])
+
   // A click on a notification of a box selects the session and opens its chat window. The run
-  // opens the chat window only for an owned row that is not parked.
+  // opens the chat window only for an owned row that is not parked. A new window can get the
+  // click before the rows. Then the Open waits for the row.
   useEffect(
     () =>
       window.bifrost.alerts.onOpen(sessionId => {
-        select(sessionId)
-        run('open', sessionId)
+        alertsRef.current.select(sessionId)
+        notifiedOpen.current = sessionId
+        openNotified()
       }),
-    [run, select],
+    [openNotified],
   )
+
+  // New rows or the first registry update can end the wait.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each change of the rows can end the wait.
+  useEffect(() => openNotified(), [loaded, rows, openNotified])
 
   const runGlobal = useCallback(
     (id: GlobalActionId) => {

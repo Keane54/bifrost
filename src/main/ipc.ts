@@ -29,6 +29,7 @@ import { hasMessages } from './actions/transcript'
 import { checkWorktreeHead, createWorktreeActions, trackedChanges } from './actions/worktree-check'
 import { AFPLAY, createAlertMonitor, SOUND_FILE } from './alerts/alert-monitor'
 import { showNotification } from './alerts/notifier'
+import { PendingOpen } from './alerts/pending-open'
 import { type AgentList, listAgents } from './claude/agents'
 import {
   createRunClaude,
@@ -111,6 +112,8 @@ let serviceStopped = false
 let liveControl: LiveControl | null = null
 // The test home of BIFROST_TEST_HOME (D12). registerIpc sets it. It is null for the real home.
 let testHome: TestHome | null = null
+// A click on a notification while no page is loaded waits for the next page (D13).
+const pendingOpen = new PendingOpen()
 
 // Bifrost sets the login item only in the packaged app, and never in a test home (D2, D12).
 // A dev Electron binary must not become a login item.
@@ -291,7 +294,10 @@ async function startService(
     notify: n =>
       showNotification(n, sessionId => {
         showWindowFn?.()
-        if (sessionId !== null) send('alerts:open', sessionId)
+        if (sessionId === null) return
+        // With no loaded page, the session waits for the did-finish-load of the next page.
+        const now = pendingOpen.click(sessionId)
+        if (now !== null) send('alerts:open', now)
       }),
     now,
     playSound: () => {
@@ -743,13 +749,26 @@ export function attachWindow(win: BrowserWindow): void {
     if (currentWindow === win) applyZoom()
   })
   win.webContents.on('render-process-gone', () => {
+    if (currentWindow === win) pendingOpen.unload()
     setKeyRecording(false)
     page.end()
   })
   win.on('closed', () => {
-    if (currentWindow === win) currentWindow = null
+    if (currentWindow === win) {
+      currentWindow = null
+      pendingOpen.unload()
+    }
     setKeyRecording(false)
     page.end()
+  })
+  // A notification click while no page is loaded waits for the next load (D13).
+  win.webContents.on('did-start-loading', () => {
+    if (currentWindow === win) pendingOpen.unload()
+  })
+  win.webContents.on('did-finish-load', () => {
+    if (currentWindow !== win) return
+    const sessionId = pendingOpen.load()
+    if (sessionId !== null) send('alerts:open', sessionId)
   })
 }
 
