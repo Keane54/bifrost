@@ -7,6 +7,7 @@ export type PanelKind =
   | 'overview-settings'
   | 'selected-item'
   | 'integration'
+  | 'settings'
   | 'watchlist'
   | 'chat'
 
@@ -16,6 +17,7 @@ export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   overview: { h: 360, w: 760 },
   'overview-settings': { h: 420, w: 360 },
   'selected-item': { h: 300, w: 360 },
+  settings: { h: 540, w: 640 },
   watchlist: { h: 280, w: 320 },
 }
 
@@ -61,7 +63,12 @@ const OVERVIEW_SETTINGS = /^overview-settings:([1-9][0-9]?)$/
 
 export function panelKind(panelId: string): PanelKind | null {
   if (typeof panelId !== 'string') return null
-  if (panelId === 'selected-item' || panelId === 'integration' || panelId === 'watchlist') {
+  if (
+    panelId === 'selected-item' ||
+    panelId === 'integration' ||
+    panelId === 'settings' ||
+    panelId === 'watchlist'
+  ) {
     return panelId
   }
   if (OVERVIEW.test(panelId)) return 'overview'

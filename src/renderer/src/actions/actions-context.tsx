@@ -11,15 +11,17 @@ import {
   useState,
 } from 'react'
 import { isPriority } from '../../../shared/priority'
+import type { Settings } from '../../../shared/settings'
 import type { ProjectApp, ProjectAppId, SeenCounts, SessionRow } from '../../../shared/types'
 import { DEFAULT_WATCH_COLOUR, isWatchColour } from '../../../shared/watch'
 import { useChats } from '../chat/chat-terminals'
 import { chatPanelId } from '../chat/views'
 import { useRegistry } from '../data/registry'
 import { errorMessage } from '../lib/error-message'
-import { DEFAULT_SLASH_FAVOURITES, rememberSlash } from '../sessions/history'
+import { rememberSlash } from '../sessions/history'
 import { useHistory } from '../sessions/history-context'
 import NewSessionDialog from '../sessions/NewSessionDialog'
+import { useSettings } from '../settings/settings-context'
 import { useWmControls, useWmState } from '../wm/context'
 import { frameOf, type WmState } from '../wm/state'
 import {
@@ -38,15 +40,9 @@ import { friendlyError } from './errors'
 import RenameDialog from './RenameDialog'
 import { type FocusRequest, planRun, type RunPlan } from './run-plan'
 
-// The Labels setting comes in M5 (spec 9.1). Until then, Bifrost uses the plain labels.
-export const LABELS: LabelSet = 'plain'
-
 // A notice of an action shows for 5 seconds. An error stays until the user closes it, because a
 // Delete error can be long (Task 17).
 const MESSAGE_MS = 5000
-
-// The slash favourites are the spec default list until Settings (M5, D8).
-const SLASH_FAVOURITES: string[] = [...DEFAULT_SLASH_FAVOURITES]
 
 // A rename command does not go into the recent slash commands.
 // A click on it in the submenu would give its name to another session.
@@ -91,20 +87,21 @@ function contextOf(
   apps: ProjectApp[],
   running: boolean,
   slashRecent: string[],
+  settings: Settings,
 ): ActionContext {
   return {
     apps,
     chatOpen: frameOf(state, chatPanelId(sessionId)) !== undefined,
-    labels: LABELS,
+    labels: settings.labels,
     running,
-    slashFavourites: SLASH_FAVOURITES,
+    slashFavourites: settings.slashCommands,
     slashRecent,
   }
 }
 
-function globalOf(rows: SessionRow[], resumeAllRunning: boolean): GlobalContext {
+function globalOf(rows: SessionRow[], resumeAllRunning: boolean, labels: LabelSet): GlobalContext {
   return {
-    labels: LABELS,
+    labels,
     resumable: rows.filter(r => r.resumable).length,
     resumeAllRunning,
   }
@@ -167,6 +164,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const { history, update: updateHistory } = useHistory()
   const confirm = useConfirm()
   const chats = useChats()
+  const { settings } = useSettings()
   const [apps, setApps] = useState<ProjectApp[]>([])
   const errorLine = useTimedMessage()
   const noticeLine = useTimedMessage()
@@ -193,13 +191,15 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   const [renameFor, setRenameFor] = useState<string | null>(null)
   const [newSessionOpen, setNewSessionOpen] = useState(false)
   // run reads the data of the last render from this ref. So it checks the current row.
-  const latest = useRef({ apps, history, rows, selectedId, state })
+  const latest = useRef({ apps, history, rows, selectedId, settings, state })
 
   useLayoutEffect(() => {
-    latest.current = { apps, history, rows, selectedId, state }
-  }, [apps, history, rows, selectedId, state])
+    latest.current = { apps, history, rows, selectedId, settings, state }
+  }, [apps, history, rows, selectedId, settings, state])
 
-  // One call at mount. The list stays empty until the call resolves.
+  // One call at mount, and one more when the Terminal app setting changes. The main process
+  // builds the list with that setting. The list stays empty until the first call resolves.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the list of apps follows the Terminal app setting.
   useEffect(() => {
     let active = true
     window.bifrost.actions.apps().then(
@@ -211,7 +211,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     return () => {
       active = false
     }
-  }, [])
+  }, [settings.terminalApp])
 
   const fail = useCallback(
     (err: unknown) => showError(friendlyError(errorMessage(err))),
@@ -283,7 +283,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
             }
           }
           const now = latest.current.rows.find(r => r.sessionId === sessionId) ?? row
-          const text = confirmFor('delete', now, LABELS, check)
+          const text = confirmFor('delete', now, latest.current.settings.labels, check)
           if (text === null) return
           confirmed = await confirm(text, {
             onBusy,
@@ -383,6 +383,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
         now.apps,
         runningRef.current.has(sessionId),
         now.history.recentSlash,
+        now.settings,
       )
       // A disabled action gives none. The row can change after the menu opens.
       const plan = planRun(id, row, ctx, arg)
@@ -422,7 +423,11 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
         setNewSessionOpen(true)
         return
       }
-      const ctx = globalOf(latest.current.rows, resumeAllRef.current)
+      const ctx = globalOf(
+        latest.current.rows,
+        resumeAllRef.current,
+        latest.current.settings.labels,
+      )
       if (!globalActionState('resume-all', ctx).enabled) return
       resumeAllRef.current = true
       setResumeAllRunning(true)
@@ -447,10 +452,10 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       clearFocusRequest,
       closeError,
       contextFor: sessionId =>
-        contextOf(sessionId, state, apps, running.has(sessionId), history.recentSlash),
+        contextOf(sessionId, state, apps, running.has(sessionId), history.recentSlash, settings),
       error,
       focusRequest,
-      globalContext: () => globalOf(rows, resumeAllRunning),
+      globalContext: () => globalOf(rows, resumeAllRunning, settings.labels),
       newSessionOpen,
       notice,
       run,
@@ -472,6 +477,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       runGlobal,
       running,
       send,
+      settings,
       state,
     ],
   )

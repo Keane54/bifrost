@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findProjectApps } from '../../../src/main/actions/project-apps'
+import { findProjectApps, findTerminalApps } from '../../../src/main/actions/project-apps'
 
 const have =
   (...paths: string[]) =>
@@ -35,5 +35,31 @@ describe('findProjectApps', () => {
       ),
     )
     expect(apps.map(a => a.id)).toEqual(['finder', 'terminal'])
+  })
+
+  it('uses the chosen terminal app when it is installed', async () => {
+    const exists = have(
+      '/System/Library/CoreServices/Finder.app',
+      '/Applications/Warp.app',
+      '/System/Applications/Utilities/Terminal.app',
+    )
+    const chosen = await findProjectApps('/home/u', exists, 'terminal')
+    expect(chosen.map(a => a.id)).toEqual(['finder', 'terminal'])
+    const missing = await findProjectApps('/home/u', exists, 'ghostty')
+    expect(missing.map(a => a.id)).toEqual(['finder', 'warp'])
+  })
+})
+
+describe('findTerminalApps', () => {
+  it('lists each installed terminal app in the spec order', async () => {
+    const apps = await findTerminalApps(
+      '/home/u',
+      have(
+        '/System/Applications/Utilities/Terminal.app',
+        '/Applications/Warp.app',
+        '/Applications/Zed.app',
+      ),
+    )
+    expect(apps.map(a => a.id)).toEqual(['warp', 'terminal'])
   })
 })

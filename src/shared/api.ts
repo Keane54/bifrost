@@ -45,6 +45,8 @@ export interface BifrostApi {
   actions: {
     // The installed apps that can open a project. The list has no paths.
     apps(): Promise<ProjectApp[]>
+    // The installed terminal apps, in the order of the default rule. The list has no paths.
+    terminalApps(): Promise<ProjectApp[]>
     // Open the project directory of the session in the app. The main process finds both.
     // This rejects for an unknown session, an unknown app and a failed open.
     openProject(sessionId: string, appId: ProjectAppId): Promise<void>

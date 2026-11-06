@@ -20,7 +20,7 @@ import { isWatchColour } from '../shared/watch'
 import { createActions } from './actions/actions'
 import { appIcon } from './actions/app-icon'
 import { dirInfo, isAlive, processName, sendSignal } from './actions/process-info'
-import { findProjectApps } from './actions/project-apps'
+import { findProjectApps, findTerminalApps } from './actions/project-apps'
 import { createSessionActions } from './actions/session-actions'
 import { hasLeftKey, SessionInput } from './actions/session-input'
 import { createTerminalLauncher } from './actions/terminal-launch'
@@ -388,12 +388,18 @@ export function registerIpc(): void {
       () => false,
     )
   const actions = createActions({
-    apps: () => findProjectApps(homedir(), exists),
+    apps: () => findProjectApps(homedir(), exists, getSettings().terminalApp),
     exec: execFile,
     rows: () => liveService?.rows() ?? [],
     writeClipboard: text => clipboard.writeText(text),
   })
   ipcMain.handle('actions:apps', e => fromPage(e, () => actions.listApps()))
+  // The terminal apps for the Settings select. The list has the IDs and the labels only.
+  ipcMain.handle('actions:terminal-apps', e =>
+    fromPage(e, async () =>
+      (await findTerminalApps(homedir(), exists)).map(({ id, label }) => ({ id, label })),
+    ),
+  )
   ipcMain.handle('actions:open-project', (e, sessionId: unknown, appId: unknown) =>
     fromPage(e, () => actions.openProject(sessionId, appId)),
   )
@@ -403,7 +409,7 @@ export function registerIpc(): void {
   // Open in terminal. The command files are in <bifrostHome>/run and only the user can use them.
   const runDir = join(paths.bifrostHome, 'run')
   const terminals = createTerminalLauncher({
-    apps: () => findProjectApps(homedir(), exists),
+    apps: () => findProjectApps(homedir(), exists, getSettings().terminalApp),
     claudePath: () => claudePath,
     exec: execFile,
     fileIcon: path =>

@@ -25,7 +25,6 @@ export const EMPTY_HISTORY: History = {
 }
 export const MAX_RECENT_DIRS = 10
 export const MAX_RECENT_SLASH = 8
-export const DEFAULT_SLASH_FAVOURITES: readonly string[] = ['/compact', '/clear', '/context']
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

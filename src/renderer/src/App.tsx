@@ -1,5 +1,6 @@
 import { Tooltip } from '@base-ui/react/tooltip'
 import { RegistryProvider } from './data/registry'
+import { SettingsProvider } from './settings/settings-context'
 import WindowManager from './wm/WindowManager'
 
 // The app: one registry subscription, and the window manager with all panels.
@@ -8,7 +9,9 @@ function App(): React.JSX.Element {
   return (
     <Tooltip.Provider delay={300}>
       <RegistryProvider>
-        <WindowManager />
+        <SettingsProvider>
+          <WindowManager />
+        </SettingsProvider>
       </RegistryProvider>
     </Tooltip.Provider>
   )

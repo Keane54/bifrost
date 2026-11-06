@@ -16,6 +16,8 @@ import { overviewsReducer } from '../overview/config'
 import { OverviewsProvider } from '../overview/overviews-context'
 import type { History } from '../sessions/history'
 import { HistoryProvider } from '../sessions/history-context'
+import { useSettings } from '../settings/settings-context'
+import { SettingsNavProvider } from '../settings/settings-nav'
 import { LayoutsContext, type WmControls, WmControlsContext, WmStateContext } from './context'
 import Frame, { type DragMode } from './Frame'
 import {
@@ -24,7 +26,6 @@ import {
   type Point,
   type Rect,
   resizeRect,
-  SNAP_DISTANCE,
   type SnapMark,
   shownRect,
   snapMarks,
@@ -135,6 +136,9 @@ export default function WindowManager(): React.JSX.Element {
   const [layoutNames, setLayoutNames] = useState<readonly string[]>([])
   const areaRef = useRef<HTMLDivElement>(null)
   const stateRef = useRef(state)
+  // The drag reads the snap distance from this ref, so a change applies at the next drag.
+  const { settings } = useSettings()
+  const snapRef = useRef(settings.snapDistance)
   const overviewsRef = useRef(overviews)
   const historyRef = useRef(history)
   const storeRef = useRef<UiStore>(EMPTY_STORE)
@@ -149,6 +153,10 @@ export default function WindowManager(): React.JSX.Element {
   useLayoutEffect(() => {
     stateRef.current = state
   }, [state])
+
+  useLayoutEffect(() => {
+    snapRef.current = settings.snapDistance
+  }, [settings.snapDistance])
 
   useLayoutEffect(() => {
     overviewsRef.current = overviews
@@ -374,7 +382,7 @@ export default function WindowManager(): React.JSX.Element {
           edge
             ? resizeRect(startRect, edge, dx, dy, others, bounds, snap)
             : moveRect(startRect, dx, dy, others, bounds, snap)
-        return { raw: place(0), snapped: place(SNAP_DISTANCE) }
+        return { raw: place(0), snapped: place(snapRef.current) }
       }
       // A move that ends on the title bar of a different frame stacks the two frames.
       function stackTarget(): string | null {
@@ -546,87 +554,90 @@ export default function WindowManager(): React.JSX.Element {
     <WmControlsContext value={controls}>
       <WmStateContext value={state}>
         <LayoutsContext value={layoutNames}>
-          {/* The send box and the New session dialog read and change the dialog history. */}
-          <HistoryProvider history={history} update={updateHistory}>
-            {/* One confirmation dialog for Stop, Delete and Take control. */}
-            <ConfirmProvider>
-              {/* The chat terminals follow the open chat panels in the frames. */}
-              <ChatsProvider>
-                {/* The actions read the frames, the history, the confirmation and the chat
+          {/* The side bar and the Settings panel open the Settings panel and its section. */}
+          <SettingsNavProvider>
+            {/* The send box and the New session dialog read and change the dialog history. */}
+            <HistoryProvider history={history} update={updateHistory}>
+              {/* One confirmation dialog for Stop, Delete and Take control. */}
+              <ConfirmProvider>
+                {/* The chat terminals follow the open chat panels in the frames. */}
+                <ChatsProvider>
+                  {/* The actions read the frames, the history, the confirmation and the chat
                 terminals. So the provider is inside these four. */}
-                <ActionsProvider>
-                  <div className='flex h-full w-full'>
-                    <SideBar />
-                    {/* The Overview panels, the frame titles and the frame menus read the
+                  <ActionsProvider>
+                    <div className='flex h-full w-full'>
+                      <SideBar />
+                      {/* The Overview panels, the frame titles and the frame menus read the
                     configs. */}
-                    <OverviewsProvider dispatch={dispatchOverviews} state={overviews}>
-                      {/* The area keeps the z-order of its frames inside it. So a popover can be
+                      <OverviewsProvider dispatch={dispatchOverviews} state={overviews}>
+                        {/* The area keeps the z-order of its frames inside it. So a popover can be
                       above them. A text selection cannot start on the empty area. The panel
                       content allows it. During a drag or a resize, no part of the area allows a
                       selection. */}
-                      <div
-                        className={cx(
-                          'relative isolate min-w-0 flex-1 select-none overflow-hidden',
-                          dragging && '**:select-none',
-                        )}
-                        data-panel-area={true}
-                        ref={areaRef}
-                      >
-                        {order.map(frame => (
-                          <Frame
-                            dispatch={dispatch}
-                            frame={
-                              live?.frameId === frame.id ? { ...frame, rect: live.rect } : frame
-                            }
-                            key={frame.id}
-                            onDrag={beginDrag}
-                            top={frame.id === topId}
-                            z={shown.indexOf(frame)}
-                          />
-                        ))}
-                        {/* The arrow marks of the snap that a release applies (spec 8.1). The x
+                        <div
+                          className={cx(
+                            'relative isolate min-w-0 flex-1 select-none overflow-hidden',
+                            dragging && '**:select-none',
+                          )}
+                          data-panel-area={true}
+                          ref={areaRef}
+                        >
+                          {order.map(frame => (
+                            <Frame
+                              dispatch={dispatch}
+                              frame={
+                                live?.frameId === frame.id ? { ...frame, rect: live.rect } : frame
+                              }
+                              key={frame.id}
+                              onDrag={beginDrag}
+                              top={frame.id === topId}
+                              z={shown.indexOf(frame)}
+                            />
+                          ))}
+                          {/* The arrow marks of the snap that a release applies (spec 8.1). The x
                         mark has a left or right arrow, and the y mark has an up or down arrow.
                         So the direction is a unique key. */}
-                        {marks.map(m => {
-                          const Arrow = MARK_ARROWS[m.dir]
-                          return (
-                            <Arrow
-                              aria-hidden={true}
-                              className='pointer-events-none absolute text-snap'
-                              data-snap-mark={m.dir}
-                              key={m.dir}
-                              size={MARK_SIZE}
-                              strokeWidth={3}
+                          {marks.map(m => {
+                            const Arrow = MARK_ARROWS[m.dir]
+                            return (
+                              <Arrow
+                                aria-hidden={true}
+                                className='pointer-events-none absolute text-snap'
+                                data-snap-mark={m.dir}
+                                key={m.dir}
+                                size={MARK_SIZE}
+                                strokeWidth={3}
+                                style={{
+                                  left: markStart(m.x, bounds.w),
+                                  top: markStart(m.y, bounds.h),
+                                  zIndex: overlayZ,
+                                }}
+                              />
+                            )
+                          })}
+                          {/* The title bar where a drop stacks the dragged frame. The outline is
+                        above all frames, because the dragged frame covers the title bar. */}
+                          {dropBar && dropFrame && (
+                            <div
+                              className='pointer-events-none absolute bg-text-strong/10 outline-2 outline-text-strong/30 -outline-offset-2'
+                              data-drop-target={dropFrame.id}
                               style={{
-                                left: markStart(m.x, bounds.w),
-                                top: markStart(m.y, bounds.h),
+                                height: dropBar.h,
+                                left: dropBar.x,
+                                top: dropBar.y,
+                                width: dropBar.w,
                                 zIndex: overlayZ,
                               }}
                             />
-                          )
-                        })}
-                        {/* The title bar where a drop stacks the dragged frame. The outline is
-                        above all frames, because the dragged frame covers the title bar. */}
-                        {dropBar && dropFrame && (
-                          <div
-                            className='pointer-events-none absolute bg-text-strong/10 outline-2 outline-text-strong/30 -outline-offset-2'
-                            data-drop-target={dropFrame.id}
-                            style={{
-                              height: dropBar.h,
-                              left: dropBar.x,
-                              top: dropBar.y,
-                              width: dropBar.w,
-                              zIndex: overlayZ,
-                            }}
-                          />
-                        )}
-                      </div>
-                    </OverviewsProvider>
-                  </div>
-                </ActionsProvider>
-              </ChatsProvider>
-            </ConfirmProvider>
-          </HistoryProvider>
+                          )}
+                        </div>
+                      </OverviewsProvider>
+                    </div>
+                  </ActionsProvider>
+                </ChatsProvider>
+              </ConfirmProvider>
+            </HistoryProvider>
+          </SettingsNavProvider>
         </LayoutsContext>
       </WmStateContext>
     </WmControlsContext>

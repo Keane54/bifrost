@@ -3,8 +3,11 @@
 // or end an attach. So a stack, a tab change, a minimise or a tear-out keeps the attach.
 import { createContext, useContext, useEffect, useLayoutEffect, useState } from 'react'
 import type { BifrostApi } from '../../../shared/api'
+import type { TerminalFont } from '../../../shared/settings'
+import { DEFAULT_SETTINGS } from '../../../shared/settings'
 import type { SessionRow } from '../../../shared/types'
 import { useRegistry } from '../data/registry'
+import { useSettings } from '../settings/settings-context'
 import { useWmState } from '../wm/context'
 import { recentAttaches } from './agent-view'
 import { type AttachHistory, ChatTerminal } from './chat-terminal'
@@ -32,6 +35,7 @@ export class ChatTerminals {
   private readonly histories = new Map<string, AttachHistory>()
   private readonly listeners = new Set<() => void>()
   private views = new Map<string, ChatView>()
+  private font: TerminalFont = DEFAULT_SETTINGS.terminalFont
   private unsubscribe: Array<() => void> = []
   private mounted = false
   private disposed = false
@@ -80,6 +84,7 @@ export class ChatTerminals {
       if (this.terminals.has(id)) continue
       const terminal: ChatTerminal = new ChatTerminal(id, {
         acknowledge: this.deps.acknowledge,
+        font: this.font,
         history: this.historyOf(id),
         parking: this.parking,
         pty: this.deps.pty,
@@ -105,6 +110,13 @@ export class ChatTerminals {
     this.planWebgl(openIds, views)
     this.pruneHistories(openIds)
     if (changed) for (const listener of this.listeners) listener()
+  }
+
+  // Use a new terminal font in each open terminal and in each new one.
+  setFont(font: TerminalFont): void {
+    if (this.disposed) return
+    this.font = font
+    for (const terminal of this.terminals.values()) terminal.setFont(font)
   }
 
   get(sessionId: string): ChatTerminal | undefined {
@@ -184,12 +196,18 @@ function acknowledge(sessionId: string): void {
 export function ChatsProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { frames } = useWmState()
   const { loaded, rows } = useRegistry()
+  const { settings } = useSettings()
   const [chats] = useState(() => new ChatTerminals({ acknowledge, pty: window.bifrost.pty }))
 
   useLayoutEffect(() => {
     chats.mount(document.getElementById('root') ?? document.body)
     return () => chats.dispose()
   }, [chats])
+
+  // The terminal font follows the setting. A new terminal also gets it.
+  useLayoutEffect(() => {
+    chats.setFont(settings.terminalFont)
+  }, [chats, settings.terminalFont])
 
   // The lifecycle keys on the open chat panels, not on the React mounts (Review Focus 1).
   useEffect(() => {

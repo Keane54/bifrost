@@ -7,6 +7,7 @@ import {
   type LucideIcon,
   Plug,
   RotateCcw,
+  Settings,
   SquarePlus,
 } from 'lucide-react'
 import { memo } from 'react'
@@ -21,6 +22,7 @@ import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { Tip } from '../lib/menu'
 import { panelTitle } from '../panels/panels'
+import { useSettingsNav } from '../settings/settings-nav'
 import { useWmControls, useWmState } from './context'
 import LayoutMenu from './LayoutMenu'
 import { type Frame, frameOf, panelKind, type WmState } from './state'
@@ -56,6 +58,7 @@ function SideButton(props: {
   label: string
   icon: LucideIcon
   disabled?: boolean
+  size?: number
   onClick(): void
 }): React.JSX.Element {
   const Icon = props.icon
@@ -68,7 +71,7 @@ function SideButton(props: {
       title={props.label}
       type='button'
     >
-      <Icon aria-hidden={true} size={16} />
+      <Icon aria-hidden={true} size={props.size ?? 16} />
     </button>
   )
 }
@@ -102,6 +105,7 @@ function SideBar(): React.JSX.Element {
   const state = useWmState()
   const { dispatch } = useWmControls()
   const { rows } = useRegistry()
+  const settingsNav = useSettingsNav()
   const open = (panelId: string): void => dispatch({ panelId, type: 'open' })
   const free = freeOverview(state)
   const minimised = state.frames.filter(f => f.minimised)
@@ -147,6 +151,7 @@ function SideBar(): React.JSX.Element {
         })}
       </div>
       <LayoutMenu className={BUTTON} />
+      <SideButton icon={Settings} label='Settings' onClick={() => settingsNav.open()} size={15} />
     </nav>
   )
 }

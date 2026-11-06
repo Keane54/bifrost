@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { BifrostApi } from '../../../shared/api'
+import { cssFontFamily, DEFAULT_SETTINGS, type TerminalFont } from '../../../shared/settings'
 import type { SessionRow, TermSize } from '../../../shared/types'
 import { cx } from '../lib/cx'
 import { errorMessage } from '../lib/error-message'
@@ -43,6 +44,8 @@ export interface ChatTerminalDeps {
   acknowledge(sessionId: string): void
   // The element that keeps the terminal when no panel shows it.
   parking: HTMLElement
+  // The terminal font of the settings at the time of the open. Default: the settings default.
+  font?: TerminalFont
   history: AttachHistory
   // True when a newer terminal uses the view ID of this terminal.
   replaced(): boolean
@@ -127,9 +130,10 @@ export class ChatTerminal {
     // xterm.js measures its cells when it opens. So the element must be in the page first.
     deps.parking.append(this.element)
 
+    const font = deps.font ?? DEFAULT_SETTINGS.terminalFont
     this.term = new Terminal({
-      fontFamily: '"SF Mono", ui-monospace, Menlo, monospace',
-      fontSize: 13,
+      fontFamily: cssFontFamily(font),
+      fontSize: font.size,
       macOptionClickForcesSelection: true,
       scrollback: 5000,
     })
@@ -442,6 +446,16 @@ export class ChatTerminal {
     if (size.cols !== this.term.cols || size.rows !== this.term.rows) {
       this.term.resize(size.cols, size.rows)
     }
+  }
+
+  // Use a new terminal font (Settings). The cells change, so run the size step again.
+  setFont(font: TerminalFont): void {
+    if (this.disposed) return
+    const family = cssFontFamily(font)
+    if (this.term.options.fontFamily === family && this.term.options.fontSize === font.size) return
+    this.term.options.fontFamily = family
+    this.term.options.fontSize = font.size
+    this.updateSize()
   }
 
   // Apply the size rule (spec 8.5) after a change of the view, the panel or the session size.

@@ -10,6 +10,7 @@ import OverviewPanel from '../overview/OverviewPanel'
 import OverviewSettingsPanel from '../overview/OverviewSettingsPanel'
 import { useOverview } from '../overview/overviews-context'
 import { SessionIcon } from '../overview/SessionIcon'
+import SettingsPanel from '../settings/SettingsPanel'
 import WatchlistPanel from '../watch/WatchlistPanel'
 import { panelKind } from '../wm/state'
 import IntegrationPanel from './IntegrationPanel'
@@ -30,6 +31,8 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
       return 'Selected Item'
     case 'integration':
       return 'Integration'
+    case 'settings':
+      return 'Settings'
     case 'watchlist':
       return 'Watchlist'
     case 'chat': {
@@ -104,6 +107,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <SelectedItemPanel />
     case 'integration':
       return <IntegrationPanel />
+    case 'settings':
+      return <SettingsPanel />
     case 'watchlist':
       return <WatchlistPanel />
     case 'chat':

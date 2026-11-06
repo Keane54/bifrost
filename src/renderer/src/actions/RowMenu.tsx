@@ -12,24 +12,32 @@ import {
   type ActionId,
   buttonTip,
   checkedKey,
+  type LabelSet,
   type MenuArg,
   type MenuEntry,
   type SubItem,
 } from './action-model'
-import { LABELS } from './actions-context'
 
 type Run = (id: ActionId, arg?: MenuArg) => void
 type ActionEntry = Exclude<MenuEntry, { type: 'separator' }>
 type SubmenuEntry = Extract<MenuEntry, { type: 'submenu' }>
 
 // A disabled entry shows the label and the reason. An enabled entry has no tooltip.
-function tipOf(entry: ActionEntry): string | null {
-  return entry.state.enabled ? null : buttonTip(entry.action, entry.state, LABELS)
+function tipOf(entry: ActionEntry, labels: LabelSet): string | null {
+  return entry.state.enabled ? null : buttonTip(entry.action, entry.state, labels)
 }
 
-function ItemEntry({ entry, onRun }: { entry: ActionEntry; onRun: Run }): React.JSX.Element {
+function ItemEntry({
+  entry,
+  labels,
+  onRun,
+}: {
+  entry: ActionEntry
+  labels: LabelSet
+  onRun: Run
+}): React.JSX.Element {
   return (
-    <Tip label={tipOf(entry)} side='right'>
+    <Tip label={tipOf(entry, labels)} side='right'>
       <ContextMenu.Item
         className={MENU_ITEM}
         data-action={entry.action}
@@ -92,11 +100,19 @@ function CheckedItems({
 
 // A disabled submenu does not open. Its root is disabled too, so a key does not open it.
 // The tooltip also sets data-popup-open on the trigger. So an open submenu shows with aria-expanded.
-function Submenu({ entry, onRun }: { entry: SubmenuEntry; onRun: Run }): React.JSX.Element {
+function Submenu({
+  entry,
+  labels,
+  onRun,
+}: {
+  entry: SubmenuEntry
+  labels: LabelSet
+  onRun: Run
+}): React.JSX.Element {
   const disabled = !entry.state.enabled
   return (
     <ContextMenu.SubmenuRoot disabled={disabled}>
-      <Tip label={tipOf(entry)} side='right'>
+      <Tip label={tipOf(entry, labels)} side='right'>
         <ContextMenu.SubmenuTrigger
           className={cx(MENU_ITEM, 'justify-between pr-1 aria-expanded:bg-hover')}
           data-action={entry.action}
@@ -140,9 +156,12 @@ function Submenu({ entry, onRun }: { entry: SubmenuEntry; onRun: Run }): React.J
 
 export default function RowMenu({
   entries,
+  labels,
   onRun,
 }: {
   entries: MenuEntry[]
+  // The label set of the Labels setting (spec 9.1).
+  labels: LabelSet
   onRun(id: ActionId, arg?: MenuArg): void
 }): React.JSX.Element {
   const nodes: React.ReactNode[] = []
@@ -156,9 +175,9 @@ export default function RowMenu({
     last = entry.action
     nodes.push(
       entry.type === 'submenu' ? (
-        <Submenu entry={entry} key={entry.action} onRun={onRun} />
+        <Submenu entry={entry} key={entry.action} labels={labels} onRun={onRun} />
       ) : (
-        <ItemEntry entry={entry} key={entry.action} onRun={onRun} />
+        <ItemEntry entry={entry} key={entry.action} labels={labels} onRun={onRun} />
       ),
     )
   }

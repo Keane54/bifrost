@@ -323,6 +323,7 @@ export default function OverviewTable({
             {menuRow && (
               <RowMenu
                 entries={rowMenu(menuRow, contextFor(menuRow.sessionId))}
+                labels={contextFor(menuRow.sessionId).labels}
                 onRun={(action, arg) => run(action, menuRow.sessionId, arg)}
               />
             )}

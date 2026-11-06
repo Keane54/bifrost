@@ -245,6 +245,7 @@ export default function WatchlistPanel(): React.JSX.Element {
               {menuRow && (
                 <RowMenu
                   entries={rowMenu(menuRow, contextFor(menuRow.sessionId))}
+                  labels={contextFor(menuRow.sessionId).labels}
                   onRun={(action, arg) => run(action, menuRow.sessionId, arg)}
                 />
               )}
