@@ -64,8 +64,9 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
     abort: AbortController,
   ): Promise<AccountUsage | null | undefined> {
     const token = await deps.readToken()
-    // The setting can go off during the Keychain read. Then drop the token and send nothing.
-    if (token === null || !running || gen !== generation) return undefined
+    // The setting can go off during the Keychain read, or the poll deadline can pass. Then drop
+    // the token and send nothing.
+    if (token === null || !running || gen !== generation || abort.signal.aborted) return undefined
     let res: Response
     try {
       res = await deps.fetch(ACCOUNT_USAGE_URL, {

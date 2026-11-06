@@ -143,22 +143,22 @@ describe('createAccountUsagePoller', () => {
     poller.stop()
   })
 
-  test('two polls never run at the same time', async () => {
-    const { fetch, poller } = setup()
-    let release: () => void = () => {}
-    fetch.mockImplementationOnce(
+  // The deadline is shorter than each gap between polls (HUD_GAP_MS and POLL_INTERVAL_MS), so two
+  // polls cannot overlap. A Keychain read that ends after the deadline must still send nothing.
+  test('a Keychain read that ends after the poll deadline sends no request', async () => {
+    const { fetch, poller, readToken } = setup()
+    let release: (token: string) => void = () => {}
+    readToken.mockImplementationOnce(
       () =>
-        new Promise<Response>(resolve => {
-          release = () => resolve(new Response(sample, { status: 200 }))
+        new Promise<string | null>(resolve => {
+          release = resolve
         }),
     )
     poller.start()
-    await vi.advanceTimersByTimeAsync(POLL_DEADLINE_MS - 1)
-    poller.requestPoll()
+    await vi.advanceTimersByTimeAsync(POLL_DEADLINE_MS + 1)
+    release(FAKE)
     await vi.advanceTimersByTimeAsync(0)
-    expect(fetch).toHaveBeenCalledTimes(1)
-    release()
-    await vi.advanceTimersByTimeAsync(0)
+    expect(fetch).not.toHaveBeenCalled()
     poller.stop()
   })
 
