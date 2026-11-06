@@ -76,8 +76,9 @@ export const GONE_LISTS = 2
 interface Session {
   sessionId: string
   shortId?: string
-  // The session ID of the --all entry of the stopped job. A stopped job shows its original
-  // session ID there (test of 2026-11-06). A resume by this ID wakes the same job.
+  // The original session ID of the job: the ID of an active entry that starts with the short ID,
+  // or the ID of the --all entry of the stopped job. A stopped job shows its original session ID
+  // in --all (test of 2026-11-06). A resume by this ID wakes the same job.
   jobId?: string
   kind: SessionKind
   pid?: number
@@ -261,10 +262,12 @@ export class SessionRegistry {
     this.advance(sampledAt)
     const matches = this.match(entries, true)
     const ids = new Set(matches.map(m => m.rowId))
-    for (const { entry, rowId } of matches) {
+    for (const { entry, isNew, rowId } of matches) {
       const known = this.sessions.get(rowId)
       const s = known ?? this.add(rowId)
-      this.setCurrent(rowId, entry.sessionId, ids)
+      // An entry with no pid has no process yet. A waking job can show its original ID then, so
+      // only an entry with a pid, or a new row, sets the current ID (review M2).
+      if (isNew || entry.pid !== undefined) this.setCurrent(rowId, entry.sessionId, ids)
       this.keepName(rowId, entry)
       this.keepJob(rowId, entry)
       // The status before this sample. A new session has none. A parked session has ''.
@@ -284,6 +287,10 @@ export class SessionRegistry {
         })
       }
       copyEntry(s, entry)
+      // The ID of a job that starts with its short ID is its original ID (review M4).
+      if (entry.kind === 'background' && entry.id && entry.sessionId.startsWith(entry.id)) {
+        s.jobId = entry.sessionId
+      }
       s.machine = onStatus(s.machine, {
         live: this.liveOf(rowId),
         prevStatus,
@@ -308,8 +315,8 @@ export class SessionRegistry {
   }
 
   // Find the row of each entry of a list (spec 6.1). The rules come in this order:
-  // 1. A background entry goes to the one row with its short ID, when the folder agrees. Only one
-  //    entry of the list can have that short ID. A /clear keeps the short ID of a job.
+  // 1. A background entry goes to the one row with its short ID (jobRow), when the folder agrees.
+  //    Only one entry of the list can have that short ID. A /clear keeps the short ID of a job.
   // 2. An entry goes to a known row whose current ID is the session ID of the entry. A row with a
   //    short ID belongs to its job. Only an entry with that same short ID goes there. So a
   //    terminal that resumes the conversation of a stopped job gets its own row (review I1).
@@ -394,15 +401,29 @@ export class SessionRegistry {
     return pairs.filter(([entry, rowId]) => once(pairEntries, entry) && once(pairRows, rowId))
   }
 
-  // The one row with this short ID. undefined when no row or more than one row has it.
+  // The one row of the job with this short ID: the row with that short ID in jobs. When no row
+  // has it, the one known row whose row ID starts with the short ID, has no short ID and has its
+  // row ID as its current ID. The short ID is the first 8 characters of the original session ID
+  // of the job (section 4), so that row is the job before a /clear, for example a row of an older
+  // store (review M6). undefined when no row or more than one row matches.
   private jobRow(shortId: string): string | undefined {
-    let found: string | undefined
-    for (const [rowId, id] of this.jobs) {
-      if (id !== shortId) continue
-      if (found !== undefined) return undefined
-      found = rowId
-    }
-    return found
+    const owners = [...this.jobs].filter(([, id]) => id === shortId).map(([rowId]) => rowId)
+    if (owners.length > 0) return owners.length === 1 ? owners[0] : undefined
+    const prefix = `${shortId}-`
+    const rows = new Set(
+      [
+        ...this.sessions.keys(),
+        ...this.names.keys(),
+        ...this.aliases.keys(),
+        ...this.priorities.keys(),
+        ...this.watched.keys(),
+        ...this.worktrees.keys(),
+        ...this.started,
+        ...this.lastActive,
+      ].filter(rowId => rowId.startsWith(prefix)),
+    )
+    const free = [...rows].filter(rowId => !this.jobs.has(rowId) && !this.currents.has(rowId))
+    return free.length === 1 ? free[0] : undefined
   }
 
   // True when the registry has a row or a stored value with this row ID.
@@ -1078,11 +1099,11 @@ export class SessionRegistry {
   // session ID: the ID that starts with its short ID (test of 2026-11-06). A resume by another ID
   // starts a second job. So the ID is the --all ID of the stopped job, the row ID or the current
   // ID, the first one that starts with the short ID. When none does, it is the --all ID of the
-  // stopped job. undefined when Bifrost does not know it yet. A row with no known short ID uses
-  // its row ID.
+  // stopped job. undefined when Bifrost does not know it yet. A row with no known short ID has
+  // no job, so it uses its current ID: the conversation that it ran last (review M1).
   private resumeIdOf(s: Session): string | undefined {
     const short = s.shortId ?? this.jobs.get(s.sessionId)
-    if (!short) return s.sessionId
+    if (!short) return this.currentOf(s.sessionId)
     const ids = [s.jobId, s.sessionId, this.currentOf(s.sessionId)]
     return ids.find(id => id?.startsWith(short)) ?? s.jobId
   }

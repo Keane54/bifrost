@@ -2131,6 +2131,74 @@ describe('one row across /clear (2026-11-06)', () => {
     expect(r.rows().find(row => row.sessionId !== ORIGINAL)?.costUsd).toBeUndefined()
   })
 
+  test('a store of main: the job gets the row of its original ID (review M6)', () => {
+    // Main kept the values on the original ID and made a new row for the ID after the clear.
+    const r = registry({
+      aliases: { [ORIGINAL]: 'Work' },
+      lastActive: [CLEARED],
+      names: { [CLEARED]: 'bifrost-test-cl1', [ORIGINAL]: 'bifrost-test-cl1' },
+      priorities: { [ORIGINAL]: 2 },
+      started: [ORIGINAL],
+      watch: [{ colour: 'amber', sessionId: ORIGINAL }],
+    })
+    r.applyAgents([after], 100)
+    expect(r.rows().map(row => [row.sessionId, row.currentId, row.name, row.state])).toEqual([
+      [ORIGINAL, CLEARED, 'Work', 'idle'],
+    ])
+    expect(r.store().jobs).toEqual({ [ORIGINAL]: SHORT })
+  })
+
+  test('the original ID does not take a job of another folder', () => {
+    const r = registry({ lastActive: [], names: {}, priorities: { [ORIGINAL]: 2 }, started: [] })
+    r.applyAgents([{ ...before, cwd: '/a', id: 'ffffffff', sessionId: ORIGINAL }], 100)
+    r.applyAgents([{ ...after, cwd: '/b' }], 2100)
+    expect(r.rows().find(row => row.sessionId === CLEARED)?.priority).toBeUndefined()
+  })
+
+  test('the wake of the live check of 2026-11-06 keeps one row and gives no box', () => {
+    const r = cleared()
+    r.applyAgents([], 4100)
+    r.applyAllAgents([stopped], true)
+    // About 5 s: --all has the original ID with no pid.
+    r.applyAllAgents([stopped], true)
+    expect(r.rows()[0]).toMatchObject({ currentId: CLEARED, state: 'parked' })
+    // Then the ID after the clear with a pid and no status, for about 1 s.
+    const waking: AgentEntry = { ...after, pid: 8989, status: '' }
+    r.applyAllAgents([waking], true)
+    r.applyAgents([waking], 6100)
+    expect(r.rows()).toHaveLength(1)
+    expect(r.rows()[0]).toMatchObject({ box: 'none', currentId: CLEARED, pid: 8989 })
+    expect(r.rows()[0].state).not.toBe('parked')
+    r.applyAgents([{ ...waking, status: 'idle' }], 7100)
+    expect(r.rows()[0]).toMatchObject({ box: 'none', state: 'idle' })
+  })
+
+  test('an active entry with no pid does not change the current ID (review M2)', () => {
+    const r = cleared()
+    r.applyAgents([], 4100)
+    r.storeChanged()
+    r.applyAgents([stopped], 6100)
+    expect(r.rows()[0]).toMatchObject({ currentId: CLEARED, sessionId: ORIGINAL })
+    expect(r.store().current).toEqual({ [ORIGINAL]: CLEARED })
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('two /clear calls between two polls: the last ID wins, the middle lines go', () => {
+    const MIDDLE = 'aaaaaaaa-0000-4000-8000-00000000000a'
+    const LAST = 'bbbbbbbb-0000-4000-8000-00000000000b'
+    const r = cleared()
+    r.applyUsage(MIDDLE, { rateLimits: { sevenDay: { resetsAt: 9e12, usedPercent: 50 } } }, 2500)
+    const last: AgentEntry = { ...after, sessionId: LAST }
+    r.applyAgents([last], 4100)
+    expect(r.rows()[0]).toMatchObject({ currentId: LAST, name: 'Work', sessionId: ORIGINAL })
+    expect(r.store().current).toEqual({ [ORIGINAL]: LAST })
+    expect(r.usage()?.sessionId).toBe(MIDDLE)
+    r.applyAllAgents([last], true)
+    r.applyAllAgents([last], true)
+    expect(r.usage()).toBeNull()
+    expect(r.rows()).toHaveLength(1)
+  })
+
   test('the woken job maps to the same row (test 4)', () => {
     const r = cleared()
     r.applyAgents([], 4100)
@@ -2386,6 +2454,46 @@ describe('one row across /clear in an interactive session (2026-11-06)', () => {
     // The next --all list finds that row by its short ID.
     r.applyAllAgents([job], true)
     expect(r.rows()).toHaveLength(2)
+  })
+
+  test('a started row with no short ID resumes its current ID after a restart (review M1)', () => {
+    // A Take control failed after the signal, then Bifrost restarted.
+    const r = registry({
+      current: { [OLD]: NEW },
+      lastActive: [],
+      names: {},
+      priorities: {},
+      started: [OLD],
+    })
+    r.applyAgents([], 100)
+    expect(r.rows()[0]).toMatchObject({ currentId: NEW, resumeId: NEW, state: 'parked' })
+  })
+
+  test('the job of a Take control keeps its original ID after its own /clear (review M4)', () => {
+    const NEW2 = 'd3d3d3d3-0000-4000-8000-000000000004'
+    const r = cleared()
+    const job = bg({ cwd: '/t', id: 'b1b1b1b1', name: 'term', pid: 900, sessionId: NEW })
+    // Take control marks the row as started, so the stopped job stays as a parked row.
+    r.markStarted(OLD)
+    r.applyAgents([job], 4100)
+    r.applyAgents([{ ...job, sessionId: NEW2 }], 6100)
+    r.applyAgents([], 8100)
+    expect(r.rows()[0]).toMatchObject({ currentId: NEW2, resumeId: NEW, sessionId: OLD })
+  })
+
+  test('Take control of the row of the old conversation keeps that row (review M6)', () => {
+    const r = cleared()
+    r.applyAgents([term({ sessionId: NEW }), term({ pid: 81 })], 4100)
+    const other = r.rows().find(row => row.sessionId !== OLD)
+    // The job of OLD gets the first 8 characters of OLD as its short ID. The row ID OLD starts
+    // with them, but its current ID is NEW, so OLD is not the row of that job.
+    const job = bg({ cwd: '/t', id: 'a0a0a0a0', name: 'term', pid: 950, sessionId: OLD })
+    r.applyAgents([term({ sessionId: NEW }), job], 6100)
+    expect(r.rows().find(row => row.sessionId === other?.sessionId)).toMatchObject({
+      kind: 'owned',
+      shortId: 'a0a0a0a0',
+    })
+    expect(r.rows().find(row => row.sessionId === OLD)).toMatchObject({ name: 'Mine', pid: 77 })
   })
 
   test('the old conversation in another process gets its own row', () => {
