@@ -188,7 +188,7 @@ Bifrost finds the row of each entry of a list with these rules, in this order. T
    - One entry matches one row, and one row matches one entry. Any other case links nothing.
 4. Else the entry starts a new row. The row ID is the session ID of the entry. When a row or a stored value has that ID already, the row ID is a new UUID. This occurs when another process resumes the old conversation of a row, for example `claude --resume <ID before the /clear>`. A running `--all` entry that needs a new UUID waits for the active list, which makes its row.
 
-The rules need no line of the mod. So a session without the mod also keeps its row. The mod sends `session.end` for the old ID at a `/clear`. That event can park the row until the next poll links the new ID (2 s or less).
+The rules need no line of the mod. So a session without the mod also keeps its row. The mod sends `session.end` with the reason `clear` for the old ID at a `/clear`. That event does not park the row, because the process keeps running. So Resume is not available for a job that runs.
 
 Limits of the rules:
 
@@ -209,7 +209,7 @@ The Live details mod sends one live line for each event. The mod sends facts. Bi
 | Kind | Fields | Result |
 |---|---|---|
 | `session.start` | None | Adds the session. Ends the parked state. |
-| `session.end` | `reason` | Marks the end of the session. |
+| `session.end` | `reason` | Marks the end of the session. The reason `clear` does not, because the process keeps running with a new session ID (section 6.1). |
 | `turn.start` | None | Sets the state to Working. Clears the box. |
 | `ask` | None | Sets a red box. Claude asks you a question (`AskUserQuestion`). |
 | `tool.done` | `tool` | Sets the state to Working. Clears a red box after you answer a prompt. |

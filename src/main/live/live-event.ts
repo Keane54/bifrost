@@ -174,8 +174,10 @@ function readState(raw: Raw, sessionId: string, at: number): HookEvent | null {
   switch (raw.kind) {
     case 'session.start':
       return { ...base, name: 'SessionStart' }
-    case 'session.end':
-      return typeof raw.reason === 'string' ? { ...base, name: 'SessionEnd' } : null
+    case 'session.end': {
+      const reason = cut(raw.reason, TEXT_MAX)
+      return reason === undefined ? null : { ...base, name: 'SessionEnd', reason }
+    }
     case 'turn.start':
       return { ...base, name: 'UserPromptSubmit' }
     case 'ask':

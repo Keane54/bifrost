@@ -2377,6 +2377,16 @@ describe('one row across /clear in an interactive session (2026-11-06)', () => {
     expect(rows[0].resumeId).toBeUndefined()
   })
 
+  test('the session.end of a /clear does not park the row (review M3)', () => {
+    const r = registry()
+    r.applyAgents([term()], 100)
+    r.applyEvents([{ ...ev('SessionEnd', OLD, 1000), reason: 'clear' }], 1000)
+    expect(r.rows()[0]).toMatchObject({ sessionId: OLD, state: 'idle' })
+    // Another reason ends the process, so the row parks as before.
+    r.applyEvents([{ ...ev('SessionEnd', OLD, 1100), reason: 'logout' }], 1100)
+    expect(r.rows()[0].state).toBe('parked')
+  })
+
   test('a restart maps the stored current ID to the row', () => {
     const next = registry(cleared().store())
     next.applyAgents([term({ sessionId: NEW })], 100)

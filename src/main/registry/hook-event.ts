@@ -23,4 +23,6 @@ export interface HookEvent {
   toolName?: string
   notificationType?: string
   lastAssistantMessage?: string
+  // The reason of a SessionEnd, for example "clear". A /clear keeps the process.
+  reason?: string
 }

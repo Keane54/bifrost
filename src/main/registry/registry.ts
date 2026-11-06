@@ -953,8 +953,11 @@ export class SessionRegistry {
   }
 
   // Apply one state event. Skip an event that is older than the last applied event (D4).
+  // A /clear keeps the process and gives it a new session ID, so its SessionEnd does not park the
+  // row (review M3). The next active list links the new ID.
   private applyEvent(s: Session, ev: HookEvent): void {
     if (isOlder(ev, s)) return
+    if (ev.name === 'SessionEnd' && ev.reason === 'clear') return
     s.machine = onHookEvent(s.machine, ev)
     s.lastEventAt = ev.at
     s.lastEventSeq = ev.seq

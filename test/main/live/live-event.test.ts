@@ -13,7 +13,14 @@ const state = (event: Record<string, unknown>) => ({
 describe('parseLiveLine', () => {
   test.each([
     [{ kind: 'session.start' }, { name: 'SessionStart' }],
-    [{ kind: 'session.end', reason: 'clear' }, { name: 'SessionEnd' }],
+    [
+      { kind: 'session.end', reason: 'clear' },
+      { name: 'SessionEnd', reason: 'clear' },
+    ],
+    [
+      { kind: 'session.end', reason: 'logout' },
+      { name: 'SessionEnd', reason: 'logout' },
+    ],
     [{ kind: 'turn.start' }, { name: 'UserPromptSubmit' }],
     [{ kind: 'ask' }, { name: 'PreToolUse', toolName: 'AskUserQuestion' }],
     [
