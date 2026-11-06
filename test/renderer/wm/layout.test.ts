@@ -15,10 +15,10 @@ import { initialState, wmReducer } from '../../../src/renderer/src/wm/state'
 
 const rect = { h: 200, w: 300, x: 10, y: 20 }
 const frame = {
-  active: 'integration',
+  active: 'settings',
   locked: false,
   minimised: false,
-  panels: ['integration'],
+  panels: ['settings'],
   rect,
 }
 const snap = (n = 1): LayoutSnapshot => ({
@@ -36,14 +36,14 @@ const store = (layouts: UiStore['layouts'] = []): UiStore => ({
 describe('layout', () => {
   it('toSnapshot keeps the frames in z-order without IDs and keeps the memory', () => {
     let state = initialState({ h: 800, w: 1200 })
-    state = wmReducer(state, { panelId: 'integration', type: 'open' })
+    state = wmReducer(state, { panelId: 'settings', type: 'open' })
     state = wmReducer(state, { panelId: 'selected-item', type: 'open' })
-    state = wmReducer(state, { panelId: 'integration', type: 'close' })
+    state = wmReducer(state, { panelId: 'settings', type: 'close' })
     state = wmReducer(state, { panelId: 'overview:1', type: 'open' })
     const snapshot = toSnapshot(state)
     expect(snapshot.frames.map(f => f.panels)).toEqual([['selected-item'], ['overview:1']])
     expect(snapshot.frames.every(f => !('id' in f))).toBe(true)
-    expect(Object.keys(snapshot.memory)).toEqual(['integration'])
+    expect(Object.keys(snapshot.memory)).toEqual(['settings'])
   })
 
   it('parseUiStore gives the empty store for bad data', () => {
@@ -77,31 +77,57 @@ describe('layout', () => {
     const parsed = parseUiStore({
       current: {
         frames: [
-          { ...frame, panels: ['integration', 'nope', 7] },
+          { ...frame, panels: ['settings', 'nope', 7] },
           { ...frame, rect: { ...rect, w: 0 } },
           { ...frame, rect: { ...rect, x: Number.NaN } },
           { ...frame, rect: { ...rect, x: '1' } },
           { ...frame, panels: ['nope'] },
           { ...frame, panels: [] },
-          { ...frame, panels: 'integration' },
+          { ...frame, panels: 'settings' },
           null,
         ],
-        memory: { integration: rect, nope: rect, 'overview:1': { ...rect, h: -1 } },
+        memory: { nope: rect, 'overview:1': { ...rect, h: -1 }, settings: rect },
       },
       layouts: [{ name: 'a', snapshot: 'bad' }],
       version: 1,
     })
     expect(parsed.current?.frames).toHaveLength(1)
-    expect(parsed.current?.frames[0]?.panels).toEqual(['integration'])
-    expect(parsed.current?.memory).toEqual({ integration: rect })
+    expect(parsed.current?.frames[0]?.panels).toEqual(['settings'])
+    expect(parsed.current?.memory).toEqual({ settings: rect })
     expect(parsed.layouts).toEqual([])
+  })
+
+  // M5a removes the M1 debug panel (D15). A saved layout of M4 can still have it.
+  it('parseUiStore drops a saved integration panel and keeps the other panels', () => {
+    const old: LayoutSnapshot = {
+      frames: [
+        { ...frame, active: 'integration', panels: ['integration', 'watchlist'] },
+        { ...frame, active: 'integration', panels: ['integration'] },
+        { ...frame, active: 'overview:1', panels: ['overview:1'] },
+      ],
+      memory: { integration: rect, watchlist: rect },
+    }
+    const parsed = parseUiStore({
+      current: old,
+      layouts: [{ name: 'M4', snapshot: old }],
+      version: 1,
+    })
+    const kept: LayoutSnapshot = {
+      frames: [
+        { ...frame, active: 'watchlist', panels: ['watchlist'] },
+        { ...frame, active: 'overview:1', panels: ['overview:1'] },
+      ],
+      memory: { watchlist: rect },
+    }
+    expect(parsed.current).toEqual(kept)
+    expect(parsed.layouts).toEqual([{ name: 'M4', snapshot: kept }])
   })
 
   it('parseUiStore fills the defaults', () => {
     const parsed = parseUiStore({
       current: {
         frames: [
-          { panels: ['integration'], rect },
+          { panels: ['settings'], rect },
           { active: 'zzz', locked: 1, minimised: 'yes', panels: ['overview:1'], rect },
         ],
         memory: {},
@@ -153,10 +179,10 @@ describe('layout', () => {
 
   it('parseUiStore of toSnapshot output gives the same snapshot', () => {
     let state = initialState({ h: 800, w: 1200 })
-    state = wmReducer(state, { panelId: 'integration', type: 'open' })
+    state = wmReducer(state, { panelId: 'settings', type: 'open' })
     state = wmReducer(state, { panelId: 'overview:2', type: 'open' })
     state = wmReducer(state, { frameId: 'f2', locked: true, type: 'lock' })
-    state = wmReducer(state, { panelId: 'integration', type: 'close' })
+    state = wmReducer(state, { panelId: 'settings', type: 'close' })
     const snapshot = toSnapshot(state)
     const parsed = parseUiStore({ current: snapshot, layouts: [], version: 1 })
     expect(parsed.current).toEqual(snapshot)

@@ -64,7 +64,8 @@ export const execFile: ExecFn = (file, args, opts) =>
     )
   })
 
-function defaultIsExecutable(path: string): boolean {
+// True when the file exists and the user can run it.
+export function defaultIsExecutable(path: string): boolean {
   try {
     accessSync(path, constants.X_OK)
     return true

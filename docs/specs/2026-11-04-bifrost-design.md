@@ -713,13 +713,15 @@ Click a notification to select the session and open its chat window.
 
 ### 11.1 Setup dialog
 
-At the first start, Bifrost shows the setup dialog (M5a builds it). The dialog shows each change before Bifrost makes it:
+At the first start, Bifrost shows the setup dialog (M5a builds it). The dialog shows each change before Bifrost makes it, in the order of Install (section 11.2):
 
-1. The plugin `bifrost-live@bifrost-local` and the marketplace `bifrost-local`, both at user scope.
+1. The removal of an old hook install, if Bifrost finds one (section 11.3).
 2. The folder `~/.bifrost/mod`, where Bifrost copies the four files of the mod.
-3. The removal of an old hook install, if Bifrost finds one (section 11.3).
+3. The plugin `bifrost-live@bifrost-local` and the marketplace `bifrost-local`, both at user scope.
 
-You select "Live details" or "Skip".
+You select "Turn on Live details" or "Skip". "Turn on Live details" runs Install. After a good Install, the dialog shows the reload note and a Done button. After Skip or a good Install, the dialog does not show again.
+
+The dialog shows only when no choice is saved and the plugin is not installed, or Bifrost cannot read its state. An installed plugin, on or off, is already a choice. Then Bifrost saves the choice and shows no dialog. Esc and a click outside the dialog do nothing.
 
 ### 11.2 Live details actions
 
@@ -899,7 +901,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 |---|---|---|
 | Unit | Vitest | The state machine, the registry merge, install and uninstall, and key map conflicts. |
 | Mod | `claude plugin test` | The hooks module, with a fake `http.fetch`. |
-| Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. |
+| Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. |
 | Manual | Checklist | The M0 questions, Take control and the DMG. |
 
 ## 16. Milestones

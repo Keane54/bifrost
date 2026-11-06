@@ -1,3 +1,4 @@
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { app, BrowserWindow, Menu, screen, systemPreferences } from 'electron'
@@ -12,8 +13,19 @@ import {
   stopRegistry,
 } from './ipc'
 import { buildMenuTemplate, modeHandlers } from './menu'
+import { refusedTestHome, testHomeConfig } from './test-home'
 import { createModeController, type ModeController } from './window/display-mode'
 import { openWindowStateStore, restoreBounds } from './window/window-state'
+
+// The test home (D12). Read it before the single instance lock, because the lock uses the
+// userData folder. So a test home gets its own lock and runs beside the real Bifrost.
+const testHome = testHomeConfig(process.env, homedir())
+// A value that Bifrost refuses must not fall back to the real home.
+const badTestHome = refusedTestHome(process.env, homedir())
+if (testHome) {
+  app.setPath('userData', testHome.userData)
+  console.log(`Bifrost uses the test home ${testHome.home}.`)
+}
 
 const DEFAULT_SIZE = { height: 900, width: 1440 }
 // The smallest size of the window. In a smaller window, the panels would be too small to use.
@@ -173,7 +185,7 @@ function startApp(): void {
 
     // Register the IPC handlers before any window loads a page.
     // This also opens the settings store and starts the registry service.
-    registerIpc()
+    registerIpc(testHome)
 
     openWindow()
 
@@ -201,7 +213,15 @@ function startApp(): void {
 
 // Only one Bifrost runs at a time. Two instances could both change the settings file.
 // A second instance quits at once. It registers no IPC and starts no service.
-if (app.requestSingleInstanceLock()) {
+// A test home value that Bifrost refuses also stops the start. Then a check never uses the real
+// home by mistake.
+if (badTestHome !== null) {
+  console.error(
+    `Bifrost can't use the test home ${badTestHome}. Use an absolute folder that isn't /, ` +
+      'your home folder or a parent of it.',
+  )
+  app.exit(1)
+} else if (app.requestSingleInstanceLock()) {
   startApp()
 } else {
   app.quit()

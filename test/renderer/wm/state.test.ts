@@ -38,7 +38,7 @@ describe('wm state', () => {
     expect(panelKind('selected-item')).toBe('selected-item')
     expect(panelKind('watchlist')).toBe('watchlist')
     expect(DEFAULT_SIZES.watchlist).toEqual({ h: 280, w: 320 })
-    expect(panelKind('integration')).toBe('integration')
+    expect(panelKind('settings')).toBe('settings')
     expect(panelKind(CHAT)).toBe('chat')
     expect(panelKind(CHAT.toUpperCase().replace('CHAT', 'chat'))).toBe('chat')
     for (const bad of [
@@ -66,18 +66,26 @@ describe('wm state', () => {
   })
 
   it('open adds a centred frame with the default size', () => {
-    const s = run([open('integration')])
+    const s = run([open('settings')])
     expect(s.frames).toHaveLength(1)
     // A frame has no opacity field (spec 8.1).
     expect(s.frames[0]).toEqual({
-      active: 'integration',
+      active: 'settings',
       id: 'f1',
       locked: false,
       minimised: false,
-      panels: ['integration'],
-      rect: centreRect(DEFAULT_SIZES.integration, bounds),
+      panels: ['settings'],
+      rect: centreRect(DEFAULT_SIZES.settings, bounds),
     })
     expect(s.nextFrame).toBe(2)
+  })
+
+  // M5a removes the M1 debug panel (D15). The Settings panel has the Live details section now.
+  it('panelKind refuses integration', () => {
+    expect(panelKind('integration')).toBeNull()
+    expect('integration' in DEFAULT_SIZES).toBe(false)
+    // open ignores a panel ID that is not valid.
+    expect(run([open('integration')]).frames).toEqual([])
   })
 
   it('panelKind accepts settings', () => {
@@ -147,12 +155,12 @@ describe('wm state', () => {
   })
 
   it('close keeps the position in memory and removes an empty frame', () => {
-    const s = run([open('integration')])
+    const s = run([open('settings')])
     const rect = s.frames[0]?.rect
-    const c = run([{ panelId: 'integration', type: 'close' }], s)
+    const c = run([{ panelId: 'settings', type: 'close' }], s)
     expect(c.frames).toEqual([])
-    expect(c.memory.integration).toEqual(rect)
-    expect(frameOf(run([open('integration')], c), 'integration')?.rect).toEqual(rect)
+    expect(c.memory.settings).toEqual(rect)
+    expect(frameOf(run([open('settings')], c), 'settings')?.rect).toEqual(rect)
   })
 
   it('close of one tab keeps the other tabs and activates the tab to the left', () => {
@@ -181,7 +189,7 @@ describe('wm state', () => {
   })
 
   it('closeActive closes the active panel of the top frame', () => {
-    const s = run([open('overview:1'), open('integration'), { frameId: 'f2', type: 'minimise' }])
+    const s = run([open('overview:1'), open('settings'), { frameId: 'f2', type: 'minimise' }])
     const c = run([{ type: 'closeActive' }], s)
     expect(c.frames.map(f => f.id)).toEqual(['f2'])
     expect(topFrame(s)?.id).toBe('f1')
@@ -214,11 +222,11 @@ describe('wm state', () => {
   })
 
   it('stack keeps the rect of each source panel in memory', () => {
-    let s = run([open('overview:1'), open('integration')])
+    let s = run([open('overview:1'), open('settings')])
     const own = { h: 356, w: 420, x: 700, y: 40 }
     s = run([{ frameId: 'f2', rect: own, type: 'setRect' }], s)
     s = run([{ frameId: 'f2', targetId: 'f1', type: 'stack' }], s)
-    expect(s.memory.integration).toEqual(own)
+    expect(s.memory.settings).toEqual(own)
     expect(s.memory['overview:1']).toBeUndefined()
   })
 
@@ -266,7 +274,7 @@ describe('wm state', () => {
   })
 
   it('bounds keeps the saved rects and shows each frame inside a smaller window', () => {
-    const before = run([open('overview:1'), open('integration')])
+    const before = run([open('overview:1'), open('settings')])
     const s = run([{ bounds: { h: 400, w: 600 }, type: 'bounds' }], before)
     expect(s.bounds).toEqual({ h: 400, w: 600 })
     expect(s.frames.map(f => f.rect)).toEqual(before.frames.map(f => f.rect))
@@ -308,7 +316,7 @@ describe('wm state', () => {
   })
 
   it('shownFrames keeps the frame objects whose rects fit the area', () => {
-    let s = run([open('overview:1'), open('integration')])
+    let s = run([open('overview:1'), open('settings')])
     s = run([{ frameId: 'f2', rect: { h: 300, w: 400, x: 700, y: 400 }, type: 'setRect' }], s)
     const shown = shownFrames(run([{ bounds: { h: 600, w: 1000 }, type: 'bounds' }], s))
     expect(shown[0]).toBe(s.frames[0])
@@ -316,7 +324,7 @@ describe('wm state', () => {
   })
 
   it('load replaces the frames, drops invalid and repeated panels, and keeps the rects', () => {
-    const base = run([open('integration')])
+    const base = run([open('settings')])
     const r = { h: 300, w: 400, x: 5000, y: 5000 }
     const mk = (panels: string[], active: string) => ({
       active,
@@ -351,7 +359,7 @@ describe('wm state', () => {
     const actions: WmAction[] = [
       open('nope'),
       open('overview:2'),
-      { panelId: 'integration', type: 'close' },
+      { panelId: 'settings', type: 'close' },
       { frameId: 'zz', type: 'focus' },
       { frameId: 'f2', type: 'focus' },
       { frameId: 'f2', rect: f2?.rect as never, type: 'setRect' },
@@ -370,16 +378,16 @@ describe('wm state', () => {
   })
 
   it('close of a stack tab then open puts the panel at the stack rect', () => {
-    let s = run([open('overview:1'), open('integration')])
+    let s = run([open('overview:1'), open('settings')])
     s = run([{ frameId: 'f2', targetId: 'f1', type: 'stack' }], s)
     const moved = { h: 300, w: 400, x: 120, y: 90 }
     s = run([{ frameId: 'f1', rect: moved, type: 'setRect' }], s)
     const rectAtClose = s.frames[0]?.rect
-    s = run([{ panelId: 'integration', type: 'close' }], s)
+    s = run([{ panelId: 'settings', type: 'close' }], s)
     expect(s.frames).toHaveLength(1)
-    s = run([open('integration')], s)
-    expect(frameOf(s, 'integration')?.rect).toEqual(rectAtClose)
-    expect(frameOf(s, 'integration')?.rect).toEqual(moved)
+    s = run([open('settings')], s)
+    expect(frameOf(s, 'settings')?.rect).toEqual(rectAtClose)
+    expect(frameOf(s, 'settings')?.rect).toEqual(moved)
   })
 
   it('the reducer does not mutate its input', () => {
@@ -390,7 +398,7 @@ describe('wm state', () => {
       }
       return value
     }
-    const base = run([open('overview:1'), open('integration'), open('selected-item')])
+    const base = run([open('overview:1'), open('settings'), open('selected-item')])
     const stacked = run([{ frameId: 'f2', targetId: 'f1', type: 'stack' }], base)
     const s = deepFreeze(run([{ panelId: 'selected-item', type: 'close' }], stacked))
     expect(s.frames.length).toBe(1)
@@ -401,13 +409,13 @@ describe('wm state', () => {
     const actions: WmAction[] = [
       open('chat:123e4567-e89b-12d3-a456-426614174000'),
       open('selected-item'),
-      { panelId: 'integration', type: 'close' },
+      { panelId: 'settings', type: 'close' },
       { type: 'closeActive' },
       { frameId: f[0]?.id ?? '', type: 'focus' },
       { frameId: f[0]?.id ?? '', rect: r, type: 'setRect' },
       { frameId: f[1]?.id ?? '', targetId: f[0]?.id ?? '', type: 'stack' },
-      { panelId: 'integration', rect: r, type: 'unstack' },
-      { panelId: 'integration', type: 'activate' },
+      { panelId: 'settings', rect: r, type: 'unstack' },
+      { panelId: 'settings', type: 'activate' },
       { frameId: f[0]?.id ?? '', type: 'minimise' },
       { frameId: f[0]?.id ?? '', type: 'restore' },
       { frameId: f[0]?.id ?? '', locked: true, type: 'lock' },
@@ -418,7 +426,7 @@ describe('wm state', () => {
   })
 
   it('bounds with a width or height under 1 changes nothing', () => {
-    const s = run([open('integration')])
+    const s = run([open('settings')])
     for (const b of [
       { h: 800, w: 0 },
       { h: 0, w: 1200 },

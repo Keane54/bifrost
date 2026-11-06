@@ -13,7 +13,8 @@ const HELPER_KEYS = ['BIFROST_NODE', 'ELECTRON_RUN_AS_NODE']
 // BIFROST_NODE is the binary of the app. ELECTRON_RUN_AS_NODE makes it run as Node.
 const SCRIPT = `printf '%s' '${ENV_MARKER}'; "$BIFROST_NODE" -e 'process.stdout.write(JSON.stringify(process.env))'; printf '%s' '${ENV_MARKER}'`
 
-function stringValues(source: NodeJS.ProcessEnv): Record<string, string> {
+// Copy the variables that have a string value.
+export function stringValues(source: NodeJS.ProcessEnv): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(source)) {
     if (typeof value === 'string') env[key] = value

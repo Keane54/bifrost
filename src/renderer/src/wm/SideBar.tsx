@@ -5,7 +5,6 @@ import {
   List,
   ListPlus,
   type LucideIcon,
-  Plug,
   RotateCcw,
   Settings,
   SquarePlus,
@@ -22,6 +21,7 @@ import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { Tip } from '../lib/menu'
 import { panelTitle } from '../panels/panels'
+import { useLive } from '../settings/live-context'
 import { useSettingsNav } from '../settings/settings-nav'
 import { useWmControls, useWmState } from './context'
 import LayoutMenu from './LayoutMenu'
@@ -54,27 +54,39 @@ function freeOverview(state: WmState): string | undefined {
   return undefined
 }
 
+// With dot, the button shows a 6 px square white dot at its top right corner, and the
+// tooltip gives the reason.
 function SideButton(props: {
   label: string
   icon: LucideIcon
   disabled?: boolean
   size?: number
+  dot?: string
   onClick(): void
 }): React.JSX.Element {
   const Icon = props.icon
   return (
     <button
       aria-label={props.label}
-      className={cx(BUTTON, 'h-8')}
+      className={cx(BUTTON, 'relative h-8')}
       disabled={props.disabled}
       onClick={props.onClick}
-      title={props.label}
+      title={props.dot ?? props.label}
       type='button'
     >
       <Icon aria-hidden={true} size={props.size ?? 16} />
+      {props.dot !== undefined && (
+        <span
+          aria-hidden={true}
+          className='absolute top-1.5 right-1.5 size-1.5 bg-text-strong'
+          data-side-warning={true}
+        />
+      )}
     </button>
   )
 }
+
+const SETTINGS_ATTENTION = 'Settings - something needs your attention'
 
 // A button for an action that needs no row (D8). A disabled button shows darker and faded.
 // It keeps the focus and the tooltip with the reason. A click on it has no effect (spec 9.1).
@@ -106,6 +118,7 @@ function SideBar(): React.JSX.Element {
   const { dispatch } = useWmControls()
   const { rows } = useRegistry()
   const settingsNav = useSettingsNav()
+  const { warning } = useLive()
   const open = (panelId: string): void => dispatch({ panelId, type: 'open' })
   const free = freeOverview(state)
   const minimised = state.frames.filter(f => f.minimised)
@@ -128,7 +141,6 @@ function SideBar(): React.JSX.Element {
       />
       <SideButton icon={Crosshair} label='Selected Item' onClick={() => open('selected-item')} />
       <SideButton icon={Eye} label='Watchlist' onClick={() => open('watchlist')} />
-      <SideButton icon={Plug} label='Integration' onClick={() => open('integration')} />
       <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />
       <GlobalButton action='new-session' icon={SquarePlus} />
       <GlobalButton action='resume-all' icon={RotateCcw} />
@@ -151,7 +163,13 @@ function SideBar(): React.JSX.Element {
         })}
       </div>
       <LayoutMenu className={BUTTON} />
-      <SideButton icon={Settings} label='Settings' onClick={() => settingsNav.open()} size={15} />
+      <SideButton
+        dot={warning ? SETTINGS_ATTENTION : undefined}
+        icon={Settings}
+        label='Settings'
+        onClick={() => settingsNav.open()}
+        size={15}
+      />
     </nav>
   )
 }

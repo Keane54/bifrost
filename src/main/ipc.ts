@@ -27,9 +27,15 @@ import { createTerminalLauncher } from './actions/terminal-launch'
 import { hasMessages } from './actions/transcript'
 import { checkWorktreeHead, createWorktreeActions, trackedChanges } from './actions/worktree-check'
 import { type AgentList, listAgents } from './claude/agents'
-import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
+import {
+  createRunClaude,
+  defaultIsExecutable,
+  execFile,
+  type RunClaude,
+  resolveClaudePath,
+} from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
-import { loadLoginEnv } from './env/login-env'
+import { loadLoginEnv, stringValues } from './env/login-env'
 import {
   defaultPaths,
   keepOldScripts,
@@ -55,6 +61,7 @@ import { readProcessTable } from './registry/terminal-app'
 import { loginItemPatch, type SettingsEffect, settingsEffects } from './settings/effects'
 import { openSettingsStore, type SettingsStore } from './store/settings-store'
 import { openUiStore } from './store/ui-store'
+import { findOnPath, pluginEnv, type TestHome } from './test-home'
 import type { ModeController } from './window/display-mode'
 import { isDisplayMode } from './window/window-state'
 
@@ -98,6 +105,14 @@ let menuRebuild: (() => void) | null = null
 let serviceStopped = false
 // Live details. registerIpc sets it. stopRegistry stops its server.
 let liveControl: LiveControl | null = null
+// The test home of BIFROST_TEST_HOME (D12). registerIpc sets it. It is null for the real home.
+let testHome: TestHome | null = null
+
+// Bifrost sets the login item only in the packaged app, and never in a test home (D2, D12).
+// A dev Electron binary must not become a login item.
+function canSetLoginItem(): boolean {
+  return app.isPackaged && testHome === null
+}
 
 // Return true if the sender is the page of the current window and that page did not end.
 // The check compares the webContents IDs, not the objects.
@@ -159,8 +174,7 @@ function runSettingsEffect(effect: SettingsEffect): void {
       liveService?.setActiveInterval(effect.ms)
       return
     case 'login-item':
-      // A dev Electron binary must not become a login item (D2).
-      if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: effect.on })
+      if (canSetLoginItem()) app.setLoginItemSettings({ openAtLogin: effect.on })
       return
     case 'menu':
       menuRebuild?.()
@@ -172,10 +186,11 @@ function runSettingsEffect(effect: SettingsEffect): void {
 }
 
 // Open the settings store. In the packaged app, the real login item state wins over the file
-// (D2). Then send each change to the window and run its effects.
+// (D2). A test home does not read the login item. Then send each change to the window and run
+// its effects.
 async function openSettings(file: string): Promise<SettingsStore> {
   const store = await openSettingsStore(file)
-  if (app.isPackaged) {
+  if (canSetLoginItem()) {
     // A failure here must not stop the start.
     try {
       const patch = loginItemPatch(store.get(), app.getLoginItemSettings().openAtLogin)
@@ -249,16 +264,29 @@ async function startService(
 // Register all IPC handlers one time for the app process.
 // Call it before any window loads a page. A second call does nothing.
 // The main process finds the claude path one time. The renderer cannot set it.
-export function registerIpc(): void {
+// With a test home (D12), Bifrost uses the paths of the test home, the first claude on the PATH
+// and the env of the process. It does not read the env of a login shell.
+export function registerIpc(home: TestHome | null = null): void {
   if (registered) return
   registered = true
+  testHome = home
 
-  const claudePath = resolveClaudePath(execFile)
+  const claudePath = home
+    ? Promise.resolve(findOnPath('claude', process.env.PATH, defaultIsExecutable))
+    : resolveClaudePath(execFile)
   // Start the login-shell env one time. Every claude run and every PTY uses it.
   // process.execPath runs as Node when ELECTRON_RUN_AS_NODE is 1.
-  const loginEnv = loadLoginEnv(execFile, { execPath: process.execPath, fallback: process.env })
+  const loginEnv = home
+    ? Promise.resolve(stringValues(process.env))
+    : loadLoginEnv(execFile, { execPath: process.execPath, fallback: process.env })
   const run = Promise.all([claudePath, loginEnv]).then(([path, env]) =>
     path ? createRunClaude(execFile, path, env) : null,
+  )
+  // The claude plugin commands of Live details get their own run (D25). In a test home, they
+  // get HOME and CLAUDE_CONFIG_DIR of the test home. So they change only files under the test
+  // home. Each other claude call uses run, so the session list stays the real one.
+  const pluginRun = Promise.all([claudePath, loginEnv]).then(([path, env]) =>
+    path ? createRunClaude(execFile, path, pluginEnv(env, home)) : null,
   )
   const getManager = (): Promise<PtyManager | null> => managerPromise as Promise<PtyManager | null>
   // All text and keys that Bifrost types into a session go through this object (D1).
@@ -292,7 +320,7 @@ export function registerIpc(): void {
     liveManager = m
     return m
   })
-  const paths = defaultPaths(homedir())
+  const paths = defaultPaths(home?.home ?? homedir())
   // The settings store opens one time. Each user gets the same store (ruling C6).
   const settings = openSettings(join(app.getPath('userData'), 'settings.json'))
   const service = startService(run, settings)
@@ -516,7 +544,7 @@ export function registerIpc(): void {
   const live = createLiveControl({
     clearLive: () => liveService?.clearLive(),
     cli: async () => {
-      const runClaude = await run
+      const runClaude = await pluginRun
       return runClaude ? createPluginCli(runClaude) : null
     },
     forceListen: process.env.BIFROST_LIVE_LISTEN === '1',

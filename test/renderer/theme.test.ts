@@ -230,7 +230,7 @@ describe('theme', () => {
     'actions/ActionButton.tsx',
     'overview/OverviewTabs.tsx',
     'overview/OverviewTable.tsx',
-    'panels/IntegrationPanel.tsx',
+    'settings/SettingsPanel.tsx',
   ])('%s gives a cyan tint on a press', name => {
     expect(source(name)).toMatch(PRESS)
   })

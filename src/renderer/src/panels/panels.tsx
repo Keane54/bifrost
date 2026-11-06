@@ -13,7 +13,6 @@ import { SessionIcon } from '../overview/SessionIcon'
 import SettingsPanel from '../settings/SettingsPanel'
 import WatchlistPanel from '../watch/WatchlistPanel'
 import { panelKind } from '../wm/state'
-import IntegrationPanel from './IntegrationPanel'
 import SelectedItemPanel from './SelectedItemPanel'
 
 // The title as plain text. A chat panel with a row gives the name of the row.
@@ -29,8 +28,6 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
     }
     case 'selected-item':
       return 'Selected Item'
-    case 'integration':
-      return 'Integration'
     case 'settings':
       return 'Settings'
     case 'watchlist':
@@ -105,8 +102,6 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <OverviewSettingsPanel panelId={panelId} />
     case 'selected-item':
       return <SelectedItemPanel />
-    case 'integration':
-      return <IntegrationPanel />
     case 'settings':
       return <SettingsPanel />
     case 'watchlist':
