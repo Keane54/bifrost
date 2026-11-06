@@ -271,6 +271,13 @@ export async function oldInstallStatus(
   }
 }
 
+// Decide if bin/ stays, from the result of oldInstallStatus. Old hook entries in the settings
+// still run bin/. Settings that Bifrost cannot read can also have such entries. So bin/ stays in
+// both cases. A wrong value breaks the statusline of a person who still has the wrapper.
+export function keepOldScripts(status: { found: boolean; error?: string }): boolean {
+  return status.found || status.error !== undefined
+}
+
 const OLD_DATA = ['active', 'events', 'sessions']
 
 // Remove the data that the old hooks and the old app wrote: active, events/ and sessions/.

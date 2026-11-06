@@ -31,6 +31,7 @@ import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
 import { loadLoginEnv } from './env/login-env'
 import {
   defaultPaths,
+  keepOldScripts,
   oldInstallStatus,
   removeOldHookData,
   uninstall,
@@ -427,12 +428,12 @@ export function registerIpc(): void {
   })
   liveControl = live
   // Nothing else cleans the data of the old hooks. Remove it one time at start, before the live
-  // control starts. Old hook entries in the settings still run bin/, so keep bin/ for them.
+  // control starts. keepOldScripts decides if bin/ stays.
   // A failure never stops the start.
   const cleanOldHookData = async (): Promise<void> => {
     try {
       const old = await oldInstallStatus(paths)
-      await removeOldHookData(paths.bifrostHome, old.found || old.error !== undefined)
+      await removeOldHookData(paths.bifrostHome, keepOldScripts(old))
     } catch (err) {
       console.warn('Live details: the clean-up of old hook data failed.', err)
     }

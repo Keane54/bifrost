@@ -17,6 +17,7 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import {
   defaultPaths,
   type IntegrationPaths,
+  keepOldScripts,
   oldInstallStatus,
   removeOldHookData,
   uninstall,
@@ -310,4 +311,10 @@ test('removeOldHookData accepts a home with nothing in it', async () => {
   await expect(removeOldHookData(home, false)).resolves.toBeUndefined()
   await mkdir(home)
   await expect(removeOldHookData(home, false)).resolves.toBeUndefined()
+})
+
+test('keepOldScripts keeps bin for an old install and for settings that Bifrost cannot read', () => {
+  expect(keepOldScripts({ found: true })).toBe(true)
+  expect(keepOldScripts({ error: 'Unexpected token', found: false })).toBe(true)
+  expect(keepOldScripts({ found: false })).toBe(false)
 })
