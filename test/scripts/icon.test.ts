@@ -33,35 +33,45 @@ describe('the icon script', () => {
     expect(png.subarray(12, 16).toString('latin1')).toBe('IHDR')
   })
 
-  it('drawIcon makes the pixels outside the rounded square fully transparent', () => {
-    const pixels = drawIcon(SIZE, readPalette(CSS))
-    expect(pixels).toHaveLength(SIZE * SIZE * 4)
-    const at = reader(pixels, SIZE)
-    for (const [x, y] of [
-      [0, 0],
-      [SIZE - 1, 0],
-      [0, SIZE - 1],
-      [SIZE - 1, SIZE - 1],
-    ]) {
-      expect(at(x, y)[3]).toBe(0)
-    }
-    // The middle of each side is inside and opaque.
-    expect(at(SIZE / 2, 1)[3]).toBe(255)
-    expect(at(1, SIZE / 2)[3]).toBe(255)
+  it('drawIcon keeps the 100 pixel margin of the macOS grid (scaled to 256)', () => {
+    const at = reader(drawIcon(SIZE, readPalette(CSS)), SIZE)
+    // Margin 25 pixels. A corner and a point at (50, 50) of 1024 are transparent.
+    expect(at(0, 0)[3]).toBe(0)
+    expect(at(SIZE - 1, 0)[3]).toBe(0)
+    expect(at(12, 12)[3]).toBe(0)
+    // The middle of each side is opaque just inside the margin and is clear just outside.
+    expect(at(SIZE / 2, 27)[3]).toBe(255)
+    expect(at(27, SIZE / 2)[3]).toBe(255)
+    expect(at(SIZE / 2, 22)[3]).toBe(0)
+    expect(at(22, SIZE / 2)[3]).toBe(0)
+    // The shape corner is inside the margin: the corner point of the box is outside the curve.
+    expect(at(27, 27)[3]).toBe(0)
+  })
+
+  it('drawIcon draws a soft black shadow below the shape and none above it', () => {
+    const at = reader(drawIcon(SIZE, readPalette(CSS)), SIZE)
+    const below = at(SIZE / 2, SIZE - 25 + 3)
+    expect(below[3]).toBeGreaterThan(10)
+    expect(below[3]).toBeLessThan(255 * 0.31)
+    expect(below.slice(0, 3)).toEqual([0, 0, 0])
+    // The shadow is weaker above the shape than below it.
+    expect(at(SIZE / 2, 25 - 3)[3]).toBeLessThan(below[3])
+    // Far from the shape, the pixel is fully transparent.
+    expect(at(SIZE / 2, 2)[3]).toBe(0)
   })
 
   it('drawIcon is red near the bottom-right corner', () => {
-    const [r, g, b, a] = reader(drawIcon(SIZE, readPalette(CSS)), SIZE)(SIZE * 0.82, SIZE * 0.82)
+    const [r, g, b, a] = reader(drawIcon(SIZE, readPalette(CSS)), SIZE)(SIZE * 0.8, SIZE * 0.8)
     expect(a).toBe(255)
     expect(r).toBeGreaterThan(g + 60)
     expect(r).toBeGreaterThan(b + 60)
   })
 
   it('drawIcon is violet near the top-left corner', () => {
-    const [r, g, b] = reader(drawIcon(SIZE, readPalette(CSS)), SIZE)(SIZE * 0.08, SIZE * 0.08)
+    const [r, g, b] = reader(drawIcon(SIZE, readPalette(CSS)), SIZE)(SIZE * 0.16, SIZE * 0.16)
     // Violet has a strong blue part and a red part as large as its green part.
-    expect(b).toBeGreaterThan(g + 60)
-    expect(b).toBeGreaterThan(r + 60)
+    expect(b).toBeGreaterThan(g + 40)
+    expect(b).toBeGreaterThan(r + 40)
     expect(r).toBeGreaterThan(g - 20)
   })
 

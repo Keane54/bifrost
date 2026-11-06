@@ -109,26 +109,56 @@ function gradient(t: number, stops: Rgb[]): Rgb {
   return fromOklab(lab as Lab)
 }
 
-// The distance from the point to the rounded square that fills the image. Negative is inside.
-function roundedBoxDistance(x: number, y: number, size: number, radius: number): number {
-  const half = size / 2
-  const dx = Math.abs(x - half) - (half - radius)
-  const dy = Math.abs(y - half) - (half - radius)
+// The icon follows the macOS icon grid at 1024 pixels. The rounded square is 824 pixels wide and
+// has a 100 pixel margin. Its corner radius is 22.5% of its width. The shadow is black with 30%
+// alpha. It is 10 pixels down and 20 pixels of blur. All values scale with the image size.
+const MARGIN = 100 / 1024
+const SHAPE = 824 / 1024
+const RADIUS = 0.225 * SHAPE
+const SHADOW_ALPHA = 0.3
+const SHADOW_DOWN = 10 / 1024
+const SHADOW_BLUR = 20 / 1024
+
+// The distance from the point to the rounded square. Negative is inside. The centre of the square
+// is (cx, cy), its width is side, and its corner radius is radius.
+function roundedBoxDistance(
+  x: number,
+  y: number,
+  cx: number,
+  cy: number,
+  side: number,
+  radius: number,
+): number {
+  const half = side / 2
+  const dx = Math.abs(x - cx) - (half - radius)
+  const dy = Math.abs(y - cy) - (half - radius)
   return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - radius
 }
 
-// The colour at one point, or null when the point is outside the rounded square.
-function sample(x: number, y: number, size: number, palette: IconPalette): Rgb | null {
-  const distance = roundedBoxDistance(x, y, size, size * 0.22)
-  if (distance > 0) return null
-  // The gradient runs along the diagonal. It is 0 at the bottom-right and 1 at the top-left.
-  const colour = gradient(1 - (x + y) / (2 * size), palette.stops)
-  if (distance > -size / 128) return blend(palette.edge, colour)
-  return colour
+// The colour and alpha at one point. A point outside the shape has the shadow or is transparent.
+function sample(x: number, y: number, size: number, palette: IconPalette): Rgba {
+  const side = size * SHAPE
+  const c = size / 2
+  const radius = size * RADIUS
+  const distance = roundedBoxDistance(x, y, c, c, side, radius)
+  if (distance > 0) {
+    // The shadow fades from full to nothing across the blur width, centred on the moved edge.
+    const moved = roundedBoxDistance(x, y - size * SHADOW_DOWN, c, c, side, radius)
+    const blur = size * SHADOW_BLUR
+    const k = Math.min(1, Math.max(0, 0.5 - moved / blur))
+    return { alpha: SHADOW_ALPHA * k * k * (3 - 2 * k), rgb: [0, 0, 0] }
+  }
+  // The gradient runs along the diagonal of the shape. It is 0 at the bottom-right corner and 1
+  // at the top-left corner.
+  const origin = size * MARGIN
+  const t = 1 - (x - origin + (y - origin)) / (2 * side)
+  const colour = gradient(t, palette.stops)
+  if (distance > -size / 128) return { alpha: 1, rgb: blend(palette.edge, colour) }
+  return { alpha: 1, rgb: colour }
 }
 
-// RGBA bytes. The anti-alias uses 4 x 4 samples for each pixel. A pixel colour is the mean of
-// the colours of the samples inside the rounded square. Its alpha is the share of those samples.
+// RGBA bytes. The anti-alias uses 4 x 4 samples for each pixel. The samples are mixed with their
+// alpha as weight. The alpha of the pixel is the mean alpha of the samples.
 export function drawIcon(size: number, palette: IconPalette): Uint8Array {
   const out = new Uint8Array(size * size * 4)
   const n = 4
@@ -137,23 +167,22 @@ export function drawIcon(size: number, palette: IconPalette): Uint8Array {
       let r = 0
       let g = 0
       let b = 0
-      let hits = 0
+      let a = 0
       for (let sy = 0; sy < n; sy++) {
         for (let sx = 0; sx < n; sx++) {
           const c = sample(px + (sx + 0.5) / n, py + (sy + 0.5) / n, size, palette)
-          if (!c) continue
-          r += c[0]
-          g += c[1]
-          b += c[2]
-          hits++
+          r += c.rgb[0] * c.alpha
+          g += c.rgb[1] * c.alpha
+          b += c.rgb[2] * c.alpha
+          a += c.alpha
         }
       }
-      if (hits === 0) continue
+      if (a === 0) continue
       const i = (py * size + px) * 4
-      out[i] = Math.round(r / hits)
-      out[i + 1] = Math.round(g / hits)
-      out[i + 2] = Math.round(b / hits)
-      out[i + 3] = Math.round((hits / (n * n)) * 255)
+      out[i] = Math.round(r / a)
+      out[i + 1] = Math.round(g / a)
+      out[i + 2] = Math.round(b / a)
+      out[i + 3] = Math.round((a / (n * n)) * 255)
     }
   }
   return out
