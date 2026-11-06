@@ -33,7 +33,7 @@ const BUTTON =
 
 // The Overview to focus: the top visible frame with an Overview first, then a minimised one.
 // In a frame, the active panel wins over the other tabs.
-function topOverview(frames: Frame[]): string | undefined {
+export function topOverview(frames: Frame[]): string | undefined {
   const order = [...frames].reverse()
   for (const frame of [...order.filter(f => !f.minimised), ...order.filter(f => f.minimised)]) {
     if (panelKind(frame.active) === 'overview') return frame.active
