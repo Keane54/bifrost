@@ -665,6 +665,19 @@ describe('live lines (Task 4)', () => {
     expect(updates.at(-1)?.rows[0].lastActivity).toBe(1)
   })
 
+  test('onEvents gets each live state event and no usage line', async () => {
+    const { service } = await ready()
+    const calls: unknown[] = []
+    service.onEvents(events => calls.push(events))
+    const stop = { at: Date.now(), name: 'Stop' as const, sessionId: 's1' }
+    service.pushLive({ event: stop, type: 'state' })
+    service.pushLive({ at: Date.now(), sessionId: 's1', type: 'usage', usage: { costUsd: 0.42 } })
+    // A session that is not a row yet also gives its event.
+    const other = { at: Date.now(), name: 'UserPromptSubmit' as const, sessionId: 'new' }
+    service.pushLive({ event: other, type: 'state' })
+    expect(calls).toEqual([[stop], [other]])
+  })
+
   test('clearLive ends the live flags and sends an update', async () => {
     const { service, updates } = await ready()
     service.pushLive({ at: Date.now(), sessionId: 's1', type: 'usage', usage: { costUsd: 0.42 } })

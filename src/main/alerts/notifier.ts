@@ -10,6 +10,8 @@ const kept = new Set<Notification>()
 export function showNotification(
   n: { title: string; body: string; sessionId: string | null },
   onClick: (sessionId: string | null) => void,
+  // Called when macOS refuses the notification.
+  onFailed?: () => void,
 ): void {
   if (!Notification.isSupported()) return
   const note = new Notification({ body: n.body, silent: true, title: n.title })
@@ -30,6 +32,7 @@ export function showNotification(
   note.on('failed', (_event, error) => {
     kept.delete(note)
     console.error('Bifrost cannot show a notification.', error)
+    onFailed?.()
   })
   note.on('show', () => {
     console.log(`Bifrost showed a notification for ${n.sessionId ?? 'a summary'}.`)

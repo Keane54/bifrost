@@ -3,6 +3,7 @@ import type { SessionRow } from '../../../shared/types'
 import ChatPanel from '../chat/ChatPanel'
 import { chatSessionId } from '../chat/views'
 import { useRegistry } from '../data/registry'
+import EventLogPanel from '../events/EventLogPanel'
 import ShowInfoPanel from '../info/ShowInfoPanel'
 import { showInfoSessionId } from '../info/show-info'
 import { cx } from '../lib/cx'
@@ -38,6 +39,8 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
       const id = chatSessionId(panelId)
       return rows?.find(r => r.sessionId === id)?.name ?? 'Chat'
     }
+    case 'event-log':
+      return 'Event log'
     case 'show-info': {
       const id = showInfoSessionId(panelId)
       const name = rows?.find(r => r.sessionId === id)?.name
@@ -106,7 +109,9 @@ export function PanelTitle({ panelId }: { panelId: string }): React.JSX.Element 
 
 // The content area of the frame scrolls, except for a chat panel. Its terminal fills the area.
 export function panelScrolls(panelId: string): boolean {
-  return panelKind(panelId) !== 'chat'
+  // The Event log has its own scroll area for the virtual list.
+  const kind = panelKind(panelId)
+  return kind !== 'chat' && kind !== 'event-log'
 }
 
 export function PanelContent({ panelId }: { panelId: string }): React.JSX.Element {
@@ -125,6 +130,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <ChatPanel panelId={panelId} />
     case 'show-info':
       return <ShowInfoPanel panelId={panelId} />
+    case 'event-log':
+      return <EventLogPanel />
     default:
       return <div className='p-3 text-[13px] text-text-dim'>This panel is not known.</div>
   }

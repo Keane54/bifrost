@@ -4,6 +4,7 @@ import type {
   ClaudeVersion,
   DisplayMode,
   LiveStatus,
+  LogEntry,
   PrInfo,
   Priority,
   ProjectApp,
@@ -51,6 +52,14 @@ export interface BifrostApi {
     // The main process sends the value after a change, a maximum of 4 times each second. The
     // last value always goes out. The returned function removes only this listener.
     onUpdate(cb: (usage: UsageSnapshot | null) => void): () => void
+  }
+  // The Event log (spec 8.7): the newest live state events, kept in memory in the main process.
+  events: {
+    // All entries, in seq order.
+    list(): Promise<LogEntry[]>
+    // The main process sends new entries a maximum of 4 times each second. The returned function
+    // removes only this listener.
+    onAppend(cb: (entries: LogEntry[]) => void): () => void
   }
   actions: {
     // The installed apps that can open a project. The list has no paths.

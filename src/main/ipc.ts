@@ -42,6 +42,7 @@ import {
 } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
 import { loadLoginEnv, stringValues } from './env/login-env'
+import { createBatcher, EventLog, NOTIFICATION_REFUSED } from './events/event-log'
 import { createPrLookup } from './info/pr-info'
 import {
   defaultPaths,
@@ -118,6 +119,10 @@ let liveControl: LiveControl | null = null
 let testHome: TestHome | null = null
 // A click on a notification while no page is loaded waits for the next page (D13).
 const pendingOpen = new PendingOpen()
+// The Event log (spec 8.7). It lives as long as the main process, so a reload of the page keeps
+// the entries. The batcher sends new entries to the page at most 4 times each second.
+const eventLog = new EventLog()
+const eventBatcher = createBatcher(entries => send('events:append', entries))
 
 // Bifrost sets the login item only in the packaged app, and never in a test home (D2, D12).
 // A dev Electron binary must not become a login item.
@@ -290,13 +295,21 @@ async function startService(
   const alerts = createAlertMonitor({
     focused: () => currentWindow?.isFocused() ?? false,
     notify: n =>
-      showNotification(n, sessionId => {
-        showWindowFn?.()
-        if (sessionId === null) return
-        // With no loaded page, the session waits for the did-finish-load of the next page.
-        const now = pendingOpen.click(sessionId)
-        if (now !== null) send('alerts:open', now)
-      }),
+      showNotification(
+        n,
+        sessionId => {
+          showWindowFn?.()
+          if (sessionId === null) return
+          // With no loaded page, the session waits for the did-finish-load of the next page.
+          const now = pendingOpen.click(sessionId)
+          if (now !== null) send('alerts:open', now)
+        },
+        () => {
+          // Show a refused notification one time in the Event log, as a plain line (R12).
+          const line = eventLog.notice(NOTIFICATION_REFUSED, now())
+          if (line) eventBatcher.push([line])
+        },
+      ),
     now,
     playSound: () => {
       // Do not wait for the sound. A failed sound is not an error for the user.
@@ -311,6 +324,7 @@ async function startService(
     alerts.update(rows)
   })
   service.onUsage(usage => send('usage:update', usage))
+  service.onEvents(events => eventBatcher.push(eventLog.append(events)))
   liveRegistry = registry
   liveService = service
   // The app can quit before the store loads. Then do not start the service.
@@ -418,6 +432,7 @@ export function registerIpc(home: TestHome | null = null): void {
     return checkClaudeVersion(runClaude)
   })
   ipcMain.handle('registry:rows', async () => (await service).rows())
+  ipcMain.handle('events:list', e => fromPage(e, async () => eventLog.list()))
   ipcMain.handle('usage:get', e => fromPage(e, async () => (await service).usage()))
   ipcMain.handle('registry:ack', async (_e, sessionId: unknown) => {
     if (typeof sessionId === 'string') (await service).acknowledge(sessionId)
@@ -808,5 +823,6 @@ export function closeAllPtys(): void {
 export function stopRegistry(): void {
   serviceStopped = true
   liveService?.stop()
+  eventBatcher.stop()
   liveControl?.stop()
 }

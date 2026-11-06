@@ -30,6 +30,12 @@ describe('wm state', () => {
     expect(s.frames[0]?.rect).toMatchObject({ h: 300, w: 360 })
   })
 
+  it('panelKind accepts event-log', () => {
+    expect(panelKind('event-log')).toBe('event-log')
+    expect(DEFAULT_SIZES['event-log']).toEqual({ h: 360, w: 640 })
+    expect(run([open('event-log')]).frames[0]?.rect).toMatchObject({ h: 360, w: 640 })
+  })
+
   it('panelKind accepts the fixed panel IDs and refuses all others', () => {
     expect(panelKind('overview:1')).toBe('overview')
     expect(panelKind('overview:99')).toBe('overview')

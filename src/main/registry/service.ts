@@ -1,6 +1,7 @@
 import type { Priority, SessionRow, UsageSnapshot, WatchColour } from '../../shared/types'
 import type { AgentList } from '../claude/agents'
 import type { LiveEvent } from '../live/live-event'
+import type { HookEvent } from './hook-event'
 import type { RegistryStore, SessionRegistry } from './registry'
 import { type ProcessTable, type TerminalApp, terminalAppOf } from './terminal-app'
 
@@ -32,6 +33,7 @@ interface RowWaiter {
 
 type UpdateCallback = (rows: SessionRow[], error: string | null) => void
 type UsageCallback = (usage: UsageSnapshot | null) => void
+type EventsCallback = (events: HookEvent[]) => void
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -43,6 +45,7 @@ export class RegistryService {
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
   private readonly callbacks: UpdateCallback[] = []
   private readonly usageCallbacks: UsageCallback[] = []
+  private readonly eventCallbacks: EventsCallback[] = []
   // The newest rate limits of the last onUsage call, as JSON. The JSON has updatedAt, so a newer
   // line with the same limits is a change. The start value is that of no rate limits.
   private lastUsage = 'null'
@@ -147,8 +150,12 @@ export class RegistryService {
   // rate limits go out when the line changes them, with the same update limit.
   pushLive(ev: LiveEvent): void {
     if (this.stopped) return
-    if (ev.type === 'state') this.registry.applyEvents([ev.event], this.deps.now())
-    else this.registry.applyUsage(ev.sessionId, ev.usage, ev.at)
+    if (ev.type === 'state') {
+      // Each state event goes to the listeners, also one of a session that is not a row yet and
+      // one that the order rule skips. A usage line goes to none.
+      for (const cb of this.eventCallbacks) cb([ev.event])
+      this.registry.applyEvents([ev.event], this.deps.now())
+    } else this.registry.applyUsage(ev.sessionId, ev.usage, ev.at)
     this.changed()
     this.checkUsage()
   }
@@ -161,6 +168,11 @@ export class RegistryService {
   // The service calls cb when the newest rate limits change.
   onUsage(cb: UsageCallback): void {
     this.usageCallbacks.push(cb)
+  }
+
+  // The service calls cb with each live state event (D29).
+  onEvents(cb: EventsCallback): void {
+    this.eventCallbacks.push(cb)
   }
 
   // Return the number of rows that are live and not parked.
