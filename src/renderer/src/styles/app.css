@@ -45,6 +45,15 @@
   --color-tab-11: #f2f2f2;
   --color-tab-12: #7dd3fc;
 
+  /* The six colours of the app icon. The gradient goes from the bottom-right corner (1) to the
+     top-left corner (6). The script scripts/icon/draw.ts reads these tokens. */
+  --color-icon-1: #e8554e;
+  --color-icon-2: #f0933f;
+  --color-icon-3: #f0cc58;
+  --color-icon-4: #74c88e;
+  --color-icon-5: #5e9bec;
+  --color-icon-6: #9b80e6;
+
   /* The colours of the priorities 1 to 5. */
   --color-prio-1: #d4730a;
   --color-prio-2: #93c5fd;
