@@ -147,7 +147,7 @@ Context isolation is on. The preload script supplies a typed API. The renderer h
 | `~/.bifrost/backups/` | Copies of `settings.json` from before each change. Bifrost needs them to remove an old hook install. |
 | `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities and panel positions. |
 
-Bifrost uses `~/.bifrost/` because that path has no spaces. The mod folder is also the marketplace folder of the mod, so a simple path is important.
+Bifrost uses `~/.bifrost/` because that path has no spaces. The mod folder is also the marketplace folder.
 
 ## 6. Data sources
 
@@ -192,8 +192,15 @@ Rules for the live lines:
 - The server closes a request that has no end after 5,000 ms.
 - Order rule (D4): Bifrost drops a state event that is older than the newest applied event of the session. It compares `at`, then `seq` when both events have one.
 - A turn end of a subagent (`agentId`) changes nothing. A `tool.done` event of any loop sets the state to Working.
-- The mod also sends `classic.*` events. They are a fallback (D5). `classic.PermissionRequest` only makes the red box for a permission prompt earlier. `classic.StopFailure` only repeats the error of `turn.complete`. `tool.check` gives no box, because in auto mode an `ask` goes to the classifier.
+- No `classic.*` kind goes on the wire. The mod hooks `classic.PermissionRequest` and `classic.StopFailure` as a fallback (D5).
+- `classic.PermissionRequest` sends the kind `permission`. It only makes the red box for a permission prompt earlier.
+- `classic.StopFailure` sends the kind `stop.failure`. It only repeats the error of `turn.complete`.
+- The mod does not use `tool.check`. In auto mode, an `ask` goes to the classifier, so it is not a prompt.
 - Where `classic.*` hooks do not run, the poll gives the red box for a permission prompt within 2 s. Nothing else changes.
+- Ask order: the mod queues the `ask` line before the tool runs. The line has a lower `seq` than `tool.done`. The mod does not wait for the send.
+- The kinds `tool.done` and `permission` need the field `tool`. The kind `session.end` needs the field `reason`.
+- Bifrost drops a `turn.complete` line with another `reason`.
+- If `at` differs from the receive time by more than 10 s, Bifrost replaces `at` with the receive time.
 - The mod starts no process and reads no transcript.
 
 ### 6.3 Usage data
@@ -259,7 +266,12 @@ Box rules:
 8. Parked sessions never get a box.
 9. A red box also clears when `status` is no longer `waiting`. Another client can answer a prompt. Examples are the agent view, a terminal and a phone.
 10. A `status` sample clears a box only after a sample confirmed that box. `idle` confirms a yellow box and an error box. `waiting` confirms a red prompt box. The reason: Claude Code can report `busy` while the Stop hooks run. Live events clear a box at all times.
-11. A session with no live line can get a yellow box from the poll alone (O3). A change of `status` from `busy` to `idle` sets it. A session that is idle at the first poll gets no box. A turn that starts and ends between two polls gives no box. A later `busy` sample clears the box. With the mod on, `turn.complete` sets the box and this rule adds nothing.
+11. A session with no live line can get a yellow box from the poll alone (O3).
+    1. A change of `status` from `busy` to `idle` sets the box.
+    2. A session that is idle at the first poll gets no box.
+    3. A turn that starts and ends between two polls gives no box.
+    4. A later `busy` sample clears the box.
+    5. With the mod on, `turn.complete` sets the box. This rule adds nothing.
 12. A stopped turn (Esc, or Interrupt in Bifrost) in a live session gives `turn.complete` with the reason `aborted`. The session goes to Idle with no box. The poll gives no yellow box for a live session (D6).
 13. `session.start` from the mod only ends the parked state. For a running session it changes nothing. The mod runs `session.start` again at each `/reload-plugins`, and a reload must not clear a box (D7).
 
@@ -745,6 +757,7 @@ Rules:
 - After Turn off, the sends of running sessions fail in about 1 ms. A running session keeps the mod until a restart or `/reload-plugins`.
 - A running session loads a new or changed mod only at its start or at `/reload-plugins`. After Install or Turn on, Bifrost tells the user this.
 - Bifrost does not run `/reload-plugins` in a session.
+- A stop during a start wins. The server never deletes a file that is not a socket. It never deletes a socket that answers.
 - The name `bifrost-local` is not `bifrost`, so a clash with another marketplace is less likely.
 
 ### 11.3 Remove an old hook install
@@ -978,7 +991,7 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 2. D2: The source of the mod is `resources/live-mod/`. Bifrost copies four files to `~/.bifrost/mod` and adds that folder as the marketplace. At each start, Bifrost copies the files again when they differ.
 3. D3: The wire kinds are `session.start`, `session.end`, `turn.start`, `ask`, `tool.done`, `permission`, `turn.complete`, `stop.failure` and `usage`. The mod sends facts, and the main process maps them (section 6.2).
 4. D4: The registry drops a state event that is older than the newest applied event of the session. It compares `at`, then `seq`.
-5. D5: Events that are not `classic.*` give all states. `classic.*` events only make a permission box earlier and repeat an error. Where they do not run, the poll gives the permission red box within 2 s.
+5. D5: The kinds that other hooks send give all states. The hooks `classic.PermissionRequest` and `classic.StopFailure` send `permission` and `stop.failure`. They only make a permission box earlier and repeat an error. Where they do not run, the poll gives the permission red box within 2 s.
 6. D6: `answer` and `refusal` give a yellow box. `aborted` gives Idle with no box. `error` gives the red error box. A subagent turn changes nothing.
 7. D7: `session.start` from the mod only ends the parked state. A reload does not clear a box.
 8. D8: Usage comes from `session.start`, `session.measure`, one read 2,500 ms after each main-loop `turn.complete`, and a heartbeat each 30 s. A usage line is not activity.
@@ -993,4 +1006,4 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 17. O3: Yes. With no mod, a change of `status` from `busy` to `idle` seen by the poll sets a yellow box (section 7, rule 11).
 18. O4: Option a. New sessions start with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. Resume and Take control add no flags. A taken-over session keeps your statusline. Spec 20 item 1 goes away (section 6.3).
 19. Ask order: the mod queues the `ask` line before the tool runs. The line has a lower `seq` than `tool.done`. The mod does not wait for the send.
-20. Socket server: a stop during a start wins. The server never deletes a file that is not a socket. It never deletes a socket that answers.
+20. Socket server: a stop during a start wins. The server never deletes a file that is not a socket. It never deletes a socket that answers (section 11.2).
