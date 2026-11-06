@@ -168,7 +168,7 @@ function startApp(): void {
     })
 
     // Register the IPC handlers before any window loads a page.
-    // This also makes the active marker file and starts the registry service.
+    // This also starts the registry service.
     registerIpc()
 
     openWindow()
@@ -189,17 +189,14 @@ function startApp(): void {
 
   // Close all PTYs before the app quits. Then no attach client stays alive after Bifrost.
   // Stop the registry service. Then no poll starts after this time.
-  // This also deletes the active marker file. Then the scripts stop their work.
   app.on('will-quit', () => {
     closeAllPtys()
     stopRegistry()
   })
 }
 
-// Only one Bifrost runs at a time. Two instances would each read only some of the event files,
-// and both could change the settings file.
-// A second instance quits at once. It registers no IPC, makes no marker file and starts no service.
-// So it cannot delete the marker file of the first instance when it quits.
+// Only one Bifrost runs at a time. Two instances could both change the settings file.
+// A second instance quits at once. It registers no IPC and starts no service.
 if (app.requestSingleInstanceLock()) {
   startApp()
 } else {

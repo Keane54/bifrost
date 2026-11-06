@@ -29,7 +29,6 @@ import { type AgentList, listAgents } from './claude/agents'
 import { createRunClaude, execFile, type RunClaude, resolveClaudePath } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
 import { loadLoginEnv } from './env/login-env'
-import { type ActiveMarker, createActiveMarker } from './integration/active-marker'
 import {
   defaultPaths,
   type IntegrationPaths,
@@ -45,11 +44,9 @@ import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
 import { PtyManager } from './pty/pty-manager'
 import { chatSessionOf, readSessionSize, SessionSizeWatcher } from './pty/session-size'
-import { cleanEventDir, drainEventDir } from './registry/event-dir'
 import { readBranch } from './registry/git-branch'
-import { PENDING_EVENT_MS, SessionRegistry } from './registry/registry'
+import { SessionRegistry } from './registry/registry'
 import { RegistryService, type ServiceDeps } from './registry/service'
-import { cleanStatusTemps, readStatusFiles, STATUS_TEMP_MAX_AGE_MS } from './registry/status-file'
 import { openStore } from './registry/store-file'
 import { readProcessTable } from './registry/terminal-app'
 import { openUiStore } from './store/ui-store'
@@ -92,8 +89,6 @@ const sizeWatcher = new SessionSizeWatcher({
 // The main process sets liveService when the store loads.
 let liveService: RegistryService | null = null
 let serviceStopped = false
-// The marker file that tells the scripts that Bifrost runs.
-let activeMarker: ActiveMarker | null = null
 
 // Return true if the sender is the page of the current window and that page did not end.
 // The check compares the webContents IDs, not the objects.
@@ -125,34 +120,13 @@ export function send(channel: string, ...args: unknown[]): void {
     currentWindow.webContents.send(channel, ...args)
 }
 
-// Delete old files from the time when Bifrost did not run. Then make the marker file.
-// After this step, the scripts write event files and status files.
-// An error here does not stop the service. The rows then come from claude agents only.
-async function startScripts(paths: IntegrationPaths): Promise<void> {
-  const now = Date.now()
-  await cleanEventDir(join(paths.bifrostHome, 'events'), now, PENDING_EVENT_MS)
-  await cleanStatusTemps(join(paths.bifrostHome, 'sessions'), now, STATUS_TEMP_MAX_AGE_MS)
-  if (serviceStopped) return
-  const marker = createActiveMarker(paths.bifrostHome)
-  activeMarker = marker
-  try {
-    await marker.create()
-  } catch (error) {
-    console.warn('Bifrost could not make the active marker file:', error)
-  }
-  // The app can quit while create runs. Then delete the marker again.
-  if (serviceStopped) marker.remove()
-}
-
-// Delete old files in the Bifrost directory and make the marker file.
-// Then load the store and start the registry service.
+// Load the store and start the registry service.
 // The service sends each update of the rows to the current window.
 // If the store cannot be read, the service runs with an empty store and does not save.
 async function startService(
   run: Promise<RunClaude | null>,
   paths: IntegrationPaths,
 ): Promise<RegistryService> {
-  await startScripts(paths)
   const opened = await openStore(join(app.getPath('userData'), 'registry.json'))
   const list = async (all: boolean): Promise<AgentList> => {
     const runClaude = await run
@@ -162,13 +136,11 @@ async function startService(
   const now = (): number => Date.now()
   const sessionsDir = join(paths.bifrostHome, 'sessions')
   const deps: ServiceDeps = {
-    drainEvents: () => drainEventDir(join(paths.bifrostHome, 'events'), now()),
     listActive: () => list(false),
     listAll: () => list(true),
     now,
     readBranch: cwd => readBranch(execFile, cwd),
     readProcessTable: () => readProcessTable(execFile),
-    readStatus: () => readStatusFiles(sessionsDir),
     saveStore: store => opened.save(store),
   }
   const service = new RegistryService(
@@ -540,10 +512,8 @@ export function closeAllPtys(): void {
   page.end()
 }
 
-// Stop the registry service and delete the marker file. Call it when the app quits.
-// Then the scripts stop their work, and no files collect while Bifrost is closed.
+// Stop the registry service. Call it when the app quits.
 export function stopRegistry(): void {
   serviceStopped = true
   liveService?.stop()
-  activeMarker?.remove()
 }

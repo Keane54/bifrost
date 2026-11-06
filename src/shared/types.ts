@@ -93,9 +93,12 @@ export interface SessionRow {
   lastMessage?: string
   lastActivity: number
   startedAt: number
+  // model, contextPercent and costUsd come from the last usage line of the Live details mod.
   model?: string
   contextPercent?: number
   costUsd?: number
+  // True when the Live details mod sent a line for the session in the last 90 s.
+  live?: true
   branch?: string
   // The worktree root that Bifrost saw while the session ran. A stopped session reports its
   // start folder as its cwd, so this keeps the worktree of the session.

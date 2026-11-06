@@ -1,6 +1,8 @@
 import type { Priority, SessionKind, SessionRow, WatchColour } from '../../shared/types'
 import { worktreeRoot } from '../../shared/worktree'
 import type { AgentEntry } from '../claude/agents'
+import type { LiveUsage } from '../live/live-event'
+import { modelName } from '../live/model-name'
 import type { HookEvent } from './hook-event'
 import {
   INITIAL_STATE,
@@ -11,7 +13,6 @@ import {
   onStatus,
   onTick,
 } from './state-machine'
-import type { StatusData } from './status-file'
 import type { TerminalApp } from './terminal-app'
 
 // The data that the registry saves between runs of Bifrost.
@@ -27,8 +28,12 @@ export interface RegistryStore {
   worktrees: { sessionId: string; path: string }[]
 }
 
-// A hook event for an unknown session waits this long for the session to show.
+// A state event for an unknown session waits this long for the session to show.
 export const PENDING_EVENT_MS = 60_000
+
+// A session is live for this long after its last line of the mod, in milliseconds.
+// The mod sends a usage line each 30 s, so a live idle session stays live.
+export const LIVE_FRESH_MS = 90_000
 
 // A session that is not active stays in lastActive this long, in milliseconds.
 export const LAST_ACTIVE_GRACE_MS = 60_000
@@ -48,8 +53,10 @@ interface Session {
   status: string
   waitingFor?: string
   startedAt: number
-  // The time of the last hook event. The value is 0 if no event came.
+  // The time of the last applied state event. The value is 0 if no event came.
   lastEventAt: number
+  // The seq of the last applied state event, if it had one.
+  lastEventSeq?: number
   // The sample time of the last status change that the registry saw. The value is 0 if none.
   statusChangedAt: number
   // The time of the last park. A SessionEnd event or a list sample gives this time.
@@ -64,14 +71,22 @@ function realName(entry: AgentEntry): string | undefined {
 }
 
 // Return the name of a row.
-// The order is: the entry name, the stored name, the status file name, the short id,
-// and the first 8 characters of the session id.
+// The order is: the entry name, the stored name, the short id, and the first 8 characters of
+// the session id.
 // The store always holds the last real entry name. So the stored name gives the first two steps.
-function rowName(sessionId: string, stored?: string, sessionName?: string, shortId?: string) {
-  for (const name of [stored, sessionName, shortId]) {
+function rowName(sessionId: string, stored?: string, shortId?: string) {
+  for (const name of [stored, shortId]) {
     if (name) return name
   }
   return sessionId.slice(0, 8)
+}
+
+// Return true when the event is older than the last applied event of the session (D4).
+// Each line of the mod is its own request, so two lines can arrive in the other order.
+// For two events with the same time, the seq gives the order when both events have one.
+function isOlder(ev: HookEvent, s: Session): boolean {
+  if (ev.at !== s.lastEventAt) return ev.at < s.lastEventAt
+  return ev.seq !== undefined && s.lastEventSeq !== undefined && ev.seq <= s.lastEventSeq
 }
 
 function compareSessions(a: Session, b: Session): number {
@@ -91,8 +106,13 @@ function copyEntry(s: Session, entry: AgentEntry): void {
   s.startedAt = entry.startedAt
 }
 
-// Merge the session list, the hook events, the status files and the git branches into rows.
-// Each session has its own state machine.
+// The last usage line of a session. updatedAt is the time of the line.
+interface Usage extends LiveUsage {
+  updatedAt: number
+}
+
+// Merge the session list, the state events and the usage lines of the mod, and the git branches
+// into rows. Each session has its own state machine.
 export class SessionRegistry {
   private readonly escalationMs: number
   private readonly names: Map<string, string>
@@ -123,9 +143,15 @@ export class SessionRegistry {
   private all = new Set<string>()
   // The session ids of the background entries of the last active list.
   private activeBackground = new Set<string>()
-  // Hook events for sessions that did not show yet.
+  // State events for sessions that did not show yet.
   private pending: HookEvent[] = []
-  private status = new Map<string, StatusData>()
+  // The time of the newest line of the mod for each session. The map also keeps sessions that
+  // did not show yet.
+  private readonly liveAt = new Map<string, number>()
+  // The newest usage line for each session. The map also keeps sessions that did not show yet.
+  private readonly usage = new Map<string, Usage>()
+  // The newest time that applyAgents, applyEvents, applyUsage or tick got.
+  private clock = 0
   private readonly branches = new Map<string, string>()
 
   // A store without priorities, lastActive, watch or worktrees (from an older version) is valid.
@@ -147,14 +173,17 @@ export class SessionRegistry {
 
   // Apply the output of "claude agents --json". sampledAt is the time when the poll started.
   applyAgents(entries: AgentEntry[], sampledAt: number): void {
+    this.advance(sampledAt)
     const ids = new Set(entries.map(entry => entry.sessionId))
     for (const entry of entries) {
       this.keepName(entry)
       const known = this.sessions.get(entry.sessionId)
       const s = known ?? this.add(entry.sessionId)
+      // The status before this sample. A new session has none. A parked session has ''.
+      const prevStatus = known?.status
       // A new status is activity. The first sample of a session is not a change.
       if (known && known.status !== entry.status) s.statusChangedAt = sampledAt
-      // Without hooks, only the session list can clear the parked state.
+      // Without the mod, only the session list can clear the parked state.
       // An entry without a pid has no process.
       // This occurs for a short time after a start or a stop.
       // A sample that started before the park is too old. It cannot clear the parked state.
@@ -168,6 +197,8 @@ export class SessionRegistry {
       }
       copyEntry(s, entry)
       s.machine = onStatus(s.machine, {
+        live: this.isLive(s.sessionId),
+        prevStatus,
         sampledAt,
         status: entry.status,
         waitingFor: entry.waitingFor,
@@ -237,9 +268,13 @@ export class SessionRegistry {
     if (counts) this.forgetGone(listed)
   }
 
-  // Apply hook events. An event for an unknown session waits until the session shows.
+  // Apply state events. An event for an unknown session waits until the session shows.
+  // Each event makes its session live. applyEvent skips an event that is older than the last
+  // applied event of the session (D4).
   applyEvents(events: HookEvent[], now: number): void {
+    this.advance(now)
     for (const ev of events) {
+      this.touch(ev.sessionId, ev.at)
       const s = this.sessions.get(ev.sessionId)
       if (s) this.applyEvent(s, ev)
       else this.pending.push(ev)
@@ -247,9 +282,23 @@ export class SessionRegistry {
     this.dropOldEvents(now)
   }
 
-  // Keep the latest status file data. The key is the session id.
-  applyStatusFiles(data: Map<string, StatusData>): void {
-    this.status = new Map(data)
+  // Keep the newest usage line of a session. The session can be unknown. Then its row gets the
+  // usage when it shows. A usage line is not activity (D8), so it does not change lastEventAt.
+  applyUsage(sessionId: string, usage: LiveUsage, at: number): void {
+    this.advance(at)
+    this.touch(sessionId, at)
+    const old = this.usage.get(sessionId)
+    if (old !== undefined && at < old.updatedAt) return
+    this.usage.set(sessionId, { ...usage, updatedAt: at })
+  }
+
+  // Return the number of rows that are live and not parked.
+  liveCount(): number {
+    let count = 0
+    for (const s of this.sessions.values()) {
+      if (s.machine.state !== 'parked' && this.isLive(s.sessionId)) count += 1
+    }
+    return count
   }
 
   // Set the branch of all rows with this cwd. null removes the branch.
@@ -262,6 +311,8 @@ export class SessionRegistry {
   forget(sessionId: string): void {
     this.sessions.delete(sessionId)
     this.pending = this.pending.filter(ev => ev.sessionId !== sessionId)
+    this.usage.delete(sessionId)
+    this.liveAt.delete(sessionId)
     this.active.delete(sessionId)
     this.all.delete(sessionId)
     this.resumable.delete(sessionId)
@@ -323,6 +374,7 @@ export class SessionRegistry {
   }
 
   tick(now: number): void {
+    this.advance(now)
     for (const s of this.sessions.values()) {
       s.machine = onTick(s.machine, now, this.escalationMs)
     }
@@ -447,7 +499,7 @@ export class SessionRegistry {
     return changed
   }
 
-  // Add a session with the initial state. Apply the hook events that wait for it.
+  // Add a session with the initial state. Apply the state events that wait for it.
   private add(sessionId: string): Session {
     const s: Session = {
       cwd: '',
@@ -467,10 +519,29 @@ export class SessionRegistry {
     return s
   }
 
+  // Apply one state event. Skip an event that is older than the last applied event (D4).
   private applyEvent(s: Session, ev: HookEvent): void {
+    if (isOlder(ev, s)) return
     s.machine = onHookEvent(s.machine, ev)
-    s.lastEventAt = Math.max(s.lastEventAt, ev.at)
+    s.lastEventAt = ev.at
+    s.lastEventSeq = ev.seq
     if (ev.name === 'SessionEnd') s.parkedAt = Math.max(s.parkedAt, ev.at)
+  }
+
+  // Move the clock forward. The clock never goes back.
+  private advance(at: number): void {
+    this.clock = Math.max(this.clock, at)
+  }
+
+  // Keep the time of the newest line of the mod for a session.
+  private touch(sessionId: string, at: number): void {
+    this.liveAt.set(sessionId, Math.max(this.liveAt.get(sessionId) ?? at, at))
+  }
+
+  // A session is live when the mod sent a line for it in the last LIVE_FRESH_MS.
+  private isLive(sessionId: string): boolean {
+    const at = this.liveAt.get(sessionId)
+    return at !== undefined && this.clock - at <= LIVE_FRESH_MS
   }
 
   private dropOldEvents(now: number): void {
@@ -515,7 +586,8 @@ export class SessionRegistry {
   // GONE_LISTS counted lists in a row without it. This is the only forget that an --all list
   // gives (Task 17 bug 3, Task 18 fix round 1). It also limits the size of the store.
   // The sessions are the owned rows, the started sessions, and each session with a stored name,
-  // priority, watch colour or worktree.
+  // priority, watch colour or worktree. Each session with a usage line or a line time of the mod
+  // is also in the list, so these two maps do not grow without limit.
   // The count of a session goes back to 0 when the last active list has it, when this list has
   // its background entry, or when this list has an entry of any kind for a started session.
   // A failed Take control leaves a started session with an interactive entry (D6).
@@ -528,6 +600,8 @@ export class SessionRegistry {
       ...this.priorities.keys(),
       ...this.watched.keys(),
       ...this.worktrees.keys(),
+      ...this.usage.keys(),
+      ...this.liveAt.keys(),
     ])
     for (const s of this.sessions.values()) {
       if (s.kind === 'owned') ids.add(s.sessionId)
@@ -584,15 +658,16 @@ export class SessionRegistry {
 
   private toRow(s: Session): SessionRow {
     const m = s.machine
-    const status = this.status.get(s.sessionId)
+    const usage = this.usage.get(s.sessionId)
     const row: SessionRow = {
       box: m.box,
       boxSince: m.boxSince,
       cwd: s.cwd,
       flashing: m.box !== 'none' && !m.acknowledged,
       kind: s.kind,
-      lastActivity: Math.max(s.startedAt, s.lastEventAt, s.statusChangedAt, status?.updatedAt ?? 0),
-      name: rowName(s.sessionId, this.names.get(s.sessionId), status?.sessionName, s.shortId),
+      // A usage line is not activity (D8).
+      lastActivity: Math.max(s.startedAt, s.lastEventAt, s.statusChangedAt),
+      name: rowName(s.sessionId, this.names.get(s.sessionId), s.shortId),
       sessionId: s.sessionId,
       startedAt: s.startedAt,
       state: m.state,
@@ -604,9 +679,10 @@ export class SessionRegistry {
     if (s.pid !== undefined) row.pid = s.pid
     if (s.waitingFor !== undefined) row.waitingFor = s.waitingFor
     if (m.lastMessage !== undefined) row.lastMessage = m.lastMessage
-    if (status?.model !== undefined) row.model = status.model
-    if (status?.contextPercent !== undefined) row.contextPercent = status.contextPercent
-    if (status?.costUsd !== undefined) row.costUsd = status.costUsd
+    if (usage?.model !== undefined) row.model = modelName(usage.model)
+    if (usage?.contextPercent !== undefined) row.contextPercent = usage.contextPercent
+    if (usage?.costUsd !== undefined) row.costUsd = usage.costUsd
+    if (this.isLive(s.sessionId)) row.live = true
     const branch = this.branches.get(this.branchDir(s))
     if (branch !== undefined) row.branch = branch
     const worktree = this.worktrees.get(s.sessionId)

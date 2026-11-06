@@ -3,6 +3,7 @@ import type { AgentEntry } from '../../../src/main/claude/agents'
 import type { HookEvent, HookEventName } from '../../../src/main/registry/hook-event'
 import {
   LAST_ACTIVE_GRACE_MS,
+  LIVE_FRESH_MS,
   PENDING_EVENT_MS,
   type RegistryStore,
   SessionRegistry,
@@ -127,7 +128,7 @@ describe('brief', () => {
     expect(r.rows()[0].lastActivity).toBe(400)
   })
 
-  test('a later hook event or status file still wins over an older status change', () => {
+  test('a later hook event still wins over an older status change', () => {
     const r = registry()
     r.applyAgents([bg({ status: 'idle' })], 100)
     r.applyAgents([bg({ status: 'busy' })], 200)
@@ -135,20 +136,19 @@ describe('brief', () => {
     expect(r.rows()[0].lastActivity).toBe(250)
   })
 
-  test('status data and the branch go on the row', () => {
+  // Changed for Task 4: the usage line gives the data, and a usage line is not activity (D8).
+  test('usage data and the branch go on the row', () => {
     const r = registry()
     r.applyAgents([bg()], 100)
     r.applyEvents([ev('Stop', 's1', 300)], 300)
-    r.applyStatusFiles(
-      new Map([['s1', { contextPercent: 42, costUsd: 1.5, model: 'Opus', updatedAt: 500 }]]),
-    )
+    r.applyUsage('s1', { contextPercent: 42, costUsd: 1.5, model: 'claude-opus-5-5' }, 500)
     r.applyBranch('/p', 'main')
     expect(r.rows()[0]).toMatchObject({
       branch: 'main',
       contextPercent: 42,
       costUsd: 1.5,
-      lastActivity: 500,
-      model: 'Opus',
+      lastActivity: 300,
+      model: 'Opus 5.5',
     })
     r.applyEvents([ev('UserPromptSubmit', 's1', 900)], 900)
     expect(r.rows()[0].lastActivity).toBe(900)
@@ -278,22 +278,22 @@ describe('kind and leave rules', () => {
 })
 
 describe('names', () => {
-  test('the name comes from the status file, then the short id, then the session id', () => {
+  // Changed for Task 4: the status file step of the name order is gone.
+  test('the name comes from the entry, then the short id, then the session id', () => {
     const r = registry()
     r.applyAgents(
       [
-        bg({ name: '' }),
+        bg({ name: 'one' }),
         bg({ id: 'bb', name: 'bb', sessionId: 's2' }),
         bg({ id: undefined, name: '', sessionId: 'abcdefghijkl' }),
       ],
       100,
     )
-    r.applyStatusFiles(new Map([['s1', { sessionName: 'from-status', updatedAt: 50 }]]))
     const names = Object.fromEntries(r.rows().map(row => [row.sessionId, row.name]))
-    expect(names).toEqual({ abcdefghijkl: 'abcdefgh', s1: 'from-status', s2: 'bb' })
+    expect(names).toEqual({ abcdefghijkl: 'abcdefgh', s1: 'one', s2: 'bb' })
   })
 
-  test('the stored name comes before the status file name', () => {
+  test('the stored name comes before the short id', () => {
     const r = registry({
       lastActive: [],
       names: { s1: 'stored' },
@@ -302,7 +302,6 @@ describe('names', () => {
       watch: [],
     })
     r.applyAgents([bg({ name: '' })], 100)
-    r.applyStatusFiles(new Map([['s1', { sessionName: 'from-status', updatedAt: 50 }]]))
     expect(r.rows()[0].name).toBe('stored')
   })
 
@@ -1292,5 +1291,203 @@ describe('the active list keeps a session from a forget (registry.ts forgetGone)
       priority: 2,
       watch: { colour: 'light-blue', order: 0 },
     })
+  })
+})
+
+describe('live events and usage lines (Task 4)', () => {
+  const seqEv = (name: HookEventName, at: number, seq: number): HookEvent => ({
+    ...ev(name, 's1', at),
+    seq,
+  })
+  // An interactive session with no stored name. Only its usage keeps its ID in the registry.
+  const term = bg({ id: undefined, kind: 'interactive', name: '' })
+  const rowOf = (r: SessionRegistry, id = 's1') => r.rows().find(row => row.sessionId === id)
+
+  test('LIVE_FRESH_MS is 90 s', () => {
+    expect(LIVE_FRESH_MS).toBe(90_000)
+  })
+
+  test('applyEvents drops a state event older than the newest applied event', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyEvents([ev('Stop', 's1', 300)], 300)
+    r.applyEvents([ev('PostToolUse', 's1', 200)], 310)
+    expect(rowOf(r)).toMatchObject({ box: 'yellow', boxSince: 300, lastActivity: 300 })
+  })
+
+  test('applyEvents uses seq for two events with the same time', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyEvents([seqEv('Stop', 300, 5)], 300)
+    r.applyEvents([seqEv('PostToolUse', 300, 4)], 300)
+    expect(rowOf(r)).toMatchObject({ box: 'yellow', state: 'needs-you' })
+    r.applyEvents([seqEv('PostToolUse', 300, 6)], 300)
+    expect(rowOf(r)).toMatchObject({ box: 'none', state: 'working' })
+  })
+
+  test('two events with the same time and no seq both apply', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyEvents([ev('Stop', 's1', 300)], 300)
+    r.applyEvents([seqEv('PostToolUse', 300, 1)], 300)
+    expect(rowOf(r)?.state).toBe('working')
+  })
+
+  test('pending events follow the same order rule when they apply', () => {
+    const r = registry()
+    r.applyEvents([ev('Stop', 's1', 300), ev('PostToolUse', 's1', 200)], 300)
+    r.applyAgents([bg()], 400)
+    expect(rowOf(r)).toMatchObject({ box: 'yellow', boxSince: 300 })
+  })
+
+  test('applyUsage gives the model name, the context and the cost to the row', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyUsage('s1', { contextPercent: 6, costUsd: 0.01, model: 'claude-haiku-5-5' }, 200)
+    expect(rowOf(r)).toMatchObject({ contextPercent: 6, costUsd: 0.01, model: 'Haiku 5.5' })
+  })
+
+  test('the newest usage line replaces the usage, and an older line changes nothing', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyUsage('s1', { costUsd: 0.5, model: 'claude-opus-5-5' }, 300)
+    r.applyUsage('s1', { costUsd: 0.1, model: 'claude-haiku-5-5' }, 200)
+    expect(rowOf(r)).toMatchObject({ costUsd: 0.5, model: 'Opus 5.5' })
+    r.applyUsage('s1', { costUsd: 0.7 }, 400)
+    expect(rowOf(r)?.costUsd).toBe(0.7)
+    expect(rowOf(r)).not.toHaveProperty('model')
+  })
+
+  test('a usage line is not activity', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyEvents([ev('Stop', 's1', 300)], 300)
+    r.applyUsage('s1', { costUsd: 0.2 }, 5000)
+    expect(rowOf(r)?.lastActivity).toBe(300)
+    // A usage line does not change the event time, so an older event still applies.
+    r.applyEvents([ev('UserPromptSubmit', 's1', 400)], 5000)
+    expect(rowOf(r)).toMatchObject({ lastActivity: 400, state: 'working' })
+  })
+
+  test('a usage line for an unknown session shows when the session comes', () => {
+    const r = registry()
+    r.applyUsage('s1', { contextPercent: 12, costUsd: 0.3, model: 'claude-sonnet-5' }, 100)
+    expect(r.rows()).toEqual([])
+    r.applyAgents([bg()], 200)
+    expect(rowOf(r)).toMatchObject({ contextPercent: 12, costUsd: 0.3, model: 'Sonnet 5' })
+  })
+
+  test('a row is live for 90 s after its last line', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    expect(rowOf(r)).not.toHaveProperty('live')
+    expect(r.liveCount()).toBe(0)
+    r.applyUsage('s1', {}, 1000)
+    r.tick(91_000)
+    expect(rowOf(r)?.live).toBe(true)
+    expect(r.liveCount()).toBe(1)
+    r.tick(91_001)
+    expect(rowOf(r)).not.toHaveProperty('live')
+    expect(r.liveCount()).toBe(0)
+  })
+
+  test('a state event also makes the row live', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyEvents([ev('UserPromptSubmit', 's1', 200)], 200)
+    expect(rowOf(r)?.live).toBe(true)
+    r.applyAgents([bg({ status: 'busy' })], 200 + LIVE_FRESH_MS + 1)
+    expect(rowOf(r)).not.toHaveProperty('live')
+  })
+
+  test('liveCount does not count a parked row', () => {
+    const r = registry()
+    r.markStarted('s1')
+    r.applyAgents([bg()], 100)
+    r.applyEvents([ev('SessionEnd', 's1', 200)], 200)
+    expect(rowOf(r)?.state).toBe('parked')
+    expect(r.liveCount()).toBe(0)
+  })
+
+  test('a poll-only session gets a yellow box at busy to idle', () => {
+    const r = registry()
+    r.applyAgents([bg({ status: 'busy' })], 1000)
+    r.applyAgents([bg({ status: 'idle' })], 3000)
+    expect(rowOf(r)).toMatchObject({
+      box: 'yellow',
+      boxSince: 3000,
+      flashing: true,
+      state: 'needs-you',
+    })
+    // A later busy sample clears it.
+    r.applyAgents([bg({ status: 'busy' })], 5000)
+    expect(rowOf(r)).toMatchObject({ box: 'none', state: 'working' })
+  })
+
+  test('a live session gets no poll yellow after a stopped turn', () => {
+    const r = registry()
+    r.applyAgents([bg({ status: 'busy' })], 1000)
+    r.applyEvents([ev('UserPromptSubmit', 's1', 1500)], 1500)
+    r.applyEvents([ev('TurnAborted', 's1', 2500)], 2500)
+    r.applyAgents([bg({ status: 'idle' })], 3000)
+    expect(rowOf(r)).toMatchObject({ box: 'none', state: 'idle' })
+  })
+
+  test('a session with only usage lines is live and gets no poll yellow', () => {
+    const r = registry()
+    r.applyAgents([bg({ status: 'busy' })], 1000)
+    r.applyUsage('s1', { costUsd: 0.1 }, 2000)
+    r.applyAgents([bg({ status: 'idle' })], 3000)
+    expect(rowOf(r)).toMatchObject({ box: 'none', state: 'idle' })
+  })
+
+  test('the first sample after the start gives no yellow box', () => {
+    const r = registry()
+    r.applyAgents([bg({ status: 'idle' })], 1000)
+    expect(rowOf(r)).toMatchObject({ box: 'none', state: 'idle' })
+    // A parked session that runs again has no status before the sample.
+    const p = registry()
+    p.markStarted('s1')
+    p.applyAgents([], 1000)
+    p.applyAgents([bg({ status: 'idle' })], 3000)
+    expect(rowOf(p)).toMatchObject({ box: 'none', state: 'idle' })
+  })
+
+  test('applyAllAgents removes the usage of a session that left all lists', () => {
+    const r = registry()
+    r.applyAgents([term], 100)
+    r.applyUsage('s1', { costUsd: 0.5 }, 150)
+    r.applyAgents([], 200)
+    // One counted --all list without the session keeps the usage.
+    r.applyAllAgents([another], true)
+    r.applyAgents([term], 300)
+    expect(rowOf(r)?.costUsd).toBe(0.5)
+    r.applyAgents([], 400)
+    // GONE_LISTS counted lists in a row without the session remove the usage.
+    r.applyAllAgents([another], true)
+    r.applyAllAgents([another], true)
+    r.applyAgents([term], 500)
+    expect(rowOf(r)).not.toHaveProperty('costUsd')
+    expect(rowOf(r)).not.toHaveProperty('live')
+  })
+
+  test('applyAllAgents removes the usage of a session that never showed', () => {
+    const r = registry()
+    r.applyUsage('s1', { costUsd: 0.5 }, 100)
+    r.applyAllAgents([another], true)
+    r.applyAllAgents([another], true)
+    r.applyAgents([term], 200)
+    expect(rowOf(r)).not.toHaveProperty('costUsd')
+  })
+
+  test('forget removes the usage of the session', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyUsage('s1', { costUsd: 0.5, model: 'claude-opus-5-5' }, 150)
+    r.forget('s1')
+    r.applyAgents([bg()], 200)
+    expect(rowOf(r)).not.toHaveProperty('costUsd')
+    expect(rowOf(r)).not.toHaveProperty('model')
+    expect(rowOf(r)).not.toHaveProperty('live')
   })
 })

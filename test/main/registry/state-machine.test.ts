@@ -115,13 +115,44 @@ describe('hook events', () => {
       lastMessage: 'm',
     })
   })
-  test('SessionStart gives idle with no box', () => {
+  // D7: the mod sends SessionStart again at each reload. A reload must not clear a box.
+  test('SessionStart keeps the box of a running session', () => {
     const y = onHookEvent(INITIAL_STATE, ev('Stop', 1))
-    expect(onHookEvent(y, ev('SessionStart', 2))).toMatchObject({
+    expect(onHookEvent(y, ev('SessionStart', 2))).toEqual(y)
+  })
+  // D6: a turn that the user stopped needs no alert.
+  test('TurnAborted gives idle with no box and keeps the partial answer', () => {
+    expect(onHookEvent(working, ev('TurnAborted', 10, { lastAssistantMessage: 'part' }))).toEqual({
       acknowledged: true,
       box: 'none',
       boxSince: null,
+      confirmed: false,
+      lastMessage: 'part',
       state: 'idle',
+    })
+  })
+  test('TurnAborted with no answer keeps the last message', () => {
+    const y = onHookEvent(working, ev('Stop', 5, { lastAssistantMessage: 'Done' }))
+    const w = onHookEvent(y, ev('UserPromptSubmit', 6))
+    expect(onHookEvent(w, ev('TurnAborted', 7))).toMatchObject({
+      box: 'none',
+      lastMessage: 'Done',
+      state: 'idle',
+    })
+  })
+  // Review Focus 3: turn.complete with an error and classic.StopFailure give the same error.
+  test('a second StopFailure keeps the error box, its time and its flash state', () => {
+    const e = onAcknowledge(onHookEvent(working, ev('StopFailure', 5)))
+    expect(onHookEvent(e, ev('StopFailure', 6))).toEqual(e)
+    expect(e).toMatchObject({ acknowledged: true, boxSince: 5, redReason: 'error' })
+  })
+  test('StopFailure replaces an escalated red box with an error box', () => {
+    const esc = onAcknowledge(onTick(onHookEvent(working, ev('Stop', 0)), 10, 10))
+    expect(onHookEvent(esc, ev('StopFailure', 20))).toMatchObject({
+      acknowledged: false,
+      boxSince: 20,
+      redReason: 'error',
+      state: 'error',
     })
   })
   test('SessionEnd gives parked with no box', () => {
@@ -269,7 +300,10 @@ describe('purity', () => {
     const copy = { ...frozen }
     onHookEvent(frozen, ev('PermissionRequest', 1))
     onHookEvent(frozen, ev('SessionEnd', 1))
+    onHookEvent(frozen, ev('TurnAborted', 1, { lastAssistantMessage: 'y' }))
+    onHookEvent(frozen, ev('StopFailure', 1))
     onStatus(frozen, { sampledAt: 2, status: 'busy' })
+    onStatus(frozen, { prevStatus: 'busy', sampledAt: 2, status: 'idle' })
     onStatus(frozen, { sampledAt: 2, status: 'waiting', waitingFor: 'a' })
     onTick(frozen, 700_000, 600_000)
     onAcknowledge(frozen)
@@ -476,6 +510,86 @@ describe('box confirmation (spec section 7, rule 10)', () => {
       boxSince: 11_000,
       confirmed: true,
       redReason: 'prompt',
+    })
+  })
+})
+
+describe('poll-only yellow box (O3)', () => {
+  const yellowAt = (at: number) => ({
+    acknowledged: false,
+    box: 'yellow',
+    boxSince: at,
+    confirmed: true,
+    state: 'needs-you',
+  })
+
+  test('an idle sample after busy gives a yellow box for a poll-only session', () => {
+    const busy = onStatus(INITIAL_STATE, { sampledAt: 1000, status: 'busy' })
+    expect(busy).toMatchObject({ box: 'none', state: 'working' })
+    expect(
+      onStatus(busy, { live: false, prevStatus: 'busy', sampledAt: 3000, status: 'idle' }),
+    ).toEqual(yellowAt(3000))
+  })
+
+  test('an idle sample after waiting gives a yellow box for a poll-only session', () => {
+    const red = onStatus(INITIAL_STATE, {
+      sampledAt: 1000,
+      status: 'waiting',
+      waitingFor: 'approval',
+    })
+    expect(red).toMatchObject({ box: 'red', confirmed: true, redReason: 'prompt' })
+    expect(onStatus(red, { prevStatus: 'waiting', sampledAt: 3000, status: 'idle' })).toEqual(
+      yellowAt(3000),
+    )
+  })
+
+  test('the poll-only yellow box keeps the last message', () => {
+    const y = onHookEvent(working, ev('Stop', 5, { lastAssistantMessage: 'Done' }))
+    const busy = onStatus(onStatus(y, { sampledAt: 900, status: 'idle' }), {
+      sampledAt: 1000,
+      status: 'busy',
+    })
+    expect(busy).toMatchObject({ box: 'none', lastMessage: 'Done', state: 'working' })
+    expect(
+      onStatus(busy, { prevStatus: 'busy', sampledAt: 3000, status: 'idle' }).lastMessage,
+    ).toBe('Done')
+  })
+
+  test('an idle sample gives no yellow box for a live session, after idle, or as the first sample', () => {
+    const busy = onStatus(INITIAL_STATE, { sampledAt: 1000, status: 'busy' })
+    const idle = { box: 'none', state: 'idle' }
+    expect(
+      onStatus(busy, { live: true, prevStatus: 'busy', sampledAt: 3000, status: 'idle' }),
+    ).toMatchObject(idle)
+    expect(onStatus(busy, { prevStatus: 'idle', sampledAt: 3000, status: 'idle' })).toMatchObject(
+      idle,
+    )
+    expect(onStatus(busy, { sampledAt: 3000, status: 'idle' })).toMatchObject(idle)
+  })
+
+  test('only an idle sample gives the poll-only yellow box', () => {
+    const busy = onStatus(INITIAL_STATE, { sampledAt: 1000, status: 'busy' })
+    expect(onStatus(busy, { prevStatus: 'busy', sampledAt: 3000, status: 'busy' })).toMatchObject({
+      box: 'none',
+      state: 'working',
+    })
+    expect(
+      onStatus(busy, { prevStatus: 'busy', sampledAt: 3000, status: 'waiting' }),
+    ).toMatchObject({ box: 'none', state: 'working' })
+  })
+
+  test('a parked session gets no poll-only yellow box', () => {
+    const p = onParked(INITIAL_STATE)
+    expect(onStatus(p, { prevStatus: 'busy', sampledAt: 3000, status: 'idle' })).toEqual(p)
+  })
+
+  test('a later busy sample clears the poll-only yellow box', () => {
+    const busy = onStatus(INITIAL_STATE, { sampledAt: 1000, status: 'busy' })
+    const y = onStatus(busy, { prevStatus: 'busy', sampledAt: 3000, status: 'idle' })
+    expect(onStatus(y, { prevStatus: 'idle', sampledAt: 5000, status: 'idle' })).toEqual(y)
+    expect(onStatus(y, { prevStatus: 'idle', sampledAt: 7000, status: 'busy' })).toMatchObject({
+      box: 'none',
+      state: 'working',
     })
   })
 })

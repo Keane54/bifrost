@@ -6,7 +6,6 @@ import {
   SERVICE_TIMING,
   type ServiceDeps,
 } from '../../../src/main/registry/service'
-import type { StatusData } from '../../../src/main/registry/status-file'
 import { parseProcessTable } from '../../../src/main/registry/terminal-app'
 import type { SessionRow } from '../../../src/shared/types'
 
@@ -32,13 +31,11 @@ const empty = (): AgentList => ({ entries: [] })
 
 function fakeDeps(o: Partial<ServiceDeps> = {}): ServiceDeps {
   return {
-    drainEvents: vi.fn(async () => ({ errors: 0, events: [] })),
     listActive: vi.fn(async () => empty()),
     listAll: vi.fn(async () => empty()),
     now: () => Date.now(),
     readBranch: vi.fn(async () => 'main'),
     readProcessTable: vi.fn(async () => null),
-    readStatus: vi.fn(async () => new Map<string, StatusData>()),
     saveStore: vi.fn(async () => {}),
     ...o,
   }
@@ -102,19 +99,16 @@ describe('brief', () => {
     expect(calls).toBeLessThanOrEqual(3)
   })
 
+  // Changed for Task 4: the usage lines of the mod give the changes.
   test('updates are at most 4 each second', async () => {
-    let cost = 0
-    const deps = fakeDeps({
-      listActive: async () => ({ entries: [bg()] }),
-      readStatus: async () => new Map([['s1', { costUsd: cost, updatedAt: 1 }]]),
-    })
-    const { updates } = startService(deps, newRegistry(), { ...SERVICE_TIMING, statusMs: 100 })
+    const deps = fakeDeps({ listActive: async () => ({ entries: [bg()] }) })
+    const { service, updates } = startService(deps)
     // The first rows go out. The data does not change for 1000 ms, so the gap ends.
     await vi.advanceTimersByTimeAsync(1000)
     updates.length = 0
     // 10 data changes in 1000 ms.
     for (let i = 1; i <= 10; i++) {
-      cost = i
+      service.pushLive({ at: Date.now(), sessionId: 's1', type: 'usage', usage: { costUsd: i } })
       await vi.advanceTimersByTimeAsync(100)
     }
     await vi.advanceTimersByTimeAsync(SERVICE_TIMING.minUpdateGapMs)
@@ -261,17 +255,19 @@ describe('list polls', () => {
     expect(listActive).toHaveBeenCalledTimes(2)
   })
 
+  // Changed for Task 4: a usage line before the first poll gives the model.
   test('the first update holds the rows of the first active poll', async () => {
     const deps = fakeDeps({
       listActive: vi.fn(async () => resolveLater(1000, { entries: [bg()] })),
-      readStatus: async () => new Map([['s1', { model: 'Opus', updatedAt: 1 }]]),
     })
-    const { updates } = startService(deps)
+    const { service, updates } = startService(deps)
+    const usage = { model: 'claude-opus-5-5' }
+    service.pushLive({ at: START, sessionId: 's1', type: 'usage', usage })
     await vi.advanceTimersByTimeAsync(999)
     expect(updates).toEqual([])
     await vi.advanceTimersByTimeAsync(1)
     expect(updates).toHaveLength(1)
-    expect(updates[0].rows).toMatchObject([{ model: 'Opus', sessionId: 's1' }])
+    expect(updates[0].rows).toMatchObject([{ model: 'Opus 5.5', sessionId: 's1' }])
   })
 
   test('the tick loop starts after the first active poll', async () => {
@@ -298,37 +294,11 @@ describe('updates and the store', () => {
     expect(updates.length).toBe(count)
   })
 
-  test('hook events and the status files change the rows', async () => {
-    const deps = fakeDeps({
-      drainEvents: vi
-        .fn<ServiceDeps['drainEvents']>()
-        .mockResolvedValueOnce({ errors: 0, events: [] })
-        .mockResolvedValueOnce({
-          errors: 0,
-          events: [{ at: START + 400, name: 'UserPromptSubmit', sessionId: 's1' }],
-        })
-        .mockResolvedValue({ errors: 0, events: [] }),
-      listActive: async () => ({ entries: [bg({ status: 'busy' })] }),
-      readStatus: async () => new Map([['s1', { model: 'Opus', updatedAt: 1 }]]),
-    })
-    const { updates } = startService(deps)
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(updates.at(-1)?.rows[0]).toMatchObject({ model: 'Opus', state: 'working' })
-    expect(updates.at(-1)?.rows[0].lastActivity).toBe(START + 400)
-  })
-
+  // Changed for Task 4: the Stop event comes from the mod.
   test('acknowledge stops the flash and sends an update', async () => {
-    const deps = fakeDeps({
-      drainEvents: vi
-        .fn<ServiceDeps['drainEvents']>()
-        .mockResolvedValueOnce({
-          errors: 0,
-          events: [{ at: START, name: 'Stop', sessionId: 's1' }],
-        })
-        .mockResolvedValue({ errors: 0, events: [] }),
-      listActive: async () => ({ entries: [bg()] }),
-    })
+    const deps = fakeDeps({ listActive: async () => ({ entries: [bg()] }) })
     const { service, updates } = startService(deps)
+    service.pushLive({ event: { at: START, name: 'Stop', sessionId: 's1' }, type: 'state' })
     await vi.advanceTimersByTimeAsync(1000)
     expect(updates.at(-1)?.rows[0]).toMatchObject({ box: 'yellow', flashing: true })
     service.acknowledge('s1')
@@ -469,7 +439,7 @@ describe('updates and the store', () => {
       .mockResolvedValueOnce({ entries: [bg()] })
       .mockResolvedValue({ entries: [bg({ name: 'beta' })] })
     // No other loop calls for a save at 3000 ms. The next active poll is at 4000 ms.
-    const timing = { ...SERVICE_TIMING, statusMs: 60_000, tickMs: 60_000 }
+    const timing = { ...SERVICE_TIMING, tickMs: 60_000 }
     startService(fakeDeps({ listActive, saveStore }), newRegistry(), timing)
     // The first save runs from 0 ms to 3000 ms. The name changes at 2000 ms.
     await vi.advanceTimersByTimeAsync(2999)
@@ -644,5 +614,51 @@ describe('a session that is gone (Task 17 bug 3)', () => {
     service.stop()
     await vi.advanceTimersByTimeAsync(1000)
     expect(ids(service)).toContain('s9')
+  })
+})
+
+describe('live lines (Task 4)', () => {
+  const ready = async () => {
+    const deps = fakeDeps({ listActive: async () => ({ entries: [bg()] }) })
+    const started = startService(deps)
+    // The first poll ends and the update gap ends.
+    await vi.advanceTimersByTimeAsync(1000)
+    return started
+  }
+
+  test('pushLive applies a state event and sends an update', async () => {
+    const { service, updates } = await ready()
+    expect(updates.at(-1)?.rows[0]).toMatchObject({ box: 'none' })
+    const count = updates.length
+    service.pushLive({ event: { at: Date.now(), name: 'Stop', sessionId: 's1' }, type: 'state' })
+    expect(updates.length).toBe(count + 1)
+    expect(updates.at(-1)?.rows[0]).toMatchObject({ box: 'yellow', flashing: true, live: true })
+    expect(service.liveCount()).toBe(1)
+  })
+
+  test('pushLive applies a usage line', async () => {
+    const { service, updates } = await ready()
+    service.pushLive({ at: Date.now(), sessionId: 's1', type: 'usage', usage: { costUsd: 0.42 } })
+    expect(updates.at(-1)?.rows[0]).toMatchObject({ costUsd: 0.42, live: true })
+    expect(updates.at(-1)?.rows[0].lastActivity).toBe(1)
+  })
+
+  test('pushLive after stop changes nothing', async () => {
+    const { service, updates } = await ready()
+    const count = updates.length
+    service.stop()
+    service.pushLive({ at: Date.now(), sessionId: 's1', type: 'usage', usage: { costUsd: 0.42 } })
+    expect(updates.length).toBe(count)
+    expect(service.rows()[0]).not.toHaveProperty('costUsd')
+  })
+
+  test('the service has no event loop and no status loop', () => {
+    expect(Object.keys(SERVICE_TIMING).sort()).toEqual([
+      'activeMs',
+      'allMs',
+      'branchMs',
+      'minUpdateGapMs',
+      'tickMs',
+    ])
   })
 })

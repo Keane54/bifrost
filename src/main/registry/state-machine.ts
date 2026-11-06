@@ -71,10 +71,12 @@ function promptBox(s: MachineState, at: number): MachineState {
   return withBox(s, 'needs-you', 'red', at, 'prompt')
 }
 
+// Apply one state event of the mod.
 export function onHookEvent(s: MachineState, ev: HookEvent): MachineState {
-  if (ev.name === 'SessionStart') return withoutBox(s, 'idle')
   // A parked session leaves the parked state only on SessionStart.
-  if (s.state === 'parked') return s
+  // For a session that runs, SessionStart changes nothing (D7). The mod sends it again at each
+  // reload, and a reload must not clear a box.
+  if (s.state === 'parked') return ev.name === 'SessionStart' ? withoutBox(s, 'idle') : s
   switch (ev.name) {
     case 'UserPromptSubmit':
     case 'PostToolUse':
@@ -90,7 +92,16 @@ export function onHookEvent(s: MachineState, ev: HookEvent): MachineState {
       if (ev.lastAssistantMessage !== undefined) next.lastMessage = ev.lastAssistantMessage
       return next
     }
+    // The user stopped the turn. This needs no alert (D6). Keep the partial answer.
+    case 'TurnAborted': {
+      const next = withoutBox(s, 'idle')
+      if (ev.lastAssistantMessage !== undefined) next.lastMessage = ev.lastAssistantMessage
+      return next
+    }
+    // The mod can send the same error two times. A repeated error keeps the box, its time and
+    // its flash state.
     case 'StopFailure':
+      if (s.box === 'red' && s.redReason === 'error') return s
       return withBox(s, 'error', 'red', ev.at, 'error')
     case 'SessionEnd':
       return withoutBox(s, 'parked')
@@ -99,16 +110,40 @@ export function onHookEvent(s: MachineState, ev: HookEvent): MachineState {
   }
 }
 
+// One sample of the session list for one session.
+// prevStatus is the status of the session before this sample. It is undefined for a new session.
+// live is true when the mod sent a line for the session in the last LIVE_FRESH_MS.
+export interface StatusSample {
+  status: string
+  waitingFor?: string
+  sampledAt: number
+  prevStatus?: string
+  live?: boolean
+}
+
 // Apply one sample of the session list.
+// First apply the M1 rules (statusRules). Then a session with no mod can get a yellow box (O3):
+// when an idle sample follows busy or waiting and the result has no box, the turn ended.
+// The sample confirms this box. So the next busy sample clears it.
+// A session with the mod gets its yellow box from the Stop event, so this rule skips it.
+// The first sample of a session has no prevStatus, so it gives no box.
+export function onStatus(s: MachineState, sample: StatusSample): MachineState {
+  const next = statusRules(s, sample)
+  const turnEnded =
+    sample.status === 'idle' && (sample.prevStatus === 'busy' || sample.prevStatus === 'waiting')
+  if (next.box !== 'none' || next.state === 'parked' || sample.live === true || !turnEnded) {
+    return next
+  }
+  return withBox(next, 'needs-you', 'yellow', sample.sampledAt, undefined, true)
+}
+
+// The M1 rules for one sample.
 // A sample confirms the current box: idle confirms a yellow box, an error box and an old
 // yellow box (escalated). waiting confirms a red prompt box.
 // A sample clears a box only after a sample confirmed it.
 // The reason: Claude Code can report busy while the Stop hooks run.
 // An interactive session can also report idle or busy at a prompt.
-export function onStatus(
-  s: MachineState,
-  sample: { status: string; waitingFor?: string; sampledAt: number },
-): MachineState {
+function statusRules(s: MachineState, sample: StatusSample): MachineState {
   if (s.state === 'parked') return s
   // A sample that is not newer than the box comes from a poll that started before the box.
   if (s.boxSince !== null && sample.sampledAt <= s.boxSince) return s

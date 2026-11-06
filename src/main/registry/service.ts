@@ -1,16 +1,13 @@
 import type { Priority, SessionRow, WatchColour } from '../../shared/types'
 import type { AgentList } from '../claude/agents'
-import type { HookEvent } from './hook-event'
+import type { LiveEvent } from '../live/live-event'
 import type { RegistryStore, SessionRegistry } from './registry'
-import type { StatusData } from './status-file'
 import { type ProcessTable, type TerminalApp, terminalAppOf } from './terminal-app'
 
 // The service reads all data and does all writes through these functions.
 export interface ServiceDeps {
   listActive(): Promise<AgentList>
   listAll(): Promise<AgentList>
-  drainEvents(): Promise<{ events: HookEvent[]; errors: number }>
-  readStatus(): Promise<Map<string, StatusData>>
   readBranch(cwd: string): Promise<string | null>
   readProcessTable(): Promise<ProcessTable | null>
   saveStore(store: RegistryStore): Promise<void>
@@ -22,9 +19,7 @@ export const SERVICE_TIMING = {
   activeMs: 2000,
   allMs: 30_000,
   branchMs: 10_000,
-  eventsMs: 500,
   minUpdateGapMs: 250,
-  statusMs: 2000,
   tickMs: 1000,
 }
 
@@ -42,6 +37,7 @@ function messageOf(error: unknown): string {
 }
 
 // Run the loops that give data to the registry. Send the rows after each change.
+// The lines of the Live details mod come through pushLive.
 export class RegistryService {
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
   private readonly callbacks: UpdateCallback[] = []
@@ -95,8 +91,6 @@ export class RegistryService {
         this.loop(t.tickMs, async () => this.tick())
       },
     )
-    this.loop(t.eventsMs, () => this.drainEvents())
-    this.loop(t.statusMs, () => this.readStatus())
   }
 
   // Stop all loops. A result that comes after this call has no effect.
@@ -125,6 +119,20 @@ export class RegistryService {
       }, timeoutMs)
       this.waiters.push({ match, reject, resolve, timer })
     })
+  }
+
+  // Apply one line of the mod. A state event goes to the state machine. A usage line goes to
+  // the usage of the session. The update limit of changed() applies.
+  pushLive(ev: LiveEvent): void {
+    if (this.stopped) return
+    if (ev.type === 'state') this.registry.applyEvents([ev.event], this.deps.now())
+    else this.registry.applyUsage(ev.sessionId, ev.usage, ev.at)
+    this.changed()
+  }
+
+  // Return the number of rows that are live and not parked.
+  liveCount(): number {
+    return this.registry.liveCount()
   }
 
   forget(sessionId: string): void {
@@ -284,21 +292,6 @@ export class RegistryService {
     // After a failed poll, the registry keeps the last --all list.
     if (this.stopped || list.error !== undefined) return
     this.registry.applyAllAgents(list.entries, list.partial !== true)
-    this.changed()
-  }
-
-  // drainEvents deletes the bad event files. The service does not use the count of them.
-  private async drainEvents(): Promise<void> {
-    const { events } = await this.deps.drainEvents()
-    if (this.stopped || events.length === 0) return
-    this.registry.applyEvents(events, this.deps.now())
-    this.changed()
-  }
-
-  private async readStatus(): Promise<void> {
-    const data = await this.deps.readStatus()
-    if (this.stopped) return
-    this.registry.applyStatusFiles(data)
     this.changed()
   }
 
