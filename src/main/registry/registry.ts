@@ -114,7 +114,8 @@ interface Usage extends LiveUsage {
 // Merge the session list, the state events and the usage lines of the mod, and the git branches
 // into rows. Each session has its own state machine.
 export class SessionRegistry {
-  private readonly escalationMs: number
+  // The time from a yellow box to the escalation to red. 0 stops the escalation.
+  private escalationMs: number
   private readonly names: Map<string, string>
   private readonly started: Set<string>
   private readonly priorities: Map<string, Priority>
@@ -378,6 +379,12 @@ export class SessionRegistry {
     if (this.started.has(sessionId)) return
     this.started.add(sessionId)
     this.changed = true
+  }
+
+  // Set the escalation time. The next tick uses it, also for a box that is already yellow.
+  // 0 stops the escalation.
+  setEscalationMs(ms: number): void {
+    this.escalationMs = ms
   }
 
   tick(now: number): void {

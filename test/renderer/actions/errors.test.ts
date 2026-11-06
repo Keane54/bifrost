@@ -119,6 +119,30 @@ describe('friendly errors', () => {
     )
   })
 
+  it('friendlyError gives one text for a bad or unknown setting', () => {
+    for (const code of [
+      'refused: bad pollSeconds',
+      'refused: bad terminalFont',
+      'refused: unknown setting theme',
+      'refused: unknown setting version',
+    ]) {
+      expect(friendlyError(code)).toBe("That setting isn't valid.")
+    }
+    // A code that does not name a setting keeps the general rule.
+    expect(friendlyError('refused: bad colour')).toBe('Bad colour')
+  })
+
+  it('gives the exact texts of the settings refusals', () => {
+    expect(friendlyError('refused: bad settings')).toBe("Bifrost couldn't read those settings.")
+    expect(friendlyError('refused: bad slashCommands')).toBe(
+      "That list of slash commands isn't valid.",
+    )
+    expect(friendlyError('refused: bad keys')).toBe("One of those keys isn't valid.")
+    expect(friendlyError('refused: two keys have the same binding')).toBe(
+      "Two actions can't share the same key.",
+    )
+  })
+
   // The error line wraps to more lines (Task 15). So a text can have two sentences.
   it('has short texts with no refusal code and no em dash', () => {
     for (const text of Object.values(FRIENDLY_ERRORS)) {

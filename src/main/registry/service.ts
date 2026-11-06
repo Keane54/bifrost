@@ -68,11 +68,16 @@ export class RegistryService {
   // True when a change came during the gap.
   private changedInGap = false
 
+  // The wait between two active polls. setActiveInterval changes it.
+  private activeMs: number
+
   constructor(
     private readonly registry: SessionRegistry,
     private readonly deps: ServiceDeps,
     private readonly timing: typeof SERVICE_TIMING = SERVICE_TIMING,
-  ) {}
+  ) {
+    this.activeMs = timing.activeMs
+  }
 
   // Start all loops. A second call does nothing.
   // The --all loop, the branch loop and the tick loop start after the end of the first
@@ -83,7 +88,7 @@ export class RegistryService {
     this.started = true
     const t = this.timing
     this.loop(
-      t.activeMs,
+      () => this.activeMs,
       () => this.queued(() => this.pollActive()),
       () => {
         this.loop(t.allMs, () => this.queued(() => this.pollAll()))
@@ -91,6 +96,12 @@ export class RegistryService {
         this.loop(t.tickMs, async () => this.tick())
       },
     )
+  }
+
+  // Set the wait between two active polls. The active loop reads it before each wait.
+  // The poll that runs now ends normally. A wait that started already keeps its time.
+  setActiveInterval(ms: number): void {
+    this.activeMs = ms
   }
 
   // Stop all loops. A result that comes after this call has no effect.
@@ -216,9 +227,14 @@ export class RegistryService {
   }
 
   // Run the job now. Start the next run ms after the end of each run.
-  // So a run never starts before the last run ends.
+  // When ms is a function, the loop reads it before each wait. So a new value applies to the
+  // next wait. A run never starts before the last run ends.
   // A failed run does not stop the loop.
-  private loop(ms: number, job: () => Promise<void>, afterFirst?: () => void): void {
+  private loop(
+    ms: number | (() => number),
+    job: () => Promise<void>,
+    afterFirst?: () => void,
+  ): void {
     let first = afterFirst
     const run = async (): Promise<void> => {
       try {
@@ -229,7 +245,7 @@ export class RegistryService {
       if (this.stopped) return
       first?.()
       first = undefined
-      this.later(ms, run)
+      this.later(typeof ms === 'number' ? ms : ms(), run)
     }
     void run()
   }

@@ -167,6 +167,39 @@ describe('brief', () => {
   })
 })
 
+describe('the escalation setting (M5a)', () => {
+  const T = 1000
+
+  // A registry of 10 minutes with a yellow box since T.
+  const yellowAtT = () => {
+    const r = registry()
+    r.applyAgents([bg()], T)
+    r.applyEvents([ev('Stop', 's1', T)], T)
+    expect(r.rows()[0]).toMatchObject({ box: 'yellow', boxSince: T })
+    return r
+  }
+
+  test('setEscalationMs changes the time of an old yellow box at the next tick', () => {
+    const r = yellowAtT()
+    r.tick(T + 120_000)
+    expect(r.rows()[0].box).toBe('yellow')
+    r.setEscalationMs(60_000)
+    r.tick(T + 120_000)
+    expect(r.rows()[0]).toMatchObject({ box: 'red', boxReason: 'escalated' })
+  })
+
+  test('setEscalationMs 0 stops the escalation', () => {
+    const r = yellowAtT()
+    r.setEscalationMs(0)
+    r.tick(T + 6_000_000)
+    expect(r.rows()[0].box).toBe('yellow')
+    // A later value starts the escalation again.
+    r.setEscalationMs(600_000)
+    r.tick(T + 6_000_000)
+    expect(r.rows()[0].box).toBe('red')
+  })
+})
+
 describe('kind and leave rules', () => {
   test('all kinds other than background are external', () => {
     const r = registry()

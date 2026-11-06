@@ -2,6 +2,7 @@
 
 import { promptBlocks } from '../../../shared/input'
 import { PRIORITIES } from '../../../shared/priority'
+import type { LabelSet } from '../../../shared/settings'
 import { TERMINAL_ORDER } from '../../../shared/terminal-order'
 import type {
   Priority,
@@ -65,7 +66,8 @@ export function rowClass(row: SessionRow): RowClass {
   return row.state === 'parked' ? 'parked' : row.kind
 }
 
-export type LabelSet = 'plain' | 'space'
+// The settings module owns the type. Other renderer modules import it from here.
+export type { LabelSet }
 
 export interface ActionDef {
   id: ActionId

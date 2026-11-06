@@ -1,5 +1,6 @@
 // The text that the user reads for an error of the main process.
 // The main process refuses with a "refused: ..." code. The app shows plain, friendly text.
+import { isSettingKey } from '../../../shared/settings'
 import {
   REASON_GONE,
   REASON_NO_CWD,
@@ -20,6 +21,10 @@ const COMMAND_FAILED = 'Command failed:'
 const LIST_COMMAND = 'agents --json'
 const LIST_FAILED = "Bifrost couldn't read the session list. It tries again in a moment."
 const COMMAND_FAILED_TEXT = 'A Claude Code command failed. Try again in a moment.'
+// applyPatch makes these two codes from the name of the setting.
+const BAD_SETTING = 'refused: bad '
+const UNKNOWN_SETTING = 'refused: unknown setting '
+const SETTING_TEXT = "That setting isn't valid."
 
 // One entry for each "refused: ..." literal in src/main and src/shared. A test checks this.
 // The map also gives the text when Bifrost cannot find claude (final review M5).
@@ -31,10 +36,13 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: Bifrost does not delete an external session':
     "Bifrost can't delete a session that runs in another terminal.",
   'refused: bad input': "Bifrost couldn't read that request.",
+  'refused: bad keys': "One of those keys isn't valid.",
   'refused: bad new session data': "Some of the New session values aren't valid.",
   'refused: bad priority': "That priority isn't valid.",
   'refused: bad process ID': "The process ID of this session isn't valid.",
   'refused: bad session ID': "That session ID isn't valid.",
+  'refused: bad settings': "Bifrost couldn't read those settings.",
+  'refused: bad slashCommands': "That list of slash commands isn't valid.",
   'refused: bad watch colour': "That isn't a colour for the watchlist.",
   'refused: bad watch move': "Bifrost couldn't move that session in the watchlist.",
   'refused: claude rm kept the worktree':
@@ -87,18 +95,27 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the worktree has uncommitted changes':
     "This worktree has changes that aren't committed, so Claude Code won't delete it. Open the worktree, commit or discard them, then delete again.",
   'refused: the worktree option is off': "The worktree option isn't available.",
+  'refused: two keys have the same binding': "Two actions can't share the same key.",
   'refused: unknown app': "Bifrost doesn't know that app.",
   'refused: unknown model': "Bifrost doesn't know that model.",
   'refused: unknown permission mode': "Bifrost doesn't know that permission mode.",
   'refused: unknown session': REASON_GONE,
 }
 
+// Return true for the code of a bad value or an unknown key in a settings patch.
+function isSettingRefusal(message: string): boolean {
+  if (message.startsWith(UNKNOWN_SETTING)) return true
+  return message.startsWith(BAD_SETTING) && isSettingKey(message.slice(BAD_SETTING.length))
+}
+
 // The friendly text of a message. A code that is not in the map loses its prefix and gets a
-// capital first letter. A "Command failed:" text of Node gives a friendly text, with a special
+// capital first letter. The code of a bad or unknown setting gives one text.
+// A "Command failed:" text of Node gives a friendly text, with a special
 // text for the session list (Task 17 bug 4). Any other message stays as it is.
 export function friendlyError(message: string): string {
   const known = FRIENDLY_ERRORS[message]
   if (known !== undefined) return known
+  if (isSettingRefusal(message)) return SETTING_TEXT
   const pid = NOT_CLAUDE.exec(message)?.[1]
   if (pid !== undefined) return `Process ${pid} isn't a Claude process, so Bifrost left it alone.`
   if (message.startsWith(COMMAND_FAILED)) {

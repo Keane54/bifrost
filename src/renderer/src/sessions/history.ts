@@ -6,6 +6,7 @@ import {
   type NewSessionSpec,
   PERMISSION_MODES,
 } from '../../../shared/new-session'
+import { checkSlashCommand } from '../../../shared/settings'
 import type { SessionRow } from '../../../shared/types'
 import { repoPath } from '../overview/format'
 
@@ -24,15 +25,16 @@ export const EMPTY_HISTORY: History = {
 }
 export const MAX_RECENT_DIRS = 10
 export const MAX_RECENT_SLASH = 8
-export const MAX_SLASH_LENGTH = 200
 export const DEFAULT_SLASH_FAVOURITES: readonly string[] = ['/compact', '/clear', '/context']
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+// checkSlashCommand gives the rules. A stored command also has no space at the start or the end.
 function validSlash(text: string): boolean {
-  return text.startsWith('/') && !/[\r\n]/.test(text) && text.length <= MAX_SLASH_LENGTH
+  const check = checkSlashCommand(text)
+  return check.ok && check.text === text
 }
 
 // Keep the first values that pass the check. Each value stays one time.

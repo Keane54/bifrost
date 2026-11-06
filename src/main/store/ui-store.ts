@@ -1,12 +1,7 @@
+import { isPlainObject } from '../../shared/plain-object'
 import { readJsonFile, writeJsonAtomic } from './json-file'
 
 export const MAX_UI_BYTES = 1_000_000
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) return false
-  const proto = Object.getPrototypeOf(value)
-  return proto === Object.prototype || proto === null
-}
 
 // Open ui-state.json. load() gives null when the file is missing or damaged.
 // After a good save, load() gives the saved value.

@@ -13,6 +13,7 @@ import {
   type WebContents,
 } from 'electron'
 import { isPriority } from '../shared/priority'
+import { DEFAULT_SETTINGS, type Settings } from '../shared/settings'
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
 import { isWatchColour } from '../shared/watch'
@@ -48,15 +49,14 @@ import { PtyManager } from './pty/pty-manager'
 import { chatSessionOf, readSessionSize, SessionSizeWatcher } from './pty/session-size'
 import { readBranch } from './registry/git-branch'
 import { SessionRegistry } from './registry/registry'
-import { RegistryService, type ServiceDeps } from './registry/service'
+import { RegistryService, SERVICE_TIMING, type ServiceDeps } from './registry/service'
 import { openStore } from './registry/store-file'
 import { readProcessTable } from './registry/terminal-app'
+import { loginItemPatch, type SettingsEffect, settingsEffects } from './settings/effects'
+import { openSettingsStore, type SettingsStore } from './store/settings-store'
 import { openUiStore } from './store/ui-store'
 import type { ModeController } from './window/display-mode'
 import { isDisplayMode } from './window/window-state'
-
-// A yellow box changes to red after 10 minutes.
-const ESCALATION_MS = 600_000
 
 // The terminal sends this after a resize: clear the screen, then draw it again.
 const FULL_REDRAW = '\x1b[2J'
@@ -88,8 +88,13 @@ const sizeWatcher = new SessionSizeWatcher({
   pidOf: pidOfView,
   read: pid => readSessionSize(execFile, pid),
 })
-// The main process sets liveService when the store loads.
+// The main process sets liveService and liveRegistry when the store loads.
 let liveService: RegistryService | null = null
+let liveRegistry: SessionRegistry | null = null
+// registerIpc opens the settings store one time (ruling C6). It is null until the store opens.
+let settingsStore: SettingsStore | null = null
+// index.ts gives the function that builds the app menu again.
+let menuRebuild: (() => void) | null = null
 let serviceStopped = false
 // Live details. registerIpc sets it. stopRegistry stops its server.
 let liveControl: LiveControl | null = null
@@ -124,11 +129,89 @@ export function send(channel: string, ...args: unknown[]): void {
     currentWindow.webContents.send(channel, ...args)
 }
 
+// Set the function that builds the app menu again. A change of a menu key calls it.
+export function setMenuRebuild(fn: (() => void) | null): void {
+  menuRebuild = fn
+}
+
+// The current settings. Before the store opens, this gives the defaults.
+export function getSettings(): Settings {
+  return settingsStore?.get() ?? DEFAULT_SETTINGS
+}
+
+// Zoom the page of the current window (Interface scale, ruling C1).
+function setZoom(factor: number): void {
+  if (currentWindow && !currentWindow.isDestroyed()) currentWindow.webContents.setZoomFactor(factor)
+}
+
+// Apply the Interface scale of the settings. Do nothing before the store opens.
+function applyZoom(): void {
+  if (settingsStore) setZoom(settingsStore.get().interfaceScale / 100)
+}
+
+// Run one effect of a settings change (D2).
+function runSettingsEffect(effect: SettingsEffect): void {
+  switch (effect.kind) {
+    case 'escalation':
+      liveRegistry?.setEscalationMs(effect.ms)
+      return
+    case 'poll':
+      liveService?.setActiveInterval(effect.ms)
+      return
+    case 'login-item':
+      // A dev Electron binary must not become a login item (D2).
+      if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: effect.on })
+      return
+    case 'menu':
+      menuRebuild?.()
+      return
+    case 'zoom':
+      setZoom(effect.factor)
+      return
+  }
+}
+
+// Open the settings store. In the packaged app, the real login item state wins over the file
+// (D2). Then send each change to the window and run its effects.
+async function openSettings(file: string): Promise<SettingsStore> {
+  const store = await openSettingsStore(file)
+  if (app.isPackaged) {
+    // A failure here must not stop the start.
+    try {
+      const patch = loginItemPatch(store.get(), app.getLoginItemSettings().openAtLogin)
+      if (patch) await store.update(patch)
+    } catch (err) {
+      console.error('Bifrost cannot read or save the login item state.', err)
+    }
+  }
+  store.onChange((next, prev) => {
+    send('settings:changed', next)
+    for (const effect of settingsEffects(prev, next)) {
+      // A failed effect must not stop the other effects.
+      try {
+        runSettingsEffect(effect)
+      } catch (err) {
+        console.error(`Bifrost cannot apply the ${effect.kind} setting.`, err)
+      }
+    }
+  })
+  settingsStore = store
+  applyZoom()
+  return store
+}
+
 // Load the store and start the registry service.
 // The service sends each update of the rows to the current window.
 // If the store cannot be read, the service runs with an empty store and does not save.
-async function startService(run: Promise<RunClaude | null>): Promise<RegistryService> {
-  const opened = await openStore(join(app.getPath('userData'), 'registry.json'))
+// The escalation time and the poll interval come from the settings.
+async function startService(
+  run: Promise<RunClaude | null>,
+  settingsReady: Promise<SettingsStore>,
+): Promise<RegistryService> {
+  const [opened, settings] = await Promise.all([
+    openStore(join(app.getPath('userData'), 'registry.json')),
+    settingsReady,
+  ])
   const list = async (all: boolean): Promise<AgentList> => {
     const runClaude = await run
     if (!runClaude) return { entries: [], error: 'claude not found' }
@@ -143,13 +226,20 @@ async function startService(run: Promise<RunClaude | null>): Promise<RegistrySer
     readProcessTable: () => readProcessTable(execFile),
     saveStore: store => opened.save(store),
   }
-  const service = new RegistryService(
-    new SessionRegistry({ escalationMs: ESCALATION_MS, store: opened.store }),
-    deps,
-  )
+  // Read the settings after the waits. So a change during the waits is in the values.
+  const current = settings.get()
+  const registry = new SessionRegistry({
+    escalationMs: current.escalationMinutes * 60_000,
+    store: opened.store,
+  })
+  const service = new RegistryService(registry, deps, {
+    ...SERVICE_TIMING,
+    activeMs: current.pollSeconds * 1000,
+  })
   service.onUpdate((rows, error) => {
     send('registry:update', rows, error)
   })
+  liveRegistry = registry
   liveService = service
   // The app can quit before the store loads. Then do not start the service.
   if (!serviceStopped) service.start()
@@ -203,7 +293,17 @@ export function registerIpc(): void {
     return m
   })
   const paths = defaultPaths(homedir())
-  const service = startService(run)
+  // The settings store opens one time. Each user gets the same store (ruling C6).
+  const settings = openSettings(join(app.getPath('userData'), 'settings.json'))
+  const service = startService(run, settings)
+  ipcMain.handle('settings:get', e => fromPage(e, async () => (await settings).get()))
+  // The store checks each value. It refuses a patch with an unknown key or a bad value.
+  ipcMain.handle('settings:set', (e, patch: unknown) =>
+    fromPage(e, async () => (await settings).update(patch)),
+  )
+  ipcMain.handle('system:info', e =>
+    fromPage(e, async () => ({ packaged: app.isPackaged, version: app.getVersion() })),
+  )
   // The UI store opens one time. The handlers use the same store.
   const uiStore = openUiStore(join(app.getPath('userData'), 'ui-state.json'))
   ipcMain.handle('ui:load', e => fromPage(e, async () => (await uiStore).load()))
@@ -542,6 +642,10 @@ export function registerIpc(): void {
 export function attachWindow(win: BrowserWindow): void {
   currentWindow = win
   win.webContents.on('did-navigate', () => page.end())
+  // Apply the Interface scale to each page that loads.
+  win.webContents.on('dom-ready', () => {
+    if (currentWindow === win) applyZoom()
+  })
   win.webContents.on('render-process-gone', () => page.end())
   win.on('closed', () => {
     if (currentWindow === win) currentWindow = null

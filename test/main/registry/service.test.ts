@@ -282,6 +282,27 @@ describe('list polls', () => {
     await vi.advanceTimersByTimeAsync(SERVICE_TIMING.tickMs)
     expect(tick).toHaveBeenCalledTimes(2)
   })
+
+  test('setActiveInterval changes the wait before the next active poll', async () => {
+    // Each active poll takes 1000 ms. The interval is 2000 ms at the start.
+    const listActive = vi.fn(async () => resolveLater(1000, empty()))
+    const { service } = startService(fakeDeps({ listActive }))
+    // The first poll runs. It ends normally at 1000 ms.
+    await vi.advanceTimersByTimeAsync(500)
+    expect(listActive).toHaveBeenCalledTimes(1)
+    service.setActiveInterval(5000)
+    // The second poll starts 5000 ms after the end of the first, at 6000 ms, not at 3000 ms.
+    await vi.advanceTimersByTimeAsync(5499)
+    expect(listActive).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(listActive).toHaveBeenCalledTimes(2)
+    // A shorter interval applies to the wait after the poll that runs now.
+    service.setActiveInterval(1000)
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(listActive).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(listActive).toHaveBeenCalledTimes(3)
+  })
 })
 
 describe('updates and the store', () => {

@@ -87,6 +87,14 @@ const api: BifrostApi = {
     stop: sessionId => invoke('sessions:stop', sessionId),
     takeControl: (sessionId, confirmed) => invoke('sessions:take-control', sessionId, confirmed),
   },
+  settings: {
+    get: () => invoke('settings:get'),
+    onChange: cb => subscribe('settings:changed', cb),
+    set: patch => invoke('settings:set', patch),
+  },
+  system: {
+    info: () => invoke('system:info'),
+  },
   ui: {
     load: () => invoke('ui:load'),
     save: data => invoke('ui:save', data),

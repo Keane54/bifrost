@@ -1,5 +1,6 @@
 // The key map model. This module imports no library, so the main process uses it too.
 // A binding is a chord text with Mod in place of Cmd. Example: "Mod+Shift+M".
+import { isPlainObject } from './plain-object'
 
 export type KeyCommandId =
   | 'new-session'
@@ -375,12 +376,6 @@ export function checkBinding(slotId: string, binding: string, keys: KeyMap): Bin
   const conflict = findConflict(item, canonical, keys)
   if (conflict) return { conflict, ok: false, reason: 'conflict' }
   return { binding: canonical, ok: true }
-}
-
-function isPlainObject(data: unknown): data is Record<string, unknown> {
-  if (typeof data !== 'object' || data === null || Array.isArray(data)) return false
-  const proto = Object.getPrototypeOf(data)
-  return proto === Object.prototype || proto === null
 }
 
 // Read the changed slots from stored data. A bad entry goes away. A conflict stays.

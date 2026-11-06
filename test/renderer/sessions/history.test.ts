@@ -59,6 +59,12 @@ describe('history', () => {
     expect(parseHistory({ recentDirs: 'x', recentSlash: {} })).toEqual(EMPTY_HISTORY)
   })
 
+  // validSlash uses checkSlashCommand of the settings (M5a). A stored command is already trimmed.
+  it('parseHistory drops a command with a space at the start, the end or after the slash', () => {
+    const parsed = parseHistory({ recentSlash: [' /a', '/b ', '/ c', '/', '/d'] })
+    expect(parsed.recentSlash).toEqual(['/d'])
+  })
+
   it('rememberSession puts the directory first, keeps 10, and keeps the model and the mode', () => {
     let h = EMPTY_HISTORY
     for (let i = 0; i < 12; i++) h = rememberSession(h, { ...spec, cwd: `/d${i}` })

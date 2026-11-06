@@ -1,4 +1,5 @@
 import type { DirInfo, NewSessionSpec } from './new-session'
+import type { Settings, SettingsPatch } from './settings'
 import type {
   ClaudeVersion,
   DisplayMode,
@@ -113,6 +114,19 @@ export interface BifrostApi {
     // hook install. When Bifrost cannot read the settings file, it does the other steps and then
     // rejects.
     uninstall(): Promise<LiveStatus>
+  }
+  // The settings of spec 12. The main process keeps them in settings.json in userData (D1).
+  settings: {
+    get(): Promise<Settings>
+    // Change the named settings. This resolves with all the settings after the change.
+    // It rejects for an unknown key or a bad value, and then changes nothing.
+    set(patch: SettingsPatch): Promise<Settings>
+    // The main process sends the settings after each change.
+    onChange(cb: (settings: Settings) => void): () => void
+  }
+  system: {
+    // packaged is false in development.
+    info(): Promise<{ packaged: boolean; version: string }>
   }
   ui: {
     // The saved UI state, or null when the file is missing or damaged.

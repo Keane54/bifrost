@@ -7,6 +7,7 @@ import {
   closeAllPtys,
   registerIpc,
   send,
+  setMenuRebuild,
   setModeController,
   stopRegistry,
 } from './ipc'
@@ -167,8 +168,11 @@ function startApp(): void {
       optimizer.watchWindowShortcuts(window)
     })
 
+    // A change of a menu key in the settings builds the menu again.
+    setMenuRebuild(showMenu)
+
     // Register the IPC handlers before any window loads a page.
-    // This also starts the registry service.
+    // This also opens the settings store and starts the registry service.
     registerIpc()
 
     openWindow()
