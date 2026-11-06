@@ -147,7 +147,7 @@ interface Mark {
 }
 
 const CURVE_STEPS = 8
-const MARK_HEIGHT = 0.65 // The height of the letter as a share of the height of the quadrant.
+const MARK_HEIGHT = 0.8 // The height of the letter as a share of the height of the quadrant.
 
 // Place the letter in the centre of the bottom-right quadrant of the rounded square.
 function buildMark(size: number, glyph: Glyph): Mark {

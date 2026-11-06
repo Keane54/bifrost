@@ -61,7 +61,8 @@ describe('the icon script', () => {
   })
 
   it('drawIcon is red near the bottom-right corner', () => {
-    const [r, g, b, a] = reader(drawIcon(SIZE, readPalette(CSS)), SIZE)(SIZE * 0.8, SIZE * 0.8)
+    // The point is to the right of the B, which fills most of the bottom-right quadrant.
+    const [r, g, b, a] = reader(drawIcon(SIZE, readPalette(CSS)), SIZE)(SIZE * 0.88, SIZE * 0.7)
     expect(a).toBe(255)
     expect(r).toBeGreaterThan(g + 60)
     expect(r).toBeGreaterThan(b + 60)
@@ -107,13 +108,31 @@ describe('the icon script', () => {
     const at = reader(pixels, size)
     // The letter has its centre at 75% of the rounded square. The left stem is at x 76 to 199 of
     // 1000 units, so its centre is at (137 - 318) units from the middle of the box.
-    const scale = ((824 * size) / 1024 / 2 / 710) * 0.65
+    const scale = ((824 * size) / 1024 / 2 / 710) * 0.8
     const stemX = (100 * size) / 1024 + ((824 * size) / 1024) * 0.75 + (137 - 318) * scale
     const midY = (100 * size) / 1024 + ((824 * size) / 1024) * 0.75
     expect(at(stemX, midY)).toEqual([255, 255, 255, 255])
     expect(at(stemX, midY - 50)).toEqual([255, 255, 255, 255])
     // The inside of the upper bowl is not white.
     expect(at(stemX + 30, midY - 30)).not.toEqual([255, 255, 255, 255])
+  })
+
+  // the user (2026-11-06): the B is 80% of the height of the quadrant.
+  it('drawIcon draws the B at 80% of the height of the quadrant', () => {
+    const size = 512
+    const pixels = drawIcon(size, readPalette(CSS))
+    const at = reader(pixels, size)
+    const quadrant = (824 * size) / 1024 / 2
+    const scale = (quadrant / 710) * 0.8
+    const stemX = Math.round((100 * size) / 1024 + quadrant * 1.5 + (137 - 318) * scale)
+    const white: number[] = []
+    for (let y = 0; y < size; y++) {
+      const [r, g, b] = at(stemX, y)
+      if (r > 250 && g > 250 && b > 250) white.push(y)
+    }
+    const height = Math.max(...white) - Math.min(...white) + 1
+    expect(height / quadrant).toBeGreaterThan(0.77)
+    expect(height / quadrant).toBeLessThan(0.83)
   })
 
   it('drawIcon draws no white in the top-left quadrant', () => {
