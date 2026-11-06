@@ -551,6 +551,12 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 - Bifrost checks each status page one time each minute. One check serves all sessions.
 - An outage shows the service name, the incident name and the impact: minor, major or critical.
 - The panel does not use yellow, red or grey for an outage, because these colours have fixed meanings (section 8.10).
+- Each service row shows the level square, the level text (for example "Operational"), the since text, the service name and a button with an external-link icon and the text "Open status page".
+- The row has three views by width (user decision, 2026-11-06). Bifrost chooses one view for all rows:
+  1. Full: as above, when the widest row fits.
+  2. When the full view cuts off a text of a row, the button hides its text "Open status page". It keeps the icon, its `aria-label` and gets a tooltip (`title`) with the same text as the `aria-label`.
+  3. When view 2 still cuts off a text, the row also hides the level text. The level square keeps the level as its tooltip and as its accessible name. The since text stays. "No data" has no square, so it keeps its text.
+- The panel measures invisible copies of the full rows at their natural width. So the choice does not depend on the view on the screen, and a wider panel goes back to a fuller view. The panel chooses the view before the paint, after each render and at each resize (a `ResizeObserver`). So the view does not flicker or change in a loop. A pure function, `serviceView(available, needs)`, makes the choice.
 
 ## 9. Actions and keys
 

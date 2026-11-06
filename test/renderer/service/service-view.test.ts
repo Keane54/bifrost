@@ -3,6 +3,7 @@ import {
   checkedText,
   incidentLine,
   levelText,
+  serviceView,
   sinceText,
 } from '../../../src/renderer/src/service/service-view'
 
@@ -49,5 +50,35 @@ describe('sinceText (final wave item 11)', () => {
     expect(sinceText('none', today, now, 'UTC')).toBeNull()
     expect(sinceText('unknown', today, now, 'UTC')).toBeNull()
     expect(sinceText('major', null, now, 'UTC')).toBeNull()
+  })
+})
+
+// the user, 2026-11-06: three views of a service row by width. needs gives the width that the widest
+// row needs in the full view, then without the text of the status page button.
+describe('serviceView', () => {
+  const NEEDS = [400, 290] as const
+
+  it('gives the full view when the widest row fits', () => {
+    expect(serviceView(520, NEEDS)).toBe(0)
+    expect(serviceView(400, NEEDS)).toBe(0)
+  })
+
+  it('hides the button text when the full view does not fit, but that view does', () => {
+    expect(serviceView(399, NEEDS)).toBe(1)
+    expect(serviceView(290, NEEDS)).toBe(1)
+  })
+
+  it('also hides the level text when the view without button text does not fit', () => {
+    expect(serviceView(289, NEEDS)).toBe(2)
+    expect(serviceView(120, NEEDS)).toBe(2)
+  })
+
+  it('goes back to a fuller view when the panel gets wider again', () => {
+    const views = [200, 300, 450].map(w => serviceView(w, NEEDS))
+    expect(views).toEqual([2, 1, 0])
+  })
+
+  it('gives the full view for a panel with no rows', () => {
+    expect(serviceView(100, [0, 0])).toBe(0)
   })
 })

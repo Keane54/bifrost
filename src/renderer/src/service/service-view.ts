@@ -42,3 +42,16 @@ export function sinceText(
     : formatDayClock(since, timeZone)
   return `since ${clock}`
 }
+
+// The view of the service rows (spec 8.11). 0: the full row. 1: the status page button shows
+// only its icon. 2: the level square also shows without its text.
+export type ServiceView = 0 | 1 | 2
+
+// Choose the view from the width of a row and the widths that the widest row needs: needs[0] in
+// the full view, needs[1] without the text of the status page button. A text that does not fit
+// is cut off. So the first view where the widest row fits wins. The needs come from the full
+// row, not from the view on the screen, so a wider panel gives a fuller view again.
+export function serviceView(available: number, needs: readonly [number, number]): ServiceView {
+  if (available >= needs[0]) return 0
+  return available >= needs[1] ? 1 : 2
+}
