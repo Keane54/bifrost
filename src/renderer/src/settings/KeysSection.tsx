@@ -107,19 +107,12 @@ export default function KeysSection(): React.JSX.Element {
         key={slot.id}
       >
         <div className='flex min-h-7 items-center gap-2 px-3 text-text text-xs'>
-          <span className='min-w-0 flex-1 truncate'>{label}</span>
+          {/* A narrow frame cuts the name. The title shows the full name. */}
+          <span className='min-w-0 flex-1 truncate' data-key-name={true} title={label}>
+            {label}
+          </span>
           {changed && <span aria-hidden={true} className='size-1.5 shrink-0 bg-text-strong' />}
-          {recording ? (
-            <button
-              className='shrink-0 border border-text-strong/30 px-1.5 py-0.5 text-text-strong outline-none'
-              {...{ [KEY_RECORDER_ATTR]: true }}
-              onBlur={() => recorder.cancelRecording()}
-              ref={promptRef}
-              type='button'
-            >
-              Press the new shortcut. Esc cancels.
-            </button>
-          ) : binding === null ? (
+          {binding === null ? (
             <span className='shrink-0 text-text-dim'>No key</span>
           ) : (
             <kbd className='shrink-0 font-mono'>
@@ -148,6 +141,21 @@ export default function KeysSection(): React.JSX.Element {
             Reset
           </button>
         </div>
+        {/* The prompt has its own line under the name. So in a narrow frame the name stays
+            visible, and Clear and Reset stay in the frame (M5a carry-over 2). */}
+        {recording && (
+          <div className='px-3 pb-1'>
+            <button
+              className='max-w-full border border-text-strong/30 px-1.5 py-0.5 text-left text-text-strong text-xs outline-none'
+              {...{ [KEY_RECORDER_ATTR]: true }}
+              onBlur={() => recorder.cancelRecording()}
+              ref={promptRef}
+              type='button'
+            >
+              Press the new shortcut. Esc cancels.
+            </button>
+          </div>
+        )}
         {recording && rejection !== null && (
           <p className='px-3 pb-1 text-text-dim text-xs'>{rejection}</p>
         )}
