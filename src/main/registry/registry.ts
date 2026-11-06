@@ -502,7 +502,11 @@ export class SessionRegistry {
     // An interactive session that ended must not come back as a parked row.
     // So the registry uses only the background entries.
     const owned = entries.filter(entry => entry.kind === 'background')
-    const matches = this.match(owned, false)
+    // A running entry that needs a new row ID waits for the active list, which gives its row. An
+    // ID from this list would be another new ID, so its values would go to no row.
+    const matches = this.match(owned, false).filter(
+      m => !(m.isNew && m.rowId !== m.entry.sessionId && m.entry.pid !== undefined),
+    )
     const ownedIds = matches.map(m => m.rowId)
     const listed = new Set(ownedIds)
     for (const entry of entries) {

@@ -2263,6 +2263,22 @@ describe('one row across /clear in an interactive session (2026-11-06)', () => {
     ])
   })
 
+  test('a running --all entry that needs a new row ID waits for the active list', () => {
+    const r = cleared()
+    // claude --bg --resume <old ID> in a terminal: a new job runs the old conversation.
+    const job = bg({ cwd: '/t', id: 'a0a0a0a0', name: 'job', pid: 950, sessionId: OLD })
+    r.storeChanged()
+    r.applyAllAgents([term({ sessionId: NEW }), job], false)
+    expect(r.storeChanged()).toBe(false)
+    expect(r.rows()).toHaveLength(1)
+    r.applyAgents([term({ sessionId: NEW }), job], 4100)
+    const added = r.rows().find(row => row.sessionId !== OLD)
+    expect(added).toMatchObject({ currentId: OLD, name: 'job', shortId: 'a0a0a0a0' })
+    // The next --all list finds that row by its short ID.
+    r.applyAllAgents([job], true)
+    expect(r.rows()).toHaveLength(2)
+  })
+
   test('the old conversation in another process gets its own row', () => {
     const r = cleared()
     // claude --resume <old ID> in another terminal.

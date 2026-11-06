@@ -185,7 +185,7 @@ Bifrost finds the row of each entry of a list with these rules, in this order. T
    - The row has no short ID. The current ID of the row was in the last active list and is not in this list.
    - The session ID of the entry is not the current ID of a known row.
    - One entry matches one row, and one row matches one entry. Any other case links nothing.
-4. Else the entry starts a new row. The row ID is the session ID of the entry. When a row or a stored value has that ID already, the row ID is a new UUID. This occurs when another process resumes the old conversation of a row, for example `claude --resume <ID before the /clear>`.
+4. Else the entry starts a new row. The row ID is the session ID of the entry. When a row or a stored value has that ID already, the row ID is a new UUID. This occurs when another process resumes the old conversation of a row, for example `claude --resume <ID before the /clear>`. A running `--all` entry that needs a new UUID waits for the active list, which makes its row.
 
 The rules need no line of the mod. So a session without the mod also keeps its row. The mod sends `session.end` for the old ID at a `/clear`. That event can park the row until the next poll links the new ID (2 s or less).
 
