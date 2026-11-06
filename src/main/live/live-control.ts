@@ -28,6 +28,8 @@ export interface LiveControlDeps {
   oldInstall(): Promise<{ found: boolean; error?: string }>
   removeOldInstall(): Promise<void>
   liveSessions(): number
+  // End the live flag of each row. Turn off and Remove call it after the server stops.
+  clearLive(): void
   forceListen: boolean
 }
 
@@ -137,6 +139,13 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
     server.stop()
   }
 
+  // Stop the server and end the live flags at once. No line can arrive after the stop. So the
+  // poll yellow box applies again at once, and the status gives 0 live sessions.
+  function haltAndClear(): void {
+    halt()
+    deps.clearLive()
+  }
+
   // The start rule (D9). Each failure goes to console.warn.
   async function boot(gen: number): Promise<void> {
     if (deps.forceListen) return listen(gen)
@@ -177,7 +186,7 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
       action(async () => {
         // The server is the switch that acts at once (D9). So stop it before the plugin command.
         // A failure after this point rejects, but the server is already stopped.
-        halt()
+        haltAndClear()
         const cli = await needCli()
         if ((await cli.plugin()) !== null) await cli.disable()
         return status()
@@ -229,7 +238,7 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
     stop: halt,
     uninstall: () =>
       action(async () => {
-        halt()
+        haltAndClear()
         const cli = await needCli()
         if ((await cli.plugin()) !== null) await cli.uninstall()
         // Remove only the marketplace that Bifrost added.

@@ -1452,6 +1452,20 @@ describe('live events and usage lines (Task 4)', () => {
     expect(rowOf(r)).toMatchObject({ box: 'none', state: 'idle' })
   })
 
+  test('clearLive ends the live flag of each row and keeps the usage', () => {
+    const r = registry()
+    r.applyAgents([bg({ status: 'busy' })], 1000)
+    r.applyUsage('s1', { contextPercent: 5, costUsd: 0.1, model: 'claude-haiku-5-5' }, 1500)
+    expect(r.liveCount()).toBe(1)
+    r.clearLive()
+    expect(r.liveCount()).toBe(0)
+    expect(rowOf(r)).not.toHaveProperty('live')
+    expect(rowOf(r)).toMatchObject({ contextPercent: 5, costUsd: 0.1, model: 'Haiku 5.5' })
+    // The session is poll-only again. So the next busy to idle sample gives the yellow box.
+    r.applyAgents([bg({ status: 'idle' })], 3000)
+    expect(rowOf(r)).toMatchObject({ box: 'yellow', boxSince: 3000, state: 'needs-you' })
+  })
+
   test('the first sample after the start gives no yellow box', () => {
     const r = registry()
     r.applyAgents([bg({ status: 'idle' })], 1000)

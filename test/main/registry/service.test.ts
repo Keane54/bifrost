@@ -643,6 +643,20 @@ describe('live lines (Task 4)', () => {
     expect(updates.at(-1)?.rows[0].lastActivity).toBe(1)
   })
 
+  test('clearLive ends the live flags and sends an update', async () => {
+    const { service, updates } = await ready()
+    service.pushLive({ at: Date.now(), sessionId: 's1', type: 'usage', usage: { costUsd: 0.42 } })
+    expect(service.liveCount()).toBe(1)
+    const count = updates.length
+    service.clearLive()
+    expect(service.liveCount()).toBe(0)
+    // The update limit of changed() applies. The next update has the change.
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.minUpdateGapMs)
+    expect(updates.length).toBeGreaterThan(count)
+    expect(updates.at(-1)?.rows[0]).not.toHaveProperty('live')
+    expect(updates.at(-1)?.rows[0]).toMatchObject({ costUsd: 0.42 })
+  })
+
   test('pushLive after stop changes nothing', async () => {
     const { service, updates } = await ready()
     const count = updates.length

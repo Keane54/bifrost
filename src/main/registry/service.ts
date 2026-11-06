@@ -135,6 +135,13 @@ export class RegistryService {
     return this.registry.liveCount()
   }
 
+  // End the live flag of each row. The usage stays. The update limit of changed() applies.
+  clearLive(): void {
+    if (this.stopped) return
+    this.registry.clearLive()
+    this.changed()
+  }
+
   forget(sessionId: string): void {
     this.registry.forget(sessionId)
     this.changed()

@@ -301,6 +301,13 @@ export class SessionRegistry {
     return count
   }
 
+  // Forget the time of the newest line of the mod for each session. Then no row is live, and the
+  // poll yellow box (O3) applies again. The usage of each session stays.
+  // Live details calls this after the server stops (Turn off and Remove).
+  clearLive(): void {
+    this.liveAt.clear()
+  }
+
   // Set the branch of all rows with this cwd. null removes the branch.
   applyBranch(cwd: string, branch: string | null): void {
     if (branch === null) this.branches.delete(cwd)

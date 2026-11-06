@@ -152,6 +152,9 @@ function setup(over: Partial<World> = {}) {
     },
   }
   const deps: LiveControlDeps = {
+    clearLive() {
+      calls.push('clearLive')
+    },
     cli: async () => (w.noCli ? null : cli),
     forceListen: w.forceListen ?? false,
     liveSessions: () => w.liveSessions ?? 0,
@@ -375,7 +378,7 @@ describe('disable and uninstall', () => {
       serverState: { listening: true },
     })
     const status = await control.disable()
-    expect(writes()).toEqual(['server.stop', 'disable'])
+    expect(writes()).toEqual(['server.stop', 'clearLive', 'disable'])
     expect(status).toMatchObject({ listening: false, plugin: 'disabled' })
   })
 
@@ -383,7 +386,7 @@ describe('disable and uninstall', () => {
     const failing = setup({ pluginError: 'boom', serverState: { listening: true } })
     await expect(failing.control.disable()).rejects.toThrow('boom')
     expect(failing.w.serverState.listening).toBe(false)
-    expect(failing.writes()).toEqual(['server.stop'])
+    expect(failing.writes()).toEqual(['server.stop', 'clearLive'])
     const missing = setup({ noCli: true, serverState: { listening: true } })
     await expect(missing.control.disable()).rejects.toThrow('claude was not found.')
     expect(missing.w.serverState.listening).toBe(false)
@@ -392,7 +395,7 @@ describe('disable and uninstall', () => {
   test('disable with no plugin only stops the server', async () => {
     const { control, writes } = setup({ serverState: { listening: true } })
     expect((await control.disable()).listening).toBe(false)
-    expect(writes()).toEqual(['server.stop'])
+    expect(writes()).toEqual(['server.stop', 'clearLive'])
   })
 
   test('uninstall stops the server, removes the plugin, the marketplace, the mod folder and the old install', async () => {
@@ -404,7 +407,13 @@ describe('disable and uninstall', () => {
       serverState: { listening: true },
     })
     const status = await control.uninstall()
-    expect(writes()).toEqual(['server.stop', 'uninstall', 'removeMarketplace', 'removeOldInstall'])
+    expect(writes()).toEqual([
+      'server.stop',
+      'clearLive',
+      'uninstall',
+      'removeMarketplace',
+      'removeOldInstall',
+    ])
     expect(existsSync(modDir)).toBe(false)
     expect(status).toMatchObject({
       listening: false,
@@ -425,7 +434,7 @@ describe('disable and uninstall', () => {
     await expect(control.uninstall()).rejects.toThrow(
       "Bifrost can't read ~/.claude/settings.json, so it didn't remove the old hooks. E.",
     )
-    expect(writes()).toEqual(['server.stop', 'uninstall', 'removeMarketplace'])
+    expect(writes()).toEqual(['server.stop', 'clearLive', 'uninstall', 'removeMarketplace'])
     expect(existsSync(modDir)).toBe(false)
   })
 
@@ -436,7 +445,7 @@ describe('disable and uninstall', () => {
       plugin: { enabled: true, errors: [], folder: '/other' },
     })
     await control.uninstall()
-    expect(writes()).toEqual(['server.stop', 'uninstall'])
+    expect(writes()).toEqual(['server.stop', 'clearLive', 'uninstall'])
     expect(w.marketplace).toEqual({ path: '/other', source: 'directory' })
     expect(existsSync(modDir)).toBe(false)
   })

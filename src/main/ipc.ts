@@ -406,6 +406,7 @@ export function registerIpc(): void {
     socketPath: join(paths.bifrostHome, 'live.sock'),
   })
   const live = createLiveControl({
+    clearLive: () => liveService?.clearLive(),
     cli: async () => {
       const runClaude = await run
       return runClaude ? createPluginCli(runClaude) : null
