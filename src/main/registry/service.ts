@@ -218,11 +218,6 @@ export class RegistryService {
     this.callbacks.push(cb)
   }
 
-  acknowledge(sessionId: string): void {
-    this.registry.acknowledge(sessionId)
-    this.changed()
-  }
-
   // Set the priority of a session. Return false for an unknown session.
   setPriority(sessionId: string, priority: Priority | null): boolean {
     const known = this.registry.setPriority(sessionId, priority)

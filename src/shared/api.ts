@@ -29,7 +29,6 @@ export interface BifrostApi {
   registry: {
     rows(): Promise<SessionRow[]>
     // Stop the flash of the box of the session.
-    acknowledge(sessionId: string): Promise<void>
     // Set the priority of the session. null removes it.
     // This rejects for a bad priority and for an unknown session.
     setPriority(sessionId: string, priority: Priority | null): Promise<void>

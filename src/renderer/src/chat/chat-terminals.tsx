@@ -24,7 +24,6 @@ import {
 
 interface ChatTerminalsDeps {
   pty: BifrostApi['pty']
-  acknowledge(sessionId: string): void
 }
 
 export class ChatTerminals {
@@ -83,7 +82,6 @@ export class ChatTerminals {
     for (const id of openIds) {
       if (this.terminals.has(id)) continue
       const terminal: ChatTerminal = new ChatTerminal(id, {
-        acknowledge: this.deps.acknowledge,
         font: this.font,
         history: this.historyOf(id),
         parking: this.parking,
@@ -186,18 +184,12 @@ export class ChatTerminals {
 
 const ChatsContext = createContext<ChatTerminals | null>(null)
 
-function acknowledge(sessionId: string): void {
-  window.bifrost.registry.acknowledge(sessionId).catch(err => {
-    console.error('Bifrost cannot acknowledge the session.', err)
-  })
-}
-
 // One ChatTerminals for the app. It must be inside the registry and window manager providers.
 export function ChatsProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { frames } = useWmState()
   const { loaded, rows } = useRegistry()
   const { settings } = useSettings()
-  const [chats] = useState(() => new ChatTerminals({ acknowledge, pty: window.bifrost.pty }))
+  const [chats] = useState(() => new ChatTerminals({ pty: window.bifrost.pty }))
 
   useLayoutEffect(() => {
     chats.mount(document.getElementById('root') ?? document.body)

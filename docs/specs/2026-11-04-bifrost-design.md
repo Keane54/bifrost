@@ -277,7 +277,7 @@ Bifrost runs `git -C <cwd> rev-parse --abbrev-ref HEAD` every 10 seconds for eac
 Box rules:
 
 1. A new box flashes.
-2. The flash stops when you select the row or focus the chat window. The box stays.
+2. The box flashes for as long as it exists. The flash stops only when the box clears. A selection or a focus of the chat window does not stop it.
 3. The box clears when the session starts to work again.
 4. A yellow box changes to red after 10 minutes. The timer starts with the yellow box.
 5. The "Escalation time" setting changes the time. The value 0 stops the escalation.
@@ -368,7 +368,7 @@ The Overview uses the layout of the EVE Overview, with Bifrost colours, icons an
 - The column headers are small and grey. The sort column shows ▲ or ▼.
 - The rows are dense and use the UI font (section 8.10). Text that is too long is cut off. It does not wrap.
 - The first column shows a small icon. The icon shape shows the kind of the session: one shape for an owned session, the terminal app icon for an external session, and a dim shape for a parked session. The icon colour shows the project: each project gets a fixed colour from a palette without yellow, red and grey.
-- The yellow box and the red box are four corner brackets around the icon, as in EVE. A new box flashes. A yellow box changes to red by the rules of section 7.
+- The yellow box and the red box are four corner brackets around the icon, as in EVE. A box flashes until it clears. A yellow box changes to red by the rules of section 7.
 - A row can have a background highlight colour.
 - The panel background is translucent.
 
@@ -726,7 +726,7 @@ Cmd+Ctrl+F keeps its macOS meaning. In Bifrost, it toggles Fullscreen (section 8
 
 | Alert | Default | Cause |
 |---|---|---|
-| Row flash | On | A new yellow box or red box. |
+| Row flash | On | A yellow box or red box flashes until it clears. |
 | macOS notification | On | A new box when Bifrost is not in focus. |
 | Sound | On | A new red box. |
 
@@ -963,7 +963,7 @@ The answers are in `docs/m0-findings.md`.
 
 The user confirmed these points in the review on 2026-11-04:
 
-1. The escalation timer starts with the yellow box. Your selection stops only the flash, not the timer.
+1. The escalation timer starts with the yellow box. Your selection does not stop the timer. It does not stop the flash either (changed on 2026-11-06).
 2. The Take control confirmation names Bifrost (section 9.2).
 3. The space label for "Take control" is "Commandeer".
 4. Bifrost disables an action that is not available. The action shows darker and faded, as in EVE (section 9.1).

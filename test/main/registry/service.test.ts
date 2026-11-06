@@ -317,14 +317,20 @@ describe('updates and the store', () => {
   })
 
   // Changed for Task 4: the Stop event comes from the mod.
-  test('acknowledge stops the flash and sends an update', async () => {
+  test('a box keeps flashing until it clears', async () => {
     const deps = fakeDeps({ listActive: async () => ({ entries: [bg()] }) })
     const { service, updates } = startService(deps)
     service.pushLive({ event: { at: START, name: 'Stop', sessionId: 's1' }, type: 'state' })
     await vi.advanceTimersByTimeAsync(1000)
     expect(updates.at(-1)?.rows[0]).toMatchObject({ box: 'yellow', flashing: true })
-    service.acknowledge('s1')
-    expect(updates.at(-1)?.rows[0]).toMatchObject({ box: 'yellow', flashing: false })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(updates.at(-1)?.rows[0]).toMatchObject({ box: 'yellow', flashing: true })
+    service.pushLive({
+      event: { at: START + 6000, name: 'UserPromptSubmit', sessionId: 's1' },
+      type: 'state',
+    })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(updates.at(-1)?.rows[0]).toMatchObject({ box: 'none', flashing: false })
   })
 
   test('setPriority sends an update and saves the store', async () => {

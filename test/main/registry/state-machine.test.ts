@@ -3,7 +3,6 @@ import type { HookEvent, HookEventName } from '../../../src/main/registry/hook-e
 import {
   INITIAL_STATE,
   type MachineState,
-  onAcknowledge,
   onHookEvent,
   onParked,
   onStatus,
@@ -21,9 +20,8 @@ const ev = (name: HookEventName, at: number, extra = {}): HookEvent => ({
 const working = onHookEvent(INITIAL_STATE, ev('UserPromptSubmit', 1))
 
 describe('initial state', () => {
-  test('is idle with no box and nothing to acknowledge', () => {
+  test('is idle with no box', () => {
     expect(INITIAL_STATE).toEqual({
-      acknowledged: true,
       box: 'none',
       boxSince: null,
       confirmed: false,
@@ -37,7 +35,6 @@ describe('hook events', () => {
   test('UserPromptSubmit gives working with no box', () => {
     const red = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 5))
     expect(onHookEvent(red, ev('UserPromptSubmit', 6))).toMatchObject({
-      acknowledged: true,
       box: 'none',
       boxSince: null,
       state: 'working',
@@ -49,7 +46,6 @@ describe('hook events', () => {
   })
   test('PreToolUse AskUserQuestion gives a red prompt box', () => {
     expect(onHookEvent(working, ev('PreToolUse', 7, { toolName: 'AskUserQuestion' }))).toEqual({
-      acknowledged: false,
       box: 'red',
       boxSince: 7,
       confirmed: false,
@@ -79,7 +75,6 @@ describe('hook events', () => {
   })
   test('Stop gives a yellow box and keeps the last message', () => {
     expect(onHookEvent(working, ev('Stop', 10, { lastAssistantMessage: 'Done' }))).toEqual({
-      acknowledged: false,
       box: 'yellow',
       boxSince: 10,
       confirmed: false,
@@ -97,7 +92,6 @@ describe('hook events', () => {
   })
   test('StopFailure gives a red error box', () => {
     expect(onHookEvent(working, ev('StopFailure', 11))).toMatchObject({
-      acknowledged: false,
       box: 'red',
       boxSince: 11,
       redReason: 'error',
@@ -105,11 +99,8 @@ describe('hook events', () => {
     })
   })
   test('a red box replaces a yellow box with a new time and a new flash', () => {
-    const y = onAcknowledge(
-      onHookEvent(INITIAL_STATE, ev('Stop', 1, { lastAssistantMessage: 'm' })),
-    )
+    const y = onHookEvent(INITIAL_STATE, ev('Stop', 1, { lastAssistantMessage: 'm' }))
     expect(onHookEvent(y, ev('PermissionRequest', 50))).toMatchObject({
-      acknowledged: false,
       box: 'red',
       boxSince: 50,
       lastMessage: 'm',
@@ -123,7 +114,6 @@ describe('hook events', () => {
   // D6: a turn that the user stopped needs no alert.
   test('TurnAborted gives idle with no box and keeps the partial answer', () => {
     expect(onHookEvent(working, ev('TurnAborted', 10, { lastAssistantMessage: 'part' }))).toEqual({
-      acknowledged: true,
       box: 'none',
       boxSince: null,
       confirmed: false,
@@ -142,14 +132,13 @@ describe('hook events', () => {
   })
   // Review Focus 3: turn.complete with an error and classic.StopFailure give the same error.
   test('a second StopFailure keeps the error box, its time and its flash state', () => {
-    const e = onAcknowledge(onHookEvent(working, ev('StopFailure', 5)))
+    const e = onHookEvent(working, ev('StopFailure', 5))
     expect(onHookEvent(e, ev('StopFailure', 6))).toEqual(e)
-    expect(e).toMatchObject({ acknowledged: true, boxSince: 5, redReason: 'error' })
+    expect(e).toMatchObject({ boxSince: 5, redReason: 'error' })
   })
   test('StopFailure replaces an escalated red box with an error box', () => {
-    const esc = onAcknowledge(onTick(onHookEvent(working, ev('Stop', 0)), 10, 10))
+    const esc = onTick(onHookEvent(working, ev('Stop', 0)), 10, 10)
     expect(onHookEvent(esc, ev('StopFailure', 20))).toMatchObject({
-      acknowledged: false,
       boxSince: 20,
       redReason: 'error',
       state: 'error',
@@ -185,7 +174,6 @@ describe('status samples', () => {
   test('waiting with waitingFor gives a confirmed red prompt box', () => {
     expect(onStatus(working, { sampledAt: 20, status: 'waiting', waitingFor: 'approval' })).toEqual(
       {
-        acknowledged: false,
         box: 'red',
         boxSince: 20,
         confirmed: true,
@@ -213,7 +201,6 @@ describe('status samples', () => {
     const hook = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 10_000))
     const red = onStatus(hook, { sampledAt: 10_200, status: 'waiting', waitingFor: 'approval' })
     expect(onStatus(red, { sampledAt: 11_500, status: 'idle' })).toMatchObject({
-      acknowledged: true,
       box: 'none',
       boxSince: null,
       state: 'idle',
@@ -254,11 +241,11 @@ describe('status samples', () => {
   })
 })
 
-describe('tick and acknowledge', () => {
+describe('tick', () => {
   test('a yellow box becomes red after the escalation time and flashes again', () => {
-    const y = onAcknowledge(onHookEvent(INITIAL_STATE, ev('Stop', 0)))
+    const y = onHookEvent(INITIAL_STATE, ev('Stop', 0))
     const r = onTick(y, 600_000, 600_000)
-    expect(r).toMatchObject({ acknowledged: false, box: 'red', redReason: 'escalated' })
+    expect(r).toMatchObject({ box: 'red', redReason: 'escalated' })
     expect(onTick(y, 600_000, 0).box).toBe('yellow')
   })
   test('a yellow box stays yellow before the escalation time', () => {
@@ -277,17 +264,13 @@ describe('tick and acknowledge', () => {
     expect(onTick(red, 9e9, 1)).toEqual(red)
     expect(onTick(working, 9e9, 1)).toEqual(working)
   })
-  test('acknowledge sets acknowledged and keeps the box', () => {
-    const y = onHookEvent(INITIAL_STATE, ev('Stop', 0))
-    expect(onAcknowledge(y)).toEqual({ ...y, acknowledged: true })
-  })
 })
 
 describe('parked', () => {
   test('onParked clears the box and the reason', () => {
     const red = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 0))
     const p = onParked(red)
-    expect(p).toMatchObject({ acknowledged: true, box: 'none', boxSince: null, state: 'parked' })
+    expect(p).toMatchObject({ box: 'none', boxSince: null, state: 'parked' })
     expect(p.redReason).toBeUndefined()
   })
 })
@@ -306,7 +289,6 @@ describe('purity', () => {
     onStatus(frozen, { prevStatus: 'busy', sampledAt: 2, status: 'idle' })
     onStatus(frozen, { sampledAt: 2, status: 'waiting', waitingFor: 'a' })
     onTick(frozen, 700_000, 600_000)
-    onAcknowledge(frozen)
     onParked(frozen)
     expect(frozen).toEqual(copy)
   })
@@ -314,7 +296,7 @@ describe('purity', () => {
 
 describe('fix round 1', () => {
   test('a repeated prompt event keeps the flash state and the box time', () => {
-    const r = onAcknowledge(onHookEvent(INITIAL_STATE, ev('PermissionRequest', 100)))
+    const r = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 100))
     expect(
       onHookEvent(r, ev('Notification', 200, { notificationType: 'permission_prompt' })),
     ).toEqual(r)
@@ -322,15 +304,13 @@ describe('fix round 1', () => {
     expect(onHookEvent(r, ev('PermissionRequest', 400))).toEqual(r)
   })
   test('a prompt event replaces a red error box and a red escalated box', () => {
-    const e = onAcknowledge(onHookEvent(INITIAL_STATE, ev('StopFailure', 0)))
+    const e = onHookEvent(INITIAL_STATE, ev('StopFailure', 0))
     expect(onHookEvent(e, ev('PermissionRequest', 5))).toMatchObject({
-      acknowledged: false,
       boxSince: 5,
       redReason: 'prompt',
     })
-    const esc = onAcknowledge(onTick(onHookEvent(INITIAL_STATE, ev('Stop', 0)), 10, 10))
+    const esc = onTick(onHookEvent(INITIAL_STATE, ev('Stop', 0)), 10, 10)
     expect(onHookEvent(esc, ev('PermissionRequest', 20))).toMatchObject({
-      acknowledged: false,
       boxSince: 20,
       redReason: 'prompt',
     })
@@ -357,9 +337,9 @@ describe('fix round 1', () => {
     })
   })
   test('Stop while a red prompt box exists gives a new yellow box', () => {
-    const r = onAcknowledge(onHookEvent(INITIAL_STATE, ev('PermissionRequest', 1)))
+    const r = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 1))
     const y = onHookEvent(r, ev('Stop', 50))
-    expect(y).toMatchObject({ acknowledged: false, box: 'yellow', boxSince: 50 })
+    expect(y).toMatchObject({ box: 'yellow', boxSince: 50 })
     expect(y.redReason).toBeUndefined()
   })
   test('UserPromptSubmit while error gives working with no box', () => {
@@ -375,9 +355,6 @@ describe('fix round 1', () => {
   test('an unknown status string changes nothing', () => {
     const y = onHookEvent(INITIAL_STATE, ev('Stop', 0))
     expect(onStatus(y, { sampledAt: 99_999, status: 'weird' })).toEqual(y)
-  })
-  test('acknowledge with no box changes nothing', () => {
-    expect(onAcknowledge(INITIAL_STATE)).toEqual(INITIAL_STATE)
   })
   // Changed for rule 10: a waiting sample confirms the red prompt box first.
   test('an idle sample at exactly the grace boundary keeps the red box', () => {
@@ -457,9 +434,7 @@ describe('box confirmation (spec section 7, rule 10)', () => {
   })
 
   test('a repeated prompt event keeps the time, the flash and the confirmed flag', () => {
-    const r = onAcknowledge(
-      onStatus(onHookEvent(working, ev('PermissionRequest', 20_000)), waiting(20_500)),
-    )
+    const r = onStatus(onHookEvent(working, ev('PermissionRequest', 20_000)), waiting(20_500))
     const again = onHookEvent(
       r,
       ev('Notification', 21_000, { notificationType: 'permission_prompt' }),
@@ -516,7 +491,6 @@ describe('box confirmation (spec section 7, rule 10)', () => {
 
 describe('poll-only yellow box (O3)', () => {
   const yellowAt = (at: number) => ({
-    acknowledged: false,
     box: 'yellow',
     boxSince: at,
     confirmed: true,

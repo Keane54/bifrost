@@ -91,7 +91,7 @@ export interface SessionRow {
   // Only for a red box.
   boxReason?: BoxReason
   boxSince: number | null
-  // True when the box is not 'none' and nobody acknowledged it.
+  // True while a box exists and the setting allows the flash.
   flashing: boolean
   lastMessage?: string
   lastActivity: number
