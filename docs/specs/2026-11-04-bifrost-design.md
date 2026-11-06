@@ -901,10 +901,10 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 - Scripts that load `node-pty` run with `ELECTRON_RUN_AS_NODE=1 electron <file>.ts`.
 - Bifrost has no CommonJS files.
 - `pnpm dev` starts Bifrost from the repository.
-- `pnpm dist` makes a universal DMG for Apple Silicon and Intel.
-- Do not start Bifrost under Rosetta (`arch -x86_64`) on an Apple Silicon Mac. macOS 26 then shows a notice that Bifrost "includes a component that will not work with a future release of macOS". On Apple Silicon, Bifrost runs its arm64 code only. Test the Intel code on an Intel Mac.
+- `pnpm dist` makes a DMG for Apple Silicon (arm64) only. The DMG has no Intel code (decision of 2026-11-06).
+- Do not start Bifrost under Rosetta (`arch -x86_64`) on an Apple Silicon Mac. macOS 26 then shows a notice that Bifrost "includes a component that will not work with a future release of macOS".
 - The build uses an ad-hoc signature, because Apple Silicon does not run code without a signature.
-- electron-builder uses `identity: '-'` and `hardenedRuntime: false`. node-pty stays outside the asar. The universal merge keeps the two node-pty prebuilds (`x64ArchFiles`).
+- electron-builder uses `identity: '-'` and `hardenedRuntime: false`. node-pty stays outside the asar. The build leaves out the `darwin-x64` and `win32` node-pty prebuilds.
 - The app has no `node-pty/build` folder. That folder holds an arm64 build only, and node-pty loads it before the prebuilds.
 - `package.json` has `"private": true` and `"license": "UNLICENSED"`.
 - The repository has no remote.

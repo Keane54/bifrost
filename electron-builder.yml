@@ -10,6 +10,7 @@ files:
   - '!resources/live-mod/tsconfig.json'
   - '!resources/live-mod/.claude-plugin/types/**'
   - '!**/node_modules/node-pty/prebuilds/win32-*/**'
+  - '!**/node_modules/node-pty/prebuilds/darwin-x64/**'
   - '!**/node_modules/node-pty/build/**'
 asarUnpack:
   - resources/**
@@ -17,14 +18,13 @@ asarUnpack:
 mac:
   target:
     - target: dmg
-      arch: universal
+      arch: arm64
   category: public.app-category.developer-tools
   identity: '-'
   hardenedRuntime: false
   gatekeeperAssess: false
   notarize: false
-  x64ArchFiles: '**/node_modules/node-pty/prebuilds/**'
 dmg:
-  artifactName: ${productName}-${version}-universal.${ext}
+  artifactName: ${productName}-${version}-arm64.${ext}
 npmRebuild: false
 publish: null

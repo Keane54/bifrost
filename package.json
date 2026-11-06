@@ -51,7 +51,7 @@
     "check": "biome check",
     "check:write": "biome check --write",
     "dev": "electron-vite dev",
-    "dist": "electron-vite build && electron-builder --mac --universal",
+    "dist": "electron-vite build && electron-builder --mac --arm64",
     "format": "biome format",
     "format:write": "biome format --write",
     "icon": "node scripts/make-icon.ts",
