@@ -8,10 +8,41 @@ const WATCH_NAMES: readonly string[] = WATCH_COLOURS
 // The unfocused panel is about rgb(24 24 24). The focused panel is rgb(8 8 8).
 const PANELS = ['#181818', '#080808']
 
+// The hex value of a token, in lower case. So a compare does not depend on the case in app.css.
 function token(name: string): string {
   const match = CSS.match(new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})`))
   if (!match) throw new Error(`No hex token ${name}`)
-  return match[1]
+  return match[1].toLowerCase()
+}
+
+// The colour families that the hue and distance checks read.
+const FAMILIES = ['project', 'tab', 'watch', 'prio', 'svc', 'usage'] as const
+const SVC_USAGE = [
+  'svc-ok',
+  'svc-minor',
+  'svc-major',
+  'svc-critical',
+  'svc-maint',
+  'usage',
+  'usage-high',
+]
+
+// Each family with no token, each svc or usage token that is missing, and each token of a family
+// that is not a hex colour. The hue and distance checks read only hex tokens. So a token in
+// another form would skip them, and no test would fail (final review Minor 6).
+function familyProblems(css: string): string[] {
+  const problems: string[] = []
+  for (const family of FAMILIES) {
+    const all = [...css.matchAll(new RegExp(`--color-(${family}(?:-[\\w-]+)?):\\s*([^;]+);`, 'g'))]
+    if (all.length === 0) problems.push(`no ${family} token`)
+    for (const [, name, value] of all) {
+      if (!/^#[0-9a-f]{6}$/i.test(value.trim())) problems.push(`${name} is not hex`)
+    }
+  }
+  for (const name of SVC_USAGE) {
+    if (!new RegExp(`--color-${name}:`).test(css)) problems.push(`no ${name}`)
+  }
+  return problems
 }
 
 function rgb(hex: string): [number, number, number] {
@@ -300,7 +331,10 @@ describe('theme', () => {
         /--color-((?:project|tab|watch|prio|svc|usage)-?[\w-]*):\s*(#[0-9a-fA-F]{6})/g,
       ),
     ]
-    expect(tokens.length).toBeGreaterThanOrEqual(33)
+    // Each token of the families is hex, so the check reads all of them.
+    const all = [...CSS.matchAll(/--color-(?:project|tab|watch|prio|svc|usage)[\w-]*:/g)]
+    expect(tokens.length).toBe(all.length)
+    expect(tokens.length).toBeGreaterThanOrEqual(40)
     const bad = tokens
       .filter(([, , hex]) => {
         const hue = hsl(hex).h
@@ -308,6 +342,17 @@ describe('theme', () => {
       })
       .map(([, name]) => name)
     expect(bad).toEqual([])
+  })
+
+  it('each colour family is there, with the svc and usage tokens, all in hex (count guard)', () => {
+    expect(familyProblems(CSS)).toEqual([])
+    // The guard finds a token in another form, a missing family and a missing token.
+    const rgbHigh = CSS.replace('--color-usage-high: #d4730a;', '--color-usage-high: rgb(1 2 3);')
+    expect(familyProblems(rgbHigh)).toEqual(['usage-high is not hex'])
+    expect(familyProblems(CSS.replaceAll('--color-svc-', '--color-x-'))).toContain('no svc token')
+    expect(familyProblems(CSS.replace('--color-svc-maint:', '--color-svc-other:'))).toEqual([
+      'no svc-maint',
+    ])
   })
 
   // the user, 2026-11-05: the yellow box and the red box stay clearly visible on every watched row.
