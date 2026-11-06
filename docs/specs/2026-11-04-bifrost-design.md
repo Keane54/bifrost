@@ -524,7 +524,7 @@ Size rule (the user approved this on 2026-11-04; M3 builds it):
 
 Show Info shows these values for one session:
 
-- Name, session ID, short ID, kind and PID. A session with a local name also shows the Claude Code name. The session ID is the ID that `claude --resume` needs to continue the session (ruling of 2026-11-06): the resume ID of a background row, or the current ID of an interactive row (section 6.1). It shows `-` while Bifrost does not know the resume ID. When the current ID differs from it, Show Info also shows "Current conversation" with the current ID.
+- Name, session ID, short ID, kind and PID. A session with a local name also shows the Claude Code name. The session ID is the ID that `claude --bg --resume` needs to continue the session (ruling of 2026-11-06): the resume ID of a background row, or the current ID of an interactive row (section 6.1). It shows `-` while Bifrost does not know the resume ID. When the current ID differs from it, Show Info also shows "Current conversation" with the current ID.
 - Project directory and transcript path.
 - Branch, PR and worktree.
 - Model, effort and permission mode.
@@ -643,7 +643,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. An owned row passes its resume ID and adds no flag. A parked external row (after a failed Take control) passes its current ID and gets the statusline override, as Take control does (D13). |
 | Resume all | Reactivate all | Parked | Resume each parked session that was active when Bifrost last ran. |
 | Show Info | Scan | All | Open the Show Info panel. |
-| Copy session ID | Copy transponder ID | All | Copy the ID that `claude --resume` needs to continue the session to the clipboard: the resume ID of a background row, or the current ID of an interactive row. |
+| Copy session ID | Copy transponder ID | All | Copy the ID that `claude --bg --resume` needs to continue the session to the clipboard: the resume ID of a background row, or the current ID of an interactive row. |
 | Open project | Open cargo hold | All | `open -a <app> <cwd>`. |
 | Open in terminal | Jump to terminal | Owned, external | Owned: run `claude attach <id>` in the terminal app. External: bring the terminal app to the front. |
 | Take control | Commandeer | External | Section 9.2. |
@@ -1288,5 +1288,5 @@ The user decided that a session keeps one row across `/clear`. Tests with backgr
 1. Each row has a stable row ID and a current ID. The values stay with the row ID and never move (section 6.1).
 2. A background entry finds its row by its short ID first, in the active list and in `--all`. The store keeps the short ID of each background row (`jobs`) and each current ID that is not a row ID (`current`).
 3. An interactive entry finds its row by its `pid` and its folder, with a 1:1 match (section 6.1, rule 3).
-4. Resume of an owned row passes the original session ID of the job. Take control passes the current ID. Copy session ID and the session ID of Show Info give the ID that `claude --resume` needs: the resume ID of a background row, or the current ID of an interactive row. Show Info also gives the current conversation when it differs (sections 8.6 and 9.1).
+4. Resume of an owned row passes the original session ID of the job. Take control passes the current ID. Copy session ID and the session ID of Show Info give the ID that `claude --bg --resume` needs: the resume ID of a background row, or the current ID of an interactive row. Show Info also gives the current conversation when it differs (sections 8.6 and 9.1).
 5. A `/rename` from the send box or from Run slash command clears the local name (section 9.1).
