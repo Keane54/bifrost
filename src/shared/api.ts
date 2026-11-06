@@ -108,15 +108,19 @@ export interface BifrostApi {
   live: {
     status(): Promise<LiveStatus>
     // Remove an old hook install, copy the mod folder, add the marketplace, install the plugin,
-    // turn it on and listen. This rejects for Claude Code below 2.1.290.
+    // turn it on and listen. This rejects for Claude Code below 2.1.290. It also rejects before
+    // any change when Bifrost cannot read the settings file.
     install(): Promise<LiveStatus>
     // Remove an old hook install, copy the mod folder, turn the plugin on and listen.
-    // This rejects when the plugin is not installed.
+    // This rejects when the plugin is not installed. It also rejects before any change when
+    // Bifrost cannot read the settings file.
     enable(): Promise<LiveStatus>
-    // Turn the plugin off and stop the server at once.
+    // Stop the server at once. Then turn the plugin off. A failure rejects, but the server
+    // stays stopped.
     disable(): Promise<LiveStatus>
     // Stop the server. Remove the plugin, the marketplace of Bifrost, the mod folder and an old
-    // hook install.
+    // hook install. When Bifrost cannot read the settings file, it does the other steps and then
+    // rejects.
     uninstall(): Promise<LiveStatus>
   }
   ui: {

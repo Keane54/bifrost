@@ -217,6 +217,15 @@ describe('install', () => {
     expect(calls).toEqual([])
   })
 
+  test('install refuses settings that Bifrost cannot read before any change', async () => {
+    const { control, writes } = setup({ old: { error: 'E.', found: false } })
+    await expect(control.install()).rejects.toThrow(
+      "Bifrost can't read ~/.claude/settings.json, so it didn't change anything. E.",
+    )
+    expect(writes()).toEqual([])
+    expect(existsSync(modDir)).toBe(false)
+  })
+
   test('install refuses when claude was not found', async () => {
     const { calls, control } = setup({ noCli: true, version: null })
     await expect(control.install()).rejects.toThrow(
@@ -245,6 +254,19 @@ describe('enable', () => {
     expect(status).toMatchObject({ listening: true, oldInstall: false, plugin: 'enabled' })
   })
 
+  test('enable refuses settings that Bifrost cannot read before any change', async () => {
+    fillModDir(true)
+    const { control, writes } = setup({
+      old: { error: 'E.', found: false },
+      plugin: { enabled: false, errors: [], folder: modDir },
+    })
+    await expect(control.enable()).rejects.toThrow(
+      "Bifrost can't read ~/.claude/settings.json, so it didn't change anything. E.",
+    )
+    expect(writes()).toEqual([])
+    expect(await modFolderCurrent(source, modDir)).toBe(false)
+  })
+
   test('enable refuses Claude Code below 2.1.290', async () => {
     const { calls, control } = setup({
       plugin: { enabled: false, errors: [] },
@@ -264,8 +286,18 @@ describe('disable and uninstall', () => {
       serverState: { listening: true },
     })
     const status = await control.disable()
-    expect(writes()).toEqual(['disable', 'server.stop'])
+    expect(writes()).toEqual(['server.stop', 'disable'])
     expect(status).toMatchObject({ listening: false, plugin: 'disabled' })
+  })
+
+  test('a disable with a failing CLI stops the server and rejects', async () => {
+    const failing = setup({ pluginError: 'boom', serverState: { listening: true } })
+    await expect(failing.control.disable()).rejects.toThrow('boom')
+    expect(failing.w.serverState.listening).toBe(false)
+    expect(failing.writes()).toEqual(['server.stop'])
+    const missing = setup({ noCli: true, serverState: { listening: true } })
+    await expect(missing.control.disable()).rejects.toThrow('claude was not found.')
+    expect(missing.w.serverState.listening).toBe(false)
   })
 
   test('disable with no plugin only stops the server', async () => {
@@ -291,6 +323,21 @@ describe('disable and uninstall', () => {
       oldInstall: false,
       plugin: 'not-installed',
     })
+  })
+
+  test('uninstall with settings that Bifrost cannot read removes the plugin and then rejects', async () => {
+    fillModDir()
+    const { control, writes } = setup({
+      marketplace: { path: modDir, source: 'directory' },
+      old: { error: 'E.', found: false },
+      plugin: { enabled: true, errors: [], folder: modDir },
+      serverState: { listening: true },
+    })
+    await expect(control.uninstall()).rejects.toThrow(
+      "Bifrost can't read ~/.claude/settings.json, so it didn't remove the old hooks. E.",
+    )
+    expect(writes()).toEqual(['server.stop', 'uninstall', 'removeMarketplace'])
+    expect(existsSync(modDir)).toBe(false)
   })
 
   test('uninstall leaves a bifrost-local marketplace with another path', async () => {

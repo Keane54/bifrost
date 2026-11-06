@@ -2,7 +2,8 @@
 //
 // Bifrost listens on the socket only while the plugin is on. Turn off stops the server at once.
 // Install, Turn on and Remove also remove an old hook install. A failed removal stops
-// Install and Turn on before any plugin command.
+// Install and Turn on before any plugin command. Settings that Bifrost cannot read stop
+// Install and Turn on before any change. Remove then does its plugin steps and rejects at the end.
 
 import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -68,9 +69,14 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
     throw new Error(`Live details needs Claude Code ${LIVE_MIN_CLAUDE_VERSION} or later. ${found}`)
   }
 
-  // A failed removal rejects. Then the action stops here.
-  async function removeOldInstall(): Promise<void> {
-    if ((await deps.oldInstall()).found) await deps.removeOldInstall()
+  // Remove an old hook install. Settings that Bifrost cannot read reject with the result text.
+  // A failed removal also rejects. Then the action stops here.
+  async function removeOldInstall(result: string): Promise<void> {
+    const old = await deps.oldInstall()
+    if (old.error !== undefined) {
+      throw new Error(`Bifrost can't read ~/.claude/settings.json, so it ${result}. ${old.error}`)
+    }
+    if (old.found) await deps.removeOldInstall()
   }
 
   async function readPlugin(): Promise<{
@@ -160,9 +166,11 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
   return {
     disable: () =>
       action(async () => {
+        // The server is the switch that acts at once (D9). So stop it before the plugin command.
+        // A failure after this point rejects, but the server is already stopped.
+        server.stop()
         const cli = await needCli()
         if ((await cli.plugin()) !== null) await cli.disable()
-        server.stop()
         return status()
       }),
     enable: () =>
@@ -170,7 +178,7 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
         await checkVersion()
         const cli = await needCli()
         if ((await cli.plugin()) === null) throw new Error('Live details is not installed.')
-        await removeOldInstall()
+        await removeOldInstall("didn't change anything")
         await syncModFolder(modSource, modDir)
         await cli.enable()
         await server.start()
@@ -180,7 +188,7 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
       action(async () => {
         await checkVersion()
         const cli = await needCli()
-        await removeOldInstall()
+        await removeOldInstall("didn't change anything")
         await syncModFolder(modSource, modDir)
         const market = await cli.marketplace()
         if (market === null) {
@@ -225,7 +233,9 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
           await cli.removeMarketplace()
         }
         await removeModFolder(modDir)
-        await removeOldInstall()
+        // This is the last step. Settings that Bifrost cannot read reject here, after the plugin
+        // steps, so the person sees why the old hooks can stay.
+        await removeOldInstall("didn't remove the old hooks")
         return status()
       }),
   }
