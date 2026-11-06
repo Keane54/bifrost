@@ -8,3 +8,4 @@ resources/live-mod/.claude-plugin/types/
 resources/live-mod/tsconfig.json
 test-results/
 playwright-report/
+*.tsbuildinfo
