@@ -36,5 +36,10 @@ if [ "$#" -eq 2 ] && [ "$1" = attach ]; then
   exec sleep 600
 fi
 
+# An unknown call goes to stderr and to a file in the test home. The smoke test checks that the
+# file is empty or absent, so a new command of Bifrost shows in a failed run.
 echo "fake claude: $*" >&2
+if [ -n "${BIFROST_TEST_HOME:-}" ]; then
+  echo "$*" >>"$BIFROST_TEST_HOME/unknown.log"
+fi
 exit 2
