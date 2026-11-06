@@ -172,7 +172,7 @@ Row ID and current ID (the user, 2026-11-06: one row for a session across `/clea
 - Each row has a row ID. It is the first session ID that Bifrost saw for the session. It never changes. The row field `sessionId` is the row ID.
 - All stored values use the row ID: the local name, the priority, the watch entry, the worktree record, the "started by Bifrost" mark, `lastActive` and the names. All renderer IDs use it too: the chat panels, the Show Info panels, the selection and the Event log. So a `/clear` moves no value and changes no panel.
 - Each row also has a current ID. It is the session ID of the entry of the row in the newest active list. Only an entry with a `pid` sets it, because a waking job can show its original ID before it has a `pid`. A new row gets the ID of its first entry. The row field `currentId` gives the current ID when it is not the row ID. An `--all` entry does not change it.
-- The live lines of the mod come with the current ID. A line goes to the row whose current ID is its session ID. The usage data and the live flag of a row come from its current ID. A line of the old conversation of a row changes no row.
+- The live lines of the mod come with the current ID. A line goes to the row whose current ID is its session ID. The usage data and the live flag of a row come from its current ID. A line of the old conversation of a row changes no row. The Event log shows its state events on that row (section 8.7).
 - Two processes can run one conversation, for example a job and a terminal that resumed its current ID. Then two rows have one current ID, and the live lines go to one of them only. The row that has the lines keeps them while the active list has that row. Another row takes them only when the active list does not have that row. So the lines do not move at each poll.
 - The registry store keeps the current ID of each row where it is not the row ID (`current`), and the short ID of each background row (`jobs`). A store without these fields is valid. After a restart, Bifrost uses them to find the row of an entry.
 
@@ -187,6 +187,11 @@ Bifrost finds the row of each entry of a list with these rules, in this order. T
    - The session ID of the entry is not the current ID of a known row.
    - One entry matches one row, and one row matches one entry. Any other case links nothing.
 4. Else the entry starts a new row. The row ID is the session ID of the entry. When a row or a stored value has that ID already, the row ID is a new UUID. This occurs when another process resumes the old conversation of a row, for example `claude --resume <ID before the /clear>`. A running `--all` entry that needs a new UUID waits for the active list, which makes its row.
+
+Live checks on 2026-11-06 (Claude Code 2.1.319, `bifrost-test-` sessions) support the rules:
+
+- A foreground session keeps its `pid` and its name after a `/clear` in its terminal. Only the session ID changes. After the process ends, the active list has no entry for it. So rule 3 is sound.
+- A background job got a `/clear`, a stop, and then a resume by its original ID. `--all`, read each 0.25 s, showed the original ID with no `pid` for about 5 s. Then it showed the ID after the `/clear` with a `pid` and a null `status` for about 1 s, then `idle`. It never showed the ID after the `/clear` without a `pid`. So the `--all` ID of a stopped job is always its original ID, and rule 1 keeps the waking job on its row.
 
 The rules need no line of the mod. So a session without the mod also keeps its row. The mod sends `session.end` with the reason `clear` for the old ID at a `/clear`. That event does not park the row, because the process keeps running. So Resume is not available for a job that runs.
 
