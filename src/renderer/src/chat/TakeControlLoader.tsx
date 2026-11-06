@@ -19,7 +19,7 @@ export default function TakeControlLoader({ sessionId }: { sessionId: string }):
       >
         {loaderText(name)}
       </p>
-      <div className='loader-rainbow absolute inset-x-0 bottom-0 h-1/3 animate-loader-shift opacity-40 motion-reduce:animate-none' />
+      <div className='loader-rainbow absolute inset-x-0 bottom-0 h-1/3 animate-loader-shift opacity-25 motion-reduce:animate-none' />
     </div>
   )
 }

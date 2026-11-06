@@ -57,12 +57,27 @@ describe('the rainbow of the loader', () => {
   it('uses the six icon tokens and adds no colour token of its own', () => {
     const rule = rainbowRule()
     for (let i = 1; i <= 6; i++) expect(rule).toContain(`var(--color-icon-${i})`)
-    expect(rule).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
+    // The mask holds only alpha steps (black at an alpha), not a colour that shows.
+    const colours = rule.replace(/mask-image:[^;]*;/, '')
+    expect(colours).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
     expect(CSS).not.toMatch(/--color-loader/)
   })
 
   it('fades in from transparent at its top edge, so it has no hard line', () => {
     expect(rainbowRule()).toMatch(/mask-image:\s*linear-gradient\(\s*to bottom,\s*transparent/)
+  })
+
+  // the user (2026-11-06): the fade was too harsh. The mask now eases in over the whole height: it
+  // has many steps, the upper half stays faint, and it is at full strength only at the bottom.
+  it('fades in gradually over the whole height, with an eased curve', () => {
+    const mask = rainbowRule().match(/mask-image:\s*linear-gradient\(([^;]*)\);/)?.[1] ?? ''
+    const alphas = [...mask.matchAll(/rgb\(0 0 0 \/ ([\d.]+)\) (\d+)%/g)].map(m => ({
+      alpha: Number(m[1]),
+      at: Number(m[2]),
+    }))
+    expect(alphas.length).toBeGreaterThanOrEqual(5)
+    for (const step of alphas.filter(s => s.at <= 50)) expect(step.alpha).toBeLessThanOrEqual(0.25)
+    expect(mask).toMatch(/black 100%\s*$/)
   })
 
   it('moves slowly, and does not move with reduced motion', () => {
@@ -77,7 +92,7 @@ describe('the rainbow of the loader', () => {
     expect(LOADER).toMatch(/bottom-0[^']*h-1\/3|h-1\/3[^']*bottom-0/)
     expect(LOADER).toMatch(/loader-rainbow[^']*opacity-(\d+)|opacity-(\d+)[^']*loader-rainbow/)
     const opacity = Number(LOADER.match(/opacity-(\d+)/)?.[1])
-    expect(opacity).toBeLessThanOrEqual(50)
+    expect(opacity).toBeLessThanOrEqual(25)
     expect(LOADER).not.toContain('<canvas')
     expect(LOADER).not.toContain('requestAnimationFrame')
   })
