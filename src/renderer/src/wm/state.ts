@@ -11,6 +11,7 @@ export type PanelKind =
   | 'chat'
   | 'show-info'
   | 'event-log'
+  | 'usage-hud'
 
 export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   chat: { h: 480, w: 720 },
@@ -20,6 +21,7 @@ export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   'selected-item': { h: 300, w: 360 },
   settings: { h: 540, w: 640 },
   'show-info': { h: 560, w: 460 },
+  'usage-hud': { h: 170, w: 360 },
   watchlist: { h: 280, w: 320 },
 }
 
@@ -69,7 +71,8 @@ export function panelKind(panelId: string): PanelKind | null {
     panelId === 'selected-item' ||
     panelId === 'settings' ||
     panelId === 'watchlist' ||
-    panelId === 'event-log'
+    panelId === 'event-log' ||
+    panelId === 'usage-hud'
   ) {
     return panelId
   }

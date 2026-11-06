@@ -36,6 +36,12 @@ describe('wm state', () => {
     expect(run([open('event-log')]).frames[0]?.rect).toMatchObject({ h: 360, w: 640 })
   })
 
+  it('panelKind accepts usage-hud', () => {
+    expect(panelKind('usage-hud')).toBe('usage-hud')
+    expect(DEFAULT_SIZES['usage-hud']).toEqual({ h: 170, w: 360 })
+    expect(run([open('usage-hud')]).frames[0]?.rect).toMatchObject({ h: 170, w: 360 })
+  })
+
   it('panelKind accepts the fixed panel IDs and refuses all others', () => {
     expect(panelKind('overview:1')).toBe('overview')
     expect(panelKind('overview:99')).toBe('overview')

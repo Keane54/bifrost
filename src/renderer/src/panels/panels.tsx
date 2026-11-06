@@ -14,6 +14,7 @@ import OverviewSettingsPanel from '../overview/OverviewSettingsPanel'
 import { useOverview } from '../overview/overviews-context'
 import { SessionIcon } from '../overview/SessionIcon'
 import SettingsPanel from '../settings/SettingsPanel'
+import UsagePanel from '../usage/UsagePanel'
 import WatchlistPanel from '../watch/WatchlistPanel'
 import { panelKind } from '../wm/state'
 import SelectedItemPanel from './SelectedItemPanel'
@@ -41,6 +42,8 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
     }
     case 'event-log':
       return 'Event log'
+    case 'usage-hud':
+      return 'Usage HUD'
     case 'show-info': {
       const id = showInfoSessionId(panelId)
       const name = rows?.find(r => r.sessionId === id)?.name
@@ -132,6 +135,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <ShowInfoPanel panelId={panelId} />
     case 'event-log':
       return <EventLogPanel />
+    case 'usage-hud':
+      return <UsagePanel />
     default:
       return <div className='p-3 text-[13px] text-text-dim'>This panel is not known.</div>
   }

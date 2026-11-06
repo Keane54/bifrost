@@ -72,6 +72,10 @@
   --color-watch-dark-blue: #2563eb;
   --color-watch-white: #f2f2f2;
 
+  /* The Usage HUD bar. usage-high is amber, from 90% (ruling R4). No purple, pink, yellow, red or grey. */
+  --color-usage: #5fb3c9;
+  --color-usage-high: #d4730a;
+
   --font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
 

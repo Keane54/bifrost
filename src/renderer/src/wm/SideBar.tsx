@@ -2,6 +2,7 @@ import { Button } from '@base-ui/react/button'
 import {
   Crosshair,
   Eye,
+  Gauge,
   List,
   ListPlus,
   type LucideIcon,
@@ -151,6 +152,7 @@ function SideBar(): React.JSX.Element {
       <SideButton icon={Crosshair} label='Selected Item' onClick={() => open('selected-item')} />
       <SideButton icon={Eye} label='Watchlist' onClick={() => open('watchlist')} />
       <SideButton icon={ScrollText} label='Event log' onClick={() => open('event-log')} />
+      <SideButton icon={Gauge} label='Usage HUD' onClick={() => open('usage-hud')} />
       <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />
       <GlobalButton action='new-session' icon={SquarePlus} />
       <GlobalButton action='resume-all' icon={RotateCcw} />
