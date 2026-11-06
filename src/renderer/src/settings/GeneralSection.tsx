@@ -23,7 +23,7 @@ import type { DisplayMode, ProjectApp, ProjectAppId } from '../../../shared/type
 import { CheckBox } from '../lib/CheckBox'
 import { cx } from '../lib/cx'
 import { useLive } from './live-context'
-import { versionNotice } from './live-notice'
+import { claudeVersionNotice } from './live-notice'
 import { ROW_FIELD, SettingRow, useRowSave } from './SettingRow'
 import { useSettings } from './settings-context'
 
@@ -218,8 +218,10 @@ const LABEL_CHOICES: { label: string; value: LabelSet }[] = [
 
 export default function GeneralSection(): React.JSX.Element {
   const { settings, update } = useSettings()
-  // The general warning for the version of Claude Code (spec 11.5, ruling C5).
-  const versionText = versionNotice(useLive().version)
+  // The general warning for the version of Claude Code (spec 11.5, ruling C5). A failed check
+  // warns too.
+  const { version, versionFailed } = useLive()
+  const versionText = claudeVersionNotice(version, versionFailed)
   const [terminalApps, setTerminalApps] = useState<ProjectApp[]>([])
   const [projectApps, setProjectApps] = useState<ProjectApp[]>([])
   const [info, setInfo] = useState<{ packaged: boolean; version: string } | null>(null)

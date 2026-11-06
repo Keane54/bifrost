@@ -7,6 +7,8 @@ import { errorMessage } from '../lib/error-message'
 import LiveSteps from './LiveSteps'
 import { useLive } from './live-context'
 import {
+  claudeVersionLine,
+  claudeVersionNotice,
   type LiveActionId,
   liveActions,
   liveStateLine,
@@ -14,7 +16,6 @@ import {
   oldInstallNote,
   RELOAD_NOTE,
   REMOVE_CONFIRM,
-  versionNotice,
   WITHOUT_LIVE,
 } from './live-notice'
 
@@ -37,7 +38,7 @@ function Note({ text, name }: { text: string | null; name: string }): React.JSX.
 
 export default function LiveSection(): React.JSX.Element {
   const live = useLive()
-  const { busy, changed, notice, refresh, status, version } = live
+  const { busy, changed, notice, refresh, status, version, versionFailed } = live
   const confirm = useConfirm()
   const [error, setError] = useState<string | null>(null)
   // True after the first Install click. The steps then show with Install and Cancel.
@@ -86,12 +87,7 @@ export default function LiveSection(): React.JSX.Element {
 
   // The status for the steps of Install, or null when the steps do not show.
   const stepsOf = showSteps && notice.kind === 'not-installed' ? status : null
-  const claudeLine =
-    version === null
-      ? 'Checking Claude Code...'
-      : version.version === null
-        ? null
-        : `Claude Code ${version.version}`
+  const claudeLine = claudeVersionLine(version, versionFailed)
 
   return (
     <div className='flex flex-col text-xs'>
@@ -156,7 +152,7 @@ export default function LiveSection(): React.JSX.Element {
       <ErrorLine message={error} onClose={() => setError(null)} />
       <div className='px-3 py-2 text-text' data-live-claude={true}>
         {claudeLine !== null && <p className='select-text'>{claudeLine}</p>}
-        <Note name='version' text={versionNotice(version)} />
+        <Note name='version' text={claudeVersionNotice(version, versionFailed)} />
       </div>
     </div>
   )

@@ -8,13 +8,13 @@ import { errorMessage } from '../lib/error-message'
 import LiveSteps from './LiveSteps'
 import { useLive } from './live-context'
 import {
+  claudeVersionNotice,
   liveStateLine,
   liveVersionNote,
   RELOAD_NOTE,
   SETUP_INTRO,
   setupChosen,
   shouldShowSetup,
-  versionNotice,
   WITHOUT_LIVE,
 } from './live-notice'
 import { useSettings } from './settings-context'
@@ -28,7 +28,7 @@ function logSaveError(err: unknown): void {
 
 export default function SetupDialog(): React.JSX.Element {
   const { ready, settings, update } = useSettings()
-  const { busy, install, notice, refresh, status, version } = useLive()
+  const { busy, install, notice, refresh, status, version, versionFailed } = useLive()
   const [open, setOpen] = useState(false)
   const [phase, setPhase] = useState<Phase>('ask')
   const [error, setError] = useState<string | null>(null)
@@ -75,7 +75,7 @@ export default function SetupDialog(): React.JSX.Element {
     setPhase('done')
   }
 
-  const versionText = versionNotice(version)
+  const versionText = claudeVersionNotice(version, versionFailed)
   const liveVersionText = liveVersionNote(status)
 
   return (

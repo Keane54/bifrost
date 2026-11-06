@@ -9,7 +9,7 @@ import {
   Settings,
   SquarePlus,
 } from 'lucide-react'
-import { memo } from 'react'
+import { memo, useId } from 'react'
 import {
   actionLabel,
   buttonTip,
@@ -55,7 +55,8 @@ function freeOverview(state: WmState): string | undefined {
 }
 
 // With dot, the button shows a 6 px square white dot at its top right corner, and the
-// tooltip gives the reason.
+// tooltip gives the reason. The name stays the label. A hidden text gives the reason to a
+// screen reader as the description.
 function SideButton(props: {
   label: string
   icon: LucideIcon
@@ -65,8 +66,10 @@ function SideButton(props: {
   onClick(): void
 }): React.JSX.Element {
   const Icon = props.icon
+  const dotId = useId()
   return (
     <button
+      aria-describedby={props.dot === undefined ? undefined : dotId}
       aria-label={props.label}
       className={cx(BUTTON, 'relative h-8')}
       disabled={props.disabled}
@@ -76,11 +79,16 @@ function SideButton(props: {
     >
       <Icon aria-hidden={true} size={props.size ?? 16} />
       {props.dot !== undefined && (
-        <span
-          aria-hidden={true}
-          className='absolute top-1.5 right-1.5 size-1.5 bg-text-strong'
-          data-side-warning={true}
-        />
+        <>
+          <span
+            aria-hidden={true}
+            className='absolute top-1.5 right-1.5 size-1.5 bg-text-strong'
+            data-side-warning={true}
+          />
+          <span className='sr-only' id={dotId}>
+            {props.dot}
+          </span>
+        </>
       )}
     </button>
   )

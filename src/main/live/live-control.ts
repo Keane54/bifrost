@@ -7,12 +7,12 @@
 
 import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { LIVE_MIN_CLAUDE_VERSION } from '../../shared/live'
 import type { ClaudeVersion, LivePluginState, LiveStatus } from '../../shared/types'
 import type { LiveServer } from './live-server'
 import { modFolderCurrent, removeModFolder, syncModFolder } from './mod-folder'
 import { MARKETPLACE_NAME, type PluginCli, type PluginEntry } from './plugin-cli'
 
-export const LIVE_MIN_CLAUDE_VERSION = '2.1.290'
 export const RELOAD_NOTE =
   'Sessions that run now get the change after /reload-plugins or a restart.'
 

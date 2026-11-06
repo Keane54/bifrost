@@ -13,7 +13,7 @@ import {
   stopRegistry,
 } from './ipc'
 import { buildMenuTemplate, modeHandlers } from './menu'
-import { refusedTestHome, testHomeConfig } from './test-home'
+import { refusedTestHome, testHomeConfig, testHomeError } from './test-home'
 import { createModeController, type ModeController } from './window/display-mode'
 import { openWindowStateStore, restoreBounds } from './window/window-state'
 
@@ -216,10 +216,7 @@ function startApp(): void {
 // A test home value that Bifrost refuses also stops the start. Then a check never uses the real
 // home by mistake.
 if (badTestHome !== null) {
-  console.error(
-    `Bifrost can't use the test home ${badTestHome}. Use an absolute folder that isn't /, ` +
-      'your home folder or a parent of it.',
-  )
+  console.error(testHomeError(badTestHome))
   app.exit(1)
 } else if (app.requestSingleInstanceLock()) {
   startApp()

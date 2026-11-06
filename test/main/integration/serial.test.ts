@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
-import { BUSY_MESSAGE, createSerialRunner } from '../../../src/main/integration/serial'
+import { createSerialRunner } from '../../../src/main/integration/serial'
+import { BUSY_MESSAGE } from '../../../src/shared/live'
 
 // Return a promise and the function that resolves it.
 function gate<T>(): { promise: Promise<T>; open: (value: T) => void } {

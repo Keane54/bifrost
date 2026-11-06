@@ -1,19 +1,19 @@
 // The state of Live details and the version of Claude Code for the renderer (spec 11, D11).
 // The setup dialog, Settings > Live details, Settings > General and the side bar read it.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { BUSY_MESSAGE } from '../../../shared/live'
 import type { ClaudeVersion, LiveStatus } from '../../../shared/types'
 import { friendlyError } from '../actions/errors'
 import { errorMessage } from '../lib/error-message'
 import { hasWarning, type LiveNotice, liveNotice, unknownStatus } from './live-notice'
-
-// The text of the serial runner of the main process (BUSY_MESSAGE in integration/serial.ts).
-const BUSY = 'Another change is still running. Try again in a moment.'
 
 export interface LiveValue {
   // null until the first live.status() resolves.
   status: LiveStatus | null
   // null until the first claudeVersion() resolves.
   version: ClaudeVersion | null
+  // True when the claudeVersion() call failed. The version then stays null.
+  versionFailed: boolean
   notice: LiveNotice
   // True for a problem, an old hook install or a version notice (D11).
   warning: boolean
@@ -40,6 +40,7 @@ function loadStatus(): Promise<LiveStatus> {
 export function LiveProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [status, setStatus] = useState<LiveStatus | null>(null)
   const [version, setVersion] = useState<ClaudeVersion | null>(null)
+  const [versionFailed, setVersionFailed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [changed, setChanged] = useState(false)
   // The ref stops a second call before the next render shows busy.
@@ -56,7 +57,10 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
       next => {
         if (mounted.current) setVersion(next)
       },
-      err => console.error('Bifrost cannot read the version of Claude Code.', err),
+      err => {
+        console.error('Bifrost cannot read the version of Claude Code.', err)
+        if (mounted.current) setVersionFailed(true)
+      },
     )
     return () => {
       mounted.current = false
@@ -65,7 +69,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
 
   // Run one call with the lock. A call that comes while another call runs rejects.
   const locked = useCallback(async (fn: () => Promise<void>): Promise<void> => {
-    if (running.current) throw new Error(BUSY)
+    if (running.current) throw new Error(BUSY_MESSAGE)
     running.current = true
     setBusy(true)
     try {
@@ -118,9 +122,10 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
       status,
       uninstall: action(() => window.bifrost.live.uninstall(), false),
       version,
-      warning: hasWarning(status, version),
+      versionFailed,
+      warning: hasWarning(status, version, versionFailed),
     }),
-    [action, busy, changed, refresh, status, version],
+    [action, busy, changed, refresh, status, version, versionFailed],
   )
 
   return <LiveContext value={value}>{children}</LiveContext>

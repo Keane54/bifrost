@@ -5,13 +5,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { compareVersions } from '../../../src/main/claude/version'
 import {
   createLiveControl,
-  LIVE_MIN_CLAUDE_VERSION,
   type LiveControlDeps,
   RELOAD_NOTE,
 } from '../../../src/main/live/live-control'
 import type { LiveServer, LiveServerState } from '../../../src/main/live/live-server'
 import { MOD_FILES, modFolderCurrent } from '../../../src/main/live/mod-folder'
 import type { MarketplaceEntry, PluginCli, PluginEntry } from '../../../src/main/live/plugin-cli'
+import { LIVE_MIN_CLAUDE_VERSION } from '../../../src/shared/live'
 
 let root: string
 let source: string

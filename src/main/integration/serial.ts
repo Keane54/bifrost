@@ -1,5 +1,6 @@
-// The message of the Error for a call that comes while another call runs. The renderer shows it.
-export const BUSY_MESSAGE = 'Another change is still running. Try again in a moment.'
+// BUSY_MESSAGE is the message of the Error for a call that comes while another call runs.
+// The renderer shows it.
+import { BUSY_MESSAGE } from '../../shared/live'
 
 export interface SerialRunner {
   run<T>(fn: () => Promise<T>): Promise<T>

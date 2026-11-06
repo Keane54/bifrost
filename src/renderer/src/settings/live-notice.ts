@@ -1,5 +1,6 @@
 // The texts and the rules of the setup dialog and Settings > Live details (spec 11, D10, D11).
 // The functions are pure, so the tests can check each rule.
+import { LIVE_MIN_CLAUDE_VERSION } from '../../../shared/live'
 import type { Settings } from '../../../shared/settings'
 import type { ClaudeVersion, LiveStatus } from '../../../shared/types'
 import type { ConfirmText } from '../actions/confirm'
@@ -22,8 +23,11 @@ export const REMOVE_CONFIRM: ConfirmText = {
   title: 'Remove Live details',
 }
 
-// The minimum version of Live details is 2.1.290 (LIVE_MIN_CLAUDE_VERSION, spec 11.5).
-export const LIVE_VERSION_NOTE = 'Live details needs Claude Code 2.1.290 or later.'
+// The warning for a version below the minimum of Live details (spec 11.5).
+export const LIVE_VERSION_NOTE = `Live details needs Claude Code ${LIVE_MIN_CLAUDE_VERSION} or later.`
+
+// The text when the claudeVersion() call fails.
+export const VERSION_CHECK_FAILED = "Bifrost couldn't check the Claude Code version."
 
 const NOT_CHECKED = "Bifrost couldn't check Live details."
 const NOT_RECEIVING =
@@ -94,6 +98,19 @@ export function versionNotice(version: ClaudeVersion | null): string | null {
   return `Claude Code ${version.version} is older than ${version.minimum}, which Bifrost needs. Please update Claude Code.`
 }
 
+// The general version warning, also for a failed check. The General section shows it at the top,
+// and the Live details section shows it under the Claude Code line.
+export function claudeVersionNotice(version: ClaudeVersion | null, failed: boolean): string | null {
+  return failed ? VERSION_CHECK_FAILED : versionNotice(version)
+}
+
+// The Claude Code line of the Live details section, or null. A failed check and a missing claude
+// give null, because the notice gives the reason.
+export function claudeVersionLine(version: ClaudeVersion | null, failed: boolean): string | null {
+  if (version === null) return failed ? null : 'Checking Claude Code...'
+  return version.version === null ? null : `Claude Code ${version.version}`
+}
+
 // The warning for a version of Claude Code below the minimum of Live details (ruling C5).
 // With no version, versionNotice already says that Bifrost can't find Claude Code.
 export function liveVersionNote(status: LiveStatus | null): string | null {
@@ -102,11 +119,17 @@ export function liveVersionNote(status: LiveStatus | null): string | null {
 }
 
 // True when Bifrost has a warning about Live details or Claude Code. The side bar Settings
-// button then shows a dot (D11). An old version for Live details counts only while the plugin
-// is installed. After Skip, Live details off is the choice of the user.
-export function hasWarning(status: LiveStatus | null, version: ClaudeVersion | null): boolean {
+// button then shows a dot (D11). A failed version check is a warning too. An old version for
+// Live details counts only while the plugin is installed. After Skip, Live details off is the
+// choice of the user.
+export function hasWarning(
+  status: LiveStatus | null,
+  version: ClaudeVersion | null,
+  versionFailed = false,
+): boolean {
   if (liveNotice(status).kind === 'problem') return true
-  if (oldInstallNote(status) !== null || versionNotice(version) !== null) return true
+  if (oldInstallNote(status) !== null) return true
+  if (claudeVersionNotice(version, versionFailed) !== null) return true
   return setupChosen(status) && liveVersionNote(status) !== null
 }
 

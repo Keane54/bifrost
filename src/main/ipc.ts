@@ -12,6 +12,7 @@ import {
   type OpenDialogOptions,
   type WebContents,
 } from 'electron'
+import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
 import { DEFAULT_SETTINGS, type Settings } from '../shared/settings'
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
@@ -44,7 +45,7 @@ import {
   uninstall,
 } from './integration/integration'
 import { createSerialRunner } from './integration/serial'
-import { createLiveControl, LIVE_MIN_CLAUDE_VERSION, type LiveControl } from './live/live-control'
+import { createLiveControl, type LiveControl } from './live/live-control'
 import { createLiveServer } from './live/live-server'
 import { modSourceDir } from './live/mod-folder'
 import { createPluginCli } from './live/plugin-cli'

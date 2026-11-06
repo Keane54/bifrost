@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  claudeVersionLine,
+  claudeVersionNotice,
   hasWarning,
   LIVE_VERSION_NOTE,
   liveActions,
@@ -14,6 +16,7 @@ import {
   setupChosen,
   shouldShowSetup,
   unknownStatus,
+  VERSION_CHECK_FAILED,
   versionNotice,
   WITHOUT_LIVE,
 } from '../../../src/renderer/src/settings/live-notice'
@@ -126,6 +129,27 @@ describe('live notice', () => {
     expect(versionNotice(GOOD)).toBeNull()
     // The version is not loaded yet.
     expect(versionNotice(null)).toBeNull()
+  })
+
+  it('a failed version check gives its own notice and a warning', () => {
+    expect(VERSION_CHECK_FAILED).toBe("Bifrost couldn't check the Claude Code version.")
+    expect(claudeVersionNotice(null, true)).toBe(VERSION_CHECK_FAILED)
+    expect(claudeVersionNotice(null, false)).toBeNull()
+    expect(claudeVersionNotice(GOOD, false)).toBeNull()
+    expect(claudeVersionNotice({ ...GOOD, ok: false, version: '2.1.200' }, false)).toBe(
+      versionNotice({ ...GOOD, ok: false, version: '2.1.200' }),
+    )
+    expect(hasWarning(status(), null, true)).toBe(true)
+    expect(hasWarning(status(), null, false)).toBe(false)
+  })
+
+  it('claudeVersionLine gives the version, a check line or nothing', () => {
+    expect(claudeVersionLine(GOOD, false)).toBe('Claude Code 2.1.300')
+    expect(claudeVersionLine(null, false)).toBe('Checking Claude Code...')
+    // A failed check does not say "Checking" for ever. The notice gives the reason.
+    expect(claudeVersionLine(null, true)).toBeNull()
+    // Without a version, versionNotice says that Bifrost can't find Claude Code.
+    expect(claudeVersionLine({ ...GOOD, ok: false, version: null }, false)).toBeNull()
   })
 
   it('liveVersionNote shows when Claude Code is too old for Live details', () => {

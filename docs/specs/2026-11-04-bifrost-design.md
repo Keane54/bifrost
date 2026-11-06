@@ -833,7 +833,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Terminal font | SF Mono, 13 pt |
 | Display mode | Window |
 | Keys | Section 9.4 |
-| Integration | Live details: Install, Turn on, Turn off, Remove |
+| Live details | Not installed. The section has Install, Turn on, Turn off and Remove (section 11.2). |
 
 ## 13. Performance targets
 
