@@ -17,6 +17,21 @@ describe('a row that the search hides', () => {
     for (const arg of calls) expect(arg).toMatch(/^(?:GENERAL_ROWS\.\w+|props\.label)$/)
   })
 
+  // Re-review Important 1: a hook runs in the component that calls it. The filter of the search
+  // reaches a useRowSave call only when the provider is in a component above that component.
+  it('calls useRowSave only in components below the filter provider', () => {
+    const functions = [
+      ...general.matchAll(/^(?:export (?:default )?)?function (\w+)[\s\S]*?^\}$/gm),
+    ].map(m => ({ body: m[0], name: m[1] }))
+    const providers = functions.filter(f => f.body.includes('<RowFilterContext'))
+    expect(providers.map(f => f.name)).toEqual(['GeneralSection'])
+    for (const f of providers) expect(f.body, f.name).not.toContain('useRowSave(')
+    // Each other component with a useRowSave call renders inside the provider.
+    const callers = functions.filter(f => f.body.includes('useRowSave(')).map(f => f.name)
+    expect(callers.length).toBeGreaterThan(0)
+    for (const name of callers) expect(general, name).toMatch(new RegExp(`<${name}\\b`))
+  })
+
   it('removes its save state and its error while the search hides it', () => {
     expect(row).toMatch(/if \(shown\) return\s+tracker\?\.remove\(key\)\s+setError\(null\)/)
   })

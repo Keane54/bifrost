@@ -254,11 +254,23 @@ const LABEL_CHOICES: { label: string; value: LabelSet }[] = [
 
 // only: during a search, the labels of the rows that show (spec 12). The notice and the version
 // line then do not show.
+// The filter provider is in this component, above GeneralRows. A hook runs in the component that
+// calls it. So each useRowSave call of a row must be below the provider, or the search cannot
+// hide the save state of the row (re-review Important 1).
 export default function GeneralSection({
   only = null,
 }: {
   only?: ReadonlySet<string> | null
 }): React.JSX.Element {
+  return (
+    <RowFilterContext value={only}>
+      <GeneralRows only={only} />
+    </RowFilterContext>
+  )
+}
+
+// The rows of Settings > General, below the filter provider of GeneralSection.
+function GeneralRows({ only }: { only: ReadonlySet<string> | null }): React.JSX.Element {
   const { settings, update } = useSettings()
   // The general warning for the version of Claude Code (spec 11.5, ruling C5). A failed check
   // warns too.
@@ -299,189 +311,181 @@ export default function GeneralSection({
 
   const font = settings.terminalFont
   return (
-    <RowFilterContext value={only}>
-      <div className='flex min-h-full flex-col'>
-        {only === null && versionText !== null && (
-          <p
-            className='select-text border-panel-edge border-b px-3 py-2 text-text text-xs'
-            data-settings-version-notice={true}
-          >
-            {versionText}
-          </p>
-        )}
-        <SettingRow
-          error={labelsRow.error}
+    <div className='flex min-h-full flex-col'>
+      {only === null && versionText !== null && (
+        <p
+          className='select-text border-panel-edge border-b px-3 py-2 text-text text-xs'
+          data-settings-version-notice={true}
+        >
+          {versionText}
+        </p>
+      )}
+      <SettingRow
+        error={labelsRow.error}
+        label={GENERAL_ROWS.labels}
+        onCloseError={labelsRow.closeError}
+      >
+        <Choices
+          choices={LABEL_CHOICES}
           label={GENERAL_ROWS.labels}
-          onCloseError={labelsRow.closeError}
-        >
-          <Choices
-            choices={LABEL_CHOICES}
-            label={GENERAL_ROWS.labels}
-            onChange={value => {
-              labelsRow.save(() => update({ labels: value as LabelSet }))
-            }}
-            value={settings.labels}
-          />
-        </SettingRow>
-        <SettingRow
-          error={terminalRow.error}
+          onChange={value => {
+            labelsRow.save(() => update({ labels: value as LabelSet }))
+          }}
+          value={settings.labels}
+        />
+      </SettingRow>
+      <SettingRow
+        error={terminalRow.error}
+        label={GENERAL_ROWS.terminalApp}
+        onCloseError={terminalRow.closeError}
+      >
+        <AppSelect
+          apps={terminalApps}
+          auto={AUTO_TERMINAL}
           label={GENERAL_ROWS.terminalApp}
-          onCloseError={terminalRow.closeError}
-        >
-          <AppSelect
-            apps={terminalApps}
-            auto={AUTO_TERMINAL}
-            label={GENERAL_ROWS.terminalApp}
-            onChange={id => {
-              const terminalApp = TERMINAL_APP_IDS.find(t => t === id) ?? null
-              terminalRow.save(() => update({ terminalApp: terminalApp as TerminalAppId | null }))
-            }}
-            value={settings.terminalApp}
-          />
-        </SettingRow>
-        <SettingRow
-          error={projectRow.error}
+          onChange={id => {
+            const terminalApp = TERMINAL_APP_IDS.find(t => t === id) ?? null
+            terminalRow.save(() => update({ terminalApp: terminalApp as TerminalAppId | null }))
+          }}
+          value={settings.terminalApp}
+        />
+      </SettingRow>
+      <SettingRow
+        error={projectRow.error}
+        label={GENERAL_ROWS.projectApp}
+        onCloseError={projectRow.closeError}
+      >
+        <AppSelect
+          apps={projectAppChoices(projectApps)}
+          auto={AUTO_PROJECT}
           label={GENERAL_ROWS.projectApp}
-          onCloseError={projectRow.closeError}
-        >
-          <AppSelect
-            apps={projectAppChoices(projectApps)}
-            auto={AUTO_PROJECT}
-            label={GENERAL_ROWS.projectApp}
-            onChange={id => {
-              projectRow.save(() => update({ projectApp: id as ProjectAppId | null }))
-            }}
-            value={shownProjectApp(settings.projectApp)}
-          />
-        </SettingRow>
-        <NumberRow
-          label={GENERAL_ROWS.escalation}
-          max={MAX_ESCALATION_MINUTES}
-          min={0}
-          save={value => update({ escalationMinutes: value })}
-          unit='minutes (0 turns escalation off)'
-          value={settings.escalationMinutes}
+          onChange={id => {
+            projectRow.save(() => update({ projectApp: id as ProjectAppId | null }))
+          }}
+          value={shownProjectApp(settings.projectApp)}
         />
-        <CheckRow
-          checked={settings.rowFlash}
-          label={GENERAL_ROWS.rowFlash}
-          save={value => update({ rowFlash: value })}
+      </SettingRow>
+      <NumberRow
+        label={GENERAL_ROWS.escalation}
+        max={MAX_ESCALATION_MINUTES}
+        min={0}
+        save={value => update({ escalationMinutes: value })}
+        unit='minutes (0 turns escalation off)'
+        value={settings.escalationMinutes}
+      />
+      <CheckRow
+        checked={settings.rowFlash}
+        label={GENERAL_ROWS.rowFlash}
+        save={value => update({ rowFlash: value })}
+      />
+      <CheckRow
+        checked={settings.notifications}
+        label={GENERAL_ROWS.notifications}
+        save={value => update({ notifications: value })}
+      />
+      <CheckRow
+        checked={settings.redBoxSound}
+        label={GENERAL_ROWS.redBoxSound}
+        save={value => update({ redBoxSound: value })}
+      />
+      <CheckRow
+        checked={settings.startAtLogin}
+        disabled={info !== null && !info.packaged}
+        hint={info !== null && !info.packaged ? 'Only works in the installed app.' : undefined}
+        label={GENERAL_ROWS.startAtLogin}
+        save={value => update({ startAtLogin: value })}
+      />
+      <CheckRow
+        checked={settings.accountUsage}
+        hint='Shows usage from all your devices. Bifrost reads your Claude Code login from the Keychain. macOS may ask you to allow this.'
+        label={GENERAL_ROWS.accountUsage}
+        save={value => update({ accountUsage: value })}
+      />
+      <SelectRow
+        choices={POLL_CHOICES}
+        label={GENERAL_ROWS.poll}
+        save={value => update({ pollSeconds: value })}
+        text={seconds => (seconds === 1 ? '1 second' : `${seconds} seconds`)}
+        value={settings.pollSeconds}
+      />
+      <NumberRow
+        label={GENERAL_ROWS.snap}
+        max={MAX_SNAP}
+        min={0}
+        save={value => update({ snapDistance: value })}
+        unit='pixels'
+        value={settings.snapDistance}
+      />
+      <SelectRow
+        choices={PANEL_TRANSPARENCY_CHOICES}
+        label={GENERAL_ROWS.transparency}
+        save={value => update({ panelTransparency: value })}
+        text={percent => (percent === 0 ? '0% (solid)' : `${percent}%`)}
+        value={settings.panelTransparency}
+      />
+      <SelectRow
+        choices={INTERFACE_SCALE_CHOICES}
+        label={GENERAL_ROWS.scale}
+        save={value => update({ interfaceScale: value })}
+        text={percent => `${percent}%`}
+        value={settings.interfaceScale}
+      />
+      <SettingRow error={fontRow.error} label={GENERAL_ROWS.font} onCloseError={fontRow.closeError}>
+        <datalist id='settings-font-families'>
+          {FONT_FAMILIES.map(family => (
+            <option key={family} value={family} />
+          ))}
+        </datalist>
+        <DraftField
+          label='Terminal font family'
+          list='settings-font-families'
+          onCommit={text => fontRow.save(() => update({ terminalFont: { ...font, family: text } }))}
+          type='text'
+          value={font.family}
+          width='w-36'
         />
-        <CheckRow
-          checked={settings.notifications}
-          label={GENERAL_ROWS.notifications}
-          save={value => update({ notifications: value })}
-        />
-        <CheckRow
-          checked={settings.redBoxSound}
-          label={GENERAL_ROWS.redBoxSound}
-          save={value => update({ redBoxSound: value })}
-        />
-        <CheckRow
-          checked={settings.startAtLogin}
-          disabled={info !== null && !info.packaged}
-          hint={info !== null && !info.packaged ? 'Only works in the installed app.' : undefined}
-          label={GENERAL_ROWS.startAtLogin}
-          save={value => update({ startAtLogin: value })}
-        />
-        <CheckRow
-          checked={settings.accountUsage}
-          hint='Shows usage from all your devices. Bifrost reads your Claude Code login from the Keychain. macOS may ask you to allow this.'
-          label={GENERAL_ROWS.accountUsage}
-          save={value => update({ accountUsage: value })}
-        />
-        <SelectRow
-          choices={POLL_CHOICES}
-          label={GENERAL_ROWS.poll}
-          save={value => update({ pollSeconds: value })}
-          text={seconds => (seconds === 1 ? '1 second' : `${seconds} seconds`)}
-          value={settings.pollSeconds}
-        />
-        <NumberRow
-          label={GENERAL_ROWS.snap}
-          max={MAX_SNAP}
-          min={0}
-          save={value => update({ snapDistance: value })}
-          unit='pixels'
-          value={settings.snapDistance}
-        />
-        <SelectRow
-          choices={PANEL_TRANSPARENCY_CHOICES}
-          label={GENERAL_ROWS.transparency}
-          save={value => update({ panelTransparency: value })}
-          text={percent => (percent === 0 ? '0% (solid)' : `${percent}%`)}
-          value={settings.panelTransparency}
-        />
-        <SelectRow
-          choices={INTERFACE_SCALE_CHOICES}
-          label={GENERAL_ROWS.scale}
-          save={value => update({ interfaceScale: value })}
-          text={percent => `${percent}%`}
-          value={settings.interfaceScale}
-        />
-        <SettingRow
-          error={fontRow.error}
-          label={GENERAL_ROWS.font}
-          onCloseError={fontRow.closeError}
-        >
-          <datalist id='settings-font-families'>
-            {FONT_FAMILIES.map(family => (
-              <option key={family} value={family} />
-            ))}
-          </datalist>
-          <DraftField
-            label='Terminal font family'
-            list='settings-font-families'
-            onCommit={text =>
-              fontRow.save(() => update({ terminalFont: { ...font, family: text } }))
+        <DraftField
+          label='Terminal font size'
+          max={FONT_SIZE_MAX}
+          min={FONT_SIZE_MIN}
+          onCommit={text => {
+            const size = Number(text)
+            if (text.trim() === '' || !Number.isInteger(size)) {
+              return fontRow.save(() =>
+                Promise.reject(
+                  new Error(`Enter a whole number from ${FONT_SIZE_MIN} to ${FONT_SIZE_MAX}.`),
+                ),
+              )
             }
-            type='text'
-            value={font.family}
-            width='w-36'
-          />
-          <DraftField
-            label='Terminal font size'
-            max={FONT_SIZE_MAX}
-            min={FONT_SIZE_MIN}
-            onCommit={text => {
-              const size = Number(text)
-              if (text.trim() === '' || !Number.isInteger(size)) {
-                return fontRow.save(() =>
-                  Promise.reject(
-                    new Error(`Enter a whole number from ${FONT_SIZE_MIN} to ${FONT_SIZE_MAX}.`),
-                  ),
-                )
-              }
-              return fontRow.save(() => update({ terminalFont: { ...font, size } }))
-            }}
-            type='number'
-            value={String(font.size)}
-            width='w-14'
-          />
-          <span className='text-text-dim'>pt</span>
-        </SettingRow>
-        <SettingRow
-          error={modeRow.error}
+            return fontRow.save(() => update({ terminalFont: { ...font, size } }))
+          }}
+          type='number'
+          value={String(font.size)}
+          width='w-14'
+        />
+        <span className='text-text-dim'>pt</span>
+      </SettingRow>
+      <SettingRow
+        error={modeRow.error}
+        label={GENERAL_ROWS.displayMode}
+        onCloseError={modeRow.closeError}
+      >
+        <Choices
+          choices={DISPLAY_CHOICES}
           label={GENERAL_ROWS.displayMode}
-          onCloseError={modeRow.closeError}
-        >
-          <Choices
-            choices={DISPLAY_CHOICES}
-            label={GENERAL_ROWS.displayMode}
-            onChange={value => {
-              modeRow.save(() => window.bifrost.display.set(value as DisplayMode))
-            }}
-            value={mode}
-          />
-        </SettingRow>
-        {/* Show the setup dialog again (spec 11.1). */}
-        <IntroRow />
-        {only === null && (
-          <p className='mt-auto px-3 py-2 text-text-dim text-xs' data-settings-version={true}>
-            {info === null ? 'Bifrost' : `Bifrost ${info.version}`}
-          </p>
-        )}
-      </div>
-    </RowFilterContext>
+          onChange={value => {
+            modeRow.save(() => window.bifrost.display.set(value as DisplayMode))
+          }}
+          value={mode}
+        />
+      </SettingRow>
+      {/* Show the setup dialog again (spec 11.1). */}
+      <IntroRow />
+      {only === null && (
+        <p className='mt-auto px-3 py-2 text-text-dim text-xs' data-settings-version={true}>
+          {info === null ? 'Bifrost' : `Bifrost ${info.version}`}
+        </p>
+      )}
+    </div>
   )
 }
