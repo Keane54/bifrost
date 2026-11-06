@@ -58,6 +58,14 @@ describe('keyMatches', () => {
     expect(keyMatches('Mod+N', 'ctrl')).toBe(false)
   })
 
+  // Review Minor 3: the list shows Ctrl as ⌃, which looks like the caret ^ of the keyboard.
+  it('finds a Ctrl key by the caret ^', () => {
+    expect(keyMatches('Mod+Control+1', '^ ⌘ 1')).toBe(true)
+    expect(keyMatches('Mod+Control+1', '^1')).toBe(true)
+    expect(keyMatches('Mod+Control+F', '^')).toBe(true)
+    expect(keyMatches('Mod+N', '^')).toBe(false)
+  })
+
   it('a single letter must be the key itself, and a longer word can be the start of a name', () => {
     expect(keyMatches('Mod+Shift+Tab', 'cmd shift t')).toBe(false)
     expect(keyMatches('Mod+Shift+Tab', 'cmd shift ta')).toBe(true)

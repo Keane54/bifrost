@@ -59,7 +59,7 @@ export function textMatches(text: string, query: string): boolean {
 // The names of the modifiers: the symbol of the key list, then the typed names.
 const MODIFIER_NAMES = {
   alt: ['⌥', 'alt', 'opt', 'option'],
-  ctrl: ['⌃', 'ctrl', 'control'],
+  ctrl: ['⌃', '^', 'ctrl', 'control'],
   mod: ['⌘', 'cmd', 'command', 'mod', 'meta'],
   shift: ['⇧', 'shift'],
 } as const
@@ -82,8 +82,9 @@ const KEY_NAMES: Readonly<Record<string, readonly string[]>> = {
   Tab: ['⇥', 'tab'],
 }
 
-// The symbols that a query can write with no space between them, for example "⌘⇧T".
-const SYMBOLS = /([⌘⇧⌃⌥↑↓←→↵↩⌫⌦⇥␣⎋↖↘⇞⇟])/g
+// The symbols that a query can write with no space between them, for example "⌘⇧T". The caret
+// ^ is a typed form of ⌃ (Ctrl).
+const SYMBOLS = /([⌘⇧⌃^⌥↑↓←→↵↩⌫⌦⇥␣⎋↖↘⇞⇟])/g
 
 // The parts of a key query: "cmd+shift+t", "cmd shift t" and "⌘⇧T" all give cmd, shift and t.
 function keyParts(query: string): string[] {
