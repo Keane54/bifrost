@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import http from 'node:http'
 import net from 'node:net'
@@ -29,12 +29,12 @@ async function tempDir(): Promise<string> {
   return dir
 }
 
-function setup(options: { requestTimeoutMs?: number; checkIntervalMs?: number } = {}) {
+function setup() {
   const events: LiveEvent[] = []
-  return { events, onEvent: (ev: LiveEvent) => events.push(ev), options }
+  return { events, onEvent: (ev: LiveEvent) => events.push(ev) }
 }
 
-async function make(
+function make(
   dir: string,
   onEvent: (ev: LiveEvent) => void,
   options: { requestTimeoutMs?: number; checkIntervalMs?: number } = {},
@@ -66,7 +66,7 @@ afterEach(async () => {
 describe('createLiveServer', () => {
   test('start listens on the socket with mode 0600 in a directory with mode 0700', async () => {
     const { onEvent } = setup()
-    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const { server, socketPath } = make(await tempDir(), onEvent)
     expect(await server.start()).toEqual({ listening: true })
     expect(statSync(socketPath).mode & 0o777).toBe(0o600)
     expect(statSync(join(socketPath, '..')).mode & 0o777).toBe(0o700)
@@ -76,7 +76,7 @@ describe('createLiveServer', () => {
 
   test('a POST of a good line gives 204 and one event', async () => {
     const { events, onEvent } = setup()
-    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const { server, socketPath } = make(await tempDir(), onEvent)
     await server.start()
     expect(await send(socketPath, 'POST', '/v1/event', good)).toBe(204)
     await vi.waitFor(() => expect(events).toHaveLength(1))
@@ -85,7 +85,7 @@ describe('createLiveServer', () => {
 
   test('a bad line gives 204 and no event', async () => {
     const { events, onEvent } = setup()
-    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const { server, socketPath } = make(await tempDir(), onEvent)
     await server.start()
     expect(await send(socketPath, 'POST', '/v1/event', 'not json')).toBe(204)
     await new Promise(r => setTimeout(r, 50))
@@ -94,7 +94,7 @@ describe('createLiveServer', () => {
 
   test('another path or method gives 404 and no event', async () => {
     const { events, onEvent } = setup()
-    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const { server, socketPath } = make(await tempDir(), onEvent)
     await server.start()
     expect(await send(socketPath, 'GET', '/v1/event')).toBe(404)
     expect(await send(socketPath, 'POST', '/other', good)).toBe(404)
@@ -104,16 +104,29 @@ describe('createLiveServer', () => {
 
   test('a body over 65536 bytes gives 413 and no event', async () => {
     const { events, onEvent } = setup()
-    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const { server, socketPath } = make(await tempDir(), onEvent)
     await server.start()
     expect(await send(socketPath, 'POST', '/v1/event', 'x'.repeat(70_000))).toBe(413)
+    const raw = await new Promise<string>(resolve => {
+      let text = ''
+      const socket = net.connect(socketPath, () => {
+        socket.write('POST /v1/event HTTP/1.1\r\nHost: bifrost\r\nContent-Length: 70000\r\n\r\n')
+        socket.write('x'.repeat(70_000))
+      })
+      socket.on('data', d => {
+        text += String(d)
+      })
+      socket.on('error', () => {})
+      socket.on('close', () => resolve(text))
+    })
+    expect(raw.startsWith('HTTP/1.1 413')).toBe(true)
     await new Promise(r => setTimeout(r, 50))
     expect(events).toHaveLength(0)
   })
 
   test('a request with no end is closed after the request timeout', async () => {
     const { events, onEvent } = setup()
-    const { server, socketPath } = await make(await tempDir(), onEvent, {
+    const { server, socketPath } = make(await tempDir(), onEvent, {
       checkIntervalMs: 50,
       requestTimeoutMs: 200,
     })
@@ -133,7 +146,7 @@ describe('createLiveServer', () => {
   test('start replaces a stale socket file', async () => {
     const { onEvent } = setup()
     const dir = await tempDir()
-    const { server, socketPath } = await make(dir, onEvent)
+    const { server, socketPath } = make(dir, onEvent)
     const script = `
       const net = require('node:net')
       const fs = require('node:fs')
@@ -151,8 +164,7 @@ describe('createLiveServer', () => {
   test('start does not take a socket that answers', async () => {
     const { onEvent } = setup()
     const dir = await tempDir()
-    const { server, socketPath } = await make(dir, onEvent)
-    const { mkdirSync } = await import('node:fs')
+    const { server, socketPath } = make(dir, onEvent)
     mkdirSync(join(dir, 'run'), { mode: 0o700 })
     const other = net.createServer(s => s.end('hi'))
     others.push(other)
@@ -173,8 +185,7 @@ describe('createLiveServer', () => {
   test('start never deletes a file that is not a socket', async () => {
     const { onEvent } = setup()
     const dir = await tempDir()
-    const { server, socketPath } = await make(dir, onEvent)
-    const { mkdirSync } = await import('node:fs')
+    const { server, socketPath } = make(dir, onEvent)
     mkdirSync(join(dir, 'run'), { mode: 0o700 })
     writeFileSync(socketPath, 'keep me')
     expect(await server.start()).toEqual({
@@ -187,7 +198,7 @@ describe('createLiveServer', () => {
 
   test('stop closes the server and removes the socket file', async () => {
     const { onEvent } = setup()
-    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const { server, socketPath } = make(await tempDir(), onEvent)
     await server.start()
     const open = net.connect(socketPath)
     open.on('error', () => {})
@@ -204,7 +215,7 @@ describe('createLiveServer', () => {
     const dir = await tempDir()
     const seen: LiveEvent[] = []
     let first = true
-    const { server, socketPath } = await make(dir, ev => {
+    const { server, socketPath } = make(dir, ev => {
       if (first) {
         first = false
         throw new Error('boom')
@@ -221,7 +232,7 @@ describe('createLiveServer', () => {
 
   test('a stop during start keeps the server closed', async () => {
     const { onEvent } = setup()
-    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const { server, socketPath } = make(await tempDir(), onEvent)
     const starting = server.start()
     server.stop()
     expect(await starting).toEqual({ listening: false })
@@ -231,7 +242,7 @@ describe('createLiveServer', () => {
 
   test('two starts at once listen one time', async () => {
     const { onEvent } = setup()
-    const { server } = await make(await tempDir(), onEvent)
+    const { server } = make(await tempDir(), onEvent)
     const listen = vi.spyOn(http.Server.prototype, 'listen')
     const [a, b] = await Promise.all([server.start(), server.start()])
     expect(a).toEqual({ listening: true })
@@ -241,7 +252,7 @@ describe('createLiveServer', () => {
 
   test('start after stop listens again', async () => {
     const { events, onEvent } = setup()
-    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const { server, socketPath } = make(await tempDir(), onEvent)
     const first = server.start()
     server.stop()
     await first
@@ -250,5 +261,33 @@ describe('createLiveServer', () => {
     await vi.waitFor(() => expect(events).toHaveLength(1))
     server.stop()
     expect(await server.start()).toEqual({ listening: true })
+  })
+
+  test('a stop between listen and its callback keeps the server closed', async () => {
+    const { onEvent } = setup()
+    const { server, socketPath } = make(await tempDir(), onEvent)
+    const original = http.Server.prototype.listen
+    vi.spyOn(http.Server.prototype, 'listen').mockImplementation(function (
+      this: http.Server,
+      ...args: unknown[]
+    ) {
+      const result = (original as (...a: unknown[]) => http.Server).apply(this, args)
+      server.stop()
+      return result
+    } as typeof http.Server.prototype.listen)
+    expect(await server.start()).toEqual({ listening: false })
+    expect(server.state()).toEqual({ listening: false })
+    expect(existsSync(socketPath)).toBe(false)
+  })
+
+  test('a stop then a start without waiting listens with one socket file', async () => {
+    const { onEvent } = setup()
+    const { server, socketPath } = make(await tempDir(), onEvent)
+    const first = server.start()
+    server.stop()
+    const second = server.start()
+    expect(await first).toEqual({ listening: false })
+    expect(await second).toEqual({ listening: true })
+    expect(readdirSync(join(socketPath, '..'))).toEqual(['l.sock'])
   })
 })

@@ -62,9 +62,11 @@ function probe(socketPath: string): Promise<Probe> {
       finish({ error: `The socket ${socketPath} did not answer in ${PROBE_TIMEOUT_MS} ms.` }),
     )
     socket.once('connect', () => finish({ error: `Another program listens on ${socketPath}.` }))
-    socket.once('error', (err: NodeJS.ErrnoException) =>
-      finish(err.code === 'ECONNREFUSED' ? 'stale' : { error: err.message }),
-    )
+    // ENOENT: the file went away after lstat. The path is free.
+    socket.once('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') finish('free')
+      else finish(err.code === 'ECONNREFUSED' ? 'stale' : { error: err.message })
+    })
   })
 }
 
@@ -163,6 +165,7 @@ export function createLiveServer(opts: LiveServerOptions): LiveServer {
 
   async function run(gen: number): Promise<LiveServerState> {
     try {
+      if (gen !== generation) return stopped()
       const dir = dirname(socketPath)
       mkdirSync(dir, { mode: 0o700, recursive: true })
       chmodSync(dir, 0o700)
