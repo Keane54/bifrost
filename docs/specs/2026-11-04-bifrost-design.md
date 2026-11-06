@@ -421,7 +421,7 @@ Mouse:
 
 The panel shows these items, from top to bottom:
 
-1. The name, the state and the priority.
+1. The name, the state and the priority. A row with no priority shows no priority.
 2. A row of icon buttons: Open, Send message, Run slash command, Interrupt, Show Info, Open in terminal and Stop session.
 3. The project, the branch and the model.
 4. A context bar and the cost.

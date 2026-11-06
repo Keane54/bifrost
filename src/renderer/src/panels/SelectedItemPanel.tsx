@@ -35,12 +35,12 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
         <SessionIcon row={row} size={22} />
         <span className='min-w-0 truncate font-semibold text-[13px]'>{row.name}</span>
         <span className={cx('shrink-0', TONE_TEXT[stateTone(row)])}>{stateLabel(row.state)}</span>
-        <span
-          className={cx('shrink-0', row.priority ? PRIO_TEXT[row.priority] : 'text-text-dim')}
-          title='Priority'
-        >
-          {row.priority ?? '-'}
-        </span>
+        {/* A row with no priority shows nothing here. */}
+        {row.priority && (
+          <span className={cx('shrink-0', PRIO_TEXT[row.priority])} title='Priority'>
+            {row.priority}
+          </span>
+        )}
       </div>
       {/* 2. The action buttons. */}
       <div className='flex gap-1' data-selected-actions={true}>
