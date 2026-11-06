@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { cleanAlias } from '../../shared/alias'
 import { isPriority } from '../../shared/priority'
 import type { Priority } from '../../shared/types'
 import { isWatchColour, OLD_WATCH_COLOURS } from '../../shared/watch'
@@ -11,12 +12,22 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function emptyStore(): RegistryStore {
-  return { lastActive: [], names: {}, priorities: {}, started: [], watch: [], worktrees: [] }
+  return {
+    aliases: {},
+    lastActive: [],
+    names: {},
+    priorities: {},
+    started: [],
+    watch: [],
+    worktrees: [],
+  }
 }
 
 // Read the registry store.
 // A missing file or a file that is not valid JSON gives an empty store.
 // A file without priorities (from M1) gives no priorities.
+// A file without aliases (from before the local name) gives no local names.
+// A local name that is not a valid, non-empty string is dropped. A valid name is trimmed.
 // A file without lastActive (from M3) gives an empty list.
 // A file without watch (from M3) gives an empty watchlist.
 // A watch entry with a bad colour, a bad ID or a repeated ID is dropped.
@@ -47,6 +58,14 @@ export async function loadStore(file: string): Promise<RegistryStore> {
         }),
       )
     : {}
+  const aliases: Record<string, string> = {}
+  if (isObject(data.aliases)) {
+    for (const [id, value] of Object.entries(data.aliases)) {
+      if (typeof value !== 'string') continue
+      const clean = cleanAlias(value)
+      if (clean.ok && clean.name !== '') aliases[id] = clean.name
+    }
+  }
   const started = Array.isArray(data.started)
     ? data.started.filter((id): id is string => typeof id === 'string')
     : []
@@ -89,7 +108,7 @@ export async function loadStore(file: string): Promise<RegistryStore> {
       worktrees.push({ path, sessionId })
     }
   }
-  return { lastActive, names, priorities, started, watch, worktrees }
+  return { aliases, lastActive, names, priorities, started, watch, worktrees }
 }
 
 // Write the store to a temporary name in the same directory. Then rename the file.

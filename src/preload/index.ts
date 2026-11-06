@@ -77,6 +77,7 @@ const api: BifrostApi = {
   registry: {
     onUpdate: cb => subscribe('registry:update', cb),
     rows: () => invoke('registry:rows'),
+    setAlias: (sessionId, name) => invoke('registry:set-alias', sessionId, name),
     setPriority: (sessionId, priority) => invoke('registry:set-priority', sessionId, priority),
     watch: {
       add: (sessionId, colour) => invoke('registry:watch-add', sessionId, colour),

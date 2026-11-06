@@ -5,6 +5,7 @@ export function row(over: Partial<SessionRow> & { sessionId: string }): SessionR
   return {
     box: 'none',
     boxSince: null,
+    claudeName: over.name ?? over.sessionId,
     cwd: '/Users/o/Developer/app',
     flashing: false,
     kind: 'owned',

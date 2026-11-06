@@ -17,3 +17,9 @@ describe('SelectedItemPanel source', () => {
     for (const cls of ['bg-ctx-low', 'bg-ctx-mid', 'bg-ctx-high']) expect(PANEL).toContain(cls)
   })
 })
+
+describe('SelectedItemPanel name tooltip', () => {
+  it('gives the name a title from aliasTip', () => {
+    expect(PANEL).toContain('title={aliasTip(row)}')
+  })
+})

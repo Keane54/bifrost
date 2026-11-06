@@ -29,6 +29,9 @@ export interface BifrostApi {
   claudeVersion(): Promise<ClaudeVersion>
   registry: {
     rows(): Promise<SessionRow[]>
+    // Set the local name of the session. null or an empty name removes it.
+    // This rejects for a bad name and for an unknown session.
+    setAlias(sessionId: string, name: string | null): Promise<void>
     // Set the priority of the session. null removes it.
     // This rejects for a bad priority and for an unknown session.
     setPriority(sessionId: string, priority: Priority | null): Promise<void>
