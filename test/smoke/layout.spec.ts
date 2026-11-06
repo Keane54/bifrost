@@ -10,16 +10,66 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron, type ElectronApplication, expect, type Locator, test } from '@playwright/test'
+import {
+  _electron,
+  type ElectronApplication,
+  expect,
+  type Locator,
+  type Page,
+  test,
+} from '@playwright/test'
 import { launchOptions, readText, realFiles, UNKNOWN_LOG } from './app.ts'
 
 // The width of the narrow Settings frame of the M5a check.
 const NARROW_W = 360
 
+interface Point {
+  x: number
+  y: number
+}
+
 async function box(locator: Locator): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await locator.boundingBox()
   if (b === null) throw new Error('The element has no box.')
   return { h: b.height, w: b.width, x: b.x, y: b.y }
+}
+
+// A drag from one point to another point in steps, with a pen pointer of the CDP Input domain.
+// In Chromium, the Playwright mouse and the real mouse of the Mac have the same pointer ID (1).
+// If a person moves the real mouse over the test window during a mouse drag, the page gets a
+// move of pointer 1 with no button down. Chromium then releases the pointer capture, and Bifrost
+// ends the drag, because a move with no button down means a lost pointer up. The pen pointer has
+// a different ID, so the real mouse cannot stop this drag. Bifrost uses the same pointer events
+// for a pen and for a mouse.
+async function penDrag(page: Page, from: Point, to: Point, steps: number): Promise<void> {
+  const cdp = await page.context().newCDPSession(page)
+  // buttons is 1 while the pen touches, and 0 before and after.
+  const send = (
+    type: 'mouseMoved' | 'mousePressed' | 'mouseReleased',
+    at: Point,
+    buttons: number,
+  ) =>
+    cdp.send('Input.dispatchMouseEvent', {
+      button: type === 'mouseMoved' ? 'none' : 'left',
+      buttons,
+      clickCount: type === 'mouseMoved' ? 0 : 1,
+      pointerType: 'pen',
+      type,
+      x: at.x,
+      y: at.y,
+    })
+  try {
+    await send('mouseMoved', from, 0)
+    await send('mousePressed', from, 1)
+    for (let i = 1; i <= steps; i++) {
+      const part = i / steps
+      const at = { x: from.x + (to.x - from.x) * part, y: from.y + (to.y - from.y) * part }
+      await send('mouseMoved', at, 1)
+    }
+    await send('mouseReleased', to, 0)
+  } finally {
+    await cdp.detach()
+  }
 }
 
 test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their layout', async () => {
@@ -67,12 +117,8 @@ test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their la
     await expect(frame).toBeVisible()
     const start = await box(frame)
     const edge = await box(frame.locator('[data-edge="e"]'))
-    const grabX = edge.x + edge.w / 2
-    const grabY = edge.y + edge.h / 2
-    await page.mouse.move(grabX, grabY)
-    await page.mouse.down()
-    await page.mouse.move(grabX - (start.w - NARROW_W), grabY, { steps: 8 })
-    await page.mouse.up()
+    const grab = { x: edge.x + edge.w / 2, y: edge.y + edge.h / 2 }
+    await penDrag(page, grab, { x: grab.x - (start.w - NARROW_W), y: grab.y }, 8)
     const narrow = await box(frame)
     expect(Math.abs(narrow.w - NARROW_W)).toBeLessThanOrEqual(12)
 
