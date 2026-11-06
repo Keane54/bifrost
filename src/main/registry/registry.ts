@@ -1,3 +1,4 @@
+import { cleanAlias } from '../../shared/alias'
 import type {
   Priority,
   RateLimits,
@@ -24,6 +25,8 @@ import type { TerminalApp } from './terminal-app'
 
 // The data that the registry saves between runs of Bifrost.
 export interface RegistryStore {
+  // The local name of each session. Bifrost shows it and never sends it to Claude Code.
+  aliases: Record<string, string>
   // The sessions that ran in the last run. Resume all uses them.
   lastActive: string[]
   names: Record<string, string>
@@ -138,6 +141,7 @@ export class SessionRegistry {
   private escalationMs: number
   private readonly names: Map<string, string>
   private readonly started: Set<string>
+  private readonly aliases: Map<string, string>
   private readonly priorities: Map<string, Priority>
   // The watch colour of each watched session. The Map order is the watchlist order.
   private readonly watched: Map<string, WatchColour>
@@ -175,15 +179,17 @@ export class SessionRegistry {
   private clock = 0
   private readonly branches = new Map<string, string>()
 
-  // A store without priorities, lastActive, watch or worktrees (from an older version) is valid.
+  // A store without aliases, priorities, lastActive, watch or worktrees (from an older version)
+  // is valid.
   constructor(opts: {
-    store: Omit<RegistryStore, 'priorities' | 'lastActive' | 'watch' | 'worktrees'> &
-      Partial<Pick<RegistryStore, 'priorities' | 'lastActive' | 'watch' | 'worktrees'>>
+    store: Omit<RegistryStore, 'aliases' | 'priorities' | 'lastActive' | 'watch' | 'worktrees'> &
+      Partial<Pick<RegistryStore, 'aliases' | 'priorities' | 'lastActive' | 'watch' | 'worktrees'>>
     escalationMs: number
   }) {
     this.escalationMs = opts.escalationMs
     this.names = new Map(Object.entries(opts.store.names))
     this.started = new Set(opts.store.started)
+    this.aliases = new Map(Object.entries(opts.store.aliases ?? {}))
     this.priorities = new Map(Object.entries(opts.store.priorities ?? {}) as [string, Priority][])
     this.watched = new Map((opts.store.watch ?? []).map(w => [w.sessionId, w.colour]))
     this.worktrees = new Map((opts.store.worktrees ?? []).map(w => [w.sessionId, w.path]))
@@ -343,7 +349,7 @@ export class SessionRegistry {
     const s = this.sessions.get(source.sessionId)
     return {
       limits,
-      name: s ? this.nameOf(s) : source.sessionId.slice(0, 8),
+      name: s ? this.shownName(s) : source.sessionId.slice(0, 8),
       sessionId: source.sessionId,
       updatedAt: source.at,
     }
@@ -413,6 +419,7 @@ export class SessionRegistry {
     const removed = [
       this.started.delete(sessionId),
       this.names.delete(sessionId),
+      this.aliases.delete(sessionId),
       this.priorities.delete(sessionId),
       this.watched.delete(sessionId),
       this.worktrees.delete(sessionId),
@@ -483,6 +490,27 @@ export class SessionRegistry {
       this.inactiveSince.delete(id)
       this.changed = true
     }
+  }
+
+  // Set the local name of a session. null removes it.
+  // An empty name, and a name equal to the Claude Code name, also remove it.
+  // Return false for a session that the registry does not know, and for a bad name.
+  setAlias(sessionId: string, name: string | null): boolean {
+    const s = this.sessions.get(sessionId)
+    if (!s) return false
+    let clean = ''
+    if (name !== null) {
+      const result = cleanAlias(name)
+      if (!result.ok) return false
+      clean = result.name
+    }
+    if (clean === '' || clean === this.nameOf(s)) {
+      if (this.aliases.delete(sessionId)) this.changed = true
+    } else if (this.aliases.get(sessionId) !== clean) {
+      this.aliases.set(sessionId, clean)
+      this.changed = true
+    }
+    return true
   }
 
   // Set the priority of a session. null removes it.
@@ -575,6 +603,7 @@ export class SessionRegistry {
   // Return a copy of the store.
   store(): RegistryStore {
     return {
+      aliases: Object.fromEntries(this.aliases),
       lastActive: [...this.lastActive],
       names: Object.fromEntries(this.names),
       priorities: Object.fromEntries(this.priorities),
@@ -661,6 +690,8 @@ export class SessionRegistry {
     if (name === undefined || this.names.get(entry.sessionId) === name) return
     this.names.set(entry.sessionId, name)
     this.changed = true
+    // A local name equal to the new Claude Code name has no use. It would come back later.
+    if (this.aliases.get(entry.sessionId) === name) this.aliases.delete(entry.sessionId)
   }
 
   // Apply the rules for a session that left the active list.
@@ -678,8 +709,8 @@ export class SessionRegistry {
   // GONE_LISTS counted lists in a row without it. This is the only forget that an --all list
   // gives (Task 17 bug 3, Task 18 fix round 1). It also limits the size of the store.
   // The sessions are the owned rows, the started sessions, and each session with a stored name,
-  // priority, watch colour or worktree. Each session with a usage line or a line time of the mod
-  // is also in the list, so these two maps do not grow without limit.
+  // local name, priority, watch colour or worktree. Each session with a usage line or a line time
+  // of the mod is also in the list, so these two maps do not grow without limit.
   // The count of a session goes back to 0 when the last active list has it, when this list has
   // its background entry, or when this list has an entry of any kind for a started session.
   // A failed Take control leaves a started session with an interactive entry (D6).
@@ -689,6 +720,7 @@ export class SessionRegistry {
     const ids = new Set([
       ...this.started,
       ...this.names.keys(),
+      ...this.aliases.keys(),
       ...this.priorities.keys(),
       ...this.watched.keys(),
       ...this.worktrees.keys(),
@@ -748,6 +780,11 @@ export class SessionRegistry {
     return [...this.sessions.values()].sort(compareSessions)
   }
 
+  // The name that Bifrost shows: the local name when one exists, else the Claude Code name.
+  private shownName(s: Session): string {
+    return this.aliases.get(s.sessionId) ?? this.nameOf(s)
+  }
+
   private nameOf(s: Session): string {
     return rowName(s.sessionId, this.names.get(s.sessionId), s.shortId)
   }
@@ -758,12 +795,13 @@ export class SessionRegistry {
     const row: SessionRow = {
       box: m.box,
       boxSince: m.boxSince,
+      claudeName: this.nameOf(s),
       cwd: s.cwd,
       flashing: m.box !== 'none',
       kind: s.kind,
       // A usage line is not activity (D8).
       lastActivity: Math.max(s.startedAt, s.lastEventAt, s.statusChangedAt),
-      name: this.nameOf(s),
+      name: this.shownName(s),
       sessionId: s.sessionId,
       startedAt: s.startedAt,
       state: m.state,

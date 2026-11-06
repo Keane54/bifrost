@@ -1,4 +1,5 @@
 // The Selected Item panel (spec 8.4): the data and the buttons of the selected session.
+import { aliasTip } from '../../../shared/alias'
 import type { SessionRow } from '../../../shared/types'
 import ActionButton from '../actions/ActionButton'
 import { SELECTED_ITEM_ACTIONS } from '../actions/action-model'
@@ -44,7 +45,9 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
       {/* 1. The icon, the name, the state and the priority. */}
       <div className='flex min-w-0 items-center gap-2'>
         <SessionIcon row={row} size={22} />
-        <span className='min-w-0 truncate font-semibold text-[13px]'>{row.name}</span>
+        <span className='min-w-0 truncate font-semibold text-[13px]' title={aliasTip(row)}>
+          {row.name}
+        </span>
         <span className={cx('shrink-0', TONE_TEXT[stateTone(row)])}>{stateLabel(row.state)}</span>
         {/* A row with no priority shows nothing here. */}
         {row.priority && (

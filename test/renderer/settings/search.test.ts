@@ -332,7 +332,8 @@ describe('GENERAL_ROWS', () => {
     expect(bad).toEqual([])
     expect(new Set(used)).toEqual(new Set(Object.keys(GENERAL_ROWS)))
     expect([...GENERAL_LABELS].sort()).toEqual(Object.values(GENERAL_ROWS).sort())
-    expect(GENERAL_LABELS).toHaveLength(15)
+    // No fixed count, so a new row needs only its line in GENERAL_ROWS. Each label is unique.
+    expect(new Set(GENERAL_LABELS).size).toBe(GENERAL_LABELS.length)
   })
 
   it('fails on a row label in another form, also in a row of a new file (guard)', () => {

@@ -80,7 +80,10 @@ export type SeenCounts = Pick<WorktreeCheck, 'unmergedCommits' | 'changedFiles'>
 export interface SessionRow {
   sessionId: string
   shortId?: string
+  // The name that Bifrost shows. It is the local name when one exists, else claudeName.
   name: string
+  // The name from Claude Code (spec 7.1). It is never the local name.
+  claudeName: string
   kind: SessionKind
   pid?: number
   cwd: string
@@ -162,6 +165,13 @@ export interface UsageSnapshot {
   sessionId: string
   name: string
   updatedAt: number
+  limits: RateLimits
+}
+
+// The usage windows that Anthropic gave for the account (spec 8.8). fetchedAt is the time of the
+// answer, in milliseconds. This type has no token, so the token cannot reach the renderer.
+export interface AccountUsage {
+  fetchedAt: number
   limits: RateLimits
 }
 

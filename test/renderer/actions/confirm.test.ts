@@ -4,6 +4,27 @@ import type { WorktreeCheck } from '../../../src/shared/types'
 import { row } from '../overview/fixtures'
 
 describe('confirm texts', () => {
+  const aliased = row({
+    claudeName: 'claude-a1',
+    name: 'my-alias',
+    sessionId: 'a',
+    terminalApp: 'Warp',
+  })
+  const NAMED = 'my-alias (Claude Code name: claude-a1)'
+
+  it('Stop, Delete and Take control name both names when a local name exists', () => {
+    expect(confirmFor('stop', aliased, 'plain')?.body).toBe(
+      `${NAMED} is working right now. Stop it anyway? The current turn will end.`,
+    )
+    const del = confirmFor('delete', aliased, 'plain')
+    expect(del?.body).toBe(
+      `Delete ${NAMED}? This removes the session from Claude Code and Bifrost.`,
+    )
+    expect(del?.title).toBe(`Delete ${NAMED}`)
+    expect(confirmFor('take-control', aliased, 'plain')?.body).toBe(
+      `This closes the session ${NAMED} in Warp and moves it into Bifrost.`,
+    )
+  })
   it('Stop asks only for a working session', () => {
     expect(confirmFor('stop', row({ sessionId: 'a', state: 'idle' }), 'plain')).toBeNull()
     expect(confirmFor('stop', row({ name: 'fix-a', sessionId: 'a' }), 'plain')).toEqual({

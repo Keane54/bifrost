@@ -3,6 +3,7 @@
 // To add a row, add one line here, and give the row the label GENERAL_ROWS.<name>. A test fails
 // on a row label in another form, also in a file that GeneralSection.tsx imports.
 export const GENERAL_ROWS = {
+  accountUsage: 'Account usage from Anthropic',
   displayMode: 'Display mode',
   escalation: 'Escalation time',
   font: 'Terminal font',

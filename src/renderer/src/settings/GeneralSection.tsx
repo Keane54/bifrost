@@ -384,6 +384,12 @@ export default function GeneralSection({
           label={GENERAL_ROWS.startAtLogin}
           save={value => update({ startAtLogin: value })}
         />
+        <CheckRow
+          checked={settings.accountUsage}
+          hint='Shows usage from all your devices. Bifrost reads your Claude Code login from the Keychain. macOS may ask you to allow this.'
+          label={GENERAL_ROWS.accountUsage}
+          save={value => update({ accountUsage: value })}
+        />
         <SelectRow
           choices={POLL_CHOICES}
           label={GENERAL_ROWS.poll}

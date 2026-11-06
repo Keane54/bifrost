@@ -129,7 +129,7 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 | PTY manager | Starts one `claude attach <id>` process for each open chat window. Also starts the hidden attach for the send box. |
 | Action runner | Runs Claude Code commands, sends signals and opens other apps. |
 | Integration | Installs, turns on, turns off and removes the Live details mod. Removes an old hook install. |
-| Store | Keeps the settings, layouts, priorities and panel positions on disk. |
+| Store | Keeps the settings, layouts, priorities, local names and panel positions on disk. |
 
 ### 5.2 Renderer
 
@@ -145,7 +145,7 @@ Context isolation is on. The preload script supplies a typed API. The renderer h
 | `~/.bifrost/live.sock` | The socket where Bifrost listens for live lines. Mode 0600, in a folder with mode 0700. |
 | `~/.bifrost/statusline-original.json` | Your statusLine setting from before an old hook install. Bifrost needs it to remove that install. |
 | `~/.bifrost/backups/` | Copies of `settings.json` from before each change. Bifrost needs them to remove an old hook install. |
-| `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities and panel positions. |
+| `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities, local names and panel positions. |
 
 Bifrost uses `~/.bifrost/` because that path has no spaces. The mod folder is also the marketplace folder.
 
@@ -244,7 +244,7 @@ Rules for the usage data:
   2. Two readings are the same window when their reset times are within 10 minutes.
   3. In the same window, the highest use wins, because use only grows in a window. A use value that is not a finite number never wins over a finite one.
   4. A session that is not a row also counts, until the registry forgets it.
-  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
+  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name (the local name when one exists), or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
 - The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line that gave the 7-day value (else the 5-hour value), so a newer line from that session with the same limits is a change. The update limit is that of the rows: at most 4 updates each second, and the last value always goes out. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
 - Without the mod, Bifrost shows no model, context %, cost, rate limit, context window size, Claude Code version, effort, permission mode or transcript path.
 
@@ -381,7 +381,7 @@ Columns:
 | Column | Source |
 |---|---|
 | Kind icon | `kind`. External rows show the icon of their terminal app (for example Warp or Terminal). An external row with an unknown terminal app shows a `>_` icon. A session that Bifrost started or controls shows the Bifrost logo (a placeholder mark until the logo exists) (user decision, 2026-11-05). |
-| Name | `name`. |
+| Name | `name`. This is the local name when one exists (section 9.1), else the Claude Code name. A row also has `claudeName`, which is always the Claude Code name. |
 | Priority | Bifrost. Values 1 to 5, or none. Each value has a colour. |
 | State | The state machine (section 7). |
 | Project | `cwd`. The column shows the last two parts of the path. |
@@ -444,7 +444,7 @@ Send box rules:
 - Bifrost never sends CR to an empty prompt.
 - One attach PTY serves each session.
 - A hidden attach opens at the current size of the session (the M3 method). An attach sets the size of the session for all clients (M3 finding). If Bifrost cannot read the size, it sends nothing.
-- If the session has a red box of a prompt (a permission prompt or a question), Bifrost blocks Send message, Run slash command and Rename. Typed text can answer a prompt by accident. An escalated yellow box and an error box do not block, because no prompt shows.
+- If the session has a red box of a prompt (a permission prompt or a question), Bifrost blocks Send message and Run slash command. Typed text can answer a prompt by accident. An escalated yellow box and an error box do not block, because no prompt shows.
 - Interrupt sends Esc. It does not wait for quiet output, because a working session is never quiet: through a hidden attach, Bifrost sends Esc 300 ms after the first output of the attach.
 - After an Esc, Bifrost waits at least 200 ms before the next write to that session. So the session never gets an Esc and a paste in one chunk.
 - The block message is "Answer the prompt in the chat window first."
@@ -480,7 +480,7 @@ Size rule (the user approved this on 2026-11-04; M3 builds it):
 
 Show Info shows these values for one session:
 
-- Name, session ID, short ID, kind and PID.
+- Name, session ID, short ID, kind and PID. A session with a local name also shows the Claude Code name.
 - Project directory and transcript path.
 - Branch, PR and worktree.
 - Model, effort and permission mode.
@@ -497,6 +497,28 @@ The Event log shows the live state events with the time, the session and the eve
 ### 8.8 Usage HUD
 
 The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. Bifrost chooses each bar on its own from all live usage lines. The newest window wins, and in the same window the highest use wins. An idle session can send an old value, and this rule stops that value from replacing a newer one (section 6). With no data, the panel shows "No usage data yet."
+
+Account usage (opt-in): the setting `Account usage from Anthropic` (section 12) is off by default. When it is on, Bifrost asks Anthropic for the usage of the account. The usage lines of the sessions change only when a session on this Mac gets an API reply. The account values also show use on claude.ai, on a phone and on other Macs.
+
+- The main process polls every 5 minutes. It also polls when the Usage HUD opens, but at most one time in 60 seconds. When the setting goes off, the polling stops and the account values go away.
+- One poll reads the Claude Code login from the Keychain, and then calls `GET https://api.anthropic.com/api/oauth/usage`. The call sends `Authorization: Bearer <access token>`, `anthropic-beta: oauth-2025-04-20` and `User-Agent: Bifrost`. Each step has a 10 second limit.
+- Bifrost takes the windows `five_hour` and `seven_day` (`utilization` is a percent, `resets_at` is an ISO 8601 text). If `seven_day` is missing, `null` or not usable, Bifrost takes the entry `weekly_all` of the list `limits`. Bifrost ignores all other keys. A bad answer gives no values.
+- A plan can have no 5-hour window (`five_hour` is `null`). Then the 5-hour bar shows `-` and the detail `No 5-hour limit right now.`
+- A 401 or 403 answer clears the account values until a later poll works. A 429 answer makes Bifrost wait 15 minutes. Another error keeps the last good values.
+- When the account values are 15 minutes old or less, the bars use them, and the source line is `From your Anthropic account, updated <age> ago.` Else the panel shows the session values. The bar rules do not change.
+- The main process sends the values to the renderer on the channel `usage:account-update`. The renderer reads them with `usage:account-get` and asks for a poll with `usage:hud-opened`. The HUD asks when it mounts and each time it becomes visible again. The type has the windows and the time of the answer. It has no token.
+
+Security of the account usage:
+
+- Bifrost reads one Keychain item, `Claude Code-credentials`, with `/usr/bin/security` (fixed arguments, no shell). It uses only `claudeAiOauth.accessToken` and `claudeAiOauth.expiresAt`. macOS may ask the user to allow this.
+- The token stays in memory for one request. Bifrost never logs it, never writes it to disk, never puts it in an error text and never sends it to the renderer.
+- Bifrost never uses the refresh token and never calls a refresh endpoint. A refresh by Bifrost would change the token that Claude Code holds and could sign Claude Code out. When the token has expired, or the answer is 401 or 403, Bifrost waits. It reads the Keychain again at the next poll, because Claude Code refreshes the token itself.
+- Bifrost sends the token only to `https://api.anthropic.com`. The code has a fixed URL. A redirect stops the request. The request sends no cookies and keeps no cache. The request has no email and no user name.
+- Anthropic does not document the endpoint. It can change or stop without notice. Bifrost then shows the session values.
+- When the setting goes off, Bifrost stops a poll in progress and sends no request. A poll ends after 25 seconds at the latest.
+- A token with no `expiresAt`, or one that ends within 60 seconds, counts as no token.
+- If the user denies the Keychain prompt, the next poll asks again. This can repeat every 5 minutes.
+- The test home (D12) starts no poller, and the tests use fakes only.
 
 ### 8.9 New session dialog
 
@@ -572,9 +594,9 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Send message | Hail | Owned | Type the text into the session. |
 | Run slash command | Activate module | Owned | Type `/<command>` into the session. |
 | Interrupt | Full stop | Owned | Send Esc to the session. |
-| Rename | Set callsign | Owned | Type `/rename <name>` into the session. |
+| Rename | Set callsign | All | Set the local name of the session in Bifrost. Optional: type `/rename <name>` into an owned session. |
 | Set priority | Set threat level | All | Bifrost data only. |
-| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. It adds no flag (D13). |
+| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. An owned row adds no flag. A parked external row (after a failed Take control) gets the statusline override, as Take control does (D13). |
 | Resume all | Reactivate all | Parked | Resume each parked session that was active when Bifrost last ran. |
 | Show Info | Scan | All | Open the Show Info panel. |
 | Copy session ID | Copy transponder ID | All | Copy to the clipboard. |
@@ -586,6 +608,27 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Delete session | Self-destruct | Owned, parked | `claude rm <id>`. Bifrost always asks for confirmation. |
 | Add to watchlist | Track | All | Bifrost data only (section 8.12). |
 | Remove from watchlist | Stop tracking | Watched sessions | Bifrost data only (section 8.12). |
+
+Rename sets a local name. Bifrost keeps the local name for the session ID in the registry store, in the field `aliases`. A store without the field is valid. Bifrost never sends the local name to Claude Code. The rules:
+
+- Bifrost trims the name. It refuses control characters. The maximum is 64 characters (`MAX_RENAME`).
+- An empty name clears the local name. A name equal to the Claude Code name also clears it.
+- The row field `name` is the local name when one exists. The Overview, the chat window titles, the Watchlist, notifications, the Event log and the Usage HUD show it. Show Info also shows `claudeName`.
+- When Bifrost deletes a session for good, it removes the local name too, as it removes the priority.
+- A new Claude Code name that equals the local name removes the local name.
+- Bifrost forgets the local name of an external session soon after the session ends, as it forgets the priority.
+- The IPC call `registry:set-alias` takes the session ID and a name or `null`. The main process checks both.
+
+A red prompt box does not block Rename, because the local name types nothing. The Rename dialog has these controls:
+
+- The field "Name in Bifrost". It starts with the name that the row shows.
+- For an owned session that is not parked: the check box "Also rename it in Claude Code". It is off by default. With a red prompt box, or while the short ID is missing, it is disabled and shows the reason. If it was on and becomes unusable while the dialog is open, Save keeps the name in Bifrost only and the dialog says so. When it is on, one save types `/rename <name>` and clears the local name, because the real name changes.
+- When a local name exists: the button "Use the Claude Code name". It clears the local name.
+- Esc closes the dialog. The focus goes back to the Overview rows.
+
+The Stop, Delete and Take control confirmations name the session without doubt. When a local name exists, they show the local name, then the Claude Code name in brackets: `my-alias (Claude Code name: claude-a1)`. The chat window titles keep the local name only.
+
+In the Selected Item panel, a hover over the name shows a tooltip. With a local name, the tooltip is `Claude Code name: ` and the Claude Code name. Without one, it is the name itself, so a cut-off name can be read.
 
 The "Labels" setting selects plain labels or space labels. The setting applies to menus, buttons, tooltips and dialogs.
 
@@ -899,6 +942,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | macOS notification | On |
 | Sound for a red box | On |
 | Start at login | Off |
+| Account usage from Anthropic | Off. A check row. The hint says that Bifrost reads the Claude Code login from the Keychain and that macOS may ask to allow this (section 8.8). |
 | Poll interval | 2 seconds |
 | Snap distance | 8 pixels |
 | Panel transparency | 15%. A select from 0% to 50% in steps of 5% (the background of all panels; 0% is solid). |
@@ -1101,7 +1145,7 @@ The user made decisions 1 to 3. The controller made the others during M4. The M4
 2. A watched row has a soft tint and a 3 px stripe in the full watch colour at its left edge. The yellow box and the red box keep a contrast of 3:1 or more on each watched row, also when it is selected or under the pointer. The watch red and yellow are a different shade from the box colours. The red box is `#f5766d`.
 3. The focused panel is darker than the other panels. Its glow is above the top edge only. The change takes 250 ms.
 4. Text that users read in the app says "folder", not "directory". An error stays until the user closes it. A notice goes away after 5 s. The notice "Deleting the session..." stays while a Delete runs.
-5. Only a prompt box blocks Send message, Run slash command and Rename. Take control is blocked by each red box (section 9.2). An Interrupt cancels a send that waits in the queue, then sends the Esc at once.
+5. Only a prompt box blocks Send message and Run slash command. Take control is blocked by each red box (section 9.2). An Interrupt cancels a send that waits in the queue, then sends the Esc at once.
 6. Delete of a worktree session:
    1. The dialog shows the result of a check for unmerged commits and changed files. With unmerged work or a failed check, the confirm needs a second click.
    2. Before the stop of a running session, Bifrost checks the worktree again. Tracked changes stop the Delete, because `claude rm` keeps such a worktree.
@@ -1130,7 +1174,7 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 10. D10: Install and Turn on remove an old hook install before the first `claude plugin` command. A failure stops the action. Remove does the old removal last, after the plugin steps and the delete of the mod folder (controller ruling). The reason: a failed removal of the old install must not leave the mod installed. Bifrost keeps `statusline-original.json` and the backups.
 11. D11: The API for M5a is `live.status()`, `live.install()`, `live.enable()`, `live.disable()` and `live.uninstall()`. `enable` refuses when the plugin is not installed.
 12. D12: The parser keeps `five_hour` and `seven_day` as the rate limits and drops other windows. This work adds no Usage HUD.
-13. D13: A new session always gets the `--settings` statusLine override. Take control passes it too, because it starts from a foreground session: the session ID stays the same and the statusline goes away (test of 2026-11-06). Resume and Resume all add no flag, because a resume with a new flag on a background session starts a copy with a new session ID. Section 22 item 1 passed the override only without the wrapper.
+13. D13: A new session always gets the `--settings` statusLine override. Take control passes it too, because it starts from a foreground session: the session ID stays the same and the statusline goes away (test of 2026-11-06). Resume and Resume all add no flag to an owned row, because a resume with a new flag on a background session starts a copy with a new session ID. A parked external row exists only after a failed Take control. Its last entry was in the foreground, so Resume passes the override for it, as Take control does. A Warp session that ends with no Take control does not become a parked row, so Bifrost cannot resume it. Section 22 item 1 passed the override only without the wrapper.
 14. D14: This section holds the decisions of the Live details work. Section 22 keeps its text, with a note that this section changes its statusline line.
 15. O1: Yes. A controller task installs the mod at user scope for a short time (Part B of the check). It saves backups and SHA-256 values first, and it runs no `/reload-plugins` in a session of the user.
 16. O2: The guard `cc-plugin-sec-default` is not in the list of the user. The `classic.*` events are usable.
