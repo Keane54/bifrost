@@ -339,3 +339,26 @@ test('with no window, a View click calls no controller and only builds the menu 
   await handlers.onMode('borderless')
   expect(next.set).toHaveBeenCalledWith('borderless')
 })
+
+test('the menu keeps its accelerators registered when no key is recording', () => {
+  const items = walk(build('window', true)).filter(item => item.type !== 'separator')
+  expect(items.some(item => item.registerAccelerator !== undefined)).toBe(false)
+})
+
+test('the menu gives its keys to the page while a key records', () => {
+  const template = build('window', true, { recording: true })
+  const keyed = walk(template).filter(item => item.accelerator !== undefined || item.role)
+  // Cmd+W, Cmd+Ctrl+F, Cmd+=, Cmd+-, F5 and the role items.
+  expect(keyed.length).toBeGreaterThan(10)
+  for (const item of keyed)
+    expect(item.registerAccelerator, String(item.label ?? item.role)).toBe(false)
+  // The menu still shows the keys.
+  const close = submenu(template, 'Window').find(item => item.label === 'Close Panel')
+  expect(close?.accelerator).toBe('Cmd+W')
+  const view = submenu(template, 'View')
+  expect(view.find(item => item.label === 'Zoom In')?.accelerator).toBe('Cmd+=')
+  expect(view.find(item => item.label === 'Zoom Out')?.accelerator).toBe('Cmd+-')
+  expect(view.find(item => item.label === 'Fullscreen')?.registerAccelerator).toBe(false)
+  // An item without a key stays as it was.
+  expect(view.find(item => item.label === 'Actual Size')?.registerAccelerator).toBeUndefined()
+})

@@ -26,6 +26,9 @@ export interface MenuOptions {
   onToggleFullscreen(): void
   onClosePanel(): void
   onZoom(step: ZoomStep): void
+  // True while the key recorder of Settings > Keys records. The menu then gives its keys to the
+  // page (see recordingTemplate).
+  recording?: boolean
 }
 
 // Return the accelerator of a binding of the key map, or null for no key.
@@ -95,6 +98,27 @@ export function modeHandlers(opts: ModeHandlerOptions): {
 // The Window menu has no item with the role close. Cmd+W closes the active panel, not the window.
 // The dev Reload item uses F5. Cmd+R is the Resume key of the renderer.
 export function buildMenuTemplate(opts: MenuOptions): MenuItemConstructorOptions[] {
+  const template = menuItems(opts)
+  return opts.recording ? recordingTemplate(template) : template
+}
+
+// Set registerAccelerator to false on each item that has a key. A role item has a key too.
+// The menu still shows the keys. But it does not take them, so the page gets Cmd+W, Cmd+Ctrl+F,
+// Cmd+= and the other menu keys while the key recorder records.
+export function recordingTemplate(
+  items: MenuItemConstructorOptions[],
+): MenuItemConstructorOptions[] {
+  return items.map(item => {
+    const next = { ...item }
+    if (next.accelerator !== undefined || next.role !== undefined) next.registerAccelerator = false
+    if (Array.isArray(next.submenu)) {
+      next.submenu = recordingTemplate(next.submenu as MenuItemConstructorOptions[])
+    }
+    return next
+  })
+}
+
+function menuItems(opts: MenuOptions): MenuItemConstructorOptions[] {
   const { keys, mode } = opts
   return [
     {

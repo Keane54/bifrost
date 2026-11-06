@@ -94,6 +94,7 @@ const api: BifrostApi = {
   settings: {
     get: () => invoke('settings:get'),
     onChange: cb => subscribe('settings:changed', cb),
+    recording: on => invoke('settings:recording', on),
     set: patch => invoke('settings:set', patch),
   },
   system: {

@@ -129,6 +129,10 @@ export interface BifrostApi {
     set(patch: SettingsPatch): Promise<Settings>
     // The main process sends the settings after each change.
     onChange(cb: (settings: Settings) => void): () => void
+    // Tell the main process that the key recorder of Settings > Keys starts (true) or ends (false).
+    // While it records, the menu gives its keys to the page. The main process ends it when the
+    // page reloads or the window closes. It rejects for a value that is not a boolean.
+    recording(on: boolean): Promise<void>
   }
   system: {
     // packaged is false in development.

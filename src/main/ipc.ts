@@ -158,6 +158,21 @@ export function setMenuRebuild(fn: (() => void) | null): void {
   menuRebuild = fn
 }
 
+// True while the key recorder of Settings > Keys records. The menu then gives its keys to the
+// page. The menu builder reads it.
+let keyRecording = false
+
+export function isKeyRecording(): boolean {
+  return keyRecording
+}
+
+// Set the recording state and build the menu again when it changes.
+function setKeyRecording(on: boolean): void {
+  if (keyRecording === on) return
+  keyRecording = on
+  menuRebuild?.()
+}
+
 // The current settings. Before the store opens, this gives the defaults.
 export function getSettings(): Settings {
   return settingsStore?.get() ?? DEFAULT_SETTINGS
@@ -363,6 +378,12 @@ export function registerIpc(home: TestHome | null = null): void {
   const service = startService(run, settings)
   ipcMain.handle('settings:get', e => fromPage(e, async () => (await settings).get()))
   // The store checks each value. It refuses a patch with an unknown key or a bad value.
+  ipcMain.handle('settings:recording', (e, on: unknown) =>
+    fromPage(e, async () => {
+      if (typeof on !== 'boolean') throw new Error('refused: bad input')
+      setKeyRecording(on)
+    }),
+  )
   ipcMain.handle('settings:set', (e, patch: unknown) =>
     fromPage(e, async () => (await settings).update(patch)),
   )
@@ -712,14 +733,22 @@ export function registerIpc(home: TestHome | null = null): void {
 // When the window closes, close all PTYs and clear the window reference.
 export function attachWindow(win: BrowserWindow): void {
   currentWindow = win
-  win.webContents.on('did-navigate', () => page.end())
+  win.webContents.on('did-navigate', () => {
+    // A new page has no recorder. The old page cannot say that it ended.
+    setKeyRecording(false)
+    page.end()
+  })
   // Apply the Interface scale to each page that loads.
   win.webContents.on('dom-ready', () => {
     if (currentWindow === win) applyZoom()
   })
-  win.webContents.on('render-process-gone', () => page.end())
+  win.webContents.on('render-process-gone', () => {
+    setKeyRecording(false)
+    page.end()
+  })
   win.on('closed', () => {
     if (currentWindow === win) currentWindow = null
+    setKeyRecording(false)
     page.end()
   })
 }

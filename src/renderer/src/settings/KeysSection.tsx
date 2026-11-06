@@ -1,0 +1,180 @@
+// Settings > Keys (spec 9.4): the list of all keys, with Change, Clear and Reset for each key.
+import { formatForDisplay, useHotkeyRecorder } from '@tanstack/react-hotkeys'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { resetSlotKey, setSlotKey } from '../../../shared/keys'
+import { useConfirm } from '../actions/ConfirmDialog'
+import { KEY_RECORDER_ATTR } from '../keys/focus-zone'
+import { cx } from '../lib/cx'
+import { ErrorLine } from '../lib/ErrorLine'
+import { checkRecorded, type KeyRow, keyGroups } from './key-editor'
+import { useRowSave } from './SettingRow'
+import { useSettings } from './settings-context'
+
+const RESET_ALL_CONFIRM = {
+  body: 'This puts every key back to its Bifrost default.',
+  confirm: 'Reset all keys',
+  title: 'Reset all keys',
+}
+
+const BUTTON =
+  'h-5 shrink-0 border border-panel-edge px-2 text-text text-xs hover:bg-hover active:bg-accent/12 disabled:opacity-40 disabled:hover:bg-transparent'
+
+export default function KeysSection(): React.JSX.Element {
+  const { settings, update } = useSettings()
+  const confirm = useConfirm()
+  const save = useRowSave()
+  const custom = settings.keys
+  const groups = useMemo(() => keyGroups(custom, settings.labels), [custom, settings.labels])
+
+  // The slot that records, the reason of the last rejected key and the row of the last failed save.
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [rejection, setRejection] = useState<string | null>(null)
+  const [errorId, setErrorId] = useState<string | null>(null)
+  // The recorder callbacks read the newest values from this ref.
+  const latest = useRef({ activeId, custom, labels: settings.labels })
+  latest.current = { activeId, custom, labels: settings.labels }
+
+  // Save a change. A failure shows its reason in the row of the slot (null: at the top).
+  const change = (slotId: string | null, next: typeof custom): void => {
+    setErrorId(slotId)
+    void save.save(() => update({ keys: next }))
+  }
+
+  const recorder = useHotkeyRecorder({
+    // The page, not the text field check of the library, decides what a zone takes.
+    ignoreInputs: false,
+    onCancel: () => setActiveId(null),
+    onClear: () => {},
+    onRecord: hotkey => {
+      const { activeId: slotId, custom: current, labels } = latest.current
+      setActiveId(null)
+      if (slotId === null) return
+      const result = checkRecorded(slotId, hotkey, current, labels)
+      if (result.ok) change(slotId, setSlotKey(current, slotId, result.binding))
+    },
+    onReject: reason => setRejection(reason.message),
+    platform: 'mac',
+    recordBy: 'code',
+    validate: hotkey => {
+      const { activeId: slotId, custom: current, labels } = latest.current
+      if (slotId === null) return false
+      const result = checkRecorded(slotId, hotkey, current, labels)
+      return result.ok ? true : result.message
+    },
+  })
+
+  // While the recorder records, the menu gives its keys to the page (Cmd+W must not close the
+  // panel). The cleanup also ends it when the section closes.
+  const { isRecording } = recorder
+  useEffect(() => {
+    if (!isRecording) return
+    const tell = (on: boolean): void => {
+      window.bifrost.settings
+        .recording(on)
+        .catch(err => console.error('Bifrost cannot tell the menu about the key recorder.', err))
+    }
+    tell(true)
+    return () => tell(false)
+  }, [isRecording])
+
+  // The prompt takes the focus. So the recorder element is the focus target (ruling C4).
+  const promptRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (isRecording && activeId !== null) promptRef.current?.focus()
+  }, [isRecording, activeId])
+
+  const startChange = (slotId: string): void => {
+    setRejection(null)
+    setActiveId(slotId)
+    recorder.startRecording()
+  }
+
+  const resetAll = (): void => {
+    void confirm(RESET_ALL_CONFIRM).then(ok => {
+      if (ok) change(null, {})
+    })
+  }
+
+  const renderRow = ({ binding, changed, label, slot }: KeyRow): React.JSX.Element => {
+    const recording = isRecording && activeId === slot.id
+    return (
+      <li
+        className='flex flex-col border-panel-edge border-b'
+        data-key-slot={slot.id}
+        key={slot.id}
+      >
+        <div className='flex min-h-7 items-center gap-2 px-3 text-text text-xs'>
+          <span className='min-w-0 flex-1 truncate'>{label}</span>
+          {changed && <span aria-hidden={true} className='size-1.5 shrink-0 bg-text-strong' />}
+          {recording ? (
+            <button
+              className='shrink-0 border border-text-strong/30 px-1.5 py-0.5 text-text-strong outline-none'
+              {...{ [KEY_RECORDER_ATTR]: true }}
+              onBlur={() => recorder.cancelRecording()}
+              ref={promptRef}
+              type='button'
+            >
+              Press the new shortcut. Esc cancels.
+            </button>
+          ) : binding === null ? (
+            <span className='shrink-0 text-text-dim'>No key</span>
+          ) : (
+            <kbd className='shrink-0 font-mono'>
+              {formatForDisplay(binding, { platform: 'mac' })}
+            </kbd>
+          )}
+          <button
+            className={BUTTON}
+            onClick={() => (recording ? recorder.cancelRecording() : startChange(slot.id))}
+            type='button'
+          >
+            Change
+          </button>
+          <button
+            className={BUTTON}
+            disabled={binding === null}
+            onClick={() => change(slot.id, setSlotKey(custom, slot.id, null))}
+            type='button'
+          >
+            Clear
+          </button>
+          <button
+            className={BUTTON}
+            disabled={!changed}
+            onClick={() => change(slot.id, resetSlotKey(custom, slot.id))}
+            type='button'
+          >
+            Reset
+          </button>
+        </div>
+        {recording && rejection !== null && (
+          <p className='px-3 pb-1 text-text-dim text-xs'>{rejection}</p>
+        )}
+        {errorId === slot.id && <ErrorLine message={save.error} onClose={save.closeError} />}
+      </li>
+    )
+  }
+
+  return (
+    <div className='flex flex-col'>
+      <div className='flex items-start gap-3 px-3 py-2'>
+        <p className='min-w-0 flex-1 text-text-dim text-xs'>
+          You can't record Esc or a plain Backspace, because the recorder uses them. Reset brings
+          back the default key.
+        </p>
+        <button className={BUTTON} onClick={resetAll} type='button'>
+          Reset all keys
+        </button>
+      </div>
+      {errorId === null && <ErrorLine message={save.error} onClose={save.closeError} />}
+      {groups.map(group => (
+        <section data-key-group={group.group} key={group.group}>
+          <h3 className={cx('border-panel-edge border-y bg-title px-3 py-1 text-text-dim text-xs')}>
+            {group.title}
+          </h3>
+          <ul className='flex flex-col'>{group.rows.map(renderRow)}</ul>
+        </section>
+      ))}
+    </div>
+  )
+}

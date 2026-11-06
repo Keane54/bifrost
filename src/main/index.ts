@@ -9,6 +9,7 @@ import {
   changeSettings,
   closeAllPtys,
   getSettings,
+  isKeyRecording,
   registerIpc,
   send,
   setMenuRebuild,
@@ -58,6 +59,7 @@ function showMenu(): void {
         onClosePanel: () => send('wm:close-panel'),
         onZoom: step =>
           changeSettings(settings => ({ interfaceScale: zoomStep(settings.interfaceScale, step) })),
+        recording: isKeyRecording(),
         ...viewHandlers,
       }),
     ),
