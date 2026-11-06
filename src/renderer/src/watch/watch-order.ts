@@ -1,5 +1,11 @@
-// The order of the watchlist. These functions are pure.
+// The order and the texts of the watchlist. These functions are pure.
 import type { SessionRow } from '../../../shared/types'
+import { actionLabel, type LabelSet } from '../actions/action-model'
+
+// The text of an empty watchlist. It names the menu item with the label of the label set.
+export function emptyWatchlistText(labels: LabelSet): string {
+  return `Nothing on your watchlist yet. Right-click a session and choose ${actionLabel('watch-add', labels)}.`
+}
 
 // The watched rows in watch order.
 export function watchedRows(rows: readonly SessionRow[]): SessionRow[] {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   dropTarget,
+  emptyWatchlistText,
   isDragCancel,
   isMove,
   shouldMove,
@@ -96,5 +97,16 @@ describe('drag cancel', () => {
 
   it('shouldMove is false for a drop at the place that the row has now', () => {
     expect(shouldMove(order, 'b', 'c', false)).toBe(false)
+  })
+})
+
+describe('emptyWatchlistText', () => {
+  it('names the watch action with the label of the label set (spec 9.1)', () => {
+    expect(emptyWatchlistText('plain')).toBe(
+      'Nothing on your watchlist yet. Right-click a session and choose Add to watchlist.',
+    )
+    expect(emptyWatchlistText('space')).toBe(
+      'Nothing on your watchlist yet. Right-click a session and choose Track.',
+    )
   })
 })

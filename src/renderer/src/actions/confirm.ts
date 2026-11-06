@@ -19,6 +19,13 @@ export interface ConfirmText {
 const KEEPS_CHANGES =
   'Claude Code keeps a worktree with changes that are not committed, so commit or discard them first.'
 
+// The verbs of the dialog bodies. The body uses the verbs of the label set, as the title and the
+// button do (spec 9.1).
+const VERBS: Record<LabelSet, { stopIt: string; delete: string }> = {
+  plain: { delete: 'Delete', stopIt: 'Stop it' },
+  space: { delete: 'Self-destruct', stopIt: 'Power it down' },
+}
+
 // The dots after a label mean that the action opens a dialog. The dialog itself has no dots.
 function bareLabel(id: 'stop' | 'delete' | 'take-control', labels: LabelSet): string {
   return actionLabel(id, labels).replace(/\.\.\.$/, '')
@@ -34,7 +41,7 @@ export function confirmFor(
     if (row.state !== 'working') return null
     const label = bareLabel('stop', labels)
     return {
-      body: `${row.name} is working right now. Stop it anyway? The current turn will end.`,
+      body: `${row.name} is working right now. ${VERBS[labels].stopIt} anyway? The current turn will end.`,
       confirm: label,
       title: label,
     }
@@ -46,9 +53,10 @@ export function confirmFor(
     const title = `${label.replace(/ session$/, '')} ${row.name}`
     // claude rm keeps the transcript file, so the text does not say that the conversation goes
     // (final review M6).
-    const plain = `Delete ${row.name}? This removes the session from Claude Code and Bifrost.`
-    const ask = 'Are you sure you want to delete this?'
-    const again = 'Delete anyway'
+    const verb = VERBS[labels].delete
+    const plain = `${verb} ${row.name}? This removes the session from Claude Code and Bifrost.`
+    const ask = `Are you sure you want to ${verb.toLowerCase()} this?`
+    const again = `${verb} anyway`
     if (check === null) {
       const folder = worktreeOf(row) ?? undefined
       return {

@@ -17,12 +17,17 @@ import { MENU_POPUP } from '../lib/menu'
 import { TONE_TEXT } from '../overview/cells'
 import { stateLabel, stateTone } from '../overview/format'
 import { SessionIcon } from '../overview/SessionIcon'
+import { useSettings } from '../settings/settings-context'
 import { movedToStack } from '../wm/hit'
 import { WATCH_ROW_BG, WATCH_SWATCH } from './watch-colours'
-import { dropTarget, isDragCancel, isMove, shouldMove, watchedRows } from './watch-order'
-
-const EMPTY_TEXT =
-  'Nothing on your watchlist yet. Right-click a session and choose Add to watchlist.'
+import {
+  dropTarget,
+  emptyWatchlistText,
+  isDragCancel,
+  isMove,
+  shouldMove,
+  watchedRows,
+} from './watch-order'
 
 // The row under the pointer, with the half of that row. A pointer above the list is on the upper
 // half of the first row. A pointer below the list is on the lower half of the last row.
@@ -57,6 +62,7 @@ export default function WatchlistPanel(): React.JSX.Element {
   const { rows, selectedId, select } = useRegistry()
   const { contextFor, run } = useActions()
   const { holdClick, holdPress, holding } = useKeys()
+  const { settings } = useSettings()
   const watched = useMemo(() => watchedRows(rows), [rows])
   const list = useRef<HTMLUListElement>(null)
   // The current order, for a drag that is still on when a row changes.
@@ -171,7 +177,7 @@ export default function WatchlistPanel(): React.JSX.Element {
       <ContextMenu.Root onOpenChange={setMenuOpen} open={menuOpen && menuRow !== undefined}>
         <ContextMenu.Trigger className='min-h-0 flex-1 select-none'>
           {watched.length === 0 ? (
-            <p className='p-3 text-[13px] text-text-dim'>{EMPTY_TEXT}</p>
+            <p className='p-3 text-[13px] text-text-dim'>{emptyWatchlistText(settings.labels)}</p>
           ) : (
             <ul
               aria-label='Watchlist'

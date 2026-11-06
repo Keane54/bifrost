@@ -132,6 +132,29 @@ describe('confirm texts', () => {
     )
   })
 
+  it('the dialog bodies use the verbs of the label set (spec 9.1)', () => {
+    const r = row({ cwd: WT, name: 'fix-a', sessionId: 'a' })
+    expect(confirmFor('stop', r, 'space')?.body).toBe(
+      'fix-a is working right now. Power it down anyway? The current turn will end.',
+    )
+    expect(confirmFor('delete', r, 'space')?.body).toBe(
+      'Self-destruct fix-a? This removes the session from Claude Code and Bifrost.',
+    )
+    expect(confirmFor('delete', r, 'space', check({}))?.body).toBe(
+      'Self-destruct fix-a? This removes the session from Claude Code and Bifrost.',
+    )
+    const unmerged = confirmFor('delete', r, 'space', check({ unmergedCommits: 1 }))
+    expect(unmerged?.body).toBe(
+      'This session has 1 commit that is not merged on worktree-fix-a. Are you sure you want to self-destruct this?',
+    )
+    expect(unmerged?.confirmAgain).toBe('Self-destruct anyway')
+    const failed = confirmFor('delete', r, 'space', null)
+    expect(failed?.body).toBe(
+      'Bifrost could not check this session for unmerged work. Are you sure you want to self-destruct this?',
+    )
+    expect(failed?.confirmAgain).toBe('Self-destruct anyway')
+  })
+
   it('the confirm labels use the label set', () => {
     const r = row({ sessionId: 'a' })
     expect(confirmFor('stop', r, 'space')?.confirm).toBe('Power down')
