@@ -6,9 +6,9 @@ import icon from '../../resources/icon.png?asset'
 import { effectiveKeys } from '../shared/keys'
 import {
   attachWindow,
+  changeSettings,
   closeAllPtys,
   getSettings,
-  patchSettings,
   registerIpc,
   send,
   setMenuRebuild,
@@ -46,7 +46,8 @@ const viewHandlers = modeHandlers({ controller: () => modeController, rebuild: (
 // Build the app menu from the real mode and the key map. Bifrost builds it again after each
 // change of the mode, after each click on a View item, when the settings store opens and after
 // a change of a menu key. So the radio items show the real mode and the keys are current.
-// A Zoom item steps the Interface scale setting. The settings store then zooms the page.
+// A Zoom item steps the Interface scale setting in the update queue. The settings store then
+// zooms the page.
 function showMenu(): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(
@@ -56,7 +57,7 @@ function showMenu(): void {
         mode: modeController?.get() ?? 'window',
         onClosePanel: () => send('wm:close-panel'),
         onZoom: step =>
-          patchSettings({ interfaceScale: zoomStep(getSettings().interfaceScale, step) }),
+          changeSettings(settings => ({ interfaceScale: zoomStep(settings.interfaceScale, step) })),
         ...viewHandlers,
       }),
     ),

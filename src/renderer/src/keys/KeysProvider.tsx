@@ -27,11 +27,13 @@ import { topOverview } from '../wm/SideBar'
 import { type KeyContext, type KeyIntent, planHold, planKey } from './commands'
 import { focusZone, OVERVIEW_ROWS_ATTR } from './focus-zone'
 import { HoldGate } from './hold-gate'
-import { releasedHoldKey, toRawChord } from './raw-chord'
+import { gateChange, toRawChord } from './raw-chord'
 
 export interface KeysValue {
   // A row click calls this first. True means that a held hold key used the click (D8).
   holdClick(sessionId: string): boolean
+  // True while a row click is a hold click. Then a double-click does not select or open the row.
+  holding(): boolean
 }
 
 const KeysContext = createContext<KeysValue | null>(null)
@@ -266,28 +268,36 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
   useHotkeys(definitions, COMMON_OPTIONS)
 
   // The gate forgets all keys when the window loses the focus or the page hides. Then no keyup
-  // comes. A keyup with a modifier does not match the hotkey of a hold key, so a listener here
-  // removes that key from the gate.
+  // comes. It also forgets all keys at a keydown or a keyup of Cmd, because macOS sends no keyup
+  // for a key that goes up while Cmd is down. A keyup with a modifier does not match the hotkey of
+  // a hold key, so a listener here removes that key from the gate.
   useEffect(() => {
-    const onKeyUp = (event: KeyboardEvent): void => {
-      const holdKey = releasedHoldKey(event, latest.current.holdKeys)
-      if (holdKey !== null) gate.up(holdKey)
+    const onKey = (event: KeyboardEvent): void => {
+      const type = event.type === 'keyup' ? 'keyup' : 'keydown'
+      const change = gateChange(type, event, latest.current.holdKeys)
+      if (change?.kind === 'clear') gate.clear()
+      else if (change?.kind === 'up') gate.up(change.key)
     }
     const onBlur = (): void => gate.clear()
     const onVisibility = (): void => {
       if (document.visibilityState === 'hidden') gate.clear()
     }
-    document.addEventListener('keyup', onKeyUp, true)
+    document.addEventListener('keydown', onKey, true)
+    document.addEventListener('keyup', onKey, true)
     window.addEventListener('blur', onBlur)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
-      document.removeEventListener('keyup', onKeyUp, true)
+      document.removeEventListener('keydown', onKey, true)
+      document.removeEventListener('keyup', onKey, true)
       window.removeEventListener('blur', onBlur)
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [gate])
 
-  const value = useMemo<KeysValue>(() => ({ holdClick: run.holdClick }), [run])
+  const value = useMemo<KeysValue>(
+    () => ({ holdClick: run.holdClick, holding: () => gate.holding() }),
+    [gate, run],
+  )
   return <KeysContext value={value}>{children}</KeysContext>
 }
 

@@ -112,6 +112,24 @@ test('update calls onChange with the new and the old settings, and not for a pat
   expect(listener).toHaveBeenCalledOnce()
 })
 
+test('change computes the patch from the newest settings, so two quick steps give 120', async () => {
+  const store = await openSettingsStore(file)
+  const step = (): Promise<unknown> =>
+    store.change(settings => ({ interfaceScale: settings.interfaceScale + 10 }))
+  await Promise.all([step(), step()])
+  expect(store.get().interfaceScale).toBe(120)
+  expect((await readSaved()).interfaceScale).toBe(120)
+})
+
+test('change rejects a bad patch with the reason, and the next change still runs', async () => {
+  const store = await openSettingsStore(file)
+  await expect(store.change(() => ({ interfaceScale: 155 }))).rejects.toThrow(
+    'refused: bad interfaceScale',
+  )
+  await store.change(settings => ({ interfaceScale: settings.interfaceScale - 10 }))
+  expect(store.get().interfaceScale).toBe(90)
+})
+
 test('two quick updates apply one after the other', async () => {
   const store = await openSettingsStore(file)
   await Promise.all([

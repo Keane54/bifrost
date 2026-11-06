@@ -31,7 +31,13 @@ export class HoldGate {
     return key
   }
 
-  // Forget all keys (window blur, a hidden page).
+  // True while exactly one active key is down. Then a row click is a hold click, also when the
+  // click used the key.
+  holding(): boolean {
+    return [...this.keys.values()].filter(held => held.active).length === 1
+  }
+
+  // Forget all keys (window blur, a hidden page, the Cmd key).
   clear(): void {
     this.keys.clear()
   }

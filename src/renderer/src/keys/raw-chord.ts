@@ -37,3 +37,22 @@ export function releasedHoldKey(event: ReleasedKey, holdKeys: ReadonlySet<string
   else if (/^Digit[0-9]$/.test(event.code)) key = event.code.slice(5)
   return key !== null && holdKeys.has(key) ? key : null
 }
+
+// The change of the hold gate for a key event that the hotkeys do not handle.
+export type GateChange = { kind: 'clear' } | { kind: 'up'; key: string } | null
+
+// macOS sends no keyup for a key that goes up while Cmd is down. So a keydown or a keyup of Cmd
+// clears the gate, as the key tracker of TanStack Hotkeys does. A keyup of a hold key with a
+// modifier removes that key (see releasedHoldKey).
+export function gateChange(
+  type: 'keydown' | 'keyup',
+  event: ReleasedKey,
+  holdKeys: ReadonlySet<string>,
+): GateChange {
+  if (event.key === 'Meta' || event.key === 'OS' || event.code.startsWith('Meta')) {
+    return { kind: 'clear' }
+  }
+  if (type === 'keydown') return null
+  const key = releasedHoldKey(event, holdKeys)
+  return key === null ? null : { key, kind: 'up' }
+}

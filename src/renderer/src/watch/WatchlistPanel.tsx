@@ -56,7 +56,7 @@ interface DropMark {
 export default function WatchlistPanel(): React.JSX.Element {
   const { rows, selectedId, select } = useRegistry()
   const { contextFor, run } = useActions()
-  const { holdClick } = useKeys()
+  const { holdClick, holding } = useKeys()
   const watched = useMemo(() => watchedRows(rows), [rows])
   const list = useRef<HTMLUListElement>(null)
   // The current order, for a drag that is still on when a row changes.
@@ -204,6 +204,8 @@ export default function WatchlistPanel(): React.JSX.Element {
                     }}
                     onContextMenu={() => setMenuId(id)}
                     onDoubleClick={() => {
+                      // A hold action does not change the selection (D8).
+                      if (holding()) return
                       select(id)
                       run('open', id)
                     }}

@@ -163,12 +163,11 @@ export function getSettings(): Settings {
   return settingsStore?.get() ?? DEFAULT_SETTINGS
 }
 
-// Apply a patch from the main process, for example a Zoom item of the View menu.
+// Apply a change from the main process, for example a Zoom item of the View menu. fn gets the
+// newest settings in the update queue, so two quick changes do not use the same old value.
 // Do nothing before the store opens. A refused patch or a write error goes to the console.
-export function patchSettings(patch: SettingsPatch): void {
-  settingsStore
-    ?.update(patch)
-    .catch(err => console.error('Bifrost cannot change the settings.', err))
+export function changeSettings(fn: (settings: Settings) => SettingsPatch): void {
+  settingsStore?.change(fn).catch(err => console.error('Bifrost cannot change the settings.', err))
 }
 
 // Zoom the page of the current window (Interface scale, ruling C1).

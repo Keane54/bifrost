@@ -1,4 +1,4 @@
-import { applyPatch, parseSettings, type Settings } from '../../shared/settings'
+import { applyPatch, parseSettings, type Settings, type SettingsPatch } from '../../shared/settings'
 import { readJsonFile, writeJsonAtomic } from './json-file'
 
 type ChangeListener = (settings: Settings, prev: Settings) => void
@@ -9,6 +9,9 @@ export interface SettingsStore {
   // Apply a patch. This rejects with the reason of applyPatch, or with a write error.
   // A patch that changes nothing resolves with the same object and does not write.
   update(patch: unknown): Promise<Settings>
+  // Apply the patch that fn gives for the newest settings. fn runs in the queue, after the
+  // earlier updates. So two quick changes never start from the same old value.
+  change(fn: (settings: Settings) => SettingsPatch): Promise<Settings>
   // The returned function removes only this listener.
   onChange(cb: (settings: Settings, prev: Settings) => void): () => void
 }
@@ -56,6 +59,11 @@ export async function openSettingsStore(
   }
 
   return {
+    change: fn => {
+      const next = queue.then(() => run(fn(current)))
+      queue = next.catch(() => {})
+      return next
+    },
     get: () => current,
     onChange: cb => {
       // Each call adds its own entry. So two calls with the same function stay separate.

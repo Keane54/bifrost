@@ -63,6 +63,27 @@ describe('HoldGate', () => {
     expect(gate.click()).toBe('O')
   })
 
+  it('holding is true while one active key is down, also after a click', () => {
+    const gate = new HoldGate()
+    expect(gate.holding()).toBe(false)
+    gate.down('O', true)
+    expect(gate.holding()).toBe(true)
+    gate.click()
+    expect(gate.holding()).toBe(true)
+    gate.up('O')
+    expect(gate.holding()).toBe(false)
+  })
+
+  it('holding is false for an inactive key and for two active keys', () => {
+    const gate = new HoldGate()
+    gate.down('O', false)
+    expect(gate.holding()).toBe(false)
+    gate.down('M', true)
+    expect(gate.holding()).toBe(true)
+    gate.down('X', true)
+    expect(gate.holding()).toBe(false)
+  })
+
   it('clear forgets all keys', () => {
     const gate = new HoldGate()
     gate.down('O', true)

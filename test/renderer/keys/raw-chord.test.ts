@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { releasedHoldKey, toRawChord } from '../../../src/renderer/src/keys/raw-chord'
+import { gateChange, releasedHoldKey, toRawChord } from '../../../src/renderer/src/keys/raw-chord'
 
 describe('toRawChord', () => {
   it('toRawChord gives the key and the true modifiers', () => {
@@ -35,5 +35,35 @@ describe('releasedHoldKey', () => {
     expect(releasedHoldKey({ code: 'KeyO', key: 'o' }, hold)).toBeNull()
     expect(releasedHoldKey({ code: 'KeyP', key: 'P', shiftKey: true }, hold)).toBeNull()
     expect(releasedHoldKey({ code: 'Digit2', key: '@', shiftKey: true }, hold)).toBeNull()
+  })
+})
+
+describe('gateChange', () => {
+  const hold = new Set(['O', 'X'])
+
+  it('a Meta keydown or keyup gives clear', () => {
+    // macOS sends no keyup for a key that goes up while Cmd is down. So Cmd clears the gate.
+    expect(gateChange('keydown', { code: 'MetaLeft', key: 'Meta', metaKey: true }, hold)).toEqual({
+      kind: 'clear',
+    })
+    expect(gateChange('keyup', { code: 'MetaLeft', key: 'Meta' }, hold)).toEqual({ kind: 'clear' })
+    expect(gateChange('keydown', { code: 'MetaRight', key: 'Meta', metaKey: true }, hold)).toEqual({
+      kind: 'clear',
+    })
+  })
+
+  it('a keyup of a hold key with a modifier gives up, and other keys give null', () => {
+    expect(gateChange('keyup', { code: 'KeyX', key: 'X', shiftKey: true }, hold)).toEqual({
+      key: 'X',
+      kind: 'up',
+    })
+    // The hotkey of the hold key takes the plain keyup and keydown.
+    expect(gateChange('keyup', { code: 'KeyX', key: 'x' }, hold)).toBeNull()
+    expect(gateChange('keydown', { code: 'KeyX', key: 'x' }, hold)).toBeNull()
+    expect(
+      gateChange('keydown', { code: 'ShiftLeft', key: 'Shift', shiftKey: true }, hold),
+    ).toBeNull()
+    expect(gateChange('keyup', { code: 'ShiftLeft', key: 'Shift' }, hold)).toBeNull()
+    expect(gateChange('keydown', { code: 'KeyW', key: 'w', metaKey: true }, hold)).toBeNull()
   })
 })
