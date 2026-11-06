@@ -190,6 +190,7 @@ Rules for the live lines:
 - Each line has `v: 1`. Bifrost ignores a line with another version, and a line that is not valid.
 - The server accepts a body of at most 65,536 bytes. The mod cuts `answer` to 4,000 characters and each other text to 200 characters.
 - The server closes a request that has no end after 5,000 ms.
+- The mod counts the sends that have not settled. At 32 or more, a new send or usage read sends nothing and returns at once. The line is lost. Bifrost gets the state again at the next line or the next heartbeat. The reason: a Bifrost that hangs never answers a send, and its request timeout then does not run.
 - Order rule (D4): Bifrost drops a state event that is older than the newest applied event of the session. It compares `at`, then `seq` when both events have one.
 - A turn end of a subagent (`agentId`) changes nothing. A `tool.done` event of any loop sets the state to Working.
 - No `classic.*` kind goes on the wire. The mod hooks `classic.PermissionRequest` and `classic.StopFailure` as a fallback (D5).
@@ -211,6 +212,7 @@ The mod sends a `usage` line at these times:
 
 - At `session.start` and at `session.measure`.
 - 2,500 ms after each `turn.complete` of the main loop. The cost can change about 2 s after a turn.
+- 1,000 ms after `session.end` with the reason `clear`. The line has the new session ID. After `/clear`, no `session.start` comes for the new ID. Without this line, the row of the new ID has no live flag, model or cost until the next prompt.
 - Each 30,000 ms (the heartbeat). Without it, an idle row has no data after a start of Bifrost.
 
 Rules for the usage data:
@@ -218,6 +220,7 @@ Rules for the usage data:
 - The registry keeps the last `usage` line of each session.
 - A `usage` line is not activity. The column "Last activity" ignores it.
 - A row is live for 90,000 ms after its last live line. The heartbeat keeps an idle row live.
+- Turn off and Remove end the live flag of each row directly after the server stops (section 11.2). The usage of each row stays.
 - The parser keeps the windows `five_hour` and `seven_day` of the rate limits. It drops other windows.
 - The mod gives a model ID. The registry maps it to a name with `modelName`: `claude-haiku-5-5` gives `Haiku 5.5`. The suffix `[1m]` adds ` (1M context)`. An ID with an unknown form stays as it is.
 - The mod cannot read the session name. The name comes from `claude agents --json`.
@@ -267,7 +270,7 @@ Box rules:
 9. A red box also clears when `status` is no longer `waiting`. Another client can answer a prompt. Examples are the agent view, a terminal and a phone.
 10. A `status` sample clears a box only after a sample confirmed that box. `idle` confirms a yellow box and an error box. `waiting` confirms a red prompt box. The reason: Claude Code can report `busy` while the Stop hooks run. Live events clear a box at all times.
 11. A session with no live line can get a yellow box from the poll alone (O3).
-    1. A change of `status` from `busy` to `idle` sets the box.
+    1. A change of `status` from `busy` or `waiting` to `idle` sets the box. An Esc at a permission prompt of a session with no live line also gives this box.
     2. A session that is idle at the first poll gets no box.
     3. A turn that starts and ends between two polls gives no box.
     4. A later `busy` sample clears the box.
@@ -364,7 +367,7 @@ Columns:
 | Branch | Git (section 6.4). |
 | Model | The model name from the newest live usage line (section 6.3). |
 | Context % | The context percent from the newest live usage line. |
-| Cost | The cost from the newest live usage line. |
+| Cost | The cost from the newest live usage line, in US dollars with 2 decimals. A cost above 0 and below one cent shows as `<$0.01`. A cost of 0 shows as `$0.00`. |
 | Last activity | The time of the latest event from any source. |
 
 Default tabs:
@@ -724,32 +727,45 @@ Live details needs Claude Code 2.1.290 or later. Bifrost runs `claude plugin` on
 
 Install:
 
-1. Remove an old hook install (section 11.3). If this fails, stop. Bifrost then runs no `claude plugin` command.
-2. Copy the four files of `resources/live-mod/` to `~/.bifrost/mod`.
-3. Run `plugin marketplace list --json`. If `bifrost-local` has another path, stop and show an error.
-4. Run `plugin marketplace add <mod folder> --scope user --json`.
-5. Run `plugin install bifrost-live@bifrost-local --scope user --json`.
-6. Start the socket server.
+1. Check the version of Claude Code. Below 2.1.290, stop.
+2. Find `claude`. If Bifrost cannot find it, stop.
+3. Run `plugin marketplace list --json`. If `bifrost-local` has another path or no path, stop and show an error. Bifrost has changed nothing at this point.
+4. Read `~/.claude/settings.json`. If Bifrost cannot read it, stop and show an error. Bifrost has changed nothing at this point.
+5. Remove an old hook install, if Bifrost finds one (section 11.3). If this fails, stop. Bifrost then runs no `claude plugin` command.
+6. Copy the four files of `resources/live-mod/` to `~/.bifrost/mod`.
+7. If step 3 found no `bifrost-local`, run `plugin marketplace add <mod folder> --scope user --json`.
+8. Run `plugin list --json`. If the plugin is not installed, run `plugin install bifrost-live@bifrost-local --scope user --json`, and then run `plugin list --json` again. If the plugin is installed and off, run `plugin enable bifrost-live@bifrost-local --scope user --json`.
+9. Start the socket server. If a stop, a Turn off or a Remove came after the start of the Install, Bifrost does not start the server.
 
 Turn on:
 
-1. Remove an old hook install.
-2. Run `plugin enable bifrost-live@bifrost-local --scope user --json`.
-3. Start the socket server.
+1. Check the version of Claude Code. Below 2.1.290, stop.
+2. Find `claude`. If Bifrost cannot find it, stop.
+3. Run `plugin list --json`. If the plugin is not installed, stop.
+4. Read `~/.claude/settings.json`. If Bifrost cannot read it, stop and show an error. Bifrost has changed nothing at this point.
+5. Remove an old hook install, if Bifrost finds one. If this fails, stop.
+6. Copy the four files of `resources/live-mod/` to `~/.bifrost/mod`.
+7. Run `plugin enable bifrost-live@bifrost-local --scope user --json`.
+8. Start the socket server. If a stop, a Turn off or a Remove came after the start of Turn on, Bifrost does not start the server.
 
 Turn on refuses when the plugin is not installed. A Live details switch calls Install when `plugin` is `not-installed`. Otherwise it calls Turn on or Turn off.
 
 Turn off:
 
-1. Run `plugin disable bifrost-live@bifrost-local --scope user --json`.
-2. Stop the socket server at once.
+1. Stop the socket server at once. The server is the switch that acts at once (D9).
+2. End the live flag of each row. The poll yellow box (section 7, rule 11) then applies at once, and the status gives 0 live sessions. The usage of each row stays.
+3. Run `plugin list --json`. If the plugin is installed, run `plugin disable bifrost-live@bifrost-local --scope user --json`.
+
+If step 3 fails, Turn off shows the error. The server stays stopped.
 
 Remove:
 
-1. Remove an old hook install.
-2. Run `plugin uninstall bifrost-live@bifrost-local --scope user --json`.
-3. Run `plugin marketplace remove bifrost-local --scope user --json`. This also uninstalls each other plugin of that marketplace.
-4. Stop the socket server. Delete `~/.bifrost/mod`.
+1. Stop the socket server.
+2. End the live flag of each row.
+3. Run `plugin list --json`. If the plugin is installed, run `plugin uninstall bifrost-live@bifrost-local --scope user --json`.
+4. Run `plugin marketplace list --json`. Only if `bifrost-local` has the path of the mod folder, run `plugin marketplace remove bifrost-local --scope user --json`. This also uninstalls each other plugin of that marketplace.
+5. Delete `~/.bifrost/mod`.
+6. Remove an old hook install, if Bifrost finds one. This is the last step. If Bifrost cannot read `~/.claude/settings.json`, or the removal fails, Remove shows the error after the plugin steps. The reason: a failed removal of the old install must not leave the mod installed.
 
 Rules:
 
@@ -757,7 +773,11 @@ Rules:
 - After Turn off, the sends of running sessions fail in about 1 ms. A running session keeps the mod until a restart or `/reload-plugins`.
 - A running session loads a new or changed mod only at its start or at `/reload-plugins`. After Install or Turn on, Bifrost tells the user this.
 - Bifrost does not run `/reload-plugins` in a session.
+- One action runs at a time. An action that comes while another action runs fails with "Another change is still running. Try again in a moment."
+- At each start of Bifrost, the start of Live details (section 11.5) runs first. An action that comes before this start ends waits for it. Then two copies of the mod folder never run at the same time.
+- At the timeout of 30,000 ms, the two list commands get SIGKILL. The six write commands get SIGTERM, because a SIGKILL can leave a change half done. A write command that has not ended 10,000 ms after the SIGTERM fails. A timeout gives "Claude Code didn't finish in 30 seconds."
 - A stop during a start wins. The server never deletes a file that is not a socket. It never deletes a socket that answers.
+- A stop of the server also clears an old server error. After Turn off or Remove, the status shows no old error.
 - The name `bifrost-local` is not `bifrost`, so a clash with another marketplace is less likely.
 
 ### 11.3 Remove an old hook install
@@ -772,12 +792,20 @@ If `~/.claude/settings.json` has hook entries that run `~/.bifrost/bin/bifrost-h
 
 Bifrost keeps `statusline-original.json` and `backups/` for this step.
 
+At each start, before the start of Live details, Bifrost deletes the data of the old hooks:
+
+- `~/.bifrost/active`, `~/.bifrost/events/` and `~/.bifrost/sessions/`.
+- `~/.bifrost/bin/`, but only when `~/.claude/settings.json` has no old hook entry. Old hook entries still run the scripts in `bin/`. Settings that Bifrost cannot read also keep `bin/`.
+
+An older Bifrost (M1 to M4) that runs at the same time also loses these files. The design accepts this, because the old hooks do nothing without `active`.
+
 ### 11.4 Skip
 
 If you select "Skip", Bifrost shows only the data from `claude agents --json`. This data is the name, the project and the `status`. Bifrost then shows the red box for a `waiting` session and the poll yellow box (section 7, rule 11). It shows no model, cost or context %.
 
 ### 11.5 Checks at start
 
+- Bifrost deletes the data of the old hooks at each start (section 11.3). Then the start of Live details runs.
 - Bifrost runs `claude plugin list --json` at each start. If the plugin is on and the mod folder differs from the app files, Bifrost copies the four files again.
 - A running session gets the new files after `/reload-plugins` or a restart.
 - Bifrost reads `claude --version` at each start. Below the minimum version, Bifrost shows a warning. The minimum version is 2.1.281.
@@ -996,14 +1024,22 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 7. D7: `session.start` from the mod only ends the parked state. A reload does not clear a box.
 8. D8: Usage comes from `session.start`, `session.measure`, one read 2,500 ms after each main-loop `turn.complete`, and a heartbeat each 30 s. A usage line is not activity.
 9. D9: Bifrost listens on the socket only while the plugin is on. It also listens while the plugin state is unknown and the mod folder exists. Turn off stops the server at once.
-10. D10: Install, Turn on and Remove first remove an old hook install. A failure stops the action. Bifrost keeps `statusline-original.json` and the backups.
+10. D10: Install and Turn on remove an old hook install before the first `claude plugin` command. A failure stops the action. Remove does the old removal last, after the plugin steps and the delete of the mod folder (controller ruling). The reason: a failed removal of the old install must not leave the mod installed. Bifrost keeps `statusline-original.json` and the backups.
 11. D11: The API for M5a is `live.status()`, `live.install()`, `live.enable()`, `live.disable()` and `live.uninstall()`. `enable` refuses when the plugin is not installed.
 12. D12: The parser keeps `five_hour` and `seven_day` as the rate limits and drops other windows. This work adds no Usage HUD.
 13. D13: A new session always gets the `--settings` statusLine override. Section 22 item 1 passed it only without the wrapper. Resume and Take control add no flags.
 14. D14: This section holds the decisions of the Live details work. Section 22 keeps its text, with a note that this section changes its statusline line.
 15. O1: Yes. A controller task installs the mod at user scope for a short time (Part B of the check). It saves backups and SHA-256 values first, and it runs no `/reload-plugins` in a session of the user.
 16. O2: The guard `cc-plugin-sec-default` is not in the list of the user. The `classic.*` events are usable.
-17. O3: Yes. With no mod, a change of `status` from `busy` to `idle` seen by the poll sets a yellow box (section 7, rule 11).
+17. O3: Yes. With no mod, a change of `status` from `busy` or `waiting` to `idle` seen by the poll sets a yellow box (section 7, rule 11). The O3 question named both changes.
 18. O4: Option a. New sessions start with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. Resume and Take control add no flags. A taken-over session keeps your statusline. Spec 20 item 1 goes away (section 6.3).
 19. Ask order: the mod queues the `ask` line before the tool runs. The line has a lower `seq` than `tool.done`. The mod does not wait for the send.
 20. Socket server: a stop during a start wins. The server never deletes a file that is not a socket. It never deletes a socket that answers (section 11.2).
+21. Live flags: Turn off and Remove end the live flag of each row directly after the server stops. The usage stays. The poll yellow box then applies at once, and the status gives 0 live sessions (section 11.2).
+22. Start order: the start of Live details runs first in the serial runner of the four actions. An action that comes before the start ends waits for it (section 11.2).
+23. Server error: a stop of the server also clears an old server error. The status then shows no old error after Turn off or Remove.
+24. Kill signal: the six write commands get SIGTERM at the 30 s timeout, and fail 10 s later if they have not ended. The two list commands keep SIGKILL (section 11.2). A timeout gives "Claude Code didn't finish in 30 seconds."
+25. App texts: a second action gives "Another change is still running. Try again in a moment." A failed list names the plugin list or the marketplace list.
+26. Sends in flight: the mod drops a new line while 32 or more sends have not settled (section 6.2).
+27. Usage after `/clear`: the mod sends a usage line 1 s after `session.end` with the reason `clear`. The line has the new session ID (section 6.3).
+28. Cost below one cent: a cost above 0 and below 0.01 USD shows as `<$0.01`. A cost of 0 shows as `$0.00` (section 8.3).
