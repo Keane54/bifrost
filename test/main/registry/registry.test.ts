@@ -2022,6 +2022,29 @@ describe('one row across /clear (2026-11-06)', () => {
     })
   })
 
+  test('a stopped job whose IDs do not start with its short ID resumes by its --all ID', () => {
+    // Bifrost did not see this case. The spec says: use the ID of the stopped job in --all.
+    const job = bg({ id: 'abcd1234', pid: undefined, sessionId: CLEARED, status: '' })
+    const r = registry()
+    r.applyAgents([{ ...job, pid: 300, status: 'idle' }], 100)
+    expect(r.rows()[0].resumeId).toBeUndefined()
+    r.applyAgents([], 2100)
+    r.applyAllAgents([job], true)
+    expect(r.rows()[0]).toMatchObject({ resumeId: CLEARED, state: 'parked' })
+  })
+
+  test('an --all ID that does not start with the short ID never replaces one that does', () => {
+    // Bifrost first saw the job after its /clear, so the row ID is the ID after the clear.
+    const r = registry()
+    r.applyAgents([after], 100)
+    r.applyAgents([], 2100)
+    r.applyAllAgents([stopped], true)
+    expect(r.rows()[0]).toMatchObject({ resumeId: ORIGINAL, sessionId: CLEARED })
+    // A later entry of the same job without a pid has the ID after the /clear.
+    r.applyAllAgents([{ ...after, pid: undefined, status: '' }], true)
+    expect(r.rows()[0]).toMatchObject({ resumeId: ORIGINAL, sessionId: CLEARED })
+  })
+
   test('the woken job maps to the same row (test 4)', () => {
     const r = cleared()
     r.applyAgents([], 4100)

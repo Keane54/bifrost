@@ -660,7 +660,7 @@ The ID of each command (section 6.1). The renderer sends the row ID only. The ma
 
 | Command | ID |
 |---|---|
-| Resume and Resume all of an owned row | The resume ID: the original session ID of the job, which starts with its short ID. It is the ID of the stopped job in `--all`, the row ID or the current ID, the first one that starts with the short ID. A resume by another ID starts a second job (section 4). When Bifrost does not know the resume ID yet, Resume refuses and asks you to try again in 30 seconds. A row with no known short ID uses its row ID. |
+| Resume and Resume all of an owned row | The resume ID: the original session ID of the job, which starts with its short ID. It is the ID of the stopped job in `--all`, the row ID or the current ID, the first one that starts with the short ID. When none does, it is the ID of the stopped job in `--all`. A later `--all` ID that does not start with the short ID never replaces one that does. A resume by another ID starts a second job (section 4). When Bifrost does not know the resume ID yet, Resume refuses and asks you to try again in 30 seconds. A row with no known short ID uses its row ID. |
 | Resume of a parked external row | The current ID. |
 | Take control | The current ID: the conversation after any `/clear`. The transcript check uses it too. If a `/clear` changes the current ID during the checks, Bifrost stops before the signal. |
 | Stop, Delete, Open in terminal, chat window attach, Send message, Run slash command, Interrupt | The short ID. A `/clear` does not change it. |

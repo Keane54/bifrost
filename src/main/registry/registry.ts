@@ -76,8 +76,8 @@ export const GONE_LISTS = 2
 interface Session {
   sessionId: string
   shortId?: string
-  // The session ID of the --all entry of the stopped job, when it starts with the short ID. It is
-  // the original session ID of the job. A resume by this ID wakes the same job.
+  // The session ID of the --all entry of the stopped job. A stopped job shows its original
+  // session ID there (test of 2026-11-06). A resume by this ID wakes the same job.
   jobId?: string
   kind: SessionKind
   pid?: number
@@ -462,6 +462,14 @@ export class SessionRegistry {
     if (s) this.applyPending(s, id)
   }
 
+  // Keep the --all ID of a stopped job. An ID that starts with the short ID is the original ID.
+  // Another ID only fills an empty value, so it never replaces the original ID.
+  private keepJobId(s: Session, entry: AgentEntry): void {
+    if (s.jobId === undefined || (entry.id && entry.sessionId.startsWith(entry.id))) {
+      s.jobId = entry.sessionId
+    }
+  }
+
   // Keep the short ID of a background row.
   private keepJob(rowId: string, entry: AgentEntry): void {
     if (entry.kind !== 'background' || !entry.id || this.jobs.get(rowId) === entry.id) return
@@ -526,7 +534,7 @@ export class SessionRegistry {
       const s = this.sessions.get(rowId) ?? this.add(rowId)
       if (isNew) this.setCurrent(rowId, entry.sessionId)
       copyEntry(s, entry)
-      if (entry.id && entry.sessionId.startsWith(entry.id)) s.jobId = entry.sessionId
+      this.keepJobId(s, entry)
       this.park(s)
     }
     if (counts) this.forgetGone(listed)
@@ -1044,12 +1052,14 @@ export class SessionRegistry {
   // The session ID that resumes an owned row (spec 9.1). A stopped job wakes only by its original
   // session ID: the ID that starts with its short ID (test of 2026-11-06). A resume by another ID
   // starts a second job. So the ID is the --all ID of the stopped job, the row ID or the current
-  // ID, the first one that starts with the short ID. undefined when Bifrost does not know it yet.
-  // A row with no known short ID uses its row ID.
+  // ID, the first one that starts with the short ID. When none does, it is the --all ID of the
+  // stopped job. undefined when Bifrost does not know it yet. A row with no known short ID uses
+  // its row ID.
   private resumeIdOf(s: Session): string | undefined {
     const short = s.shortId ?? this.jobs.get(s.sessionId)
     if (!short) return s.sessionId
-    return [s.jobId, s.sessionId, this.currentOf(s.sessionId)].find(id => id?.startsWith(short))
+    const ids = [s.jobId, s.sessionId, this.currentOf(s.sessionId)]
+    return ids.find(id => id?.startsWith(short)) ?? s.jobId
   }
 
   // The name that Bifrost shows: the local name when one exists, else the Claude Code name.
