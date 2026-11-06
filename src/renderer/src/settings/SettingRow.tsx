@@ -1,10 +1,13 @@
 // One row of the Settings panel: the label on the left, the control on the right (spec 12).
 // An optional hint shows under the row. An optional error shows under the hint.
-import { useCallback, useState } from 'react'
+// During a search, a row that does not match shows nothing.
+import { useCallback, useEffect, useState } from 'react'
 import { friendlyError } from '../actions/errors'
 import { cx } from '../lib/cx'
 import { ErrorLine } from '../lib/ErrorLine'
 import { errorMessage } from '../lib/error-message'
+import { useRowShown } from './row-filter'
+import { useSaveTracker } from './save-context'
 
 // The field style of the dialogs, in a smaller size for a row.
 export const ROW_FIELD =
@@ -22,7 +25,8 @@ export function SettingRow({
   error?: string | null
   onCloseError?: () => void
   children: React.ReactNode
-}): React.JSX.Element {
+}): React.JSX.Element | null {
+  if (!useRowShown(label)) return null
   return (
     <div className='border-panel-edge border-b' data-setting-row={label}>
       <div className='flex min-h-7 items-center justify-between gap-3 px-3'>
@@ -45,18 +49,42 @@ export interface RowSave {
 }
 
 // The error state of one row. The error stays until the user closes it or the next save works.
-export function useRowSave(): RowSave {
+// In the Settings panel, the Save button waits for each save of a row. The tracker keeps the
+// state of the row, so Save stays open only while the row has a failed save (spec 12).
+// label: the label of a General row. While a search hides that row, the row acts as unmounted:
+// its save state goes away, and its error does not show again.
+export function useRowSave(label: string | null = null): RowSave {
+  const tracker = useSaveTracker()
+  const shown = useRowShown(label)
+  // The key of this row in the tracker.
+  const [key] = useState(() => ({}))
   const [error, setError] = useState<string | null>(null)
-  const closeError = useCallback(() => setError(null), [])
-  const save = useCallback(async (run: () => Promise<void>): Promise<boolean> => {
-    try {
-      await run()
-      setError(null)
-      return true
-    } catch (err) {
-      setError(friendlyError(errorMessage(err)))
-      return false
-    }
-  }, [])
+  useEffect(() => () => tracker?.remove(key), [tracker, key])
+  useEffect(() => {
+    if (shown) return
+    tracker?.remove(key)
+    setError(null)
+  }, [shown, tracker, key])
+  const closeError = useCallback(() => {
+    setError(null)
+    tracker?.forget(key)
+  }, [tracker, key])
+  const save = useCallback(
+    (run: () => Promise<void>): Promise<boolean> => {
+      const result = (async (): Promise<boolean> => {
+        try {
+          await run()
+          setError(null)
+          return true
+        } catch (err) {
+          setError(friendlyError(errorMessage(err)))
+          return false
+        }
+      })()
+      tracker?.track(key, result)
+      return result
+    },
+    [tracker, key],
+  )
   return { closeError, error, save }
 }

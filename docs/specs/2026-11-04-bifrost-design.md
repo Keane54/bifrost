@@ -507,6 +507,10 @@ Send box rules:
 - A new session of Bifrost shows no statusline row in its chat window (section 6.3).
 - Visible chat windows use the WebGL renderer.
 - A chat window in a back tab, or a minimised chat window, releases its WebGL context.
+- During Take control, the chat window shows the Take control loader in place of the terminal (section 9.2).
+- The terminal has a transparent background (user decision, 2026-11-06). The frame colour and its blur show through, so the "Panel transparency" setting also applies to chat windows. The token `--color-terminal-bg` is fully transparent, and xterm.js has `allowTransparency`. The WebGL renderer and the DOM renderer both draw the transparent background, also after a WebGL context loss. `app.css` replaces the black viewport and the native scroll bar of `xterm.css`.
+- The blur behind a chat window is light: 8 pixels (`backdrop-blur-sm`). The other panels keep 12 pixels. So it is clear when a chat window is over another panel, as in EVE.
+- The terminal text stays easy to read. A test checks the contrast of white text (7:1 or more) and of a mid-grey dim text (4.5:1 or more) on the panel colour at each transparency. The backdrops are the blurred text of another panel, a white watch row, a selected row and the rainbow of another loader.
 
 Size rule (the user approved this on 2026-11-04; M3 builds it):
 
@@ -582,7 +586,7 @@ Dialog rules:
 
 ### 8.10 Theme
 
-- The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur.
+- The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur. A chat window has a lighter blur than the other panels (section 8.5).
 - The accent colour is a light cyan, as in EVE. Bifrost uses the accent on few elements. The top border of each panel is a 1 px cyan line. The focused panel has the full line and a cyan glow above its top edge only. Other panels have a dim line and no glow. A click on a button, a tab or a row gives a short cyan tint with low opacity.
 - The focused panel is less transparent than the other panels, so it stands out, as in EVE. The background, the border and the glow change in 250 ms when the focus moves (user decision, 2026-11-05).
 - A selected row gets a light, low-opacity cyan background, so it differs from a neutral row. A tab in a panel stack is white with a white underline when it is active. An Overview tab keeps its own text colour (section 8.3), and the active Overview tab has an underline in that colour, as in EVE.
@@ -591,7 +595,10 @@ Dialog rules:
 - Bifrost uses its own icons and fonts. It does not copy EVE art, icons or fonts.
 - One file holds all colour tokens.
 - The box yellow, the box red and the parked grey are reserved shades. Other Overview colours can be red, amber or yellow. Each of them differs clearly from the box shades (OKLab distance 0.10 or more). A test checks this.
-- The Overview uses no purple and no pink for now. The user keeps purple for a later feature (fleets, as in EVE) (user decision, 2026-11-05). The rule covers only the Overview colours: the `project`, `tab` and `prio` tokens. Other panels may use purple and pink, for example the Watchlist, the Usage HUD and Service status (user decision, 2026-11-06). A test checks the three Overview families only. The M5b panels keep their colours for now.
+- The Overview uses no purple and no pink for now. The user keeps purple for a later feature (fleets, as in EVE) (user decision, 2026-11-05). The rule covers the Overview colours: the `project`, `tab` and `prio` tokens.
+- The watch colours tint and stripe the Overview rows. So they have no purple. Pink is allowed for them (user decision, 2026-11-06).
+- Other panels may use purple and pink, for example the Usage HUD and Service status (user decision, 2026-11-06). The M5b panels keep their colours for now.
+- A test checks the three Overview families for purple and pink, and the `watch` family for purple. The two checks share named hue ranges in HSL: purple is from 255 to below 300 degrees, and pink is from 300 to 345 degrees.
 - The terminal font is a setting.
 
 ### 8.12 Watchlist
@@ -613,6 +620,12 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 - Bifrost checks each status page one time each minute. One check serves all sessions.
 - An outage shows the service name, the incident name and the impact: minor, major or critical.
 - The panel does not use yellow, red or grey for an outage, because these colours have fixed meanings (section 8.10).
+- Each service row shows the level square, the level text (for example "Operational"), the since text, the service name and a button with an external-link icon and the text "Open status page".
+- The row has three views by width (user decision, 2026-11-06). Bifrost chooses one view for all rows:
+  1. Full: as above, when the widest row fits.
+  2. When the full view cuts off a text of a row, the button hides its text "Open status page". It keeps the icon, its `aria-label` and gets a tooltip (`title`) with the same text as the `aria-label`.
+  3. When view 2 still cuts off a text, the row also hides the level text. The level square keeps the level as its tooltip and as its accessible name. The since text stays. "No data" has no square, so it keeps its text.
+- The panel measures invisible copies of the full rows at their natural width. So the choice does not depend on the view on the screen, and a wider panel goes back to a fuller view. The panel chooses the view before the paint, after each render, at each resize (a `ResizeObserver`), at each change of the width of a measure copy, and when a web font loads (`document.fonts`). So a font that loads late, for example Geist Mono, does not leave a wrong view. So the view does not flicker or change in a loop. A pure function, `serviceView(available, needs)`, makes the choice.
 
 ## 9. Actions and keys
 
@@ -690,13 +703,25 @@ Bifrost does these steps:
 
 1. Find the terminal app from the parent processes of the session. Use the `.app` part of the process path for the app name.
 2. Show the confirmation: "This ends the {terminal} process and hands control to Bifrost."
-3. Send SIGTERM to the session process.
-4. Wait for the process to end, for a maximum of 5 seconds.
-5. Run `claude --bg --settings <statusline override> --resume <current ID>` in the session directory (D13). The current ID is the conversation after any `/clear` (section 6.1).
-6. Find the new entry by `sessionId`, not by name. The new job has the current ID, so it goes to the same row.
-7. Open the chat window of the session.
+3. Open the chat window of the session at once, and select the row. The window shows the Take control loader. The chat window and the loader use the row ID (section 6.1).
+4. Send SIGTERM to the session process.
+5. Wait for the process to end, for a maximum of 5 seconds.
+6. Run `claude --bg --settings <statusline override> --resume <current ID>` in the session directory (D13). The current ID is the conversation after any `/clear` (section 6.1).
+7. Find the new entry by `sessionId`, not by name. The new job has the current ID, so it goes to the same row.
+8. Restart the chat window. A terminal that ended before Take control attaches again only after a restart. The chat window attaches to the session. The loader goes away when the terminal shows its first output from Claude.
 
 If the process does not end in 5 seconds, Bifrost stops and shows an error. It does not start a copy of the session.
+
+If Take control fails, Bifrost removes the loader, closes the chat window and shows the error. If you close the chat window during Take control, it stays closed.
+
+The Take control loader (user decision, 2026-11-06):
+
+- The loader shows in the chat window while Take control runs, and until the terminal shows its first output from Claude. A terminal that ends also removes the loader, so the window shows why it ended.
+- After a good Take control, a loader that waits only for the first output has a time limit of 20 seconds. Then the loader goes away, and the window shows the terminal, with its note when it cannot attach (review Important 2).
+- During that time, the chat window hides the terminal. The terminal keeps its size and its focus.
+- The window shows the normal panel background and the line "Taking control of <name>...".
+- The bottom two fifths show a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge on an eased curve: the upper half stays faint, and the colour reaches full strength only at the bottom edge. It is at 25% opacity (the user, 2026-11-06: softer, a more gradual fade, and a slightly taller band).
+- A CSS animation shifts the gradient slowly: 12 seconds from one end to the other, and back. With `prefers-reduced-motion: reduce`, the gradient does not move.
 
 ### 9.3 Key rules
 
@@ -771,7 +796,7 @@ Single keys. These work only when focus is not in a chat window or a text box:
 | 0 | Clear the priority |
 | Backspace | Stop session |
 | Shift+Backspace | Delete session |
-| Esc | Clear the selection, or leave the send box |
+| Esc | Open or close Settings, or leave the send box |
 
 Hold a key and left-click a row:
 
@@ -785,6 +810,18 @@ Hold a key and left-click a row:
 | 1 to 5 | Set priority |
 
 Bifrost uses the hold key that is down when you push the mouse button on the row. If you release the key before the mouse button, the action applies to that row, not to the selected row.
+
+Esc (user decision, 2026-11-06):
+
+1. In the send box, Esc leaves the send box.
+2. Else, when Settings is the active panel of the top frame, Esc closes Settings.
+3. Else, Esc opens Settings and brings it to the front, as Cmd+, does.
+
+- Esc does not clear the selection.
+- A held Esc acts one time. A key repeat does not open or close Settings again.
+- In a chat window, Esc goes to Claude.
+- A dialog, a menu, a popover, a text field (for example the Rename field or a Settings field) and the key recorder of Settings > Keys keep their own Esc. Esc then does not open or close Settings. The same applies to an Esc that ends a Watchlist drag.
+- The Esc key of Bifrost waits for the end of the key event. A handler that takes Esc calls `preventDefault` or stops the event. Then Bifrost does nothing.
 
 ### 9.5 Right-click menu
 
@@ -852,6 +889,13 @@ At the first start, Bifrost shows the setup dialog (M5a builds it). The dialog s
 You select "Turn on Live details" or "Skip". "Turn on Live details" runs Install. After a good Install, the dialog shows the reload note and a Done button. After Skip or a good Install, the dialog does not show again.
 
 The dialog shows only when no choice is saved and the plugin is not installed, or Bifrost cannot read its state. An installed plugin, on or off, is already a choice. Then Bifrost saves the choice and shows no dialog. Esc and a click outside the dialog do nothing.
+
+Show the introduction again (2026-11-06):
+
+- Settings > General has the row "Introduction" with the button "Show introduction". The button opens the setup dialog again.
+- The open never changes the saved choice by itself.
+- When the plugin is installed, on or off, the dialog does not offer Install again. It shows the text about Live details, a state line (for example "Live details: On. 2 sessions are sending live details.") and a Done button.
+- When the plugin is not installed, or Bifrost cannot read its state, the dialog offers "Turn on Live details" and "Skip", as at the first start. Skip then only closes the dialog. A good Install saves the choice, as at the first start.
 
 ### 11.2 Live details actions
 
@@ -966,6 +1010,28 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Keys | Section 9.4 |
 | Live details | Not installed. The section has Install, Turn on, Turn off and Remove (section 11.2). |
 
+Save rules (user decision, 2026-11-06):
+
+- Each change applies at once. A checkbox, a radio button or a select saves on change. A text field or a number field saves on Enter and on blur.
+- The Settings panel has a footer with a Save button. The footer shows on each section.
+- A click on Save blurs the focused field, so that its draft saves. Save also adds a slash command that you typed and did not add.
+- Save waits for each save that runs. While a row has a failed save, Settings stays open, and the row shows the error. A good save of the row, a click on the close button of the error, or a change of section (the row then does not show) clears it. Else Save closes the Settings panel. A slash command that Save cannot add keeps Settings open while the field still has text.
+
+Search (user decision, 2026-11-06):
+
+- A search field is at the top of the Settings panel, above the section tabs. Its placeholder is "Search settings".
+- The search finds the rows of all sections by their label, case-insensitive, with the words in any order. With a search, the panel shows the matches of all sections in one list. Each section with a match has a small heading. A section with no match does not show. No tab is active. A click on a tab ends the search and opens that section.
+- The rows: General finds a row by its label. Slash commands finds a command. Keys finds a row by its command label or by its key. Live details shows as one block, and the search reads its title, its state line and the labels of its buttons. A query that matches the title of a section shows the whole section. Live details reads its status (`claude plugin list`) one time for each open of the Settings panel, also when a search shows and hides its block many times. The app start and each Live details action also read the status.
+- A key search accepts the shown form (for example "⇧ ⌘ T" or "⌘⇧T") and a typed form (for example "cmd shift t", "cmd+shift+t", "ctrl", "^" or "opt"). The caret "^" is a typed form of the Ctrl symbol "⌃". Each part of the query must name a part of the key, in any order. A part of one character must be the key itself. A longer part can be the start of a name, for example "sh" for Shift or "ta" for Tab.
+- A query can also mix the words: each word can match the title of the section, the label of the row or a part of its key, for example "keys take", "general flash" or "take cmd". In a mix, a word of one character must be a key name, so "cmd shift t" finds only Cmd+Shift+T.
+- When nothing matches, the panel shows "No settings match "<query>"."
+- A live line (`role="status"`, visible only to a screen reader) gives the number of matches, for example "3 settings match.", or the no-match line. During a search, the result area is a region with the name "Search results".
+- A change of a setting can remove a result that has the focus, for example Remove on a slash command. Then the focus goes to the search field during a search, else to the Settings panel. So the focus does not fall to the page, where the single keys act.
+- A row that the search hides acts as unmounted for the Save rules: its failed save does not keep Settings open, and its error does not show again. In Keys, the error of a hidden row shows at the top of the section.
+- Esc in the search field clears the query first, and the event stops there. Esc in an empty search field closes Settings, as the Esc key does (section 9.4). During an IME composition, Esc only cancels the composition.
+- Cmd+F moves the focus to the search field while Settings has the focus. A click on a part of the panel with no control gives the focus to the panel. With no focus at all, Cmd+F works when Settings is the front panel. The key map has no Cmd+F. If a user binds Cmd+F to a command in Settings > Keys, that command runs first.
+- The list of the General labels is in `settings/search.ts`. A source test checks it against Settings > General. A new row of General must add its label to that list.
+
 ## 13. Performance targets
 
 - 20 sessions in the registry.
@@ -1037,6 +1103,8 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | Mod | `claude plugin test` | The hooks module, with a fake `http.fetch`. |
 | Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. |
 | Manual | Checklist | The M0 questions, Take control and the DMG. |
+
+With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)`, `finishLoader(sessionId)` and `stopLoader(sessionId)` show the Take control loader, end its Take control part and remove it, with no real Take control. A visual check uses it. An app with the real home has no hook.
 
 ## 16. Milestones
 
@@ -1204,7 +1272,7 @@ The controller made these decisions in M5a. The M5a ledger, `docs/m5-findings.md
 
 The controller made these decisions in M5b. The M5b rulings, `docs/m5-findings.md` and the final review give the reasons.
 
-1. R4: The high bar of the Usage HUD uses amber `#d4730a` (`usage-high`). The Service status colours are greens, teals, blues and amber `#d4730a`. They have no yellow, red or grey. Each one is at least 0.10 from the box red and the box yellow in OKLab. This replaces the colours of D21 and D30 (section 8.11). The user changed the purple and pink part on 2026-11-06: the rule of no purple and no pink covers only the Overview (section 8.10). The M5b panels keep their colours for now.
+1. R4: The high bar of the Usage HUD uses amber `#d4730a` (`usage-high`). The Service status colours are greens, teals, blues and amber `#d4730a`. They have no yellow, red or grey. Each one is at least 0.10 from the box red and the box yellow in OKLab. This replaces the colours of D21 and D30 (section 8.11). The user changed the purple and pink part on 2026-11-06: the rule of no purple and no pink covers only the Overview. The watch colours also have no purple, but they may have pink (section 8.10). The M5b panels keep their colours for now.
 2. R6: The app bundle has no `node-pty/build` folder. So each chip loads its own node-pty prebuild (section 14.1).
 3. R7: The fake `claude` of the smoke test writes the attach line to `attach.log` in the test home. The test reads that file, because WebGL draws the terminal text and the DOM has no text to read (section 15).
 4. R13: A check of the app in the real home records a list of `~/.bifrost` with the size and the SHA-256 of each file (not `live.sock`), before and after the run. The smoke test does this check too, in addition to the three Claude files.

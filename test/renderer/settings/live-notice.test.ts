@@ -3,6 +3,9 @@ import {
   claudeVersionLine,
   claudeVersionNotice,
   hasWarning,
+  INTRO_CHANGE_NOTE,
+  introStateLine,
+  LIVE_ABOUT,
   LIVE_VERSION_NOTE,
   liveActions,
   liveNotice,
@@ -14,7 +17,9 @@ import {
   REMOVE_CONFIRM,
   SETUP_INTRO,
   setupChosen,
+  setupView,
   shouldShowSetup,
+  skipSavesChoice,
   unknownStatus,
   VERSION_CHECK_FAILED,
   versionNotice,
@@ -230,5 +235,46 @@ describe('live notice', () => {
     expect(setupChosen(status({ plugin: 'not-installed' }))).toBe(false)
     expect(setupChosen(status({ plugin: 'unknown' }))).toBe(false)
     expect(setupChosen(null)).toBe(false)
+  })
+})
+
+// The introduction again from Settings > General (spec 11.1).
+describe('the introduction again', () => {
+  it('the intro text starts with the text about Live details', () => {
+    expect(LIVE_ABOUT).toBe(
+      "Live details lets Bifrost see each session as it happens: a box the moment Claude finishes or needs you, plus the model, context % and cost. It's a small Claude Code plugin that sends events to Bifrost on this Mac.",
+    )
+    expect(SETUP_INTRO.startsWith(`${LIVE_ABOUT} `)).toBe(true)
+    expect(INTRO_CHANGE_NOTE).toBe('You can change this in Settings > Live details.')
+  })
+
+  it('at the first start, the dialog keeps its choice, also for an installed plugin', () => {
+    expect(setupView('first', 'ask', status({ plugin: 'not-installed' }))).toBe('ask')
+    expect(setupView('first', 'ask', status({ plugin: 'enabled' }))).toBe('ask')
+    expect(setupView('first', 'done', status())).toBe('done')
+  })
+
+  it('again, an installed plugin gives its state and Done, not an install', () => {
+    expect(setupView('again', 'ask', status({ plugin: 'enabled' }))).toBe('installed')
+    expect(setupView('again', 'ask', status({ listening: false, plugin: 'disabled' }))).toBe(
+      'installed',
+    )
+    expect(setupView('again', 'ask', status({ plugin: 'not-installed' }))).toBe('ask')
+    expect(setupView('again', 'ask', status({ plugin: 'unknown' }))).toBe('ask')
+    expect(setupView('again', 'ask', null)).toBe('ask')
+    expect(setupView('again', 'done', status())).toBe('done')
+  })
+
+  it('Skip saves the choice only at the first start', () => {
+    expect(skipSavesChoice('first')).toBe(true)
+    expect(skipSavesChoice('again')).toBe(false)
+  })
+
+  it('introStateLine names Live details, except in a problem message', () => {
+    expect(introStateLine({ kind: 'on', sessions: 2 })).toBe(
+      'Live details: On. 2 sessions are sending live details.',
+    )
+    expect(introStateLine({ kind: 'off' })).toBe('Live details: Off.')
+    expect(introStateLine({ kind: 'problem', message: 'm' })).toBe('m')
   })
 })

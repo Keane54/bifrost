@@ -23,8 +23,11 @@ import { useActions } from '../actions/actions-context'
 import { CheckBox } from '../lib/CheckBox'
 import { cx } from '../lib/cx'
 import { draftToSave } from './draft'
+import { GENERAL_ROWS } from './general-rows'
+import IntroRow from './IntroRow'
 import { useLive } from './live-context'
 import { claudeVersionNotice } from './live-notice'
+import { RowFilterContext } from './row-filter'
 import { ROW_FIELD, SettingRow, useRowSave } from './SettingRow'
 import { useSettings } from './settings-context'
 
@@ -122,7 +125,7 @@ function NumberRow(props: {
   hint?: string
   save(value: number): Promise<void>
 }): React.JSX.Element {
-  const row = useRowSave()
+  const row = useRowSave(props.label)
   const { save } = props
   return (
     <SettingRow
@@ -160,7 +163,7 @@ function CheckRow(props: {
   hint?: string
   save(value: boolean): Promise<void>
 }): React.JSX.Element {
-  const row = useRowSave()
+  const row = useRowSave(props.label)
   const { save } = props
   return (
     <SettingRow
@@ -190,7 +193,7 @@ function SelectRow(props: {
   text(value: number): string
   save(value: number): Promise<void>
 }): React.JSX.Element {
-  const row = useRowSave()
+  const row = useRowSave(props.label)
   const { save } = props
   return (
     <SettingRow error={row.error} label={props.label} onCloseError={row.closeError}>
@@ -249,7 +252,25 @@ const LABEL_CHOICES: { label: string; value: LabelSet }[] = [
   { label: 'Space', value: 'space' },
 ]
 
-export default function GeneralSection(): React.JSX.Element {
+// only: during a search, the labels of the rows that show (spec 12). The notice and the version
+// line then do not show.
+// The filter provider is in this component, above GeneralRows. A hook runs in the component that
+// calls it. So each useRowSave call of a row must be below the provider, or the search cannot
+// hide the save state of the row (re-review Important 1).
+export default function GeneralSection({
+  only = null,
+}: {
+  only?: ReadonlySet<string> | null
+}): React.JSX.Element {
+  return (
+    <RowFilterContext value={only}>
+      <GeneralRows only={only} />
+    </RowFilterContext>
+  )
+}
+
+// The rows of Settings > General, below the filter provider of GeneralSection.
+function GeneralRows({ only }: { only: ReadonlySet<string> | null }): React.JSX.Element {
   const { settings, update } = useSettings()
   // The general warning for the version of Claude Code (spec 11.5, ruling C5). A failed check
   // warns too.
@@ -260,11 +281,11 @@ export default function GeneralSection(): React.JSX.Element {
   const { apps: projectApps } = useActions()
   const [info, setInfo] = useState<{ packaged: boolean; version: string } | null>(null)
   const [mode, setMode] = useState<DisplayMode>('window')
-  const labelsRow = useRowSave()
-  const terminalRow = useRowSave()
-  const projectRow = useRowSave()
-  const fontRow = useRowSave()
-  const modeRow = useRowSave()
+  const labelsRow = useRowSave(GENERAL_ROWS.labels)
+  const terminalRow = useRowSave(GENERAL_ROWS.terminalApp)
+  const projectRow = useRowSave(GENERAL_ROWS.projectApp)
+  const fontRow = useRowSave(GENERAL_ROWS.font)
+  const modeRow = useRowSave(GENERAL_ROWS.displayMode)
 
   useEffect(() => {
     let active = true
@@ -291,7 +312,7 @@ export default function GeneralSection(): React.JSX.Element {
   const font = settings.terminalFont
   return (
     <div className='flex min-h-full flex-col'>
-      {versionText !== null && (
+      {only === null && versionText !== null && (
         <p
           className='select-text border-panel-edge border-b px-3 py-2 text-text text-xs'
           data-settings-version-notice={true}
@@ -299,10 +320,14 @@ export default function GeneralSection(): React.JSX.Element {
           {versionText}
         </p>
       )}
-      <SettingRow error={labelsRow.error} label='Labels' onCloseError={labelsRow.closeError}>
+      <SettingRow
+        error={labelsRow.error}
+        label={GENERAL_ROWS.labels}
+        onCloseError={labelsRow.closeError}
+      >
         <Choices
           choices={LABEL_CHOICES}
-          label='Labels'
+          label={GENERAL_ROWS.labels}
           onChange={value => {
             labelsRow.save(() => update({ labels: value as LabelSet }))
           }}
@@ -311,13 +336,13 @@ export default function GeneralSection(): React.JSX.Element {
       </SettingRow>
       <SettingRow
         error={terminalRow.error}
-        label='Terminal app'
+        label={GENERAL_ROWS.terminalApp}
         onCloseError={terminalRow.closeError}
       >
         <AppSelect
           apps={terminalApps}
           auto={AUTO_TERMINAL}
-          label='Terminal app'
+          label={GENERAL_ROWS.terminalApp}
           onChange={id => {
             const terminalApp = TERMINAL_APP_IDS.find(t => t === id) ?? null
             terminalRow.save(() => update({ terminalApp: terminalApp as TerminalAppId | null }))
@@ -327,13 +352,13 @@ export default function GeneralSection(): React.JSX.Element {
       </SettingRow>
       <SettingRow
         error={projectRow.error}
-        label='Default app for "Open project"'
+        label={GENERAL_ROWS.projectApp}
         onCloseError={projectRow.closeError}
       >
         <AppSelect
           apps={projectAppChoices(projectApps)}
           auto={AUTO_PROJECT}
-          label='Default app for "Open project"'
+          label={GENERAL_ROWS.projectApp}
           onChange={id => {
             projectRow.save(() => update({ projectApp: id as ProjectAppId | null }))
           }}
@@ -341,7 +366,7 @@ export default function GeneralSection(): React.JSX.Element {
         />
       </SettingRow>
       <NumberRow
-        label='Escalation time'
+        label={GENERAL_ROWS.escalation}
         max={MAX_ESCALATION_MINUTES}
         min={0}
         save={value => update({ escalationMinutes: value })}
@@ -350,41 +375,41 @@ export default function GeneralSection(): React.JSX.Element {
       />
       <CheckRow
         checked={settings.rowFlash}
-        label='Row flash'
+        label={GENERAL_ROWS.rowFlash}
         save={value => update({ rowFlash: value })}
       />
       <CheckRow
         checked={settings.notifications}
-        label='macOS notification'
+        label={GENERAL_ROWS.notifications}
         save={value => update({ notifications: value })}
       />
       <CheckRow
         checked={settings.redBoxSound}
-        label='Sound for a red box'
+        label={GENERAL_ROWS.redBoxSound}
         save={value => update({ redBoxSound: value })}
       />
       <CheckRow
         checked={settings.startAtLogin}
         disabled={info !== null && !info.packaged}
         hint={info !== null && !info.packaged ? 'Only works in the installed app.' : undefined}
-        label='Start at login'
+        label={GENERAL_ROWS.startAtLogin}
         save={value => update({ startAtLogin: value })}
       />
       <CheckRow
         checked={settings.accountUsage}
         hint='Shows usage from all your devices. Bifrost reads your Claude Code login from the Keychain. macOS may ask you to allow this.'
-        label='Account usage from Anthropic'
+        label={GENERAL_ROWS.accountUsage}
         save={value => update({ accountUsage: value })}
       />
       <SelectRow
         choices={POLL_CHOICES}
-        label='Poll interval'
+        label={GENERAL_ROWS.poll}
         save={value => update({ pollSeconds: value })}
         text={seconds => (seconds === 1 ? '1 second' : `${seconds} seconds`)}
         value={settings.pollSeconds}
       />
       <NumberRow
-        label='Snap distance'
+        label={GENERAL_ROWS.snap}
         max={MAX_SNAP}
         min={0}
         save={value => update({ snapDistance: value })}
@@ -393,19 +418,19 @@ export default function GeneralSection(): React.JSX.Element {
       />
       <SelectRow
         choices={PANEL_TRANSPARENCY_CHOICES}
-        label='Panel transparency'
+        label={GENERAL_ROWS.transparency}
         save={value => update({ panelTransparency: value })}
         text={percent => (percent === 0 ? '0% (solid)' : `${percent}%`)}
         value={settings.panelTransparency}
       />
       <SelectRow
         choices={INTERFACE_SCALE_CHOICES}
-        label='Interface scale'
+        label={GENERAL_ROWS.scale}
         save={value => update({ interfaceScale: value })}
         text={percent => `${percent}%`}
         value={settings.interfaceScale}
       />
-      <SettingRow error={fontRow.error} label='Terminal font' onCloseError={fontRow.closeError}>
+      <SettingRow error={fontRow.error} label={GENERAL_ROWS.font} onCloseError={fontRow.closeError}>
         <datalist id='settings-font-families'>
           {FONT_FAMILIES.map(family => (
             <option key={family} value={family} />
@@ -440,19 +465,27 @@ export default function GeneralSection(): React.JSX.Element {
         />
         <span className='text-text-dim'>pt</span>
       </SettingRow>
-      <SettingRow error={modeRow.error} label='Display mode' onCloseError={modeRow.closeError}>
+      <SettingRow
+        error={modeRow.error}
+        label={GENERAL_ROWS.displayMode}
+        onCloseError={modeRow.closeError}
+      >
         <Choices
           choices={DISPLAY_CHOICES}
-          label='Display mode'
+          label={GENERAL_ROWS.displayMode}
           onChange={value => {
             modeRow.save(() => window.bifrost.display.set(value as DisplayMode))
           }}
           value={mode}
         />
       </SettingRow>
-      <p className='mt-auto px-3 py-2 text-text-dim text-xs' data-settings-version={true}>
-        {info === null ? 'Bifrost' : `Bifrost ${info.version}`}
-      </p>
+      {/* Show the setup dialog again (spec 11.1). */}
+      <IntroRow />
+      {only === null && (
+        <p className='mt-auto px-3 py-2 text-text-dim text-xs' data-settings-version={true}>
+          {info === null ? 'Bifrost' : `Bifrost ${info.version}`}
+        </p>
+      )}
     </div>
   )
 }

@@ -12,6 +12,13 @@ import { useWmState } from '../wm/context'
 import { recentAttaches } from './agent-view'
 import { type AttachHistory, ChatTerminal } from './chat-terminal'
 import {
+  LOADER_WAIT_MS,
+  type LoaderEvent,
+  type LoaderState,
+  loaderStep,
+  loaderWaits,
+} from './loader'
+import {
   type ChatView,
   chatSessionId,
   chatViews,
@@ -33,6 +40,11 @@ export class ChatTerminals {
   private readonly terminals = new Map<string, ChatTerminal>()
   private readonly histories = new Map<string, AttachHistory>()
   private readonly listeners = new Set<() => void>()
+  // The Take control loaders by row ID (spec 9.2). The row ID of a session never changes, also
+  // when a /clear gives it a new session ID (spec 6.1). So a loader stays on its chat window.
+  private readonly loaders = new Map<string, LoaderState>()
+  // The time limit of each loader that waits only for the first output.
+  private readonly loaderTimers = new Map<string, number>()
   private views = new Map<string, ChatView>()
   private font: TerminalFont = DEFAULT_SETTINGS.terminalFont
   private unsubscribe: Array<() => void> = []
@@ -78,12 +90,17 @@ export class ChatTerminals {
       this.terminals.delete(id)
       terminal.dispose()
       changed = true
+      // A loader whose Take control ended waits for this terminal only.
+      if (loaderWaits(this.loaders.get(id) ?? null)) this.stepLoader(id, 'stop')
     }
     for (const id of openIds) {
       if (this.terminals.has(id)) continue
       const terminal: ChatTerminal = new ChatTerminal(id, {
         font: this.font,
         history: this.historyOf(id),
+        onShown: () => {
+          if (this.terminals.get(id) === terminal) this.stepLoader(id, 'shown')
+        },
         parking: this.parking,
         pty: this.deps.pty,
         // A newer window of the session uses the same view ID.
@@ -121,7 +138,29 @@ export class ChatTerminals {
     return this.terminals.get(sessionId)
   }
 
-  // For useSyncExternalStore. The listeners run when a terminal starts or ends.
+  // True while the chat window of the session shows the Take control loader (spec 9.2).
+  loading(sessionId: string): boolean {
+    return this.loaders.has(sessionId)
+  }
+
+  // Take control starts. The chat window shows the loader in place of the terminal.
+  startLoader(sessionId: string): void {
+    this.stepLoader(sessionId, 'start')
+  }
+
+  // Take control worked. The loader stays until the terminal shows Claude. With no open chat
+  // window, the loader goes away at once.
+  finishLoader(sessionId: string): void {
+    this.stepLoader(sessionId, this.terminals.has(sessionId) ? 'finish' : 'stop')
+  }
+
+  // Take control failed. The loader goes away.
+  stopLoader(sessionId: string): void {
+    this.stepLoader(sessionId, 'stop')
+  }
+
+  // For useSyncExternalStore. The listeners run when a terminal starts or ends, and when a loader
+  // shows or goes away.
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
     return () => {
@@ -132,11 +171,36 @@ export class ChatTerminals {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    for (const timer of this.loaderTimers.values()) window.clearTimeout(timer)
+    this.loaderTimers.clear()
     for (const off of this.unsubscribe) off()
     this.unsubscribe = []
     for (const terminal of this.terminals.values()) terminal.dispose()
     this.terminals.clear()
     this.parking.remove()
+  }
+
+  private stepLoader(sessionId: string, event: LoaderEvent): void {
+    if (this.disposed) return
+    const before = this.loaders.get(sessionId) ?? null
+    const after = loaderStep(before, event)
+    if (after === null) this.loaders.delete(sessionId)
+    else this.loaders.set(sessionId, after)
+    // A loader that waits only for the first output gets its time limit (review Important 2).
+    const timer = this.loaderTimers.get(sessionId)
+    if (!loaderWaits(after)) {
+      window.clearTimeout(timer)
+      this.loaderTimers.delete(sessionId)
+    } else if (timer === undefined) {
+      const next = window.setTimeout(() => {
+        this.loaderTimers.delete(sessionId)
+        this.stepLoader(sessionId, 'timeout')
+      }, LOADER_WAIT_MS)
+      this.loaderTimers.set(sessionId, next)
+    }
+    if ((before === null) !== (after === null)) {
+      for (const listener of this.listeners) listener()
+    }
   }
 
   private terminalOf(viewId: string): ChatTerminal | undefined {
@@ -184,6 +248,15 @@ export class ChatTerminals {
 
 const ChatsContext = createContext<ChatTerminals | null>(null)
 
+// The test hook of an app with a test home.
+interface TestWindow extends Window {
+  bifrostTest?: {
+    finishLoader(sessionId: string): void
+    startLoader(sessionId: string): void
+    stopLoader(sessionId: string): void
+  }
+}
+
 // One ChatTerminals for the app. It must be inside the registry and window manager providers.
 export function ChatsProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { frames } = useWmState()
@@ -205,6 +278,28 @@ export function ChatsProvider({ children }: { children: React.ReactNode }): Reac
   useEffect(() => {
     chats.sync(openChatIds(frames), rows, loaded, chatViews({ frames }))
   }, [chats, frames, rows, loaded])
+
+  // The visual check of the smoke harness shows the Take control loader with no real Take
+  // control. Only an app with a test home (D12) has this hook.
+  useEffect(() => {
+    let active = true
+    const page = window as TestWindow
+    window.bifrost.system.info().then(
+      info => {
+        if (!active || !info.testHome) return
+        page.bifrostTest = {
+          finishLoader: sessionId => chats.finishLoader(sessionId),
+          startLoader: sessionId => chats.startLoader(sessionId),
+          stopLoader: sessionId => chats.stopLoader(sessionId),
+        }
+      },
+      () => {},
+    )
+    return () => {
+      active = false
+      delete page.bifrostTest
+    }
+  }, [chats])
 
   return <ChatsContext value={chats}>{children}</ChatsContext>
 }

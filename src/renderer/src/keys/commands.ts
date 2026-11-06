@@ -16,6 +16,7 @@ export type KeyIntent =
   | { kind: 'activate-panel'; panelId: string }
   | { kind: 'focus-overview'; panelId: string | null }
   | { kind: 'open-panel'; panelId: string }
+  | { kind: 'close-panel'; panelId: string }
   | { kind: 'load-layout'; index: number }
   | { kind: 'save-layout' }
   | { kind: 'leave-send-box' }
@@ -28,6 +29,10 @@ export interface KeyContext {
   apps: ProjectApp[]
   projectApp: ProjectAppId | null
   zone: FocusZone
+  // True when another handler took the Esc key, for example a popover or a drag (spec 9.4).
+  escapeHandled?: boolean
+  // True for a key repeat: the key is held down.
+  repeat?: boolean
 }
 
 const NONE: KeyIntent = { kind: 'none' }
@@ -90,6 +95,20 @@ export function stepStack(frames: Frame[], by: -1 | 1): string | null {
   const index = frame.panels.indexOf(frame.active)
   const count = frame.panels.length
   return frame.panels[(index + by + count) % count] ?? null
+}
+
+// Esc (spec 9.4, the user 2026-11-06). In the send box, Esc leaves the send box. Else it closes
+// Settings when Settings is the active panel of the top frame. Else it opens Settings and brings it
+// to the front. Esc does nothing when another handler took it, for example a popover or a drag.
+// A chat window, a text field, a dialog, a menu and the key recorder keep their own Esc.
+// Esc never clears the selection. A key repeat of a held Esc does not toggle Settings again.
+function escapeIntent(ctx: KeyContext): KeyIntent {
+  if (ctx.zone === 'send-box') return { kind: 'leave-send-box' }
+  if (ctx.escapeHandled === true || ctx.repeat === true) return NONE
+  if (ctx.zone !== 'other' && ctx.zone !== 'control') return NONE
+  return topFrame({ frames: ctx.frames })?.active === 'settings'
+    ? { kind: 'close-panel', panelId: 'settings' }
+    : { kind: 'open-panel', panelId: 'settings' }
 }
 
 // The action of a session command on one session, or none.
@@ -162,11 +181,7 @@ export function planKey(slot: KeySlot, ctx: KeyContext): KeyIntent {
     case 'save-layout':
       return { kind: 'save-layout' }
     case 'escape':
-      if (ctx.zone === 'send-box') return { kind: 'leave-send-box' }
-      if ((ctx.zone === 'other' || ctx.zone === 'control') && ctx.selectedId !== null) {
-        return { kind: 'select', sessionId: null }
-      }
-      return NONE
+      return escapeIntent(ctx)
     default:
       // close-panel and toggle-fullscreen belong to the menu (D7).
       return NONE

@@ -38,3 +38,14 @@ describe('ActionsProvider send source', () => {
     )
   })
 })
+
+describe('ActionsProvider Take control source (spec 6.1, 9.2)', () => {
+  it('keys the loader and the chat window by the row ID, which a /clear does not change', () => {
+    expect(ACTIONS).toContain('const sessionId = row.sessionId')
+    expect(ACTIONS).toContain('chats.startLoader(sessionId)')
+    expect(ACTIONS).toContain("dispatch({ panelId: chatPanelId(sessionId), type: 'open' })")
+    expect(ACTIONS).toContain('chats.finishLoader(sessionId)')
+    // The result of Take control is the same row ID, so the provider does not use it.
+    expect(ACTIONS).not.toContain('resultId')
+  })
+})

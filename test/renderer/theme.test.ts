@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { PANEL_TRANSPARENCY_CHOICES } from '../../src/shared/settings'
 import { WATCH_COLOURS } from '../../src/shared/watch'
 
 const WATCH_NAMES: readonly string[] = WATCH_COLOURS
@@ -72,6 +73,42 @@ function hsl(colour: string): { h: number; l: number } {
     else h = (r - g) / d + 4
   }
   return { h: (h * 60 + 360) % 360, l: ((max + min) / 2) * 100 }
+}
+
+// The hue ranges of HSL in degrees (user decision, 2026-11-06). The Overview check and the watch check
+// share them. A hue is in a range when from <= hue < to. The pink range also takes its end, 345,
+// as the Overview check did before.
+const PURPLE_HUES = { from: 255, name: 'purple', to: 300 } as const
+const PINK_HUES = { from: 300, name: 'pink', to: 345 } as const
+type HueRange = typeof PURPLE_HUES | typeof PINK_HUES
+
+function inHues(hue: number, range: HueRange): boolean {
+  return hue >= range.from && (hue < range.to || (range === PINK_HUES && hue === range.to))
+}
+
+// The colour families of the Overview. They have no purple and no pink.
+const OVERVIEW_FAMILIES = ['project', 'tab', 'prio'] as const
+
+// The hex tokens of the families: the name and the value.
+function familyTokens(css: string, families: readonly string[]): [string, string][] {
+  const pattern = new RegExp(
+    `--color-((?:${families.join('|')})-?[\\w-]*):\\s*(#[0-9a-fA-F]{6})`,
+    'g',
+  )
+  return [...css.matchAll(pattern)].map(match => [match[1], match[2]])
+}
+
+// Each token of the families with a hue in one of the ranges, as "<name> is <range>".
+function hueProblems(
+  css: string,
+  families: readonly string[],
+  ranges: readonly HueRange[],
+): string[] {
+  return familyTokens(css, families).flatMap(([name, value]) => {
+    const hue = hsl(value).h
+    const range = ranges.find(r => inHues(hue, r))
+    return range ? [`${name} is ${range.name}`] : []
+  })
 }
 
 function luminance(colour: string): number {
@@ -223,8 +260,11 @@ describe('theme', () => {
     expect(bad).toEqual([])
   })
 
-  it('the theme has the panel blur', () => {
-    expect(source('wm/Frame.tsx')).toContain('backdrop-blur')
+  it('the theme has the panel blur, and a lighter blur for a chat window', () => {
+    expect(source('wm/Frame.tsx')).toContain('frameBlur(frame.active)')
+    const style = source('wm/frame-style.ts')
+    expect(style).toContain("'backdrop-blur-md'")
+    expect(style).toContain("'backdrop-blur-sm'")
   })
 
   it('uses the accent class part only for the top border, the glow and active: states', () => {
@@ -328,18 +368,31 @@ describe('theme', () => {
   // the user, 2026-11-06: purple and pink must not show on the Overview. Other panels may use them.
   // So this check covers only the families that the Overview uses.
   it('the project, tab and prio tokens have no purple or pink', () => {
-    const tokens = [...CSS.matchAll(/--color-((?:project|tab|prio)-?[\w-]*):\s*(#[0-9a-fA-F]{6})/g)]
     // Each token of the families is hex, so the check reads all of them.
     const all = [...CSS.matchAll(/--color-(?:project|tab|prio)[\w-]*:/g)]
-    expect(tokens.length).toBe(all.length)
-    expect(tokens.length).toBeGreaterThanOrEqual(25)
-    const bad = tokens
-      .filter(([, , hex]) => {
-        const hue = hsl(hex).h
-        return hue >= 255 && hue <= 345
-      })
-      .map(([, name]) => name)
-    expect(bad).toEqual([])
+    expect(familyTokens(CSS, OVERVIEW_FAMILIES).length).toBe(all.length)
+    expect(all.length).toBeGreaterThanOrEqual(25)
+    expect(hueProblems(CSS, OVERVIEW_FAMILIES, [PURPLE_HUES, PINK_HUES])).toEqual([])
+  })
+
+  // the user, 2026-11-06: the watch colours tint and stripe Overview rows. So they have no purple.
+  // Pink is allowed for them.
+  it('the watch tokens have no purple, and may have pink', () => {
+    const all = [...CSS.matchAll(/--color-watch[\w-]*:/g)]
+    expect(familyTokens(CSS, ['watch']).length).toBe(all.length)
+    expect(all.length).toBe(WATCH_NAMES.length)
+    expect(hueProblems(CSS, ['watch'], [PURPLE_HUES])).toEqual([])
+  })
+
+  it('the hue checks find a purple or a pink token (guard)', () => {
+    const violet = CSS.replace('--color-watch-white: #f2f2f2;', '--color-watch-white: #9b80e6;')
+    expect(hueProblems(violet, ['watch'], [PURPLE_HUES])).toEqual(['watch-white is purple'])
+    const pinkWatch = CSS.replace('--color-watch-white: #f2f2f2;', '--color-watch-white: #ec4899;')
+    expect(hueProblems(pinkWatch, ['watch'], [PURPLE_HUES])).toEqual([])
+    const pinkTab = CSS.replace('--color-tab-1: #7cc4d6;', '--color-tab-1: #ec4899;')
+    expect(hueProblems(pinkTab, OVERVIEW_FAMILIES, [PURPLE_HUES, PINK_HUES])).toEqual([
+      'tab-1 is pink',
+    ])
   })
 
   it('each colour family is there, with the svc and usage tokens, all in hex (count guard)', () => {
@@ -447,7 +500,8 @@ describe('theme', () => {
 describe('the Service status tokens', () => {
   const NAMES = ['ok', 'minor', 'major', 'critical', 'maint'].map(n => `svc-${n}`)
 
-  // The distance to the box colours is checked for all families above. The purple and pink check covers only the Overview families.
+  // The distance to the box colours is checked for all families above. The purple and pink check
+  // covers the Overview families, and the purple check covers the watch family.
   it('are not yellow or red', () => {
     for (const name of NAMES) {
       const { h } = hsl(token(name))
@@ -461,5 +515,68 @@ describe('the Service status tokens', () => {
         if (a < b) expect(distance(token(a), token(b)), `${a} to ${b}`).toBeGreaterThanOrEqual(0.1)
       }
     }
+  })
+})
+
+// the user, 2026-11-06: the chat terminal has no black background. The frame colour and its blur show
+// through, so the Panel transparency setting applies to chat windows too.
+describe('the chat terminal background', () => {
+  // The default text colour of xterm.js, and a mid grey as the dim text of Claude Code.
+  const TEXT = '#ffffff'
+  const DIM = '#999999'
+
+  // xterm.css paints the viewport element black and gives it a native scroll bar, outside a layer.
+  // So the override must be outside a layer too, after the last layer block.
+  it('replaces the black viewport and its native scroll bar of xterm.css, outside a layer', () => {
+    const rule =
+      '[data-chat-terminal] .xterm .xterm-viewport {\n  background-color: var(--color-terminal-bg);\n  scrollbar-width: none;\n}'
+    const at = CSS.indexOf(rule)
+    expect(at).toBeGreaterThan(-1)
+    const lastLayer = CSS.lastIndexOf('@layer')
+    const layerEnd = CSS.indexOf('\n}\n', lastLayer)
+    expect(at).toBeGreaterThan(layerEnd)
+  })
+
+  it('is fully transparent', () => {
+    const match = CSS.match(/--color-terminal-bg:\s*(#[0-9a-fA-F]{8});/)
+    expect(match?.[1].toLowerCase()).toBe('#00000000')
+  })
+
+  // The backdrops under a chat window (review Minor 4). The light blur spreads them:
+  // - blurred text of another panel: a quarter of the text colour over the panel colour,
+  // - the brightest watch row tint (white, at the row opacity) over the panel colour,
+  // - a selected row: the accent at 15% over the panel colour,
+  // - the rainbow of another loader at its full strength: the brightest icon colour at 25%.
+  it('keeps the text easy to read on the panel at each transparency, over bright backdrops', () => {
+    const level = (name: string): number => {
+      const match = CSS.match(new RegExp(`--color-${name}: rgb\\((\\d+) `))
+      return Number(match?.[1])
+    }
+    const grey = (n: number): string => hex([n, n, n])
+    const panel = grey(level('panel'))
+    const icons = [1, 2, 3, 4, 5, 6].map(n => token(`icon-${n}`))
+    const brightest = icons.reduce((a, b) => (luminance(b) > luminance(a) ? b : a))
+    const backdrops: [string, string][] = [
+      ['blurred text', mix(token('text'), 0.25, panel)],
+      ['a white watch row', mix(token('watch-white'), watchRowOpacity(), panel)],
+      ['a selected row', mix(token('accent'), 0.15, panel)],
+      ['a loader rainbow', mix(brightest, 0.25, panel)],
+    ]
+    const bad: string[] = []
+    for (const [where, backdrop] of backdrops) {
+      for (const percent of PANEL_TRANSPARENCY_CHOICES) {
+        const alpha = 1 - percent / 100
+        const panels = [
+          ['panel', mix(panel, alpha, backdrop)],
+          ['focused panel', mix(grey(level('panel-focus')), Math.min(1, alpha + 0.1), backdrop)],
+        ]
+        for (const [name, surface] of panels) {
+          const label = `on ${name} at ${percent}% over ${where}`
+          if (contrast(TEXT, surface) < 7) bad.push(`text ${label}`)
+          if (contrast(DIM, surface) < 4.5) bad.push(`dim text ${label}`)
+        }
+      }
+    }
+    expect(bad).toEqual([])
   })
 })

@@ -30,6 +30,11 @@
   --color-box-red: #f5766d;
   --color-parked: #6b7280;
 
+  /* The background of a chat terminal: fully transparent. The frame colour and its blur show
+     through, so Panel transparency applies to chat windows too (spec 8.5). The terminal reads
+     this token at run time. */
+  --color-terminal-bg: #00000000;
+
   /* The text colours of the Overview tabs. The first six are the automatic colours. You choose the
      others. No token comes near the box colours (spec 8.10). */
   --color-tab-1: #7cc4d6;
@@ -46,7 +51,8 @@
   --color-tab-12: #7dd3fc;
 
   /* The six colours of the app icon. The gradient goes from the bottom-right corner (1) to the
-     top-left corner (6). The script scripts/icon/draw.ts reads these tokens. */
+     top-left corner (6). The script scripts/icon/draw.ts and the rainbow of the Take control
+     loader (.loader-rainbow) read these tokens. */
   --color-icon-1: #e8554e;
   --color-icon-2: #f0933f;
   --color-icon-3: #f0cc58;
@@ -113,6 +119,17 @@
   --radius-4xl: 0;
 
   --animate-box-flash: box-flash 1s ease-in-out infinite;
+  /* The rainbow of the Take control loader shifts slowly (spec 9.2). */
+  --animate-loader-shift: loader-shift 12s ease-in-out infinite alternate;
+
+  @keyframes loader-shift {
+    from {
+      background-position: 0% 50%;
+    }
+    to {
+      background-position: 100% 50%;
+    }
+  }
 
   @keyframes box-flash {
     0%,
@@ -150,4 +167,46 @@
   #root {
     isolation: isolate;
   }
+}
+
+@layer components {
+  /* The Take control loader (spec 9.2, the user 2026-11-06): a soft rainbow of the app icon colours
+     in the bottom two fifths of a chat window, as in the app icon: violet on the left, red on the
+     right. The colours blend in OKLab, as in the icon. The gradient is two times the width, so
+     the animation can shift it. The mask fades it in from transparent at its top edge, on an
+     eased curve over the whole height: the upper half stays faint, and the colour is at full
+     strength only at the bottom edge (the user: the first fade was too harsh). */
+  .loader-rainbow {
+    background-image: linear-gradient(
+      in oklab 100deg,
+      var(--color-icon-6),
+      var(--color-icon-5),
+      var(--color-icon-4),
+      var(--color-icon-3),
+      var(--color-icon-2),
+      var(--color-icon-1)
+    );
+    background-size: 200% 100%;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(0 0 0 / 0.03) 15%,
+      rgb(0 0 0 / 0.1) 30%,
+      rgb(0 0 0 / 0.2) 45%,
+      rgb(0 0 0 / 0.38) 60%,
+      rgb(0 0 0 / 0.6) 75%,
+      rgb(0 0 0 / 0.85) 90%,
+      black 100%
+    );
+  }
+}
+
+/* The chat terminal is transparent (spec 8.5). xterm.css paints the viewport element of xterm.js
+   black, behind the screen, and gives it a native scroll bar. xterm.js 6 scrolls with its own
+   scroll element. The black scroll element hid the native scroll bar before, so this rule hides
+   it now. This rule is outside a layer, because the rules of xterm.css are outside a layer too,
+   and a rule in a layer always loses to them. */
+[data-chat-terminal] .xterm .xterm-viewport {
+  background-color: var(--color-terminal-bg);
+  scrollbar-width: none;
 }

@@ -14,8 +14,14 @@ export const RELOAD_NOTE =
 export const WITHOUT_LIVE =
   'Without Live details, Bifrost still lists your sessions and shows their boxes from the session list, a little later, but with no model, context % or cost. You can turn it on later in Settings > Live details.'
 
-export const SETUP_INTRO =
-  "Live details lets Bifrost see each session as it happens: a box the moment Claude finishes or needs you, plus the model, context % and cost. It's a small Claude Code plugin that sends events to Bifrost on this Mac. Bifrost makes these changes only if you turn it on:"
+// What Live details does. The setup dialog shows it, also when it opens again (spec 11.1).
+export const LIVE_ABOUT =
+  "Live details lets Bifrost see each session as it happens: a box the moment Claude finishes or needs you, plus the model, context % and cost. It's a small Claude Code plugin that sends events to Bifrost on this Mac."
+
+export const SETUP_INTRO = `${LIVE_ABOUT} Bifrost makes these changes only if you turn it on:`
+
+// The note of the setup dialog when it opens again and Live details is installed.
+export const INTRO_CHANGE_NOTE = 'You can change this in Settings > Live details.'
 
 export const REMOVE_CONFIRM: ConfirmText = {
   body: 'Bifrost turns off Live details, removes the plugin and the folder ~/.bifrost/mod, and removes any old Bifrost hooks (with a backup first).',
@@ -154,6 +160,15 @@ export function liveStateLine(notice: LiveNotice): string {
 // The buttons of the Live details section. retry loads the status again.
 export type LiveActionId = 'install' | 'enable' | 'disable' | 'remove' | 'retry'
 
+// The labels of the buttons. The search of Settings also reads them.
+export const LIVE_ACTION_LABELS: Readonly<Record<LiveActionId, string>> = {
+  disable: 'Turn off',
+  enable: 'Turn on',
+  install: 'Install',
+  remove: 'Remove',
+  retry: 'Try again',
+}
+
 export function liveActions(status: LiveStatus | null): LiveActionId[] {
   if (status === null) return []
   switch (status.plugin) {
@@ -183,4 +198,36 @@ export function shouldShowSetup(
 // An installed plugin, on or off, is already a choice. Then setup is done with no dialog.
 export function setupChosen(status: LiveStatus | null): boolean {
   return status !== null && (status.plugin === 'enabled' || status.plugin === 'disabled')
+}
+
+// first: the dialog at the first start. again: the dialog from "Show introduction" in
+// Settings > General (spec 11.1).
+export type SetupMode = 'first' | 'again'
+
+// ask: the choice. installed: the state of an installed plugin and Done. done: the install worked.
+export type SetupView = 'ask' | 'installed' | 'done'
+
+// The view of the setup dialog. At the first start, the dialog keeps its choice until Skip or
+// Done, also when the status changes. When it opens again, it does not offer an install that
+// already happened. An installed plugin, on or off, then gives its state and Done.
+export function setupView(
+  mode: SetupMode,
+  phase: 'ask' | 'done',
+  status: LiveStatus | null,
+): SetupView {
+  if (phase === 'done') return 'done'
+  return mode === 'again' && setupChosen(status) ? 'installed' : 'ask'
+}
+
+// Skip saves the choice only at the first start. When the dialog opens again, Skip only closes
+// it. So the open never changes the saved choice by itself.
+export function skipSavesChoice(mode: SetupMode): boolean {
+  return mode === 'first'
+}
+
+// The state line of the setup dialog for an installed plugin. A problem message names Live
+// details itself.
+export function introStateLine(notice: LiveNotice): string {
+  const line = liveStateLine(notice)
+  return notice.kind === 'problem' ? line : `Live details: ${line}`
 }

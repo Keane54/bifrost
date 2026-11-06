@@ -303,7 +303,6 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           setRunningFor(sessionId, true)
           marked = true
         }
-        let resultId = sessionId
         switch (plan.call) {
           case 'interrupt':
             await api.input.interrupt(sessionId)
@@ -322,7 +321,20 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
             break
           case 'take-control': {
             if (!confirmed) return
-            resultId = (await api.sessions.takeControl(sessionId, true)).sessionId
+            // The chat window opens at once with the loader, and the row is selected (spec 9.2).
+            // A failure removes the loader and closes the window. The catch below shows the
+            // error. After a good Take control, the plan restarts the chat, and then the loader
+            // waits for the first output of the terminal (finishLoader below).
+            select(sessionId)
+            chats.startLoader(sessionId)
+            dispatch({ panelId: chatPanelId(sessionId), type: 'open' })
+            try {
+              await api.sessions.takeControl(sessionId, true)
+            } catch (err) {
+              chats.stopLoader(sessionId)
+              dispatch({ panelId: chatPanelId(sessionId), type: 'close' })
+              throw err
+            }
             break
           }
           case 'open-in-terminal': {
@@ -351,10 +363,6 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
             break
         }
         switch (plan.after) {
-          case 'open-chat':
-            select(resultId)
-            dispatch({ panelId: chatPanelId(resultId), type: 'open' })
-            break
           case 'close-chat':
             dispatch({ panelId: chatPanelId(sessionId), type: 'close' })
             if (latest.current.selectedId === sessionId) select(null)
@@ -365,6 +373,9 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           case 'none':
             break
         }
+        // The restart above comes first. So an ended terminal attaches again, and its first
+        // output can remove the loader (review Important 2).
+        if (plan.call === 'take-control') chats.finishLoader(sessionId)
       } catch (err) {
         fail(err)
       } finally {

@@ -93,10 +93,13 @@ describe('planRun', () => {
     })
   })
 
-  it('Take control asks with the terminal name and opens the chat window after', () => {
+  // The provider opens the chat window before the call, with the loader (spec 9.2). After the call,
+  // it restarts the chat: an ended terminal attaches again only after a restart (review
+  // Important 2). Then the loader waits for the first output.
+  it('Take control asks with the terminal name and restarts the chat after the call', () => {
     const plan = planRun('take-control', external, ctx())
     expect(plan).toEqual({
-      after: 'open-chat',
+      after: 'restart-chat',
       call: 'take-control',
       confirm: confirmFor('take-control', external, 'plain'),
       kind: 'call',

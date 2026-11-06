@@ -191,18 +191,79 @@ describe('planKey', () => {
     expect(plan('next-stack-tab:mod', { frames: [f1] })).toEqual({ kind: 'none' })
   })
 
-  it('escape leaves the send box, or clears the selection', () => {
-    expect(plan('escape:key', { zone: 'send-box' })).toEqual({ kind: 'leave-send-box' })
-    expect(plan('escape:key', { selectedId: S1, zone: 'other' })).toEqual({
-      kind: 'select',
-      sessionId: null,
+  // Esc toggles Settings (user decision, 2026-11-06). It never clears the selection.
+  describe('escape', () => {
+    const settings: Frame = {
+      active: 'settings',
+      id: 'f3',
+      locked: false,
+      minimised: false,
+      panels: ['settings'],
+      rect: RECT,
+    }
+    const OPEN = { kind: 'open-panel', panelId: 'settings' }
+    const CLOSE = { kind: 'close-panel', panelId: 'settings' }
+
+    it('leaves the send box', () => {
+      expect(plan('escape:key', { zone: 'send-box' })).toEqual({ kind: 'leave-send-box' })
+      expect(plan('escape:key', { frames: [f1, settings], zone: 'send-box' })).toEqual({
+        kind: 'leave-send-box',
+      })
     })
-    expect(plan('escape:key', { selectedId: S1, zone: 'control' })).toEqual({
-      kind: 'select',
-      sessionId: null,
+
+    it('opens Settings, and no longer clears the selection', () => {
+      expect(plan('escape:key', { selectedId: S1, zone: 'other' })).toEqual(OPEN)
+      expect(plan('escape:key', { selectedId: S1, zone: 'control' })).toEqual(OPEN)
+      expect(plan('escape:key', { selectedId: null, zone: 'other' })).toEqual(OPEN)
     })
-    expect(plan('escape:key', { selectedId: null, zone: 'other' })).toEqual({ kind: 'none' })
-    expect(plan('escape:key', { selectedId: S1, zone: 'chat' })).toEqual({ kind: 'none' })
+
+    it('closes Settings when it is the active panel of the top frame', () => {
+      expect(plan('escape:key', { frames: [f1, settings] })).toEqual(CLOSE)
+      expect(plan('escape:key', { frames: [f1, settings], zone: 'control' })).toEqual(CLOSE)
+    })
+
+    it('brings Settings to the front when it is not the active panel of the top frame', () => {
+      // Settings is under another frame.
+      expect(plan('escape:key', { frames: [settings, f1] })).toEqual(OPEN)
+      // Settings is a back tab of the top frame.
+      const stack: Frame = { ...settings, active: 'overview:1', panels: ['settings', 'overview:1'] }
+      expect(plan('escape:key', { frames: [stack] })).toEqual(OPEN)
+      // A minimised Settings frame is not the top frame.
+      expect(plan('escape:key', { frames: [f1, { ...settings, minimised: true }] })).toEqual(OPEN)
+    })
+
+    it('does nothing when another handler took the key, for example a popover or a drag', () => {
+      expect(plan('escape:key', { escapeHandled: true })).toEqual({ kind: 'none' })
+      expect(plan('escape:key', { escapeHandled: true, frames: [f1, settings] })).toEqual({
+        kind: 'none',
+      })
+      // The send box still loses the focus.
+      expect(plan('escape:key', { escapeHandled: true, zone: 'send-box' })).toEqual({
+        kind: 'leave-send-box',
+      })
+    })
+
+    // Review Minor 1: a held Esc repeats its keydown. Only the first keydown toggles Settings.
+    it('ignores a key repeat, so a held Esc does not toggle Settings again and again', () => {
+      expect(plan('escape:key', { repeat: true })).toEqual({ kind: 'none' })
+      expect(plan('escape:key', { frames: [f1, settings], repeat: true })).toEqual({
+        kind: 'none',
+      })
+      expect(plan('escape:key', { repeat: false })).toEqual(OPEN)
+      // A repeat in the send box still leaves it. That has no effect after the first keydown.
+      expect(plan('escape:key', { repeat: true, zone: 'send-box' })).toEqual({
+        kind: 'leave-send-box',
+      })
+    })
+
+    it('does nothing in a chat window, a text field, a dialog, a menu or the key recorder', () => {
+      for (const zone of ['chat', 'text', 'modal'] as const) {
+        expect(plan('escape:key', { zone }), zone).toEqual({ kind: 'none' })
+        expect(plan('escape:key', { frames: [f1, settings], zone }), zone).toEqual({
+          kind: 'none',
+        })
+      }
+    })
   })
 
   it('load-layout.3 gives index 2, and save-layout and the panels have their intent', () => {

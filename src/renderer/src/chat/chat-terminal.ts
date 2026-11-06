@@ -28,6 +28,7 @@ import {
   type Px,
   RESIZE_DEBOUNCE_MS,
 } from './size-rule'
+import { terminalBackground, terminalOptions } from './terminal-options'
 import { type AttachTarget, attachTarget, type ChatView, chatPanelId, HIDDEN_VIEW } from './views'
 import { addedContexts, releaseWebgl, type WebglContext } from './webgl-release'
 
@@ -49,6 +50,9 @@ export interface ChatTerminalDeps {
   history: AttachHistory
   // True when a newer terminal uses the view ID of this terminal.
   replaced(): boolean
+  // The screen shows the first text of an attach, or the terminal ended and shows why. The Take
+  // control loader waits for this (spec 9.2).
+  onShown?(): void
 }
 
 function sameView(a: ChatView, b: ChatView): boolean {
@@ -90,6 +94,8 @@ export class ChatTerminal {
   private sizeAsked = false
 
   private attached = false
+  // True after the screen showed text of the current attach.
+  private textShown = false
   // The number of the current attach. A late write result of an old attach has no effect.
   private attachCount = 0
   private opening = false
@@ -134,12 +140,10 @@ export class ChatTerminal {
     deps.parking.append(this.element)
 
     const font = deps.font ?? DEFAULT_SETTINGS.terminalFont
-    this.term = new Terminal({
-      fontFamily: cssFontFamily(font),
-      fontSize: font.size,
-      macOptionClickForcesSelection: true,
-      scrollback: 5000,
-    })
+    // The background is transparent. The frame colour and its blur show through (spec 8.5).
+    const style = getComputedStyle(document.documentElement)
+    const background = terminalBackground(name => style.getPropertyValue(name))
+    this.term = new Terminal(terminalOptions(font, background))
     this.term.loadAddon(this.fit)
     this.term.open(this.host)
     // The keys and the xterm.js replies go to the PTY.
@@ -256,7 +260,8 @@ export class ChatTerminal {
   write(chunk: string): void {
     // Without an attach, a chunk comes from an old PTY of this view. Ignore it.
     if (this.disposed || !this.attached) return
-    this.term.write(chunk)
+    // Until the screen shows text, each write checks the screen after xterm.js parsed it.
+    this.term.write(chunk, this.textShown ? undefined : () => this.checkShown())
     const now = Date.now()
     if (this.uncheckedSince === null) this.uncheckedSince = now
     window.clearTimeout(this.checkTimer)
@@ -356,6 +361,16 @@ export class ChatTerminal {
     this.stopTimers()
     this.term.write(`\r\n${line}\r\n`)
     this.showNote()
+    // The line tells the user why the window ended. So the loader must not hide it.
+    this.deps.onShown?.()
+  }
+
+  // Tell the owner one time for each attach, when the screen first shows text.
+  private checkShown(): void {
+    if (this.disposed || this.textShown || !this.attached) return
+    if (!this.screenRows().some(row => row.text.trim() !== '')) return
+    this.textShown = true
+    this.deps.onShown?.()
   }
 
   private maybeAttach(): void {
@@ -396,6 +411,7 @@ export class ChatTerminal {
   // Open the attach PTY. An attach also sets the size of the session (M3 Task 1).
   private open(target: { shortId: string; cwd: string }, size: TermSize): void {
     this.opening = true
+    this.textShown = false
     this.resizeLocal(size)
     this.lastSent = size
     this.lastSentAt = Date.now()

@@ -183,8 +183,8 @@ export interface BifrostApi {
     recording(on: boolean): Promise<void>
   }
   system: {
-    // packaged is false in development.
-    info(): Promise<{ packaged: boolean; version: string }>
+    // packaged is false in development. testHome is true with BIFROST_TEST_HOME (D12).
+    info(): Promise<{ packaged: boolean; testHome: boolean; version: string }>
   }
   ui: {
     // The saved UI state, or null when the file is missing or damaged.
