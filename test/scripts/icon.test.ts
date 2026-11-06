@@ -106,33 +106,61 @@ describe('the icon script', () => {
     const size = 512
     const pixels = drawIcon(size, readPalette(CSS))
     const at = reader(pixels, size)
-    // The letter has its centre at 75% of the rounded square. The left stem is at x 76 to 199 of
-    // 1000 units, so its centre is at (137 - 318) units from the middle of the box.
-    const scale = ((824 * size) / 1024 / 2 / 710) * 0.8
-    const stemX = (100 * size) / 1024 + ((824 * size) / 1024) * 0.75 + (137 - 318) * scale
-    const midY = (100 * size) / 1024 + ((824 * size) / 1024) * 0.75
-    expect(at(stemX, midY)).toEqual([255, 255, 255, 255])
-    expect(at(stemX, midY - 50)).toEqual([255, 255, 255, 255])
+    const white = (x: number, y: number): boolean => {
+      const [r, g, b] = at(Math.round(x), Math.round(y))
+      return r > 250 && g > 250 && b > 250
+    }
+    let minX = size
+    let minY = size
+    let maxX = 0
+    let maxY = 0
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        if (!white(x, y)) continue
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x)
+        maxY = Math.max(maxY, y)
+      }
+    }
+    // All white is in the bottom-right quadrant of the canvas.
+    expect(minX).toBeGreaterThan(size / 2)
+    expect(minY).toBeGreaterThan(size / 2)
+    const w = maxX - minX
+    const h = maxY - minY
+    // The left stem of the B is white over its whole height.
+    for (const f of [0.1, 0.5, 0.9]) expect(white(minX + w * 0.1, minY + h * f)).toBe(true)
     // The inside of the upper bowl is not white.
-    expect(at(stemX + 30, midY - 30)).not.toEqual([255, 255, 255, 255])
+    expect(white(minX + w * 0.5, minY + h * 0.25)).toBe(false)
   })
 
-  // the user (2026-11-06): the B is 80% of the height of the quadrant.
-  it('drawIcon draws the B at 80% of the height of the quadrant', () => {
+  // the user (2026-11-06): the B is 75% of the height of the quadrant, and it has the same space to
+  // the right edge and to the bottom edge of the rounded square.
+  it('drawIcon draws the B at 75% of the quadrant, with equal space right and below', () => {
     const size = 512
     const pixels = drawIcon(size, readPalette(CSS))
     const at = reader(pixels, size)
     const quadrant = (824 * size) / 1024 / 2
-    const scale = (quadrant / 710) * 0.8
-    const stemX = Math.round((100 * size) / 1024 + quadrant * 1.5 + (137 - 318) * scale)
-    const white: number[] = []
-    for (let y = 0; y < size; y++) {
-      const [r, g, b] = at(stemX, y)
-      if (r > 250 && g > 250 && b > 250) white.push(y)
+    const edge = ((100 + 824) * size) / 1024
+    let minY = size
+    let maxX = 0
+    let maxY = 0
+    for (let y = Math.floor(size / 2); y < size; y++) {
+      for (let x = Math.floor(size / 2); x < size; x++) {
+        const [r, g, b] = at(x, y)
+        if (r > 250 && g > 250 && b > 250) {
+          minY = Math.min(minY, y)
+          maxX = Math.max(maxX, x)
+          maxY = Math.max(maxY, y)
+        }
+      }
     }
-    const height = Math.max(...white) - Math.min(...white) + 1
-    expect(height / quadrant).toBeGreaterThan(0.77)
-    expect(height / quadrant).toBeLessThan(0.83)
+    const height = maxY - minY + 1
+    expect(height / quadrant).toBeGreaterThan(0.72)
+    expect(height / quadrant).toBeLessThan(0.78)
+    const right = edge - (maxX + 1)
+    const bottom = edge - (maxY + 1)
+    expect(Math.abs(right - bottom)).toBeLessThanOrEqual(2)
   })
 
   it('drawIcon draws no white in the top-left quadrant', () => {

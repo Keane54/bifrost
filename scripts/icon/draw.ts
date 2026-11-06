@@ -147,15 +147,21 @@ interface Mark {
 }
 
 const CURVE_STEPS = 8
-const MARK_HEIGHT = 0.8 // The height of the letter as a share of the height of the quadrant.
+const MARK_HEIGHT = 0.75 // The height of the letter as a share of the height of the quadrant.
 
-// Place the letter in the centre of the bottom-right quadrant of the rounded square.
+// Place the letter in the bottom-right quadrant of the rounded square. From left to right, it is
+// in the centre of the quadrant. The space below it is the same as the space to its right, so it
+// sits off the corner by an equal distance from the right edge and the bottom edge.
 function buildMark(size: number, glyph: Glyph): Mark {
   const side = size * SHAPE
   const [xMin, yMin, xMax, yMax] = glyph.bbox
   const scale = (side / 2 / (yMax - yMin)) * MARK_HEIGHT
-  const cx = size / 2 + side / 4
-  const cy = size / 2 + side / 4
+  const width = (xMax - xMin) * scale
+  const height = (yMax - yMin) * scale
+  const space = (side / 2 - width) / 2
+  const edge = size / 2 + side / 2
+  const cx = edge - space - width / 2
+  const cy = edge - space - height / 2
   const map = (x: number, y: number): [number, number] => [
     cx + (x - (xMin + xMax) / 2) * scale,
     cy - (y - (yMin + yMax) / 2) * scale,
