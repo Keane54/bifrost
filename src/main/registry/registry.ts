@@ -13,7 +13,6 @@ import type { HookEvent } from './hook-event'
 import {
   INITIAL_STATE,
   type MachineState,
-  onAcknowledge,
   onHookEvent,
   onParked,
   onStatus,
@@ -439,11 +438,6 @@ export class SessionRegistry {
     }
   }
 
-  acknowledge(sessionId: string): void {
-    const s = this.sessions.get(sessionId)
-    if (s) s.machine = onAcknowledge(s.machine)
-  }
-
   // Set the priority of a session. null removes it.
   // Return false for a session that the registry does not know.
   setPriority(sessionId: string, priority: Priority | null): boolean {
@@ -718,7 +712,7 @@ export class SessionRegistry {
       box: m.box,
       boxSince: m.boxSince,
       cwd: s.cwd,
-      flashing: m.box !== 'none' && !m.acknowledged,
+      flashing: m.box !== 'none',
       kind: s.kind,
       // A usage line is not activity (D8).
       lastActivity: Math.max(s.startedAt, s.lastEventAt, s.statusChangedAt),

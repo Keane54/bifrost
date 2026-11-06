@@ -29,7 +29,8 @@ export interface Settings {
   labels: LabelSet
   // null means the first installed app of TERMINAL_APP_IDS (D14).
   terminalApp: TerminalAppId | null
-  // null means VS Code when it is installed, else Finder (D14).
+  // null means VS Code, else Zed, else the first terminal app. finder is still a valid saved
+  // value, so an old file loads. It acts as null.
   projectApp: ProjectAppId | null
   // 0 stops the escalation.
   escalationMinutes: number
@@ -380,13 +381,25 @@ export function cssFontFamily(font: TerminalFont): string {
   return `"${font.family}", ui-monospace, Menlo, monospace`
 }
 
-// The app for "Open project": the setting when it is installed, else VS Code, else Finder.
+// The default app for "Open project" never is Finder. The order is: the setting when it is
+// installed (and not Finder), then VS Code, then Zed, then the first terminal app of the list.
 export function defaultProjectApp(
   apps: ProjectApp[],
   setting: ProjectAppId | null,
 ): ProjectAppId | null {
-  for (const id of [setting, 'vscode', 'finder'] as const) {
-    if (id !== null && apps.some(app => app.id === id)) return id
+  for (const id of [setting, 'vscode', 'zed'] as const) {
+    if (id !== null && id !== 'finder' && apps.some(app => app.id === id)) return id
   }
-  return null
+  const terminal = apps.find(app => (TERMINAL_APP_IDS as readonly string[]).includes(app.id))
+  return terminal ? terminal.id : null
+}
+
+// The apps that the Settings select lists for the default. Finder is not a choice.
+export function projectAppChoices(apps: ProjectApp[]): ProjectApp[] {
+  return apps.filter(app => app.id !== 'finder')
+}
+
+// The value that the Settings select shows. A saved Finder acts as Automatic.
+export function shownProjectApp(setting: ProjectAppId | null): ProjectAppId | null {
+  return setting === 'finder' ? null : setting
 }

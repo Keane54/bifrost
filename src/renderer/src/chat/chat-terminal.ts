@@ -42,7 +42,6 @@ export interface AttachHistory {
 
 export interface ChatTerminalDeps {
   pty: BifrostApi['pty']
-  acknowledge(sessionId: string): void
   // The element that keeps the terminal when no panel shows it.
   parking: HTMLElement
   // The terminal font of the settings at the time of the open. Default: the settings default.
@@ -181,8 +180,6 @@ export class ChatTerminal {
     if (focusGained) {
       this.focusGained = true
       this.wantFocus = true
-      // A focus stops the flash of the box of the session (spec 7, rule 2).
-      this.deps.acknowledge(this.sessionId)
     }
     if (!view.focused) {
       this.focusGained = false

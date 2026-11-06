@@ -13,6 +13,8 @@ import {
   MAX_SNAP,
   PANEL_TRANSPARENCY_CHOICES,
   POLL_CHOICES,
+  projectAppChoices,
+  shownProjectApp,
   TERMINAL_APP_IDS,
   type TerminalAppId,
 } from '../../../shared/settings'
@@ -28,7 +30,7 @@ import { useSettings } from './settings-context'
 
 const FONT_FAMILIES = ['SF Mono', 'Menlo', 'Monaco', 'Courier New']
 const AUTO_TERMINAL = 'Automatic (first installed: Warp, Ghostty, iTerm2, Terminal)'
-const AUTO_PROJECT = 'Automatic (VS Code if installed, else Finder)'
+const AUTO_PROJECT = 'Automatic (VS Code, else Zed, else your terminal app)'
 
 // A square radio button with its name. The name is part of the click target.
 function Choice({ label, value }: { label: string; value: string }): React.JSX.Element {
@@ -329,13 +331,13 @@ export default function GeneralSection(): React.JSX.Element {
         onCloseError={projectRow.closeError}
       >
         <AppSelect
-          apps={projectApps}
+          apps={projectAppChoices(projectApps)}
           auto={AUTO_PROJECT}
           label='Default app for "Open project"'
           onChange={id => {
             projectRow.save(() => update({ projectApp: id as ProjectAppId | null }))
           }}
-          value={settings.projectApp}
+          value={shownProjectApp(settings.projectApp)}
         />
       </SettingRow>
       <NumberRow

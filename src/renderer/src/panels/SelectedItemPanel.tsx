@@ -9,10 +9,12 @@ import { ErrorLine, NoticeLine } from '../lib/ErrorLine'
 import { PRIO_TEXT, TONE_TEXT } from '../overview/cells'
 import {
   barFill,
+  type ContextBand,
   formatCost,
   formatPercent,
   previewLines,
   projectLabel,
+  shownContextBand,
   stateLabel,
   stateTone,
 } from '../overview/format'
@@ -21,6 +23,13 @@ import SendBox from './SendBox'
 
 const LABEL = 'text-text-dim'
 
+// The fill colour of each band. The class names stay whole, so Tailwind finds them.
+const BAND_FILL: Record<ContextBand, string> = {
+  high: 'bg-ctx-high',
+  low: 'bg-ctx-low',
+  mid: 'bg-ctx-mid',
+}
+
 // An empty value shows "-".
 function orDash(text: string | undefined): string {
   return text ? text : '-'
@@ -28,6 +37,8 @@ function orDash(text: string | undefined): string {
 
 function Details({ row }: { row: SessionRow }): React.JSX.Element {
   const lines = previewLines(row.lastMessage, 3)
+  const percent = formatPercent(row.contextPercent)
+  const band = shownContextBand(row.contextPercent)
   return (
     <div className='flex min-w-0 select-text flex-col gap-2 p-3 text-xs'>
       {/* 1. The icon, the name, the state and the priority. */}
@@ -35,12 +46,12 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
         <SessionIcon row={row} size={22} />
         <span className='min-w-0 truncate font-semibold text-[13px]'>{row.name}</span>
         <span className={cx('shrink-0', TONE_TEXT[stateTone(row)])}>{stateLabel(row.state)}</span>
-        <span
-          className={cx('shrink-0', row.priority ? PRIO_TEXT[row.priority] : 'text-text-dim')}
-          title='Priority'
-        >
-          {row.priority ?? '-'}
-        </span>
+        {/* A row with no priority shows nothing here. */}
+        {row.priority && (
+          <span className={cx('shrink-0', PRIO_TEXT[row.priority])} title='Priority'>
+            {row.priority}
+          </span>
+        )}
       </div>
       {/* 2. The action buttons. */}
       <div className='flex gap-1' data-selected-actions={true}>
@@ -50,7 +61,7 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
         {/* A watched row gets the Remove button. Any other row gets the Add button. */}
         <ActionButton action={row.watch ? 'watch-remove' : 'watch-add'} sessionId={row.sessionId} />
       </div>
-      {/* 3. The project, the branch and the model. */}
+      {/* 3. The project, the branch, the model with its context bar, and the cost. */}
       <dl className='grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5'>
         <dt className={LABEL}>Project</dt>
         <dd className='truncate' title={row.cwd}>
@@ -59,30 +70,32 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
         <dt className={LABEL}>Branch</dt>
         <dd className='truncate'>{orDash(row.branch)}</dd>
         <dt className={LABEL}>Model</dt>
-        <dd className='truncate'>{orDash(row.model)}</dd>
+        <dd className='flex min-w-0 items-center gap-2'>
+          {/* The model name keeps its width. It is cut off only when the row is too narrow. */}
+          <span className='min-w-0 truncate' title={row.model}>
+            {orDash(row.model)}
+          </span>
+          {/* The bar takes the free width. With no percent, the bar is empty. */}
+          <div className='h-1 min-w-8 flex-1 bg-panel-edge' title='Context'>
+            <div
+              className={cx('h-full', band ? BAND_FILL[band] : 'bg-text-strong')}
+              style={{ width: `${barFill(row.contextPercent)}%` }}
+            />
+          </div>
+          <span className='shrink-0 whitespace-nowrap' title='Context'>
+            {percent ? `${percent} context` : '-'}
+          </span>
+        </dd>
+        <dt className={LABEL}>Cost</dt>
+        <dd className='truncate'>{orDash(formatCost(row.costUsd))}</dd>
       </dl>
-      {/* 4. The context bar, the context percent and the cost. */}
-      <div className='flex items-center gap-2'>
-        <div aria-hidden={true} className='h-1 min-w-0 flex-1 bg-panel-edge'>
-          <div
-            className='h-full bg-text-strong'
-            style={{ width: `${barFill(row.contextPercent)}%` }}
-          />
-        </div>
-        <span className='shrink-0' title='Context'>
-          {orDash(formatPercent(row.contextPercent))}
-        </span>
-        <span className='shrink-0' title='Cost'>
-          {orDash(formatCost(row.costUsd))}
-        </span>
-      </div>
-      {/* 5. The first lines of the last reply. Each line is cut off. It does not wrap. */}
+      {/* 4. The first lines of the last reply. Each line is cut off. It does not wrap. */}
       {lines.length > 0 && (
         <p className='overflow-hidden text-ellipsis whitespace-pre text-text-dim'>
           {lines.join('\n')}
         </p>
       )}
-      {/* 6. The send box. */}
+      {/* 5. The send box. */}
       <SendBox row={row} />
     </div>
   )

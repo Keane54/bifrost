@@ -19,16 +19,9 @@ describe('rows', () => {
     expect(ids(viewRows(ALL, defaultOverviewConfig().tabs[0] as OverviewTab))).toBe('ABCDEG')
   })
 
-  it('the Watched tab is the third tab, directly after Needs you, and shows the watched rows of every state', () => {
+  it('the Watched tab is the third tab, directly after Alerts, and shows the watched rows of every state', () => {
     const tabs = defaultOverviewConfig().tabs
-    expect(tabs.map(t => t.name)).toEqual([
-      'All',
-      'Needs you',
-      'Watched',
-      'Working',
-      'Idle',
-      'Parked',
-    ])
+    expect(tabs.map(t => t.name)).toEqual(['All', 'Alerts', 'Watched', 'Working', 'Idle', 'Parked'])
     const watched = tabs[2] as OverviewTab
     expect(watched.id).toBe('t0')
     expect(watched.filter.watchedOnly).toBe(true)

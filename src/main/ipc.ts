@@ -458,9 +458,6 @@ export function registerIpc(home: TestHome | null = null): void {
     }),
   )
   ipcMain.handle('usage:get', e => fromPage(e, async () => (await service).usage()))
-  ipcMain.handle('registry:ack', async (_e, sessionId: unknown) => {
-    if (typeof sessionId === 'string') (await service).acknowledge(sessionId)
-  })
   ipcMain.handle('registry:set-priority', (e, sessionId: unknown, priority: unknown) =>
     fromPage(e, async () => {
       if (typeof sessionId !== 'string' || (priority !== null && !isPriority(priority))) {

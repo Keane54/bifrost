@@ -35,6 +35,22 @@ export function barFill(p?: number): number {
   return typeof p !== 'number' || !Number.isFinite(p) ? 0 : Math.min(100, Math.max(0, p))
 }
 
+export type ContextBand = 'low' | 'mid' | 'high'
+
+// The colour band of the context bar: below 40 low, from 40 to below 70 mid, from 70 high.
+// A value that is not a finite number has no band.
+export function contextBand(p?: number): ContextBand | null {
+  if (typeof p !== 'number' || !Number.isFinite(p)) return null
+  if (p < 40) return 'low'
+  return p < 70 ? 'mid' : 'high'
+}
+
+// The band of the percent as the panel shows it. The text rounds the percent to a whole number, so the band
+// uses the whole number. Then 39.6 shows 40% with the amber band.
+export function shownContextBand(p?: number): ContextBand | null {
+  return typeof p === 'number' && Number.isFinite(p) ? contextBand(Math.round(p)) : contextBand(p)
+}
+
 // Both times are in milliseconds.
 export function formatAge(since: number, now: number): string {
   const s = Math.max(0, Math.floor((now - since) / 1000))
@@ -48,7 +64,7 @@ export function formatAge(since: number, now: number): string {
 const STATE_LABELS: Record<SessionState, string> = {
   error: 'Error',
   idle: 'Idle',
-  'needs-you': 'Needs you',
+  'needs-you': 'Alert',
   parked: 'Parked',
   working: 'Working',
 }

@@ -82,7 +82,7 @@ export function defaultOverviewConfig(): OverviewConfig {
     nextTab: 6,
     tabs: [
       tab(1, 'All', filterOf(LIVE)),
-      tab(2, 'Needs you', filterOf(LIVE, true)),
+      tab(2, 'Alerts', filterOf(LIVE, true)),
       // The Watched tab shows the watched rows of every state. Its ID is t0. A tab that the user
       // adds never has t0, because nextTab starts at 1. So a saved config cannot clash with it.
       tab(0, 'Watched', filterOf(STATES, false, true), WATCHED_COLOUR),
@@ -189,8 +189,10 @@ function withVisibleSort(t: OverviewTab): OverviewTab {
 function parseTab(value: unknown, index: number): OverviewTab | null {
   if (!isObject(value) || typeof value.id !== 'string' || !TAB_ID.test(value.id)) return null
   if (typeof value.name !== 'string') return null
-  const name = value.name.trim()
-  if (name.length < 1 || name.length > MAX_TAB_NAME) return null
+  const trimmed = value.name.trim()
+  if (trimmed.length < 1 || trimmed.length > MAX_TAB_NAME) return null
+  // Bifrost used to call the second default tab Needs you. Rename only that tab.
+  const name = value.id === 't2' && trimmed === 'Needs you' ? 'Alerts' : trimmed
   const color =
     typeof value.color === 'number' &&
     Number.isInteger(value.color) &&

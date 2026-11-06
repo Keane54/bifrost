@@ -41,7 +41,7 @@ describe('overview settings model', () => {
     expect(rows[0]).toEqual({ id: 'kind', label: 'Kind', locked: true, visible: true })
     expect(rows.find(r => r.id === 'activity')).toEqual({
       id: 'activity',
-      label: 'Last activity',
+      label: 'Activity',
       locked: false,
       visible: true,
     })

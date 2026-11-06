@@ -228,7 +228,7 @@ The mod sends a `usage` line at these times:
 Rules for the usage data:
 
 - The registry keeps the last `usage` line of each session.
-- A `usage` line is not activity. The column "Last activity" ignores it.
+- A `usage` line is not activity. The column "Activity" ignores it.
 - A row is live for 90,000 ms after its last live line. The heartbeat keeps an idle row live.
 - Turn off and Remove end the live flag of each row directly after the server stops (section 11.2). The usage of each row stays.
 - The parser keeps the windows `five_hour` and `seven_day` of the rate limits. It drops other windows.
@@ -268,8 +268,8 @@ Bifrost runs `git -C <cwd> rev-parse --abbrev-ref HEAD` every 10 seconds for eac
 | State | Box | Cause |
 |---|---|---|
 | Working | None | `status` is `busy`, or a `turn.start` or `tool.done` event. |
-| Needs you | Yellow | A `turn.complete` event with the reason `answer` or `refusal`. Claude finished its turn. Rule 11 also sets it. |
-| Needs you | Red | `status` is `waiting` with a `waitingFor` value (also without the mod), a `permission` event, an `ask` event, or an old yellow box (rule 4). |
+| Alert | Yellow | A `turn.complete` event with the reason `answer` or `refusal`. Claude finished its turn. Rule 11 also sets it. |
+| Alert | Red | `status` is `waiting` with a `waitingFor` value (also without the mod), a `permission` event, an `ask` event, or an old yellow box (rule 4). |
 | Error | Red | A `turn.complete` event with the reason `error`, or a `stop.failure` event. |
 | Idle | None | `status` is `idle`, and no event set a box. Examples are a new session before the first prompt, and a stopped turn (rule 12). |
 | Parked | None | The session has no process. The row is grey. The cause is `claude stop`, a restart of the computer, or a process that ends. |
@@ -277,7 +277,7 @@ Bifrost runs `git -C <cwd> rev-parse --abbrev-ref HEAD` every 10 seconds for eac
 Box rules:
 
 1. A new box flashes.
-2. The flash stops when you select the row or focus the chat window. The box stays.
+2. The box flashes for as long as it exists. The flash stops only when the box clears. A selection or a focus of the chat window does not stop it.
 3. The box clears when the session starts to work again.
 4. A yellow box changes to red after 10 minutes. The timer starts with the yellow box.
 5. The "Escalation time" setting changes the time. The value 0 stops the escalation.
@@ -368,7 +368,7 @@ The Overview uses the layout of the EVE Overview, with Bifrost colours, icons an
 - The column headers are small and grey. The sort column shows ▲ or ▼.
 - The rows are dense and use the UI font (section 8.10). Text that is too long is cut off. It does not wrap.
 - The first column shows a small icon. The icon shape shows the kind of the session: one shape for an owned session, the terminal app icon for an external session, and a dim shape for a parked session. The icon colour shows the project: each project gets a fixed colour from a palette without yellow, red and grey.
-- The yellow box and the red box are four corner brackets around the icon, as in EVE. A new box flashes. A yellow box changes to red by the rules of section 7.
+- The yellow box and the red box are four corner brackets around the icon, as in EVE. A box flashes until it clears. A yellow box changes to red by the rules of section 7.
 - A row can have a background highlight colour.
 - The panel background is translucent.
 
@@ -385,17 +385,19 @@ Columns:
 | Model | The model name from the newest live usage line (section 6.3). |
 | Context % | The context percent from the newest live usage line. |
 | Cost | The cost from the newest live usage line, in US dollars with 2 decimals. A cost above 0 and below one cent shows as `<$0.01`. A cost of 0 shows as `$0.00`. |
-| Last activity | The time of the latest event from any source. |
+| Activity | The time of the latest event from any source. |
 
 Default tabs:
 
 | Tab | Rows |
 |---|---|
 | All | All sessions except parked sessions. |
-| Needs you | Rows with a yellow or red box. |
+| Alerts | Rows with a yellow or red box. |
 | Working | Rows with the state Working. |
 | Idle | Rows with the state Idle. |
 | Parked | Parked sessions. |
+
+The state Alert has the internal ID `needs-you`. Older versions named the second tab "Needs you". When Bifrost loads a saved config, it renames the tab `t2` with that exact name to "Alerts". It changes no other tab name.
 
 Tab rules:
 
@@ -404,7 +406,7 @@ Tab rules:
 - Click a column header to sort by that column. Click it again to reverse the sort.
 - The menu of the Overview (the vertical dots in its title bar) has "Overview settings…". It opens the Overview Settings panel, as in EVE.
 - The Overview Settings panel has a tab selector for the Overview tab that you edit, and two tabs. Columns: a checkbox for each column and a drag to change the column order. The kind icon column is always on. Filters: checkboxes for the states, the kinds and the watched sessions that the tab shows. "Reset to default" restores the tab.
-- The default columns are Kind, Name, State, Project and Last activity. You turn on the other columns in the Overview Settings panel.
+- The default columns are Kind, Name, State, Project and Activity. You turn on the other columns in the Overview Settings panel.
 
 Mouse:
 
@@ -419,12 +421,13 @@ Mouse:
 
 The panel shows these items, from top to bottom:
 
-1. The name, the state and the priority.
+1. The name, the state and the priority. A row with no priority shows no priority.
 2. A row of icon buttons: Open, Send message, Run slash command, Interrupt, Show Info, Open in terminal and Stop session.
-3. The project, the branch and the model.
-4. A context bar and the cost.
-5. The first 3 lines of the last Claude reply. The `turn.complete` event supplies this text.
-6. The send box.
+3. The project, the branch, the model and the cost. The Model row shows the model name, then the context bar, then the context percent with the word "context", for example `Opus 5.5  [bar]  28% context`. The bar takes the free width. The model name keeps its width and is cut off only when the row is too narrow. With no percent, the bar is empty and the text is `-`. The cost has its own row.
+4. The first 3 lines of the last Claude reply. The `turn.complete` event supplies this text.
+5. The send box.
+
+The context bar has three colour bands, as in the statusline. Below 40% the bar is green. From 40% to below 70% it is amber. From 70% it is red. The tokens are `--color-ctx-low`, `--color-ctx-mid` and `--color-ctx-high`. Each token differs from the box yellow and the box red by 0.10 or more in OKLab.
 
 Send box rules:
 
@@ -485,7 +488,7 @@ The Event log shows the live state events with the time, the session and the eve
 
 ### 8.8 Usage HUD
 
-The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. The data comes from the newest live usage line.
+The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. The data comes from the newest live usage line. With no data, the panel shows "No usage data yet."
 
 ### 8.9 New session dialog
 
@@ -518,7 +521,7 @@ Dialog rules:
 - Bifrost uses its own icons and fonts. It does not copy EVE art, icons or fonts.
 - One file holds all colour tokens.
 - The box yellow, the box red and the parked grey are reserved shades. Other Overview colours can be red, amber or yellow. Each of them differs clearly from the box shades (OKLab distance 0.10 or more). A test checks this.
-- The Overview uses no purple for now. The user keeps purple for a later feature (fleets, as in EVE) (user decision, 2026-11-05).
+- The Overview uses no purple and no pink for now. The user keeps purple for a later feature (fleets, as in EVE) (user decision, 2026-11-05). The rule covers only the Overview colours: the `project`, `tab` and `prio` tokens. Other panels may use purple and pink, for example the Watchlist, the Usage HUD and Service status (user decision, 2026-11-06). A test checks the three Overview families only. The M5b panels keep their colours for now.
 - The terminal font is a setting.
 
 ### 8.12 Watchlist
@@ -726,7 +729,7 @@ Cmd+Ctrl+F keeps its macOS meaning. In Bifrost, it toggles Fullscreen (section 8
 
 | Alert | Default | Cause |
 |---|---|---|
-| Row flash | On | A new yellow box or red box. |
+| Row flash | On | A yellow box or red box flashes until it clears. |
 | macOS notification | On | A new box when Bifrost is not in focus. |
 | Sound | On | A new red box. |
 
@@ -842,7 +845,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 |---|---|
 | Labels | Plain |
 | Terminal app | The first installed app from this list: Warp, Ghostty, iTerm2, Terminal. |
-| Default app for "Open project" | VS Code if installed, or else Finder. |
+| Default app for "Open project" | Automatic: VS Code, else Zed, else your terminal app. The select does not list Finder. A saved value `finder` acts as Automatic. The right-click `Open project` submenu still lists Finder. |
 | Escalation time | 10 minutes. The value 0 stops the escalation. |
 | Row flash | On |
 | macOS notification | On |
@@ -963,7 +966,7 @@ The answers are in `docs/m0-findings.md`.
 
 The user confirmed these points in the review on 2026-11-04:
 
-1. The escalation timer starts with the yellow box. Your selection stops only the flash, not the timer.
+1. The escalation timer starts with the yellow box. Your selection does not stop the timer. It does not stop the flash either (changed on 2026-11-06).
 2. The Take control confirmation names Bifrost (section 9.2).
 3. The space label for "Take control" is "Commandeer".
 4. Bifrost disables an action that is not available. The action shows darker and faded, as in EVE (section 9.1).
@@ -1096,7 +1099,7 @@ The controller made these decisions in M5a. The M5a ledger, `docs/m5-findings.md
 
 The controller made these decisions in M5b. The M5b rulings, `docs/m5-findings.md` and the final review give the reasons.
 
-1. R4: The high bar of the Usage HUD uses amber `#d4730a` (`usage-high`). The Service status colours are greens, teals, blues and amber `#d4730a`. They have no yellow, red, grey, purple or pink. Each one is at least 0.10 from the box red and the box yellow in OKLab. This replaces the colours of D21 and D30 (section 8.11).
+1. R4: The high bar of the Usage HUD uses amber `#d4730a` (`usage-high`). The Service status colours are greens, teals, blues and amber `#d4730a`. They have no yellow, red or grey. Each one is at least 0.10 from the box red and the box yellow in OKLab. This replaces the colours of D21 and D30 (section 8.11). The user changed the purple and pink part on 2026-11-06: the rule of no purple and no pink covers only the Overview (section 8.10). The M5b panels keep their colours for now.
 2. R6: The app bundle has no `node-pty/build` folder. So each chip loads its own node-pty prebuild (section 14.1).
 3. R7: The fake `claude` of the smoke test writes the attach line to `attach.log` in the test home. The test reads that file, because WebGL draws the terminal text and the DOM has no text to read (section 15).
 4. R13: A check of the app in the real home records a list of `~/.bifrost` with the size and the SHA-256 of each file (not `live.sock`), before and after the run. The smoke test does this check too, in addition to the three Claude files.

@@ -5,8 +5,6 @@ export interface MachineState {
   state: SessionState
   box: Box
   boxSince: number | null
-  // False while a new box flashes. True when no box exists.
-  acknowledged: boolean
   // True after a status sample confirmed the current box. False when no box exists.
   // A status sample clears only a confirmed box (spec section 7, rule 10).
   confirmed: boolean
@@ -15,7 +13,6 @@ export interface MachineState {
 }
 
 export const INITIAL_STATE: MachineState = {
-  acknowledged: true,
   box: 'none',
   boxSince: null,
   confirmed: false,
@@ -29,7 +26,6 @@ export const STATUS_GRACE_MS = 1000
 // Return the state with no box. Keep the last message.
 function withoutBox(s: MachineState, state: SessionState): MachineState {
   const next: MachineState = {
-    acknowledged: true,
     box: 'none',
     boxSince: null,
     confirmed: false,
@@ -39,7 +35,7 @@ function withoutBox(s: MachineState, state: SessionState): MachineState {
   return next
 }
 
-// Return the state with a new box. A new box flashes.
+// Return the state with a new box.
 // A box from a hook event is not confirmed. A box from a status sample is confirmed.
 function withBox(
   s: MachineState,
@@ -49,7 +45,7 @@ function withBox(
   redReason?: MachineState['redReason'],
   confirmed = false,
 ): MachineState {
-  const next: MachineState = { acknowledged: false, box, boxSince: at, confirmed, state }
+  const next: MachineState = { box, boxSince: at, confirmed, state }
   if (redReason !== undefined) next.redReason = redReason
   if (s.lastMessage !== undefined) next.lastMessage = s.lastMessage
   return next
@@ -64,7 +60,7 @@ function confirm(s: MachineState): MachineState {
   return s.confirmed ? s : { ...s, confirmed: true }
 }
 
-// Return the red prompt box. A repeated prompt event keeps the box, its time and its flash state.
+// Return the red prompt box. A repeated prompt event keeps the box and its time.
 // The box keeps its confirmed flag. So a later idle or busy sample can still clear it.
 function promptBox(s: MachineState, at: number): MachineState {
   if (isPromptBox(s)) return s
@@ -98,8 +94,7 @@ export function onHookEvent(s: MachineState, ev: HookEvent): MachineState {
       if (ev.lastAssistantMessage !== undefined) next.lastMessage = ev.lastAssistantMessage
       return next
     }
-    // The mod can send the same error two times. A repeated error keeps the box, its time and
-    // its flash state.
+    // The mod can send the same error two times. A repeated error keeps the box and its time.
     case 'StopFailure':
       if (s.box === 'red' && s.redReason === 'error') return s
       return withBox(s, 'error', 'red', ev.at, 'error')
@@ -176,10 +171,6 @@ export function onTick(s: MachineState, now: number, escalationMs: number): Mach
   if (s.box !== 'yellow' || escalationMs <= 0 || s.boxSince === null) return s
   if (now - s.boxSince < escalationMs) return s
   return withBox(s, s.state, 'red', now, 'escalated', s.confirmed)
-}
-
-export function onAcknowledge(s: MachineState): MachineState {
-  return { ...s, acknowledged: true }
 }
 
 export function onParked(s: MachineState): MachineState {

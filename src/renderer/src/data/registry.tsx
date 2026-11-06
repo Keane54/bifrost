@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { SessionRow } from '../../../shared/types'
-import { errorMessage } from '../lib/error-message'
 import { INITIAL_REGISTRY, type RegistryState, withFirstRows, withUpdate } from './registry-state'
 
 export interface RegistryValue {
@@ -36,14 +35,7 @@ export function RegistryProvider({ children }: { children: React.ReactNode }): R
     }
   }, [])
 
-  // A selection also stops the flash of the box of the session (spec 7, rule 2).
-  const select = useCallback((id: string | null) => {
-    setSelectedId(id)
-    if (id === null) return
-    window.bifrost.registry
-      .acknowledge(id)
-      .catch(err => setState(s => ({ ...s, error: errorMessage(err) })))
-  }, [])
+  const select = useCallback((id: string | null) => setSelectedId(id), [])
 
   const { error, loaded, rows } = state
   const value = useMemo(

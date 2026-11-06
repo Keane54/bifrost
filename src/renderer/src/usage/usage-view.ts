@@ -63,7 +63,7 @@ export function usageView(
         { detail: NO_DATA, high: false, label: '5-hour limit', percent: null },
         { detail: NO_DATA, high: false, label: '7-day limit', percent: null },
       ],
-      source: 'No usage data yet. Live details sends it.',
+      source: 'No usage data yet.',
     }
   }
   return {

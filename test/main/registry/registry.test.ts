@@ -156,14 +156,14 @@ describe('brief', () => {
     expect(r.rows()[0].branch).toBeUndefined()
   })
 
-  test('tick escalates and acknowledge stops the flash', () => {
+  test('tick escalates and the box keeps flashing', () => {
     const r = registry()
     r.applyAgents([bg()], 0)
     r.applyEvents([ev('Stop', 's1', 0)], 0)
     r.tick(600_000)
     expect(r.rows()[0]).toMatchObject({ box: 'red', flashing: true })
-    r.acknowledge('s1')
-    expect(r.rows()[0]).toMatchObject({ box: 'red', flashing: false })
+    r.applyEvents([ev('UserPromptSubmit', 's1', 600_001)], 600_001)
+    expect(r.rows()[0]).toMatchObject({ box: 'none', flashing: false })
   })
 })
 

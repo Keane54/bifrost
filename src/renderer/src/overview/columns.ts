@@ -29,7 +29,7 @@ export const COLUMN_IDS: readonly ColumnId[] = [
 export const DEFAULT_COLUMNS: readonly ColumnId[] = ['kind', 'name', 'state', 'project', 'activity']
 
 export const COLUMN_LABELS: Record<ColumnId, string> = {
-  activity: 'Last activity',
+  activity: 'Activity',
   branch: 'Branch',
   context: 'Context %',
   cost: 'Cost',

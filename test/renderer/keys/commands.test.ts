@@ -117,7 +117,7 @@ describe('planKey', () => {
       kind: 'action',
       sessionId: S2,
     })
-    expect(plan('open-project:mod', { projectApp: 'finder' })).toMatchObject({ arg: 'finder' })
+    expect(plan('open-project:mod', { projectApp: 'finder' })).toMatchObject({ arg: 'vscode' })
     expect(plan('open-project:mod', { apps: [] })).toEqual({ kind: 'none' })
   })
 
