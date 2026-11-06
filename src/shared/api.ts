@@ -4,6 +4,7 @@ import type {
   ClaudeVersion,
   DisplayMode,
   LiveStatus,
+  PrInfo,
   Priority,
   ProjectApp,
   ProjectAppId,
@@ -67,6 +68,13 @@ export interface BifrostApi {
     openInTerminal(sessionId: string): Promise<{ notice: string | null }>
     // The icon (a data URL) of the terminal app of an external session, or null.
     terminalIcon(sessionId: string): Promise<string | null>
+  }
+  info: {
+    // The PR of the branch of the session, from gh. The main process finds the folder and the
+    // branch from the row, and keeps a result 5 minutes. This rejects for an unknown session.
+    pr(sessionId: string): Promise<PrInfo>
+    // Open the PR page in the browser. This does nothing when no PR is known.
+    openPr(sessionId: string): Promise<void>
   }
   input: {
     // Type the text into the session: a message, or a slash command when it starts with "/".

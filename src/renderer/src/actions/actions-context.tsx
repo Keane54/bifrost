@@ -399,6 +399,9 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
         case 'close-chat':
           dispatch({ panelId: chatPanelId(sessionId), type: 'close' })
           break
+        case 'open-panel':
+          dispatch({ panelId: plan.panelId, type: 'open' })
+          break
         case 'focus-send':
           select(sessionId)
           dispatch({ panelId: 'selected-item', type: 'open' })

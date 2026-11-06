@@ -13,7 +13,6 @@ import type {
 } from '../../../shared/types'
 import { WATCH_COLOURS } from '../../../shared/watch'
 import {
-  comesIn,
   REASON_EXTERNAL,
   REASON_GONE,
   REASON_NO_APPS,
@@ -73,8 +72,6 @@ export interface ActionDef {
   id: ActionId
   plain: string
   space: string
-  // The milestone that makes the action work.
-  milestone: 3 | 4 | 5
   for: RowClass[] | 'all'
 }
 
@@ -83,36 +80,32 @@ const def = (
   plain: string,
   space: string,
   forClasses: RowClass[] | 'all',
-  milestone: 3 | 4 | 5,
-): ActionDef => ({ for: forClasses, id, milestone, plain, space })
+): ActionDef => ({ for: forClasses, id, plain, space })
 
 export const ACTIONS: Record<ActionId, ActionDef> = {
-  'close-window': def('close-window', 'Close window', 'Disengage', 'all', 3),
-  'copy-id': def('copy-id', 'Copy session ID', 'Copy transponder ID', 'all', 3),
-  delete: def('delete', 'Delete session', 'Self-destruct', ['owned', 'parked'], 4),
-  interrupt: def('interrupt', 'Interrupt', 'Full stop', ['owned'], 4),
-  'new-session': def('new-session', 'New session', 'Launch', 'all', 4),
-  open: def('open', 'Open', 'Warp to', ['owned'], 3),
-  'open-in-terminal': def(
-    'open-in-terminal',
-    'Open in terminal',
-    'Jump to terminal',
-    ['owned', 'external'],
-    4,
-  ),
-  'open-project': def('open-project', 'Open project', 'Open cargo hold', 'all', 3),
-  rename: def('rename', 'Rename', 'Set callsign', ['owned'], 4),
-  resume: def('resume', 'Resume', 'Reactivate', ['parked'], 4),
-  'resume-all': def('resume-all', 'Resume all', 'Reactivate all', 'all', 4),
-  'run-slash': def('run-slash', 'Run slash command', 'Activate module', ['owned'], 4),
-  'send-message': def('send-message', 'Send message', 'Hail', ['owned'], 4),
-  'set-priority': def('set-priority', 'Set priority', 'Set threat level', 'all', 3),
-  'show-info': def('show-info', 'Show Info', 'Scan', 'all', 5),
-  stop: def('stop', 'Stop session', 'Power down', ['owned'], 4),
-  'take-control': def('take-control', 'Take control', 'Commandeer', ['external'], 4),
-  'watch-add': def('watch-add', 'Add to watchlist', 'Track', 'all', 4),
-  'watch-colour': def('watch-colour', 'Change colour', 'Change colour', 'all', 4),
-  'watch-remove': def('watch-remove', 'Remove from watchlist', 'Stop tracking', 'all', 4),
+  'close-window': def('close-window', 'Close window', 'Disengage', 'all'),
+  'copy-id': def('copy-id', 'Copy session ID', 'Copy transponder ID', 'all'),
+  delete: def('delete', 'Delete session', 'Self-destruct', ['owned', 'parked']),
+  interrupt: def('interrupt', 'Interrupt', 'Full stop', ['owned']),
+  'new-session': def('new-session', 'New session', 'Launch', 'all'),
+  open: def('open', 'Open', 'Warp to', ['owned']),
+  'open-in-terminal': def('open-in-terminal', 'Open in terminal', 'Jump to terminal', [
+    'owned',
+    'external',
+  ]),
+  'open-project': def('open-project', 'Open project', 'Open cargo hold', 'all'),
+  rename: def('rename', 'Rename', 'Set callsign', ['owned']),
+  resume: def('resume', 'Resume', 'Reactivate', ['parked']),
+  'resume-all': def('resume-all', 'Resume all', 'Reactivate all', 'all'),
+  'run-slash': def('run-slash', 'Run slash command', 'Activate module', ['owned']),
+  'send-message': def('send-message', 'Send message', 'Hail', ['owned']),
+  'set-priority': def('set-priority', 'Set priority', 'Set threat level', 'all'),
+  'show-info': def('show-info', 'Show Info', 'Scan', 'all'),
+  stop: def('stop', 'Stop session', 'Power down', ['owned']),
+  'take-control': def('take-control', 'Take control', 'Commandeer', ['external']),
+  'watch-add': def('watch-add', 'Add to watchlist', 'Track', 'all'),
+  'watch-colour': def('watch-colour', 'Change colour', 'Change colour', 'all'),
+  'watch-remove': def('watch-remove', 'Remove from watchlist', 'Stop tracking', 'all'),
 }
 
 export interface ActionContext {
@@ -124,9 +117,6 @@ export interface ActionContext {
   slashFavourites: string[]
   slashRecent: string[]
 }
-
-// The last milestone that is built. Show Info comes later.
-const BUILT_MILESTONE = 4
 
 export interface ActionState {
   enabled: boolean
@@ -185,7 +175,6 @@ export function actionStateFor(
     }
     if (cls === 'external' && !row.terminalApp) return off(REASON_TERMINAL_UNKNOWN)
   }
-  if (def.milestone > BUILT_MILESTONE) return off(comesIn(def.milestone as 5))
   return { enabled: true, reason: null }
 }
 

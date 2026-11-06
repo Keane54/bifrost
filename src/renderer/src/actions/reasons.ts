@@ -32,9 +32,5 @@ export const REASON_NOTHING_TO_RESUME =
   'None of the parked sessions were active when Bifrost last closed.'
 export const REASON_RESUME_ALL_RUNS = 'Resume all is already running.'
 
-// The reason of an action that a later milestone adds.
-export function comesIn(m: 4 | 5): string {
-  return `Coming in M${m}`
-}
 export const REASON_WATCHED = 'This session is already on the watchlist.'
 export const REASON_NOT_WATCHED = "This session isn't on the watchlist."

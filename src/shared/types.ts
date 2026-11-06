@@ -163,3 +163,10 @@ export interface UsageSnapshot {
   updatedAt: number
   limits: RateLimits
 }
+
+// The pull request of a session branch, from the GitHub CLI (gh).
+// none means that the branch has no PR. unavailable has a reason for the user.
+export type PrInfo =
+  | { kind: 'pr'; number: number; title: string; url: string; state: string }
+  | { kind: 'none' }
+  | { kind: 'unavailable'; reason: string }

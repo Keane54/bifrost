@@ -56,6 +56,22 @@ describe('wm state', () => {
     }
   })
 
+  it('panelKind accepts show-info with a session ID and refuses show-info:x', () => {
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e'
+    expect(panelKind(`show-info:${id}`)).toBe('show-info')
+    expect(panelKind(`show-info:${id.toUpperCase()}`)).toBe('show-info')
+    for (const bad of [
+      'show-info:x',
+      'show-info:',
+      'show-info',
+      `show-info:${id}0`,
+      `info:${id}`,
+    ]) {
+      expect(panelKind(bad)).toBeNull()
+    }
+    expect(DEFAULT_SIZES['show-info']).toEqual({ h: 560, w: 460 })
+  })
+
   it('the Overview Settings panel of overview:<n> is overview-settings:<n> with 360 by 420', () => {
     expect(overviewSettingsId('overview:1')).toBe('overview-settings:1')
     expect(overviewSettingsId('overview:12')).toBe('overview-settings:12')

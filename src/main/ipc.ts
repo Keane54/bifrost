@@ -10,6 +10,7 @@ import {
   ipcMain,
   nativeImage,
   type OpenDialogOptions,
+  shell,
   type WebContents,
 } from 'electron'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
@@ -30,6 +31,7 @@ import { checkWorktreeHead, createWorktreeActions, trackedChanges } from './acti
 import { AFPLAY, createAlertMonitor, SOUND_FILE } from './alerts/alert-monitor'
 import { showNotification } from './alerts/notifier'
 import { PendingOpen } from './alerts/pending-open'
+import { childEnv } from './child-env'
 import { type AgentList, listAgents } from './claude/agents'
 import {
   createRunClaude,
@@ -40,6 +42,7 @@ import {
 } from './claude/cli'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
 import { loadLoginEnv, stringValues } from './env/login-env'
+import { createPrLookup } from './info/pr-info'
 import {
   defaultPaths,
   keepOldScripts,
@@ -557,6 +560,37 @@ export function registerIpc(home: TestHome | null = null): void {
   )
   ipcMain.handle('sessions:open-worktree', (e, sessionId: unknown) =>
     fromPage(e, () => worktrees.openWorktree(sessionId)),
+  )
+  // The PR of a session. The page sends the session ID only. The main process finds the folder
+  // and the branch from the row, and opens only a URL that gh gave.
+  const prs = createPrLookup({
+    env: async () => childEnv(await loginEnv, { pty: false }),
+    exec: execFile,
+    exists: dir =>
+      access(dir).then(
+        () => true,
+        () => false,
+      ),
+    now: () => Date.now(),
+  })
+  const prRow = (sessionId: unknown) => {
+    if (typeof sessionId !== 'string') throw new Error('refused: bad session ID')
+    const row = liveService?.rows().find(r => r.sessionId === sessionId)
+    if (!row) throw new Error('refused: unknown session')
+    return row
+  }
+  ipcMain.handle('info:pr', (e, sessionId: unknown) =>
+    fromPage(e, async () => {
+      const row = prRow(sessionId)
+      return prs.lookup(row.cwd, row.branch)
+    }),
+  )
+  ipcMain.handle('info:open-pr', (e, sessionId: unknown) =>
+    fromPage(e, async () => {
+      const row = prRow(sessionId)
+      const url = prs.url(row.cwd, row.branch)
+      if (url !== null) await shell.openExternal(url)
+    }),
   )
   ipcMain.handle('sessions:create', (e, spec: unknown) => fromPage(e, () => sessions.create(spec)))
   ipcMain.handle('sessions:stop', (e, sessionId: unknown) =>

@@ -178,11 +178,10 @@ describe('action model', () => {
     }
   })
 
-  it('Show Info still shows Comes in M5', () => {
-    expect(actionStateFor('show-info', owned, ctx())).toEqual({
-      enabled: false,
-      reason: 'Coming in M5',
-    })
+  it('Show Info is enabled for owned, external and parked rows', () => {
+    for (const r of [owned, external, parked]) {
+      expect(actionStateFor('show-info', r, ctx())).toEqual({ enabled: true, reason: null })
+    }
   })
 
   it('a red box blocks Send message, Run slash command and Rename, but not Interrupt', () => {
@@ -351,7 +350,7 @@ describe('action model', () => {
     expect(items.slice(0, -1).map(i => i.arg)).toEqual(items.slice(0, -1).map(i => i.label))
   })
 
-  it('the availability reason comes before the milestone reason', () => {
+  it('each action gives the reason of its row class', () => {
     expect(actionStateFor('send-message', external, ctx()).reason).toBe(R.REASON_EXTERNAL)
     expect(actionStateFor('open', parked, ctx()).reason).toBe(R.REASON_PARKED)
     expect(actionStateFor('interrupt', external, ctx()).reason).toBe(R.REASON_EXTERNAL)

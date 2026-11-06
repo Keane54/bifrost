@@ -44,6 +44,10 @@ const api: BifrostApi = {
     onChange: cb => subscribe('display:changed', cb),
     set: mode => invoke('display:set', mode),
   },
+  info: {
+    openPr: sessionId => invoke('info:open-pr', sessionId),
+    pr: sessionId => invoke('info:pr', sessionId),
+  },
   input: {
     interrupt: sessionId => invoke('input:interrupt', sessionId),
     send: (sessionId, text) => invoke('input:send', sessionId, text),

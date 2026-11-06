@@ -1,5 +1,5 @@
 // The state of the window manager. A pure reducer keeps the frames, the stacks and the memory.
-import { CHAT_VIEW } from '../../../shared/view-id'
+import { CHAT_VIEW, SHOW_INFO_PANEL } from '../../../shared/view-id'
 import { centreRect, clampRect, MIN_SIZE, type Rect, type Size, shownRect } from './geometry'
 
 export type PanelKind =
@@ -9,6 +9,7 @@ export type PanelKind =
   | 'settings'
   | 'watchlist'
   | 'chat'
+  | 'show-info'
 
 export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   chat: { h: 480, w: 720 },
@@ -16,6 +17,7 @@ export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   'overview-settings': { h: 420, w: 360 },
   'selected-item': { h: 300, w: 360 },
   settings: { h: 540, w: 640 },
+  'show-info': { h: 560, w: 460 },
   watchlist: { h: 280, w: 320 },
 }
 
@@ -67,6 +69,7 @@ export function panelKind(panelId: string): PanelKind | null {
   if (OVERVIEW.test(panelId)) return 'overview'
   if (OVERVIEW_SETTINGS.test(panelId)) return 'overview-settings'
   if (CHAT_VIEW.test(panelId)) return 'chat'
+  if (SHOW_INFO_PANEL.test(panelId)) return 'show-info'
   return null
 }
 

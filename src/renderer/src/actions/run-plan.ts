@@ -1,6 +1,7 @@
 // The plan of one action of a row: what the actions provider does for it (spec 9.1, 9.2).
 // The plan is pure. The provider runs it.
 import type { SessionRow } from '../../../shared/types'
+import { showInfoPanelId } from '../info/show-info'
 import { type ActionContext, type ActionId, actionStateFor, type MenuArg } from './action-model'
 import { type ConfirmText, confirmFor } from './confirm'
 
@@ -26,6 +27,7 @@ export type RunPlan =
   | { kind: 'none' }
   | { kind: 'open-chat' }
   | { kind: 'close-chat' }
+  | { kind: 'open-panel'; panelId: string }
   | { kind: 'focus-send'; text: '' | '/' }
   | { kind: 'send'; text: string }
   | { kind: 'rename' }
@@ -97,6 +99,8 @@ export function planRun(
     }
     case 'rename':
       return { kind: 'rename' }
+    case 'show-info':
+      return { kind: 'open-panel', panelId: showInfoPanelId(row.sessionId) }
     case 'interrupt':
     case 'set-priority':
     case 'copy-id':
@@ -117,7 +121,7 @@ export function planRun(
       // The provider makes the final text after the unmerged-work check (Task 13).
       return call('remove', confirmFor('delete', row, ctx.labels), 'close-chat')
     default:
-      // New session and Resume all need no row. Show Info comes in M5.
+      // New session and Resume all need no row.
       return NONE
   }
 }

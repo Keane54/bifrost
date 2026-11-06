@@ -3,6 +3,8 @@ import type { SessionRow } from '../../../shared/types'
 import ChatPanel from '../chat/ChatPanel'
 import { chatSessionId } from '../chat/views'
 import { useRegistry } from '../data/registry'
+import ShowInfoPanel from '../info/ShowInfoPanel'
+import { showInfoSessionId } from '../info/show-info'
 import { cx } from '../lib/cx'
 import { PRIO_TEXT, TONE_TEXT } from '../overview/cells'
 import { stateLabel, stateTone } from '../overview/format'
@@ -35,6 +37,11 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
     case 'chat': {
       const id = chatSessionId(panelId)
       return rows?.find(r => r.sessionId === id)?.name ?? 'Chat'
+    }
+    case 'show-info': {
+      const id = showInfoSessionId(panelId)
+      const name = rows?.find(r => r.sessionId === id)?.name
+      return name === undefined ? 'Show Info' : `Show Info: ${name}`
     }
     default:
       return panelId
@@ -77,6 +84,12 @@ function ChatTitle({ panelId }: { panelId: string }): React.JSX.Element {
   )
 }
 
+// The Show Info title follows the name of the row.
+function ShowInfoTitle({ panelId }: { panelId: string }): React.JSX.Element {
+  const { rows } = useRegistry()
+  return <>{panelTitle(panelId, rows)}</>
+}
+
 // The title content with live data. It renders when its data changes, not with its frame.
 export function PanelTitle({ panelId }: { panelId: string }): React.JSX.Element {
   switch (panelKind(panelId)) {
@@ -84,6 +97,8 @@ export function PanelTitle({ panelId }: { panelId: string }): React.JSX.Element 
       return <OverviewTitle panelId={panelId} />
     case 'chat':
       return <ChatTitle panelId={panelId} />
+    case 'show-info':
+      return <ShowInfoTitle panelId={panelId} />
     default:
       return <>{panelTitle(panelId)}</>
   }
@@ -108,6 +123,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <WatchlistPanel />
     case 'chat':
       return <ChatPanel panelId={panelId} />
+    case 'show-info':
+      return <ShowInfoPanel panelId={panelId} />
     default:
       return <div className='p-3 text-[13px] text-text-dim'>This panel is not known.</div>
   }

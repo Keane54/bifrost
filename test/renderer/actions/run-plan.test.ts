@@ -139,8 +139,18 @@ describe('planRun', () => {
     })
   })
 
-  it('Show Info gives none', () => {
-    expect(planRun('show-info', owned, ctx())).toEqual({ kind: 'none' })
+  it('Show Info opens the Show Info panel of the row', () => {
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e'
+    for (const r of [owned, external, parked]) {
+      expect(planRun('show-info', { ...r, sessionId: id }, ctx())).toEqual({
+        kind: 'open-panel',
+        panelId: `show-info:${id}`,
+      })
+    }
+  })
+
+  it('Show Info gives none without a row', () => {
+    expect(planRun('show-info', undefined, ctx())).toEqual({ kind: 'none' })
   })
 
   it('New session and Resume all give none, because they need no row', () => {
