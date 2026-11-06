@@ -75,6 +75,42 @@ function hsl(colour: string): { h: number; l: number } {
   return { h: (h * 60 + 360) % 360, l: ((max + min) / 2) * 100 }
 }
 
+// The hue ranges of HSL in degrees (user decision, 2026-11-06). The Overview check and the watch check
+// share them. A hue is in a range when from <= hue < to. The pink range also takes its end, 345,
+// as the Overview check did before.
+const PURPLE_HUES = { from: 255, name: 'purple', to: 300 } as const
+const PINK_HUES = { from: 300, name: 'pink', to: 345 } as const
+type HueRange = typeof PURPLE_HUES | typeof PINK_HUES
+
+function inHues(hue: number, range: HueRange): boolean {
+  return hue >= range.from && (hue < range.to || (range === PINK_HUES && hue === range.to))
+}
+
+// The colour families of the Overview. They have no purple and no pink.
+const OVERVIEW_FAMILIES = ['project', 'tab', 'prio'] as const
+
+// The hex tokens of the families: the name and the value.
+function familyTokens(css: string, families: readonly string[]): [string, string][] {
+  const pattern = new RegExp(
+    `--color-((?:${families.join('|')})-?[\\w-]*):\\s*(#[0-9a-fA-F]{6})`,
+    'g',
+  )
+  return [...css.matchAll(pattern)].map(match => [match[1], match[2]])
+}
+
+// Each token of the families with a hue in one of the ranges, as "<name> is <range>".
+function hueProblems(
+  css: string,
+  families: readonly string[],
+  ranges: readonly HueRange[],
+): string[] {
+  return familyTokens(css, families).flatMap(([name, value]) => {
+    const hue = hsl(value).h
+    const range = ranges.find(r => inHues(hue, r))
+    return range ? [`${name} is ${range.name}`] : []
+  })
+}
+
 function luminance(colour: string): number {
   const [r, g, b] = rgb(colour).map(c => {
     const v = c / 255
@@ -332,18 +368,31 @@ describe('theme', () => {
   // the user, 2026-11-06: purple and pink must not show on the Overview. Other panels may use them.
   // So this check covers only the families that the Overview uses.
   it('the project, tab and prio tokens have no purple or pink', () => {
-    const tokens = [...CSS.matchAll(/--color-((?:project|tab|prio)-?[\w-]*):\s*(#[0-9a-fA-F]{6})/g)]
     // Each token of the families is hex, so the check reads all of them.
     const all = [...CSS.matchAll(/--color-(?:project|tab|prio)[\w-]*:/g)]
-    expect(tokens.length).toBe(all.length)
-    expect(tokens.length).toBeGreaterThanOrEqual(25)
-    const bad = tokens
-      .filter(([, , hex]) => {
-        const hue = hsl(hex).h
-        return hue >= 255 && hue <= 345
-      })
-      .map(([, name]) => name)
-    expect(bad).toEqual([])
+    expect(familyTokens(CSS, OVERVIEW_FAMILIES).length).toBe(all.length)
+    expect(all.length).toBeGreaterThanOrEqual(25)
+    expect(hueProblems(CSS, OVERVIEW_FAMILIES, [PURPLE_HUES, PINK_HUES])).toEqual([])
+  })
+
+  // the user, 2026-11-06: the watch colours tint and stripe Overview rows. So they have no purple.
+  // Pink is allowed for them.
+  it('the watch tokens have no purple, and may have pink', () => {
+    const all = [...CSS.matchAll(/--color-watch[\w-]*:/g)]
+    expect(familyTokens(CSS, ['watch']).length).toBe(all.length)
+    expect(all.length).toBe(WATCH_NAMES.length)
+    expect(hueProblems(CSS, ['watch'], [PURPLE_HUES])).toEqual([])
+  })
+
+  it('the hue checks find a purple or a pink token (guard)', () => {
+    const violet = CSS.replace('--color-watch-white: #f2f2f2;', '--color-watch-white: #9b80e6;')
+    expect(hueProblems(violet, ['watch'], [PURPLE_HUES])).toEqual(['watch-white is purple'])
+    const pinkWatch = CSS.replace('--color-watch-white: #f2f2f2;', '--color-watch-white: #ec4899;')
+    expect(hueProblems(pinkWatch, ['watch'], [PURPLE_HUES])).toEqual([])
+    const pinkTab = CSS.replace('--color-tab-1: #7cc4d6;', '--color-tab-1: #ec4899;')
+    expect(hueProblems(pinkTab, OVERVIEW_FAMILIES, [PURPLE_HUES, PINK_HUES])).toEqual([
+      'tab-1 is pink',
+    ])
   })
 
   it('each colour family is there, with the svc and usage tokens, all in hex (count guard)', () => {
@@ -451,7 +500,8 @@ describe('theme', () => {
 describe('the Service status tokens', () => {
   const NAMES = ['ok', 'minor', 'major', 'critical', 'maint'].map(n => `svc-${n}`)
 
-  // The distance to the box colours is checked for all families above. The purple and pink check covers only the Overview families.
+  // The distance to the box colours is checked for all families above. The purple and pink check
+  // covers the Overview families, and the purple check covers the watch family.
   it('are not yellow or red', () => {
     for (const name of NAMES) {
       const { h } = hsl(token(name))
