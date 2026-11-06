@@ -138,6 +138,20 @@ export interface SessionActions {
   dirInfo(dir: unknown): Promise<DirInfo>
 }
 
+// The arguments of "claude --bg --resume" for Resume and Resume all.
+// They add no flag. A resume with a new flag on a stopped background session starts a copy with a
+// new session ID. A background session keeps its saved options, so it keeps the hidden statusline.
+export function resumeArgs(sessionId: string): string[] {
+  return ['--bg', '--resume', sessionId]
+}
+
+// The arguments of "claude --bg --resume" for Take control (D13).
+// Take control only starts from an external session, which runs in the foreground. A foreground
+// session has no saved options, so the resume keeps the same session ID and the override works.
+export function takeControlArgs(sessionId: string): string[] {
+  return ['--bg', '--settings', NO_STATUSLINE_SETTINGS, '--resume', sessionId]
+}
+
 // The arguments of "claude --bg" for the New session values.
 // The prompt is last, because "--worktree" takes an optional value.
 // The permission mode must be in the list. So Bifrost never passes bypassPermissions.
@@ -386,7 +400,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (row.state !== 'parked') throw new Error(REFUSED_NOT_PARKED)
     checkSessionId(row)
     await checkProjectDir(row.cwd)
-    await start(run, ['--bg', '--resume', row.sessionId], row.cwd, 'claude --bg --resume')
+    await start(run, resumeArgs(row.sessionId), row.cwd, 'claude --bg --resume')
   }
 
   // Check isAlive each END_POLL_MS for up to limitMs. Return true when the process ended.
@@ -587,7 +601,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (!(await waitForEnd(pid))) throw new Error(REASON_NOT_ENDED)
         // A started session parks when it ends. So a failed resume leaves a parked row (D6).
         deps.markStarted(row.sessionId)
-        await start(run, ['--bg', '--resume', row.sessionId], cwd, 'claude --bg --resume')
+        await start(run, takeControlArgs(row.sessionId), cwd, 'claude --bg --resume')
         await waitResumed(row.sessionId)
         // The resumed session must still run after RESUME_SETTLE_MS. Else it ended or parked
         // before it ran.

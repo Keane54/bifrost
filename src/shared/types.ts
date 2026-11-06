@@ -153,10 +153,11 @@ export interface RateLimits {
   sevenDay?: RateWindow
 }
 
-// The newest rate limits: those of the newest usage line with rate limits, of all sessions.
-// The session can be a session that is not a row. name is the row name, or the first 8
-// characters of the session ID when the session is not a row. updatedAt is the time of the line
-// that had the rate limits. A later line without rate limits does not change it.
+// The newest rate limits. Bifrost chooses each window on its own, from the usage lines of all
+// sessions: the latest reset time wins, and in the same window the highest use wins. The session
+// is the one that gave the 7-day value, else the 5-hour value. It can be a session that is not a
+// row. name is the row name, or the first 8 characters of the session ID when the session is not
+// a row. updatedAt is the time of the line of that session that had the rate limits.
 export interface UsageSnapshot {
   sessionId: string
   name: string

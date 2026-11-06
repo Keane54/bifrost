@@ -11,8 +11,10 @@ import {
   RM_GRACE_MS,
   RM_TIMEOUT_MS,
   RUN_TIMEOUT_MS,
+  resumeArgs,
   type SessionActionDeps,
   START_TIMEOUT_MS,
+  takeControlArgs,
 } from '../../../src/main/actions/session-actions'
 import type { ExecResult } from '../../../src/main/claude/cli'
 import {
@@ -203,6 +205,27 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+// The literal argument lists, so the tests do not repeat the code under test.
+const expectedResume = (id: string): string[] => ['--bg', '--resume', id]
+const expectedTakeControl = (id: string): string[] => [
+  '--bg',
+  '--settings',
+  '{"statusLine":{"type":"command","command":"true"}}',
+  '--resume',
+  id,
+]
+
+describe('resumeArgs and takeControlArgs', () => {
+  test('Resume and Resume all add no flag, because a flag on a background session starts a copy', () => {
+    expect(resumeArgs('S1')).toEqual(expectedResume('S1'))
+  })
+
+  test('Take control turns the statusline off, because the session was in the foreground', () => {
+    expect(takeControlArgs('S1')).toEqual(expectedTakeControl('S1'))
+    expect(expectedTakeControl('S1')[2]).toBe(NO_STATUSLINE_SETTINGS)
+  })
 })
 
 describe('newSessionArgs', () => {
@@ -1110,7 +1133,7 @@ describe('resume', () => {
     await actions.resume(S)
     expect(f.ops()).toEqual([
       '0 dirInfo /p',
-      `0 run ${JSON.stringify(['--bg', '--resume', S])} ${JSON.stringify(IN_P)}`,
+      `0 run ${JSON.stringify(expectedResume(S))} ${JSON.stringify(IN_P)}`,
       `0 waitForRow ${START_TIMEOUT_MS}`,
       `0 markStarted ${S}`,
     ])
@@ -1166,11 +1189,11 @@ describe('resumeAll', () => {
     await expect(done).resolves.toEqual({ failed: [], resumed: 2 })
     expect(f.ops()).toEqual([
       '0 dirInfo /p',
-      `0 run ${JSON.stringify(['--bg', '--resume', S])} ${JSON.stringify(IN_P)}`,
-      `1000 end ${JSON.stringify(['--bg', '--resume', S])}`,
+      `0 run ${JSON.stringify(expectedResume(S))} ${JSON.stringify(IN_P)}`,
+      `1000 end ${JSON.stringify(expectedResume(S))}`,
       '1000 dirInfo /q',
-      `1000 run ${JSON.stringify(['--bg', '--resume', S4])} ${JSON.stringify({ cwd: '/q', timeoutMs: RUN_TIMEOUT_MS })}`,
-      `2000 end ${JSON.stringify(['--bg', '--resume', S4])}`,
+      `1000 run ${JSON.stringify(expectedResume(S4))} ${JSON.stringify({ cwd: '/q', timeoutMs: RUN_TIMEOUT_MS })}`,
+      `2000 end ${JSON.stringify(expectedResume(S4))}`,
       `2000 waitForRow ${START_TIMEOUT_MS}`,
       `2000 waitForRow ${START_TIMEOUT_MS}`,
       `2000 markStarted ${S}`,
@@ -1190,7 +1213,7 @@ describe('resumeAll', () => {
       ...deps,
       dirInfo: async dir => (dir === '/gone' ? { git: false, kind: 'missing' } : f.dir),
     })
-    f.exec = args => (args[2] === S2 ? { code: 1, stderr: TRUST, stdout: '' } : OK)
+    f.exec = args => (args.at(-1) === S2 ? { code: 1, stderr: TRUST, stdout: '' } : OK)
     f.appear = [row({ sessionId: S4 })]
     const done = actions.resumeAll()
     await vi.advanceTimersByTimeAsync(START_TIMEOUT_MS)
@@ -1266,7 +1289,7 @@ describe('resumeAll', () => {
     await removing
     expect(f.ops('run').map(line => line.split(' ')[2])).toEqual([
       JSON.stringify(['rm', SHORT]),
-      JSON.stringify(['--bg', '--resume', S2]),
+      JSON.stringify(expectedResume(S2)),
     ])
   })
 })
@@ -1304,7 +1327,7 @@ describe('takeControl', () => {
       '200 isAlive 4242',
       '300 isAlive 4242',
       `300 markStarted ${S}`,
-      `300 run ${JSON.stringify(['--bg', '--resume', S])} ${JSON.stringify(IN_P)}`,
+      `300 run ${JSON.stringify(expectedTakeControl(S))} ${JSON.stringify(IN_P)}`,
       `300 waitForRow ${START_TIMEOUT_MS}`,
       `${300 + RESUME_SETTLE_MS} isAlive 5151`,
     ])
@@ -1481,9 +1504,9 @@ describe('takeControl', () => {
     await expect(done).resolves.toEqual({ sessionId: S })
   })
 
-  test('resume, Resume all and Take control pass no extra flags', async () => {
-    // A resume with a new flag starts a copy with a new session ID (controller ruling).
-    // The statusline override is for New session only.
+  test('Resume and Resume all pass no extra flag, Take control passes the statusline override', async () => {
+    // A resume with a new flag on a background session starts a copy with a new session ID.
+    // Take control starts from a foreground session, so the override keeps the same ID (D13).
     f.appear = [row()]
     f.rows = [parked({ resumable: true })]
     await actions.resume(S)
@@ -1497,7 +1520,11 @@ describe('takeControl', () => {
     await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
     await done
     const runs = f.ops('run').map(line => line.split(' ')[2])
-    expect(runs).toEqual(Array(3).fill(JSON.stringify(['--bg', '--resume', S])))
+    expect(runs).toEqual([
+      JSON.stringify(expectedResume(S)),
+      JSON.stringify(expectedResume(S)),
+      JSON.stringify(expectedTakeControl(S)),
+    ])
   })
 })
 

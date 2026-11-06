@@ -239,18 +239,22 @@ Rules for the usage data:
 - The parser keeps `version`, `effort` and `permissionMode` when each is a text that is not empty. It cuts each to 200 characters. It keeps `transcriptPath` only when the path starts with `/`, has at most 1,024 characters, and has no C0 control (U+0000 to U+001F, also the line breaks), no DEL (U+007F) and no bidi control (U+202A to U+202E, U+2066 to U+2069). A bidi control can make a path look like another path. It leaves out a bad field and keeps the line.
 - Each row gets these fields from its last `usage` line: `contextWindowSize` (from `context.window`), `rateLimits`, `claudeVersion` (from `version`), `effort`, `permissionMode` and `transcriptPath`. A missing value leaves the field out. The rate limits are different (next rule).
 - A `usage` line without `rateLimits` keeps the last rate limits of its session and the time of the line that had them. Only a line with `rateLimits` replaces them.
-- The newest rate limits (M5b D19) are the rate limits with the newest time, of all sessions. The time is the `at` of the line that had them. A session that is not a row also counts, until the registry forgets it. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
-- The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line that had them, so a newer line with the same limits is a change. The update limit is that of the rows: at most 4 updates each second, and the last value always goes out. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
+- The newest rate limits (M5b D19) are chosen for each window (5-hour and 7-day) on its own, from the usage lines of all sessions. Each Claude Code process keeps the rate limits of its own last reply. An idle session sends old values with a new time. So the time of the line says nothing about the data. The rules are:
+  1. The newest window wins: the reading with the latest reset time.
+  2. Two readings are the same window when their reset times are within 10 minutes.
+  3. In the same window, the highest use wins, because use only grows in a window. A use value that is not a finite number never wins over a finite one.
+  4. A session that is not a row also counts, until the registry forgets it.
+  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
+- The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line that gave the 7-day value (else the 5-hour value), so a newer line from that session with the same limits is a change. The update limit is that of the rows: at most 4 updates each second, and the last value always goes out. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
 - Without the mod, Bifrost shows no model, context %, cost, rate limit, context window size, Claude Code version, effort, permission mode or transcript path.
 
 Statusline in chat windows (O4, 2026-11-05):
 
 - Bifrost no longer installs the wrapper. So Claude Code runs your own statusLine command in each session again.
 - A mod cannot stop that command, because the mod API has no statusline hook.
-- Bifrost starts each new session with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. The chat window then shows no statusline row.
-- Resume and Take control add no flags. A resume with the flag starts a copy with a new session ID.
-- A session that Bifrost started with the flag keeps the hidden statusline when it resumes without the flag.
-- A session that Take control moved keeps your statusline in its chat window. The user accepted this.
+- Bifrost starts each new session, and each session that Take control moves, with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. The chat window then shows no statusline row.
+- Resume and Resume all add no flag. A resume with a new flag on a stopped background session starts a copy with a new session ID (test of 2026-11-05). A background session keeps its saved options, so it keeps the hidden statusline.
+- Take control passes the same flag: `claude --bg --settings '{...}' --resume <session-id>`. Take control only accepts an external session, which runs in the foreground, and a foreground session has no saved options. Test of 2026-11-06: a foreground session, SIGTERM, then this command gave the same session ID, kind background, and no statusline row.
 - Sessions in a terminal app, for example Warp, keep your statusline.
 
 ### 6.4 Git branch
@@ -488,7 +492,7 @@ The Event log shows the live state events with the time, the session and the eve
 
 ### 8.8 Usage HUD
 
-The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. The data comes from the newest live usage line. With no data, the panel shows "No usage data yet."
+The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. Bifrost chooses each bar on its own from all live usage lines. The newest window wins, and in the same window the highest use wins. An idle session can send an old value, and this rule stops that value from replacing a newer one (section 6). With no data, the panel shows "No usage data yet."
 
 ### 8.9 New session dialog
 
@@ -557,7 +561,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Interrupt | Full stop | Owned | Send Esc to the session. |
 | Rename | Set callsign | Owned | Type `/rename <name>` into the session. |
 | Set priority | Set threat level | All | Bifrost data only. |
-| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. |
+| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. It adds no flag (D13). |
 | Resume all | Reactivate all | Parked | Resume each parked session that was active when Bifrost last ran. |
 | Show Info | Scan | All | Open the Show Info panel. |
 | Copy session ID | Copy transponder ID | All | Copy to the clipboard. |
@@ -588,7 +592,7 @@ Bifrost does these steps:
 2. Show the confirmation: "This ends the {terminal} process and hands control to Bifrost."
 3. Send SIGTERM to the session process.
 4. Wait for the process to end, for a maximum of 5 seconds.
-5. Run `claude --bg --resume <session-id>` in the session directory.
+5. Run `claude --bg --settings <statusline override> --resume <session-id>` in the session directory (D13).
 6. Find the new entry by `sessionId`, not by name.
 7. Open the chat window of the session.
 
@@ -1058,12 +1062,12 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 10. D10: Install and Turn on remove an old hook install before the first `claude plugin` command. A failure stops the action. Remove does the old removal last, after the plugin steps and the delete of the mod folder (controller ruling). The reason: a failed removal of the old install must not leave the mod installed. Bifrost keeps `statusline-original.json` and the backups.
 11. D11: The API for M5a is `live.status()`, `live.install()`, `live.enable()`, `live.disable()` and `live.uninstall()`. `enable` refuses when the plugin is not installed.
 12. D12: The parser keeps `five_hour` and `seven_day` as the rate limits and drops other windows. This work adds no Usage HUD.
-13. D13: A new session always gets the `--settings` statusLine override. Section 22 item 1 passed it only without the wrapper. Resume and Take control add no flags.
+13. D13: A new session always gets the `--settings` statusLine override. Take control passes it too, because it starts from a foreground session: the session ID stays the same and the statusline goes away (test of 2026-11-06). Resume and Resume all add no flag, because a resume with a new flag on a background session starts a copy with a new session ID. Section 22 item 1 passed the override only without the wrapper.
 14. D14: This section holds the decisions of the Live details work. Section 22 keeps its text, with a note that this section changes its statusline line.
 15. O1: Yes. A controller task installs the mod at user scope for a short time (Part B of the check). It saves backups and SHA-256 values first, and it runs no `/reload-plugins` in a session of the user.
 16. O2: The guard `cc-plugin-sec-default` is not in the list of the user. The `classic.*` events are usable.
 17. O3: Yes. With no mod, a change of `status` from `busy` or `waiting` to `idle` seen by the poll sets a yellow box (section 7, rule 11). The O3 question named both changes.
-18. O4: Option a. New sessions start with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. Resume and Take control add no flags. A taken-over session keeps your statusline. Spec 20 item 1 goes away (section 6.3).
+18. O4: Option a. New sessions start with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. Take control also passes the flag. Resume adds no flag (D13). Spec 20 item 1 goes away (section 6.3).
 19. Ask order: the mod queues the `ask` line before the tool runs. The line has a lower `seq` than `tool.done`. The mod does not wait for the send.
 20. Socket server: a stop during a start wins. The server never deletes a file that is not a socket. It never deletes a socket that answers (section 11.2).
 21. Live flags: Turn off and Remove end the live flag of each row directly after the server stops. The usage stays. The poll yellow box then applies at once, and the status gives 0 live sessions (section 11.2).
