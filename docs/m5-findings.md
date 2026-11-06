@@ -324,3 +324,151 @@ The raw SHA-256 of `known_marketplaces.json` was `b7b2de56...c7b126` at 04:01:12
 4. Close the Finder window of `.m0-sandbox` that the P keys opened.
 5. Decide on the second-run observations 1 to 3.
 6. These items of the first list stay: Start at login in the packaged app (item 4) and the look of the Settings panel (item 5).
+
+## M5b checks and the DMG
+
+A check agent ran Task 9 of M5b on 2026-11-06 from 05:50 to 06:16 GMT. The code was branch `m5b` at `9c87552`. The versions were Claude Code 2.1.319, Electron 44.7.2, Node 26.8.1 and macOS 26.6.2. The screen was not locked.
+
+The check did not stop. The guard did not change. The check found two Bifrost bugs (B1 and B2). B1 makes the smoke test fail on a slow start, and it fails each Rosetta run of the packaged app. See "M5b: bugs".
+
+### M5b: method
+
+- Guard: the rule of the second M5a run, and R13. The agent took the baseline at 05:50:29, before Step 1. It compared `~/.claude/settings.json` and `~/.claude/plugins/installed_plugins.json` byte for byte (SHA-256). It compared `~/.claude/plugins/known_marketplaces.json` after `jq -S 'walk(if type == "object" then del(.lastUpdated) else . end)'`. It also kept a list of each file in `~/.bifrost` with its size and SHA-256 (not `live.sock`). It ran the compare six times: after Step 4, before `pnpm dist`, before the stop of the dev app, before the start of the packaged app, after the start of the packaged app, and after the clean-up.
+- Live details without an install (D32): the agent copied the four `MOD_FILES` of `resources/live-mod/` to `.m0-sandbox/m5b-check/bifrost-live/`. It started `bifrost-test-m5c` (`32f54b87`) and `bifrost-test-m5d` (`e089ed45`) at 05:51:33 with `cl.sh --bg --plugin-dir <copy> --model haiku --name <name> "Reply with the word READY."`.
+- Dev app: `BIFROST_LIVE_LISTEN=1 pnpm exec electron-vite dev -- --user-data-dir=<scratch>/m5b-check/userdata --remote-debugging-port=9333`, in the real home. The main PID was 20513. `window.bifrost.live.status()` gave `listening: true`, `plugin: 'not-installed'`. The agent clicked Skip in the setup dialog. After the start of the two sessions, the status gave `liveSessions: 2`. So the live parts of Steps 1 to 3 ran with the socket.
+- The agent drove the page with a CDP script over port 9333: clicks, key events, `eval` reads of the DOM and of `window.bifrost`, and screenshots. Real keys (Cmd+I, F5, Cmd+R) went to the main PID only, with a Swift tool that uses `CGEvent.postToPid`. A second Swift tool put an app in front by its PID. The agent did not use `osascript`.
+- Before each action on a row, a script read the name of the row and of the Selected Item panel, and checked the `bifrost-test-` prefix. Each row action of the check was on `bifrost-test-m5c`, `bifrost-test-m5d` or `bifrost-test-m5e`.
+- In the dev app, the agent set "Sound for a red box" to off. "macOS notification" stayed on, for the notice row of Step 2.
+- The agent quit each app with SIGTERM to its own main PID: 20513 (dev app, 06:11:54) and 51207 (packaged app, 06:15:08).
+
+Changes to the method:
+
+- The packaged app got `--remote-debugging-port=9335` in addition to `--user-data-dir`, so that the agent could click Skip, open the chat window and select rows. The agent started it with a clean env (`env -i` with `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM`, `LANG`, `TMPDIR` and `PATH=/usr/bin:/bin:/usr/sbin:/sbin`), as a start from a new terminal.
+- Step 6 failed at the first run. The agent ran the smoke test 7 more times to find the cause. Step 7 ran the Rosetta smoke test 4 times, one time after the stop of the dev app.
+- The agent has no Screen Recording permission. So it cannot capture the DMG window, the Dock or the browser window, and it cannot read window titles. For the status page, it counted the string `https://status.claude.com` in the newest Brave session file. It read nothing else from that file.
+- The packaged app ran without the live socket. So it also showed the "no socket" case of the Event log and of the Usage HUD.
+
+### M5b: results
+
+| Step | Method | Result | Screenshot |
+|---|---|---|---|
+| 1. Show Info (05:52 to 05:54) | m5c selected: I, then Cmd+I (CDP), then real Cmd+I, then the row menu item "Show Info". m5d selected: hold I and click m5c. Then I on m5d for a second panel. Then Backspace (Stop) on the idle m5d. Compare with `cl.sh agents --json`, `registry.rows()`, `gh` and the transcript file. | Pass. Each of the five ways opened `show-info:32f54b87-...` with the title `Show Info: bifrost-test-m5c`. A second I with the panel open made no second panel. Hold I and click kept the selection on m5d. Two panels were open at the same time. After the stop, the m5d panel showed `PID -` and `Duration Parked`. Each value agrees with its source. See "M5b: Step 1". | `m5-findings/m5b-s1-show-info-i.png`, `m5-findings/m5b-s1-two-panels.png`, `m5-findings/m5b-s1-parked.png` |
+| 2. Event log (05:54 to 05:55) | Cmd+L. Finder in front. Send box: `Reply with OK.` to m5c. Filter by m5c. Real F5. | Pass, with the socket. The log showed `UserPromptSubmit` (05:54:09.318) and `Stop` (05:54:13.625) of m5c, newest first, above the older events. macOS refused the notification of the yellow box, and the log got the notice row (carry-over 3). The m5c filter showed 5 events, all of m5c. After F5 the page was new (a value on `window` was gone), and the 10 events stayed. The filter went back to "All sessions". The "no socket" case ran in Step 7: `No events yet.` and the Live details hint. | `m5-findings/m5b-s2-event-log.png`, `m5-findings/m5b-s2-event-log-filter.png` |
+| 3. Usage HUD (05:55) | Cmd+U. Compare with `usage.get()` and the `rateLimits` of the rows. | Pass, with bug B2. See "M5b: Step 3". | `m5-findings/m5b-s3-usage-hud.png` |
+| 4. Service status (05:55 to 05:58) | Side bar button. `curl` of `status.json`, `incidents/unresolved.json` and `components.json` of each page. Wait 70 s. Click "Open status page" of Claude. | Pass. See "M5b: Step 4". | `m5-findings/m5b-s4-service-status.png` |
+| 5. Theme (05:59 to 06:01) | Open all nine panel kinds: Overview, Selected Item, Watchlist (m5c, Light blue), chat window (m5c), Settings, Show Info, Event log, Usage HUD, Service status. Read the computed styles. Look for the box yellow, the box red and the parked grey on each element outside the terminal canvas. | Pass for the rules that a script can check. The user checks the look. See "M5b: Step 5". | `m5-findings/m5b-s5-theme-all-panels.png` |
+| 6. Smoke test (06:01 to 06:04) | `pnpm smoke`, then `pnpm smoke` again, then `pnpm smoke:app` six times. | Fail. The first run failed after 12.4 s: `attach.log` stayed empty. The trace shows the chat window of `smoke-alpha` with `Waiting for the session list.` while the Overview shows the rows. The next 7 runs passed (2.0 s to 2.3 s). The cause is bug B1. | `m5-findings/m5b-s6-smoke-fail-waiting.jpeg` |
+| 7. DMG (06:05 to 06:15) | `pnpm dist`. The Task 8 checks of Steps 3 to 5. Open the DMG in Finder. SIGTERM to the dev app. One start of the packaged app in the real home. | Part. The build, the bundle checks, the arm64 smoke test, the DMG and the packaged app pass. The Rosetta smoke test failed 4 times of 4, with the same cause as Step 6 (B1). See "M5b: Step 7". | `m5-findings/m5b-s7-packaged-app.png`, `m5-findings/m5b-s7-packaged-no-live.png`, `m5-findings/m5b-s7-smoke-x64-fail-waiting.jpeg` |
+| 8. Clean up (06:15 to 06:16) | Close the chat windows. Stop and remove each `bifrost-test-` session with a name check. Remove the mod copy and the two user-data folders. Run the guard. | Pass. See "M5b: SHA-256 values" and "M5b: clean-up". | - |
+
+### M5b: Step 1
+
+| Value | Show Info (m5c) | Source |
+|---|---|---|
+| Name, Session ID, Short ID | `bifrost-test-m5c`, `32f54b87-6690-4ac7-9afb-73b647443139`, `32f54b87` | `cl.sh agents --json`: the same `name`, `sessionId` and `id` |
+| Kind | Owned | `kind: background`. Bifrost shows a background session as Owned. |
+| PID | 34610 | `pid: 34610` |
+| Project folder | `/Users/dev-user/Developer/bifrost/.m0-sandbox` | `cwd` |
+| Transcript | `~/.claude/projects/-Users-dev-user-Developer-bifrost--m0-sandbox/32f54b87-....jsonl` | `transcriptPath` of the row. The file exists (404,896 bytes). |
+| Branch, PR, Worktree | `main`, `no git remotes found`, `None` | `git branch --show-current` gives `main`. `gh pr view --json number,title,url,state` in `.m0-sandbox` gives `no git remotes found` (exit 1). This is the `gh` reason. |
+| Model, Effort, Permission mode | Haiku 5.5, medium, auto | `model`, `effort`, `permissionMode` of the row (D28) |
+| Started, Duration | 05:51. The duration was `less than 1 min`, and later `1 min`. | `startedAt` 1793944295836 (05:51:35.836) |
+| Cost | `<$0.01` | `costUsd` 0.0093 |
+| Context window, Context use | 1M tokens, 5% | `contextWindowSize` 1000000, `contextPercent` 5 |
+| 5-hour limit | `-` | The row has no `fiveHour` window. |
+| 7-day limit | `33%, resets Sat 7 Nov 02:00` | `sevenDay`: `usedPercent` 33, `resetsAt` 1794016800000 (2026-11-07 02:00 GMT) |
+| Claude Code version | 2.1.319 | `claudeVersion` of the row, and `cl.sh --version` |
+
+- The row menu of m5c had: Open, Send message..., Run slash command, Interrupt, Set priority, Add to watchlist, Rename..., Show Info, Copy session ID, Open project, Open in terminal, Stop session..., Delete session....
+- The m5d panel had the same kinds of values, with PID 34648 and Context use 6%. After the stop (05:53:33), the Event log got `SessionEnd` of m5d at 05:53:33.655.
+
+### M5b: Step 3
+
+- `usage.get()` at 05:55:06: `limits: { sevenDay: { usedPercent: 33, resetsAt: 1794016800000 } }`, from `bifrost-test-m5c`, `updatedAt` 05:55:05.853. The rows of m5c and m5d had the same `rateLimits`, with no `fiveHour`.
+- The HUD: "5-hour limit", `-`, `No data for this limit yet.` "7-day limit", `33%`, a bar of width 33% in `--color-usage` (`#5fb3c9`), `Resets in 20 h 04 min (Sat 02:00)`. The last line was `From bifrost-test-m5c, 0 s ago.`
+- No window was at 90% or more. So the amber `usage-high` bar did not show (For the user).
+- Values for the user: the 7-day limit was at 33% and resets on 2026-11-07 at 02:00 GMT. This plan has no 5-hour window.
+- Bug B2: at the default size the last line is cut. See "M5b: bugs".
+
+### M5b: Step 4
+
+- `curl` at 05:55:53: each of `status.claude.com`, `www.githubstatus.com` and `status.sentry.io` gave `{"indicator":"none","description":"All Systems Operational"}`, no unresolved incident and no component that was not operational.
+- The panel showed `Operational` for Claude, GitHub and Sentry (`data-service-level="none"`, colour `rgb(134, 196, 143)`, the `svc-ok` token). `service.status()` agreed.
+- The rounds ran at 05:55:00.988, about 05:56:01 and 05:57:01.627, about 60 s apart. In the 70 s wait the panel line went from `Checked at 05:56.` to `Checked at 05:57.` The line shows hours and minutes only.
+- "Open status page of Claude": the agent clicked it at 05:57:57 and at 05:58:16. Each time Brave, the default app for `https`, came to the front within 3 s. The Brave session file changed at 05:58:17 and has the string `https://status.claude.com`. Two Brave tabs of the status page can be open (For the user).
+
+### M5b: Step 5
+
+- Each frame had `backdrop-filter: blur(12px)`. Each frame background was `rgba(24, 24, 24, 0.85)`, and the focused frame was `rgba(8, 8, 8, 0.95)`. The font was `"Geist Mono", ui-monospace, "SF Mono", Menlo, monospace`. The terminal font setting was SF Mono 13.
+- The box yellow showed only on the box marks of m5c (Overview row, Watchlist row, Selected Item, chat title) and in the `Needs you` text of these. No element used the box red or the parked grey. The four new panels used none of the three.
+
+### M5b: Step 7
+
+- `pnpm dist` (06:05:11 to 06:07:46): exit 0. The log has no `x64ArchFiles`, `detected file`, `warn` or `error` line. `dist/Bifrost-1.0.0-universal.dmg` has 232,285,120 bytes and the SHA-256 `5ae0fea3...ab72fb`.
+- The Task 8 checks of Step 3 passed: `lipo -archs` gives `x86_64 arm64`. `codesign` gives `Identifier=com.keyholding.bifrost`, `Signature=adhoc`, `TeamIdentifier=not set`, and the strict deep check passed. The two `pty.node` and the two `spawn-helper` files are Mach-O for their own chip, and each `spawn-helper` has mode 755. No `node-pty/build` path is in the bundle or in `app.asar` (852 entries). The four mod files are in `app.asar.unpacked/resources/live-mod` with the same bytes as `resources/live-mod`. No mod test is in the bundle. The Info.plist has `com.keyholding.bifrost`, `icon.icns` (the same bytes as `build/icon.icns`), `public.app-category.developer-tools` and 1.0.0.
+- Task 8 Step 4: `BIFROST_SMOKE_APP=<app> pnpm smoke:app` passed (8.5 s). With `BIFROST_SMOKE_ARCH=x86_64`, it failed 4 times (56.2 s, 30.5 s, 32.3 s, and 29.4 s with the dev app off). Each trace shows `Waiting for the session list.` in the chat window (B1).
+- Task 8 Step 5: the DMG mounts as `/Volumes/Bifrost 1.0.0-universal` with `Applications`, `Bifrost.app`, `.background.tiff` and `.VolumeIcon.icns`. The app in it has `Signature=adhoc`. `open` of the DMG made one new Finder window of 540 x 380 points. `hdiutil detach` closed it. The agent cannot capture the window (For the user).
+- The packaged app started at 06:13:19 as PID 51207. `lsappinfo` gave `Bifrost`, the path in `dist/mac-universal` and `ApplicationType Foreground`, so the app has a Dock icon. Bifrost was the front app.
+- The setup dialog showed (new user data). The agent clicked Skip only. `live.status()` gave `listening: false`, `plugin: 'not-installed'`.
+- The registry had the real sessions: the five external sessions of the user, the three parked sessions that were there before the check, m5c and the parked m5d. The All tab showed m5c and the five external sessions.
+- The O key on m5c opened its chat window. `claude attach 32f54b87` ran as PID 65152, with the parent 51207. The terminal drew the TUI of m5c.
+- The Service status panel filled at once: three `Operational`, `Checked at 06:13.`
+- 06:14:06: `open -a Finder` put Finder in front. 06:14:07: `bifrost-test-m5e` (`8b420fdf`) started with `--model haiku --permission-mode manual` and `Run the shell command: touch perm-check-m5e.txt`, with no `--plugin-dir`. 06:14:13.003: m5e got a red box (`boxReason: 'prompt'`).
+- The terminal log has `Bifrost showed a notification for 8b420fdf-2de3-4966-b9a3-19d191d90506.` The agent cannot see the screen, so it does not know if macOS also showed a permission prompt. One `afplay /System/Library/Sounds/Ping.aiff` ran at 06:14:13 with the parent 51207 (the sound is on by default).
+- The Event log showed `No events yet.` and the Live details hint. The Usage HUD showed `No data` for both limits and `No usage data yet. Live details sends it.`
+- In the Parked tab, the agent selected m5d and sent a real Cmd+R to PID 51207 at 06:14:47. At 06:14:54 m5d was `idle` with the new PID 74697. So Resume works in the packaged app.
+- SIGTERM to PID 51207 at 06:15:08. No Bifrost process stayed.
+
+### M5b: bugs
+
+B1 (medium): a page that loads after the last registry change cannot open a chat window until the next change.
+
+- Evidence: smoke run 1 of Step 6 and 4 of 4 Rosetta runs of Step 7 failed. In each trace, the Overview shows the sample rows, and the chat window of `smoke-alpha` shows `Waiting for the session list.` for 10 s. In the dev app, after a real F5 at 06:04:10, the open chat window of m5c showed the same text for 2.3 s. Then a session changed, and the chat window attached.
+- Cause (from the code): `RegistryProvider` in `src/renderer/src/data/registry.tsx` sets `loaded` only in `registry.onUpdate`. The first rows come from `registry.rows()`, which does not set `loaded`. The main process sends `registry:update` only when the rows change (`send()` in `src/main/registry/service.ts` returns when the JSON is the same as `lastSent`). `attachWindow` in `src/main/ipc.ts` sends no rows at `did-finish-load`. So when the page subscribes after the last change, `loaded` stays false. `attachTarget` in `src/renderer/src/chat/views.ts` then gives `Waiting for the session list.`
+- Effect: a slow start (Rosetta, an Intel Mac, a busy Mac) or a reload can block all chat windows while no session changes. The smoke fixtures never change, so the test fails. This touches Review Focus 4 (chat windows on both chips).
+- A possible fix: set `loaded` when `registry.rows()` gives the rows, or send the current rows when a page loads. The agent did not change the code.
+
+B2 (low): the Usage HUD is too small at its default size.
+
+- Evidence: at 360 x 170 px, the content area is 140 px high, and the content needs 146 px. The last line (`From bifrost-test-m5c, 0 s ago.` in the dev app, `No usage data yet. Live details sends it.` in the packaged app) is cut at the bottom edge. `m5-findings/m5b-s3-usage-hud.png` and `m5-findings/m5b-s7-packaged-no-live.png` show it. At 176 px the line shows fully (`m5-findings/m5b-s5-theme-all-panels.png`).
+
+### M5b: observations
+
+These are small. The agent did not count them as bugs. The user can decide.
+
+1. At the default width of 640 px, the Event log cuts the notice row to `macOS didn't show a notification. Allow notifica...`. The row has no tooltip. The full text shows only in a wider frame.
+2. The dev app sets no Dock icon (the code has no `app.dock.setIcon`). So the Dock shows the icon of the dev `Electron.app`, and only the packaged app can show the Bifrost icon.
+
+### M5b: SHA-256 values
+
+| File | Compare | 05:50:29 (baseline) | 5 checks from 05:58:36 to 06:15:03 | 06:15:52 (after the clean-up) |
+|---|---|---|---|---|
+| `settings.json` | bytes | `f3eca126...b921a5` | same | `f3eca126...b921a5` |
+| `installed_plugins.json` | bytes | `bc14400d...185764` | same | `bc14400d...185764` |
+| `known_marketplaces.json` | `jq` without `lastUpdated` | `58a06684...59866a` | same | `58a06684...59866a` |
+| `~/.bifrost` | list with size and SHA-256 | `backups/` (2 files), `run/` (empty), `statusline-original.json` | same | same |
+
+- The raw SHA-256 of `known_marketplaces.json` went from `b7b2de56...c7b126` to `99ff9acf...a40aef`. The only change is `claude-plugins-official.lastUpdated`, now `2026-11-06T06:00:35.033Z`. At that time the agent moved frames in the dev app. No `claude plugin` command ran in the check. This is the Claude Code refresh that the M5a check saw.
+- `~/.bifrost/live.sock` existed while the dev app ran with `BIFROST_LIVE_LISTEN=1`, and the dev app removed it at the quit. The packaged app made no socket. No other file in `~/.bifrost` changed.
+
+### M5b: clean-up
+
+- The chat windows closed. No `claude attach` process is left.
+- The dev app quit at 06:11:54 and the packaged app at 06:15:08. No Electron, `electron-vite`, Vite or Bifrost process of the check is left. Ports 9333, 9335 and 5173 are free. No `afplay` process runs.
+- Sessions: the agent stopped and removed `bifrost-test-m5e`, `bifrost-test-m5c` and `bifrost-test-m5d` with `cl.sh stop` (each had a `pid`) and `cl.sh rm`, after a name check each time. `cl.sh agents --json --all` has no `bifrost-test-` entry.
+- Nobody answered the prompt of m5e. `perm-check-m5e.txt` does not exist. `.m0-sandbox/m5b-check/` and the two user-data folders are gone. `.m0-sandbox` has the same entries as before the check.
+- The DMG is not mounted. The DMG Finder window closed with the eject. The three Finder windows that were open before the check are still open. The check opened no Terminal window.
+- `dist/` has the new DMG of Step 7. `test-results/` (ignored by git) has the trace of the last Rosetta failure.
+
+### M5b: items for the user
+
+1. Open `dist/Bifrost-1.0.0-universal.dmg`. Drag Bifrost to Applications. Start it from Applications. Check the look of the DMG window and the Bifrost icon in the Dock. The agent cannot capture them.
+2. Allow notifications when macOS asks. Check that a click on a notification selects the session and opens its chat window. In the check, the packaged app wrote `Bifrost showed a notification` at once. The user's own Bifrost has the same bundle ID, so macOS can already allow it.
+3. Turn on Start at login in Settings, if you want it. Check System Settings > General > Login Items.
+4. Check Fullscreen (the M2 items) and the look of all panels. `m5-findings/m5b-s5-theme-all-panels.png` has all nine panel kinds.
+5. Bifrost has an ad-hoc signature. A copy to another Mac needs the signing of spec 14.2.
+6. Turn on Live details in Settings > Live details, if you want boxes at once and the model, cost and limits. Sessions that run now get it after `/reload-plugins` or a restart.
+7. Check the colours of the Service status panel and of the Usage HUD (D30, ruling R4), and the app icon next to the row mark (D31). The amber high bar did not show, because the 7-day use was 33%. Check it when a window is at 90% or more.
+8. Decide on B1 before the DMG goes to an Intel Mac. The Rosetta smoke test fails until B1 is fixed.
+9. Decide on B2 and on the two observations.
+10. Close the Brave tabs of `status.claude.com` that the two clicks of Step 4 opened.
