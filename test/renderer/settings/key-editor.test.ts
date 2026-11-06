@@ -1,6 +1,11 @@
 import { expect, test } from 'vitest'
 import { checkRecorded, keyGroups } from '../../../src/renderer/src/settings/key-editor'
-import { REASON_BAD_KEY, REASON_HOLD_FORM, REASON_MAC_KEEPS } from '../../../src/shared/keys'
+import {
+  REASON_BAD_KEY,
+  REASON_HOLD_FORM,
+  REASON_MAC_KEEPS,
+  REASON_MENU_NEEDS_MOD,
+} from '../../../src/shared/keys'
 
 test('keyGroups gives the three groups of spec 9.4 in order', () => {
   const groups = keyGroups({}, 'plain')
@@ -72,5 +77,16 @@ test('checkRecorded refuses a text that is not a key with the bad key reason', (
   expect(checkRecorded('open:mod', 'Mod+[Nonsense]', {}, 'plain')).toEqual({
     message: REASON_BAD_KEY,
     ok: false,
+  })
+})
+
+test('checkRecorded refuses a menu key without Cmd', () => {
+  expect(checkRecorded('close-panel:mod', 'Shift+[KeyW]', {}, 'plain')).toEqual({
+    message: REASON_MENU_NEEDS_MOD,
+    ok: false,
+  })
+  expect(checkRecorded('close-panel:mod', 'Mod+Shift+[KeyW]', {}, 'plain')).toEqual({
+    binding: 'Mod+Shift+W',
+    ok: true,
   })
 })

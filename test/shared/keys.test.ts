@@ -16,6 +16,7 @@ import {
   REASON_HOLD_FORM,
   REASON_MAC_KEEPS,
   REASON_MENU_KEEPS,
+  REASON_MENU_NEEDS_MOD,
   recordedToBinding,
   reservedReason,
   resetSlotKey,
@@ -202,6 +203,30 @@ describe('checkBinding', () => {
     })
   })
 
+  test('a menu slot refuses a key without Mod (final review Important 3)', () => {
+    for (const slotId of ['close-panel:mod', 'toggle-fullscreen:mod']) {
+      for (const binding of ['W', 'Shift+W', 'Control+W', 'Alt+F', 'Control+Shift+F']) {
+        expect(checkBinding(slotId, binding, keys)).toEqual({
+          ok: false,
+          reason: REASON_MENU_NEEDS_MOD,
+        })
+      }
+    }
+    expect(checkBinding('close-panel:mod', 'Mod+Shift+W', keys)).toEqual({
+      binding: 'Mod+Shift+W',
+      ok: true,
+    })
+    expect(checkBinding('toggle-fullscreen:mod', 'Mod+Alt+F', keys)).toEqual({
+      binding: 'Mod+Alt+F',
+      ok: true,
+    })
+    // A slot that the menu does not own keeps a key without Mod.
+    expect(checkBinding('new-session:mod', 'Control+K', keys)).toEqual({
+      binding: 'Control+K',
+      ok: true,
+    })
+  })
+
   test('the slot itself does not count as a conflict, a null key does not conflict', () => {
     const changed: KeyMap = { ...keys, 'event-log:mod': null }
     expect(checkBinding('event-log:mod', 'Mod+L', changed)).toEqual({ binding: 'Mod+L', ok: true })
@@ -231,6 +256,12 @@ describe('parseCustomKeys', () => {
     expect(parseCustomKeys([])).toEqual({})
     expect(parseCustomKeys('x')).toEqual({})
     expect(parseCustomKeys(undefined)).toEqual({})
+  })
+
+  test('drops a menu slot key without Mod', () => {
+    expect(
+      parseCustomKeys({ 'close-panel:mod': 'W', 'toggle-fullscreen:mod': 'Mod+Alt+F' }),
+    ).toEqual({ 'toggle-fullscreen:mod': 'Mod+Alt+F' })
   })
 
   test('keeps a conflict of the file', () => {

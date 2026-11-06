@@ -301,6 +301,9 @@ export const REASON_MENU_KEEPS = 'A Bifrost menu already uses this shortcut.'
 export const REASON_HOLD_FORM =
   'A hold key must be a single letter or number, without Cmd, Ctrl, Option or Shift.'
 export const REASON_BAD_KEY = "Bifrost can't use this key."
+// The menu gets the key of a menu slot. A key without Cmd would act in a chat window and in a text
+// box, against spec 9.3. So a menu slot needs Mod (final review Important 3).
+export const REASON_MENU_NEEDS_MOD = 'A menu shortcut needs Cmd.'
 
 // Shortcuts of macOS (spec 9.7).
 const MAC_KEEPS: ReadonlySet<string> = new Set([
@@ -369,6 +372,8 @@ export function checkBinding(slotId: string, binding: string, keys: KeyMap): Bin
   if (isHold(item)) {
     const plain = !chord.mod && !chord.ctrl && !chord.alt && !chord.shift
     if (!plain || !/^[A-Z0-9]$/.test(chord.key)) return { ok: false, reason: REASON_HOLD_FORM }
+  } else if (item.menu && !chord.mod) {
+    return { ok: false, reason: REASON_MENU_NEEDS_MOD }
   } else {
     const reason = reservedReason(canonical)
     if (reason) return { ok: false, reason }
