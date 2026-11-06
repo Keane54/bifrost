@@ -221,7 +221,11 @@ export class RegistryService {
   // Set the local name of a session. Return false for an unknown session.
   setAlias(sessionId: string, name: string | null): boolean {
     const known = this.registry.setAlias(sessionId, name)
-    if (known) this.changed()
+    if (known) {
+      this.changed()
+      // The Usage HUD shows the row name, so it changes at once.
+      this.checkUsage()
+    }
     return known
   }
 

@@ -43,3 +43,9 @@ test('aliasTip names the Claude Code name when a local name is set', () => {
 test('aliasTip gives the name itself when no local name is set', () => {
   expect(aliasTip({ claudeName: 'alpha', name: 'alpha' })).toBe('alpha')
 })
+
+test('cleanAlias refuses bidi and zero-width characters', () => {
+  for (const code of [0x200b, 0x200f, 0x202a, 0x202e, 0x2066, 0x2069, 0xfeff]) {
+    expect(cleanAlias(`a${String.fromCodePoint(code)}b`).ok).toBe(false)
+  }
+})

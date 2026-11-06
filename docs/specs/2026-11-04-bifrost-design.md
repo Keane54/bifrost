@@ -244,7 +244,7 @@ Rules for the usage data:
   2. Two readings are the same window when their reset times are within 10 minutes.
   3. In the same window, the highest use wins, because use only grows in a window. A use value that is not a finite number never wins over a finite one.
   4. A session that is not a row also counts, until the registry forgets it.
-  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
+  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name (the local name when one exists), or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
 - The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line that gave the 7-day value (else the 5-hour value), so a newer line from that session with the same limits is a change. The update limit is that of the rows: at most 4 updates each second, and the last value always goes out. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
 - Without the mod, Bifrost shows no model, context %, cost, rate limit, context window size, Claude Code version, effort, permission mode or transcript path.
 
@@ -580,18 +580,20 @@ Rename sets a local name. Bifrost keeps the local name for the session ID in the
 - An empty name clears the local name. A name equal to the Claude Code name also clears it.
 - The row field `name` is the local name when one exists. The Overview, the chat window titles, the Watchlist, notifications, the Event log and the Usage HUD show it. Show Info also shows `claudeName`.
 - When Bifrost deletes a session for good, it removes the local name too, as it removes the priority.
+- A new Claude Code name that equals the local name removes the local name.
+- Bifrost forgets the local name of an external session soon after the session ends, as it forgets the priority.
 - The IPC call `registry:set-alias` takes the session ID and a name or `null`. The main process checks both.
 
 A red prompt box does not block Rename, because the local name types nothing. The Rename dialog has these controls:
 
 - The field "Name in Bifrost". It starts with the name that the row shows.
-- For an owned session that is not parked: the check box "Also rename it in Claude Code". It is off by default. With a red prompt box, it is disabled and shows the reason. When it is on, one save types `/rename <name>` and clears the local name, because the real name changes.
+- For an owned session that is not parked: the check box "Also rename it in Claude Code". It is off by default. With a red prompt box, or while the short ID is missing, it is disabled and shows the reason. If it was on and becomes unusable while the dialog is open, Save keeps the name in Bifrost only and the dialog says so. When it is on, one save types `/rename <name>` and clears the local name, because the real name changes.
 - When a local name exists: the button "Use the Claude Code name". It clears the local name.
 - Esc closes the dialog. The focus goes back to the Overview rows.
 
 The Stop, Delete and Take control confirmations name the session without doubt. When a local name exists, they show the local name, then the Claude Code name in brackets: `my-alias (Claude Code name: claude-a1)`. The chat window titles keep the local name only.
 
-In the Selected Item panel, a hover over the name shows a tooltip. With a local name, the tooltip is `Claude Code name: <name>`. Without one, it is the name itself, so a cut-off name can be read.
+In the Selected Item panel, a hover over the name shows a tooltip. With a local name, the tooltip is `Claude Code name: ` and the Claude Code name. Without one, it is the name itself, so a cut-off name can be read.
 
 The "Labels" setting selects plain labels or space labels. The setting applies to menus, buttons, tooltips and dialogs.
 

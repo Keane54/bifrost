@@ -349,7 +349,7 @@ export class SessionRegistry {
     const s = this.sessions.get(source.sessionId)
     return {
       limits,
-      name: s ? this.nameOf(s) : source.sessionId.slice(0, 8),
+      name: s ? this.shownName(s) : source.sessionId.slice(0, 8),
       sessionId: source.sessionId,
       updatedAt: source.at,
     }
@@ -690,6 +690,8 @@ export class SessionRegistry {
     if (name === undefined || this.names.get(entry.sessionId) === name) return
     this.names.set(entry.sessionId, name)
     this.changed = true
+    // A local name equal to the new Claude Code name has no use. It would come back later.
+    if (this.aliases.get(entry.sessionId) === name) this.aliases.delete(entry.sessionId)
   }
 
   // Apply the rules for a session that left the active list.
@@ -707,8 +709,8 @@ export class SessionRegistry {
   // GONE_LISTS counted lists in a row without it. This is the only forget that an --all list
   // gives (Task 17 bug 3, Task 18 fix round 1). It also limits the size of the store.
   // The sessions are the owned rows, the started sessions, and each session with a stored name,
-  // local name, priority, watch colour or worktree. Each session with a usage line or a line time of the mod
-  // is also in the list, so these two maps do not grow without limit.
+  // local name, priority, watch colour or worktree. Each session with a usage line or a line time
+  // of the mod is also in the list, so these two maps do not grow without limit.
   // The count of a session goes back to 0 when the last active list has it, when this list has
   // its background entry, or when this list has an entry of any kind for a started session.
   // A failed Take control leaves a started session with an interactive entry (D6).
@@ -778,6 +780,11 @@ export class SessionRegistry {
     return [...this.sessions.values()].sort(compareSessions)
   }
 
+  // The name that Bifrost shows: the local name when one exists, else the Claude Code name.
+  private shownName(s: Session): string {
+    return this.aliases.get(s.sessionId) ?? this.nameOf(s)
+  }
+
   private nameOf(s: Session): string {
     return rowName(s.sessionId, this.names.get(s.sessionId), s.shortId)
   }
@@ -794,7 +801,7 @@ export class SessionRegistry {
       kind: s.kind,
       // A usage line is not activity (D8).
       lastActivity: Math.max(s.startedAt, s.lastEventAt, s.statusChangedAt),
-      name: this.aliases.get(s.sessionId) ?? this.nameOf(s),
+      name: this.shownName(s),
       sessionId: s.sessionId,
       startedAt: s.startedAt,
       state: m.state,

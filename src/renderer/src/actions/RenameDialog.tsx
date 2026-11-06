@@ -14,6 +14,8 @@ import { DIALOG_BACKDROP, DIALOG_BUTTON, DIALOG_POPUP } from './ConfirmDialog'
 import { friendlyError } from './errors'
 import {
   CLAUDE_BOX_LABEL,
+  claudeBoxLostNote,
+  effectiveAlsoClaude,
   NAME_FIELD_LABEL,
   planRename,
   RESET_LABEL,
@@ -51,7 +53,7 @@ export default function RenameDialog({
       setReason(state.reason)
       return
     }
-    const plan = planRename(row, { alsoClaude, name })
+    const plan = planRename(row, { alsoClaude: effectiveAlsoClaude(row, alsoClaude), name })
     if (!plan.ok) {
       setReason(plan.reason)
       return
@@ -87,7 +89,8 @@ export default function RenameDialog({
   return (
     <Dialog.Root
       onOpenChange={open => {
-        if (!open) onClose()
+        // A save that runs cannot stop. So the dialog stays open until it ends.
+        if (!open && !busy) onClose()
       }}
       open={true}
     >
@@ -109,7 +112,6 @@ export default function RenameDialog({
               {NAME_FIELD_LABEL}
             </label>
             <input
-              aria-label={NAME_FIELD_LABEL}
               className='min-w-0 border border-panel-edge bg-bg px-2 py-1 text-text focus:border-text-strong/30'
               id={`rename-name-${sessionId}`}
               maxLength={MAX_RENAME}
@@ -143,6 +145,11 @@ export default function RenameDialog({
             {controls !== null && controls.claudeBoxReason !== null && (
               <p className='text-text-dim text-xs'>{controls.claudeBoxReason}</p>
             )}
+            {row !== undefined && claudeBoxLostNote(row, alsoClaude) !== null && (
+              <p className='text-text-dim text-xs' data-rename-lost-note={true}>
+                {claudeBoxLostNote(row, alsoClaude)}
+              </p>
+            )}
             {reason !== null && (
               <p className='text-text text-xs' data-rename-reason={true}>
                 {reason}
@@ -160,7 +167,9 @@ export default function RenameDialog({
                   {RESET_LABEL}
                 </button>
               )}
-              <Dialog.Close className={DIALOG_BUTTON}>Cancel</Dialog.Close>
+              <Dialog.Close className={DIALOG_BUTTON} disabled={busy}>
+                Cancel
+              </Dialog.Close>
               <button className={DIALOG_BUTTON} disabled={busy} type='submit'>
                 {title}
               </button>

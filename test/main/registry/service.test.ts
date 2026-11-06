@@ -347,6 +347,20 @@ describe('updates and the store', () => {
     expect(service.setPriority('nope', 2)).toBe(false)
   })
 
+  test('setAlias sends an update, saves the store and changes the usage name', async () => {
+    const saveStore = vi.fn(async () => {})
+    const { service, updates } = startService(
+      fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }),
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    saveStore.mockClear()
+    expect(service.setAlias('s1', 'Work')).toBe(true)
+    expect(updates.at(-1)?.rows[0]).toMatchObject({ claudeName: 'alpha', name: 'Work' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(saveStore).toHaveBeenCalledWith(expect.objectContaining({ aliases: { s1: 'Work' } }))
+    expect(service.setAlias('nope', 'x')).toBe(false)
+  })
+
   test('rememberWorktree sends an update and saves the store', async () => {
     const saveStore = vi.fn(async () => {})
     const WT = '/r/.claude/worktrees/fix-a'

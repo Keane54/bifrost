@@ -2,12 +2,14 @@
 import { cleanAlias } from '../../../shared/alias'
 import { promptBlocks, renameText } from '../../../shared/input'
 import type { SessionRow } from '../../../shared/types'
-import { REASON_RED_BOX, REASON_WAIT_ID } from './reasons'
+import { REASON_EXTERNAL, REASON_PARKED, REASON_RED_BOX, REASON_WAIT_ID } from './reasons'
 
 // The texts of the dialog.
 export const NAME_FIELD_LABEL = 'Name in Bifrost'
 export const CLAUDE_BOX_LABEL = 'Also rename it in Claude Code'
 export const RESET_LABEL = 'Use the Claude Code name'
+export const CLAUDE_BOX_LOST_NOTE =
+  "Bifrost can't rename it in Claude Code right now. Save keeps the name in Bifrost only."
 
 export interface RenameControls {
   // hidden: the row cannot take /rename. disabled: it can, but not now.
@@ -30,6 +32,16 @@ export function renameControls(row: SessionRow): RenameControls {
   return { claudeBox: 'enabled', claudeBoxReason: null, showReset }
 }
 
+// The check box counts only while the dialog shows it as usable.
+export function effectiveAlsoClaude(row: SessionRow, alsoClaude: boolean): boolean {
+  return alsoClaude && renameControls(row).claudeBox === 'enabled'
+}
+
+// A note for the user when the check box was on but the row cannot take /rename now.
+export function claudeBoxLostNote(row: SessionRow, alsoClaude: boolean): string | null {
+  return alsoClaude && !effectiveAlsoClaude(row, alsoClaude) ? CLAUDE_BOX_LOST_NOTE : null
+}
+
 // What one save does.
 // alias: the new local name, or null to clear it. send: the text to type, or null for none.
 export type RenamePlan =
@@ -43,7 +55,8 @@ export function planRename(
   if (input.alsoClaude) {
     const controls = renameControls(row)
     if (controls.claudeBox !== 'enabled') {
-      return { ok: false, reason: controls.claudeBoxReason ?? REASON_RED_BOX }
+      if (controls.claudeBoxReason !== null) return { ok: false, reason: controls.claudeBoxReason }
+      return { ok: false, reason: row.kind === 'external' ? REASON_EXTERNAL : REASON_PARKED }
     }
     const result = renameText(input.name)
     // The real name changes, so the local name goes away.

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import * as R from '../../../src/renderer/src/actions/reasons'
-import { planRename, renameControls } from '../../../src/renderer/src/actions/rename-model'
+import {
+  CLAUDE_BOX_LOST_NOTE,
+  claudeBoxLostNote,
+  effectiveAlsoClaude,
+  planRename,
+  renameControls,
+} from '../../../src/renderer/src/actions/rename-model'
 import { REASON_NAME_LONG, REASON_NO_NAME } from '../../../src/shared/input'
 import { row } from '../overview/fixtures'
 
@@ -78,6 +84,17 @@ describe('planRename', () => {
     })
   })
 
+  it('gives the right reason for a hidden check box', () => {
+    expect(planRename(parked, { alsoClaude: true, name: 'Work' })).toEqual({
+      ok: false,
+      reason: R.REASON_PARKED,
+    })
+    expect(planRename(external, { alsoClaude: true, name: 'Work' })).toEqual({
+      ok: false,
+      reason: R.REASON_EXTERNAL,
+    })
+  })
+
   it('refuses Also rename when the check box is not usable', () => {
     expect(planRename(red, { alsoClaude: true, name: 'Work' })).toEqual({
       ok: false,
@@ -85,5 +102,20 @@ describe('planRename', () => {
     })
     expect(planRename(parked, { alsoClaude: true, name: 'Work' }).ok).toBe(false)
     expect(planRename(external, { alsoClaude: true, name: 'Work' }).ok).toBe(false)
+  })
+})
+
+describe('effectiveAlsoClaude', () => {
+  it('is on only when the box is on and enabled', () => {
+    expect(effectiveAlsoClaude(owned, true)).toBe(true)
+    expect(effectiveAlsoClaude(owned, false)).toBe(false)
+    expect(effectiveAlsoClaude(red, true)).toBe(false)
+    expect(effectiveAlsoClaude(parked, true)).toBe(false)
+  })
+
+  it('gives the note when the box was on but is not usable now', () => {
+    expect(claudeBoxLostNote(red, true)).toBe(CLAUDE_BOX_LOST_NOTE)
+    expect(claudeBoxLostNote(red, false)).toBeNull()
+    expect(claudeBoxLostNote(owned, true)).toBeNull()
   })
 })

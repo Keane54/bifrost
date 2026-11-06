@@ -1,11 +1,12 @@
 // The local name of a session. Bifrost keeps it and never sends it to Claude Code.
 import { MAX_RENAME } from './input'
 
-// The control characters that a local name cannot hold: C0 with tab and LF, DEL and C1.
+// The characters that a local name cannot hold: C0 with tab and LF, DEL and C1, zero-width
+// characters, and the bidi controls. A bidi control could reverse the text after the name.
 // biome-ignore lint/suspicious/noControlCharactersInRegex: The regex matches control characters.
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/
 
-export const REASON_ALIAS_CONTROL = "A name can't hold control characters."
+export const REASON_ALIAS_CONTROL = "A name can't hold control or hidden characters."
 export const REASON_ALIAS_LONG = `The name is too long. The maximum is ${MAX_RENAME} characters.`
 
 // Trim the name. Refuse control characters and a name longer than MAX_RENAME.

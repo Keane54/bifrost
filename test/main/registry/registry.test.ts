@@ -1818,6 +1818,63 @@ describe('local name (alias)', () => {
     expect(r.rows()[0]).toMatchObject({ claudeName: 'alpha', name: 'Work' })
   })
 
+  test('usage gives the local name', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyUsage('s1', { rateLimits: { sevenDay: { resetsAt: 9000, usedPercent: 10 } } }, 1000)
+    expect(r.usage()?.name).toBe('alpha')
+    r.setAlias('s1', 'Work')
+    expect(r.usage()?.name).toBe('Work')
+  })
+
+  test('a new Claude Code name equal to the local name removes the local name', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.setAlias('s1', 'Work')
+    r.storeChanged()
+    r.applyAgents([bg({ name: 'Work' })], 200)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'Work', name: 'Work' })
+    expect(r.store().aliases).toEqual({})
+    expect(r.storeChanged()).toBe(true)
+    r.applyAgents([bg({ name: 'Other' })], 300)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'Other', name: 'Other' })
+  })
+
+  test('a poll with a new Claude Code name keeps the local name', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.setAlias('s1', 'Work')
+    r.applyAgents([bg({ name: 'beta' })], 200)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'beta', name: 'Work' })
+  })
+
+  test('setAlias works for a parked row', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyAgents([], 200)
+    r.applyAllAgents([bg({ name: '', pid: undefined, status: '' })], true)
+    expect(r.rows()[0].state).toBe('parked')
+    expect(r.setAlias('s1', 'Work')).toBe(true)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'alpha', name: 'Work' })
+  })
+
+  test('two counted --all lists forget a session that has only a local name', () => {
+    const r = registry({
+      aliases: { ghost: 'Old' },
+      lastActive: [],
+      names: {},
+      priorities: {},
+      started: [],
+      watch: [],
+      worktrees: [],
+    })
+    r.applyAgents([bg()], 100)
+    r.applyAllAgents([bg(), another], true)
+    expect(r.store().aliases).toEqual({ ghost: 'Old' })
+    r.applyAllAgents([bg(), another], true)
+    expect(r.store().aliases).toEqual({})
+  })
+
   test('forget removes the local name', () => {
     const r = registry()
     r.applyAgents([bg()], 100)
