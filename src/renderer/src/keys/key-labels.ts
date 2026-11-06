@@ -5,7 +5,7 @@ import { ACTIONS, type ActionId, actionLabel } from '../actions/action-model'
 
 const FIXED: Partial<Record<KeyCommandId, string>> = {
   'close-panel': 'Close the focused panel',
-  escape: 'Clear the selection, or leave the send box',
+  escape: 'Open or close Settings, or leave the send box',
   'event-log': 'Event log',
   'focus-overview': 'Move focus to the Overview',
   'next-overview-tab': 'Next Overview tab',

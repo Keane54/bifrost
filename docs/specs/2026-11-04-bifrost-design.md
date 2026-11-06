@@ -671,7 +671,7 @@ Single keys. These work only when focus is not in a chat window or a text box:
 | 0 | Clear the priority |
 | Backspace | Stop session |
 | Shift+Backspace | Delete session |
-| Esc | Clear the selection, or leave the send box |
+| Esc | Open or close Settings, or leave the send box |
 
 Hold a key and left-click a row:
 
@@ -685,6 +685,17 @@ Hold a key and left-click a row:
 | 1 to 5 | Set priority |
 
 Bifrost uses the hold key that is down when you push the mouse button on the row. If you release the key before the mouse button, the action applies to that row, not to the selected row.
+
+Esc (user decision, 2026-11-06):
+
+1. In the send box, Esc leaves the send box.
+2. Else, when Settings is the active panel of the top frame, Esc closes Settings.
+3. Else, Esc opens Settings and brings it to the front, as Cmd+, does.
+
+- Esc does not clear the selection.
+- In a chat window, Esc goes to Claude.
+- A dialog, a menu, a popover, a text field (for example the Rename field or a Settings field) and the key recorder of Settings > Keys keep their own Esc. Esc then does not open or close Settings. The same applies to an Esc that ends a Watchlist drag.
+- The Esc key of Bifrost waits for the end of the key event. A handler that takes Esc calls `preventDefault` or stops the event. Then Bifrost does nothing.
 
 ### 9.5 Right-click menu
 

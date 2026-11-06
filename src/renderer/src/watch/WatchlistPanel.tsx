@@ -129,8 +129,11 @@ export default function WatchlistPanel(): React.JSX.Element {
       if (ev.pointerId === pointerId) end()
     }
     // Esc ends the drag at once. The row and the line go back. The release does nothing.
+    // preventDefault tells the Esc key of Bifrost that the drag took the key. So the same Esc does
+    // not also open or close Settings (spec 9.4).
     const onKey = (ev: KeyboardEvent): void => {
       if (!isDragCancel(ev.key)) return
+      ev.preventDefault()
       cancelled = true
       end()
       if (!started) return

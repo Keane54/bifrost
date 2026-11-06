@@ -25,6 +25,7 @@ import { useSettings } from '../settings/settings-context'
 import { useLayouts, useWmControls, useWmState } from '../wm/context'
 import { topOverview } from '../wm/SideBar'
 import { type KeyContext, type KeyIntent, planHold, planKey } from './commands'
+import { atDispatchEnd } from './dispatch-end'
 import { focusOverviewRows } from './focus-rows'
 import { focusChange, focusZone } from './focus-zone'
 import { HoldGate } from './hold-gate'
@@ -172,6 +173,9 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
         case 'open-panel':
           now.dispatch({ panelId: next.panelId, type: 'open' })
           return
+        case 'close-panel':
+          now.dispatch({ panelId: next.panelId, type: 'close' })
+          return
         case 'load-layout': {
           const name = now.layouts[next.index]
           if (name !== undefined) now.loadLayout(name)
@@ -190,9 +194,20 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
 
     // A key that is not a hold key. Return at once when the zone does not allow it (D5).
     // Esc does not stop the event, so the Esc listener of a Watchlist drag still gets it (D26).
+    // Outside the send box, Esc opens or closes Settings only at the end of the dispatch, when no
+    // other handler took it, for example a popover or a Watchlist drag (spec 9.4). The zone is the
+    // zone at the keydown, before a handler moves the focus.
     const key = (slot: KeySlot, binding: string, event: KeyboardEvent): void => {
       const zone = currentZone()
       if (!keyAllowed(slot, binding, zone)) return
+      if (slot.command === 'escape' && zone !== 'send-box') {
+        atDispatchEnd(event, window, handled => {
+          const next = planKey(slot, { ...contextFor(zone), escapeHandled: handled })
+          if (next.kind !== 'none') event.preventDefault()
+          intent(next)
+        })
+        return
+      }
       event.preventDefault()
       if (slot.command !== 'escape') event.stopPropagation()
       intent(planKey(slot, contextFor(zone)))

@@ -4,6 +4,7 @@
 // - Bug B2: the Usage HUD shows all its lines at its default size.
 // - M5a carry-over 2: in a narrow Settings frame, a key row that records keeps its name visible,
 //   and its Clear and Reset buttons stay in the frame.
+// - Esc toggles Settings (spec 9.4). A dialog and the key recorder keep their own Esc.
 //
 // The test uses the same start as the smoke test (app.ts): a fake claude and a test home.
 
@@ -103,6 +104,11 @@ test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their la
     await expect(rename).toBeHidden()
     // A soft check: a failure here does not stop the other checks.
     await expect.soft(rowsArea).toBeFocused()
+    // The Esc of the dialog does not also open Settings.
+    const settingsFrame = page.locator('[data-frame-id]', {
+      has: page.locator('[data-settings-section]'),
+    })
+    await expect(settingsFrame).toHaveCount(0)
 
     // Bug B2. The last line of the Usage HUD is inside the frame at the default size.
     await page.getByRole('button', { exact: true, name: 'Usage HUD' }).click()
@@ -137,6 +143,19 @@ test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their la
     }
     await page.keyboard.press('Escape')
     await expect(slot.locator('[data-key-recorder]')).toHaveCount(0)
+    // The Esc of the key recorder does not also close Settings.
+    await expect(frame).toBeVisible()
+    // Settings is the active panel of the top frame. So the next Esc closes it, and one more Esc
+    // opens it again. The selection stays.
+    await page.keyboard.press('Escape')
+    await expect(frame).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await expect(frame).toBeVisible()
+    const alphaId = await alpha.getAttribute('data-session-id')
+    await expect(page.locator('[data-selected-item]')).toHaveAttribute(
+      'data-selected-item',
+      alphaId ?? 'no id',
+    )
 
     await app.close()
     app = null

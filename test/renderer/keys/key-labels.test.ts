@@ -17,7 +17,7 @@ describe('slotLabel', () => {
     expect(label('open-project:mod', 'space')).toBe('Open cargo hold in the default app')
     expect(label('select-row.4:mod', 'plain')).toBe('Select row 4')
     expect(label('load-layout.2:mod', 'plain')).toBe('Load layout 2')
-    expect(label('escape:key', 'plain')).toBe('Clear the selection, or leave the send box')
+    expect(label('escape:key', 'plain')).toBe('Open or close Settings, or leave the send box')
   })
 
   it('has no trailing dots', () => {
