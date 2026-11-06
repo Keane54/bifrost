@@ -56,6 +56,7 @@
     "dev": "electron-vite dev",
     "format": "biome format",
     "format:write": "biome format --write",
+    "icon": "node scripts/make-icon.ts",
     "lint": "biome lint",
     "lint:write": "biome lint --write",
     "postinstall": "node scripts/postinstall.ts",
