@@ -3,6 +3,7 @@ import {
   checkedText,
   incidentLine,
   levelText,
+  sinceText,
 } from '../../../src/renderer/src/service/service-view'
 
 describe('service view', () => {
@@ -29,5 +30,24 @@ describe('service view', () => {
   it('checkedText gives Not checked yet for 0', () => {
     expect(checkedText(0, 5)).toBe('Not checked yet.')
     expect(checkedText(Date.parse('2026-11-06T09:07:00Z'), 0, 'UTC')).toBe('Checked at 09:07.')
+  })
+})
+
+describe('sinceText (final wave item 11)', () => {
+  const now = Date.parse('2026-11-06T10:05:00Z')
+  const today = Date.parse('2026-11-06T09:03:00Z')
+  const before = Date.parse('2026-11-04T22:15:00Z')
+
+  it('a level that is not ok shows the start of its incident', () => {
+    expect(sinceText('major', today, now, 'UTC')).toBe('since 09:03')
+    expect(sinceText('minor', today, now, 'UTC')).toBe('since 09:03')
+    expect(sinceText('critical', before, now, 'UTC')).toBe('since Wed 22:15')
+    expect(sinceText('maintenance', today, now, 'UTC')).toBe('since 09:03')
+  })
+
+  it('ok, No data and an unknown start show nothing', () => {
+    expect(sinceText('none', today, now, 'UTC')).toBeNull()
+    expect(sinceText('unknown', today, now, 'UTC')).toBeNull()
+    expect(sinceText('major', null, now, 'UTC')).toBeNull()
   })
 })

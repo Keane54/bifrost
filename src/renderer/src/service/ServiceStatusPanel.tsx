@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import type { ServiceLevel, ServiceStatus } from '../../../shared/types'
 import { cx } from '../lib/cx'
 import { useNow } from '../lib/use-now'
-import { checkedText, incidentLine, levelText } from './service-view'
+import { checkedText, incidentLine, levelText, sinceText } from './service-view'
 
 // The class of the text colour and the dot colour of each level. "No data" has no dot. The texts
 // of the levels are LEVEL_TEXT in service-view.ts.
@@ -19,6 +19,7 @@ const LEVEL_CLASS: Record<Exclude<ServiceLevel, 'unknown'>, string> = {
 
 function Block({ service, now }: { service: ServiceStatus; now: number }): React.JSX.Element {
   const known = service.level !== 'unknown'
+  const since = sinceText(service.level, service.since, now)
   return (
     <div data-service={service.id} data-service-level={service.level}>
       <div className='flex items-center gap-2 text-xs'>
@@ -26,6 +27,7 @@ function Block({ service, now }: { service: ServiceStatus; now: number }): React
           <>
             <span className={cx('size-2 shrink-0 bg-current', LEVEL_CLASS[service.level])} />
             <span className={LEVEL_CLASS[service.level]}>{levelText(service.level)}</span>
+            {since !== null && <span className='shrink-0 text-text-dim'>{since}</span>}
           </>
         ) : (
           <span className='text-text italic'>{levelText(service.level)}</span>
