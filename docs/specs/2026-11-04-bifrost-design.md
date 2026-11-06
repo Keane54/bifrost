@@ -889,7 +889,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | Zustand | Not used. A reducer keeps the window manager state (M2). | M2 |
 | Zod | Not used. The hand-written checks stay small (M1). | M1 |
 | lefthook and commitlint | Commit message checks. Added in M1. | M1 |
-| Playwright for Electron | Smoke test | M5 |
+| Playwright for Electron | Smoke test. Version 1.64.1 of `@playwright/test`. The smoke test uses `BIFROST_TEST_HOME` and a fake `claude`. | M5 |
 
 ### 14.1 Now
 

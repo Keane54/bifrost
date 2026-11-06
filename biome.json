@@ -22,6 +22,7 @@
       "**/scripts/**/*",
       "electron.vite.config.ts",
       "vitest.config.*",
+      "playwright.config.ts",
       "biome.json",
       "tsconfig*.json",
       "package.json",

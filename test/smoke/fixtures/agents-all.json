@@ -1,0 +1,31 @@
+[
+  {
+    "cwd": "/tmp/bifrost-smoke/alpha",
+    "id": "5a0e0001",
+    "kind": "background",
+    "name": "smoke-alpha",
+    "pid": 99991,
+    "sessionId": "5a0e0001-0000-4000-8000-000000000001",
+    "startedAt": 1793900000000,
+    "status": "idle"
+  },
+  {
+    "cwd": "/tmp/bifrost-smoke/beta",
+    "id": "5a0e0002",
+    "kind": "interactive",
+    "name": "smoke-beta",
+    "pid": 99992,
+    "sessionId": "5a0e0002-0000-4000-8000-000000000002",
+    "startedAt": 1793900001000,
+    "status": "busy"
+  },
+  {
+    "cwd": "/tmp/bifrost-smoke/gamma",
+    "id": "5a0e0003",
+    "kind": "background",
+    "name": "smoke-gamma",
+    "sessionId": "5a0e0003-0000-4000-8000-000000000003",
+    "startedAt": 1793800000000,
+    "state": "done"
+  }
+]

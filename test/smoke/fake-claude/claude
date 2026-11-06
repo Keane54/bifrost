@@ -1,0 +1,40 @@
+#!/bin/sh
+# The fake claude of the smoke test (spec 15, D23). The smoke test puts this folder first on the
+# PATH of Bifrost. The script gives fixed answers to the commands that Bifrost runs at the start,
+# and to the attach of a chat window. It writes no file of Claude Code.
+
+dir=$(cd "$(dirname "$0")" && pwd)
+
+case "$#:$*" in
+  '1:--version')
+    echo '2.1.318 (Claude Code)'
+    exit 0
+    ;;
+  '2:agents --json')
+    cat "$dir/../fixtures/agents-active.json"
+    exit 0
+    ;;
+  '3:agents --json --all')
+    cat "$dir/../fixtures/agents-all.json"
+    exit 0
+    ;;
+  # No Bifrost plugin. Live details is then not installed, and no live server starts.
+  '3:plugin list --json' | '4:plugin marketplace list --json')
+    echo '[]'
+    exit 0
+    ;;
+esac
+
+if [ "$#" -eq 2 ] && [ "$1" = attach ]; then
+  echo "FAKE ATTACH $2"
+  # WebGL draws the text of a chat window, so the DOM has no text to read (R7). The smoke test
+  # reads this file in the test home.
+  if [ -n "${BIFROST_TEST_HOME:-}" ]; then
+    echo "FAKE ATTACH $2" >>"$BIFROST_TEST_HOME/attach.log"
+  fi
+  # The SIGHUP of a closed chat window stops the sleep.
+  exec sleep 600
+fi
+
+echo "fake claude: $*" >&2
+exit 2
