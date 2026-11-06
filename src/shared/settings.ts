@@ -46,6 +46,8 @@ export interface Settings {
   panelTransparency: number
   // The zoom of the page in percent.
   interfaceScale: number
+  // The colour fields of the background move slowly. false pauses them (spec 8.10).
+  animatedBackground: boolean
   slashCommands: string[]
   terminalFont: TerminalFont
   // Only the changed key slots (D3).
@@ -88,6 +90,7 @@ export const MAX_FONT_FAMILY = 64
 // The defaults of spec 12.
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   accountUsage: false,
+  animatedBackground: true,
   escalationMinutes: 10,
   interfaceScale: 100,
   keys: {},
@@ -160,6 +163,7 @@ type SimpleKey = Exclude<SettingKey, 'keys' | 'slashCommands' | 'terminalFont'>
 
 const SIMPLE_CHECKS: Readonly<Record<SimpleKey, Check>> = {
   accountUsage: isBoolean,
+  animatedBackground: isBoolean,
   escalationMinutes: onStep(0, MAX_ESCALATION_MINUTES),
   interfaceScale: onStep(INTERFACE_SCALE_MIN, INTERFACE_SCALE_MAX, INTERFACE_SCALE_STEP),
   labels: oneOf(['plain', 'space']),

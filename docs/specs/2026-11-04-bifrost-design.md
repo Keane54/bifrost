@@ -509,7 +509,7 @@ Send box rules:
 - A chat window in a back tab, or a minimised chat window, releases its WebGL context.
 - During Take control, the chat window shows the Take control loader in place of the terminal (section 9.2).
 - The terminal has a transparent background (user decision, 2026-11-06). The frame colour and its blur show through, so the "Panel transparency" setting also applies to chat windows. The token `--color-terminal-bg` is fully transparent, and xterm.js has `allowTransparency`. The WebGL renderer and the DOM renderer both draw the transparent background, also after a WebGL context loss. `app.css` replaces the black viewport and the native scroll bar of `xterm.css`.
-- The blur behind a chat window is light: 8 pixels (`backdrop-blur-sm`). The other panels keep 12 pixels. So it is clear when a chat window is over another panel, as in EVE.
+- The blur behind a chat window is light: 8 pixels, the same blur as the other panels (section 8.10). So it is clear when a chat window is over another panel, as in EVE.
 - The terminal text stays easy to read. A test checks the contrast of white text (7:1 or more) and of a mid-grey dim text (4.5:1 or more) on the panel colour at each transparency. The backdrops are the blurred text of another panel, a white watch row, a selected row and the rainbow of another loader.
 
 Size rule (the user approved this on 2026-11-04; M3 builds it):
@@ -586,7 +586,17 @@ Dialog rules:
 
 ### 8.10 Theme
 
-- The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur. A chat window has a lighter blur than the other panels (section 8.5).
+- The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a very light background blur of 8 pixels (the token `--blur-panel`). All frames use the same blur, also a chat window (user decision, 2026-11-06). The "Panel transparency" setting still sets how much of the background shows through.
+- The window has an animated background (user decision, 2026-11-06). One layer behind all frames and the side bar fills the window, over `--color-bg`. It holds six large, soft colour fields in the app icon colours (`--color-icon-1` to `--color-icon-6`). Each field is a radial gradient with eased stops, from 55% to 80% of the window. The fields overlap with plain alpha, so their colours merge. The violet field is allowed, because the rule of no purple covers only the Overview colours.
+- The background stays dark: a gentle glow, not a bright rainbow. The token `--background-glow` (20%) sets the alpha at the centre of a field. Each field has a weight: violet and blue 1, green 0.85, red 0.75, orange 0.55, yellow 0.4. A dark yellow or orange looks brown, so the warm colours are weaker and stay near the edges. The cool colours have the most space.
+- Each field drifts, scales and turns on its own cycle, forwards and back: 43, 53, 61, 71, 79 and 89 seconds. The cycles are primes, so the pattern does not repeat in a way that a person sees. A field moves mostly to the side, so no field rises or sinks like a bubble.
+- Only `transform` and `opacity` change, so the compositor runs the motion. No JavaScript runs for each frame. A field has no blur filter. The soft edge comes from the gradient stops.
+- The motion pauses while the Bifrost window does not have the focus, and while the page is hidden (`document.visibilityState`). The renderer follows the window `focus` and `blur` events and the `visibilitychange` event. The fields stop where they are (`animation-play-state: paused`) and continue from there when the window gets the focus again. So they do not jump, and a paused background costs no CPU or GPU time (the coordinator, 2026-11-06).
+- When the setting "Animated background" (section 12) goes from on to off, the fields also pause where they are. When Bifrost starts with the setting off, the fields stay at their still position, the first step of their cycles. When the setting goes on again, the motion continues from where the fields are.
+- With `prefers-reduced-motion: reduce`, the fields stay at their still position.
+- A test finds the brightest point of the background from the paths of the fields. Under a panel at the default Panel transparency, the panel text keeps 4.5:1 or more, and the box red and the box yellow keep 3:1 or more on each row.
+- Known limit (the coordinator, 2026-11-06): at Panel transparency 50%, the box red on a selected row with the white watch tint is 2.83:1 at the brightest point of the background. The brightest point is rare: the fields must overlap at their peaks. At the default transparency, the value is 3.12:1.
+- The main process keeps the window background colour `#0a0a0a`, so the first paint has no flash.
 - The accent colour is a light cyan, as in EVE. Bifrost uses the accent on few elements. The top border of each panel is a 1 px cyan line. The focused panel has the full line and a cyan glow above its top edge only. Other panels have a dim line and no glow. A click on a button, a tab or a row gives a short cyan tint with low opacity.
 - The focused panel is less transparent than the other panels, so it stands out, as in EVE. The background, the border and the glow change in 250 ms when the focus moves (user decision, 2026-11-05).
 - A selected row gets a light, low-opacity cyan background, so it differs from a neutral row. A tab in a panel stack is white with a white underline when it is active. An Overview tab keeps its own text colour (section 8.3), and the active Overview tab has an underline in that colour, as in EVE.
@@ -1003,6 +1013,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Poll interval | 2 seconds |
 | Snap distance | 8 pixels |
 | Panel transparency | 15%. A select from 0% to 50% in steps of 5% (the background of all panels; 0% is solid). |
+| Animated background | On. The colour fields of the background move slowly. Off pauses them where they are. At a start with the setting off, they stay at their still position (section 8.10). |
 | Interface scale | 100%. A select from 80% to 150% in steps of 10% (Electron zooms the whole page; View menu Zoom In Cmd+=, Zoom Out Cmd+-, Actual Size). |
 | Slash commands | `/compact`, `/clear`, `/context` |
 | Terminal font | SF Mono, 13 pt |
@@ -1101,7 +1112,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 |---|---|---|
 | Unit | Vitest | The state machine, the registry merge, install and uninstall, and key map conflicts. |
 | Mod | `claude plugin test` | The hooks module, with a fake `http.fetch`. |
-| Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. |
+| Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. The test also checks that the animated background moves, that it stays still with reduced motion, that it pauses in place without the window focus and with the setting off, and that each frame has the light blur (section 8.10). |
 | Manual | Checklist | The M0 questions, Take control and the DMG. |
 
 With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)`, `finishLoader(sessionId)` and `stopLoader(sessionId)` show the Take control loader, end its Take control part and remove it, with no real Take control. A visual check uses it. An app with the real home has no hook.

@@ -37,6 +37,7 @@ describe('parseSettings', () => {
     }
     expect(DEFAULT_SETTINGS).toEqual({
       accountUsage: false,
+      animatedBackground: true,
       escalationMinutes: 10,
       interfaceScale: 100,
       keys: {},
@@ -83,6 +84,14 @@ describe('parseSettings', () => {
       snapDistance: 8,
       terminalFont: { family: 'Menlo', size: 13 },
     })
+  })
+
+  // the user, 2026-11-06: the background shifts slowly. A setting turns the motion off.
+  test('parseSettings keeps a boolean animatedBackground and gives true for a bad value', () => {
+    const animated = (value: unknown) =>
+      parseSettings({ animatedBackground: value, version: 1 }).animatedBackground
+    expect([true, false].map(animated)).toEqual([true, false])
+    expect([undefined, null, 'false', 0, 1].map(animated)).toEqual([true, true, true, true, true])
   })
 
   test('parseSettings keeps escalation 0', () => {
@@ -225,6 +234,8 @@ describe('applyPatch', () => {
     expect(reasonOf(current, { rowFlash: 'yes' })).toBe('refused: bad rowFlash')
     expect(reasonOf(current, { accountUsage: 'yes' })).toBe('refused: bad accountUsage')
     expect(reasonOf(current, { accountUsage: true })).toBe('ok')
+    expect(reasonOf(current, { animatedBackground: 'no' })).toBe('refused: bad animatedBackground')
+    expect(reasonOf(current, { animatedBackground: false })).toBe('ok')
     expect(reasonOf(current, { terminalApp: 'finder' })).toBe('refused: bad terminalApp')
     expect(reasonOf(current, { panelTransparency: 7 })).toBe('refused: bad panelTransparency')
     expect(reasonOf(current, { interfaceScale: 160 })).toBe('refused: bad interfaceScale')

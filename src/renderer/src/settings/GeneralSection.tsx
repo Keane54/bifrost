@@ -423,6 +423,13 @@ function GeneralRows({ only }: { only: ReadonlySet<string> | null }): React.JSX.
         text={percent => (percent === 0 ? '0% (solid)' : `${percent}%`)}
         value={settings.panelTransparency}
       />
+      {/* The motion of the background behind the panels (spec 8.10). Off pauses the colours. */}
+      <CheckRow
+        checked={settings.animatedBackground}
+        hint='Slowly shifting colours behind the panels. Turn it off to save battery.'
+        label={GENERAL_ROWS.animatedBackground}
+        save={value => update({ animatedBackground: value })}
+      />
       <SelectRow
         choices={INTERFACE_SCALE_CHOICES}
         label={GENERAL_ROWS.scale}

@@ -4,6 +4,7 @@
 // on a row label in another form, also in a file that GeneralSection.tsx imports.
 export const GENERAL_ROWS = {
   accountUsage: 'Account usage from Anthropic',
+  animatedBackground: 'Animated background',
   displayMode: 'Display mode',
   escalation: 'Escalation time',
   font: 'Terminal font',

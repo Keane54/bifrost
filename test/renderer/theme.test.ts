@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { PANEL_TRANSPARENCY_CHOICES } from '../../src/shared/settings'
 import { WATCH_COLOURS } from '../../src/shared/watch'
+import { contrast, hex, luminance, mix, rgb } from '../helpers/colour'
 
 const WATCH_NAMES: readonly string[] = WATCH_COLOURS
 // The Overview table sits on the panel. The row background is the watch colour over this.
@@ -44,21 +45,6 @@ function familyProblems(css: string): string[] {
     if (!new RegExp(`--color-${name}:`).test(css)) problems.push(`no ${name}`)
   }
   return problems
-}
-
-function rgb(hex: string): [number, number, number] {
-  return [1, 3, 5].map(i => Number.parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
-}
-
-function hex(channels: number[]): string {
-  return `#${channels.map(c => Math.round(c).toString(16).padStart(2, '0')).join('')}`
-}
-
-// The colour over the background at the opacity.
-function mix(over: string, opacity: number, under: string): string {
-  const a = rgb(over)
-  const b = rgb(under)
-  return hex(a.map((c, i) => c * opacity + b[i] * (1 - opacity)))
 }
 
 function hsl(colour: string): { h: number; l: number } {
@@ -111,14 +97,6 @@ function hueProblems(
   })
 }
 
-function luminance(colour: string): number {
-  const [r, g, b] = rgb(colour).map(c => {
-    const v = c / 255
-    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
-  })
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-
 // The sRGB to OKLab conversion of Bjorn Ottosson.
 function oklab(colour: string): [number, number, number] {
   const [r, g, b] = rgb(colour).map(c => {
@@ -138,11 +116,6 @@ function oklab(colour: string): [number, number, number] {
 function distance(a: string, b: string): number {
   const [x, y] = [oklab(a), oklab(b)]
   return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2])
-}
-
-function contrast(a: string, b: string): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
-  return (hi + 0.05) / (lo + 0.05)
 }
 
 // The opacity of the row background, from the class names in watch-colours.ts.
@@ -260,11 +233,15 @@ describe('theme', () => {
     expect(bad).toEqual([])
   })
 
-  it('the theme has the panel blur, and a lighter blur for a chat window', () => {
-    expect(source('wm/Frame.tsx')).toContain('frameBlur(frame.active)')
-    const style = source('wm/frame-style.ts')
-    expect(style).toContain("'backdrop-blur-md'")
-    expect(style).toContain("'backdrop-blur-sm'")
+  // the user, 2026-11-06: each frame very slightly blurs the animated background behind it. A chat
+  // window and the other panels use the same light blur.
+  it('gives each frame one light backdrop blur of 6 to 8 px', () => {
+    expect(source('wm/Frame.tsx').match(/backdrop-blur-[\w[\]-]+/g)).toEqual([
+      'backdrop-blur-panel',
+    ])
+    const blur = Number(CSS.match(/--blur-panel:\s*([\d.]+)px;/)?.[1])
+    expect(blur).toBeGreaterThanOrEqual(6)
+    expect(blur).toBeLessThanOrEqual(8)
   })
 
   it('uses the accent class part only for the top border, the glow and active: states', () => {
