@@ -14,6 +14,7 @@ import {
   shell,
   type WebContents,
 } from 'electron'
+import { checkAliasRequest } from '../shared/alias'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
@@ -458,6 +459,15 @@ export function registerIpc(home: TestHome | null = null): void {
     }),
   )
   ipcMain.handle('usage:get', e => fromPage(e, async () => (await service).usage()))
+  ipcMain.handle('registry:set-alias', (e, sessionId: unknown, name: unknown) =>
+    fromPage(e, async () => {
+      const check = checkAliasRequest(sessionId, name)
+      if (!check.ok) throw new Error('refused: bad name')
+      if (!(await service).setAlias(sessionId as string, check.name)) {
+        throw new Error('refused: unknown session')
+      }
+    }),
+  )
   ipcMain.handle('registry:set-priority', (e, sessionId: unknown, priority: unknown) =>
     fromPage(e, async () => {
       if (typeof sessionId !== 'string' || (priority !== null && !isPriority(priority))) {

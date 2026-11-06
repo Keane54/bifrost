@@ -129,7 +129,7 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 | PTY manager | Starts one `claude attach <id>` process for each open chat window. Also starts the hidden attach for the send box. |
 | Action runner | Runs Claude Code commands, sends signals and opens other apps. |
 | Integration | Installs, turns on, turns off and removes the Live details mod. Removes an old hook install. |
-| Store | Keeps the settings, layouts, priorities and panel positions on disk. |
+| Store | Keeps the settings, layouts, priorities, local names and panel positions on disk. |
 
 ### 5.2 Renderer
 
@@ -145,7 +145,7 @@ Context isolation is on. The preload script supplies a typed API. The renderer h
 | `~/.bifrost/live.sock` | The socket where Bifrost listens for live lines. Mode 0600, in a folder with mode 0700. |
 | `~/.bifrost/statusline-original.json` | Your statusLine setting from before an old hook install. Bifrost needs it to remove that install. |
 | `~/.bifrost/backups/` | Copies of `settings.json` from before each change. Bifrost needs them to remove an old hook install. |
-| `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities and panel positions. |
+| `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities, local names and panel positions. |
 
 Bifrost uses `~/.bifrost/` because that path has no spaces. The mod folder is also the marketplace folder.
 
@@ -381,7 +381,7 @@ Columns:
 | Column | Source |
 |---|---|
 | Kind icon | `kind`. External rows show the icon of their terminal app (for example Warp or Terminal). An external row with an unknown terminal app shows a `>_` icon. A session that Bifrost started or controls shows the Bifrost logo (a placeholder mark until the logo exists) (user decision, 2026-11-05). |
-| Name | `name`. |
+| Name | `name`. This is the local name when one exists (section 9.1), else the Claude Code name. A row also has `claudeName`, which is always the Claude Code name. |
 | Priority | Bifrost. Values 1 to 5, or none. Each value has a colour. |
 | State | The state machine (section 7). |
 | Project | `cwd`. The column shows the last two parts of the path. |
@@ -444,7 +444,7 @@ Send box rules:
 - Bifrost never sends CR to an empty prompt.
 - One attach PTY serves each session.
 - A hidden attach opens at the current size of the session (the M3 method). An attach sets the size of the session for all clients (M3 finding). If Bifrost cannot read the size, it sends nothing.
-- If the session has a red box of a prompt (a permission prompt or a question), Bifrost blocks Send message, Run slash command and Rename. Typed text can answer a prompt by accident. An escalated yellow box and an error box do not block, because no prompt shows.
+- If the session has a red box of a prompt (a permission prompt or a question), Bifrost blocks Send message and Run slash command. Typed text can answer a prompt by accident. An escalated yellow box and an error box do not block, because no prompt shows.
 - Interrupt sends Esc. It does not wait for quiet output, because a working session is never quiet: through a hidden attach, Bifrost sends Esc 300 ms after the first output of the attach.
 - After an Esc, Bifrost waits at least 200 ms before the next write to that session. So the session never gets an Esc and a paste in one chunk.
 - The block message is "Answer the prompt in the chat window first."
@@ -476,7 +476,7 @@ Size rule (the user approved this on 2026-11-04; M3 builds it):
 
 Show Info shows these values for one session:
 
-- Name, session ID, short ID, kind and PID.
+- Name, session ID, short ID, kind and PID. A session with a local name also shows the Claude Code name.
 - Project directory and transcript path.
 - Branch, PR and worktree.
 - Model, effort and permission mode.
@@ -559,7 +559,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Send message | Hail | Owned | Type the text into the session. |
 | Run slash command | Activate module | Owned | Type `/<command>` into the session. |
 | Interrupt | Full stop | Owned | Send Esc to the session. |
-| Rename | Set callsign | Owned | Type `/rename <name>` into the session. |
+| Rename | Set callsign | All | Set the local name of the session in Bifrost. Optional: type `/rename <name>` into an owned session. |
 | Set priority | Set threat level | All | Bifrost data only. |
 | Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. It adds no flag (D13). |
 | Resume all | Reactivate all | Parked | Resume each parked session that was active when Bifrost last ran. |
@@ -573,6 +573,23 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Delete session | Self-destruct | Owned, parked | `claude rm <id>`. Bifrost always asks for confirmation. |
 | Add to watchlist | Track | All | Bifrost data only (section 8.12). |
 | Remove from watchlist | Stop tracking | Watched sessions | Bifrost data only (section 8.12). |
+
+Rename sets a local name. Bifrost keeps the local name for the session ID in the registry store, in the field `aliases`. A store without the field is valid. Bifrost never sends the local name to Claude Code. The rules:
+
+- Bifrost trims the name. It refuses control characters. The maximum is 64 characters (`MAX_RENAME`).
+- An empty name clears the local name. A name equal to the Claude Code name also clears it.
+- The row field `name` is the local name when one exists. The Overview, the chat window titles, the Watchlist, notifications, the Event log and the Usage HUD show it. Show Info also shows `claudeName`.
+- When Bifrost deletes a session for good, it removes the local name too, as it removes the priority.
+- The IPC call `registry:set-alias` takes the session ID and a name or `null`. The main process checks both.
+
+A red prompt box does not block Rename, because the local name types nothing. The Rename dialog has these controls:
+
+- The field "Name in Bifrost". It starts with the name that the row shows.
+- For an owned session that is not parked: the check box "Also rename it in Claude Code". It is off by default. With a red prompt box, it is disabled and shows the reason. When it is on, one save types `/rename <name>` and clears the local name, because the real name changes.
+- When a local name exists: the button "Use the Claude Code name". It clears the local name.
+- Esc closes the dialog. The focus goes back to the Overview rows.
+
+In the Selected Item panel, a hover over the name shows a tooltip. With a local name, the tooltip is `Claude Code name: <name>`. Without one, it is the name itself, so a cut-off name can be read.
 
 The "Labels" setting selects plain labels or space labels. The setting applies to menus, buttons, tooltips and dialogs.
 
@@ -1033,7 +1050,7 @@ The user made decisions 1 to 3. The controller made the others during M4. The M4
 2. A watched row has a soft tint and a 3 px stripe in the full watch colour at its left edge. The yellow box and the red box keep a contrast of 3:1 or more on each watched row, also when it is selected or under the pointer. The watch red and yellow are a different shade from the box colours. The red box is `#f5766d`.
 3. The focused panel is darker than the other panels. Its glow is above the top edge only. The change takes 250 ms.
 4. Text that users read in the app says "folder", not "directory". An error stays until the user closes it. A notice goes away after 5 s. The notice "Deleting the session..." stays while a Delete runs.
-5. Only a prompt box blocks Send message, Run slash command and Rename. Take control is blocked by each red box (section 9.2). An Interrupt cancels a send that waits in the queue, then sends the Esc at once.
+5. Only a prompt box blocks Send message and Run slash command. Take control is blocked by each red box (section 9.2). An Interrupt cancels a send that waits in the queue, then sends the Esc at once.
 6. Delete of a worktree session:
    1. The dialog shows the result of a check for unmerged commits and changed files. With unmerged work or a failed check, the confirm needs a second click.
    2. Before the stop of a running session, Bifrost checks the worktree again. Tracked changes stop the Delete, because `claude rm` keeps such a worktree.

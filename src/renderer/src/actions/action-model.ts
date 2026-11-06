@@ -94,7 +94,7 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     'external',
   ]),
   'open-project': def('open-project', 'Open project', 'Open cargo hold', 'all'),
-  rename: def('rename', 'Rename', 'Set callsign', ['owned']),
+  rename: def('rename', 'Rename', 'Set callsign', 'all'),
   resume: def('resume', 'Resume', 'Reactivate', ['parked']),
   'resume-all': def('resume-all', 'Resume all', 'Reactivate all', 'all'),
   'run-slash': def('run-slash', 'Run slash command', 'Activate module', ['owned']),
@@ -126,11 +126,10 @@ export interface ActionState {
 const off = (reason: string): ActionState => ({ enabled: false, reason })
 
 const RUNNING_BLOCKED: ReadonlySet<ActionId> = new Set(['stop', 'delete', 'resume', 'take-control'])
-const RED_BOX_BLOCKED: ReadonlySet<ActionId> = new Set(['send-message', 'run-slash', 'rename'])
+const RED_BOX_BLOCKED: ReadonlySet<ActionId> = new Set(['send-message', 'run-slash'])
 const NEEDS_SHORT_ID: ReadonlySet<ActionId> = new Set([
   'send-message',
   'run-slash',
-  'rename',
   'interrupt',
   'stop',
 ])

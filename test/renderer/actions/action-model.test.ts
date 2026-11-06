@@ -184,22 +184,29 @@ describe('action model', () => {
     }
   })
 
-  it('a red box blocks Send message, Run slash command and Rename, but not Interrupt', () => {
+  it('a red box blocks Send message and Run slash command, but not Interrupt or Rename', () => {
     const red = row({ box: 'red', sessionId: 'r', shortId: 'abcd1234', state: 'needs-you' })
-    for (const id of ['send-message', 'run-slash', 'rename'] as const) {
+    for (const id of ['send-message', 'run-slash'] as const) {
       expect(actionStateFor(id, red, ctx()).reason).toBe(
         'Answer the prompt in the chat window first.',
       )
     }
     expect(actionStateFor('interrupt', red, ctx()).enabled).toBe(true)
+    expect(actionStateFor('rename', red, ctx()).enabled).toBe(true)
+  })
+
+  it('Rename is enabled for owned, external and parked rows, also without a short ID', () => {
+    for (const r of [owned, external, parked, row({ sessionId: 'n', state: 'idle' })]) {
+      expect(actionStateFor('rename', r, ctx())).toEqual({ enabled: true, reason: null })
+    }
   })
 
   // Spec 8.4: an escalated yellow box and an error box show no prompt, so they do not block.
   const redBox = (over: Partial<SessionRow> = {}) =>
     row({ box: 'red', sessionId: 'r', shortId: 'abcd1234', state: 'needs-you', ...over })
-  const TYPED = ['send-message', 'run-slash', 'rename'] as const
+  const TYPED = ['send-message', 'run-slash'] as const
 
-  it('an escalated box and an error box do not block Send message, Run slash command and Rename', () => {
+  it('an escalated box and an error box do not block Send message and Run slash command', () => {
     for (const red of [redBox({ boxReason: 'escalated' }), redBox({ boxReason: 'error' })]) {
       for (const id of TYPED) {
         expect(actionStateFor(id, red, ctx())).toEqual({ enabled: true, reason: null })
@@ -207,7 +214,7 @@ describe('action model', () => {
     }
   })
 
-  it('a prompt box and a red box with no reason block Send message, Run slash command and Rename', () => {
+  it('a prompt box and a red box with no reason block Send message and Run slash command', () => {
     for (const red of [redBox({ boxReason: 'prompt' }), redBox()]) {
       for (const id of TYPED) {
         expect(actionStateFor(id, red, ctx()).reason).toBe(R.REASON_RED_BOX)
@@ -224,7 +231,7 @@ describe('action model', () => {
 
   it('actions that type need the short ID', () => {
     const noId = row({ sessionId: 'n', state: 'idle' })
-    for (const id of ['send-message', 'run-slash', 'rename', 'interrupt', 'stop'] as const) {
+    for (const id of ['send-message', 'run-slash', 'interrupt', 'stop'] as const) {
       expect(actionStateFor(id, noId, ctx()).reason).toBe(R.REASON_WAIT_ID)
     }
     expect(actionStateFor('open-in-terminal', noId, ctx()).reason).toBe(R.REASON_WAIT_ID)

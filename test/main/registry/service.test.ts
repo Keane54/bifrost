@@ -423,6 +423,7 @@ describe('updates and the store', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(saveStore).toHaveBeenCalledTimes(1)
     expect(saveStore).toHaveBeenCalledWith({
+      aliases: {},
       lastActive: ['s1'],
       names: { s1: 'alpha' },
       priorities: {},
@@ -447,6 +448,7 @@ describe('updates and the store', () => {
     await vi.advanceTimersByTimeAsync(SERVICE_TIMING.tickMs)
     expect(saveStore).toHaveBeenCalledTimes(2)
     expect(saveStore).toHaveBeenLastCalledWith({
+      aliases: {},
       lastActive: ['s1'],
       names: { s1: 'alpha' },
       priorities: {},
@@ -475,6 +477,7 @@ describe('updates and the store', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(saveStore).toHaveBeenCalledTimes(2)
     expect(saveStore).toHaveBeenLastCalledWith({
+      aliases: {},
       lastActive: ['s1'],
       names: { s1: 'beta' },
       priorities: {},
