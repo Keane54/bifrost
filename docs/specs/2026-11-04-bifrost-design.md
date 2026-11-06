@@ -912,7 +912,7 @@ Save rules (user decision, 2026-11-06):
 - Each change applies at once. A checkbox, a radio button or a select saves on change. A text field or a number field saves on Enter and on blur.
 - The Settings panel has a footer with a Save button. The footer shows on each section.
 - A click on Save blurs the focused field, so that its draft saves. Save also adds a slash command that you typed and did not add.
-- Save waits for each save that runs. If a save fails, Settings stays open, and the row shows the error. Else Save closes the Settings panel.
+- Save waits for each save that runs. While a row has a failed save, Settings stays open, and the row shows the error. A good save of the row, a click on the close button of the error, or a change of section (the row then does not show) clears it. Else Save closes the Settings panel. A slash command that Save cannot add keeps Settings open while the field still has text.
 
 ## 13. Performance targets
 

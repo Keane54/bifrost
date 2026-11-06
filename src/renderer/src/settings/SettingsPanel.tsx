@@ -1,6 +1,6 @@
 // The Settings panel (spec 12): a row of section tabs, the section in a scroll area, and a footer
 // with the Save button.
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { DIALOG_BUTTON } from '../actions/ConfirmDialog'
 import { cx } from '../lib/cx'
 import { useWmControls } from '../wm/context'
@@ -29,14 +29,9 @@ export default function SettingsPanel(): React.JSX.Element {
   const [saving, setSaving] = useState(false)
   const content = useRef<HTMLDivElement>(null)
 
-  // The row of a failed save is not on the screen after a change of section. So that failure
-  // does not keep Settings open.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: each change of section resets.
-  useEffect(() => tracker.reset(), [section, tracker])
-
   // Each change saves at once. Save blurs the focused field, so that its draft saves, and waits
-  // for all saves. A failure keeps Settings open, and its row shows the error. Else Save closes
-  // Settings (spec 12).
+  // for all saves. A row with a failed save keeps Settings open, and the row shows the error.
+  // A row of another section unmounted, so it does not count. Else Save closes Settings (spec 12).
   const save = async (): Promise<void> => {
     const active = document.activeElement
     if (active instanceof HTMLElement && content.current?.contains(active)) active.blur()
