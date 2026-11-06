@@ -36,6 +36,7 @@ describe('parseSettings', () => {
       expect(parseSettings(bad)).toEqual(DEFAULT_SETTINGS)
     }
     expect(DEFAULT_SETTINGS).toEqual({
+      accountUsage: false,
       animatedBackground: true,
       escalationMinutes: 10,
       interfaceScale: 100,
@@ -231,6 +232,8 @@ describe('applyPatch', () => {
     expect(reasonOf(current, { labels: 'fancy' })).toBe('refused: bad labels')
     expect(reasonOf(current, { escalationMinutes: 121 })).toBe('refused: bad escalationMinutes')
     expect(reasonOf(current, { rowFlash: 'yes' })).toBe('refused: bad rowFlash')
+    expect(reasonOf(current, { accountUsage: 'yes' })).toBe('refused: bad accountUsage')
+    expect(reasonOf(current, { accountUsage: true })).toBe('ok')
     expect(reasonOf(current, { animatedBackground: 'no' })).toBe('refused: bad animatedBackground')
     expect(reasonOf(current, { animatedBackground: false })).toBe('ok')
     expect(reasonOf(current, { terminalApp: 'finder' })).toBe('refused: bad terminalApp')

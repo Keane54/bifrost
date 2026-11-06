@@ -373,6 +373,7 @@ describe('store', () => {
     r.markStarted('s1')
     expect(r.storeChanged()).toBe(false)
     expect(r.store()).toEqual({
+      aliases: {},
       lastActive: ['s1'],
       names: { s1: 'alpha' },
       priorities: {},
@@ -452,6 +453,7 @@ describe('store', () => {
     copy.names.s1 = 'changed'
     copy.started.push('s8')
     expect(r.store()).toEqual({
+      aliases: {},
       lastActive: [],
       names: { s1: 'alpha' },
       priorities: {},
@@ -490,6 +492,7 @@ describe('rows', () => {
       box: 'red',
       boxReason: 'prompt',
       boxSince: 100,
+      claudeName: 'alpha',
       cwd: '/p',
       flashing: true,
       kind: 'owned',
@@ -1043,6 +1046,7 @@ describe('a session that is gone (Task 17 bug 3)', () => {
     r.applyAllAgents([other], true)
     expect(ids(r)).toEqual(['o1'])
     expect(r.store()).toEqual({
+      aliases: {},
       lastActive: [],
       names: { o1: 'beta' },
       priorities: {},
@@ -1742,5 +1746,140 @@ describe('session details and the newest rate limits (M5b Task 1)', () => {
     expect(r.usage()).toMatchObject({ sessionId: 's1', updatedAt: 300 })
     r.forget('s1')
     expect(r.usage()).toBeNull()
+  })
+})
+
+describe('local name (alias)', () => {
+  test('setAlias shows the local name in the row and keeps the Claude Code name', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.storeChanged()
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'alpha', name: 'alpha' })
+    expect(r.setAlias('s1', 'Work')).toBe(true)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'alpha', name: 'Work' })
+    expect(r.store().aliases).toEqual({ s1: 'Work' })
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('a new local name replaces the old one', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.setAlias('s1', 'Work')
+    r.setAlias('s1', 'Home')
+    expect(r.rows()[0].name).toBe('Home')
+    expect(r.store().aliases).toEqual({ s1: 'Home' })
+  })
+
+  test('null, an empty name and a name equal to the Claude Code name clear it', () => {
+    for (const clear of [null, '', '   ', 'alpha', ' alpha ']) {
+      const r = registry()
+      r.applyAgents([bg()], 100)
+      r.setAlias('s1', 'Work')
+      r.storeChanged()
+      expect(r.setAlias('s1', clear)).toBe(true)
+      expect(r.rows()[0]).toMatchObject({ claudeName: 'alpha', name: 'alpha' })
+      expect(r.store().aliases).toEqual({})
+      expect(r.storeChanged()).toBe(true)
+    }
+  })
+
+  test('the same value does not change the store', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.setAlias('s1', 'Work')
+    r.storeChanged()
+    r.setAlias('s1', 'Work')
+    expect(r.storeChanged()).toBe(false)
+    r.setAlias('s1', null)
+    r.storeChanged()
+    r.setAlias('s1', null)
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('setAlias refuses an unknown session and a bad name', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    expect(r.setAlias('nope', 'x')).toBe(false)
+    expect(r.setAlias('s1', 'a\x1bb')).toBe(false)
+    expect(r.store().aliases).toEqual({})
+  })
+
+  test('the store gives the local name to a new registry', () => {
+    const r = registry({
+      aliases: { s1: 'Work' },
+      lastActive: [],
+      names: {},
+      priorities: {},
+      started: [],
+      watch: [],
+      worktrees: [],
+    })
+    r.applyAgents([bg()], 100)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'alpha', name: 'Work' })
+  })
+
+  test('usage gives the local name', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyUsage('s1', { rateLimits: { sevenDay: { resetsAt: 9000, usedPercent: 10 } } }, 1000)
+    expect(r.usage()?.name).toBe('alpha')
+    r.setAlias('s1', 'Work')
+    expect(r.usage()?.name).toBe('Work')
+  })
+
+  test('a new Claude Code name equal to the local name removes the local name', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.setAlias('s1', 'Work')
+    r.storeChanged()
+    r.applyAgents([bg({ name: 'Work' })], 200)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'Work', name: 'Work' })
+    expect(r.store().aliases).toEqual({})
+    expect(r.storeChanged()).toBe(true)
+    r.applyAgents([bg({ name: 'Other' })], 300)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'Other', name: 'Other' })
+  })
+
+  test('a poll with a new Claude Code name keeps the local name', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.setAlias('s1', 'Work')
+    r.applyAgents([bg({ name: 'beta' })], 200)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'beta', name: 'Work' })
+  })
+
+  test('setAlias works for a parked row', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.applyAgents([], 200)
+    r.applyAllAgents([bg({ name: '', pid: undefined, status: '' })], true)
+    expect(r.rows()[0].state).toBe('parked')
+    expect(r.setAlias('s1', 'Work')).toBe(true)
+    expect(r.rows()[0]).toMatchObject({ claudeName: 'alpha', name: 'Work' })
+  })
+
+  test('two counted --all lists forget a session that has only a local name', () => {
+    const r = registry({
+      aliases: { ghost: 'Old' },
+      lastActive: [],
+      names: {},
+      priorities: {},
+      started: [],
+      watch: [],
+      worktrees: [],
+    })
+    r.applyAgents([bg()], 100)
+    r.applyAllAgents([bg(), another], true)
+    expect(r.store().aliases).toEqual({ ghost: 'Old' })
+    r.applyAllAgents([bg(), another], true)
+    expect(r.store().aliases).toEqual({})
+  })
+
+  test('forget removes the local name', () => {
+    const r = registry()
+    r.applyAgents([bg()], 100)
+    r.setAlias('s1', 'Work')
+    r.forget('s1')
+    expect(r.store().aliases).toEqual({})
   })
 })

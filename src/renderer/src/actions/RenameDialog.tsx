@@ -1,15 +1,26 @@
-// The Rename dialog (spec 9.1). It sends "/rename <name>" to the session.
+// The Rename dialog (spec 9.1). It sets the local name of the session in Bifrost.
+// It can also send "/rename <name>" to an owned session.
 import { Dialog } from '@base-ui/react/dialog'
 import { useRef, useState } from 'react'
-import { MAX_RENAME, renameText } from '../../../shared/input'
+import { MAX_RENAME } from '../../../shared/input'
 import { useRegistry } from '../data/registry'
 import { focusOverviewRows } from '../keys/focus-rows'
 import { overviewRowsOf } from '../keys/focus-zone'
+import { CheckBox } from '../lib/CheckBox'
 import { errorMessage } from '../lib/error-message'
 import { ACTIONS, actionStateFor } from './action-model'
 import { useActions } from './actions-context'
 import { DIALOG_BACKDROP, DIALOG_BUTTON, DIALOG_POPUP } from './ConfirmDialog'
 import { friendlyError } from './errors'
+import {
+  CLAUDE_BOX_LABEL,
+  claudeBoxLostNote,
+  effectiveAlsoClaude,
+  NAME_FIELD_LABEL,
+  planRename,
+  RESET_LABEL,
+  renameControls,
+} from './rename-model'
 
 export default function RenameDialog({
   sessionId,
@@ -24,6 +35,7 @@ export default function RenameDialog({
   const labels = contextFor(sessionId).labels
   const [name, setName] = useState(() => row?.name ?? '')
   const [reason, setReason] = useState<string | null>(null)
+  const [alsoClaude, setAlsoClaude] = useState(false)
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   // The Overview whose rows had the focus when the dialog opened (M5a carry-over 1). Base UI gives
@@ -35,21 +47,23 @@ export default function RenameDialog({
   async function onSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault()
     if (busy) return
-    const result = renameText(name)
-    if (!result.ok) {
-      setReason(result.reason)
+    // The row can change while the dialog is open, for example it goes away.
+    const state = actionStateFor('rename', row, contextFor(sessionId))
+    if (!state.enabled || row === undefined) {
+      setReason(state.reason)
       return
     }
-    // The row can change while the dialog is open, for example a prompt opens.
-    const state = actionStateFor('rename', row, contextFor(sessionId))
-    if (!state.enabled) {
-      setReason(state.reason)
+    const plan = planRename(row, { alsoClaude: effectiveAlsoClaude(row, alsoClaude), name })
+    if (!plan.ok) {
+      setReason(plan.reason)
       return
     }
     setBusy(true)
     setReason(null)
     try {
-      await send(sessionId, result.text)
+      // Send first. If the send fails, the local name stays as it is.
+      if (plan.send !== null) await send(sessionId, plan.send)
+      await window.bifrost.registry.setAlias(sessionId, plan.alias)
       onClose()
     } catch (err) {
       setReason(friendlyError(errorMessage(err)))
@@ -57,11 +71,26 @@ export default function RenameDialog({
     }
   }
 
+  async function onReset(): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    setReason(null)
+    try {
+      await window.bifrost.registry.setAlias(sessionId, null)
+      onClose()
+    } catch (err) {
+      setReason(friendlyError(errorMessage(err)))
+      setBusy(false)
+    }
+  }
+
+  const controls = row === undefined ? null : renameControls(row)
   const title = ACTIONS.rename[labels]
   return (
     <Dialog.Root
       onOpenChange={open => {
-        if (!open) onClose()
+        // A save that runs cannot stop. So the dialog stays open until it ends.
+        if (!open && !busy) onClose()
       }}
       open={true}
     >
@@ -79,9 +108,12 @@ export default function RenameDialog({
         >
           <Dialog.Title className='font-semibold text-text-strong'>{title}</Dialog.Title>
           <form className='flex flex-col gap-2' onSubmit={onSubmit}>
+            <label className='text-text-dim text-xs' htmlFor={`rename-name-${sessionId}`}>
+              {NAME_FIELD_LABEL}
+            </label>
             <input
-              aria-label='Session name'
               className='min-w-0 border border-panel-edge bg-bg px-2 py-1 text-text focus:border-text-strong/30'
+              id={`rename-name-${sessionId}`}
               maxLength={MAX_RENAME}
               onChange={e => {
                 setName(e.target.value)
@@ -93,13 +125,51 @@ export default function RenameDialog({
               spellCheck={false}
               value={name}
             />
+            {controls !== null && controls.claudeBox !== 'hidden' && (
+              <div
+                className={controls.claudeBox === 'disabled' ? 'opacity-70' : undefined}
+                data-rename-claude-box={true}
+                title={controls.claudeBoxReason ?? undefined}
+              >
+                <CheckBox
+                  checked={alsoClaude && controls.claudeBox === 'enabled'}
+                  disabled={busy || controls.claudeBox === 'disabled'}
+                  label={CLAUDE_BOX_LABEL}
+                  onChange={on => {
+                    setAlsoClaude(on)
+                    setReason(null)
+                  }}
+                />
+              </div>
+            )}
+            {controls !== null && controls.claudeBoxReason !== null && (
+              <p className='text-text-dim text-xs'>{controls.claudeBoxReason}</p>
+            )}
+            {row !== undefined && claudeBoxLostNote(row, alsoClaude) !== null && (
+              <p className='text-text-dim text-xs' data-rename-lost-note={true}>
+                {claudeBoxLostNote(row, alsoClaude)}
+              </p>
+            )}
             {reason !== null && (
               <p className='text-text text-xs' data-rename-reason={true}>
                 {reason}
               </p>
             )}
             <div className='flex items-center justify-end gap-2'>
-              <Dialog.Close className={DIALOG_BUTTON}>Cancel</Dialog.Close>
+              {controls?.showReset && (
+                <button
+                  className={DIALOG_BUTTON}
+                  data-rename-reset={true}
+                  disabled={busy}
+                  onClick={onReset}
+                  type='button'
+                >
+                  {RESET_LABEL}
+                </button>
+              )}
+              <Dialog.Close className={DIALOG_BUTTON} disabled={busy}>
+                Cancel
+              </Dialog.Close>
               <button className={DIALOG_BUTTON} disabled={busy} type='submit'>
                 {title}
               </button>

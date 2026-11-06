@@ -11,14 +11,25 @@ export interface LoaderState {
   shown: boolean
 }
 
+// The time limit of a loader that waits only for the first output, after a good Take control
+// (review Important 2). Then the window shows the terminal, with its note when it cannot attach.
+export const LOADER_WAIT_MS = 20_000
+
+export type LoaderEvent = 'start' | 'finish' | 'shown' | 'stop' | 'timeout'
+
+// True when the loader waits only for the first output. The time limit then runs.
+export function loaderWaits(state: LoaderState | null): boolean {
+  return state !== null && !state.running
+}
+
 // start: Take control starts. finish: it worked. shown: the terminal shows Claude, or it shows
-// why it ended. stop: Take control failed. The loader stays until Take control worked and the
-// terminal shows Claude. null means no loader.
-export function loaderStep(
-  state: LoaderState | null,
-  event: 'start' | 'finish' | 'shown' | 'stop',
-): LoaderState | null {
+// why it ended. stop: Take control failed. timeout: the time limit of a loader that waits only for
+// the first output. The loader stays until Take control worked and the terminal shows Claude, or
+// until the time limit. null means no loader.
+export function loaderStep(state: LoaderState | null, event: LoaderEvent): LoaderState | null {
   switch (event) {
+    case 'timeout':
+      return loaderWaits(state) ? null : state
     case 'start':
       return { running: true, shown: false }
     case 'stop':

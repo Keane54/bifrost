@@ -1,6 +1,7 @@
 import type { DirInfo, NewSessionSpec } from './new-session'
 import type { Settings, SettingsPatch } from './settings'
 import type {
+  AccountUsage,
   ClaudeVersion,
   DisplayMode,
   LiveStatus,
@@ -28,6 +29,9 @@ export interface BifrostApi {
   claudeVersion(): Promise<ClaudeVersion>
   registry: {
     rows(): Promise<SessionRow[]>
+    // Set the local name of the session. null or an empty name removes it.
+    // This rejects for a bad name and for an unknown session.
+    setAlias(sessionId: string, name: string | null): Promise<void>
     // Set the priority of the session. null removes it.
     // This rejects for a bad priority and for an unknown session.
     setPriority(sessionId: string, priority: Priority | null): Promise<void>
@@ -61,6 +65,15 @@ export interface BifrostApi {
     // The main process sends the value after a change, a maximum of 4 times each second. The
     // last value always goes out. The returned function removes only this listener.
     onUpdate(cb: (usage: UsageSnapshot | null) => void): () => void
+    // The account usage from Anthropic (spec 8.8). null means that the setting is off, or that no
+    // good answer is available. The value never holds a token.
+    getAccount(): Promise<AccountUsage | null>
+    // The main process sends the value after each change. The returned function removes only
+    // this listener.
+    onAccountUpdate(cb: (usage: AccountUsage | null) => void): () => void
+    // The Usage HUD opened. The main process polls, when the setting is on, but at most one time
+    // in 60 seconds.
+    hudOpened(): Promise<void>
   }
   // The Event log (spec 8.7): the newest live state events, kept in memory in the main process.
   events: {

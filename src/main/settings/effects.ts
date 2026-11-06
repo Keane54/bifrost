@@ -8,6 +8,7 @@ export type SettingsEffect =
   | { kind: 'login-item'; on: boolean }
   | { kind: 'menu' }
   | { kind: 'zoom'; factor: number }
+  | { kind: 'account-usage'; on: boolean }
 
 // The slots of the menu accelerators (D7).
 const MENU_SLOTS = KEY_SLOTS.filter(slot => slot.menu).map(slot => slot.id)
@@ -20,7 +21,8 @@ function menuKeysChanged(prev: Settings, next: Settings): boolean {
   return MENU_SLOTS.some(id => before[id] !== after[id])
 }
 
-// Return the effects of a change, in this order: escalation, poll, login item, menu, zoom.
+// Return the effects of a change, in this order: escalation, poll, login item, menu, zoom,
+// account usage.
 // A change of the terminal app needs no effect here. The main process finds the apps at each
 // call and keeps no cache.
 export function settingsEffects(prev: Settings, next: Settings): SettingsEffect[] {
@@ -37,6 +39,9 @@ export function settingsEffects(prev: Settings, next: Settings): SettingsEffect[
   if (menuKeysChanged(prev, next)) effects.push({ kind: 'menu' })
   if (prev.interfaceScale !== next.interfaceScale) {
     effects.push({ factor: next.interfaceScale / 100, kind: 'zoom' })
+  }
+  if (prev.accountUsage !== next.accountUsage) {
+    effects.push({ kind: 'account-usage', on: next.accountUsage })
   }
   return effects
 }

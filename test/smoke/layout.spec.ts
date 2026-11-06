@@ -5,6 +5,8 @@
 // - M5a carry-over 2: in a narrow Settings frame, a key row that records keeps its name visible,
 //   and its Clear and Reset buttons stay in the frame.
 // - Esc toggles Settings (spec 9.4). A dialog and the key recorder keep their own Esc.
+// - The search of Settings (spec 12): Cmd+F, matches in two sections, a key search, no match,
+//   and Esc in the search field.
 //
 // The test uses the same start as the smoke test (app.ts): a fake claude and a test home.
 
@@ -156,6 +158,28 @@ test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their la
       'data-selected-item',
       alphaId ?? 'no id',
     )
+
+    // The search of Settings. A click on a tab puts the focus in Settings, and Cmd+F moves it
+    // to the search field.
+    await frame.locator('[data-settings-tab="general"]').click()
+    await page.keyboard.press('Meta+f')
+    const search = frame.locator('[data-settings-search]')
+    await expect(search).toBeFocused()
+    await search.fill('open')
+    await expect(frame.locator('[data-search-section="general"]')).toBeVisible()
+    await expect(frame.locator('[data-search-section="keys"]')).toBeVisible()
+    await search.fill('cmd shift t')
+    await expect(frame.locator('[data-search-section]')).toHaveCount(1)
+    await expect(frame.locator('[data-key-slot="take-control:mod"]')).toBeVisible()
+    await expect(frame.getByRole('status')).toHaveText('1 setting matches.')
+    await search.fill('xyz')
+    await expect(frame.locator('[data-settings-no-match]')).toHaveText('No settings match "xyz".')
+    // Esc clears the field first. Then Esc in the empty field closes Settings.
+    await page.keyboard.press('Escape')
+    await expect(search).toHaveValue('')
+    await expect(frame).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(frame).toHaveCount(0)
 
     await app.close()
     app = null

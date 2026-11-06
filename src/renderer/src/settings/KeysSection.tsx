@@ -20,17 +20,32 @@ const RESET_ALL_CONFIRM = {
 const BUTTON =
   'h-5 shrink-0 border border-panel-edge px-2 text-text text-xs hover:bg-hover active:bg-accent/12 disabled:opacity-40 disabled:hover:bg-transparent'
 
-export default function KeysSection(): React.JSX.Element {
+// only: during a search, the slot IDs of the rows that show (spec 12). The text, Reset all keys
+// and a group with no row then do not show.
+export default function KeysSection({
+  only = null,
+}: {
+  only?: ReadonlySet<string> | null
+}): React.JSX.Element {
   const { settings, update } = useSettings()
   const confirm = useConfirm()
   const save = useRowSave()
   const custom = settings.keys
-  const groups = useMemo(() => keyGroups(custom, settings.labels), [custom, settings.labels])
+  const groups = useMemo(() => {
+    const all = keyGroups(custom, settings.labels)
+    if (only === null) return all
+    return all
+      .map(group => ({ ...group, rows: group.rows.filter(row => only.has(row.slot.id)) }))
+      .filter(group => group.rows.length > 0)
+  }, [custom, only, settings.labels])
 
   // The slot that records, the reason of the last rejected key and the row of the last failed save.
   const [activeId, setActiveId] = useState<string | null>(null)
   const [rejection, setRejection] = useState<string | null>(null)
   const [errorId, setErrorId] = useState<string | null>(null)
+  // The error shows at the top for a change of all keys, and when a search hides the row of the
+  // error. So a failed save never keeps Settings open with no error on the screen.
+  const errorShownAtTop = errorId === null || (only !== null && !only.has(errorId))
   // The recorder callbacks read the newest values from this ref.
   const latest = useRef({ activeId, custom, labels: settings.labels })
   latest.current = { activeId, custom, labels: settings.labels }
@@ -159,23 +174,27 @@ export default function KeysSection(): React.JSX.Element {
         {recording && rejection !== null && (
           <p className='px-3 pb-1 text-text-dim text-xs'>{rejection}</p>
         )}
-        {errorId === slot.id && <ErrorLine message={save.error} onClose={save.closeError} />}
+        {errorId === slot.id && !errorShownAtTop && (
+          <ErrorLine message={save.error} onClose={save.closeError} />
+        )}
       </li>
     )
   }
 
   return (
     <div className='flex flex-col'>
-      <div className='flex items-start gap-3 px-3 py-2'>
-        <p className='min-w-0 flex-1 text-text-dim text-xs'>
-          You can't record Esc or a plain Backspace, because the recorder uses them. Reset brings
-          back the default key.
-        </p>
-        <button className={BUTTON} onClick={resetAll} type='button'>
-          Reset all keys
-        </button>
-      </div>
-      {errorId === null && <ErrorLine message={save.error} onClose={save.closeError} />}
+      {only === null && (
+        <div className='flex items-start gap-3 px-3 py-2'>
+          <p className='min-w-0 flex-1 text-text-dim text-xs'>
+            You can't record Esc or a plain Backspace, because the recorder uses them. Reset brings
+            back the default key.
+          </p>
+          <button className={BUTTON} onClick={resetAll} type='button'>
+            Reset all keys
+          </button>
+        </div>
+      )}
+      {errorShownAtTop && <ErrorLine message={save.error} onClose={save.closeError} />}
       {groups.map(group => (
         <section data-key-group={group.group} key={group.group}>
           <h3 className={cx('border-panel-edge border-y bg-title px-3 py-1 text-text-dim text-xs')}>

@@ -202,7 +202,11 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
       if (!keyAllowed(slot, binding, zone)) return
       if (slot.command === 'escape' && zone !== 'send-box') {
         atDispatchEnd(event, window, handled => {
-          const next = planKey(slot, { ...contextFor(zone), escapeHandled: handled })
+          const next = planKey(slot, {
+            ...contextFor(zone),
+            escapeHandled: handled,
+            repeat: event.repeat,
+          })
           if (next.kind !== 'none') event.preventDefault()
           intent(next)
         })

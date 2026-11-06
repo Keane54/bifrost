@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { PANEL_TRANSPARENCY_CHOICES } from '../../src/shared/settings'
 import { WATCH_COLOURS } from '../../src/shared/watch'
-import { contrast, hex, mix, rgb } from '../helpers/colour'
+import { contrast, hex, luminance, mix, rgb } from '../helpers/colour'
 
 const WATCH_NAMES: readonly string[] = WATCH_COLOURS
 // The Overview table sits on the panel. The row background is the watch colour over this.
@@ -519,25 +519,39 @@ describe('the chat terminal background', () => {
     expect(match?.[1].toLowerCase()).toBe('#00000000')
   })
 
-  // The worst case under a chat window is the text of another panel. The light blur spreads it,
-  // so the backdrop is about a quarter of the text colour over the panel colour.
-  it('keeps the text easy to read on the panel at each transparency', () => {
+  // The backdrops under a chat window (review Minor 4). The light blur spreads them:
+  // - blurred text of another panel: a quarter of the text colour over the panel colour,
+  // - the brightest watch row tint (white, at the row opacity) over the panel colour,
+  // - a selected row: the accent at 15% over the panel colour,
+  // - the rainbow of another loader at its full strength: the brightest icon colour at 25%.
+  it('keeps the text easy to read on the panel at each transparency, over bright backdrops', () => {
     const level = (name: string): number => {
       const match = CSS.match(new RegExp(`--color-${name}: rgb\\((\\d+) `))
       return Number(match?.[1])
     }
     const grey = (n: number): string => hex([n, n, n])
-    const backdrop = mix(token('text'), 0.25, grey(level('panel')))
+    const panel = grey(level('panel'))
+    const icons = [1, 2, 3, 4, 5, 6].map(n => token(`icon-${n}`))
+    const brightest = icons.reduce((a, b) => (luminance(b) > luminance(a) ? b : a))
+    const backdrops: [string, string][] = [
+      ['blurred text', mix(token('text'), 0.25, panel)],
+      ['a white watch row', mix(token('watch-white'), watchRowOpacity(), panel)],
+      ['a selected row', mix(token('accent'), 0.15, panel)],
+      ['a loader rainbow', mix(brightest, 0.25, panel)],
+    ]
     const bad: string[] = []
-    for (const percent of PANEL_TRANSPARENCY_CHOICES) {
-      const alpha = 1 - percent / 100
-      const panels = [
-        ['panel', mix(grey(level('panel')), alpha, backdrop)],
-        ['focused panel', mix(grey(level('panel-focus')), Math.min(1, alpha + 0.1), backdrop)],
-      ]
-      for (const [name, surface] of panels) {
-        if (contrast(TEXT, surface) < 7) bad.push(`text on ${name} at ${percent}%`)
-        if (contrast(DIM, surface) < 4.5) bad.push(`dim text on ${name} at ${percent}%`)
+    for (const [where, backdrop] of backdrops) {
+      for (const percent of PANEL_TRANSPARENCY_CHOICES) {
+        const alpha = 1 - percent / 100
+        const panels = [
+          ['panel', mix(panel, alpha, backdrop)],
+          ['focused panel', mix(grey(level('panel-focus')), Math.min(1, alpha + 0.1), backdrop)],
+        ]
+        for (const [name, surface] of panels) {
+          const label = `on ${name} at ${percent}% over ${where}`
+          if (contrast(TEXT, surface) < 7) bad.push(`text ${label}`)
+          if (contrast(DIM, surface) < 4.5) bad.push(`dim text ${label}`)
+        }
       }
     }
     expect(bad).toEqual([])

@@ -37,6 +37,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
     "Bifrost can't delete a session that runs in another terminal.",
   'refused: bad input': "Bifrost couldn't read that request.",
   'refused: bad keys': "One of those keys isn't valid.",
+  'refused: bad name': "That name isn't valid.",
   'refused: bad new session data': "Some of the New session values aren't valid.",
   'refused: bad priority': "That priority isn't valid.",
   'refused: bad process ID': "The process ID of this session isn't valid.",

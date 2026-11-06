@@ -129,7 +129,7 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 | PTY manager | Starts one `claude attach <id>` process for each open chat window. Also starts the hidden attach for the send box. |
 | Action runner | Runs Claude Code commands, sends signals and opens other apps. |
 | Integration | Installs, turns on, turns off and removes the Live details mod. Removes an old hook install. |
-| Store | Keeps the settings, layouts, priorities and panel positions on disk. |
+| Store | Keeps the settings, layouts, priorities, local names and panel positions on disk. |
 
 ### 5.2 Renderer
 
@@ -145,7 +145,7 @@ Context isolation is on. The preload script supplies a typed API. The renderer h
 | `~/.bifrost/live.sock` | The socket where Bifrost listens for live lines. Mode 0600, in a folder with mode 0700. |
 | `~/.bifrost/statusline-original.json` | Your statusLine setting from before an old hook install. Bifrost needs it to remove that install. |
 | `~/.bifrost/backups/` | Copies of `settings.json` from before each change. Bifrost needs them to remove an old hook install. |
-| `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities and panel positions. |
+| `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities, local names and panel positions. |
 
 Bifrost uses `~/.bifrost/` because that path has no spaces. The mod folder is also the marketplace folder.
 
@@ -244,7 +244,7 @@ Rules for the usage data:
   2. Two readings are the same window when their reset times are within 10 minutes.
   3. In the same window, the highest use wins, because use only grows in a window. A use value that is not a finite number never wins over a finite one.
   4. A session that is not a row also counts, until the registry forgets it.
-  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name, or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
+  The name, the session ID and the time come from the line that gave the 7-day value, else the 5-hour value. The name is the row name (the local name when one exists), or the first 8 characters of the session ID when the session is not a row. No session with rate limits gives null.
 - The main process sends the newest rate limits on `usage:update` when they change. The value has the time of the line that gave the 7-day value (else the 5-hour value), so a newer line from that session with the same limits is a change. The update limit is that of the rows: at most 4 updates each second, and the last value always goes out. The check runs after each live line, after each forget and at each tick (1 s). The tick finds the other changes, for example a new row name or a usage line that a list poll removed.
 - Without the mod, Bifrost shows no model, context %, cost, rate limit, context window size, Claude Code version, effort, permission mode or transcript path.
 
@@ -381,7 +381,7 @@ Columns:
 | Column | Source |
 |---|---|
 | Kind icon | `kind`. External rows show the icon of their terminal app (for example Warp or Terminal). An external row with an unknown terminal app shows a `>_` icon. A session that Bifrost started or controls shows the Bifrost logo (a placeholder mark until the logo exists) (user decision, 2026-11-05). |
-| Name | `name`. |
+| Name | `name`. This is the local name when one exists (section 9.1), else the Claude Code name. A row also has `claudeName`, which is always the Claude Code name. |
 | Priority | Bifrost. Values 1 to 5, or none. Each value has a colour. |
 | State | The state machine (section 7). |
 | Project | `cwd`. The column shows the last two parts of the path. |
@@ -444,7 +444,7 @@ Send box rules:
 - Bifrost never sends CR to an empty prompt.
 - One attach PTY serves each session.
 - A hidden attach opens at the current size of the session (the M3 method). An attach sets the size of the session for all clients (M3 finding). If Bifrost cannot read the size, it sends nothing.
-- If the session has a red box of a prompt (a permission prompt or a question), Bifrost blocks Send message, Run slash command and Rename. Typed text can answer a prompt by accident. An escalated yellow box and an error box do not block, because no prompt shows.
+- If the session has a red box of a prompt (a permission prompt or a question), Bifrost blocks Send message and Run slash command. Typed text can answer a prompt by accident. An escalated yellow box and an error box do not block, because no prompt shows.
 - Interrupt sends Esc. It does not wait for quiet output, because a working session is never quiet: through a hidden attach, Bifrost sends Esc 300 ms after the first output of the attach.
 - After an Esc, Bifrost waits at least 200 ms before the next write to that session. So the session never gets an Esc and a paste in one chunk.
 - The block message is "Answer the prompt in the chat window first."
@@ -466,7 +466,7 @@ Send box rules:
 - During Take control, the chat window shows the Take control loader in place of the terminal (section 9.2).
 - The terminal has a transparent background (user decision, 2026-11-06). The frame colour and its blur show through, so the "Panel transparency" setting also applies to chat windows. The token `--color-terminal-bg` is fully transparent, and xterm.js has `allowTransparency`. The WebGL renderer and the DOM renderer both draw the transparent background, also after a WebGL context loss. `app.css` replaces the black viewport and the native scroll bar of `xterm.css`.
 - The blur behind a chat window is light: 8 pixels, the same blur as the other panels (section 8.10). So it is clear when a chat window is over another panel, as in EVE.
-- The terminal text stays easy to read. A test checks the contrast of white text and of a mid-grey dim text on the panel colour at each transparency, over the blurred text of another panel.
+- The terminal text stays easy to read. A test checks the contrast of white text (7:1 or more) and of a mid-grey dim text (4.5:1 or more) on the panel colour at each transparency. The backdrops are the blurred text of another panel, a white watch row, a selected row and the rainbow of another loader.
 
 Size rule (the user approved this on 2026-11-04; M3 builds it):
 
@@ -480,7 +480,7 @@ Size rule (the user approved this on 2026-11-04; M3 builds it):
 
 Show Info shows these values for one session:
 
-- Name, session ID, short ID, kind and PID.
+- Name, session ID, short ID, kind and PID. A session with a local name also shows the Claude Code name.
 - Project directory and transcript path.
 - Branch, PR and worktree.
 - Model, effort and permission mode.
@@ -497,6 +497,28 @@ The Event log shows the live state events with the time, the session and the eve
 ### 8.8 Usage HUD
 
 The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. Bifrost chooses each bar on its own from all live usage lines. The newest window wins, and in the same window the highest use wins. An idle session can send an old value, and this rule stops that value from replacing a newer one (section 6). With no data, the panel shows "No usage data yet."
+
+Account usage (opt-in): the setting `Account usage from Anthropic` (section 12) is off by default. When it is on, Bifrost asks Anthropic for the usage of the account. The usage lines of the sessions change only when a session on this Mac gets an API reply. The account values also show use on claude.ai, on a phone and on other Macs.
+
+- The main process polls every 5 minutes. It also polls when the Usage HUD opens, but at most one time in 60 seconds. When the setting goes off, the polling stops and the account values go away.
+- One poll reads the Claude Code login from the Keychain, and then calls `GET https://api.anthropic.com/api/oauth/usage`. The call sends `Authorization: Bearer <access token>`, `anthropic-beta: oauth-2025-04-20` and `User-Agent: Bifrost`. Each step has a 10 second limit.
+- Bifrost takes the windows `five_hour` and `seven_day` (`utilization` is a percent, `resets_at` is an ISO 8601 text). If `seven_day` is missing, `null` or not usable, Bifrost takes the entry `weekly_all` of the list `limits`. Bifrost ignores all other keys. A bad answer gives no values.
+- A plan can have no 5-hour window (`five_hour` is `null`). Then the 5-hour bar shows `-` and the detail `No 5-hour limit right now.`
+- A 401 or 403 answer clears the account values until a later poll works. A 429 answer makes Bifrost wait 15 minutes. Another error keeps the last good values.
+- When the account values are 15 minutes old or less, the bars use them, and the source line is `From your Anthropic account, updated <age> ago.` Else the panel shows the session values. The bar rules do not change.
+- The main process sends the values to the renderer on the channel `usage:account-update`. The renderer reads them with `usage:account-get` and asks for a poll with `usage:hud-opened`. The HUD asks when it mounts and each time it becomes visible again. The type has the windows and the time of the answer. It has no token.
+
+Security of the account usage:
+
+- Bifrost reads one Keychain item, `Claude Code-credentials`, with `/usr/bin/security` (fixed arguments, no shell). It uses only `claudeAiOauth.accessToken` and `claudeAiOauth.expiresAt`. macOS may ask the user to allow this.
+- The token stays in memory for one request. Bifrost never logs it, never writes it to disk, never puts it in an error text and never sends it to the renderer.
+- Bifrost never uses the refresh token and never calls a refresh endpoint. A refresh by Bifrost would change the token that Claude Code holds and could sign Claude Code out. When the token has expired, or the answer is 401 or 403, Bifrost waits. It reads the Keychain again at the next poll, because Claude Code refreshes the token itself.
+- Bifrost sends the token only to `https://api.anthropic.com`. The code has a fixed URL. A redirect stops the request. The request sends no cookies and keeps no cache. The request has no email and no user name.
+- Anthropic does not document the endpoint. It can change or stop without notice. Bifrost then shows the session values.
+- When the setting goes off, Bifrost stops a poll in progress and sends no request. A poll ends after 25 seconds at the latest.
+- A token with no `expiresAt`, or one that ends within 60 seconds, counts as no token.
+- If the user denies the Keychain prompt, the next poll asks again. This can repeat every 5 minutes.
+- The test home (D12) starts no poller, and the tests use fakes only.
 
 ### 8.9 New session dialog
 
@@ -569,7 +591,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
   1. Full: as above, when the widest row fits.
   2. When the full view cuts off a text of a row, the button hides its text "Open status page". It keeps the icon, its `aria-label` and gets a tooltip (`title`) with the same text as the `aria-label`.
   3. When view 2 still cuts off a text, the row also hides the level text. The level square keeps the level as its tooltip and as its accessible name. The since text stays. "No data" has no square, so it keeps its text.
-- The panel measures invisible copies of the full rows at their natural width. So the choice does not depend on the view on the screen, and a wider panel goes back to a fuller view. The panel chooses the view before the paint, after each render and at each resize (a `ResizeObserver`). So the view does not flicker or change in a loop. A pure function, `serviceView(available, needs)`, makes the choice.
+- The panel measures invisible copies of the full rows at their natural width. So the choice does not depend on the view on the screen, and a wider panel goes back to a fuller view. The panel chooses the view before the paint, after each render, at each resize (a `ResizeObserver`), at each change of the width of a measure copy, and when a web font loads (`document.fonts`). So a font that loads late, for example Geist Mono, does not leave a wrong view. So the view does not flicker or change in a loop. A pure function, `serviceView(available, needs)`, makes the choice.
 
 ## 9. Actions and keys
 
@@ -582,9 +604,9 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Send message | Hail | Owned | Type the text into the session. |
 | Run slash command | Activate module | Owned | Type `/<command>` into the session. |
 | Interrupt | Full stop | Owned | Send Esc to the session. |
-| Rename | Set callsign | Owned | Type `/rename <name>` into the session. |
+| Rename | Set callsign | All | Set the local name of the session in Bifrost. Optional: type `/rename <name>` into an owned session. |
 | Set priority | Set threat level | All | Bifrost data only. |
-| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. It adds no flag (D13). |
+| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. An owned row adds no flag. A parked external row (after a failed Take control) gets the statusline override, as Take control does (D13). |
 | Resume all | Reactivate all | Parked | Resume each parked session that was active when Bifrost last ran. |
 | Show Info | Scan | All | Open the Show Info panel. |
 | Copy session ID | Copy transponder ID | All | Copy to the clipboard. |
@@ -596,6 +618,27 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Delete session | Self-destruct | Owned, parked | `claude rm <id>`. Bifrost always asks for confirmation. |
 | Add to watchlist | Track | All | Bifrost data only (section 8.12). |
 | Remove from watchlist | Stop tracking | Watched sessions | Bifrost data only (section 8.12). |
+
+Rename sets a local name. Bifrost keeps the local name for the session ID in the registry store, in the field `aliases`. A store without the field is valid. Bifrost never sends the local name to Claude Code. The rules:
+
+- Bifrost trims the name. It refuses control characters. The maximum is 64 characters (`MAX_RENAME`).
+- An empty name clears the local name. A name equal to the Claude Code name also clears it.
+- The row field `name` is the local name when one exists. The Overview, the chat window titles, the Watchlist, notifications, the Event log and the Usage HUD show it. Show Info also shows `claudeName`.
+- When Bifrost deletes a session for good, it removes the local name too, as it removes the priority.
+- A new Claude Code name that equals the local name removes the local name.
+- Bifrost forgets the local name of an external session soon after the session ends, as it forgets the priority.
+- The IPC call `registry:set-alias` takes the session ID and a name or `null`. The main process checks both.
+
+A red prompt box does not block Rename, because the local name types nothing. The Rename dialog has these controls:
+
+- The field "Name in Bifrost". It starts with the name that the row shows.
+- For an owned session that is not parked: the check box "Also rename it in Claude Code". It is off by default. With a red prompt box, or while the short ID is missing, it is disabled and shows the reason. If it was on and becomes unusable while the dialog is open, Save keeps the name in Bifrost only and the dialog says so. When it is on, one save types `/rename <name>` and clears the local name, because the real name changes.
+- When a local name exists: the button "Use the Claude Code name". It clears the local name.
+- Esc closes the dialog. The focus goes back to the Overview rows.
+
+The Stop, Delete and Take control confirmations name the session without doubt. When a local name exists, they show the local name, then the Claude Code name in brackets: `my-alias (Claude Code name: claude-a1)`. The chat window titles keep the local name only.
+
+In the Selected Item panel, a hover over the name shows a tooltip. With a local name, the tooltip is `Claude Code name: ` and the Claude Code name. Without one, it is the name itself, so a cut-off name can be read.
 
 The "Labels" setting selects plain labels or space labels. The setting applies to menus, buttons, tooltips and dialogs.
 
@@ -618,7 +661,7 @@ Bifrost does these steps:
 5. Wait for the process to end, for a maximum of 5 seconds.
 6. Run `claude --bg --settings <statusline override> --resume <session-id>` in the session directory (D13).
 7. Find the new entry by `sessionId`, not by name.
-8. The chat window attaches to the session. The loader goes away when the terminal shows its first output from Claude.
+8. Restart the chat window. A terminal that ended before Take control attaches again only after a restart. The chat window attaches to the session. The loader goes away when the terminal shows its first output from Claude.
 
 If the process does not end in 5 seconds, Bifrost stops and shows an error. It does not start a copy of the session.
 
@@ -627,6 +670,7 @@ If Take control fails, Bifrost removes the loader, closes the chat window and sh
 The Take control loader (user decision, 2026-11-06):
 
 - The loader shows in the chat window while Take control runs, and until the terminal shows its first output from Claude. A terminal that ends also removes the loader, so the window shows why it ended.
+- After a good Take control, a loader that waits only for the first output has a time limit of 20 seconds. Then the loader goes away, and the window shows the terminal, with its note when it cannot attach (review Important 2).
 - During that time, the chat window hides the terminal. The terminal keeps its size and its focus.
 - The window shows the normal panel background and the line "Taking control of <name>...".
 - The bottom two fifths show a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge on an eased curve: the upper half stays faint, and the colour reaches full strength only at the bottom edge. It is at 25% opacity (the user, 2026-11-06: softer, a more gradual fade, and a slightly taller band).
@@ -727,6 +771,7 @@ Esc (user decision, 2026-11-06):
 3. Else, Esc opens Settings and brings it to the front, as Cmd+, does.
 
 - Esc does not clear the selection.
+- A held Esc acts one time. A key repeat does not open or close Settings again.
 - In a chat window, Esc goes to Claude.
 - A dialog, a menu, a popover, a text field (for example the Rename field or a Settings field) and the key recorder of Settings > Keys keep their own Esc. Esc then does not open or close Settings. The same applies to an Esc that ends a Watchlist drag.
 - The Esc key of Bifrost waits for the end of the key event. A handler that takes Esc calls `preventDefault` or stops the event. Then Bifrost does nothing.
@@ -907,6 +952,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | macOS notification | On |
 | Sound for a red box | On |
 | Start at login | Off |
+| Account usage from Anthropic | Off. A check row. The hint says that Bifrost reads the Claude Code login from the Keychain and that macOS may ask to allow this (section 8.8). |
 | Poll interval | 2 seconds |
 | Snap distance | 8 pixels |
 | Panel transparency | 15%. A select from 0% to 50% in steps of 5% (the background of all panels; 0% is solid). |
@@ -923,7 +969,22 @@ Save rules (user decision, 2026-11-06):
 - Each change applies at once. A checkbox, a radio button or a select saves on change. A text field or a number field saves on Enter and on blur.
 - The Settings panel has a footer with a Save button. The footer shows on each section.
 - A click on Save blurs the focused field, so that its draft saves. Save also adds a slash command that you typed and did not add.
-- Save waits for each save that runs. If a save fails, Settings stays open, and the row shows the error. Else Save closes the Settings panel.
+- Save waits for each save that runs. While a row has a failed save, Settings stays open, and the row shows the error. A good save of the row, a click on the close button of the error, or a change of section (the row then does not show) clears it. Else Save closes the Settings panel. A slash command that Save cannot add keeps Settings open while the field still has text.
+
+Search (user decision, 2026-11-06):
+
+- A search field is at the top of the Settings panel, above the section tabs. Its placeholder is "Search settings".
+- The search finds the rows of all sections by their label, case-insensitive, with the words in any order. With a search, the panel shows the matches of all sections in one list. Each section with a match has a small heading. A section with no match does not show. No tab is active. A click on a tab ends the search and opens that section.
+- The rows: General finds a row by its label. Slash commands finds a command. Keys finds a row by its command label or by its key. Live details shows as one block, and the search reads its title, its state line and the labels of its buttons. A query that matches the title of a section shows the whole section. Live details reads its status (`claude plugin list`) one time for each open of the Settings panel, also when a search shows and hides its block many times. The app start and each Live details action also read the status.
+- A key search accepts the shown form (for example "⇧ ⌘ T" or "⌘⇧T") and a typed form (for example "cmd shift t", "cmd+shift+t", "ctrl", "^" or "opt"). The caret "^" is a typed form of the Ctrl symbol "⌃". Each part of the query must name a part of the key, in any order. A part of one character must be the key itself. A longer part can be the start of a name, for example "sh" for Shift or "ta" for Tab.
+- A query can also mix the words: each word can match the title of the section, the label of the row or a part of its key, for example "keys take", "general flash" or "take cmd". In a mix, a word of one character must be a key name, so "cmd shift t" finds only Cmd+Shift+T.
+- When nothing matches, the panel shows "No settings match "<query>"."
+- A live line (`role="status"`, visible only to a screen reader) gives the number of matches, for example "3 settings match.", or the no-match line. During a search, the result area is a region with the name "Search results".
+- A change of a setting can remove a result that has the focus, for example Remove on a slash command. Then the focus goes to the search field during a search, else to the Settings panel. So the focus does not fall to the page, where the single keys act.
+- A row that the search hides acts as unmounted for the Save rules: its failed save does not keep Settings open, and its error does not show again. In Keys, the error of a hidden row shows at the top of the section.
+- Esc in the search field clears the query first, and the event stops there. Esc in an empty search field closes Settings, as the Esc key does (section 9.4). During an IME composition, Esc only cancels the composition.
+- Cmd+F moves the focus to the search field while Settings has the focus. A click on a part of the panel with no control gives the focus to the panel. With no focus at all, Cmd+F works when Settings is the front panel. The key map has no Cmd+F. If a user binds Cmd+F to a command in Settings > Keys, that command runs first.
+- The list of the General labels is in `settings/search.ts`. A source test checks it against Settings > General. A new row of General must add its label to that list.
 
 ## 13. Performance targets
 
@@ -995,9 +1056,9 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | Unit | Vitest | The state machine, the registry merge, install and uninstall, and key map conflicts. |
 | Mod | `claude plugin test` | The hooks module, with a fake `http.fetch`. |
 | Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. The test also checks that the animated background moves, that it stays still with reduced motion, that it pauses in place without the window focus and with the setting off, and that each frame has the light blur (section 8.10). |
-
-With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)` and `stopLoader(sessionId)` show and remove the Take control loader with no real Take control. A visual check uses it. An app with the real home has no hook.
 | Manual | Checklist | The M0 questions, Take control and the DMG. |
+
+With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)`, `finishLoader(sessionId)` and `stopLoader(sessionId)` show the Take control loader, end its Take control part and remove it, with no real Take control. A visual check uses it. An app with the real home has no hook.
 
 ## 16. Milestones
 
@@ -1095,7 +1156,7 @@ The user made decisions 1 to 3. The controller made the others during M4. The M4
 2. A watched row has a soft tint and a 3 px stripe in the full watch colour at its left edge. The yellow box and the red box keep a contrast of 3:1 or more on each watched row, also when it is selected or under the pointer. The watch red and yellow are a different shade from the box colours. The red box is `#f5766d`.
 3. The focused panel is darker than the other panels. Its glow is above the top edge only. The change takes 250 ms.
 4. Text that users read in the app says "folder", not "directory". An error stays until the user closes it. A notice goes away after 5 s. The notice "Deleting the session..." stays while a Delete runs.
-5. Only a prompt box blocks Send message, Run slash command and Rename. Take control is blocked by each red box (section 9.2). An Interrupt cancels a send that waits in the queue, then sends the Esc at once.
+5. Only a prompt box blocks Send message and Run slash command. Take control is blocked by each red box (section 9.2). An Interrupt cancels a send that waits in the queue, then sends the Esc at once.
 6. Delete of a worktree session:
    1. The dialog shows the result of a check for unmerged commits and changed files. With unmerged work or a failed check, the confirm needs a second click.
    2. Before the stop of a running session, Bifrost checks the worktree again. Tracked changes stop the Delete, because `claude rm` keeps such a worktree.
@@ -1124,7 +1185,7 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 10. D10: Install and Turn on remove an old hook install before the first `claude plugin` command. A failure stops the action. Remove does the old removal last, after the plugin steps and the delete of the mod folder (controller ruling). The reason: a failed removal of the old install must not leave the mod installed. Bifrost keeps `statusline-original.json` and the backups.
 11. D11: The API for M5a is `live.status()`, `live.install()`, `live.enable()`, `live.disable()` and `live.uninstall()`. `enable` refuses when the plugin is not installed.
 12. D12: The parser keeps `five_hour` and `seven_day` as the rate limits and drops other windows. This work adds no Usage HUD.
-13. D13: A new session always gets the `--settings` statusLine override. Take control passes it too, because it starts from a foreground session: the session ID stays the same and the statusline goes away (test of 2026-11-06). Resume and Resume all add no flag, because a resume with a new flag on a background session starts a copy with a new session ID. Section 22 item 1 passed the override only without the wrapper.
+13. D13: A new session always gets the `--settings` statusLine override. Take control passes it too, because it starts from a foreground session: the session ID stays the same and the statusline goes away (test of 2026-11-06). Resume and Resume all add no flag to an owned row, because a resume with a new flag on a background session starts a copy with a new session ID. A parked external row exists only after a failed Take control. Its last entry was in the foreground, so Resume passes the override for it, as Take control does. A Warp session that ends with no Take control does not become a parked row, so Bifrost cannot resume it. Section 22 item 1 passed the override only without the wrapper.
 14. D14: This section holds the decisions of the Live details work. Section 22 keeps its text, with a note that this section changes its statusline line.
 15. O1: Yes. A controller task installs the mod at user scope for a short time (Part B of the check). It saves backups and SHA-256 values first, and it runs no `/reload-plugins` in a session of the user.
 16. O2: The guard `cc-plugin-sec-default` is not in the list of the user. The `classic.*` events are usable.

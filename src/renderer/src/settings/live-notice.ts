@@ -160,6 +160,15 @@ export function liveStateLine(notice: LiveNotice): string {
 // The buttons of the Live details section. retry loads the status again.
 export type LiveActionId = 'install' | 'enable' | 'disable' | 'remove' | 'retry'
 
+// The labels of the buttons. The search of Settings also reads them.
+export const LIVE_ACTION_LABELS: Readonly<Record<LiveActionId, string>> = {
+  disable: 'Turn off',
+  enable: 'Turn on',
+  install: 'Install',
+  remove: 'Remove',
+  retry: 'Try again',
+}
+
 export function liveActions(status: LiveStatus | null): LiveActionId[] {
   if (status === null) return []
   switch (status.plugin) {

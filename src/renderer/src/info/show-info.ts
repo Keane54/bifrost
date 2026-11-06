@@ -81,6 +81,10 @@ export function infoSections(
     {
       items: [
         { label: 'Name', value: dash(row.name) },
+        // A local name hides the real name, so Show Info gives it.
+        ...(row.name === row.claudeName
+          ? []
+          : [{ label: 'Claude Code name', value: dash(row.claudeName) }]),
         { label: 'Session ID', mono: true, value: dash(row.sessionId) },
         { label: 'Short ID', mono: true, value: dash(row.shortId) },
         { label: 'Kind', value: kind },

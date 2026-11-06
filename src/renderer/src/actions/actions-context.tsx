@@ -323,7 +323,8 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
             if (!confirmed) return
             // The chat window opens at once with the loader, and the row is selected (spec 9.2).
             // A failure removes the loader and closes the window. The catch below shows the
-            // error. After a good Take control, the loader stays until the terminal shows Claude.
+            // error. After a good Take control, the plan restarts the chat, and then the loader
+            // waits for the first output of the terminal (finishLoader below).
             select(sessionId)
             chats.startLoader(sessionId)
             dispatch({ panelId: chatPanelId(sessionId), type: 'open' })
@@ -334,7 +335,6 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
               dispatch({ panelId: chatPanelId(sessionId), type: 'close' })
               throw err
             }
-            chats.finishLoader(sessionId)
             break
           }
           case 'open-in-terminal': {
@@ -373,6 +373,9 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           case 'none':
             break
         }
+        // The restart above comes first. So an ended terminal attaches again, and its first
+        // output can remove the loader (review Important 2).
+        if (plan.call === 'take-control') chats.finishLoader(sessionId)
       } catch (err) {
         fail(err)
       } finally {

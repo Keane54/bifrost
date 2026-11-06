@@ -21,7 +21,8 @@ export type ApiCall =
   | 'watch-remove'
 
 // What the provider does with the chat window after a call that did not fail. Take control opens
-// its chat window before the call, with the loader (spec 9.2). So it needs no step after the call.
+// its chat window before the call, with the loader (spec 9.2). After the call, it restarts the
+// chat, because an ended terminal attaches again only after a restart (review Important 2).
 export type After = 'none' | 'close-chat' | 'restart-chat'
 
 export type RunPlan =
@@ -115,7 +116,7 @@ export function planRun(
     case 'resume':
       return call('resume', null, 'restart-chat')
     case 'take-control':
-      return call('take-control', confirmFor('take-control', row, ctx.labels), 'none')
+      return call('take-control', confirmFor('take-control', row, ctx.labels), 'restart-chat')
     case 'stop':
       // A session that does not work gets no confirmation.
       return call('stop', confirmFor('stop', row, ctx.labels), 'none')

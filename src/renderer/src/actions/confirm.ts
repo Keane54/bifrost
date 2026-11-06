@@ -31,6 +31,14 @@ function bareLabel(id: 'stop' | 'delete' | 'take-control', labels: LabelSet): st
   return actionLabel(id, labels).replace(/\.\.\.$/, '')
 }
 
+// The name in a confirmation. A local name comes with the Claude Code name, so the text names the
+// session without doubt.
+function namedRow(row: SessionRow): string {
+  return row.name === row.claudeName
+    ? row.name
+    : `${row.name} (Claude Code name: ${row.claudeName})`
+}
+
 export function confirmFor(
   id: 'stop' | 'delete' | 'take-control',
   row: SessionRow,
@@ -41,7 +49,7 @@ export function confirmFor(
     if (row.state !== 'working') return null
     const label = bareLabel('stop', labels)
     return {
-      body: `${row.name} is working right now. ${VERBS[labels].stopIt} anyway? The current turn will end.`,
+      body: `${namedRow(row)} is working right now. ${VERBS[labels].stopIt} anyway? The current turn will end.`,
       confirm: label,
       title: label,
     }
@@ -50,11 +58,11 @@ export function confirmFor(
     const label = bareLabel('delete', labels)
     // The title names the session. The word "session" of the plain label goes, because the name
     // follows it: "Delete bifrost-a1b2", or "Self-destruct bifrost-a1b2" with the space labels.
-    const title = `${label.replace(/ session$/, '')} ${row.name}`
+    const title = `${label.replace(/ session$/, '')} ${namedRow(row)}`
     // claude rm keeps the transcript file, so the text does not say that the conversation goes
     // (final review M6).
     const verb = VERBS[labels].delete
-    const plain = `${verb} ${row.name}? This removes the session from Claude Code and Bifrost.`
+    const plain = `${verb} ${namedRow(row)}? This removes the session from Claude Code and Bifrost.`
     const ask = `Are you sure you want to ${verb.toLowerCase()} this?`
     const again = `${verb} anyway`
     if (check === null) {
@@ -91,8 +99,9 @@ export function confirmFor(
     }
   }
   const label = bareLabel('take-control', labels)
+  const who = row.name === row.claudeName ? '' : ` ${namedRow(row)}`
   return {
-    body: `This closes the session in ${row.terminalApp ?? 'its terminal'} and moves it into Bifrost.`,
+    body: `This closes the session${who} in ${row.terminalApp ?? 'its terminal'} and moves it into Bifrost.`,
     confirm: label,
     title: label,
   }

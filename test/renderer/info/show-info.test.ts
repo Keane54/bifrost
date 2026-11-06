@@ -57,6 +57,17 @@ describe('panel IDs', () => {
 })
 
 describe('infoSections', () => {
+  it('gives the Claude Code name after the name when a local name is set', () => {
+    const sections = infoSections({ ...full, claudeName: 'fix-a', name: 'Work' }, NOW, null, UTC)
+    expect(sections[0].items.map(i => i.label).slice(0, 3)).toEqual([
+      'Name',
+      'Claude Code name',
+      'Session ID',
+    ])
+    expect(item(sections, 'Session', 'Name')).toBe('Work')
+    expect(item(sections, 'Session', 'Claude Code name')).toBe('fix-a')
+  })
+
   it('infoSections gives the values of spec 8.6 in order', () => {
     const sections = infoSections(full, NOW, null, UTC)
     expect(sections.map(s => [s.title, s.items.map(i => i.label)])).toEqual([

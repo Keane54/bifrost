@@ -31,6 +31,8 @@ export interface KeyContext {
   zone: FocusZone
   // True when another handler took the Esc key, for example a popover or a drag (spec 9.4).
   escapeHandled?: boolean
+  // True for a key repeat: the key is held down.
+  repeat?: boolean
 }
 
 const NONE: KeyIntent = { kind: 'none' }
@@ -99,10 +101,10 @@ export function stepStack(frames: Frame[], by: -1 | 1): string | null {
 // Settings when Settings is the active panel of the top frame. Else it opens Settings and brings it
 // to the front. Esc does nothing when another handler took it, for example a popover or a drag.
 // A chat window, a text field, a dialog, a menu and the key recorder keep their own Esc.
-// Esc never clears the selection.
+// Esc never clears the selection. A key repeat of a held Esc does not toggle Settings again.
 function escapeIntent(ctx: KeyContext): KeyIntent {
   if (ctx.zone === 'send-box') return { kind: 'leave-send-box' }
-  if (ctx.escapeHandled === true) return NONE
+  if (ctx.escapeHandled === true || ctx.repeat === true) return NONE
   if (ctx.zone !== 'other' && ctx.zone !== 'control') return NONE
   return topFrame({ frames: ctx.frames })?.active === 'settings'
     ? { kind: 'close-panel', panelId: 'settings' }
