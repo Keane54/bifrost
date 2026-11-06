@@ -903,6 +903,8 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 - `pnpm dev` starts Bifrost from the repository.
 - `pnpm dist` makes a universal DMG for Apple Silicon and Intel.
 - The build uses an ad-hoc signature, because Apple Silicon does not run code without a signature.
+- electron-builder uses `identity: '-'` and `hardenedRuntime: false`. node-pty stays outside the asar. The universal merge keeps the two node-pty prebuilds (`x64ArchFiles`).
+- The app has no `node-pty/build` folder. That folder holds an arm64 build only, and node-pty loads it before the prebuilds.
 - `package.json` has `"private": true` and `"license": "UNLICENSED"`.
 - The repository has no remote.
 - Bifrost stays on your Mac for now.

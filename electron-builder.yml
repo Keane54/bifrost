@@ -1,43 +1,30 @@
-appId: com.electron.app
+appId: com.keyholding.bifrost
 productName: Bifrost
 directories:
   buildResources: build
+  output: dist
 files:
-  - '!**/.vscode/*'
-  - '!src/*'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{dev-app-update.yml,CHANGELOG.md,README.md}'
-  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - out/**
+  - resources/**
+  - '!resources/live-mod/tests/**'
+  - '!resources/live-mod/tsconfig.json'
+  - '!resources/live-mod/.claude-plugin/types/**'
+  - '!**/node_modules/node-pty/prebuilds/win32-*/**'
+  - '!**/node_modules/node-pty/build/**'
 asarUnpack:
   - resources/**
-win:
-  executableName: bifrost
-nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
+  - '**/node_modules/node-pty/**'
 mac:
-  entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  notarize: false
-dmg:
-  artifactName: ${name}-${version}.${ext}
-linux:
   target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
-  category: Utility
-appImage:
-  artifactName: ${name}-${version}.${ext}
+    - target: dmg
+      arch: universal
+  category: public.app-category.developer-tools
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  notarize: false
+  x64ArchFiles: '**/node_modules/node-pty/**'
+dmg:
+  artifactName: ${productName}-${version}-universal.${ext}
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates
+publish: null

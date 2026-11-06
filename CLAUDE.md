@@ -27,6 +27,7 @@ Core rules of the specification:
 - Build each className with cx(). Do not build a className with a template literal.
 - Format and lint the code with Biome. Run `pnpm check` before each commit.
 - Wrap commit body lines at 100 characters. commitlint refuses longer lines.
+- Run `pnpm dist` to make the DMG. Run `pnpm smoke` before a DMG.
 
 When you edit existing text, check that it conforms. If it does not conform, correct it.
 

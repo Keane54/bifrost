@@ -196,7 +196,7 @@ function startApp(): void {
 
   // Electron fires this event when it is ready to create windows.
   app.whenReady().then(() => {
-    electronApp.setAppUserModelId('com.electron')
+    electronApp.setAppUserModelId('com.keyholding.bifrost')
 
     // A change of a menu key in the settings builds the menu again.
     setMenuRebuild(showMenu)
