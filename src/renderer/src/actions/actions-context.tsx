@@ -417,6 +417,17 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     [dispatch, fail, runCall, select, send],
   )
 
+  // A click on a notification of a box selects the session and opens its chat window. The run
+  // opens the chat window only for an owned row that is not parked.
+  useEffect(
+    () =>
+      window.bifrost.alerts.onOpen(sessionId => {
+        select(sessionId)
+        run('open', sessionId)
+      }),
+    [run, select],
+  )
+
   const runGlobal = useCallback(
     (id: GlobalActionId) => {
       if (id === 'new-session') {

@@ -34,6 +34,9 @@ const api: BifrostApi = {
     terminalApps: () => invoke('actions:terminal-apps'),
     terminalIcon: sessionId => invoke('actions:terminal-icon', sessionId),
   },
+  alerts: {
+    onOpen: cb => subscribe('alerts:open', cb),
+  },
   claudePath: () => invoke('claude:path'),
   claudeVersion: () => invoke('claude:version'),
   display: {

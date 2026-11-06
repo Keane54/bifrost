@@ -13,6 +13,7 @@ import {
   send,
   setMenuRebuild,
   setModeController,
+  setWindowShower,
   stopRegistry,
 } from './ipc'
 import { buildMenuTemplate, menuKeys, modeHandlers, zoomStep } from './menu'
@@ -196,6 +197,8 @@ function startApp(): void {
 
     // A change of a menu key in the settings builds the menu again.
     setMenuRebuild(showMenu)
+    // A click on a notification shows the window.
+    setWindowShower(showWindow)
 
     // Register the IPC handlers before any window loads a page.
     // This also opens the settings store and starts the registry service.

@@ -27,6 +27,8 @@ import { hasLeftKey, SessionInput } from './actions/session-input'
 import { createTerminalLauncher } from './actions/terminal-launch'
 import { hasMessages } from './actions/transcript'
 import { checkWorktreeHead, createWorktreeActions, trackedChanges } from './actions/worktree-check'
+import { AFPLAY, createAlertMonitor, SOUND_FILE } from './alerts/alert-monitor'
+import { showNotification } from './alerts/notifier'
 import { type AgentList, listAgents } from './claude/agents'
 import {
   createRunClaude,
@@ -103,6 +105,7 @@ let liveRegistry: SessionRegistry | null = null
 let settingsStore: SettingsStore | null = null
 // index.ts gives the function that builds the app menu again.
 let menuRebuild: (() => void) | null = null
+let showWindowFn: (() => void) | null = null
 let serviceStopped = false
 // Live details. registerIpc sets it. stopRegistry stops its server.
 let liveControl: LiveControl | null = null
@@ -146,6 +149,11 @@ export function send(channel: string, ...args: unknown[]): void {
 }
 
 // Set the function that builds the app menu again. A change of a menu key calls it.
+// Set the function that shows and focuses the window. A click on a notification calls it.
+export function setWindowShower(fn: (() => void) | null): void {
+  showWindowFn = fn
+}
+
 export function setMenuRebuild(fn: (() => void) | null): void {
   menuRebuild = fn
 }
@@ -263,8 +271,26 @@ async function startService(
     ...SERVICE_TIMING,
     activeMs: current.pollSeconds * 1000,
   })
+  // The monitor reads the settings from the store at each update (ruling C6).
+  const alerts = createAlertMonitor({
+    focused: () => currentWindow?.isFocused() ?? false,
+    notify: n =>
+      showNotification(n, sessionId => {
+        showWindowFn?.()
+        if (sessionId !== null) send('alerts:open', sessionId)
+      }),
+    now,
+    playSound: () => {
+      // Do not wait for the sound. A failed sound is not an error for the user.
+      execFile(AFPLAY, [SOUND_FILE], { timeoutMs: 5000 }).catch(err =>
+        console.error('Bifrost cannot play the alert sound.', err),
+      )
+    },
+    settings: () => settings.get(),
+  })
   service.onUpdate((rows, error) => {
     send('registry:update', rows, error)
+    alerts.update(rows)
   })
   liveRegistry = registry
   liveService = service

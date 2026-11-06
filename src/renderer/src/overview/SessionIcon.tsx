@@ -4,6 +4,7 @@ import { SquareTerminal } from 'lucide-react'
 import type { SessionRow } from '../../../shared/types'
 import { cx } from '../lib/cx'
 import { useTerminalIcon } from '../lib/use-terminal-icon'
+import { useSettings } from '../settings/settings-context'
 import { BifrostMark } from './BifrostMark'
 import { iconKind, projectColourIndex, projectKey } from './session-icon'
 
@@ -40,6 +41,8 @@ const CORNERS = [
 export function SessionIcon({ row, size }: { row: SessionRow; size: number }): React.JSX.Element {
   const kind = iconKind(row)
   const appIcon = useTerminalIcon(row)
+  const { settings } = useSettings()
+  const flash = row.flashing && settings.rowFlash
   const colour =
     kind === 'parked' ? 'text-parked' : PROJECT_TEXT[projectColourIndex(projectKey(row.cwd)) - 1]
   const arm = `${size * 0.3}px`
@@ -75,7 +78,7 @@ export function SessionIcon({ row, size }: { row: SessionRow; size: number }): R
               'absolute',
               corner,
               row.box === 'yellow' ? 'border-box-yellow' : 'border-box-red',
-              row.flashing && 'animate-box-flash',
+              flash && 'animate-box-flash',
             )}
             key={corner}
             style={{ height: arm, width: arm }}

@@ -97,6 +97,10 @@ export interface BifrostApi {
     // Show the directory picker. This resolves with null after a cancel.
     pickDirectory(defaultPath: string | null): Promise<string | null>
   }
+  alerts: {
+    // A click on a notification of a box. The main process sends the session ID.
+    onOpen(cb: (sessionId: string) => void): () => void
+  }
   // Live details (D11). Each action resolves with the new status. It rejects with the message
   // of its failure. A switch calls install when plugin is not-installed, else enable or disable.
   live: {
