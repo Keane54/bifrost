@@ -5,6 +5,7 @@ import { Search } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DIALOG_BUTTON } from '../actions/ConfirmDialog'
 import { cx } from '../lib/cx'
+import { once } from '../lib/once'
 import { useWmControls } from '../wm/context'
 import GeneralSection from './GeneralSection'
 import KeysSection from './KeysSection'
@@ -56,7 +57,7 @@ function onlyOf(hit: SearchHit): ReadonlySet<string> | null {
   return hit.whole ? null : new Set(hit.rows)
 }
 
-function Hit({ hit }: { hit: SearchHit }): React.JSX.Element {
+function Hit({ hit, readLive }: { hit: SearchHit; readLive: () => void }): React.JSX.Element {
   const only = useMemo(() => onlyOf(hit), [hit])
   return (
     <section data-search-section={hit.id}>
@@ -67,7 +68,7 @@ function Hit({ hit }: { hit: SearchHit }): React.JSX.Element {
       {hit.id === 'general' && <GeneralSection only={only} />}
       {hit.id === 'slash' && <SlashSection only={only} />}
       {hit.id === 'keys' && <KeysSection only={only} />}
-      {hit.id === 'live' && <LiveSection />}
+      {hit.id === 'live' && <LiveSection readStatus={readLive} />}
     </section>
   )
 }
@@ -77,7 +78,14 @@ export default function SettingsPanel(): React.JSX.Element {
   const { dispatch } = useWmControls()
   const { settings } = useSettings()
   // The Live details tab shows the same dot as the side bar Settings button (D11).
-  const { notice, status, version, versionFailed, warning } = useLive()
+  const { notice, refresh, status, version, versionFailed, warning } = useLive()
+  // Live details reads its status one time for each view of Settings (review Minor 1). A search
+  // shows the Live details block at many queries, and each read runs claude plugin list.
+  const [readLive] = useState(() =>
+    once(() => {
+      void refresh()
+    }),
+  )
   const [tracker] = useState(() => new SaveTracker())
   const [saving, setSaving] = useState(false)
   const [query, setQuery] = useState('')
@@ -248,11 +256,11 @@ export default function SettingsPanel(): React.JSX.Element {
           {hits === null && section === 'general' && <GeneralSection />}
           {hits === null && section === 'slash' && <SlashSection />}
           {hits === null && section === 'keys' && <KeysSection />}
-          {hits === null && section === 'live' && <LiveSection />}
+          {hits === null && section === 'live' && <LiveSection readStatus={readLive} />}
           {hits !== null && (
             <section aria-label='Search results' data-search-results={true}>
               {hits.map(hit => (
-                <Hit hit={hit} key={hit.id} />
+                <Hit hit={hit} key={hit.id} readLive={readLive} />
               ))}
               {hits.length === 0 && (
                 <p className='px-3 py-2 text-text-dim text-xs' data-settings-no-match={true}>

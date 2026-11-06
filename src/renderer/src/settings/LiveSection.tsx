@@ -29,7 +29,10 @@ function Note({ text, name }: { text: string | null; name: string }): React.JSX.
   )
 }
 
-export default function LiveSection(): React.JSX.Element {
+// readStatus: the status read of the Settings view. It reads the status one time for each view,
+// so a search that shows this section at many queries does not run claude plugin list again
+// (review Minor 1).
+export default function LiveSection({ readStatus }: { readStatus: () => void }): React.JSX.Element {
   const live = useLive()
   const { busy, changed, notice, refresh, status, version, versionFailed } = live
   const confirm = useConfirm()
@@ -37,10 +40,10 @@ export default function LiveSection(): React.JSX.Element {
   // True after the first Install click. The steps then show with Install and Cancel.
   const [showSteps, setShowSteps] = useState(false)
 
-  // Read the status again each time the section opens. So the state line is current.
+  // Read the status when the section opens: one time for each view of Settings.
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    readStatus()
+  }, [readStatus])
 
   // Run a call. A failure shows its message until the user closes it. The result is true when
   // the call worked.
