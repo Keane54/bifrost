@@ -1,7 +1,7 @@
 // The smoke test of spec 15 (D23). It starts Bifrost with a fake claude and a test home. It checks
-// the setup dialog, the sample sessions, the Parked tab and one chat window. It also checks that
-// the real Claude files and ~/.bifrost did not change, and that the fake claude got no unknown
-// call.
+// the setup dialog, the sample sessions, the animated background, the Parked tab and one chat
+// window. It also checks that the real Claude files and ~/.bifrost did not change, and that the
+// fake claude got no unknown call.
 //
 // app.ts tells how to start the build in out/ or the packaged app.
 
@@ -52,6 +52,17 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     await expect(row('smoke-alpha')).toBeVisible({ timeout: 15_000 })
     await expect(row('smoke-beta')).toBeVisible()
     await expect(row('smoke-gamma')).toHaveCount(0)
+
+    // Step 4b: the animated background (spec 8.10) is behind the frames and moves. With reduced
+    // motion, it stays still. Each frame has the same light blur.
+    const fields = page.locator('.background .background-field')
+    await expect(fields).toHaveCount(6)
+    await expect(fields.first()).toHaveCSS('animation-name', 'background-drift-1')
+    await expect(page.locator('[data-frame-id]').first()).toHaveCSS('backdrop-filter', 'blur(8px)')
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expect(fields.first()).toHaveCSS('animation-name', 'none')
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await expect(fields.first()).toHaveCSS('animation-name', 'background-drift-1')
 
     // Step 5: the Parked tab shows the parked session. It comes from the first --all poll.
     await overview.getByRole('tab', { exact: true, name: 'Parked' }).click()
