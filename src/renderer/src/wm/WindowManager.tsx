@@ -11,6 +11,7 @@ import {
 import { ActionsProvider } from '../actions/actions-context'
 import { ConfirmProvider } from '../actions/ConfirmDialog'
 import { ChatsProvider } from '../chat/chat-terminals'
+import { KeysProvider } from '../keys/KeysProvider'
 import { cx } from '../lib/cx'
 import { overviewsReducer } from '../overview/config'
 import { OverviewsProvider } from '../overview/overviews-context'
@@ -20,7 +21,14 @@ import { LiveProvider } from '../settings/live-context'
 import SetupDialog from '../settings/SetupDialog'
 import { useSettings } from '../settings/settings-context'
 import { SettingsNavProvider } from '../settings/settings-nav'
-import { LayoutsContext, type WmControls, WmControlsContext, WmStateContext } from './context'
+import {
+  LayoutMenuContext,
+  type LayoutMenuState,
+  LayoutsContext,
+  type WmControls,
+  WmControlsContext,
+  WmStateContext,
+} from './context'
 import Frame, { type DragMode } from './Frame'
 import {
   type Edge,
@@ -136,6 +144,8 @@ export default function WindowManager(): React.JSX.Element {
   const [live, setLive] = useState<Live | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [layoutNames, setLayoutNames] = useState<readonly string[]>([])
+  // The Layout menu of the side bar. Cmd+Option+S opens it (D9).
+  const [layoutMenu, setLayoutMenu] = useState({ focusRequest: 0, open: false })
   const areaRef = useRef<HTMLDivElement>(null)
   const stateRef = useRef(state)
   // The drag reads the snap distance from this ref, so a change applies at the next drag.
@@ -515,7 +525,15 @@ export default function WindowManager(): React.JSX.Element {
     [scheduleSave],
   )
 
-  // The functions for the side bar and the menus. This value does not change.
+  const setLayoutMenuOpen = useCallback((open: boolean) => {
+    setLayoutMenu(menu => (menu.open === open ? menu : { ...menu, open }))
+  }, [])
+  const layoutMenuValue = useMemo<LayoutMenuState>(
+    () => ({ ...layoutMenu, setOpen: setLayoutMenuOpen }),
+    [layoutMenu, setLayoutMenuOpen],
+  )
+
+  // The functions for the side bar, the menus and the keys. This value does not change.
   const controls = useMemo<WmControls>(
     () => ({
       deleteLayout: name => setStore(deleteLayout(storeRef.current, name)),
@@ -525,6 +543,8 @@ export default function WindowManager(): React.JSX.Element {
         if (!item) return
         dispatch({ frames: item.snapshot.frames, memory: item.snapshot.memory, type: 'load' })
       },
+      openLayoutSave: () =>
+        setLayoutMenu(menu => ({ focusRequest: menu.focusRequest + 1, open: true })),
       saveLayout: name => {
         const store = storeRef.current
         const next = saveLayout(store, name, toSnapshot(stateRef.current))
@@ -556,96 +576,105 @@ export default function WindowManager(): React.JSX.Element {
     <WmControlsContext value={controls}>
       <WmStateContext value={state}>
         <LayoutsContext value={layoutNames}>
-          {/* The side bar and the Settings panel open the Settings panel and its section. */}
-          <SettingsNavProvider>
-            {/* The side bar, the setup dialog and the Settings panel read the state of Live
-            details. */}
-            <LiveProvider>
-              {/* The send box and the New session dialog read and change the dialog history. */}
-              <HistoryProvider history={history} update={updateHistory}>
-                {/* One confirmation dialog for Stop, Delete and Take control. */}
-                <ConfirmProvider>
-                  {/* The chat terminals follow the open chat panels in the frames. */}
-                  <ChatsProvider>
-                    {/* The actions read the frames, the history, the confirmation and the chat
-                terminals. So the provider is inside these four. */}
-                    <ActionsProvider>
-                      <div className='flex h-full w-full'>
-                        <SideBar />
-                        {/* The Overview panels, the frame titles and the frame menus read the
-                    configs. */}
-                        <OverviewsProvider dispatch={dispatchOverviews} state={overviews}>
-                          {/* The area keeps the z-order of its frames inside it. So a popover can be
-                      above them. A text selection cannot start on the empty area. The panel
-                      content allows it. During a drag or a resize, no part of the area allows a
-                      selection. */}
-                          <div
-                            className={cx(
-                              'relative isolate min-w-0 flex-1 select-none overflow-hidden',
-                              dragging && '**:select-none',
-                            )}
-                            data-panel-area={true}
-                            ref={areaRef}
-                          >
-                            {order.map(frame => (
-                              <Frame
-                                dispatch={dispatch}
-                                frame={
-                                  live?.frameId === frame.id ? { ...frame, rect: live.rect } : frame
-                                }
-                                key={frame.id}
-                                onDrag={beginDrag}
-                                top={frame.id === topId}
-                                z={shown.indexOf(frame)}
-                              />
-                            ))}
-                            {/* The arrow marks of the snap that a release applies (spec 8.1). The x
-                        mark has a left or right arrow, and the y mark has an up or down arrow.
-                        So the direction is a unique key. */}
-                            {marks.map(m => {
-                              const Arrow = MARK_ARROWS[m.dir]
-                              return (
-                                <Arrow
-                                  aria-hidden={true}
-                                  className='pointer-events-none absolute text-snap'
-                                  data-snap-mark={m.dir}
-                                  key={m.dir}
-                                  size={MARK_SIZE}
-                                  strokeWidth={3}
-                                  style={{
-                                    left: markStart(m.x, bounds.w),
-                                    top: markStart(m.y, bounds.h),
-                                    zIndex: overlayZ,
-                                  }}
-                                />
-                              )
-                            })}
-                            {/* The title bar where a drop stacks the dragged frame. The outline is
-                        above all frames, because the dragged frame covers the title bar. */}
-                            {dropBar && dropFrame && (
+          <LayoutMenuContext value={layoutMenuValue}>
+            {/* The side bar and the Settings panel open the Settings panel and its section. */}
+            <SettingsNavProvider>
+              {/* The side bar, the setup dialog and the Settings panel read the state of
+                  Live details. */}
+              <LiveProvider>
+                {/* The send box and the New session dialog read and change the dialog history. */}
+                <HistoryProvider history={history} update={updateHistory}>
+                  {/* One confirmation dialog for Stop, Delete and Take control. */}
+                  <ConfirmProvider>
+                    {/* The chat terminals follow the open chat panels in the frames. */}
+                    <ChatsProvider>
+                      {/* The actions read the frames, the history, the confirmation and the
+                          chat terminals. So the provider is inside these four. */}
+                      <ActionsProvider>
+                        <div className='flex h-full w-full'>
+                          <SideBar />
+                          {/* The Overview panels, the frame titles and the frame menus read
+                              the configs. */}
+                          <OverviewsProvider dispatch={dispatchOverviews} state={overviews}>
+                            {/* The keys of spec 9.4 read the frames, the Overview configs, the
+                                rows and the actions. */}
+                            <KeysProvider>
+                              {/* The area keeps the z-order of its frames inside it. So a
+                                  popover can be above them. A text selection cannot start on
+                                  the empty area. The panel content allows it. During a drag or
+                                  a resize, no part of the area allows a selection. */}
                               <div
-                                className='pointer-events-none absolute bg-text-strong/10 outline-2 outline-text-strong/30 -outline-offset-2'
-                                data-drop-target={dropFrame.id}
-                                style={{
-                                  height: dropBar.h,
-                                  left: dropBar.x,
-                                  top: dropBar.y,
-                                  width: dropBar.w,
-                                  zIndex: overlayZ,
-                                }}
-                              />
-                            )}
-                          </div>
-                        </OverviewsProvider>
-                      </div>
-                    </ActionsProvider>
-                  </ChatsProvider>
-                </ConfirmProvider>
-              </HistoryProvider>
-              {/* The setup dialog at the first start (spec 11.1). */}
-              <SetupDialog />
-            </LiveProvider>
-          </SettingsNavProvider>
+                                className={cx(
+                                  'relative isolate min-w-0 flex-1 select-none overflow-hidden',
+                                  dragging && '**:select-none',
+                                )}
+                                data-panel-area={true}
+                                ref={areaRef}
+                              >
+                                {order.map(frame => (
+                                  <Frame
+                                    dispatch={dispatch}
+                                    frame={
+                                      live?.frameId === frame.id
+                                        ? { ...frame, rect: live.rect }
+                                        : frame
+                                    }
+                                    key={frame.id}
+                                    onDrag={beginDrag}
+                                    top={frame.id === topId}
+                                    z={shown.indexOf(frame)}
+                                  />
+                                ))}
+                                {/* The arrow marks of the snap that a release applies (spec
+                                    8.1). The x mark has a left or right arrow, and the y mark
+                                    has an up or down arrow. So the direction is a unique key. */}
+                                {marks.map(m => {
+                                  const Arrow = MARK_ARROWS[m.dir]
+                                  return (
+                                    <Arrow
+                                      aria-hidden={true}
+                                      className='pointer-events-none absolute text-snap'
+                                      data-snap-mark={m.dir}
+                                      key={m.dir}
+                                      size={MARK_SIZE}
+                                      strokeWidth={3}
+                                      style={{
+                                        left: markStart(m.x, bounds.w),
+                                        top: markStart(m.y, bounds.h),
+                                        zIndex: overlayZ,
+                                      }}
+                                    />
+                                  )
+                                })}
+                                {/* The title bar where a drop stacks the dragged frame. The
+                                    outline is above all frames, because the dragged frame
+                                    covers the title bar. */}
+                                {dropBar && dropFrame && (
+                                  <div
+                                    className='pointer-events-none absolute bg-text-strong/10 outline-2 outline-text-strong/30 -outline-offset-2'
+                                    data-drop-target={dropFrame.id}
+                                    style={{
+                                      height: dropBar.h,
+                                      left: dropBar.x,
+                                      top: dropBar.y,
+                                      width: dropBar.w,
+                                      zIndex: overlayZ,
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            </KeysProvider>
+                          </OverviewsProvider>
+                        </div>
+                      </ActionsProvider>
+                    </ChatsProvider>
+                  </ConfirmProvider>
+                </HistoryProvider>
+                {/* The setup dialog at the first start (spec 11.1). */}
+                <SetupDialog />
+              </LiveProvider>
+            </SettingsNavProvider>
+          </LayoutMenuContext>
         </LayoutsContext>
       </WmStateContext>
     </WmControlsContext>

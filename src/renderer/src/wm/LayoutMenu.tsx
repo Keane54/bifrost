@@ -1,7 +1,7 @@
 import { LayoutGrid } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { cx } from '../lib/cx'
-import { useLayouts, useWmControls } from './context'
+import { useLayoutMenu, useLayouts, useWmControls } from './context'
 import { MAX_LAYOUTS, MAX_NAME } from './layout'
 import { useDismiss } from './popover'
 
@@ -14,6 +14,7 @@ const SMALL_BUTTON =
 
 function LayoutPopover(props: {
   button: RefObject<HTMLButtonElement | null>
+  focusRequest: number
   onClose(): void
 }): React.JSX.Element {
   const { saveLayout, loadLayout, deleteLayout } = useWmControls()
@@ -24,9 +25,11 @@ function LayoutPopover(props: {
   const field = useRef<HTMLInputElement>(null)
   useDismiss(ref, props.button, props.onClose)
 
+  // The field takes the focus when the popover opens, and again at each Cmd+Option+S.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each new request focuses the field again.
   useEffect(() => {
     field.current?.focus()
-  }, [])
+  }, [props.focusRequest])
 
   // Enter in the name field also sends this form.
   function onSubmit(e: React.FormEvent<HTMLFormElement>): void {
@@ -99,10 +102,11 @@ function LayoutPopover(props: {
 }
 
 // The Layouts button at the bottom of the side bar, and its popover.
+// The window manager keeps the open state, so Cmd+Option+S can open the popover.
 export default function LayoutMenu(props: { className: string }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
+  const { focusRequest, open, setOpen } = useLayoutMenu()
   const button = useRef<HTMLButtonElement>(null)
-  const close = useCallback(() => setOpen(false), [])
+  const close = useCallback(() => setOpen(false), [setOpen])
 
   return (
     <div className='relative mt-auto'>
@@ -111,14 +115,14 @@ export default function LayoutMenu(props: { className: string }): React.JSX.Elem
         aria-haspopup='dialog'
         aria-label='Layouts'
         className={cx(props.className, 'h-8')}
-        onClick={() => setOpen(value => !value)}
+        onClick={() => setOpen(!open)}
         ref={button}
         title='Layouts'
         type='button'
       >
         <LayoutGrid aria-hidden={true} size={16} />
       </button>
-      {open && <LayoutPopover button={button} onClose={close} />}
+      {open && <LayoutPopover button={button} focusRequest={focusRequest} onClose={close} />}
     </div>
   )
 }

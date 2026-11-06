@@ -1,7 +1,8 @@
 import type { MenuItemConstructorOptions } from 'electron'
 import { afterEach, expect, test, vi } from 'vitest'
-import { buildMenuTemplate, modeHandlers } from '../../src/main/menu'
+import { buildMenuTemplate, menuKeys, modeHandlers, zoomStep } from '../../src/main/menu'
 import type { ModeController } from '../../src/main/window/display-mode'
+import { activeBindings, canonicalBinding, effectiveKeys } from '../../src/shared/keys'
 import type { DisplayMode } from '../../src/shared/types'
 
 function build(
@@ -11,10 +12,12 @@ function build(
 ): MenuItemConstructorOptions[] {
   return buildMenuTemplate({
     isDev,
+    keys: menuKeys(effectiveKeys({})),
     mode,
     onClosePanel: () => {},
     onMode: () => {},
     onToggleFullscreen: () => {},
+    onZoom: () => {},
     ...handlers,
   })
 }
@@ -63,9 +66,9 @@ test('the View items call the handlers', () => {
   expect(onToggleFullscreen).toHaveBeenCalledOnce()
 })
 
-test('Fullscreen has Ctrl+Cmd+F and Borderless has no accelerator', () => {
+test('Fullscreen has Cmd+Ctrl+F and Borderless has no accelerator', () => {
   const items = submenu(build(), 'View')
-  expect(items.find(item => item.label === 'Fullscreen')?.accelerator).toBe('Ctrl+Cmd+F')
+  expect(items.find(item => item.label === 'Fullscreen')?.accelerator).toBe('Cmd+Ctrl+F')
   expect(items.find(item => item.label === 'Borderless')?.accelerator).toBeUndefined()
   expect(items.find(item => item.label === 'Window')?.accelerator).toBeUndefined()
 })
@@ -137,6 +140,129 @@ test('the developer items show only in development', () => {
   expect(labels(false)).not.toContain('toggleDevTools')
   expect(labels(true)).toContain('reload')
   expect(labels(true)).toContain('toggleDevTools')
+})
+
+function itemOf(
+  template: MenuItemConstructorOptions[],
+  menu: string,
+  label: string,
+): MenuItemConstructorOptions | undefined {
+  return submenu(template, menu).find(item => item.label === label)
+}
+
+test('the menu uses the key map for Close Panel and Fullscreen', () => {
+  const keys = menuKeys(effectiveKeys({}))
+  expect(keys).toEqual({ closePanel: 'Cmd+W', fullscreen: 'Cmd+Ctrl+F' })
+  const template = build('window', false, { keys })
+  expect(itemOf(template, 'Window', 'Close Panel')?.accelerator).toBe('Cmd+W')
+  expect(itemOf(template, 'View', 'Fullscreen')?.accelerator).toBe('Cmd+Ctrl+F')
+  // A changed key in the settings gives a changed accelerator.
+  const changed = menuKeys(
+    effectiveKeys({ 'close-panel:mod': 'Mod+Shift+W', 'toggle-fullscreen:mod': 'Mod+Alt+F' }),
+  )
+  expect(changed).toEqual({ closePanel: 'Cmd+Shift+W', fullscreen: 'Cmd+Alt+F' })
+  const custom = build('window', false, { keys: changed })
+  expect(itemOf(custom, 'Window', 'Close Panel')?.accelerator).toBe('Cmd+Shift+W')
+  expect(itemOf(custom, 'View', 'Fullscreen')?.accelerator).toBe('Cmd+Alt+F')
+})
+
+test('a cleared menu key gives no accelerator', () => {
+  const keys = menuKeys(effectiveKeys({ 'close-panel:mod': null, 'toggle-fullscreen:mod': null }))
+  expect(keys).toEqual({ closePanel: null, fullscreen: null })
+  const template = build('window', false, { keys })
+  const close = itemOf(template, 'Window', 'Close Panel')
+  const fullscreen = itemOf(template, 'View', 'Fullscreen')
+  expect(close).toBeDefined()
+  expect(fullscreen).toBeDefined()
+  expect(close && 'accelerator' in close).toBe(false)
+  expect(fullscreen && 'accelerator' in fullscreen).toBe(false)
+})
+
+test('the dev Reload item uses F5', () => {
+  const reload = walk(build('window', true)).find(item => item.role === 'reload')
+  expect(reload?.accelerator).toBe('F5')
+})
+
+test('the View menu has Zoom In, Zoom Out and Actual Size, and they call onZoom', () => {
+  const onZoom = vi.fn()
+  const template = build('window', false, { onZoom })
+  const zoomIn = itemOf(template, 'View', 'Zoom In')
+  const zoomOut = itemOf(template, 'View', 'Zoom Out')
+  const actual = itemOf(template, 'View', 'Actual Size')
+  expect(zoomIn?.accelerator).toBe('Cmd+=')
+  expect(zoomOut?.accelerator).toBe('Cmd+-')
+  expect(actual).toBeDefined()
+  expect(actual && 'accelerator' in actual).toBe(false)
+  clickOf(zoomIn)()
+  clickOf(zoomOut)()
+  clickOf(actual)()
+  expect(onZoom.mock.calls).toEqual([['in'], ['out'], ['reset']])
+})
+
+test('zoomStep steps the scale by 10 from 80 to 150, and Actual Size gives 100', () => {
+  expect(zoomStep(100, 'in')).toBe(110)
+  expect(zoomStep(140, 'in')).toBe(150)
+  expect(zoomStep(150, 'in')).toBe(150)
+  expect(zoomStep(100, 'out')).toBe(90)
+  expect(zoomStep(90, 'out')).toBe(80)
+  expect(zoomStep(80, 'out')).toBe(80)
+  expect(zoomStep(130, 'reset')).toBe(100)
+  expect(zoomStep(80, 'reset')).toBe(100)
+})
+
+// The accelerators that Electron gives a role item without its own accelerator (macOS).
+const ROLE_KEYS: Readonly<Record<string, string>> = {
+  copy: 'Cmd+C',
+  cut: 'Cmd+X',
+  forceReload: 'Shift+Cmd+R',
+  hide: 'Cmd+H',
+  hideOthers: 'Alt+Cmd+H',
+  minimize: 'Cmd+M',
+  paste: 'Cmd+V',
+  quit: 'Cmd+Q',
+  redo: 'Shift+Cmd+Z',
+  reload: 'Cmd+R',
+  resetZoom: 'Cmd+0',
+  selectAll: 'Cmd+A',
+  toggleDevTools: 'Alt+Cmd+I',
+  togglefullscreen: 'Ctrl+Cmd+F',
+  undo: 'Cmd+Z',
+  zoomIn: 'Cmd+=',
+  zoomOut: 'Cmd+-',
+}
+
+test('no menu accelerator equals a renderer key of the default map', () => {
+  const renderer = new Set(activeBindings(effectiveKeys({})).map(entry => entry.binding))
+  const accelerators = new Set<string>([
+    // The role keys of the app menu, the Edit menu and the Window menu.
+    'Cmd+H',
+    'Alt+Cmd+H',
+    'Cmd+Q',
+    'Cmd+M',
+    'Alt+Cmd+I',
+    'Cmd+Z',
+    'Shift+Cmd+Z',
+    'Cmd+X',
+    'Cmd+C',
+    'Cmd+V',
+    'Cmd+A',
+  ])
+  for (const dev of [false, true]) {
+    for (const item of walk(build('window', dev))) {
+      const role = item.role === undefined ? undefined : String(item.role)
+      const fallback = role !== undefined && Object.hasOwn(ROLE_KEYS, role) ? ROLE_KEYS[role] : null
+      const accelerator = item.accelerator === undefined ? fallback : String(item.accelerator)
+      if (accelerator !== null) accelerators.add(accelerator)
+    }
+  }
+  // The Zoom items of the View menu are in the list.
+  expect(accelerators).toContain('Cmd+=')
+  expect(accelerators).toContain('Cmd+-')
+  for (const accelerator of accelerators) {
+    const binding = canonicalBinding(accelerator)
+    expect(binding, accelerator).not.toBeNull()
+    expect(renderer.has(binding ?? ''), accelerator).toBe(false)
+  }
 })
 
 // A mode controller that records the calls. A change ends when the test resolves it.

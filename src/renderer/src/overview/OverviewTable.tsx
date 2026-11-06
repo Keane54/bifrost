@@ -20,6 +20,7 @@ import { useActions } from '../actions/actions-context'
 import RowMenu from '../actions/RowMenu'
 import { openChatIds } from '../chat/views'
 import { useRegistry } from '../data/registry'
+import { useKeys } from '../keys/KeysProvider'
 import { cx } from '../lib/cx'
 import { MENU_POPUP } from '../lib/menu'
 import { useNow } from '../lib/use-now'
@@ -71,15 +72,20 @@ function columnOf(id: string): ColumnId {
 }
 
 export default function OverviewTable({
+  panelId,
   tab,
   update,
 }: {
+  panelId: string
   tab: OverviewTab
   update(action: OverviewAction): void
 }): React.JSX.Element {
   const { rows, selectedId, select } = useRegistry()
   const { frames } = useWmState()
   const { contextFor, run } = useActions()
+  const { holdClick } = useKeys()
+  // The rows area. Cmd+0 focuses it, so the single keys act on this Overview (spec 9.3).
+  const rowsArea = useRef<HTMLDivElement>(null)
   const now = useNow()
   const data = useMemo(() => viewRows(rows, tab), [rows, tab])
   const state = useMemo(() => toTableState(tab), [tab])
@@ -99,6 +105,13 @@ export default function OverviewTable({
   useEffect(() => {
     if (menuOpen && !menuRow) setMenuOpen(false)
   }, [menuOpen, menuRow])
+
+  // A new selection scrolls its row into view, for example after an arrow key.
+  useEffect(() => {
+    if (selectedId === null) return
+    const row = rowsArea.current?.querySelector(`tr[data-session-id="${CSS.escape(selectedId)}"]`)
+    row?.scrollIntoView({ block: 'nearest' })
+  }, [selectedId])
 
   // The resize in progress: the column, the pointer start and the width at the start.
   const resizing = useRef<{ id: ColumnId; startX: number; startWidth: number } | null>(null)
@@ -153,6 +166,7 @@ export default function OverviewTable({
     <ContextMenu.Root onOpenChange={setMenuOpen} open={menuOpen && menuRow !== undefined}>
       <ContextMenu.Trigger
         className='min-h-0 flex-1 select-none overflow-auto'
+        data-overview-rows={panelId}
         data-rows-area={true}
         onContextMenu={e => {
           // The row handler runs first. A right-click outside a row opens no menu.
@@ -160,6 +174,8 @@ export default function OverviewTable({
           clickedRow.current = null
           if (id === null) e.preventBaseUIHandler()
         }}
+        ref={rowsArea}
+        tabIndex={-1}
       >
         {/* The last column has no width. It takes the free space, so the rows fill the panel. */}
         <table className='table-fixed' style={{ minWidth: '100%', width: table.getTotalSize() }}>
@@ -283,7 +299,11 @@ export default function OverviewTable({
                   )}
                   data-session-id={id}
                   key={item.id}
-                  onClick={() => select(id)}
+                  onClick={() => {
+                    // A held hold key acts on this row and keeps the selection (D8).
+                    if (holdClick(id)) return
+                    select(id)
+                  }}
                   onContextMenu={() => {
                     clickedRow.current = id
                     setMenuId(id)

@@ -6,6 +6,7 @@ import { Terminal } from '@xterm/xterm'
 import type { BifrostApi } from '../../../shared/api'
 import { cssFontFamily, DEFAULT_SETTINGS, type TerminalFont } from '../../../shared/settings'
 import type { SessionRow, TermSize } from '../../../shared/types'
+import { CHAT_ATTR } from '../keys/focus-zone'
 import { cx } from '../lib/cx'
 import { errorMessage } from '../lib/error-message'
 import {
@@ -116,6 +117,8 @@ export class ChatTerminal {
 
     this.element = document.createElement('div')
     this.element.className = cx('relative h-full w-full overflow-hidden')
+    // The focus zone of the keys finds a chat window by this attribute (spec 9.3).
+    this.element.setAttribute(CHAT_ATTR, 'true')
     this.host = document.createElement('div')
     this.host.className = cx('relative z-0 h-full w-full')
     this.host.style.transformOrigin = '0 0'

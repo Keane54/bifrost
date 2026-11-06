@@ -1,13 +1,60 @@
 import type { MenuItemConstructorOptions } from 'electron'
+import { type KeyMap, toAccelerator } from '../shared/keys'
+import {
+  DEFAULT_SETTINGS,
+  INTERFACE_SCALE_MAX,
+  INTERFACE_SCALE_MIN,
+  INTERFACE_SCALE_STEP,
+} from '../shared/settings'
 import type { DisplayMode } from '../shared/types'
 import type { ModeController } from './window/display-mode'
+
+// The Electron accelerators of the two menu keys (D7). null means no key.
+export interface MenuKeys {
+  closePanel: string | null
+  fullscreen: string | null
+}
+
+// Zoom In, Zoom Out and Actual Size of the View menu (ruling C1).
+export type ZoomStep = 'in' | 'out' | 'reset'
 
 export interface MenuOptions {
   mode: DisplayMode
   isDev: boolean
+  keys: MenuKeys
   onMode(mode: DisplayMode): void
   onToggleFullscreen(): void
   onClosePanel(): void
+  onZoom(step: ZoomStep): void
+}
+
+// Return the accelerator of a binding of the key map, or null for no key.
+function acceleratorOf(binding: string | null | undefined): string | null {
+  return typeof binding === 'string' ? toAccelerator(binding) : null
+}
+
+// Return the accelerators of Close Panel and Fullscreen from the key map.
+export function menuKeys(keys: KeyMap): MenuKeys {
+  return {
+    closePanel: acceleratorOf(keys['close-panel:mod']),
+    fullscreen: acceleratorOf(keys['toggle-fullscreen:mod']),
+  }
+}
+
+// Return the Interface scale after a Zoom item. A step stays from 80 to 150 percent.
+// Actual Size gives the default scale.
+export function zoomStep(scale: number, step: ZoomStep): number {
+  if (step === 'reset') return DEFAULT_SETTINGS.interfaceScale
+  const next = scale + (step === 'in' ? INTERFACE_SCALE_STEP : -INTERFACE_SCALE_STEP)
+  return Math.min(INTERFACE_SCALE_MAX, Math.max(INTERFACE_SCALE_MIN, next))
+}
+
+// Add the accelerator to an item only when the key is not null.
+function withKey(
+  item: MenuItemConstructorOptions,
+  accelerator: string | null,
+): MenuItemConstructorOptions {
+  return accelerator === null ? item : { ...item, accelerator }
 }
 
 export interface ModeHandlerOptions {
@@ -43,11 +90,12 @@ export function modeHandlers(opts: ModeHandlerOptions): {
   }
 }
 
-// The menu of the app, as plain data. index.ts builds it again after each change of the mode
-// and after each click on a View item.
+// The menu of the app, as plain data. index.ts builds it again after each change of the mode,
+// after each click on a View item and after a change of a menu key.
 // The Window menu has no item with the role close. Cmd+W closes the active panel, not the window.
+// The dev Reload item uses F5. Cmd+R is the Resume key of the renderer.
 export function buildMenuTemplate(opts: MenuOptions): MenuItemConstructorOptions[] {
-  const { mode } = opts
+  const { keys, mode } = opts
   return [
     {
       label: 'Bifrost',
@@ -88,17 +136,23 @@ export function buildMenuTemplate(opts: MenuOptions): MenuItemConstructorOptions
           label: 'Borderless',
           type: 'radio',
         },
-        {
-          accelerator: 'Ctrl+Cmd+F',
-          checked: mode === 'fullscreen',
-          click: () => opts.onToggleFullscreen(),
-          label: 'Fullscreen',
-          type: 'radio',
-        },
+        withKey(
+          {
+            checked: mode === 'fullscreen',
+            click: () => opts.onToggleFullscreen(),
+            label: 'Fullscreen',
+            type: 'radio',
+          },
+          keys.fullscreen,
+        ),
+        { type: 'separator' },
+        { accelerator: 'Cmd+=', click: () => opts.onZoom('in'), label: 'Zoom In' },
+        { accelerator: 'Cmd+-', click: () => opts.onZoom('out'), label: 'Zoom Out' },
+        { click: () => opts.onZoom('reset'), label: 'Actual Size' },
         ...(opts.isDev
           ? [
               { type: 'separator' } as const,
-              { role: 'reload' } as const,
+              { accelerator: 'F5', role: 'reload' } as const,
               { role: 'toggleDevTools' } as const,
             ]
           : []),
@@ -107,7 +161,7 @@ export function buildMenuTemplate(opts: MenuOptions): MenuItemConstructorOptions
     {
       label: 'Window',
       submenu: [
-        { accelerator: 'Cmd+W', click: () => opts.onClosePanel(), label: 'Close Panel' },
+        withKey({ click: () => opts.onClosePanel(), label: 'Close Panel' }, keys.closePanel),
         { role: 'minimize' },
         { role: 'zoom' },
       ],

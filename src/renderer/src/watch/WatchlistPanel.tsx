@@ -1,5 +1,6 @@
 // The Watchlist panel (spec 8.3): the watched sessions in watch order.
-// A click selects a row. A double-click opens the chat window. A right-click opens the row menu.
+// A click selects a row. A click while a hold key is down runs the hold command on the row.
+// A double-click opens the chat window. A right-click opens the row menu.
 // A drag of a row up or down changes the order.
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -8,6 +9,7 @@ import { useActions } from '../actions/actions-context'
 import { friendlyError } from '../actions/errors'
 import RowMenu from '../actions/RowMenu'
 import { useRegistry } from '../data/registry'
+import { useKeys } from '../keys/KeysProvider'
 import { cx } from '../lib/cx'
 import { ErrorLine } from '../lib/ErrorLine'
 import { errorMessage } from '../lib/error-message'
@@ -54,6 +56,7 @@ interface DropMark {
 export default function WatchlistPanel(): React.JSX.Element {
   const { rows, selectedId, select } = useRegistry()
   const { contextFor, run } = useActions()
+  const { holdClick } = useKeys()
   const watched = useMemo(() => watchedRows(rows), [rows])
   const list = useRef<HTMLUListElement>(null)
   // The current order, for a drag that is still on when a row changes.
@@ -194,7 +197,11 @@ export default function WatchlistPanel(): React.JSX.Element {
                     data-session-id={id}
                     data-watch-colour={row.watch?.colour}
                     key={id}
-                    onClick={() => select(id)}
+                    onClick={() => {
+                      // A held hold key acts on this row and keeps the selection (D8, D26).
+                      if (holdClick(id)) return
+                      select(id)
+                    }}
                     onContextMenu={() => setMenuId(id)}
                     onDoubleClick={() => {
                       select(id)

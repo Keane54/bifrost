@@ -861,7 +861,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | `@fontsource/geist-mono` | The UI font (section 8.10). Version 5.3.0, OFL-1.1 licence. | M3 |
 | Base UI | The right-click menu with submenus, dialogs and tooltips. Version 1.9.0. | M3 |
 | TanStack Table | Overview columns, sort, column order and column widths for each tab. Version 9.3.1. | M3 |
-| TanStack Hotkeys (beta) | Key map, hold-key-and-click, key editor in Settings | M3 to M5 |
+| TanStack Hotkeys (beta) | Key map, hold-key-and-click, key editor in Settings. Version 0.16.0 of `@tanstack/react-hotkeys` (with `@tanstack/hotkeys` 0.17.0). | M3 to M5 |
 | lucide-react | Icons. Version 1.61.0. | M3 |
 | Zustand | Not used. A reducer keeps the window manager state (M2). | M2 |
 | Zod | Not used. The hand-written checks stay small (M1). | M1 |

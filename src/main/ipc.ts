@@ -14,7 +14,7 @@ import {
 } from 'electron'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
-import { DEFAULT_SETTINGS, type Settings } from '../shared/settings'
+import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
 import { isWatchColour } from '../shared/watch'
@@ -155,6 +155,14 @@ export function getSettings(): Settings {
   return settingsStore?.get() ?? DEFAULT_SETTINGS
 }
 
+// Apply a patch from the main process, for example a Zoom item of the View menu.
+// Do nothing before the store opens. A refused patch or a write error goes to the console.
+export function patchSettings(patch: SettingsPatch): void {
+  settingsStore
+    ?.update(patch)
+    .catch(err => console.error('Bifrost cannot change the settings.', err))
+}
+
 // Zoom the page of the current window (Interface scale, ruling C1).
 function setZoom(factor: number): void {
   if (currentWindow && !currentWindow.isDestroyed()) currentWindow.webContents.setZoomFactor(factor)
@@ -213,6 +221,9 @@ async function openSettings(file: string): Promise<SettingsStore> {
   })
   settingsStore = store
   applyZoom()
+  // Build the menu again with the keys of the file (ruling C6). Before this, it has the default
+  // keys.
+  menuRebuild?.()
   return store
 }
 
