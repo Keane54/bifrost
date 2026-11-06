@@ -87,7 +87,12 @@ function setup() {
   }
   let time = 1_000_000
   const env = { HOME: '/h', PATH: '/usr/bin' }
-  const exists = (dir: string): boolean => dir !== '/gone'
+  let goneAfter = 0
+  let existsCalls = 0
+  const exists = (dir: string): boolean => {
+    existsCalls += 1
+    return dir !== '/gone' && !(goneAfter > 0 && existsCalls > goneAfter)
+  }
   const lookup = createPrLookup({ env: async () => env, exec, exists, now: () => time })
   return {
     calls,
@@ -99,6 +104,10 @@ function setup() {
     },
     setGate: (on: boolean) => {
       gate = on
+    },
+    // The folder exists for this many exists() calls, then it is gone.
+    setGoneAfter: (n: number) => {
+      goneAfter = n
     },
     setResult: (r: ExecResult) => {
       result = r
@@ -155,6 +164,41 @@ describe('createPrLookup', () => {
     t.setTime(1_000_000 + 300_000)
     await t.lookup.lookup('/p', 'fix-a')
     expect(t.calls).toHaveLength(2)
+  })
+
+  it('lookup keeps a failed result 30 seconds and a none result 5 minutes', async () => {
+    const t = setup()
+    t.setResult(fail('HTTP 500: server error'))
+    await t.lookup.lookup('/p', 'fix-a')
+    t.setTime(1_000_000 + 29_999)
+    await t.lookup.lookup('/p', 'fix-a')
+    expect(t.calls).toHaveLength(1)
+    t.setTime(1_000_000 + 30_000)
+    await t.lookup.lookup('/p', 'fix-a')
+    expect(t.calls).toHaveLength(2)
+    t.setResult(fail('no pull requests found'))
+    t.setTime(2_000_000)
+    await t.lookup.lookup('/q', 'fix-a')
+    t.setTime(2_000_000 + 30_000)
+    await t.lookup.lookup('/q', 'fix-a')
+    expect(t.calls).toHaveLength(3)
+  })
+
+  it('a missing gh after a folder that vanished gives the folder text', async () => {
+    const t = setup()
+    t.setGoneAfter(1)
+    t.setResult(fail('spawn gh ENOENT'))
+    expect(await t.lookup.lookup('/p', 'fix-a')).toEqual({
+      kind: 'unavailable',
+      reason: "The session folder isn't there any more.",
+    })
+    // The folder is still there: ENOENT means that gh is missing.
+    const u = setup()
+    u.setResult(fail('spawn gh ENOENT'))
+    expect(await u.lookup.lookup('/p', 'fix-a')).toEqual({
+      kind: 'unavailable',
+      reason: "GitHub CLI (gh) isn't installed.",
+    })
   })
 
   it('the cache key is the cwd and the branch', async () => {

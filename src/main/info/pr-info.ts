@@ -3,7 +3,11 @@ import type { PrInfo } from '../../shared/types'
 import type { ExecFn, ExecResult } from '../claude/cli'
 
 // A result stays this long for one folder and one branch.
+// A good answer is a PR or none. none is a good answer: the branch has no PR.
 export const PR_CACHE_MS = 300_000
+// A failed check (unavailable) stays a short time, so a fix shows soon and gh is not called again
+// at once.
+export const PR_FAIL_CACHE_MS = 30_000
 export const GH_TIMEOUT_MS = 10_000
 export const GH_ARGS = ['pr', 'view', '--json', 'number,title,url,state']
 
@@ -70,19 +74,29 @@ export function createPrLookup(deps: PrLookupDeps): PrLookup {
   const running = new Map<string, Promise<PrInfo>>()
   const keyOf = (cwd: string, branch: string): string => `${cwd}\0${branch}`
 
+  const young = (entry: Entry, now: number): boolean =>
+    now - entry.at < (entry.result.kind === 'unavailable' ? PR_FAIL_CACHE_MS : PR_CACHE_MS)
+
   const fresh = (key: string): Entry | undefined => {
     const entry = cache.get(key)
-    return entry && deps.now() - entry.at < PR_CACHE_MS ? entry : undefined
+    return entry && young(entry, deps.now()) ? entry : undefined
   }
 
   async function run(key: string, cwd: string): Promise<PrInfo> {
     if (!(await deps.exists(cwd))) return unavailable(REASON_NO_FOLDER)
-    const result = parsePrView(
-      await deps.exec('gh', GH_ARGS, { cwd, env: await deps.env(), timeoutMs: GH_TIMEOUT_MS }),
-    )
+    const raw = await deps.exec('gh', GH_ARGS, {
+      cwd,
+      env: await deps.env(),
+      timeoutMs: GH_TIMEOUT_MS,
+    })
+    // ENOENT also comes when the folder went away after the check. Check the folder again.
+    const result =
+      !raw.timedOut && raw.stderr.includes('ENOENT') && !(await deps.exists(cwd))
+        ? unavailable(REASON_NO_FOLDER)
+        : parsePrView(raw)
     const now = deps.now()
     // Forget old entries, so the cache does not grow.
-    for (const [k, e] of cache) if (now - e.at >= PR_CACHE_MS) cache.delete(k)
+    for (const [k, e] of cache) if (!young(e, now)) cache.delete(k)
     cache.set(key, { at: now, result })
     return result
   }
