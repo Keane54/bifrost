@@ -18,8 +18,11 @@ export function projectLabel(cwd: string): string {
   return parts.slice(-2).join('/')
 }
 
+// A cost above 0 and below one cent gives <$0.01, so a small cost does not show as $0.00.
 export function formatCost(usd?: number): string {
-  return typeof usd !== 'number' || !Number.isFinite(usd) ? '' : `$${usd.toFixed(2)}`
+  if (typeof usd !== 'number' || !Number.isFinite(usd)) return ''
+  if (usd > 0 && usd < 0.01) return '<$0.01'
+  return `$${usd.toFixed(2)}`
 }
 
 export function formatPercent(p?: number): string {

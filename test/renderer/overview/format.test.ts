@@ -38,6 +38,14 @@ describe('format', () => {
     expect(formatPercent()).toBe('')
   })
 
+  it('formatCost gives <$0.01 for a cost above 0 and below one cent', () => {
+    expect(formatCost(0.0042)).toBe('<$0.01')
+    expect(formatCost(0.0099)).toBe('<$0.01')
+    expect(formatCost(0.00001)).toBe('<$0.01')
+    expect(formatCost(0.01)).toBe('$0.01')
+    expect(formatCost(0)).toBe('$0.00')
+  })
+
   it('stateLabel gives the label of each state', () => {
     expect(stateLabel('needs-you')).toBe('Needs you')
     expect(stateLabel('parked')).toBe('Parked')
