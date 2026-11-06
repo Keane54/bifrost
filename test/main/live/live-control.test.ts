@@ -53,6 +53,28 @@ interface World {
   liveSessions?: number
   // plugin() waits for this promise when it is set.
   pluginGate?: Promise<void>
+  // The fake call with this name waits at the gate.
+  gate?: Gate
+}
+
+interface Gate {
+  name: string
+  reached(): void
+  wait: Promise<void>
+}
+
+// A gate for one fake call. hit resolves when the call comes to the gate. open lets it go on.
+function makeGate(name: string) {
+  let open = (): void => {}
+  let reached = (): void => {}
+  const wait = new Promise<void>(resolve => {
+    open = resolve
+  })
+  const hit = new Promise<void>(resolve => {
+    reached = resolve
+  })
+  const gate: Gate = { name, reached, wait }
+  return { gate, hit, open }
 }
 
 // The read calls. Each other call in calls changes something.
@@ -71,6 +93,11 @@ function setup(over: Partial<World> = {}) {
   const calls: string[] = []
   const seen: { modCurrentAtAdd?: boolean } = {}
   const label = (dir: string) => (dir === modDir ? '/m' : dir)
+  const hold = async (name: string): Promise<void> => {
+    if (w.gate?.name !== name) return
+    w.gate.reached()
+    await w.gate.wait
+  }
   const cli: PluginCli = {
     async addMarketplace(dir) {
       calls.push(`addMarketplace ${label(dir)}`)
@@ -83,10 +110,12 @@ function setup(over: Partial<World> = {}) {
     },
     async enable() {
       calls.push('enable')
+      await hold('enable')
       if (w.plugin) w.plugin = { ...w.plugin, enabled: true }
     },
     async install() {
       calls.push('install')
+      await hold('install')
       w.plugin = { enabled: true, errors: [], folder: modDir }
     },
     async marketplace() {
@@ -159,9 +188,20 @@ describe('constants', () => {
 
 describe('install', () => {
   test('install removes an old hook install, copies the mod, adds the marketplace, installs and listens', async () => {
-    const { control, seen, writes } = setup({ old: { found: true } })
+    const { calls, control, seen, writes } = setup({ old: { found: true } })
     const status = await control.install()
     expect(writes()).toEqual(['removeOldInstall', 'addMarketplace /m', 'install', 'server.start'])
+    // The marketplace check comes before the first change.
+    expect(calls.slice(0, calls.indexOf('server.start') + 1)).toEqual([
+      'marketplace',
+      'oldInstall',
+      'removeOldInstall',
+      'addMarketplace /m',
+      'plugin',
+      'install',
+      'plugin',
+      'server.start',
+    ])
     expect(seen.modCurrentAtAdd).toBe(true)
     expect(status).toMatchObject({
       listening: true,
@@ -179,13 +219,33 @@ describe('install', () => {
   })
 
   test('install refuses a bifrost-local marketplace with another path', async () => {
-    const { calls, control } = setup({ marketplace: { path: '/other', source: 'directory' } })
+    const { calls, control, writes } = setup({
+      marketplace: { path: '/other', source: 'directory' },
+      old: { found: true },
+    })
     await expect(control.install()).rejects.toThrow(
       'A marketplace with the name bifrost-local already exists at /other. Bifrost did not change it.',
     )
-    expect(calls).not.toContain('install')
-    expect(calls).not.toContain('server.start')
+    expect(writes()).toEqual([])
+    expect(calls).not.toContain('oldInstall')
+    expect(existsSync(modDir)).toBe(false)
   })
+
+  test.each(['stop', 'disable'] as const)(
+    'an install that ends after %s does not listen',
+    async halt => {
+      const g = makeGate('install')
+      const { calls, control, w } = setup({ gate: g.gate })
+      const installing = control.install()
+      await g.hit
+      if (halt === 'stop') control.stop()
+      else await control.disable()
+      g.open()
+      await installing
+      expect(calls).not.toContain('server.start')
+      expect(w.serverState.listening).toBe(false)
+    },
+  )
 
   test('install names the source of a bifrost-local marketplace with no path', async () => {
     const { control } = setup({ marketplace: { source: 'github' } })
@@ -253,6 +313,35 @@ describe('enable', () => {
     expect(await modFolderCurrent(source, modDir)).toBe(true)
     expect(status).toMatchObject({ listening: true, oldInstall: false, plugin: 'enabled' })
   })
+
+  test('enable stops when the old hook removal fails', async () => {
+    const { control, writes } = setup({
+      old: { found: true },
+      plugin: { enabled: false, errors: [], folder: modDir },
+      removeOldError: 'X',
+    })
+    await expect(control.enable()).rejects.toThrow('X')
+    expect(writes()).toEqual(['removeOldInstall'])
+  })
+
+  test.each(['stop', 'disable'] as const)(
+    'a Turn on that ends after %s does not listen',
+    async halt => {
+      const g = makeGate('enable')
+      const { calls, control, w } = setup({
+        gate: g.gate,
+        plugin: { enabled: false, errors: [], folder: modDir },
+      })
+      const enabling = control.enable()
+      await g.hit
+      if (halt === 'stop') control.stop()
+      else await control.disable()
+      g.open()
+      await enabling
+      expect(calls).not.toContain('server.start')
+      expect(w.serverState.listening).toBe(false)
+    },
+  )
 
   test('enable refuses settings that Bifrost cannot read before any change', async () => {
     fillModDir(true)

@@ -51,7 +51,8 @@ function samePath(a: string, b: string): boolean {
 
 export function createLiveControl(deps: LiveControlDeps): LiveControl {
   const { modDir, modSource, server } = deps
-  // stop() adds 1. A start that sees a new number must not start the server.
+  // stop(), Turn off and Remove add 1. A start, Install or Turn on that sees a new number must
+  // not start the server.
   let generation = 0
   // Each action waits for the start first. Then an action and the start never overlap.
   let starting: Promise<void> = Promise.resolve()
@@ -130,6 +131,12 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
     if (state.error) console.warn('Live details: the server did not start.', state.error)
   }
 
+  // Stop the server. A start or an action that runs now then does not start it again.
+  function halt(): void {
+    generation += 1
+    server.stop()
+  }
+
   // The start rule (D9). Each failure goes to console.warn.
   async function boot(gen: number): Promise<void> {
     if (deps.forceListen) return listen(gen)
@@ -158,9 +165,11 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
     await listen(gen)
   }
 
-  // Run an action after the start ends.
-  function action(fn: () => Promise<LiveStatus>): Promise<LiveStatus> {
-    return starting.then(fn)
+  // Run an action after the start ends. fn gets the generation at the time of the call.
+  // A stop after the call then also stops a listen of the action.
+  function action(fn: (gen: number) => Promise<LiveStatus>): Promise<LiveStatus> {
+    const gen = generation
+    return starting.then(() => fn(gen))
   }
 
   return {
@@ -168,37 +177,37 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
       action(async () => {
         // The server is the switch that acts at once (D9). So stop it before the plugin command.
         // A failure after this point rejects, but the server is already stopped.
-        server.stop()
+        halt()
         const cli = await needCli()
         if ((await cli.plugin()) !== null) await cli.disable()
         return status()
       }),
     enable: () =>
-      action(async () => {
+      action(async gen => {
         await checkVersion()
         const cli = await needCli()
         if ((await cli.plugin()) === null) throw new Error('Live details is not installed.')
         await removeOldInstall("didn't change anything")
         await syncModFolder(modSource, modDir)
         await cli.enable()
-        await server.start()
+        if (gen === generation) await server.start()
         return status()
       }),
     install: () =>
-      action(async () => {
+      action(async gen => {
         await checkVersion()
         const cli = await needCli()
-        await removeOldInstall("didn't change anything")
-        await syncModFolder(modSource, modDir)
+        // Refuse a marketplace of another program before any change.
         const market = await cli.marketplace()
-        if (market === null) {
-          await cli.addMarketplace(modDir)
-        } else if (market.path === undefined || !samePath(market.path, modDir)) {
+        if (market !== null && (market.path === undefined || !samePath(market.path, modDir))) {
           throw new Error(
             `A marketplace with the name ${MARKETPLACE_NAME} already exists at ` +
               `${market.path ?? market.source}. Bifrost did not change it.`,
           )
         }
+        await removeOldInstall("didn't change anything")
+        await syncModFolder(modSource, modDir)
+        if (market === null) await cli.addMarketplace(modDir)
         let entry = await cli.plugin()
         if (entry === null) {
           await cli.install()
@@ -206,7 +215,7 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
           entry = await cli.plugin()
         }
         if (entry !== null && !entry.enabled) await cli.enable()
-        await server.start()
+        if (gen === generation) await server.start()
         return status()
       }),
     start() {
@@ -217,13 +226,10 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
       return starting
     },
     status,
-    stop() {
-      generation += 1
-      server.stop()
-    },
+    stop: halt,
     uninstall: () =>
       action(async () => {
-        server.stop()
+        halt()
         const cli = await needCli()
         if ((await cli.plugin()) !== null) await cli.uninstall()
         // Remove only the marketplace that Bifrost added.

@@ -164,6 +164,16 @@ export function planUninstall(
   return next
 }
 
+// True when planUninstall would change the settings: a Bifrost hook entry under any event and
+// any matcher, or the wrapper. It uses the same tests as planUninstall.
+export function hasBifrostEntry(settings: ClaudeSettings): boolean {
+  if (isWrapper(settings.statusLine)) return true
+  if (!isObject(settings.hooks)) return false
+  return Object.values(settings.hooks).some(
+    entries => Array.isArray(entries) && entries.some(entryHasBifrostHook),
+  )
+}
+
 export function checkInstall(settings: ClaudeSettings): {
   missingHooks: string[]
   statusLineInstalled: boolean

@@ -23,7 +23,13 @@ import {
   previewInstall,
   uninstall,
 } from '../../../src/main/integration/integration'
-import { HOOK_COMMAND, STATUSLINE_COMMAND } from '../../../src/main/integration/settings-plan'
+import {
+  type ClaudeSettings,
+  HOOK_COMMAND,
+  hasBifrostEntry,
+  planUninstall,
+  STATUSLINE_COMMAND,
+} from '../../../src/main/integration/settings-plan'
 import { runSh } from '../../helpers/run-sh'
 
 const NOW = new Date('2026-11-04T15:30:00Z')
@@ -404,4 +410,31 @@ test('oldInstallStatus gives the error for a settings file that is not valid JSO
   const s = await oldInstallStatus(paths)
   expect(s.found).toBe(false)
   expect(s.error).toMatch(/not valid JSON/)
+})
+
+test('oldInstallStatus finds a Bifrost hook under any event and matcher', async () => {
+  const entry = { hooks: [{ command: HOOK_COMMAND, type: 'command' }], matcher: 'Bash' }
+  await writeFile(paths.claudeSettings, JSON.stringify({ hooks: { PreToolUse: [entry] } }))
+  expect(await oldInstallStatus(paths)).toEqual({ found: true })
+})
+
+test('hasBifrostEntry is true exactly when planUninstall changes the settings', () => {
+  const hook = { command: HOOK_COMMAND, type: 'command' }
+  const mine = { command: 'mine', type: 'command' }
+  const cases: ClaudeSettings[] = [
+    {},
+    { hooks: {} },
+    { hooks: 'x' },
+    { hooks: { Stop: 'x' } },
+    { hooks: { Stop: [{ hooks: [mine] }] } },
+    { hooks: { Stop: [{ hooks: [hook] }] } },
+    { hooks: { PreToolUse: [{ hooks: [hook], matcher: 'Bash' }] } },
+    { hooks: { Custom: [{ hooks: [mine, hook] }] } },
+    { statusLine: { command: 'mine', type: 'command' } },
+    { statusLine: { command: STATUSLINE_COMMAND, type: 'command' } },
+  ]
+  for (const settings of cases) {
+    const changes = JSON.stringify(planUninstall(settings, null)) !== JSON.stringify(settings)
+    expect(hasBifrostEntry(settings)).toBe(changes)
+  }
 })
