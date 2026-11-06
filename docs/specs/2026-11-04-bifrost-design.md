@@ -608,7 +608,7 @@ Bifrost does these steps:
 5. Wait for the process to end, for a maximum of 5 seconds.
 6. Run `claude --bg --settings <statusline override> --resume <session-id>` in the session directory (D13).
 7. Find the new entry by `sessionId`, not by name.
-8. The chat window attaches to the session. The loader goes away when the terminal shows its first output from Claude.
+8. Restart the chat window. A terminal that ended before Take control attaches again only after a restart. The chat window attaches to the session. The loader goes away when the terminal shows its first output from Claude.
 
 If the process does not end in 5 seconds, Bifrost stops and shows an error. It does not start a copy of the session.
 
@@ -617,6 +617,7 @@ If Take control fails, Bifrost removes the loader, closes the chat window and sh
 The Take control loader (user decision, 2026-11-06):
 
 - The loader shows in the chat window while Take control runs, and until the terminal shows its first output from Claude. A terminal that ends also removes the loader, so the window shows why it ended.
+- After a good Take control, a loader that waits only for the first output has a time limit of 20 seconds. Then the loader goes away, and the window shows the terminal, with its note when it cannot attach (review Important 2).
 - During that time, the chat window hides the terminal. The terminal keeps its size and its focus.
 - The window shows the normal panel background and the line "Taking control of <name>...".
 - The bottom two fifths show a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge on an eased curve: the upper half stays faint, and the colour reaches full strength only at the bottom edge. It is at 25% opacity (the user, 2026-11-06: softer, a more gradual fade, and a slightly taller band).
@@ -985,7 +986,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | Mod | `claude plugin test` | The hooks module, with a fake `http.fetch`. |
 | Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. |
 
-With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)` and `stopLoader(sessionId)` show and remove the Take control loader with no real Take control. A visual check uses it. An app with the real home has no hook.
+With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)`, `finishLoader(sessionId)` and `stopLoader(sessionId)` show the Take control loader, end its Take control part and remove it, with no real Take control. A visual check uses it. An app with the real home has no hook.
 | Manual | Checklist | The M0 questions, Take control and the DMG. |
 
 ## 16. Milestones

@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { type LoaderState, loaderStep, loaderText } from '../../../src/renderer/src/chat/loader'
+import {
+  LOADER_WAIT_MS,
+  type LoaderState,
+  loaderStep,
+  loaderText,
+  loaderWaits,
+} from '../../../src/renderer/src/chat/loader'
 
 // The repository has no DOM test. So the gradient checks read the source text.
 const SRC = join(__dirname, '../../../src/renderer/src')
@@ -43,6 +49,28 @@ describe('loaderStep', () => {
   it('stop removes the loader, for example after a failure', () => {
     expect(loaderStep(RUNNING, 'stop')).toBeNull()
     expect(loaderStep({ running: true, shown: true }, 'stop')).toBeNull()
+  })
+
+  // Review Important 2: a loader that waits only for the first output has a time limit. Then the
+  // window shows the terminal, with its note when it cannot attach.
+  it('the time limit removes a loader that waits only for the first output', () => {
+    const waiting = loaderStep(RUNNING, 'finish')
+    expect(loaderWaits(waiting)).toBe(true)
+    expect(loaderStep(waiting, 'timeout')).toBeNull()
+  })
+
+  it('the time limit does not remove a loader while Take control runs', () => {
+    expect(loaderWaits(RUNNING)).toBe(false)
+    expect(loaderStep(RUNNING, 'timeout')).toEqual(RUNNING)
+    const shown = { running: true, shown: true }
+    expect(loaderWaits(shown)).toBe(false)
+    expect(loaderStep(shown, 'timeout')).toEqual(shown)
+    expect(loaderWaits(null)).toBe(false)
+    expect(loaderStep(null, 'timeout')).toBeNull()
+  })
+
+  it('the time limit is 20 seconds', () => {
+    expect(LOADER_WAIT_MS).toBe(20_000)
   })
 
   it('a session with no loader stays with no loader', () => {
