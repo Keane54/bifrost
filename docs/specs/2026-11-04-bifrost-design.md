@@ -488,7 +488,7 @@ The Event log shows the live state events with the time, the session and the eve
 
 ### 8.8 Usage HUD
 
-The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. The data comes from the newest live usage line.
+The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. The data comes from the newest live usage line. With no data, the panel shows "No usage data yet."
 
 ### 8.9 New session dialog
 

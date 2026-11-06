@@ -30,7 +30,7 @@ describe('usageView', () => {
       label: '7-day limit',
       percent: null,
     })
-    expect(v.source).toBe('No usage data yet. Live details sends it.')
+    expect(v.source).toBe('No usage data yet.')
   })
 
   test('usageView shows the 7-day bar of a plan with no 5-hour window', () => {
