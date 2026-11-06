@@ -370,6 +370,12 @@ export default function GeneralSection(): React.JSX.Element {
         label='Start at login'
         save={value => update({ startAtLogin: value })}
       />
+      <CheckRow
+        checked={settings.accountUsage}
+        hint='Shows usage from all your devices. Bifrost reads your Claude Code login from the Keychain. macOS may ask you to allow this.'
+        label='Account usage from Anthropic'
+        save={value => update({ accountUsage: value })}
+      />
       <SelectRow
         choices={POLL_CHOICES}
         label='Poll interval'

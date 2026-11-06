@@ -165,6 +165,13 @@ export interface UsageSnapshot {
   limits: RateLimits
 }
 
+// The usage windows that Anthropic gave for the account (spec 8.8). fetchedAt is the time of the
+// answer, in milliseconds. This type has no token, so the token cannot reach the renderer.
+export interface AccountUsage {
+  fetchedAt: number
+  limits: RateLimits
+}
+
 // One line of the Event log (spec 8.7). seq is the number of the log, not that of the mod.
 // detail is the tool name. A notice is a plain line for the user: name holds its text and
 // sessionId is empty.

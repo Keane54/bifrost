@@ -1,7 +1,7 @@
 // The Usage HUD panel (spec 8.8): the 5-hour and the 7-day limit, each with the use and the
 // reset time.
 import { useEffect, useState } from 'react'
-import type { UsageSnapshot } from '../../../shared/types'
+import type { AccountUsage, UsageSnapshot } from '../../../shared/types'
 import { cx } from '../lib/cx'
 import { useNow } from '../lib/use-now'
 import { type UsageBar, usageView } from './usage-view'
@@ -26,7 +26,30 @@ function Bar({ bar }: { bar: UsageBar }): React.JSX.Element {
 
 export default function UsagePanel(): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<UsageSnapshot | null>(null)
+  const [account, setAccount] = useState<AccountUsage | null>(null)
   const now = useNow(30_000)
+
+  // The account usage from Anthropic. The panel opening asks the main process to poll. The main
+  // process polls at most one time in 60 seconds, and only when the setting is on.
+  useEffect(() => {
+    let active = true
+    let updated = false
+    const off = window.bifrost.usage.onAccountUpdate(next => {
+      updated = true
+      if (active) setAccount(next)
+    })
+    window.bifrost.usage.getAccount().then(
+      first => {
+        if (active && !updated) setAccount(first)
+      },
+      () => {},
+    )
+    window.bifrost.usage.hudOpened().catch(() => {})
+    return () => {
+      active = false
+      off()
+    }
+  }, [])
 
   // Subscribe first, then load the value. An update that comes before the first answer wins.
   useEffect(() => {
@@ -48,7 +71,7 @@ export default function UsagePanel(): React.JSX.Element {
     }
   }, [])
 
-  const view = usageView(snapshot, now)
+  const view = usageView(snapshot, now, undefined, account)
   return (
     <div className='flex h-full flex-col gap-3 p-3 text-text' data-usage-hud={true}>
       <Bar bar={view.bars[0]} />

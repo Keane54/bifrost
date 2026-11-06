@@ -28,6 +28,17 @@ describe('settingsEffects', () => {
     ])
   })
 
+  test('settingsEffects gives an account-usage effect when the setting changes', () => {
+    const prev = base()
+    expect(settingsEffects(prev, { ...prev, accountUsage: true })).toEqual([
+      { kind: 'account-usage', on: true },
+    ])
+    expect(settingsEffects({ ...prev, accountUsage: true }, prev)).toEqual([
+      { kind: 'account-usage', on: false },
+    ])
+    expect(settingsEffects(prev, { ...prev, accountUsage: false })).toEqual([])
+  })
+
   test('a key change gives a menu effect only for a menu slot', () => {
     const prev = base()
     expect(settingsEffects(prev, { ...prev, keys: { 'open:mod': 'Mod+K' } })).toEqual([])

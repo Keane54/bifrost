@@ -26,6 +26,8 @@ export interface TerminalFont {
 
 export interface Settings {
   version: 1
+  // Read the account usage from Anthropic with the Claude Code login (spec 8.8). Off by default.
+  accountUsage: boolean
   labels: LabelSet
   // null means the first installed app of TERMINAL_APP_IDS (D14).
   terminalApp: TerminalAppId | null
@@ -85,6 +87,7 @@ export const MAX_FONT_FAMILY = 64
 
 // The defaults of spec 12.
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
+  accountUsage: false,
   escalationMinutes: 10,
   interfaceScale: 100,
   keys: {},
@@ -156,6 +159,7 @@ const isFontSize = onStep(FONT_SIZE_MIN, FONT_SIZE_MAX)
 type SimpleKey = Exclude<SettingKey, 'keys' | 'slashCommands' | 'terminalFont'>
 
 const SIMPLE_CHECKS: Readonly<Record<SimpleKey, Check>> = {
+  accountUsage: isBoolean,
   escalationMinutes: onStep(0, MAX_ESCALATION_MINUTES),
   interfaceScale: onStep(INTERFACE_SCALE_MIN, INTERFACE_SCALE_MAX, INTERFACE_SCALE_STEP),
   labels: oneOf(['plain', 'space']),
