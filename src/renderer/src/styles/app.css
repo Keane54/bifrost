@@ -112,6 +112,11 @@
   --font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
 
+  /* The blur behind each frame (spec 8.10): very light, so the animated background shows
+     through softly. A chat window and the other panels use the same blur. The Tailwind class is
+     backdrop-blur-panel. */
+  --blur-panel: 8px;
+
   /* All corners are square (spec 8.10). */
   --radius-xs: 0;
   --radius-sm: 0;

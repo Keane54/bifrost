@@ -2,7 +2,6 @@ import { EllipsisVertical } from 'lucide-react'
 import { type Dispatch, memo, useCallback, useRef, useState } from 'react'
 import { cx } from '../lib/cx'
 import { PanelContent, PanelTitle, panelScrolls } from '../panels/panels'
-import { frameBlur } from './frame-style'
 import { type Edge, TITLE_H } from './geometry'
 import PanelMenu, { type Anchor } from './PanelMenu'
 import type { Frame, WmAction } from './state'
@@ -85,15 +84,14 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
   }
 
   // Only the background is translucent (bg-panel and --panel-alpha). Text and content stay solid.
-  // A chat window has a lighter blur than the other panels (frameBlur).
+  // Each frame has the same very light blur (--blur-panel), so the background shows through softly.
   // The top edge is a 1 px cyan line. The top frame shows the full line, other frames a dim line.
   // The top frame is less transparent and has a cyan glow above its top edge only. The background,
   // the border and the glow change in 250 ms, so that a focus change does not look abrupt.
   return (
     <div
       className={cx(
-        'absolute flex-col overflow-hidden border transition-[background-color,border-color,box-shadow] duration-250 ease-out',
-        frameBlur(frame.active),
+        'absolute flex-col overflow-hidden border backdrop-blur-panel transition-[background-color,border-color,box-shadow] duration-250 ease-out',
         frame.minimised ? 'hidden' : 'flex',
         top
           ? 'border-text-strong/30 border-t-accent bg-panel-focus shadow-[0_-6px_12px_-6px_var(--color-accent-glow)]'

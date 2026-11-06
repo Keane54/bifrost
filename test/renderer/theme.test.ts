@@ -233,11 +233,15 @@ describe('theme', () => {
     expect(bad).toEqual([])
   })
 
-  it('the theme has the panel blur, and a lighter blur for a chat window', () => {
-    expect(source('wm/Frame.tsx')).toContain('frameBlur(frame.active)')
-    const style = source('wm/frame-style.ts')
-    expect(style).toContain("'backdrop-blur-md'")
-    expect(style).toContain("'backdrop-blur-sm'")
+  // the user, 2026-11-06: each frame very slightly blurs the animated background behind it. A chat
+  // window and the other panels use the same light blur.
+  it('gives each frame one light backdrop blur of 6 to 8 px', () => {
+    expect(source('wm/Frame.tsx').match(/backdrop-blur-[\w[\]-]+/g)).toEqual([
+      'backdrop-blur-panel',
+    ])
+    const blur = Number(CSS.match(/--blur-panel:\s*([\d.]+)px;/)?.[1])
+    expect(blur).toBeGreaterThanOrEqual(6)
+    expect(blur).toBeLessThanOrEqual(8)
   })
 
   it('uses the accent class part only for the top border, the glow and active: states', () => {

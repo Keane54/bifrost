@@ -465,7 +465,7 @@ Send box rules:
 - A chat window in a back tab, or a minimised chat window, releases its WebGL context.
 - During Take control, the chat window shows the Take control loader in place of the terminal (section 9.2).
 - The terminal has a transparent background (user decision, 2026-11-06). The frame colour and its blur show through, so the "Panel transparency" setting also applies to chat windows. The token `--color-terminal-bg` is fully transparent, and xterm.js has `allowTransparency`. The WebGL renderer and the DOM renderer both draw the transparent background, also after a WebGL context loss. `app.css` replaces the black viewport and the native scroll bar of `xterm.css`.
-- The blur behind a chat window is light: 8 pixels (`backdrop-blur-sm`). The other panels keep 12 pixels. So it is clear when a chat window is over another panel, as in EVE.
+- The blur behind a chat window is light: 8 pixels, the same blur as the other panels (section 8.10). So it is clear when a chat window is over another panel, as in EVE.
 - The terminal text stays easy to read. A test checks the contrast of white text and of a mid-grey dim text on the panel colour at each transparency, over the blurred text of another panel.
 
 Size rule (the user approved this on 2026-11-04; M3 builds it):
@@ -520,7 +520,7 @@ Dialog rules:
 
 ### 8.10 Theme
 
-- The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a background blur. A chat window has a lighter blur than the other panels (section 8.5).
+- The theme is dark and neutral, as in the EVE interface: near-black panels, grey title bars and section headers, light grey text and white for emphasis. The panel backgrounds are translucent, with a very light background blur of 8 pixels (the token `--blur-panel`). All frames use the same blur, also a chat window (user decision, 2026-11-06). The "Panel transparency" setting still sets how much of the background shows through.
 - The window has an animated background (user decision, 2026-11-06). One layer behind all frames and the side bar fills the window, over `--color-bg`. It holds six large, soft colour fields in the app icon colours (`--color-icon-1` to `--color-icon-6`). Each field is a radial gradient with eased stops, from 55% to 80% of the window. The fields overlap with plain alpha, so their colours merge. The violet field is allowed, because the rule of no purple covers only the Overview colours.
 - The background stays dark: a gentle glow, not a bright rainbow. The token `--background-glow` (20%) sets the alpha at the centre of a field. Each field has a weight: violet and blue 1, green 0.85, red 0.75, orange 0.55, yellow 0.4. A dark yellow or orange looks brown, so the warm colours are weaker and stay near the edges. The cool colours have the most space.
 - Each field drifts, scales and turns on its own cycle, forwards and back: 43, 53, 61, 71, 79 and 89 seconds. The cycles are primes, so the pattern does not repeat in a way that a person sees. A field moves mostly to the side, so no field rises or sinks like a bubble.
