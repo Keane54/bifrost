@@ -718,6 +718,7 @@ Esc (user decision, 2026-11-06):
 3. Else, Esc opens Settings and brings it to the front, as Cmd+, does.
 
 - Esc does not clear the selection.
+- A held Esc acts one time. A key repeat does not open or close Settings again.
 - In a chat window, Esc goes to Claude.
 - A dialog, a menu, a popover, a text field (for example the Rename field or a Settings field) and the key recorder of Settings > Keys keep their own Esc. Esc then does not open or close Settings. The same applies to an Esc that ends a Watchlist drag.
 - The Esc key of Bifrost waits for the end of the key event. A handler that takes Esc calls `preventDefault` or stops the event. Then Bifrost does nothing.
