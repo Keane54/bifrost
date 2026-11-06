@@ -92,11 +92,13 @@ function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
     const path = join(dir, entry.name)
     if (entry.isDirectory()) return sourceFiles(path)
-    return /\.tsx?$/.test(entry.name) ? [path] : []
+    if (path === join(SRC, 'styles/app.css')) return []
+    return /\.(?:tsx?|css)$/.test(entry.name) ? [path] : []
   })
 }
 
 const FILES = sourceFiles(SRC).map(path => ({ path, text: readFileSync(path, 'utf8') }))
+const MAIN_INDEX = readFileSync(join(__dirname, '../../src/main/index.ts'), 'utf8')
 
 function source(name: string): string {
   const file = FILES.find(f => f.path.endsWith(name))
@@ -162,9 +164,36 @@ describe('theme', () => {
     )
   })
 
-  it('has no hex colour or rgb( in a .ts or .tsx file', () => {
-    const bad = FILES.filter(f => /#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(f.text)).map(f => f.path)
+  // A file that needs a colour in code reads a token at run time, for example with
+  // getComputedStyle(document.documentElement).getPropertyValue('--color-...').
+  it('has no hex colour, rgb( or hsl( in a .ts, .tsx or .css file except app.css', () => {
+    const bad = FILES.filter(f => /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/.test(f.text)).map(
+      f => f.path,
+    )
     expect(bad).toEqual([])
+  })
+
+  it('the window background equals --color-bg', () => {
+    const match = MAIN_INDEX.match(/backgroundColor:\s*'(#[0-9a-fA-F]{6})'/)
+    expect(match?.[1]).toBe(token('bg'))
+  })
+
+  // The box and parked tokens mean a box or a parked row. Check each new file that uses them.
+  it('only box and parked files use the box and parked tokens', () => {
+    const allowed = [
+      'overview/SessionIcon.tsx',
+      'overview/cells.tsx',
+      'overview/OverviewTable.tsx',
+      'watch/WatchlistPanel.tsx',
+    ]
+    const bad = FILES.filter(f => /-box-yellow|-box-red|-parked/.test(f.text))
+      .map(f => f.path)
+      .filter(path => !allowed.some(name => path.endsWith(name)))
+    expect(bad).toEqual([])
+  })
+
+  it('the theme has the panel blur', () => {
+    expect(source('wm/Frame.tsx')).toContain('backdrop-blur')
   })
 
   it('uses the accent class part only for the top border, the glow and active: states', () => {
@@ -265,9 +294,11 @@ describe('theme', () => {
     expect(CSS).not.toMatch(/saira|font-narrow/i)
   })
 
-  it('the Overview colour tokens have no purple or pink', () => {
+  it('the project, tab, watch, prio, svc and usage tokens have no purple or pink', () => {
     const tokens = [
-      ...CSS.matchAll(/--color-((?:project|tab|watch|prio)-[\w-]+):\s*(#[0-9a-fA-F]{6})/g),
+      ...CSS.matchAll(
+        /--color-((?:project|tab|watch|prio|svc|usage)-?[\w-]*):\s*(#[0-9a-fA-F]{6})/g,
+      ),
     ]
     expect(tokens.length).toBeGreaterThanOrEqual(33)
     const bad = tokens
@@ -331,9 +362,11 @@ describe('theme', () => {
 
   // the user, 2026-11-05: reds, ambers and yellows can be Overview colours. The box red and the box
   // yellow stay reserved shades.
-  it('each Overview colour differs clearly from the box colours', () => {
+  it('each project, tab, watch, prio, svc and usage colour differs clearly from the box colours', () => {
     const tokens = [
-      ...CSS.matchAll(/--color-((?:tab|prio|project|watch)-[\w-]+):\s*(#[0-9a-fA-F]{6})/g),
+      ...CSS.matchAll(
+        /--color-((?:tab|prio|project|watch|svc|usage)-?[\w-]*):\s*(#[0-9a-fA-F]{6})/g,
+      ),
     ]
     const bad = tokens.flatMap(([, name, value]) =>
       ['box-red', 'box-yellow']
@@ -362,19 +395,11 @@ describe('theme', () => {
 describe('the Service status tokens', () => {
   const NAMES = ['ok', 'minor', 'major', 'critical', 'maint'].map(n => `svc-${n}`)
 
-  it('are not purple, pink, yellow, red or grey', () => {
+  // Purple and pink, and the distance to the box colours, are checked for all families above.
+  it('are not yellow or red', () => {
     for (const name of NAMES) {
       const { h } = hsl(token(name))
-      expect(h >= 255 && h <= 345, `${name} is purple or pink`).toBe(false)
       expect(h >= 330 || h < 20 || (h >= 40 && h < 80), `${name} is red or yellow`).toBe(false)
-    }
-  })
-
-  it('stay 0.10 or more from the box red and the box yellow', () => {
-    for (const name of NAMES) {
-      for (const box of ['box-red', 'box-yellow']) {
-        expect(distance(token(name), token(box)), `${name} to ${box}`).toBeGreaterThanOrEqual(0.1)
-      }
     }
   })
 
