@@ -122,10 +122,22 @@ describe('checkCliResult', () => {
       }),
     ).toThrow('bad')
   })
+  test.each(['42', 'null', '[]', '{"command":"install"}'])(
+    'exit 0 with the unusable last line %s rejects',
+    line => {
+      expect(() => checkCliResult({ ...ok, stdout: line })).toThrow('Claude Code gave no result.')
+    },
+  )
+  test('a non-object last line rejects at a non-zero exit with the exit code', () => {
+    expect(() => checkCliResult({ code: 4, stderr: '', stdout: '42' })).toThrow(
+      'claude exited with code 4',
+    )
+  })
   test('falls back to stderr, then to the exit code', () => {
     expect(() => checkCliResult({ code: 1, stderr: 'oops\n', stdout: 'text' })).toThrow('oops')
     expect(() => checkCliResult({ code: 2, stderr: '', stdout: '' })).toThrow(
       'claude exited with code 2',
     )
+    expect(() => checkCliResult(ok)).toThrow('Claude Code gave no result.')
   })
 })

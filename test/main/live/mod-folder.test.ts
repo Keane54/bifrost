@@ -8,6 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
+import { rename as realRename, rm as realRm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -17,6 +18,7 @@ import {
   modSourceDir,
   removeModFolder,
   syncModFolder,
+  syncWith,
 } from '../../../src/main/live/mod-folder'
 
 let root: string
@@ -99,6 +101,31 @@ describe('mod folder', () => {
     }
     expect(readdirSync(parent)).toEqual(['mod'])
     expect(readdirSync(dest)).toEqual(['old.txt'])
+  })
+  test('a failed removal of the old folder does not reject and dest is current', async () => {
+    put(dest, 'old.txt', 'old')
+    const rm = async (p: string, o: { force: true; recursive: true }) => {
+      if (p.endsWith('.old')) throw new Error('busy')
+      await realRm(p, o)
+    }
+    await expect(syncWith(source, dest, { rename: realRename, rm })).resolves.toBeUndefined()
+    expect(await modFolderCurrent(source, dest)).toBe(true)
+  })
+  test('a failed restore names the old folder and keeps the first error', async () => {
+    put(dest, 'old.txt', 'old')
+    let calls = 0
+    const rename = async (a: string, b: string) => {
+      calls++
+      if (calls > 1) throw new Error(`fail ${calls}`)
+      await realRename(a, b)
+    }
+    const rm = async () => {
+      throw new Error('cleanup failed')
+    }
+    const err = await syncWith(source, dest, { rename, rm }).catch((e: Error) => e)
+    expect((err as Error).message).toMatch(/fail 2/)
+    expect((err as Error).message).toMatch(/\.old/)
+    expect((err as Error).message).not.toMatch(/cleanup failed/)
   })
   test('removeModFolder removes the folder and accepts a missing folder', async () => {
     await syncModFolder(source, dest)

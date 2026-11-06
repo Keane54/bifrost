@@ -31,6 +31,16 @@ export async function modFolderCurrent(source: string, dest: string): Promise<bo
 // Copy the four files to a temporary folder. Then swap it with dest.
 // A failure removes the temporary folder and leaves dest as it was.
 export async function syncModFolder(source: string, dest: string): Promise<void> {
+  await syncWith(source, dest, { rename, rm })
+}
+
+// Internal. The tests give fake file operations to this function.
+export interface SyncOps {
+  rename: (from: string, to: string) => Promise<void>
+  rm: (path: string, opts: { force: true; recursive: true }) => Promise<void>
+}
+
+export async function syncWith(source: string, dest: string, ops: SyncOps): Promise<void> {
   if (await modFolderCurrent(source, dest)) return
   // Read all source files first. A missing file rejects before any change.
   const contents = await Promise.all(MOD_FILES.map(file => readFile(join(source, file))))
@@ -47,19 +57,29 @@ export async function syncModFolder(source: string, dest: string): Promise<void>
       await writeFile(target, contents[i], { mode: 0o600 })
     }
     try {
-      await rename(dest, old)
+      await ops.rename(dest, old)
       moved = true
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e
     }
-    await rename(tmp, dest)
+    await ops.rename(tmp, dest)
   } catch (e) {
     // Put the old folder back when the last rename failed.
-    if (moved) await rename(old, dest).catch(() => undefined)
-    await rm(tmp, { force: true, recursive: true })
-    throw e
+    let failure = e
+    if (moved) {
+      try {
+        await ops.rename(old, dest)
+      } catch {
+        failure = new Error(
+          `${(e as Error).message} The old mod folder is at ${old}. Move it back to ${dest}.`,
+        )
+      }
+    }
+    await ops.rm(tmp, { force: true, recursive: true }).catch(() => undefined)
+    throw failure
   }
-  if (moved) await rm(old, { force: true, recursive: true })
+  // dest is current now. A failed removal of the old folder is not an error.
+  if (moved) await ops.rm(old, { force: true, recursive: true }).catch(() => undefined)
 }
 
 // A missing folder is not an error.

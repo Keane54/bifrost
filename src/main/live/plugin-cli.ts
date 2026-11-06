@@ -35,6 +35,8 @@ export function checkCliResult(result: ExecResult): void {
   if (parsed?.outcome === 'ok') return
   if (parsed?.failureCode === 'already_in_goal_state') return
   if (typeof parsed?.message === 'string' && parsed.message !== '') throw new Error(parsed.message)
+  // Exit 0 with no usable result line is an error too.
+  if (result.code === 0) throw new Error('Claude Code gave no result.')
   const stderr = result.stderr.trim()
   if (stderr !== '') throw new Error(stderr)
   throw new Error(`claude exited with code ${result.code}`)
