@@ -43,9 +43,42 @@ describe('usageView', () => {
     })
   })
 
-  test('a window whose reset time passed shows 0%', () => {
+  test('a window whose reset time passed shows - and the reset time (final wave item 8)', () => {
     const v = usageView(snap({ fiveHour: { resetsAt: NOW - HOUR, usedPercent: 95 } }), NOW, ZONE)
-    expect(v.bars[0]).toMatchObject({ detail: 'Reset at 11:00.', high: false, percent: 0 })
+    expect(v.bars[0]).toEqual({
+      detail: 'Reset at 11:00.',
+      high: false,
+      label: '5-hour limit',
+      percent: null,
+    })
+    // A reset time at this minute has passed too.
+    const at = usageView(snap({ fiveHour: { resetsAt: NOW, usedPercent: 95 } }), NOW, ZONE)
+    expect(at.bars[0]).toMatchObject({ detail: 'Reset at 12:00.', percent: null })
+    // A reset on another day shows the day.
+    const old = usageView(snap({ sevenDay: { resetsAt: NOW - DAY, usedPercent: 40 } }), NOW, ZONE)
+    expect(old.bars[1]).toMatchObject({ detail: 'Reset at Wed 12:00.', percent: null })
+  })
+
+  test('a usedPercent that is not a finite number shows -, not 0%', () => {
+    for (const usedPercent of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const v = usageView(snap({ fiveHour: { resetsAt: NOW + HOUR, usedPercent } }), NOW, ZONE)
+      expect(v.bars[0]).toEqual({
+        detail: 'Resets in 1 h 00 min (13:00)',
+        high: false,
+        label: '5-hour limit',
+        percent: null,
+      })
+    }
+  })
+
+  test('a reset under 1 minute from now shows less than 1 min', () => {
+    expect(formatReset(NOW + 30_000, NOW, ZONE)).toBe('less than 1 min (12:00)')
+    const v = usageView(snap({ fiveHour: { resetsAt: NOW + 59_999, usedPercent: 97 } }), NOW, ZONE)
+    expect(v.bars[0]).toMatchObject({
+      detail: 'Resets in less than 1 min (12:00)',
+      high: true,
+      percent: 97,
+    })
   })
 
   test('usageView rounds and clamps the percent and marks 90% as high', () => {

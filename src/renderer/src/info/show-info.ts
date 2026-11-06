@@ -2,7 +2,7 @@
 
 import type { PrInfo, RateWindow, SessionRow } from '../../../shared/types'
 import { worktreeOf } from '../../../shared/worktree'
-import { formatClock, formatDuration, timeParts } from '../lib/time'
+import { formatClock, formatDuration, sameDay, timeParts } from '../lib/time'
 import { formatCost, formatPercent } from '../overview/format'
 
 export { formatDuration }
@@ -39,9 +39,8 @@ export function formatTokens(n: number): string {
 
 // The same day gives HH:MM. Another day gives "Thu 5 Nov 14:03".
 export function formatWhen(ms: number, now: number, timeZone?: string): string {
+  if (sameDay(ms, now, timeZone)) return formatClock(ms, timeZone)
   const p = timeParts(ms, timeZone)
-  const q = timeParts(now, timeZone)
-  if (p.year === q.year && p.month === q.month && p.day === q.day) return formatClock(ms, timeZone)
   return `${p.weekday} ${p.day} ${p.month} ${p.hour}:${p.minute}`
 }
 
@@ -54,9 +53,14 @@ function prText(pr: PrInfo | null): string {
   return pr.kind === 'none' ? 'None' : pr.reason
 }
 
+// After the reset time, the use is not known until the next message. Then the limit shows "-"
+// and the reset time, the same as the Usage HUD (final wave item 8). A value that is not a finite
+// number also shows "-".
 function limitText(window: RateWindow | undefined, now: number, timeZone?: string): string {
   if (!window) return '-'
-  return `${formatPercent(window.usedPercent)}, resets ${formatWhen(window.resetsAt, now, timeZone)}`
+  const when = formatWhen(window.resetsAt, now, timeZone)
+  if (window.resetsAt <= now) return `-, reset at ${when}`
+  return `${dash(formatPercent(window.usedPercent))}, resets ${when}`
 }
 
 function durationText(row: SessionRow, now: number): string {

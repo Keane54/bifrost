@@ -4,6 +4,7 @@ import {
   formatClockMs,
   formatDayClock,
   formatDuration,
+  sameDay,
 } from '../../../src/renderer/src/lib/time'
 
 describe('time formats', () => {
@@ -15,6 +16,15 @@ describe('time formats', () => {
 
   it('formatClock uses the time zone', () => {
     expect(formatClock(Date.UTC(2026, 10, 5, 9, 7), 'Asia/Tokyo')).toBe('18:07')
+  })
+
+  it('sameDay compares the date in the time zone', () => {
+    const a = Date.UTC(2026, 10, 5, 0, 0)
+    expect(sameDay(a, Date.UTC(2026, 10, 5, 23, 59), 'UTC')).toBe(true)
+    expect(sameDay(a, Date.UTC(2026, 10, 4, 23, 59), 'UTC')).toBe(false)
+    expect(sameDay(a, Date.UTC(2025, 10, 5, 0, 0), 'UTC')).toBe(false)
+    // 23:30 UTC on 4 Nov is 08:30 on 5 Nov in Tokyo.
+    expect(sameDay(a, Date.UTC(2026, 10, 4, 23, 30), 'Asia/Tokyo')).toBe(true)
   })
 
   it('formatDayClock gives Ddd HH:MM', () => {

@@ -1,6 +1,6 @@
 // The texts and numbers of the Usage HUD (spec 8.8). Pure functions, no React.
 import type { RateWindow, UsageSnapshot } from '../../../shared/types'
-import { formatClock, formatDayClock, formatDuration, timeParts } from '../lib/time'
+import { formatClock, formatDayClock, formatDuration, sameDay } from '../lib/time'
 import { formatAge } from '../overview/format'
 
 // From this percent, the bar uses the usage-high colour.
@@ -17,18 +17,14 @@ export interface UsageBar {
 const NO_DATA = 'No data'
 const NO_WINDOW = 'No data for this limit yet.'
 
-function sameDay(a: number, b: number, timeZone?: string): boolean {
-  const x = timeParts(a, timeZone)
-  const y = timeParts(b, timeZone)
-  return x.day === y.day && x.month === y.month && x.year === y.year
+// HH:MM on the day of now, else Ddd HH:MM.
+function clockText(ms: number, now: number, timeZone?: string): string {
+  return sameDay(ms, now, timeZone) ? formatClock(ms, timeZone) : formatDayClock(ms, timeZone)
 }
 
 // "45 min (12:45)", "2 h 05 min (14:05)", "1 d 1 h (Fri 13:00)".
 export function formatReset(resetsAt: number, now: number, timeZone?: string): string {
-  const clock = sameDay(resetsAt, now, timeZone)
-    ? formatClock(resetsAt, timeZone)
-    : formatDayClock(resetsAt, timeZone)
-  return `${formatDuration(resetsAt - now)} (${clock})`
+  return `${formatDuration(resetsAt - now)} (${clockText(resetsAt, now, timeZone)})`
 }
 
 function bar(
@@ -38,22 +34,22 @@ function bar(
   timeZone?: string,
 ): UsageBar {
   if (!window) return { detail: NO_WINDOW, high: false, label, percent: null }
+  // After the reset time, the use of the new window is not known until the next message. The
+  // old value is wrong, and 0% is only a guess. So the bar shows "-" and the reset time, the same
+  // as Show Info (final wave item 8).
   if (window.resetsAt <= now) {
     return {
-      detail: `Reset at ${formatClock(window.resetsAt, timeZone)}.`,
+      detail: `Reset at ${clockText(window.resetsAt, now, timeZone)}.`,
       high: false,
       label,
-      percent: 0,
+      percent: null,
     }
   }
-  const raw = Number.isFinite(window.usedPercent) ? window.usedPercent : 0
-  const percent = Math.min(100, Math.max(0, Math.round(raw)))
-  return {
-    detail: `Resets in ${formatReset(window.resetsAt, now, timeZone)}`,
-    high: percent >= HIGH_PERCENT,
-    label,
-    percent,
-  }
+  const detail = `Resets in ${formatReset(window.resetsAt, now, timeZone)}`
+  // A value that is not a finite number is not known. It shows "-", not 0%.
+  if (!Number.isFinite(window.usedPercent)) return { detail, high: false, label, percent: null }
+  const percent = Math.min(100, Math.max(0, Math.round(window.usedPercent)))
+  return { detail, high: percent >= HIGH_PERCENT, label, percent }
 }
 
 export function usageView(

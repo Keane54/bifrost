@@ -139,6 +139,44 @@ describe('infoSections', () => {
     expect(item(sections, 'Limits and version', '7-day limit')).toBe('5%, resets 13:00')
   })
 
+  it('a limit whose reset time passed shows - and the reset time, as the Usage HUD (item 8)', () => {
+    const r = row({
+      rateLimits: {
+        fiveHour: { resetsAt: Date.UTC(2026, 10, 5, 9, 7), usedPercent: 93 },
+        sevenDay: { resetsAt: Date.UTC(2026, 10, 3, 2, 0), usedPercent: 40 },
+      },
+      sessionId: 'x',
+    })
+    const sections = infoSections(r, NOW, null, UTC)
+    expect(item(sections, 'Limits and version', '5-hour limit')).toBe('-, reset at 09:07')
+    expect(item(sections, 'Limits and version', '7-day limit')).toBe('-, reset at Tue 3 Nov 02:00')
+    const atNow = row({
+      rateLimits: { fiveHour: { resetsAt: NOW, usedPercent: 93 } },
+      sessionId: 'x',
+    })
+    expect(item(infoSections(atNow, NOW, null, UTC), 'Limits and version', '5-hour limit')).toBe(
+      '-, reset at 12:00',
+    )
+  })
+
+  it('a limit with a usedPercent that is not a finite number shows -', () => {
+    const r = row({
+      rateLimits: { fiveHour: { resetsAt: Date.UTC(2026, 10, 5, 14, 3), usedPercent: Number.NaN } },
+      sessionId: 'x',
+    })
+    const sections = infoSections(r, NOW, null, UTC)
+    expect(item(sections, 'Limits and version', '5-hour limit')).toBe('-, resets 14:03')
+  })
+
+  it('a limit that resets in under 1 minute still shows its use', () => {
+    const r = row({
+      rateLimits: { fiveHour: { resetsAt: NOW + 30_000, usedPercent: 97 } },
+      sessionId: 'x',
+    })
+    const sections = infoSections(r, NOW, null, UTC)
+    expect(item(sections, 'Limits and version', '5-hour limit')).toBe('97%, resets 12:00')
+  })
+
   it('infoSections shows the worktree path of a worktree row', () => {
     const wt = row({
       branch: 'worktree-fix-a',

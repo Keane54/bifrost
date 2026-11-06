@@ -50,6 +50,13 @@ export function timeParts(ms: number, timeZone?: string): Parts {
   return parts
 }
 
+// True when the two times have the same date in the time zone.
+export function sameDay(a: number, b: number, timeZone?: string): boolean {
+  const x = timeParts(a, timeZone)
+  const y = timeParts(b, timeZone)
+  return x.day === y.day && x.month === y.month && x.year === y.year
+}
+
 // 09:07
 export function formatClock(ms: number, timeZone?: string): string {
   const p = timeParts(ms, timeZone)
