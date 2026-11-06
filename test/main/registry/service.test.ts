@@ -678,6 +678,33 @@ describe('live lines (Task 4)', () => {
     expect(calls).toEqual([[stop], [other]])
   })
 
+  test('onEvents listeners run after the state event is applied (final review Minor 4)', async () => {
+    const { service } = await ready()
+    const seen: unknown[] = []
+    service.onEvents(() => seen.push(service.rows()[0]?.box))
+    service.pushLive({ event: { at: Date.now(), name: 'Stop', sessionId: 's1' }, type: 'state' })
+    expect(seen).toEqual(['yellow'])
+  })
+
+  test('a listener that throws stops neither the state event, the update nor the next listener', async () => {
+    const { service, updates } = await ready()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const calls: unknown[] = []
+    service.onEvents(() => {
+      throw new Error('listener failed')
+    })
+    service.onEvents(events => calls.push(events))
+    const count = updates.length
+    const stop = { at: Date.now(), name: 'Stop' as const, sessionId: 's1' }
+    expect(() => service.pushLive({ event: stop, type: 'state' })).not.toThrow()
+    expect(calls).toEqual([[stop]])
+    expect(updates.length).toBe(count + 1)
+    expect(updates.at(-1)?.rows[0]).toMatchObject({ box: 'yellow' })
+    expect(logged).toHaveBeenCalledTimes(1)
+    expect(String(logged.mock.calls[0]?.[1])).toContain('listener failed')
+    logged.mockRestore()
+  })
+
   test('clearLive ends the live flags and sends an update', async () => {
     const { service, updates } = await ready()
     service.pushLive({ at: Date.now(), sessionId: 's1', type: 'usage', usage: { costUsd: 0.42 } })

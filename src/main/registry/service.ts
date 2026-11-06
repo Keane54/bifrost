@@ -151,10 +151,17 @@ export class RegistryService {
   pushLive(ev: LiveEvent): void {
     if (this.stopped) return
     if (ev.type === 'state') {
-      // Each state event goes to the listeners, also one of a session that is not a row yet and
-      // one that the order rule skips. A usage line goes to none.
-      for (const cb of this.eventCallbacks) cb([ev.event])
       this.registry.applyEvents([ev.event], this.deps.now())
+      // Each state event goes to the listeners after the registry applies it, also one of a
+      // session that is not a row yet and one that the order rule skips. A usage line goes to
+      // none. A listener that throws stops no other step (final review Minor 4).
+      for (const cb of this.eventCallbacks) {
+        try {
+          cb([ev.event])
+        } catch (error) {
+          console.error('A Bifrost live event listener failed.', error)
+        }
+      }
     } else this.registry.applyUsage(ev.sessionId, ev.usage, ev.at)
     this.changed()
     this.checkUsage()
