@@ -13,7 +13,6 @@ import {
   type ContextBand,
   formatCost,
   formatPercent,
-  previewLines,
   projectLabel,
   shownContextBand,
   stateLabel,
@@ -37,7 +36,6 @@ function orDash(text: string | undefined): string {
 }
 
 function Details({ row }: { row: SessionRow }): React.JSX.Element {
-  const lines = previewLines(row.lastMessage, 3)
   const percent = formatPercent(row.contextPercent)
   const band = shownContextBand(row.contextPercent)
   return (
@@ -92,13 +90,7 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
         <dt className={LABEL}>Cost</dt>
         <dd className='truncate'>{orDash(formatCost(row.costUsd))}</dd>
       </dl>
-      {/* 4. The first lines of the last reply. Each line is cut off. It does not wrap. */}
-      {lines.length > 0 && (
-        <p className='overflow-hidden text-ellipsis whitespace-pre text-text-dim'>
-          {lines.join('\n')}
-        </p>
-      )}
-      {/* 5. The send box. */}
+      {/* 4. The send box. */}
       <SendBox row={row} />
     </div>
   )

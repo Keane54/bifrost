@@ -472,8 +472,9 @@ The panel shows these items, from top to bottom:
 1. The name, the state and the priority. A row with no priority shows no priority.
 2. A row of icon buttons: Open, Send message, Run slash command, Interrupt, Show Info, Open in terminal and Stop session.
 3. The project, the branch, the model and the cost. The Model row shows the model name, then the context bar, then the context percent with the word "context", for example `Opus 5.5  [bar]  28% context`. The bar takes the free width. The model name keeps its width and is cut off only when the row is too narrow. With no percent, the bar is empty and the text is `-`. The cost has its own row.
-4. The first 3 lines of the last Claude reply. The `turn.complete` event supplies this text.
-5. The send box.
+4. The send box.
+
+The panel shows no preview of the last Claude reply (user decision, 2026-11-06).
 
 The context bar has three colour bands, as in the statusline. Below 40% the bar is green. From 40% to below 70% it is amber. From 70% it is red. The tokens are `--color-ctx-low`, `--color-ctx-mid` and `--color-ctx-high`. Each token differs from the box yellow and the box red by 0.10 or more in OKLab.
 

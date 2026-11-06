@@ -16,6 +16,12 @@ describe('SelectedItemPanel source', () => {
   it('uses the three context bar fill classes', () => {
     for (const cls of ['bg-ctx-low', 'bg-ctx-mid', 'bg-ctx-high']) expect(PANEL).toContain(cls)
   })
+
+  // the user (2026-11-06): the panel shows no preview of the last reply.
+  it('shows no preview of the last reply', () => {
+    expect(PANEL).not.toContain('previewLines')
+    expect(PANEL).not.toContain('lastMessage')
+  })
 })
 
 describe('SelectedItemPanel name tooltip', () => {
