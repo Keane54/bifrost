@@ -395,7 +395,8 @@ export function registerIpc(): void {
       return result.canceled ? null : (result.filePaths[0] ?? null)
     }),
   )
-  // Only one Live details action runs at a time. A second call rejects.
+  // Only one Live details action runs at a time. A second call rejects. The start runs first,
+  // and an action that comes during the start waits for it.
   const serial = createSerialRunner()
   // Live details. One server listens for the lines of the mod (D9).
   // The four actions use one serial runner. Then the removal of an old hook install and a plugin
@@ -438,8 +439,11 @@ export function registerIpc(): void {
   }
   // Start after the service loads, so an event finds the service.
   // Do not start when the app quits before the store loads.
-  void service
-    .then(async () => {
+  // The start runs first in the serial runner of the four actions. An action that comes before
+  // the start ends waits for it. So two copies of the mod folder never run at the same time.
+  void serial
+    .runFirst(async () => {
+      await service
       if (serviceStopped) return
       await cleanOldHookData()
       if (!serviceStopped) await live.start()

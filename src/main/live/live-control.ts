@@ -56,7 +56,9 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
   // stop(), Turn off and Remove add 1. A start, Install or Turn on that sees a new number must
   // not start the server.
   let generation = 0
-  // Each action waits for the start first. Then an action and the start never overlap.
+  // Each action waits for a start that runs. ipc.ts also runs the start first in its serial
+  // runner, so an action that comes before the start waits too. Then an action and the start
+  // never overlap.
   let starting: Promise<void> = Promise.resolve()
 
   async function needCli(): Promise<PluginCli> {
