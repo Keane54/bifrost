@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { centreRect, type Rect, shownRect } from '../../../src/renderer/src/wm/geometry'
+import { centreRect, type Rect, shownRect, TITLE_H } from '../../../src/renderer/src/wm/geometry'
 import { toSnapshot } from '../../../src/renderer/src/wm/layout'
 import {
   DEFAULT_SIZES,
@@ -44,8 +44,16 @@ describe('wm state', () => {
 
   it('panelKind accepts usage-hud', () => {
     expect(panelKind('usage-hud')).toBe('usage-hud')
-    expect(DEFAULT_SIZES['usage-hud']).toEqual({ h: 170, w: 360 })
-    expect(run([open('usage-hud')]).frames[0]?.rect).toMatchObject({ h: 170, w: 360 })
+    expect(DEFAULT_SIZES['usage-hud']).toEqual({ h: 180, w: 360 })
+    expect(run([open('usage-hud')]).frames[0]?.rect).toMatchObject({ h: 180, w: 360 })
+  })
+
+  it('the Usage HUD default height holds its content with a margin (bug B2)', () => {
+    // The Task 9 check measured 146 px of content. The frame has the title bar and a 1 px border
+    // at the top and at the bottom. The margin is at least 4 px.
+    const CONTENT_H = 146
+    const area = DEFAULT_SIZES['usage-hud'].h - TITLE_H - 2
+    expect(area).toBeGreaterThanOrEqual(CONTENT_H + 4)
   })
 
   it('panelKind accepts the fixed panel IDs and refuses all others', () => {
