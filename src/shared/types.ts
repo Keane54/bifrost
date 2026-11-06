@@ -25,6 +25,26 @@ export interface ClaudeVersion {
   minimum: string
 }
 
+// The state of the Live details plugin in Claude Code.
+// unknown: Bifrost could not read the plugin list.
+export type LivePluginState = 'not-installed' | 'disabled' | 'enabled' | 'unknown'
+
+export interface LiveStatus {
+  plugin: LivePluginState
+  // True when the mod folder has the files of this app and the plugin reads that folder.
+  modCurrent: boolean
+  // True when the settings still have a Bifrost hook or the Bifrost wrapper.
+  oldInstall: boolean
+  // True when Bifrost listens on the socket for the lines of the mod.
+  listening: boolean
+  // The number of rows that are live and not parked.
+  liveSessions: number
+  claudeVersion: string | null
+  // True when the version of Claude Code is at least the minimum of Live details.
+  versionOk: boolean
+  error?: string
+}
+
 // The size of a terminal in cells.
 export interface TermSize {
   cols: number

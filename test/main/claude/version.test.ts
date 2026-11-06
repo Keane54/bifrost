@@ -31,3 +31,12 @@ test('checkClaudeVersion gives a null version when the run fails or the text is 
   })
   expect(parseClaudeVersion('hello')).toBeNull()
 })
+
+test('checkClaudeVersion uses the given minimum', async () => {
+  const run = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '2.1.289 (Claude Code)\n' })
+  expect(await checkClaudeVersion(run, '2.1.290')).toEqual({
+    minimum: '2.1.290',
+    ok: false,
+    version: '2.1.289',
+  })
+})

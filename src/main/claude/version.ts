@@ -20,12 +20,16 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
-export async function checkClaudeVersion(run: RunClaude): Promise<ClaudeVersion> {
+// Compare the version of claude with the minimum. A feature can give a higher minimum.
+export async function checkClaudeVersion(
+  run: RunClaude,
+  minimum = MIN_CLAUDE_VERSION,
+): Promise<ClaudeVersion> {
   const result = await run(['--version'], { timeoutMs: 5000 })
   const version = result.code === 0 ? parseClaudeVersion(result.stdout) : null
   return {
-    minimum: MIN_CLAUDE_VERSION,
-    ok: version !== null && compareVersions(version, MIN_CLAUDE_VERSION) >= 0,
+    minimum,
+    ok: version !== null && compareVersions(version, minimum) >= 0,
     version,
   }
 }

@@ -11,6 +11,7 @@ import { HOOK_SCRIPT, statuslineScript } from './scripts'
 import {
   type ClaudeSettings,
   checkInstall,
+  HOOK_ROWS,
   planInstall,
   planUninstall,
   type StatusLineSetting,
@@ -324,6 +325,20 @@ export async function uninstall(
     await staged.commit()
   }
   return integrationStatus(paths)
+}
+
+// Find an old hook install: at least one Bifrost hook row or the Bifrost wrapper.
+// A settings file that Bifrost cannot read gives found false and the error.
+export async function oldInstallStatus(
+  paths: IntegrationPaths,
+): Promise<{ found: boolean; error?: string }> {
+  try {
+    const { settings } = await readSettings(paths.claudeSettings)
+    const check = checkInstall(settings)
+    return { found: check.missingHooks.length < HOOK_ROWS.length || check.statusLineInstalled }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error), found: false }
+  }
 }
 
 // The scripts are current when their text is the text that an install writes now.

@@ -13,7 +13,7 @@ import {
   type WebContents,
 } from 'electron'
 import { isPriority } from '../shared/priority'
-import type { ClaudeVersion, DisplayMode, WatchColour } from '../shared/types'
+import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
 import { isWatchColour } from '../shared/watch'
 import { createActions } from './actions/actions'
@@ -34,11 +34,16 @@ import {
   type IntegrationPaths,
   install,
   integrationStatus,
+  oldInstallStatus,
   previewInstall,
   uninstall,
 } from './integration/integration'
 import { createQuietMarker } from './integration/quiet-marker'
 import { createSerialRunner } from './integration/serial'
+import { createLiveControl, LIVE_MIN_CLAUDE_VERSION, type LiveControl } from './live/live-control'
+import { createLiveServer } from './live/live-server'
+import { modSourceDir } from './live/mod-folder'
+import { createPluginCli } from './live/plugin-cli'
 import { checkChatOpen, REFUSED_NOT_CHAT } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
@@ -89,6 +94,8 @@ const sizeWatcher = new SessionSizeWatcher({
 // The main process sets liveService when the store loads.
 let liveService: RegistryService | null = null
 let serviceStopped = false
+// Live details. registerIpc sets it. stopRegistry stops its server.
+let liveControl: LiveControl | null = null
 
 // Return true if the sender is the page of the current window and that page did not end.
 // The check compares the webContents IDs, not the objects.
@@ -416,6 +423,46 @@ export function registerIpc(): void {
   ipcMain.handle('integration:uninstall', e =>
     fromPage(e, () => integration.run(() => uninstall(paths, new Date()))),
   )
+  // Live details. One server listens for the lines of the mod (D9).
+  // The four actions use the serial runner of the integration handlers. Then the removal of an
+  // old hook install and a plugin command never run at the same time.
+  const liveServer = createLiveServer({
+    now: () => Date.now(),
+    onEvent: ev => liveService?.pushLive(ev),
+    socketPath: join(paths.bifrostHome, 'live.sock'),
+  })
+  const live = createLiveControl({
+    cli: async () => {
+      const runClaude = await run
+      return runClaude ? createPluginCli(runClaude) : null
+    },
+    forceListen: process.env.BIFROST_LIVE_LISTEN === '1',
+    liveSessions: () => liveService?.liveCount() ?? 0,
+    modDir: join(paths.bifrostHome, 'mod'),
+    modSource: modSourceDir(app.getAppPath()),
+    oldInstall: () => oldInstallStatus(paths),
+    removeOldInstall: () => uninstall(paths, new Date()).then(() => {}),
+    server: liveServer,
+    version: async (): Promise<ClaudeVersion> => {
+      const runClaude = await run
+      if (!runClaude) return { minimum: LIVE_MIN_CLAUDE_VERSION, ok: false, version: null }
+      return checkClaudeVersion(runClaude, LIVE_MIN_CLAUDE_VERSION)
+    },
+  })
+  liveControl = live
+  // Start after the service loads, so an event finds the service.
+  // Do not start when the app quits before the store loads.
+  void service
+    .then(() => (serviceStopped ? undefined : live.start()))
+    .catch(err => console.warn('Live details: the start failed.', err))
+  const liveAction = (channel: string, fn: () => Promise<LiveStatus>): void => {
+    ipcMain.handle(channel, e => fromPage(e, () => integration.run(fn)))
+  }
+  ipcMain.handle('live:status', e => fromPage(e, () => live.status()))
+  liveAction('live:install', () => live.install())
+  liveAction('live:enable', () => live.enable())
+  liveAction('live:disable', () => live.disable())
+  liveAction('live:uninstall', () => live.uninstall())
   // The renderer can open, write, resize and close only chat views.
   // Only the main process uses send views (D1).
   const isChatView = (viewId: unknown): viewId is string =>
@@ -512,8 +559,9 @@ export function closeAllPtys(): void {
   page.end()
 }
 
-// Stop the registry service. Call it when the app quits.
+// Stop the registry service and the server of Live details. Call it when the app quits.
 export function stopRegistry(): void {
   serviceStopped = true
   liveService?.stop()
+  liveControl?.stop()
 }

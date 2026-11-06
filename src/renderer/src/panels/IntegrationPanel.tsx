@@ -1,6 +1,39 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ClaudeVersion, InstallPreview, IntegrationStatus } from '../../../shared/types'
+import type {
+  ClaudeVersion,
+  InstallPreview,
+  IntegrationStatus,
+  LiveStatus,
+} from '../../../shared/types'
 import { errorMessage } from '../lib/error-message'
+
+// A copy of RELOAD_NOTE in src/main/live/live-control.ts. The renderer does not import main code.
+const RELOAD_NOTE = 'Sessions that run now get the change after /reload-plugins or a restart.'
+
+const PLUGIN_TEXT: Record<LiveStatus['plugin'], string> = {
+  disabled: 'installed, off',
+  enabled: 'installed, on',
+  'not-installed': 'not installed',
+  unknown: 'unknown',
+}
+
+const yesNo = (value: boolean): string => (value ? 'yes' : 'no')
+
+// One line for each field of the Live details status.
+function LiveLines({ live }: { live: LiveStatus }): React.JSX.Element {
+  return (
+    <>
+      <div>Plugin: {PLUGIN_TEXT[live.plugin]}</div>
+      <div>Mod folder up to date: {yesNo(live.modCurrent)}</div>
+      <div>Old hook install found: {yesNo(live.oldInstall)}</div>
+      <div>Listening: {yesNo(live.listening)}</div>
+      <div>Live sessions: {live.liveSessions}</div>
+      <div>Claude Code version: {live.claudeVersion ?? 'not found'}</div>
+      <div>Version is new enough: {yesNo(live.versionOk)}</div>
+      {live.error && <div className='whitespace-pre-wrap text-box-red'>{live.error}</div>}
+    </>
+  )
+}
 
 function describe(status: IntegrationStatus): string {
   if (status.installed) return 'Installed.'
@@ -51,6 +84,9 @@ export default function IntegrationPanel(): React.JSX.Element {
   const [status, setStatus] = useState<IntegrationStatus | null>(null)
   const [preview, setPreview] = useState<InstallPreview | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [live, setLive] = useState<LiveStatus | null>(null)
+  const [liveError, setLiveError] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const running = useRef(false)
 
@@ -59,26 +95,51 @@ export default function IntegrationPanel(): React.JSX.Element {
       .status()
       .then(setStatus)
       .catch(err => setError(errorMessage(err)))
+    window.bifrost.live
+      .status()
+      .then(setLive)
+      .catch(err => setLiveError(errorMessage(err)))
   }, [])
 
-  // Run one action. The three buttons stay off until it ends.
+  // Run one action. All buttons stay off until it ends.
   // The ref stops a second action before the next render disables the buttons.
   // Each action clears the old preview. Install needs a new preview each time.
-  async function run(action: () => Promise<void>): Promise<void> {
+  // onError shows the failure in the block of the button.
+  async function run(
+    action: () => Promise<void>,
+    onError: (text: string) => void = setError,
+  ): Promise<void> {
     if (running.current) return
     running.current = true
     setBusy(true)
     setError(null)
+    setLiveError(null)
+    setNote(null)
     setPreview(null)
     try {
       await action()
     } catch (err) {
-      setError(errorMessage(err))
+      onError(errorMessage(err))
     } finally {
       running.current = false
       setBusy(false)
     }
   }
+
+  // Run one Live details action. Then read both statuses again, also after a failure:
+  // an action can remove the old hook install before it fails.
+  const onLive = (action: () => Promise<LiveStatus>, reload: boolean) => (): Promise<void> =>
+    run(async () => {
+      try {
+        setLive(await action())
+        if (reload) setNote(RELOAD_NOTE)
+      } catch (err) {
+        await window.bifrost.live.status().then(setLive, () => {})
+        throw err
+      } finally {
+        await window.bifrost.integration.status().then(setStatus, () => {})
+      }
+    }, setLiveError)
 
   const onPreview = (): Promise<void> =>
     run(async () => setPreview(await window.bifrost.integration.preview()))
@@ -99,6 +160,46 @@ export default function IntegrationPanel(): React.JSX.Element {
 
   return (
     <div className='select-text p-3 font-mono text-[13px] leading-[1.4]'>
+      <div className='mb-3'>
+        <div>Live details</div>
+        {live ? <LiveLines live={live} /> : <div>Status: loading.</div>}
+        <div>
+          <button
+            className={BUTTON}
+            disabled={busy}
+            onClick={onLive(() => window.bifrost.live.install(), true)}
+            type='button'
+          >
+            Install
+          </button>
+          <button
+            className={BUTTON}
+            disabled={busy}
+            onClick={onLive(() => window.bifrost.live.enable(), true)}
+            type='button'
+          >
+            Turn on
+          </button>
+          <button
+            className={BUTTON}
+            disabled={busy}
+            onClick={onLive(() => window.bifrost.live.disable(), false)}
+            type='button'
+          >
+            Turn off
+          </button>
+          <button
+            className={BUTTON}
+            disabled={busy}
+            onClick={onLive(() => window.bifrost.live.uninstall(), false)}
+            type='button'
+          >
+            Remove
+          </button>
+        </div>
+        {liveError && <div className='whitespace-pre-wrap text-box-red'>{liveError}</div>}
+        {note && <div>{note}</div>}
+      </div>
       <VersionLine />
       <div>{status ? describe(status) : 'Status: loading.'}</div>
       {status?.error && <div className='whitespace-pre-wrap text-box-red'>{status.error}</div>}

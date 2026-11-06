@@ -4,6 +4,7 @@ import type {
   DisplayMode,
   InstallPreview,
   IntegrationStatus,
+  LiveStatus,
   Priority,
   ProjectApp,
   ProjectAppId,
@@ -101,6 +102,22 @@ export interface BifrostApi {
     // install and uninstall reject when the settings file is not valid.
     install(): Promise<IntegrationStatus>
     uninstall(): Promise<IntegrationStatus>
+  }
+  // Live details (D11). Each action resolves with the new status. It rejects with the message
+  // of its failure. A switch calls install when plugin is not-installed, else enable or disable.
+  live: {
+    status(): Promise<LiveStatus>
+    // Remove an old hook install, copy the mod folder, add the marketplace, install the plugin,
+    // turn it on and listen. This rejects for Claude Code below 2.1.290.
+    install(): Promise<LiveStatus>
+    // Remove an old hook install, copy the mod folder, turn the plugin on and listen.
+    // This rejects when the plugin is not installed.
+    enable(): Promise<LiveStatus>
+    // Turn the plugin off and stop the server at once.
+    disable(): Promise<LiveStatus>
+    // Stop the server. Remove the plugin, the marketplace of Bifrost, the mod folder and an old
+    // hook install.
+    uninstall(): Promise<LiveStatus>
   }
   ui: {
     // The saved UI state, or null when the file is missing or damaged.

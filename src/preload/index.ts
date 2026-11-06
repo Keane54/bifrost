@@ -50,6 +50,13 @@ const api: BifrostApi = {
     status: () => invoke('integration:status'),
     uninstall: () => invoke('integration:uninstall'),
   },
+  live: {
+    disable: () => invoke('live:disable'),
+    enable: () => invoke('live:enable'),
+    install: () => invoke('live:install'),
+    status: () => invoke('live:status'),
+    uninstall: () => invoke('live:uninstall'),
+  },
   pty: {
     close: (viewId, signal) => invoke('pty:close', viewId, signal),
     onData: cb => subscribe('pty:data', cb),

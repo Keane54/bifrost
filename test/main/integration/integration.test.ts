@@ -19,9 +19,11 @@ import {
   type IntegrationPaths,
   install,
   integrationStatus,
+  oldInstallStatus,
   previewInstall,
   uninstall,
 } from '../../../src/main/integration/integration'
+import { HOOK_COMMAND, STATUSLINE_COMMAND } from '../../../src/main/integration/settings-plan'
 import { runSh } from '../../helpers/run-sh'
 
 const NOW = new Date('2026-11-04T15:30:00Z')
@@ -372,4 +374,34 @@ test('an install with a missing saved original is not installed', async () => {
   await install(paths, NOW)
   await rm(join(home, 'statusline-original.json'))
   expect(await integrationStatus(paths)).toMatchObject({ installed: false, scriptsCurrent: false })
+})
+
+test('oldInstallStatus finds a Bifrost hook or the wrapper', async () => {
+  const hook = { hooks: [{ command: HOOK_COMMAND, type: 'command' }] }
+  await writeFile(paths.claudeSettings, JSON.stringify({ hooks: { Stop: [hook] } }))
+  expect(await oldInstallStatus(paths)).toEqual({ found: true })
+  await writeFile(
+    paths.claudeSettings,
+    JSON.stringify({ statusLine: { command: STATUSLINE_COMMAND, type: 'command' } }),
+  )
+  expect(await oldInstallStatus(paths)).toEqual({ found: true })
+})
+
+test('oldInstallStatus gives found false with no Bifrost entry', async () => {
+  expect(await oldInstallStatus(paths)).toEqual({ found: false })
+  await writeFile(
+    paths.claudeSettings,
+    JSON.stringify({
+      hooks: { Stop: [{ hooks: [{ command: 'my-hook', type: 'command' }] }] },
+      statusLine: { command: 'my-statusline', type: 'command' },
+    }),
+  )
+  expect(await oldInstallStatus(paths)).toEqual({ found: false })
+})
+
+test('oldInstallStatus gives the error for a settings file that is not valid JSON', async () => {
+  await writeFile(paths.claudeSettings, '{ not json')
+  const s = await oldInstallStatus(paths)
+  expect(s.found).toBe(false)
+  expect(s.error).toMatch(/not valid JSON/)
 })
