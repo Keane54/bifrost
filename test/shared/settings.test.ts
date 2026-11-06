@@ -36,6 +36,7 @@ describe('parseSettings', () => {
       expect(parseSettings(bad)).toEqual(DEFAULT_SETTINGS)
     }
     expect(DEFAULT_SETTINGS).toEqual({
+      accountUsage: false,
       escalationMinutes: 10,
       interfaceScale: 100,
       keys: {},
@@ -222,6 +223,8 @@ describe('applyPatch', () => {
     expect(reasonOf(current, { labels: 'fancy' })).toBe('refused: bad labels')
     expect(reasonOf(current, { escalationMinutes: 121 })).toBe('refused: bad escalationMinutes')
     expect(reasonOf(current, { rowFlash: 'yes' })).toBe('refused: bad rowFlash')
+    expect(reasonOf(current, { accountUsage: 'yes' })).toBe('refused: bad accountUsage')
+    expect(reasonOf(current, { accountUsage: true })).toBe('ok')
     expect(reasonOf(current, { terminalApp: 'finder' })).toBe('refused: bad terminalApp')
     expect(reasonOf(current, { panelTransparency: 7 })).toBe('refused: bad panelTransparency')
     expect(reasonOf(current, { interfaceScale: 160 })).toBe('refused: bad interfaceScale')

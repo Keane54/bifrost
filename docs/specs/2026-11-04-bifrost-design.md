@@ -494,6 +494,28 @@ The Event log shows the live state events with the time, the session and the eve
 
 The Usage HUD shows two bars: the 5-hour limit and the 7-day limit. Each bar shows the use and the reset time. Bifrost chooses each bar on its own from all live usage lines. The newest window wins, and in the same window the highest use wins. An idle session can send an old value, and this rule stops that value from replacing a newer one (section 6). With no data, the panel shows "No usage data yet."
 
+Account usage (opt-in): the setting `Account usage from Anthropic` (section 12) is off by default. When it is on, Bifrost asks Anthropic for the usage of the account. The usage lines of the sessions change only when a session on this Mac gets an API reply. The account values also show use on claude.ai, on a phone and on other Macs.
+
+- The main process polls every 5 minutes. It also polls when the Usage HUD opens, but at most one time in 60 seconds. When the setting goes off, the polling stops and the account values go away.
+- One poll reads the Claude Code login from the Keychain, and then calls `GET https://api.anthropic.com/api/oauth/usage`. The call sends `Authorization: Bearer <access token>`, `anthropic-beta: oauth-2025-04-20` and `User-Agent: Bifrost`. Each step has a 10 second limit.
+- Bifrost takes the windows `five_hour` and `seven_day` (`utilization` is a percent, `resets_at` is an ISO 8601 text). If `seven_day` is missing, `null` or not usable, Bifrost takes the entry `weekly_all` of the list `limits`. Bifrost ignores all other keys. A bad answer gives no values.
+- A plan can have no 5-hour window (`five_hour` is `null`). Then the 5-hour bar shows `-` and the detail `No 5-hour limit right now.`
+- A 401 or 403 answer clears the account values until a later poll works. A 429 answer makes Bifrost wait 15 minutes. Another error keeps the last good values.
+- When the account values are 15 minutes old or less, the bars use them, and the source line is `From your Anthropic account, updated <age> ago.` Else the panel shows the session values. The bar rules do not change.
+- The main process sends the values to the renderer on the channel `usage:account-update`. The renderer reads them with `usage:account-get` and asks for a poll with `usage:hud-opened`. The HUD asks when it mounts and each time it becomes visible again. The type has the windows and the time of the answer. It has no token.
+
+Security of the account usage:
+
+- Bifrost reads one Keychain item, `Claude Code-credentials`, with `/usr/bin/security` (fixed arguments, no shell). It uses only `claudeAiOauth.accessToken` and `claudeAiOauth.expiresAt`. macOS may ask the user to allow this.
+- The token stays in memory for one request. Bifrost never logs it, never writes it to disk, never puts it in an error text and never sends it to the renderer.
+- Bifrost never uses the refresh token and never calls a refresh endpoint. A refresh by Bifrost would change the token that Claude Code holds and could sign Claude Code out. When the token has expired, or the answer is 401 or 403, Bifrost waits. It reads the Keychain again at the next poll, because Claude Code refreshes the token itself.
+- Bifrost sends the token only to `https://api.anthropic.com`. The code has a fixed URL. A redirect stops the request. The request sends no cookies and keeps no cache. The request has no email and no user name.
+- Anthropic does not document the endpoint. It can change or stop without notice. Bifrost then shows the session values.
+- When the setting goes off, Bifrost stops a poll in progress and sends no request. A poll ends after 25 seconds at the latest.
+- A token with no `expiresAt`, or one that ends within 60 seconds, counts as no token.
+- If the user denies the Keychain prompt, the next poll asks again. This can repeat every 5 minutes.
+- The test home (D12) starts no poller, and the tests use fakes only.
+
 ### 8.9 New session dialog
 
 | Field | Default |
@@ -855,6 +877,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | macOS notification | On |
 | Sound for a red box | On |
 | Start at login | Off |
+| Account usage from Anthropic | Off. A check row. The hint says that Bifrost reads the Claude Code login from the Keychain and that macOS may ask to allow this (section 8.8). |
 | Poll interval | 2 seconds |
 | Snap distance | 8 pixels |
 | Panel transparency | 15%. A select from 0% to 50% in steps of 5% (the background of all panels; 0% is solid). |

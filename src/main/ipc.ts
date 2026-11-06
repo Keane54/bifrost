@@ -20,6 +20,8 @@ import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/s
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
 import { isWatchColour } from '../shared/watch'
+import { type AccountUsagePoller, createAccountUsagePoller } from './account-usage/poller'
+import { readAccessToken } from './account-usage/token'
 import { createActions } from './actions/actions'
 import { appIcon } from './actions/app-icon'
 import { dirInfo, isAlive, processName, sendSignal } from './actions/process-info'
@@ -130,6 +132,10 @@ const eventBatcher = createBatcher(entries => send('events:append', entries))
 // The service status monitor (spec 8.11). It starts with the IPC handlers. A test home starts none.
 let serviceMonitor: ServiceMonitor | null = null
 
+// The account usage poller (spec 8.8). It runs only while the setting accountUsage is on. A test
+// home creates none, so a test never reads the Keychain.
+let accountUsage: AccountUsagePoller | null = null
+
 const fetchJson = createFetchJson((url, init) => net.fetch(url, init))
 
 // Bifrost sets the login item only in the packaged app, and never in a test home (D2, D12).
@@ -227,6 +233,10 @@ function runSettingsEffect(effect: SettingsEffect): void {
     case 'zoom':
       setZoom(effect.factor)
       return
+    case 'account-usage':
+      if (effect.on) accountUsage?.start()
+      else accountUsage?.stop()
+      return
   }
 }
 
@@ -256,6 +266,7 @@ async function openSettings(file: string): Promise<SettingsStore> {
     }
   })
   settingsStore = store
+  if (store.get().accountUsage) accountUsage?.start()
   applyZoom()
   // Build the menu again with the keys of the file (ruling C6). Before this, it has the default
   // keys.
@@ -356,6 +367,12 @@ export function registerIpc(home: TestHome | null = null): void {
       now: () => Date.now(),
     })
     serviceMonitor.start()
+    accountUsage = createAccountUsagePoller({
+      emit: value => send('usage:account-update', value),
+      fetch: (url, init) => net.fetch(url, init),
+      now: () => Date.now(),
+      readToken: () => readAccessToken(execFile, Date.now()),
+    })
   }
 
   const claudePath = home
@@ -458,6 +475,12 @@ export function registerIpc(home: TestHome | null = null): void {
     }),
   )
   ipcMain.handle('usage:get', e => fromPage(e, async () => (await service).usage()))
+  ipcMain.handle('usage:account-get', e => fromPage(e, async () => accountUsage?.current() ?? null))
+  ipcMain.handle('usage:hud-opened', e =>
+    fromPage(e, async () => {
+      accountUsage?.requestPoll()
+    }),
+  )
   ipcMain.handle('registry:set-priority', (e, sessionId: unknown, priority: unknown) =>
     fromPage(e, async () => {
       if (typeof sessionId !== 'string' || (priority !== null && !isPriority(priority))) {
@@ -847,4 +870,5 @@ export function stopRegistry(): void {
   eventBatcher.stop()
   liveControl?.stop()
   serviceMonitor?.stop()
+  accountUsage?.stop()
 }

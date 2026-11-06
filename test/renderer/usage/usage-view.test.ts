@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { formatReset, usageView } from '../../../src/renderer/src/usage/usage-view'
-import type { UsageSnapshot } from '../../../src/shared/types'
+import type { AccountUsage, UsageSnapshot } from '../../../src/shared/types'
 
 const NOW = Date.UTC(2026, 10, 5, 12, 0)
 const MIN = 60_000
@@ -99,5 +99,72 @@ describe('usageView', () => {
   test('the source names the session and the age', () => {
     const v = usageView(snap({ fiveHour: { resetsAt: NOW + HOUR, usedPercent: 5 } }), NOW, ZONE)
     expect(v.source).toBe('From bifrost-test-a, 2 min ago.')
+  })
+})
+
+describe('usageView with account values', () => {
+  const account = (ageMs: number, limits: AccountUsage['limits']): AccountUsage => ({
+    fetchedAt: NOW - ageMs,
+    limits,
+  })
+  const session = snap({
+    fiveHour: { resetsAt: NOW + HOUR, usedPercent: 91 },
+    sevenDay: { resetsAt: NOW + DAY, usedPercent: 70 },
+  })
+  const sevenOnly = { sevenDay: { resetsAt: NOW + 3 * DAY, usedPercent: 36 } }
+
+  test('fresh account values win over the session values', () => {
+    const v = usageView(session, NOW, ZONE, account(3 * MIN, sevenOnly))
+    expect(v.bars[1]).toMatchObject({
+      detail: 'Resets in 3 d 0 h (Sun 12:00)',
+      high: false,
+      percent: 36,
+    })
+    expect(v.source).toBe('From your Anthropic account, updated 3 min ago.')
+  })
+
+  test('a plan with no 5-hour window shows a dash and the reason', () => {
+    const v = usageView(session, NOW, ZONE, account(0, sevenOnly))
+    expect(v.bars[0]).toEqual({
+      detail: 'No 5-hour limit right now.',
+      high: false,
+      label: '5-hour limit',
+      percent: null,
+    })
+    expect(v.source).toBe('From your Anthropic account, updated 0 s ago.')
+  })
+
+  test('the bar rules stay the same: high at 90 percent', () => {
+    const v = usageView(
+      null,
+      NOW,
+      ZONE,
+      account(MIN, {
+        fiveHour: { resetsAt: NOW + HOUR, usedPercent: 90 },
+        sevenDay: { resetsAt: NOW + DAY, usedPercent: 89.4 },
+      }),
+    )
+    expect(v.bars[0]).toMatchObject({ high: true, percent: 90 })
+    expect(v.bars[1]).toMatchObject({ high: false, percent: 89 })
+  })
+
+  test('account values of exactly 15 minutes still win', () => {
+    const v = usageView(session, NOW, ZONE, account(15 * MIN, sevenOnly))
+    expect(v.source).toBe('From your Anthropic account, updated 15 min ago.')
+  })
+
+  test('account values older than 15 minutes fall back to the session values', () => {
+    const v = usageView(session, NOW, ZONE, account(15 * MIN + 1, sevenOnly))
+    expect(v.bars[0]).toMatchObject({ percent: 91 })
+    expect(v.source).toBe('From bifrost-test-a, 2 min ago.')
+  })
+
+  test('old account values with no session values give No usage data', () => {
+    const v = usageView(null, NOW, ZONE, account(20 * MIN, sevenOnly))
+    expect(v.source).toBe('No usage data yet.')
+  })
+
+  test('no account values give the session values as before', () => {
+    expect(usageView(session, NOW, ZONE, null)).toEqual(usageView(session, NOW, ZONE))
   })
 })
