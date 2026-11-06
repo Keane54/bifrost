@@ -147,3 +147,53 @@ test('two quick updates apply one after the other', async () => {
   expect(store.get()).toEqual(expected)
   expect(await readSaved()).toEqual(expected)
 })
+
+test('the first write over a later version keeps a copy of the file, one time', async () => {
+  const later = `${JSON.stringify({ labels: 'space', newThing: { a: 1 }, version: 2 }, null, 4)}\n`
+  await writeFile(file, later, { mode: 0o644 })
+  const backup = join(dir, 'settings.v2.backup.json')
+  const store = await openSettingsStore(file)
+  // The open itself writes nothing.
+  expect(await readdir(dir)).toEqual(['settings.json'])
+  await store.update({ pollSeconds: 5 })
+  expect(await readFile(backup, 'utf8')).toBe(later)
+  expect((await stat(backup)).mode & 0o777).toBe(0o600)
+  expect(await readSaved()).toMatchObject({ pollSeconds: 5, version: 1 })
+  // The second write does not copy again.
+  await rm(backup)
+  await store.update({ pollSeconds: 10 })
+  expect(await readdir(dir)).toEqual(['settings.json'])
+})
+
+test('the copy replaces an old copy and gets mode 0600', async () => {
+  await writeFile(file, JSON.stringify({ version: 2 }))
+  const backup = join(dir, 'settings.v2.backup.json')
+  await writeFile(backup, 'old', { mode: 0o644 })
+  await (await openSettingsStore(file)).update({ pollSeconds: 5 })
+  expect(await readFile(backup, 'utf8')).toBe(JSON.stringify({ version: 2 }))
+  expect((await stat(backup)).mode & 0o777).toBe(0o600)
+})
+
+test('a file of version 1, a missing file and bad JSON give no copy', async () => {
+  await writeFile(file, JSON.stringify({ version: 1 }))
+  await (await openSettingsStore(file)).update({ pollSeconds: 5 })
+  await rm(file)
+  await (await openSettingsStore(file)).update({ pollSeconds: 5 })
+  await writeFile(file, '{ "version": 3')
+  await (await openSettingsStore(file)).update({ pollSeconds: 5 })
+  expect(await readdir(dir)).toEqual(['settings.json'])
+})
+
+test('a failed copy keeps the later file and turns the save off', async () => {
+  await writeFile(file, JSON.stringify({ version: 4 }))
+  // A directory with the name of the copy makes the copy fail.
+  await mkdir(join(dir, 'settings.v4.backup.json'))
+  const log = vi.fn()
+  const store = await openSettingsStore(file, log)
+  const next = await store.update({ labels: 'space' })
+  expect(next.labels).toBe('space')
+  expect(log).toHaveBeenCalledOnce()
+  expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 4 })
+  await store.update({ pollSeconds: 5 })
+  expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 4 })
+})

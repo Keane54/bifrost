@@ -1,3 +1,6 @@
+import { chmod, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { isPlainObject } from '../../shared/plain-object'
 import { applyPatch, parseSettings, type Settings, type SettingsPatch } from '../../shared/settings'
 import { readJsonFile, writeJsonAtomic } from './json-file'
 
@@ -16,11 +19,27 @@ export interface SettingsStore {
   onChange(cb: (settings: Settings, prev: Settings) => void): () => void
 }
 
+// The version of a file from a later Bifrost, or null.
+function laterVersion(data: unknown): number | null {
+  if (!isPlainObject(data)) return null
+  const { version } = data
+  return typeof version === 'number' && Number.isFinite(version) && version > 1 ? version : null
+}
+
+// Copy a file with mode 0600. The copy replaces an old copy.
+async function copyPrivate(from: string, to: string): Promise<void> {
+  await writeFile(to, await readFile(from), { mode: 0o600 })
+  await chmod(to, 0o600)
+}
+
 // Open settings.json (the M2 pattern of openUiStore).
 // A missing file or bad JSON gives the defaults, and a save works.
 // A bad value in the file gives its default. The other values stay.
 // If the file cannot be read, the store uses the defaults and does not save.
 // Then Bifrost cannot write over a file that it did not read.
+// A file of a later version gives the defaults. Before the first write over it, Bifrost copies it
+// to settings.v<version>.backup.json in the same folder, one time. If the copy fails, the store
+// does not save. So the values of the later version stay.
 // Updates run one after the other, in the order of the calls.
 export async function openSettingsStore(
   file: string,
@@ -28,9 +47,13 @@ export async function openSettingsStore(
 ): Promise<SettingsStore> {
   let current: Settings
   let canSave = true
+  // The path of the copy that the first write needs, or null.
+  let backup: string | null = null
   try {
     const result = await readJsonFile(file)
     current = parseSettings(result.ok ? result.data : null)
+    const later = result.ok ? laterVersion(result.data) : null
+    if (later !== null) backup = join(dirname(file), `settings.v${later}.backup.json`)
   } catch (error) {
     log(`Bifrost cannot read ${file}. Bifrost uses the default settings and does not save.`, error)
     current = parseSettings(null)
@@ -44,6 +67,16 @@ export async function openSettingsStore(
     const result = applyPatch(current, patch)
     if (!result.ok) throw new Error(result.reason)
     if (result.settings === current) return current
+    if (canSave && backup !== null) {
+      const target = backup
+      backup = null
+      try {
+        await copyPrivate(file, target)
+      } catch (error) {
+        log(`Bifrost cannot copy ${file} to ${target}. Bifrost does not save the settings.`, error)
+        canSave = false
+      }
+    }
     if (canSave) await writeJsonAtomic(file, result.settings)
     const prev = current
     current = result.settings
