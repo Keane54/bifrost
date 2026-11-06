@@ -459,6 +459,20 @@ export function activeBindings(keys: KeyMap): Array<{ slot: KeySlot; binding: st
 // The place of the focus (spec 9.3, D6).
 export type FocusZone = 'chat' | 'send-box' | 'text' | 'control' | 'modal' | 'other'
 
+// The keys that a control keeps: Enter, Space and Tab (D27), and the keys that move in a tab list,
+// a radio group, a select or a menu.
+const CONTROL_KEYS: ReadonlySet<string> = new Set([
+  'Enter',
+  'Space',
+  'Tab',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+])
+
 // Return true when a binding may act while the focus is in this zone.
 export function keyAllowed(item: KeySlot, binding: string, zone: FocusZone): boolean {
   if (zone === 'modal') return false
@@ -471,8 +485,8 @@ export function keyAllowed(item: KeySlot, binding: string, zone: FocusZone): boo
     return zone === 'other' || zone === 'control' || zone === 'send-box'
   if (chord.ctrl) return zone !== 'chat'
   if (zone === 'other') return true
-  // Enter, Space and Tab stay with a control (D27).
-  return zone === 'control' && chord.key !== 'Enter' && chord.key !== 'Space' && chord.key !== 'Tab'
+  // Enter, Space, Tab, the arrow keys, Home and End stay with a control (D27).
+  return zone === 'control' && !CONTROL_KEYS.has(chord.key)
 }
 
 const ACCELERATOR_KEYS: Readonly<Record<string, string>> = {

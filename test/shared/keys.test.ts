@@ -300,8 +300,27 @@ test('keyAllowed follows spec 9.3', () => {
   expect(allowedZones('next-overview-tab:key', 'Tab')).toEqual(['other'])
   expect(allowedZones('prev-overview-tab:key', 'Shift+Tab')).toEqual(['other'])
   expect(allowedZones('escape:key', 'Escape')).toEqual(['send-box', 'control', 'other'])
-  expect(allowedZones('select-next:key', 'ArrowDown')).toEqual(['control', 'other'])
+  expect(allowedZones('select-next:key', 'ArrowDown')).toEqual(['other'])
   expect(allowedZones('delete:key', 'Shift+Backspace')).toEqual(['control', 'other'])
+})
+
+test('keyAllowed keeps the arrow keys, Home and End with a control', () => {
+  const down = slotById('select-next:key')
+  const up = slotById('select-prev:key')
+  if (!down || !up) throw new Error('no slot')
+  // A tab list, a radio group, a select and a menu move with these keys.
+  expect(keyAllowed(down, 'ArrowDown', 'control')).toBe(false)
+  expect(keyAllowed(down, 'ArrowDown', 'other')).toBe(true)
+  expect(allowedZones('select-prev:key', 'ArrowUp')).toEqual(['other'])
+  expect(allowedZones('select-prev:key', 'ArrowLeft')).toEqual(['other'])
+  expect(allowedZones('select-next:key', 'ArrowRight')).toEqual(['other'])
+  expect(allowedZones('select-next:key', 'Shift+ArrowDown')).toEqual(['other'])
+  expect(allowedZones('select-prev:key', 'Home')).toEqual(['other'])
+  expect(allowedZones('select-next:key', 'End')).toEqual(['other'])
+  expect(keyAllowed(up, 'Home', 'control')).toBe(false)
+  // Mod+ArrowDown works at all times. Another single key still acts on a control.
+  expect(allowedZones('select-next:mod', 'Mod+ArrowDown')).toContain('control')
+  expect(allowedZones('stop:key', 'Backspace')).toEqual(['control', 'other'])
 })
 
 test('keyAllowed lets a hold key act only in the other zone (ruling C3)', () => {
