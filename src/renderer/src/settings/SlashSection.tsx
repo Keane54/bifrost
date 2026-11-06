@@ -1,11 +1,12 @@
 // Settings > Slash commands (spec 9.6): the list of the slash favourites.
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MAX_SLASH_COMMANDS } from '../../../shared/settings'
 import { cx } from '../lib/cx'
 import { ErrorLine } from '../lib/ErrorLine'
 import { Tip } from '../lib/menu'
 import { ROW_FIELD, useRowSave } from './SettingRow'
+import { useSaveTracker } from './save-context'
 import { useSettings } from './settings-context'
 import { addSlash, moveSlash, removeSlash } from './slash-list'
 
@@ -44,17 +45,30 @@ export default function SlashSection(): React.JSX.Element {
   const change = (next: string[]): Promise<boolean> =>
     row.save(() => update({ slashCommands: next }))
 
-  const add = (): void => {
+  // Add the typed command. The result is true when the command saved.
+  const add = (): Promise<boolean> => {
     const result = addSlash(list, text)
     if (!result.ok) {
       setReason(result.reason)
-      return
+      return Promise.resolve(false)
     }
     setReason(null)
-    change(result.list).then(ok => {
+    return change(result.list).then(ok => {
       if (ok) setText('')
+      return ok
     })
   }
+
+  // The Save button of the Settings panel adds a typed command, as Add does (spec 12).
+  // The draft reads the newest text and add from this ref.
+  const tracker = useSaveTracker()
+  const latest = useRef({ add, text })
+  latest.current = { add, text }
+  useEffect(
+    () =>
+      tracker?.addDraft(() => (latest.current.text.trim() === '' ? null : latest.current.add())),
+    [tracker],
+  )
 
   return (
     <div className='flex flex-col'>
@@ -100,7 +114,7 @@ export default function SlashSection(): React.JSX.Element {
             setReason(null)
           }}
           onKeyDown={e => {
-            if (e.key === 'Enter') add()
+            if (e.key === 'Enter') void add()
           }}
           placeholder='/command'
           spellCheck={false}
@@ -109,7 +123,7 @@ export default function SlashSection(): React.JSX.Element {
         <button
           className='h-5 shrink-0 border border-panel-edge px-2 text-text text-xs hover:bg-hover active:bg-accent/12 disabled:opacity-40'
           disabled={list.length >= MAX_SLASH_COMMANDS}
-          onClick={add}
+          onClick={() => void add()}
           type='button'
         >
           Add

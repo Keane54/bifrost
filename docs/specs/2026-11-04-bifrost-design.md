@@ -865,6 +865,13 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Keys | Section 9.4 |
 | Live details | Not installed. The section has Install, Turn on, Turn off and Remove (section 11.2). |
 
+Save rules (user decision, 2026-11-06):
+
+- Each change applies at once. A checkbox, a radio button or a select saves on change. A text field or a number field saves on Enter and on blur.
+- The Settings panel has a footer with a Save button. The footer shows on each section.
+- A click on Save blurs the focused field, so that its draft saves. Save also adds a slash command that you typed and did not add.
+- Save waits for each save that runs. If a save fails, Settings stays open, and the row shows the error. Else Save closes the Settings panel.
+
 ## 13. Performance targets
 
 - 20 sessions in the registry.

@@ -5,6 +5,7 @@ import { friendlyError } from '../actions/errors'
 import { cx } from '../lib/cx'
 import { ErrorLine } from '../lib/ErrorLine'
 import { errorMessage } from '../lib/error-message'
+import { useSaveTracker } from './save-context'
 
 // The field style of the dialogs, in a smaller size for a row.
 export const ROW_FIELD =
@@ -45,18 +46,27 @@ export interface RowSave {
 }
 
 // The error state of one row. The error stays until the user closes it or the next save works.
+// In the Settings panel, the Save button waits for each save of a row (spec 12).
 export function useRowSave(): RowSave {
+  const tracker = useSaveTracker()
   const [error, setError] = useState<string | null>(null)
   const closeError = useCallback(() => setError(null), [])
-  const save = useCallback(async (run: () => Promise<void>): Promise<boolean> => {
-    try {
-      await run()
-      setError(null)
-      return true
-    } catch (err) {
-      setError(friendlyError(errorMessage(err)))
-      return false
-    }
-  }, [])
+  const save = useCallback(
+    (run: () => Promise<void>): Promise<boolean> => {
+      const result = (async (): Promise<boolean> => {
+        try {
+          await run()
+          setError(null)
+          return true
+        } catch (err) {
+          setError(friendlyError(errorMessage(err)))
+          return false
+        }
+      })()
+      tracker?.track(result)
+      return result
+    },
+    [tracker],
+  )
   return { closeError, error, save }
 }
