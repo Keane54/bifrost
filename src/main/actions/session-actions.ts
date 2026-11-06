@@ -138,6 +138,12 @@ export interface SessionActions {
   dirInfo(dir: unknown): Promise<DirInfo>
 }
 
+// The arguments of "claude --bg --resume" for Resume and Take control.
+// A session that Bifrost starts or resumes always gets the statusline override (D13).
+export function resumeArgs(sessionId: string): string[] {
+  return ['--bg', '--settings', NO_STATUSLINE_SETTINGS, '--resume', sessionId]
+}
+
 // The arguments of "claude --bg" for the New session values.
 // The prompt is last, because "--worktree" takes an optional value.
 // The permission mode must be in the list. So Bifrost never passes bypassPermissions.
@@ -386,7 +392,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (row.state !== 'parked') throw new Error(REFUSED_NOT_PARKED)
     checkSessionId(row)
     await checkProjectDir(row.cwd)
-    await start(run, ['--bg', '--resume', row.sessionId], row.cwd, 'claude --bg --resume')
+    await start(run, resumeArgs(row.sessionId), row.cwd, 'claude --bg --resume')
   }
 
   // Check isAlive each END_POLL_MS for up to limitMs. Return true when the process ended.
@@ -587,7 +593,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (!(await waitForEnd(pid))) throw new Error(REASON_NOT_ENDED)
         // A started session parks when it ends. So a failed resume leaves a parked row (D6).
         deps.markStarted(row.sessionId)
-        await start(run, ['--bg', '--resume', row.sessionId], cwd, 'claude --bg --resume')
+        await start(run, resumeArgs(row.sessionId), cwd, 'claude --bg --resume')
         await waitResumed(row.sessionId)
         // The resumed session must still run after RESUME_SETTLE_MS. Else it ended or parked
         // before it ran.
