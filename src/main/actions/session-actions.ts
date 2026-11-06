@@ -85,6 +85,7 @@ const REFUSED_RM_SLOW = 'refused: claude rm took too long'
 const REFUSED_WORKTREE_CHANGED = 'refused: the worktree changed after the check'
 const REFUSED_NOT_STOPPED = 'refused: the session did not stop'
 const REFUSED_NO_MESSAGES = 'refused: the session has no messages yet'
+const REFUSED_NO_RESUME_ID = 'refused: the ID that resumes this session is not known yet'
 const REASON_NO_SHORT_ID = 'claude --bg did not give a session ID.'
 const REASON_CREATING = 'A new session is already starting. Please wait.'
 const REASON_NO_CWD = "Bifrost doesn't know the project folder of this session."
@@ -138,6 +139,24 @@ export interface SessionActions {
   dirInfo(dir: unknown): Promise<DirInfo>
 }
 
+type ResumeRow = Pick<SessionRow, 'currentId' | 'kind' | 'resumeId' | 'sessionId'>
+
+// The session ID of the conversation that a row shows now (spec 6.1). A /clear changes it.
+function currentIdOf(row: Pick<SessionRow, 'currentId' | 'sessionId'>): string {
+  return row.currentId ?? row.sessionId
+}
+
+// The session ID that Resume and Resume all pass (spec 9.1).
+// An owned row uses the resume ID of the registry: the original session ID of the job. A resume
+// by the ID after a /clear starts a second job (test of 2026-11-06). So Bifrost refuses when it
+// does not know the resume ID yet.
+// An external row uses its current ID, as Take control does.
+function resumeIdOf(row: ResumeRow): string {
+  if (row.kind === 'external') return currentIdOf(row)
+  if (row.resumeId === undefined) throw new Error(REFUSED_NO_RESUME_ID)
+  return row.resumeId
+}
+
 // The arguments of "claude --bg --resume" for Resume and Resume all.
 // An owned row adds no flag. A resume with a new flag on a stopped background session starts a
 // copy with a new session ID. A background session keeps its saved options, so a session that
@@ -145,9 +164,10 @@ export interface SessionActions {
 // An external row is parked only after a failed Take control. Its last entry was in the
 // foreground, so it has no saved options. It gets the Take control arguments, which hide the
 // statusline and keep the same session ID.
-export function resumeArgs(row: Pick<SessionRow, 'kind' | 'sessionId'>): string[] {
-  if (row.kind === 'external') return takeControlArgs(row.sessionId)
-  return ['--bg', '--resume', row.sessionId]
+export function resumeArgs(row: ResumeRow): string[] {
+  const id = resumeIdOf(row)
+  if (row.kind === 'external') return takeControlArgs(id)
+  return ['--bg', '--resume', id]
 }
 
 // The arguments of "claude --bg --resume" for Take control (D13).
@@ -198,9 +218,9 @@ function shortIdOf(row: SessionRow): string {
   return row.shortId
 }
 
-// The session ID goes into an argument, so it must be a UUID.
-function checkSessionId(row: SessionRow): void {
-  if (!UUID.test(row.sessionId)) throw new Error(REFUSED_BAD_ID)
+// A session ID goes into an argument, so it must be a UUID.
+function checkSessionId(id: string): void {
+  if (!UUID.test(id)) throw new Error(REFUSED_BAD_ID)
 }
 
 // Take control is available only for an external session that is idle or has a yellow box.
@@ -401,9 +421,10 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
 
   // Check a parked row and run "claude --bg --resume" in its directory.
   // Bifrost never resumes a session that runs, because that starts a copy (spec 4).
+  // The woken job keeps its short ID, so its entry goes to the same row ID (spec 6.1).
   const startResume = async (run: RunClaude, row: SessionRow): Promise<void> => {
     if (row.state !== 'parked') throw new Error(REFUSED_NOT_PARKED)
-    checkSessionId(row)
+    checkSessionId(resumeIdOf(row))
     await checkProjectDir(row.cwd)
     await start(run, resumeArgs(row), row.cwd, 'claude --bg --resume')
   }
@@ -572,29 +593,33 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     // The renderer sets confirmed only after the user accepts the confirmation of spec 9.2.
     // Claude Code cannot resume a session that has no user message (Task 10 bug 3). So Bifrost
     // sends no signal to such a session.
+    // Take control resumes the current ID: the conversation after any /clear. The new job of
+    // that ID goes to the same row ID (spec 6.1), so the wait uses the row ID.
     async takeControl(sessionId, confirmed) {
       if (confirmed !== true) throw new Error(REFUSED_TAKE_NOT_CONFIRMED)
       return locked(sessionId, async row => {
         checkTakeControl(row)
-        checkSessionId(row)
+        const current = currentIdOf(row)
+        checkSessionId(current)
         const pid = row.pid
         if (pid === undefined) throw new Error(REFUSED_NO_PID)
         // The PID 0 or -1 signals a group of processes. The PID 1 is launchd.
         if (!isSafePid(pid)) throw new Error(REFUSED_BAD_PID)
         const cwd = row.cwd
         await checkProjectDir(cwd)
-        if (!(await deps.hasMessages(row.sessionId))) throw new Error(REFUSED_NO_MESSAGES)
+        if (!(await deps.hasMessages(current))) throw new Error(REFUSED_NO_MESSAGES)
         // Find claude before the signal. Without claude, Bifrost cannot resume the session.
         const run = await claude()
         if (!isClaudeProcess(await deps.processName(pid))) {
           throw new Error(`refused: process ${pid} is not a claude process`)
         }
         // The rows can change during the reads above. The PID must still be the process of
-        // this session, and of no other row. The rules of the action must still apply.
+        // this session, and of no other row. The rules of the action must still apply. A /clear
+        // in that time changes the current ID, so the resume would take the old conversation.
         const rows = deps.rows()
         const now = rows.find(r => r.sessionId === row.sessionId)
         const other = rows.some(r => r.pid === pid && r.sessionId !== row.sessionId)
-        if (!now || now.pid !== pid || other) {
+        if (!now || now.pid !== pid || other || currentIdOf(now) !== current) {
           throw new Error(REFUSED_CHANGED)
         }
         checkTakeControl(now)
@@ -606,7 +631,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (!(await waitForEnd(pid))) throw new Error(REASON_NOT_ENDED)
         // A started session parks when it ends. So a failed resume leaves a parked row (D6).
         deps.markStarted(row.sessionId)
-        await start(run, takeControlArgs(row.sessionId), cwd, 'claude --bg --resume')
+        await start(run, takeControlArgs(current), cwd, 'claude --bg --resume')
         await waitResumed(row.sessionId)
         // The resumed session must still run after RESUME_SETTLE_MS. Else it ended or parked
         // before it ran.

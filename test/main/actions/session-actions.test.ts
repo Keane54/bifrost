@@ -69,6 +69,8 @@ const row = (o: Partial<SessionRow> = {}): SessionRow => ({
   lastActivity: 1,
   name: 'bifrost-test-s',
   pid: 4242,
+  // The registry gives the resume ID of an owned row (spec 9.1). With no /clear, it is the row ID.
+  resumeId: o.sessionId ?? S,
   sessionId: S,
   shortId: SHORT,
   startedAt: 1,
@@ -81,7 +83,7 @@ const parked = (o: Partial<SessionRow> = {}): SessionRow =>
   row({ pid: undefined, state: 'parked', status: '', ...o })
 
 const external = (o: Partial<SessionRow> = {}): SessionRow =>
-  row({ kind: 'external', shortId: undefined, ...o })
+  row({ kind: 'external', resumeId: undefined, shortId: undefined, ...o })
 
 const newSpec = (o: Partial<NewSessionSpec> = {}): NewSessionSpec => ({
   cwd: '/p',
@@ -219,7 +221,9 @@ const expectedTakeControl = (id: string): string[] => [
 
 describe('resumeArgs and takeControlArgs', () => {
   test('Resume and Resume all add no flag, because a flag on a background session starts a copy', () => {
-    expect(resumeArgs({ kind: 'owned', sessionId: 'S1' })).toEqual(expectedResume('S1'))
+    expect(resumeArgs({ kind: 'owned', resumeId: 'S1', sessionId: 'S1' })).toEqual(
+      expectedResume('S1'),
+    )
   })
 
   test('Resume of a parked foreground session turns the statusline off, as Take control does', () => {
@@ -1162,7 +1166,7 @@ describe('resume', () => {
     f.dir = { git: false, kind: 'missing' }
     await expect(actions.resume(S)).rejects.toThrow("The folder /p doesn't exist.")
     f.dir = { git: false, kind: 'dir' }
-    f.rows = [parked({ sessionId: 'abc' })]
+    f.rows = [parked({ resumeId: 'abc', sessionId: 'abc' })]
     await expect(actions.resume('abc')).rejects.toThrow('refused: bad session ID')
     expect(f.ops('run')).toEqual([])
   })
@@ -1570,5 +1574,100 @@ describe('locks and dirInfo', () => {
     expect(f.log).toEqual([])
     await expect(actions.dirInfo('/p')).resolves.toEqual({ git: true, kind: 'dir' })
     expect(f.ops()).toEqual(['0 dirInfo /p'])
+  })
+})
+
+describe('the ID of each command after a /clear (2026-11-06)', () => {
+  // The row ID is S. A /clear made S2 the current ID. S3 is the original ID of the job, which
+  // starts with its short ID.
+  test('Resume passes the resume ID of an owned row, not the row ID or the current ID', () => {
+    expect(resumeArgs({ currentId: S2, kind: 'owned', resumeId: S3, sessionId: S })).toEqual(
+      expectedResume(S3),
+    )
+  })
+
+  test('Resume of a parked external row passes the current ID with the Take control flags', () => {
+    expect(resumeArgs({ currentId: S2, kind: 'external', sessionId: S })).toEqual(
+      expectedTakeControl(S2),
+    )
+  })
+
+  test('Resume refuses an owned row whose resume ID Bifrost does not know yet', async () => {
+    expect(() => resumeArgs({ currentId: S2, kind: 'owned', sessionId: S })).toThrow(
+      'refused: the ID that resumes this session is not known yet',
+    )
+    f.rows = [parked({ currentId: S2, resumeId: undefined })]
+    await expect(actions.resume(S)).rejects.toThrow(
+      'refused: the ID that resumes this session is not known yet',
+    )
+    expect(f.ops('run')).toEqual([])
+  })
+
+  test('Resume after /clear and stop passes the original ID and waits for the row ID', async () => {
+    f.rows = [parked({ currentId: S2, resumeId: S3 })]
+    f.appear = [row({ currentId: S2, pid: 5151, resumeId: S3 })]
+    await actions.resume(S)
+    expect(f.ops('run', 'markStarted')).toEqual([
+      `0 run ${JSON.stringify(expectedResume(S3))} ${JSON.stringify(IN_P)}`,
+      `0 markStarted ${S}`,
+    ])
+  })
+
+  test('Resume all passes the original ID of each job', async () => {
+    f.rows = [parked({ currentId: S2, resumable: true, resumeId: S3 })]
+    f.appear = [row({ currentId: S2, pid: 5151, resumeId: S3 })]
+    await expect(actions.resumeAll()).resolves.toEqual({ failed: [], resumed: 1 })
+    expect(f.ops('run')).toEqual([
+      `0 run ${JSON.stringify(expectedResume(S3))} ${JSON.stringify(IN_P)}`,
+    ])
+  })
+
+  test('Resume refuses a resume ID that is not a UUID', async () => {
+    f.rows = [parked({ resumeId: 'abc' })]
+    await expect(actions.resume(S)).rejects.toThrow('refused: bad session ID')
+    expect(f.ops('run')).toEqual([])
+  })
+
+  test('Take control after an interactive /clear resumes the current ID', async () => {
+    f.rows = [external({ currentId: S2 })]
+    f.alive = pid => pid === 5151
+    f.appear = [row({ currentId: S2, pid: 5151 })]
+    const done = actions.takeControl(S, true)
+    await vi.advanceTimersByTimeAsync(RESUME_SETTLE_MS)
+    await expect(done).resolves.toEqual({ sessionId: S })
+    expect(f.ops('hasMessages', 'markStarted', 'run')).toEqual([
+      `0 hasMessages ${S2}`,
+      `0 markStarted ${S}`,
+      `0 run ${JSON.stringify(expectedTakeControl(S2))} ${JSON.stringify(IN_P)}`,
+    ])
+  })
+
+  test('Take control refuses when a /clear changes the current ID during the checks', async () => {
+    f.rows = [external()]
+    f.onProcessName = () => {
+      f.rows = [external({ currentId: S2 })]
+    }
+    await expect(actions.takeControl(S, true)).rejects.toThrow(
+      'refused: the session process changed',
+    )
+    expect(f.ops('signal', 'run')).toEqual([])
+  })
+
+  test('Take control refuses a current ID that is not a UUID', async () => {
+    f.rows = [external({ currentId: 'abc' })]
+    await expect(actions.takeControl(S, true)).rejects.toThrow('refused: bad session ID')
+    expect(f.ops('hasMessages', 'signal')).toEqual([])
+  })
+
+  test('Stop and Delete use the short ID, which a /clear does not change', async () => {
+    f.rows = [row({ currentId: S2, resumeId: S3 })]
+    await actions.stop(S)
+    f.rows = [parked({ currentId: S2, resumeId: S3 })]
+    await actions.remove(S, true, null)
+    expect(f.ops('run', 'forget')).toEqual([
+      `0 run ${JSON.stringify(['stop', SHORT])} ${JSON.stringify(RUN_OPTS)}`,
+      `0 run ${JSON.stringify(['rm', SHORT])} ${JSON.stringify(RM_OPTS)}`,
+      `0 forget ${S}`,
+    ])
   })
 })

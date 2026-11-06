@@ -25,8 +25,10 @@ export function createActions(deps: ActionDeps): Actions {
     return row
   }
   return {
+    // The copy is the current ID: the conversation that the row shows now (spec 6.1).
     async copySessionId(sessionId) {
-      deps.writeClipboard(find(sessionId).sessionId)
+      const row = find(sessionId)
+      deps.writeClipboard(row.currentId ?? row.sessionId)
     },
     async listApps() {
       return (await deps.apps()).map(({ id, label }) => ({ id, label }))

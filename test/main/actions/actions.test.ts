@@ -76,6 +76,12 @@ describe('actions', () => {
     expect(clip).toHaveLength(1)
   })
 
+  it('copySessionId writes the current ID after a /clear (2026-11-06)', async () => {
+    const { actions, clip } = setup([row({ currentId: 'new-full-uuid' })])
+    await actions.copySessionId('abc-123-full-uuid')
+    expect(clip).toEqual(['new-full-uuid'])
+  })
+
   it('listApps gives the IDs and labels only', async () => {
     const { actions } = setup([])
     const apps = await actions.listApps()

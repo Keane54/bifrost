@@ -68,6 +68,19 @@ describe('infoSections', () => {
     expect(item(sections, 'Session', 'Claude Code name')).toBe('fix-a')
   })
 
+  it('gives the current ID as the session ID, then the first session ID, after a /clear', () => {
+    const NEW = '1db82d17-d5fd-4e53-a042-7dd67ea654d8'
+    const sections = infoSections({ ...full, currentId: NEW }, NOW, null, UTC)
+    expect(sections[0].items.map(i => i.label).slice(0, 3)).toEqual([
+      'Name',
+      'Session ID',
+      'First session ID',
+    ])
+    expect(item(sections, 'Session', 'Session ID')).toBe(NEW)
+    expect(item(sections, 'Session', 'First session ID')).toBe(ID)
+    expect(sections[0].items.find(i => i.label === 'First session ID')?.mono).toBe(true)
+  })
+
   it('infoSections gives the values of spec 8.6 in order', () => {
     const sections = infoSections(full, NOW, null, UTC)
     expect(sections.map(s => [s.title, s.items.map(i => i.label)])).toEqual([

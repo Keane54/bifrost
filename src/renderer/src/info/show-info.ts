@@ -85,7 +85,11 @@ export function infoSections(
         ...(row.name === row.claudeName
           ? []
           : [{ label: 'Claude Code name', value: dash(row.claudeName) }]),
-        { label: 'Session ID', mono: true, value: dash(row.sessionId) },
+        // After a /clear, the session ID is the current ID, and the row ID is the first one.
+        { label: 'Session ID', mono: true, value: dash(row.currentId ?? row.sessionId) },
+        ...(row.currentId === undefined
+          ? []
+          : [{ label: 'First session ID', mono: true as const, value: row.sessionId }]),
         { label: 'Short ID', mono: true, value: dash(row.shortId) },
         { label: 'Kind', value: kind },
         { label: 'PID', value: row.pid === undefined ? '-' : String(row.pid) },

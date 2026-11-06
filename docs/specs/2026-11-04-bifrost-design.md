@@ -292,7 +292,7 @@ Statusline in chat windows (O4, 2026-11-05):
 - A mod cannot stop that command, because the mod API has no statusline hook.
 - Bifrost starts each new session, and each session that Take control moves, with `--settings '{"statusLine":{"type":"command","command":"true"}}'`. The chat window then shows no statusline row.
 - Resume and Resume all add no flag. A resume with a new flag on a stopped background session starts a copy with a new session ID (test of 2026-11-05). A background session keeps its saved options, so it keeps the hidden statusline.
-- Take control passes the same flag: `claude --bg --settings '{...}' --resume <session-id>`. Take control only accepts an external session, which runs in the foreground, and a foreground session has no saved options. Test of 2026-11-06: a foreground session, SIGTERM, then this command gave the same session ID, kind background, and no statusline row.
+- Take control passes the same flag: `claude --bg --settings '{...}' --resume <current ID>` (section 6.1). Take control only accepts an external session, which runs in the foreground, and a foreground session has no saved options. Test of 2026-11-06: a foreground session, SIGTERM, then this command gave the same session ID, kind background, and no statusline row.
 - Sessions in a terminal app, for example Warp, keep your statusline.
 
 ### 6.4 Git branch
@@ -514,7 +514,7 @@ Size rule (the user approved this on 2026-11-04; M3 builds it):
 
 Show Info shows these values for one session:
 
-- Name, session ID, short ID, kind and PID. A session with a local name also shows the Claude Code name.
+- Name, session ID, short ID, kind and PID. A session with a local name also shows the Claude Code name. The session ID is the current ID (section 6.1). After a `/clear`, Show Info also shows the first session ID, which is the row ID.
 - Project directory and transcript path.
 - Branch, PR and worktree.
 - Model, effort and permission mode.
@@ -621,10 +621,10 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Interrupt | Full stop | Owned | Send Esc to the session. |
 | Rename | Set callsign | All | Set the local name of the session in Bifrost. Optional: type `/rename <name>` into an owned session. |
 | Set priority | Set threat level | All | Bifrost data only. |
-| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. An owned row adds no flag. A parked external row (after a failed Take control) gets the statusline override, as Take control does (D13). |
+| Resume | Reactivate | Parked | `claude --bg --resume <session-id>`. An owned row passes its resume ID and adds no flag. A parked external row (after a failed Take control) passes its current ID and gets the statusline override, as Take control does (D13). |
 | Resume all | Reactivate all | Parked | Resume each parked session that was active when Bifrost last ran. |
 | Show Info | Scan | All | Open the Show Info panel. |
-| Copy session ID | Copy transponder ID | All | Copy to the clipboard. |
+| Copy session ID | Copy transponder ID | All | Copy the current ID (section 6.1) to the clipboard. |
 | Open project | Open cargo hold | All | `open -a <app> <cwd>`. |
 | Open in terminal | Jump to terminal | Owned, external | Owned: run `claude attach <id>` in the terminal app. External: bring the terminal app to the front. |
 | Take control | Commandeer | External | Section 9.2. |
@@ -634,7 +634,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Add to watchlist | Track | All | Bifrost data only (section 8.12). |
 | Remove from watchlist | Stop tracking | Watched sessions | Bifrost data only (section 8.12). |
 
-Rename sets a local name. Bifrost keeps the local name for the session ID in the registry store, in the field `aliases`. A store without the field is valid. Bifrost never sends the local name to Claude Code. The rules:
+Rename sets a local name. Bifrost keeps the local name for the row ID (section 6.1) in the registry store, in the field `aliases`. A store without the field is valid. Bifrost never sends the local name to Claude Code. The rules:
 
 - Bifrost trims the name. It refuses control characters. The maximum is 64 characters (`MAX_RENAME`).
 - An empty name clears the local name. A name equal to the Claude Code name also clears it.
@@ -655,6 +655,18 @@ The Stop, Delete and Take control confirmations name the session without doubt. 
 
 In the Selected Item panel, a hover over the name shows a tooltip. With a local name, the tooltip is `Claude Code name: ` and the Claude Code name. Without one, it is the name itself, so a cut-off name can be read.
 
+The ID of each command (section 6.1). The renderer sends the row ID only. The main process finds the row and the ID that the command needs:
+
+| Command | ID |
+|---|---|
+| Resume and Resume all of an owned row | The resume ID: the original session ID of the job, which starts with its short ID. It is the ID of the stopped job in `--all`, the row ID or the current ID, the first one that starts with the short ID. A resume by another ID starts a second job (section 4). When Bifrost does not know the resume ID yet, Resume refuses and asks you to try again in 30 seconds. A row with no known short ID uses its row ID. |
+| Resume of a parked external row | The current ID. |
+| Take control | The current ID: the conversation after any `/clear`. The transcript check uses it too. If a `/clear` changes the current ID during the checks, Bifrost stops before the signal. |
+| Stop, Delete, Open in terminal, chat window attach, Send message, Run slash command, Interrupt | The short ID. A `/clear` does not change it. |
+| Take control signal, terminal app, session size | The PID. |
+| Copy session ID | The current ID. |
+| Priority, local name, watchlist, Open project, PR, worktree check | The row ID. |
+
 The "Labels" setting selects plain labels or space labels. The setting applies to menus, buttons, tooltips and dialogs.
 
 Bifrost disables an action that is not available. The action shows darker and faded in menus and on buttons, as in EVE. Clicks and keys have no effect on it. A tooltip gives the reason.
@@ -673,8 +685,8 @@ Bifrost does these steps:
 2. Show the confirmation: "This ends the {terminal} process and hands control to Bifrost."
 3. Send SIGTERM to the session process.
 4. Wait for the process to end, for a maximum of 5 seconds.
-5. Run `claude --bg --settings <statusline override> --resume <session-id>` in the session directory (D13).
-6. Find the new entry by `sessionId`, not by name.
+5. Run `claude --bg --settings <statusline override> --resume <current ID>` in the session directory (D13). The current ID is the conversation after any `/clear` (section 6.1).
+6. Find the new entry by `sessionId`, not by name. The new job has the current ID, so it goes to the same row.
 7. Open the chat window of the session.
 
 If the process does not end in 5 seconds, Bifrost stops and shows an error. It does not start a copy of the session.
@@ -1201,3 +1213,4 @@ The user decided that a session keeps one row across `/clear`. Tests with backgr
 1. Each row has a stable row ID and a current ID. The values stay with the row ID and never move (section 6.1).
 2. A background entry finds its row by its short ID first, in the active list and in `--all`. The store keeps the short ID of each background row (`jobs`) and each current ID that is not a row ID (`current`).
 3. An interactive entry finds its row by its `pid` and its folder, with a 1:1 match (section 6.1, rule 3).
+4. Resume of an owned row passes the original session ID of the job. Take control passes the current ID. Copy session ID and Show Info give the current ID (section 9.1).

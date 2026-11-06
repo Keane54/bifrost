@@ -64,6 +64,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: Take control needs a confirmation': 'Take control needs your confirmation first.',
   'refused: the attach is not for the session of the chat view':
     "That connection doesn't match the session of this chat window.",
+  'refused: the ID that resumes this session is not known yet':
+    "Bifrost doesn't know which ID resumes this session yet. Try again in 30 seconds.",
   'refused: the page that asked for the PTY is gone':
     'The window that asked for the terminal has closed.',
   'refused: the project directory is not known': REASON_NO_CWD,
