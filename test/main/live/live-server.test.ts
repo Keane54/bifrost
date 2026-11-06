@@ -196,6 +196,17 @@ describe('createLiveServer', () => {
     expect(readFileSync(socketPath, 'utf8')).toBe('keep me')
   })
 
+  test('stop clears the error of a start that did not listen', async () => {
+    const { onEvent } = setup()
+    const dir = await tempDir()
+    const { server, socketPath } = make(dir, onEvent)
+    mkdirSync(join(dir, 'run'), { mode: 0o700 })
+    writeFileSync(socketPath, 'keep me')
+    expect((await server.start()).error).toBeDefined()
+    server.stop()
+    expect(server.state()).toEqual({ listening: false })
+  })
+
   test('stop closes the server and removes the socket file', async () => {
     const { onEvent } = setup()
     const { server, socketPath } = make(await tempDir(), onEvent)

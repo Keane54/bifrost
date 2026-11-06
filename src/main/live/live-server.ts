@@ -202,6 +202,8 @@ export function createLiveServer(opts: LiveServerOptions): LiveServer {
     state: () => current,
     stop() {
       generation += 1
+      // Also clear the error of an old start. After a stop, the status must not show it.
+      current = { listening: false }
       const closing = server
       server = null
       if (!closing) return
@@ -209,7 +211,6 @@ export function createLiveServer(opts: LiveServerOptions): LiveServer {
       closing.closeAllConnections()
       if (owned) rmSync(socketPath, { force: true })
       owned = false
-      current = { listening: false }
     },
   }
 }
