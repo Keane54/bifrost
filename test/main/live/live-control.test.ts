@@ -571,10 +571,11 @@ describe('status', () => {
 
   test('status gives unknown and the message when plugin list fails', async () => {
     fillModDir()
-    const { control } = setup({ pluginError: 'claude plugin list failed: boom' })
+    const failed = "Bifrost couldn't read the plugin list from Claude Code: boom"
+    const { control } = setup({ pluginError: failed })
     const status = await control.status()
     expect(status.plugin).toBe('unknown')
-    expect(status.error).toBe('claude plugin list failed: boom')
+    expect(status.error).toBe(failed)
     expect(status.modCurrent).toBe(true)
   })
 

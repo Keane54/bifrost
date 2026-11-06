@@ -91,5 +91,5 @@ test('of two calls that wait for runFirst, the first runs and the second rejects
 })
 
 test('the busy message is the text that the renderer shows', () => {
-  expect(BUSY_MESSAGE).toBe('Another integration action runs now.')
+  expect(BUSY_MESSAGE).toBe('Another change is still running. Try again in a moment.')
 })

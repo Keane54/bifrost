@@ -37,12 +37,20 @@ describe('plugin list', () => {
     expect(await fake({ stdout: '[{"id":"x@y","enabled":true}]' }).cli.plugin()).toBeNull()
   })
   test('plugin rejects for exit 1 or output that is not JSON', async () => {
+    const text = "Bifrost couldn't read the plugin list from Claude Code:"
     await expect(fake({ code: 1, stderr: 'boom' }).cli.plugin()).rejects.toThrow(
-      'claude plugin list failed: boom',
+      new Error(`${text} boom`),
     )
-    await expect(fake({ code: 3 }).cli.plugin()).rejects.toThrow('claude plugin list failed: 3')
+    await expect(fake({ code: 3 }).cli.plugin()).rejects.toThrow(
+      new Error(`${text} it exited with code 3`),
+    )
     await expect(fake({ stdout: 'no json here' }).cli.plugin()).rejects.toThrow(
-      'claude plugin list failed',
+      new Error(`${text} it gave no list`),
+    )
+  })
+  test('marketplace names the marketplace list when it fails', async () => {
+    await expect(fake({ code: 1, stderr: 'boom' }).cli.marketplace()).rejects.toThrow(
+      new Error("Bifrost couldn't read the marketplace list from Claude Code: boom"),
     )
   })
   test('plugin skips text before the array', async () => {

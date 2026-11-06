@@ -58,9 +58,17 @@ export interface PluginCli {
 }
 
 // Find the JSON array in the output. It starts at the first line that begins with "[".
-function readList(result: ExecResult): Record<string, unknown>[] {
+// name is the list that the command gives: "plugin" or "marketplace". The error text names it.
+function readList(result: ExecResult, name: string): Record<string, unknown>[] {
   const fail = (): never => {
-    throw new Error(`claude plugin list failed: ${result.stderr.trim() || result.code}`)
+    const stderr = result.stderr.trim()
+    const reason =
+      stderr !== ''
+        ? stderr
+        : result.code !== 0
+          ? `it exited with code ${result.code}`
+          : 'it gave no list'
+    throw new Error(`Bifrost couldn't read the ${name} list from Claude Code: ${reason}`)
   }
   if (result.code !== 0) return fail()
   const lines = result.stdout.split('\n')
@@ -119,7 +127,7 @@ export function createPluginCli(run: RunClaude): PluginCli {
     enable: () => command(['plugin', 'enable', PLUGIN_ID, ...scope]),
     install: () => command(['plugin', 'install', PLUGIN_ID, ...scope]),
     async marketplace() {
-      const list = readList(await exec(['plugin', 'marketplace', 'list', '--json']))
+      const list = readList(await exec(['plugin', 'marketplace', 'list', '--json']), 'marketplace')
       const entry = list.find(item => item.name === MARKETPLACE_NAME)
       if (!entry) return null
       const result: MarketplaceEntry = {
@@ -129,7 +137,7 @@ export function createPluginCli(run: RunClaude): PluginCli {
       return result
     },
     async plugin() {
-      const list = readList(await exec(['plugin', 'list', '--json']))
+      const list = readList(await exec(['plugin', 'list', '--json']), 'plugin')
       const entry = list.find(item => item.id === PLUGIN_ID)
       if (!entry) return null
       const result: PluginEntry = {
