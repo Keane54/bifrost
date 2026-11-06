@@ -14,15 +14,39 @@ test('execFile stops a program that ignores SIGTERM at the timeout', async () =>
   expect(result.timedOut).toBe(true)
 })
 
+// This test does not depend on time. A real program can get the SIGTERM before its shell sets the
+// trap, and under load that happened (the program then ends by the signal, with no code). So the
+// test gives execFile a fake Node execFile: it checks that execFile passes the kill signal and the
+// timeout of opts to Node, and that a program that the timeout stopped with code 7 gives code 7
+// and timedOut.
 test('execFile sends the kill signal of opts at the timeout and sets timedOut', async () => {
-  // The program exits with code 7 at SIGTERM. SIGKILL ends it with no exit code.
-  const result = await execFile(
-    '/bin/sh',
-    ['-c', 'trap "exit 7" TERM; while :; do sleep 0.05; done'],
-    { killSignal: 'SIGTERM', timeoutMs: 200 },
-  )
-  expect(result.code).toBe(7)
-  expect(result.timedOut).toBe(true)
+  const seen: unknown[] = []
+  vi.resetModules()
+  vi.doMock('node:child_process', async importOriginal => ({
+    ...(await importOriginal<typeof import('node:child_process')>()),
+    execFile: (
+      _file: string,
+      _args: string[],
+      opts: unknown,
+      done: (error: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      seen.push(opts)
+      // Node sets killed when it sent the kill signal at the timeout. The program exited with 7.
+      done(Object.assign(new Error('Command failed'), { code: 7, killed: true }), '', '')
+    },
+  }))
+  try {
+    const cli = await import('../../../src/main/claude/cli')
+    const result = await cli.execFile('/bin/sh', ['-c', 'true'], {
+      killSignal: 'SIGTERM',
+      timeoutMs: 200,
+    })
+    expect(seen).toEqual([expect.objectContaining({ killSignal: 'SIGTERM', timeout: 200 })])
+    expect(result).toEqual({ code: 7, stderr: '', stdout: '', timedOut: true })
+  } finally {
+    vi.doUnmock('node:child_process')
+    vi.resetModules()
+  }
 })
 
 test('execFile does not set timedOut for a program that exits with an error', async () => {
