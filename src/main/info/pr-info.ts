@@ -60,8 +60,6 @@ export interface PrLookupDeps {
 
 export interface PrLookup {
   lookup(cwd: string, branch: string | undefined): Promise<PrInfo>
-  // The URL of the cached PR of the folder and the branch, or null.
-  url(cwd: string, branch: string | undefined): string | null
 }
 
 interface Entry {
@@ -113,10 +111,18 @@ export function createPrLookup(deps: PrLookupDeps): PrLookup {
       running.set(key, promise)
       return promise
     },
-    url(cwd, branch) {
-      if (!branch) return null
-      const result = fresh(keyOf(cwd, branch))?.result
-      return result?.kind === 'pr' ? result.url : null
-    },
   }
+}
+
+// The URL that a click on the PR of a Show Info panel opens (info:open-pr), or null. A panel can
+// stay open longer than PR_CACHE_MS. So the click runs lookup: it uses the cache while the cache
+// is fresh, and else it runs gh again (final review Important 1). The URL always comes from gh
+// and starts with https:// (readPr).
+export async function prUrlToOpen(
+  prs: Pick<PrLookup, 'lookup'>,
+  cwd: string,
+  branch: string | undefined,
+): Promise<string | null> {
+  const pr = await prs.lookup(cwd, branch)
+  return pr.kind === 'pr' && pr.url.startsWith('https://') ? pr.url : null
 }

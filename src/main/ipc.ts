@@ -50,7 +50,7 @@ import {
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
 import { loadLoginEnv, stringValues } from './env/login-env'
 import { createBatcher, EventLog, NOTIFICATION_REFUSED } from './events/event-log'
-import { createPrLookup } from './info/pr-info'
+import { createPrLookup, prUrlToOpen } from './info/pr-info'
 import {
   defaultPaths,
   keepOldScripts,
@@ -655,7 +655,7 @@ export function registerIpc(home: TestHome | null = null): void {
   ipcMain.handle('info:open-pr', (e, sessionId: unknown) =>
     fromPage(e, async () => {
       const row = prRow(sessionId)
-      const url = prs.url(row.cwd, row.branch)
+      const url = await prUrlToOpen(prs, row.cwd, row.branch)
       if (url !== null) await shell.openExternal(url)
     }),
   )

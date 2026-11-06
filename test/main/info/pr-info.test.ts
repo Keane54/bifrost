@@ -5,7 +5,9 @@ import {
   GH_ARGS,
   GH_TIMEOUT_MS,
   PR_CACHE_MS,
+  PR_FAIL_CACHE_MS,
   parsePrView,
+  prUrlToOpen,
 } from '../../../src/main/info/pr-info'
 
 const OK_JSON = '{"number":12,"title":"Fix","url":"https://github.com/o/r/pull/12","state":"OPEN"}'
@@ -220,16 +222,43 @@ describe('createPrLookup', () => {
     expect(await a).toEqual(await b)
     expect(t.calls).toHaveLength(1)
   })
+})
 
-  it('url gives the cached URL of a PR, else null', async () => {
+describe('prUrlToOpen (info:open-pr)', () => {
+  it('a click while the cache is fresh opens the cached URL and runs gh no more', async () => {
     const t = setup()
-    expect(t.lookup.url('/p', 'fix-a')).toBeNull()
     await t.lookup.lookup('/p', 'fix-a')
-    expect(t.lookup.url('/p', 'fix-a')).toBe('https://github.com/o/r/pull/12')
-    expect(t.lookup.url('/p', 'fix-b')).toBeNull()
+    t.setTime(1_000_000 + PR_CACHE_MS - 1)
+    expect(await prUrlToOpen(t.lookup, '/p', 'fix-a')).toBe('https://github.com/o/r/pull/12')
+    expect(t.calls).toHaveLength(1)
+  })
+
+  it('a click after 5 minutes still opens the URL (final review Important 1)', async () => {
+    const t = setup()
+    await t.lookup.lookup('/p', 'fix-a')
+    t.setTime(1_000_000 + PR_CACHE_MS)
+    expect(await prUrlToOpen(t.lookup, '/p', 'fix-a')).toBe('https://github.com/o/r/pull/12')
+    // The cache was old, so gh ran again.
+    expect(t.calls).toHaveLength(2)
+  })
+
+  it('a click with no panel lookup before runs gh and opens the URL', async () => {
+    const t = setup()
+    expect(await prUrlToOpen(t.lookup, '/p', 'fix-a')).toBe('https://github.com/o/r/pull/12')
+    expect(t.calls).toHaveLength(1)
+  })
+
+  it('gives null for no PR, a failed check, no branch and a relative folder', async () => {
+    const t = setup()
     t.setResult(fail('no pull requests found'))
-    t.setTime(1_000_000 + 300_000)
-    await t.lookup.lookup('/p', 'fix-a')
-    expect(t.lookup.url('/p', 'fix-a')).toBeNull()
+    expect(await prUrlToOpen(t.lookup, '/p', 'fix-a')).toBeNull()
+    t.setResult(fail('spawn gh ENOENT'))
+    t.setTime(1_000_000 + PR_CACHE_MS)
+    expect(await prUrlToOpen(t.lookup, '/p', 'fix-a')).toBeNull()
+    t.setResult(ok())
+    t.setTime(1_000_000 + PR_CACHE_MS + PR_FAIL_CACHE_MS)
+    expect(await prUrlToOpen(t.lookup, '/p', undefined)).toBeNull()
+    expect(await prUrlToOpen(t.lookup, 'p', 'fix-a')).toBeNull()
+    expect(await prUrlToOpen(t.lookup, '/p', 'fix-a')).toBe('https://github.com/o/r/pull/12')
   })
 })
