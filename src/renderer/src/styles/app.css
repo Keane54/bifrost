@@ -59,6 +59,8 @@
   --color-icon-4: #74c88e;
   --color-icon-5: #5e9bec;
   --color-icon-6: #9b80e6;
+  /* The colour of the letter B on the app icon. */
+  --color-icon-mark: #ffffff;
 
   /* The strength of the colour fields of the animated background (.background): the alpha of
      each icon colour at the centre of its field. The background stays dark (spec 8.10). */

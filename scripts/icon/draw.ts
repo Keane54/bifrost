@@ -1,6 +1,7 @@
 // This module draws the Bifrost app icon. It uses the colours of app.css and no library.
 // The icon is a rainbow gradient inside the rounded square.
 import { crc32, deflateSync } from 'node:zlib'
+import { GEIST_MONO_B, type Glyph } from './glyph-b.ts'
 
 type Rgb = [number, number, number]
 
@@ -8,6 +9,8 @@ export interface IconPalette {
   // The gradient colours from the bottom-right corner to the top-left corner.
   stops: Rgb[]
   edge: Rgba
+  // The colour of the letter B.
+  mark: Rgb
 }
 
 // A colour and its alpha from 0 to 1.
@@ -44,6 +47,7 @@ function blend(top: Rgba, under: Rgb): Rgb {
 export function readPalette(css: string): IconPalette {
   return {
     edge: readColour(css, 'panel-edge'),
+    mark: readColour(css, 'icon-mark').rgb,
     stops: [1, 2, 3, 4, 5, 6].map(i => blend(readColour(css, `icon-${i}`), [0, 0, 0])),
   }
 }
@@ -135,8 +139,93 @@ function roundedBoxDistance(
   return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - radius
 }
 
+// The letter B is a set of closed polygons in pixel units. The curves are cut into short lines.
+interface Mark {
+  polygons: [number, number][][]
+  // The box of the letter: left, top, right, bottom.
+  box: [number, number, number, number]
+}
+
+const CURVE_STEPS = 8
+const MARK_HEIGHT = 0.65 // The height of the letter as a share of the height of the quadrant.
+
+// Place the letter in the centre of the bottom-right quadrant of the rounded square.
+function buildMark(size: number, glyph: Glyph): Mark {
+  const side = size * SHAPE
+  const [xMin, yMin, xMax, yMax] = glyph.bbox
+  const scale = (side / 2 / (yMax - yMin)) * MARK_HEIGHT
+  const cx = size / 2 + side / 4
+  const cy = size / 2 + side / 4
+  const map = (x: number, y: number): [number, number] => [
+    cx + (x - (xMin + xMax) / 2) * scale,
+    cy - (y - (yMin + yMax) / 2) * scale,
+  ]
+  const polygons = glyph.contours.map(contour => {
+    // Rotate the contour so that it starts on a point on the curve.
+    const start = contour.findIndex(p => p[2] === 1)
+    const pts = [...contour.slice(start), ...contour.slice(0, start)]
+    const out: [number, number][] = []
+    let current = pts[0]
+    out.push(map(current[0], current[1]))
+    let i = 1
+    while (i <= pts.length) {
+      const next = pts[i % pts.length]
+      if (next[2] === 1) {
+        out.push(map(next[0], next[1]))
+        current = next
+        i++
+        continue
+      }
+      // A control point. The end is the next point, or the middle to the next control point.
+      const after = pts[(i + 1) % pts.length]
+      const end: [number, number, number] =
+        after[2] === 1 ? after : [(next[0] + after[0]) / 2, (next[1] + after[1]) / 2, 1]
+      for (let k = 1; k <= CURVE_STEPS; k++) {
+        const t = k / CURVE_STEPS
+        const u = 1 - t
+        out.push(
+          map(
+            u * u * current[0] + 2 * u * t * next[0] + t * t * end[0],
+            u * u * current[1] + 2 * u * t * next[1] + t * t * end[1],
+          ),
+        )
+      }
+      current = end
+      i += after[2] === 1 ? 2 : 1
+    }
+    return out
+  })
+  const all = polygons.flat()
+  return {
+    box: [
+      Math.min(...all.map(p => p[0])),
+      Math.min(...all.map(p => p[1])),
+      Math.max(...all.map(p => p[0])),
+      Math.max(...all.map(p => p[1])),
+    ],
+    polygons,
+  }
+}
+
+// True when the point is inside the letter. The test uses the non-zero winding rule.
+function inMark(x: number, y: number, mark: Mark): boolean {
+  const [left, top, right, bottom] = mark.box
+  if (x < left || x > right || y < top || y > bottom) return false
+  let winding = 0
+  for (const poly of mark.polygons) {
+    for (let i = 0; i < poly.length; i++) {
+      const [x1, y1] = poly[i]
+      const [x2, y2] = poly[(i + 1) % poly.length]
+      if (y1 <= y === y2 <= y) continue
+      const cross = (x2 - x1) * (y - y1) - (x - x1) * (y2 - y1)
+      if (y2 > y1 ? cross > 0 : cross < 0) winding += y2 > y1 ? 1 : -1
+    }
+  }
+  return winding !== 0
+}
+
 // The colour and alpha at one point. A point outside the shape has the shadow or is transparent.
-function sample(x: number, y: number, size: number, palette: IconPalette): Rgba {
+function sample(x: number, y: number, size: number, palette: IconPalette, mark: Mark): Rgba {
   const side = size * SHAPE
   const c = size / 2
   const radius = size * RADIUS
@@ -154,12 +243,18 @@ function sample(x: number, y: number, size: number, palette: IconPalette): Rgba 
   const t = 1 - (x - origin + (y - origin)) / (2 * side)
   const colour = gradient(t, palette.stops)
   if (distance > -size / 128) return { alpha: 1, rgb: blend(palette.edge, colour) }
+  if (inMark(x, y, mark)) return { alpha: 1, rgb: palette.mark }
   return { alpha: 1, rgb: colour }
 }
 
 // RGBA bytes. The anti-alias uses 4 x 4 samples for each pixel. The samples are mixed with their
 // alpha as weight. The alpha of the pixel is the mean alpha of the samples.
-export function drawIcon(size: number, palette: IconPalette): Uint8Array {
+export function drawIcon(
+  size: number,
+  palette: IconPalette,
+  glyph: Glyph = GEIST_MONO_B,
+): Uint8Array {
+  const mark = buildMark(size, glyph)
   const out = new Uint8Array(size * size * 4)
   const n = 4
   for (let py = 0; py < size; py++) {
@@ -170,7 +265,7 @@ export function drawIcon(size: number, palette: IconPalette): Uint8Array {
       let a = 0
       for (let sy = 0; sy < n; sy++) {
         for (let sx = 0; sx < n; sx++) {
-          const c = sample(px + (sx + 0.5) / n, py + (sy + 0.5) / n, size, palette)
+          const c = sample(px + (sx + 0.5) / n, py + (sy + 0.5) / n, size, palette, mark)
           r += c.rgb[0] * c.alpha
           g += c.rgb[1] * c.alpha
           b += c.rgb[2] * c.alpha

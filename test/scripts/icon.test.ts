@@ -85,6 +85,7 @@ describe('the icon script', () => {
   it('drawIcon blends the stops of a palette in a straight line from the corner to the corner', () => {
     const palette: IconPalette = {
       edge: { alpha: 0, rgb: [255, 255, 255] },
+      mark: [255, 255, 255],
       stops: [
         [255, 0, 0],
         [0, 0, 255],
@@ -98,5 +99,42 @@ describe('the icon script', () => {
     // Points on the same anti-diagonal have the same colour.
     expect(at(SIZE * 0.4, SIZE * 0.6)).toEqual(at(SIZE * 0.6, SIZE * 0.4))
     expect(at(SIZE * 0.8, SIZE * 0.8)[0]).toBeGreaterThan(at(SIZE * 0.2, SIZE * 0.2)[0])
+  })
+
+  it('drawIcon draws a white B in the bottom-right quadrant', () => {
+    const size = 512
+    const pixels = drawIcon(size, readPalette(CSS))
+    const at = reader(pixels, size)
+    // The letter has its centre at 75% of the rounded square. The left stem is at x 76 to 199 of
+    // 1000 units, so its centre is at (137 - 318) units from the middle of the box.
+    const scale = ((824 * size) / 1024 / 2 / 710) * 0.65
+    const stemX = (100 * size) / 1024 + ((824 * size) / 1024) * 0.75 + (137 - 318) * scale
+    const midY = (100 * size) / 1024 + ((824 * size) / 1024) * 0.75
+    expect(at(stemX, midY)).toEqual([255, 255, 255, 255])
+    expect(at(stemX, midY - 50)).toEqual([255, 255, 255, 255])
+    // The inside of the upper bowl is not white.
+    expect(at(stemX + 30, midY - 30)).not.toEqual([255, 255, 255, 255])
+  })
+
+  it('drawIcon draws no white in the top-left quadrant', () => {
+    const size = 256
+    const pixels = drawIcon(size, readPalette(CSS))
+    for (let y = 0; y < size / 2; y++) {
+      for (let x = 0; x < size / 2; x++) {
+        const i = (y * size + x) * 4
+        const white =
+          pixels[i] > 250 && pixels[i + 1] > 250 && pixels[i + 2] > 250 && pixels[i + 3] > 250
+        expect(white).toBe(false)
+      }
+    }
+  })
+
+  it('the glyph module names the font, the weight, the version and the licence', () => {
+    const source = readFileSync(join(__dirname, '../../scripts/icon/glyph-b.ts'), 'utf8')
+    expect(source).toMatch(/Geist Mono/)
+    expect(source).toMatch(/weight 600/)
+    expect(source).toMatch(/5\.3\.0/)
+    expect(source).toMatch(/SIL Open Font License 1\.1/)
+    expect(source).toMatch(/Geist Project Authors/)
   })
 })
