@@ -579,6 +579,8 @@ If the process does not end in 5 seconds, Bifrost stops and shows an error. It d
 - A shortcut that includes Cmd works at all times, also when a chat window has focus.
 - A shortcut with Ctrl but without Cmd goes to Bifrost only when focus is not in a chat window.
 - A single-key shortcut acts on the selected session.
+- A shortcut for a session, for example Cmd+. or Cmd+Shift+Backspace, acts on the selected session.
+- When the focus moves into a chat window, Bifrost selects the session of that window. So a session shortcut in a chat window acts on the session of that window, and the Selected Item panel shows it.
 - A single-key shortcut works only when focus is not in a chat window or a text box.
 - Hold-key-and-click actions use letter keys and number keys.
 - Hold-key-and-click actions do not use Ctrl, because macOS changes Ctrl+click into a right-click.
@@ -623,6 +625,8 @@ Shortcuts that work at all times:
 
 Bifrost binds no default key for Borderless. Select Borderless in the View menu or in Settings.
 
+Close the focused panel and Toggle Fullscreen are shortcuts of the app menu. A menu shortcut needs Cmd. Settings > Keys refuses a menu shortcut without Cmd.
+
 Single keys. These work only when focus is not in a chat window or a text box:
 
 | Key | Action |
@@ -655,6 +659,8 @@ Hold a key and left-click a row:
 | J | Open in terminal |
 | X | Interrupt |
 | 1 to 5 | Set priority |
+
+Bifrost uses the hold key that is down when you push the mouse button on the row. If you release the key before the mouse button, the action applies to that row, not to the selected row.
 
 ### 9.5 Right-click menu
 
@@ -707,7 +713,7 @@ Cmd+Ctrl+F keeps its macOS meaning. In Bifrost, it toggles Fullscreen (section 8
 | macOS notification | On | A new box when Bifrost is not in focus. |
 | Sound | On | A new red box. |
 
-Click a notification to select the session and open its chat window.
+Click a notification to select the session and open its chat window. This also works when the Bifrost window is closed. Bifrost opens the window and keeps the session until the page has loaded. Then it opens the session.
 
 ## 11. First-run setup and integration
 
@@ -827,8 +833,8 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Start at login | Off |
 | Poll interval | 2 seconds |
 | Snap distance | 8 pixels |
-| Panel transparency | 15% (the background of all panels; 0% is solid) |
-| Interface scale | 100% (80% to 150% in steps of 10%; Electron zooms the whole page; View menu Zoom In Cmd+=, Zoom Out Cmd+-, Actual Size) |
+| Panel transparency | 15%. A select from 0% to 50% in steps of 5% (the background of all panels; 0% is solid). |
+| Interface scale | 100%. A select from 80% to 150% in steps of 10% (Electron zooms the whole page; View menu Zoom In Cmd+=, Zoom Out Cmd+-, Actual Size). |
 | Slash commands | `/compact`, `/clear`, `/context` |
 | Terminal font | SF Mono, 13 pt |
 | Display mode | Window |
@@ -1045,3 +1051,23 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 26. Sends in flight: the mod drops a new line while 32 or more sends have not settled (section 6.2).
 27. Usage after `/clear`: the mod sends a usage line 1 s after `session.end` with the reason `clear`. The line has the new session ID (section 6.3).
 28. Cost below one cent: a cost above 0 and below 0.01 USD shows as `<$0.01`. A cost of 0 shows as `$0.00` (section 8.3).
+
+## 24. Decisions in M5a (2026-11-06)
+
+The controller made these decisions in M5a. The M5a ledger, `docs/m5-findings.md` and the final review give the reasons.
+
+1. A focus in a chat window selects its session. The session shortcuts act on the selected session (section 9.3). A hold-key Open on a row opens the chat window of the row. The focus in that window then selects the row.
+2. A hold-key click uses the hold key that is down at the push of the mouse button. A release of the key before the mouse button does not act on the selected row (section 9.4).
+3. A menu shortcut needs Cmd. This applies to Close the focused panel and Toggle Fullscreen (section 9.4).
+4. A click on a notification opens the session also when the Bifrost window was closed (section 10).
+5. Panel transparency and Interface scale are selects (section 12).
+6. Before the first write over a settings file of a later version, Bifrost copies the file to `settings.v<version>.backup.json` in the same folder, one time, with mode 0600. If the copy fails, Bifrost does not save the settings.
+7. Bifrost forgets the hold keys that are down when the key recorder of Settings > Keys starts.
+8. With the space labels, the bodies of the Stop and Delete dialogs and the text of an empty Watchlist also use the space labels (section 9.1).
+9. Each checkbox of Settings > General has the name of its row as its accessible name.
+10. C1: Panel transparency goes from 0% to 50% in steps of 5%. The View menu has Zoom In (Cmd+=), Zoom Out (Cmd+-) and Actual Size for the Interface scale (section 12).
+11. C2: The Settings panel has the ID `settings`. The `integration` panel is gone. A saved layout with an `integration` panel loads without that panel.
+12. C3: A hold key acts only when the focus is not in a chat window, a text box or a control, for example a button.
+13. C4: The Bifrost shortcuts pause while the key recorder of Settings > Keys records. The app menu also gives its keys to the recorder during that time.
+14. C7: Settings > Keys refuses a key only when the key adds a conflict that the keys did not have. A conflict in the settings file stays.
+15. C9: The setup dialog lists the changes in the order of Install (section 11.1).
