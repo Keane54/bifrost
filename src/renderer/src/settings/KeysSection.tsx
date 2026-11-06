@@ -1,6 +1,7 @@
 // Settings > Keys (spec 9.4): the list of all keys, with Change, Clear and Reset for each key.
 import { formatForDisplay, useHotkeyRecorder } from '@tanstack/react-hotkeys'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { resetSlotKey, setSlotKey } from '../../../shared/keys'
 import { useConfirm } from '../actions/ConfirmDialog'
 import { KEY_RECORDER_ATTR } from '../keys/focus-zone'
@@ -79,14 +80,16 @@ export default function KeysSection(): React.JSX.Element {
 
   // The prompt takes the focus. So the recorder element is the focus target (ruling C4).
   const promptRef = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    if (isRecording && activeId !== null) promptRef.current?.focus()
-  }, [isRecording, activeId])
 
+  // Start a recording. flushSync shows the prompt at once, so the click handler gives it the
+  // focus, not a later frame. The focus on the prompt also clears the hold gate (focusChange).
   const startChange = (slotId: string): void => {
-    setRejection(null)
-    setActiveId(slotId)
-    recorder.startRecording()
+    flushSync(() => {
+      setRejection(null)
+      setActiveId(slotId)
+      recorder.startRecording()
+    })
+    promptRef.current?.focus()
   }
 
   const resetAll = (): void => {
@@ -123,11 +126,9 @@ export default function KeysSection(): React.JSX.Element {
               {formatForDisplay(binding, { platform: 'mac' })}
             </kbd>
           )}
-          <button
-            className={BUTTON}
-            onClick={() => (recording ? recorder.cancelRecording() : startChange(slot.id))}
-            type='button'
-          >
+          {/* A click on Change during the recording blurs the prompt first, and the blur
+              cancels. So Change always starts a new recording. Esc cancels. */}
+          <button className={BUTTON} onClick={() => startChange(slot.id)} type='button'>
             Change
           </button>
           <button

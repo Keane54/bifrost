@@ -63,6 +63,7 @@ import { RegistryService, SERVICE_TIMING, type ServiceDeps } from './registry/se
 import { openStore } from './registry/store-file'
 import { readProcessTable } from './registry/terminal-app'
 import { loginItemPatch, type SettingsEffect, settingsEffects } from './settings/effects'
+import { createKeyRecording, resetOnPageEnd } from './settings/key-recording'
 import { openSettingsStore, type SettingsStore } from './store/settings-store'
 import { openUiStore } from './store/ui-store'
 import { findOnPath, pluginEnv, type TestHome } from './test-home'
@@ -151,29 +152,23 @@ export function send(channel: string, ...args: unknown[]): void {
     currentWindow.webContents.send(channel, ...args)
 }
 
-// Set the function that builds the app menu again. A change of a menu key calls it.
 // Set the function that shows and focuses the window. A click on a notification calls it.
 export function setWindowShower(fn: (() => void) | null): void {
   showWindowFn = fn
 }
 
+// Set the function that builds the app menu again. A change of a menu key calls it.
 export function setMenuRebuild(fn: (() => void) | null): void {
   menuRebuild = fn
 }
 
-// True while the key recorder of Settings > Keys records. The menu then gives its keys to the
-// page. The menu builder reads it.
-let keyRecording = false
+// The key recorder of Settings > Keys. While it records, the menu gives its keys to the page.
+// A change of the state builds the menu again.
+const keyRecording = createKeyRecording(() => menuRebuild?.())
 
+// True while the key recorder records. The menu builder reads it.
 export function isKeyRecording(): boolean {
-  return keyRecording
-}
-
-// Set the recording state and build the menu again when it changes.
-function setKeyRecording(on: boolean): void {
-  if (keyRecording === on) return
-  keyRecording = on
-  menuRebuild?.()
+  return keyRecording.get()
 }
 
 // The current settings. Before the store opens, this gives the defaults.
@@ -383,13 +378,11 @@ export function registerIpc(home: TestHome | null = null): void {
   const settings = openSettings(join(app.getPath('userData'), 'settings.json'))
   const service = startService(run, settings)
   ipcMain.handle('settings:get', e => fromPage(e, async () => (await settings).get()))
-  // The store checks each value. It refuses a patch with an unknown key or a bad value.
+  // The key recorder starts or ends. A value that is not a boolean is refused.
   ipcMain.handle('settings:recording', (e, on: unknown) =>
-    fromPage(e, async () => {
-      if (typeof on !== 'boolean') throw new Error('refused: bad input')
-      setKeyRecording(on)
-    }),
+    fromPage(e, async () => keyRecording.set(on)),
   )
+  // The store checks each value. It refuses a patch with an unknown key or a bad value.
   ipcMain.handle('settings:set', (e, patch: unknown) =>
     fromPage(e, async () => (await settings).update(patch)),
   )
@@ -739,9 +732,9 @@ export function registerIpc(home: TestHome | null = null): void {
 // When the window closes, close all PTYs and clear the window reference.
 export function attachWindow(win: BrowserWindow): void {
   currentWindow = win
+  // A new page has no recorder. The old page cannot say that it ended.
+  resetOnPageEnd(win, keyRecording)
   win.webContents.on('did-navigate', () => {
-    // A new page has no recorder. The old page cannot say that it ended.
-    setKeyRecording(false)
     page.end()
   })
   // Apply the Interface scale to each page that loads.
@@ -750,7 +743,6 @@ export function attachWindow(win: BrowserWindow): void {
   })
   win.webContents.on('render-process-gone', () => {
     if (currentWindow === win) pendingOpen.unload()
-    setKeyRecording(false)
     page.end()
   })
   win.on('closed', () => {
@@ -758,7 +750,6 @@ export function attachWindow(win: BrowserWindow): void {
       currentWindow = null
       pendingOpen.unload()
     }
-    setKeyRecording(false)
     page.end()
   })
   // A notification click while no page is loaded waits for the next load (D13).
