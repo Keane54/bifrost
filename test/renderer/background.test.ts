@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -8,7 +8,7 @@ import {
   windowActive,
 } from '../../src/renderer/src/wm/background-style'
 import { WATCH_COLOURS } from '../../src/shared/watch'
-import { contrast, hex, luminance, mix } from '../helpers/colour'
+import { contrast, hex, luminance, mix, rgb } from '../helpers/colour'
 
 // The repository has no DOM test. So the checks of the animated background read the source text
 // of app.css, as the checks of the Take control loader do.
@@ -40,7 +40,10 @@ function block(css: string, head: string): string {
 
 // The declarations of a rule body, as property and value.
 function declarations(body: string): [string, string][] {
-  return [...body.matchAll(/([a-z-]+)\s*:\s*([^;{}]+);/g)].map(m => [m[1], m[2].trim()])
+  return [...body.matchAll(/([a-z-]+)\s*:\s*((?:"[^"]*"|[^;{}"])+);/g)].map(m => [
+    m[1],
+    m[2].trim(),
+  ])
 }
 
 function value(body: string, property: string): string {
@@ -63,119 +66,48 @@ function level(name: string): number {
   return Number(match[1])
 }
 
-interface Field {
-  index: number
-  // The name of the icon token, for example icon-6.
-  colour: string
-  // The part of the glow strength, from 0 to 1.
-  weight: number
-  // The still position and the size, in percent of the window.
+// A number token of the @theme block. A percent gives a part of 1.
+function themeNumber(name: string): number {
+  const match = CSS.match(new RegExp(`--${name}:\\s*([\\d.]+)(%?);`))
+  if (!match) throw new Error(`No --${name} token`)
+  return Number(match[1]) / (match[2] === '%' ? 100 : 1)
+}
+
+function percent(rule: string, property: string): number {
+  const text = value(rule, property)
+  if (!/^-?[\d.]+%$/.test(text)) throw new Error(`${property} is not a percent`)
+  return Number.parseFloat(text)
+}
+
+// The name and the cycle in seconds of the animation of a rule.
+function animationOf(rule: string): { name: string; cycle: number } {
+  const match = value(rule, 'animation').match(/^([\w-]+) (\d+)s\b/)
+  if (!match) throw new Error('No animation')
+  return { cycle: Number(match[2]), name: match[1] }
+}
+
+// One layer of the background: the base layer or a colour field. The box is in percent of the
+// window.
+interface Layer {
+  name: string
   left: number
   top: number
   width: number
   height: number
   keyframes: string
-  // The animation cycle in seconds.
   cycle: number
   rule: string
+  // The colour and the alpha at a point of the layer, before the opacity of its pose. The point
+  // is in pixels from the centre of the layer, before the transform.
+  paint(x: number, y: number, w: number, h: number): { colour: number[]; alpha: number }
 }
 
-function fields(css: string): Field[] {
-  return [...css.matchAll(/\.background-field:nth-child\((\d+)\)\s*\{/g)].map(match => {
-    const rule = blockAt(css, match.index)
-    const animation = value(rule, 'animation').match(/^(background-drift-\d+) (\d+)s\b/)
-    if (!animation) throw new Error(`Field ${match[1]} has no animation`)
-    const percent = (property: string): number => {
-      const text = value(rule, property)
-      if (!/^-?[\d.]+%$/.test(text))
-        throw new Error(`Field ${match[1]}: ${property} is not a percent`)
-      return Number.parseFloat(text)
-    }
-    return {
-      colour: value(rule, '--field-colour').match(/^var\(--color-(icon-\d)\)$/)?.[1] ?? '',
-      cycle: Number(animation[2]),
-      height: percent('height'),
-      index: Number(match[1]),
-      keyframes: block(css, `@keyframes ${animation[1]} `),
-      left: percent('left'),
-      rule,
-      top: percent('top'),
-      weight: Number(value(rule, '--field-weight')),
-      width: percent('width'),
-    }
-  })
-}
-
-const FIELDS = fields(CSS)
-
-function gcd(a: number, b: number): number {
-  return b === 0 ? a : gcd(b, a % b)
-}
-
-// The steps of a keyframes block: the selector and the body.
-function steps(keyframes: string): { at: string; body: string }[] {
-  return [...keyframes.matchAll(/([\d%,\s]+|from|to)\{([^}]*)\}/g)].map(m => ({
-    at: m[1].trim(),
-    body: m[2],
-  }))
-}
-
-function transformParts(transform: string): { name: string; args: string[] }[] {
-  return [...transform.matchAll(/([a-zA-Z0-9]+)\(([^)]*)\)/g)].map(m => ({
-    args: m[2].split(',').map(a => a.trim()),
-    name: m[1],
-  }))
-}
-
-// The strength of the colour fields: a percent token in app.css.
-function glowStrength(): number {
-  const match = CSS.match(/--background-glow:\s*([\d.]+)%;/)
-  if (!match) throw new Error('No --background-glow token')
-  return Number(match[1]) / 100
-}
-
-// The place, turn, size and opacity of a field at one step of its motion. The place is a part of
-// the field size.
-interface Pose {
-  tx: number
-  ty: number
-  turn: number
-  scale: number
-  opacity: number
-}
-
-function pose(body: string): Pose {
-  const result = { opacity: Number(value(body, 'opacity')), scale: 1, turn: 0, tx: 0, ty: 0 }
-  for (const part of transformParts(value(body, 'transform'))) {
-    const [a, b] = part.args.map(arg => Number.parseFloat(arg))
-    if (part.name === 'translate') [result.tx, result.ty] = [a / 100, b / 100]
-    if (part.name === 'rotate') result.turn = (a * Math.PI) / 180
-    if (part.name === 'scale') result.scale = a
-  }
-  return result
-}
-
-// The poses along the path of a field: each step, and 16 poses between two steps. The browser
-// moves each value of the transform in a straight line from one step to the next. The easing
-// changes only the speed, not the path.
-function path(field: Field): Pose[] {
-  const keys = steps(field.keyframes).map(step => pose(step.body))
-  const poses = [keys[0]]
-  for (let i = 1; i < keys.length; i++) {
-    for (let k = 1; k <= 16; k++) {
-      const part = k / 16
-      const between = (name: keyof Pose): number =>
-        keys[i - 1][name] + (keys[i][name] - keys[i - 1][name]) * part
-      poses.push({
-        opacity: between('opacity'),
-        scale: between('scale'),
-        turn: between('turn'),
-        tx: between('tx'),
-        ty: between('ty'),
-      })
-    }
-  }
-  return poses
+interface Field extends Layer {
+  index: number
+  // The name of the icon token, for example icon-6.
+  colour: string
+  // The part of the glow strength, from 0 to 1.
+  weight: number
 }
 
 // The alpha steps of the gradient of a field: the place from the centre (0) to the edge (1), and
@@ -201,20 +133,178 @@ function fadeAt(r: number): number {
   return 0
 }
 
-// The alpha of a field at a point of a window of w by h pixels. The transform turns and scales the
-// field about its centre. closest-side gives an ellipse that touches the four sides of the field.
-function alphaAt(field: Field, at: Pose, x: number, y: number, w: number, h: number): number {
-  const fw = (field.width / 100) * w
-  const fh = (field.height / 100) * h
-  const dx = x - ((field.left / 100) * w + fw / 2 + at.tx * fw)
-  const dy = y - ((field.top / 100) * h + fh / 2 + at.ty * fh)
+function fields(css: string): Field[] {
+  const glow = themeNumber('background-glow')
+  return [...css.matchAll(/\.background-field:nth-child\((\d+)\)\s*\{/g)].map(match => {
+    const rule = blockAt(css, match.index)
+    const { cycle, name } = animationOf(rule)
+    const colour = value(rule, '--field-colour').match(/^var\(--color-(icon-\d)\)$/)?.[1] ?? ''
+    const weight = Number(value(rule, '--field-weight'))
+    return {
+      colour,
+      cycle,
+      height: percent(rule, 'height'),
+      index: Number(match[1]),
+      keyframes: block(css, `@keyframes ${name} `),
+      left: percent(rule, 'left'),
+      name: `field ${match[1]}`,
+      // closest-side gives an ellipse that touches the four sides of the field.
+      paint: (x, y, w, h) => ({
+        alpha: glow * weight * fadeAt(Math.hypot(x / (w / 2), y / (h / 2))),
+        colour: rgb(token(colour)),
+      }),
+      rule,
+      top: percent(rule, 'top'),
+      weight,
+      width: percent(rule, 'width'),
+    }
+  })
+}
+
+const FIELDS = fields(CSS)
+const BASE_RULE = block(CSS, '.background::before {')
+const NOISE_RULE = block(CSS, '.background::after {')
+
+// The colour stops of the base gradient: the icon tokens, each at the base strength.
+function baseStops(): string[] {
+  const image = value(BASE_RULE, 'background-image')
+  return [
+    ...image.matchAll(
+      /color-mix\(in oklab, var\(--color-(icon-\d)\) var\(--background-base\), transparent\)/g,
+    ),
+  ].map(m => m[1])
+}
+
+// The angle of the base gradient in degrees.
+function baseAngle(): number {
+  const match = value(BASE_RULE, 'background-image').match(/^linear-gradient\(\s*(\d+)deg,/)
+  if (!match) throw new Error('The base is not a linear gradient with an angle')
+  return Number(match[1])
+}
+
+// The base layer: one large linear gradient of the icon colours. The browser mixes the stops in
+// premultiplied sRGB. The stops have the same alpha, so the colour is a straight mix.
+function baseLayer(): Layer {
+  const { cycle, name } = animationOf(BASE_RULE)
+  const stops = baseStops().map(name => rgb(token(name)))
+  const strength = themeNumber('background-base')
+  const turn = (baseAngle() * Math.PI) / 180
+  return {
+    cycle,
+    height: percent(BASE_RULE, 'height'),
+    keyframes: block(CSS, `@keyframes ${name} `),
+    left: percent(BASE_RULE, 'left'),
+    name: 'base',
+    paint: (x, y, w, h) => {
+      const length = Math.abs(w * Math.sin(turn)) + Math.abs(h * Math.cos(turn))
+      const t = Math.min(1, Math.max(0, 0.5 + (x * Math.sin(turn) - y * Math.cos(turn)) / length))
+      const at = t * (stops.length - 1)
+      const i = Math.min(stops.length - 2, Math.floor(at))
+      const part = at - i
+      return {
+        alpha: strength,
+        colour: stops[i].map((c, k) => c + (stops[i + 1][k] - c) * part),
+      }
+    },
+    rule: BASE_RULE,
+    top: percent(BASE_RULE, 'top'),
+    width: percent(BASE_RULE, 'width'),
+  }
+}
+
+const BASE = baseLayer()
+// The layers in the order of the page: the base under the fields.
+const LAYERS: Layer[] = [BASE, ...FIELDS]
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b)
+}
+
+// The steps of a keyframes block: the selector and the body.
+function steps(keyframes: string): { at: string; body: string }[] {
+  return [...keyframes.matchAll(/([\d%,\s]+|from|to)\{([^}]*)\}/g)].map(m => ({
+    at: m[1].trim(),
+    body: m[2],
+  }))
+}
+
+function transformParts(transform: string): { name: string; args: string[] }[] {
+  return [...transform.matchAll(/([a-zA-Z0-9]+)\(([^)]*)\)/g)].map(m => ({
+    args: m[2].split(',').map(a => a.trim()),
+    name: m[1],
+  }))
+}
+
+// The place, turn, size and opacity of a layer at one step of its motion. The place is a part of
+// the layer size.
+interface Pose {
+  tx: number
+  ty: number
+  turn: number
+  scale: number
+  opacity: number
+}
+
+function pose(body: string): Pose {
+  const result = { opacity: Number(value(body, 'opacity')), scale: 1, turn: 0, tx: 0, ty: 0 }
+  for (const part of transformParts(value(body, 'transform'))) {
+    const [a, b] = part.args.map(arg => Number.parseFloat(arg))
+    if (part.name === 'translate') [result.tx, result.ty] = [a / 100, b / 100]
+    if (part.name === 'rotate') result.turn = (a * Math.PI) / 180
+    if (part.name === 'scale') result.scale = a
+  }
+  return result
+}
+
+// The poses along the path of a layer: each step, and 12 poses between two steps. The browser
+// moves each value of the transform in a straight line from one step to the next. The easing
+// changes only the speed, not the path.
+function path(layer: Layer): Pose[] {
+  const keys = steps(layer.keyframes).map(step => pose(step.body))
+  const poses = [keys[0]]
+  for (let i = 1; i < keys.length; i++) {
+    for (let k = 1; k <= 12; k++) {
+      const part = k / 12
+      const between = (name: keyof Pose): number =>
+        keys[i - 1][name] + (keys[i][name] - keys[i - 1][name]) * part
+      poses.push({
+        opacity: between('opacity'),
+        scale: between('scale'),
+        turn: between('turn'),
+        tx: between('tx'),
+        ty: between('ty'),
+      })
+    }
+  }
+  return poses
+}
+
+// The colour and alpha of a layer at a point of a window of w by h pixels, at one pose. The
+// transform turns and scales the layer about its centre.
+function layerAt(layer: Layer, at: Pose, x: number, y: number, w: number, h: number) {
+  const lw = (layer.width / 100) * w
+  const lh = (layer.height / 100) * h
+  const dx = x - ((layer.left / 100) * w + lw / 2 + at.tx * lw)
+  const dy = y - ((layer.top / 100) * h + lh / 2 + at.ty * lh)
   const cos = Math.cos(at.turn)
   const sin = Math.sin(at.turn)
   const lx = (dx * cos + dy * sin) / at.scale
   const ly = (-dx * sin + dy * cos) / at.scale
-  const r = Math.hypot(lx / (fw / 2), ly / (fh / 2))
-  return glowStrength() * field.weight * at.opacity * fadeAt(r)
+  const paint = layer.paint(lx, ly, lw, lh)
+  return { alpha: paint.alpha * at.opacity, colour: paint.colour }
 }
+
+function over(colour: number[], alpha: number, under: number[]): number[] {
+  return colour.map((c, i) => c * alpha + under[i] * (1 - alpha))
+}
+
+function lum(colour: number[]): number {
+  return luminance(hex(colour))
+}
+
+// The noise layer adds its mean, a mid grey, at its opacity. A panel blur and the eye both
+// average the fine noise.
+const NOISE_MEAN = [128, 128, 128]
 
 // The window sizes of the check: the default, the smallest, a square and a wide screen.
 const WINDOWS: [number, number][] = [
@@ -224,37 +314,52 @@ const WINDOWS: [number, number][] = [
   [3440, 1440],
 ]
 
-// The brightest point of the background. The cycles have no common factor, so in time each field
-// is at each pose of its path while the other fields are at each pose of their paths. So at each
-// point of a grid, each field takes its highest alpha at that point. The fields then paint over
-// --color-bg in the order of the page. The icon colours are brighter than this dark mix in each
-// channel, so more alpha always gives a brighter colour.
-function findBrightest(): string {
-  const paths = FIELDS.map(path)
-  let brightest = token('bg')
+// The brightest and the darkest point of the background. The cycles have no common factor, so in
+// time each layer is at each pose of its path while the other layers are at each pose of their
+// paths. So at each point of a grid, each layer in turn takes the pose that makes the mix the
+// brightest (or the darkest). The layers paint over --color-bg in the order of the page, and the
+// noise comes last.
+function findExtremes(): { brightest: string; darkest: string } {
+  const paths = LAYERS.map(path)
+  const noise = themeNumber('background-noise')
+  let brightest = rgb(token('bg')) as number[]
+  let darkest = [255, 255, 255]
   for (const [w, h] of WINDOWS) {
-    for (let i = 0; i <= 48; i++) {
-      for (let j = 0; j <= 30; j++) {
-        const [x, y] = [(i / 48) * w, (j / 30) * h]
-        let colour = token('bg')
-        FIELDS.forEach((field, n) => {
-          const alpha = Math.max(...paths[n].map(at => alphaAt(field, at, x, y, w, h)))
-          colour = mix(token(field.colour), alpha, colour)
-        })
-        if (luminance(colour) > luminance(brightest)) brightest = colour
+    for (let i = 0; i <= 32; i++) {
+      for (let j = 0; j <= 20; j++) {
+        const [x, y] = [(i / 32) * w, (j / 20) * h]
+        for (const pick of [1, -1]) {
+          let colour = rgb(token('bg')) as number[]
+          LAYERS.forEach((layer, n) => {
+            let best: number[] | null = null
+            for (const at of paths[n]) {
+              const paint = layerAt(layer, at, x, y, w, h)
+              const next = over(paint.colour, paint.alpha, colour)
+              if (best === null || pick * (lum(next) - lum(best)) > 0) best = next
+            }
+            colour = best ?? colour
+          })
+          colour = over(NOISE_MEAN, noise, colour)
+          if (pick === 1 && lum(colour) > lum(brightest)) brightest = colour
+          if (pick === -1 && lum(colour) < lum(darkest)) darkest = colour
+        }
       }
     }
   }
-  return brightest
+  return { brightest: hex(brightest), darkest: hex(darkest) }
 }
 
-// The search takes about one second, so it runs one time.
-let brightestCache: string | null = null
+// The search takes a few seconds, so it runs one time.
+let extremesCache: { brightest: string; darkest: string } | null = null
 
-function brightestBackground(): string {
-  brightestCache ??= findBrightest()
-  return brightestCache
+function extremes(): { brightest: string; darkest: string } {
+  extremesCache ??= findExtremes()
+  return extremesCache
 }
+
+// the user, 2026-11-06: no gaps. Each point of the window shows a colour of the mix at each time. The
+// darkest point has a luminance of 0.008 or more (the base colour --color-bg has 0.003).
+const DARKEST_LUMINANCE = 0.008
 
 describe('the background layer', () => {
   it('fills the window behind all frames and the side bar, over --color-bg', () => {
@@ -288,12 +393,12 @@ describe('the background layer', () => {
     const colours = FIELDS.map(f => f.colour)
     expect(new Set(colours).size).toBe(FIELDS.length)
     for (const colour of colours) expect(colour).toMatch(/^icon-[1-6]$/)
-    const strength = glowStrength()
+    const strength = themeNumber('background-glow')
     expect(strength).toBeGreaterThan(0)
     expect(strength).toBeLessThanOrEqual(0.3)
     for (const field of FIELDS) {
-      expect(field.weight, `field ${field.index}`).toBeGreaterThan(0)
-      expect(field.weight, `field ${field.index}`).toBeLessThanOrEqual(1)
+      expect(field.weight, field.name).toBeGreaterThan(0)
+      expect(field.weight, field.name).toBeLessThanOrEqual(1)
     }
     const rule = block(CSS, '.background-field {')
     expect(value(rule, '--field-glow')).toBe('calc(var(--background-glow) * var(--field-weight))')
@@ -301,40 +406,86 @@ describe('the background layer', () => {
       'color-mix(in oklab, var(--field-colour) var(--field-glow), transparent)',
     )
     // No colour value outside the tokens.
-    const all = [block(CSS, '.background {'), rule, ...FIELDS.map(f => f.rule)].join('\n')
-    expect(all).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
+    const all = [block(CSS, '.background {'), rule, BASE_RULE, ...FIELDS.map(f => f.rule)]
+    expect(all.join('\n')).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
   })
 
-  it('makes each field large and soft: 50 to 90% of the window, a radial gradient', () => {
+  // the user, 2026-11-06: no gaps between the fields. So each field is larger than the window.
+  it('makes each field larger than the window: 120 to 160%, with a soft radial gradient', () => {
     for (const field of FIELDS) {
       for (const size of [field.width, field.height]) {
-        expect(size, `field ${field.index}`).toBeGreaterThanOrEqual(50)
-        expect(size, `field ${field.index}`).toBeLessThanOrEqual(90)
+        expect(size, field.name).toBeGreaterThanOrEqual(120)
+        expect(size, field.name).toBeLessThanOrEqual(160)
       }
     }
     const image = value(block(CSS, '.background-field {'), 'background-image')
-    expect(image).toMatch(/^radial-gradient\(/)
-    // The gradient fades out in several steps, to transparent at its edge.
+    expect(image).toMatch(/^radial-gradient\(\s*closest-side,/)
     expect(image).toMatch(/transparent 100%\s*\)$/)
     expect(FADE.length).toBeGreaterThanOrEqual(6)
     for (let i = 1; i < FADE.length; i++) {
       expect(FADE[i][0]).toBeGreaterThan(FADE[i - 1][0])
       expect(FADE[i][1]).toBeLessThan(FADE[i - 1][1])
     }
+    // The fade is almost zero before the edge of the field. So the edge of the ellipse does not
+    // show as a line or a fringe of colour.
+    expect(FADE[FADE.length - 2][1]).toBeLessThanOrEqual(0.05)
+  })
+
+  // A full-window layer of the icon colours under the fields. So no point is black.
+  it('has a base layer: a large linear gradient of the icon colours, under the fields', () => {
+    expect(value(BASE_RULE, 'content')).toBe('""')
+    expect(value(BASE_RULE, 'position')).toBe('absolute')
+    expect(value(BASE_RULE, 'will-change')).toBe('transform')
+    // The layer is centred on the window and much larger, so its motion never shows an edge.
+    expect(BASE.width).toBeGreaterThanOrEqual(180)
+    expect(BASE.height).toBeGreaterThanOrEqual(180)
+    expect(BASE.left).toBe(-(BASE.width - 100) / 2)
+    expect(BASE.top).toBe(-(BASE.height - 100) / 2)
+    const stops = baseStops()
+    expect(stops.length).toBeGreaterThanOrEqual(4)
+    expect(value(BASE_RULE, 'background-image').match(/color-mix\(/g)).toHaveLength(stops.length)
+    const strength = themeNumber('background-base')
+    expect(strength).toBeGreaterThan(0)
+    expect(strength).toBeLessThanOrEqual(0.15)
+  })
+
+  // the user, 2026-11-06: some colour banding. A fixed, very fine noise on top hides the steps of
+  // 8-bit colour (dither).
+  it('has one fixed noise layer on top, at a few percent', () => {
+    expect(value(NOISE_RULE, 'content')).toBe('""')
+    expect(value(NOISE_RULE, 'position')).toBe('absolute')
+    expect(value(NOISE_RULE, 'inset')).toBe('0')
+    expect(value(NOISE_RULE, 'pointer-events')).toBe('none')
+    expect(value(NOISE_RULE, 'opacity')).toBe('var(--background-noise)')
+    const noise = themeNumber('background-noise')
+    expect(noise).toBeGreaterThan(0)
+    expect(noise).toBeLessThanOrEqual(0.05)
+    const image = value(NOISE_RULE, 'background-image')
+    expect(image).toMatch(/^url\("data:image\/svg\+xml,/)
+    expect(image).toContain('feTurbulence')
+  })
+
+  it('keeps the noise layer static: no animation, transition or transform', () => {
+    for (const property of ['animation', 'transition', 'transform', 'will-change']) {
+      expect(declarations(NOISE_RULE).map(([name]) => name)).not.toContain(property)
+    }
+    // No other rule targets the noise layer.
+    expect(CSS.match(/::after\s*[{,]/g)).toHaveLength(1)
   })
 })
 
 describe('the motion of the background', () => {
-  it('gives each field its own slow cycle: 40 to 90 s, with no common factor below 5', () => {
+  // the user, 2026-11-06: the motion felt a little slow.
+  it('gives each field its own cycle: 17 to 37 s, with no common factor below 5', () => {
     const cycles = FIELDS.map(f => f.cycle)
     expect(new Set(cycles).size).toBe(cycles.length)
     for (const cycle of cycles) {
-      expect(cycle).toBeGreaterThanOrEqual(40)
-      expect(cycle).toBeLessThanOrEqual(90)
+      expect(cycle).toBeGreaterThanOrEqual(17)
+      expect(cycle).toBeLessThanOrEqual(37)
     }
     const bad: string[] = []
-    for (const a of cycles) {
-      for (const b of cycles) {
+    for (const a of [...cycles, BASE.cycle]) {
+      for (const b of [...cycles, BASE.cycle]) {
         const shared = gcd(a, b)
         if (a < b && [2, 3, 4].some(f => shared % f === 0)) bad.push(`${a} and ${b}`)
       }
@@ -342,56 +493,58 @@ describe('the motion of the background', () => {
     expect(bad).toEqual([])
   })
 
+  it('moves the base layer more slowly than the fields', () => {
+    expect(BASE.cycle).toBeGreaterThan(Math.max(...FIELDS.map(f => f.cycle)))
+    expect(BASE.cycle).toBeLessThanOrEqual(60)
+  })
+
   it('runs each cycle forwards and back, without end, with a soft ease', () => {
-    for (const field of FIELDS) {
-      expect(value(field.rule, 'animation')).toMatch(
-        /^background-drift-\d+ \d+s ease-in-out infinite alternate$/,
+    for (const layer of LAYERS) {
+      expect(value(layer.rule, 'animation'), layer.name).toMatch(
+        /^background-[\w-]+ \d+s ease-in-out infinite alternate$/,
       )
     }
   })
 
   it('animates only transform and opacity, with no filter', () => {
-    for (const field of FIELDS) {
-      const names = new Set(declarations(field.keyframes).map(([name]) => name))
-      expect([...names].sort(), `field ${field.index}`).toEqual(['opacity', 'transform'])
-      expect(field.keyframes).not.toMatch(/filter/)
+    for (const layer of LAYERS) {
+      const names = new Set(declarations(layer.keyframes).map(([name]) => name))
+      expect([...names].sort(), layer.name).toEqual(['opacity', 'transform'])
+      expect(layer.keyframes).not.toMatch(/filter/)
     }
   })
 
-  it('makes each field drift, scale and turn', () => {
-    for (const field of FIELDS) {
-      const parts = steps(field.keyframes).flatMap(s => transformParts(value(s.body, 'transform')))
-      const moved = (name: string, still: string) =>
-        parts.some(
-          p =>
-            p.name === name && p.args.some(a => Number.parseFloat(a) !== Number.parseFloat(still)),
-        )
-      expect(moved('translate', '0'), `field ${field.index} drifts`).toBe(true)
-      expect(moved('scale', '1'), `field ${field.index} scales`).toBe(true)
-      expect(moved('rotate', '0'), `field ${field.index} turns`).toBe(true)
+  it('makes each field drift, scale and turn, and the base drift and turn', () => {
+    for (const layer of LAYERS) {
+      const parts = steps(layer.keyframes).flatMap(s => transformParts(value(s.body, 'transform')))
+      const moved = (name: string, still: number) =>
+        parts.some(p => p.name === name && p.args.some(a => Number.parseFloat(a) !== still))
+      expect(moved('translate', 0), `${layer.name} drifts`).toBe(true)
+      expect(moved('rotate', 0), `${layer.name} turns`).toBe(true)
+      if (layer !== BASE) expect(moved('scale', 1), `${layer.name} scales`).toBe(true)
     }
   })
 
-  // the user: "not with the whole bubbles going up and down". The fields drift mostly to the side.
-  it('moves no field up or down far: no bubble rises or sinks', () => {
-    for (const field of FIELDS) {
-      for (const step of steps(field.keyframes)) {
+  // the user: "not with the whole bubbles going up and down". The layers drift mostly to the side.
+  it('moves no layer up or down far: no bubble rises or sinks', () => {
+    for (const layer of LAYERS) {
+      for (const step of steps(layer.keyframes)) {
         for (const part of transformParts(value(step.body, 'transform'))) {
-          expect(['translate', 'rotate', 'scale'], `field ${field.index}`).toContain(part.name)
+          expect(['translate', 'rotate', 'scale'], layer.name).toContain(part.name)
           if (part.name !== 'translate') continue
           const [x, y] = part.args
           expect(x).toMatch(/^-?[\d.]+%$/)
           expect(y).toMatch(/^-?[\d.]+%$/)
-          expect(Math.abs(Number.parseFloat(y)), `field ${field.index}`).toBeLessThanOrEqual(10)
+          expect(Math.abs(Number.parseFloat(y)), layer.name).toBeLessThanOrEqual(10)
         }
       }
     }
   })
 
-  // The first step is the still position. So a field starts from where it stays with no motion.
-  it('starts each cycle at the still position, and never fades a field out', () => {
-    for (const field of FIELDS) {
-      const all = steps(field.keyframes)
+  // The first step is the still position. So a layer starts from where it stays with no motion.
+  it('starts each cycle at the still position, and never fades a layer out', () => {
+    for (const layer of LAYERS) {
+      const all = steps(layer.keyframes)
       expect(all[0].at).toBe('0%')
       expect(value(all[0].body, 'transform')).toBe('none')
       expect(value(all[0].body, 'opacity')).toBe('1')
@@ -403,33 +556,51 @@ describe('the motion of the background', () => {
     }
   })
 
-  it('uses the compositor only: will-change transform and no blur or blend on a field', () => {
-    const rule = block(CSS, '.background-field {')
-    expect(value(rule, 'will-change')).toBe('transform')
-    for (const body of [rule, ...FIELDS.map(f => f.rule)]) {
-      expect(body).not.toMatch(/filter|mix-blend-mode/)
+  it('uses the compositor only: will-change transform and no blur or blend', () => {
+    expect(value(block(CSS, '.background-field {'), 'will-change')).toBe('transform')
+    const rules = [
+      block(CSS, '.background-field {'),
+      BASE_RULE,
+      NOISE_RULE,
+      ...FIELDS.map(f => f.rule),
+    ]
+    for (const rule of rules) {
+      const names = declarations(rule).map(([name]) => name)
+      for (const name of ['filter', 'backdrop-filter', 'mix-blend-mode']) {
+        expect(names).not.toContain(name)
+      }
     }
   })
 
-  it('stops the motion with reduced motion and with the setting off from the start', () => {
-    const lastField = CSS.lastIndexOf('.background-field:nth-child(')
-    const reduced = CSS.indexOf('@media (prefers-reduced-motion: reduce)', lastField)
-    expect(reduced).toBeGreaterThan(lastField)
-    // Two classes: the same specificity as a field rule, and later, so the stop rule wins.
-    expect(blockAt(CSS, reduced)).toMatch(
-      /^\s*\.background \.background-field\s*\{\s*animation:\s*none;\s*\}\s*$/,
+  // The stop rules have the same specificity as the rules that they stop, and come after them.
+  // The animation shorthand sets the play state to running, so the pause rule must come after
+  // the layer rules too.
+  it('stops the motion of each layer with reduced motion and with the setting off from the start', () => {
+    const last = Math.max(
+      CSS.lastIndexOf('.background-field:nth-child('),
+      CSS.indexOf('.background::before {'),
     )
-    const still = CSS.indexOf('.background-still .background-field {', lastField)
-    expect(still).toBeGreaterThan(lastField)
+    const reduced = CSS.indexOf('@media (prefers-reduced-motion: reduce)', last)
+    expect(reduced).toBeGreaterThan(last)
+    expect(blockAt(CSS, reduced)).toMatch(
+      /^\s*\.background \.background-field,\s*\.background::before\s*\{\s*animation:\s*none;\s*\}\s*$/,
+    )
+    const still = CSS.indexOf('.background-still .background-field,', last)
+    expect(still).toBeGreaterThan(last)
+    expect(CSS.slice(still, CSS.indexOf('{', still))).toMatch(/,\s*\.background-still::before\s*$/)
     expect(declarations(blockAt(CSS, still))).toEqual([['animation', 'none']])
   })
 
-  // The field rules set the animation shorthand, and the shorthand sets the play state to running.
-  // So the pause rule must come after them.
-  it('pauses the fields where they are, with no jump', () => {
-    const lastField = CSS.lastIndexOf('.background-field:nth-child(')
-    const paused = CSS.indexOf('.background-paused .background-field {', lastField)
-    expect(paused).toBeGreaterThan(lastField)
+  it('pauses each layer where it is, with no jump', () => {
+    const last = Math.max(
+      CSS.lastIndexOf('.background-field:nth-child('),
+      CSS.indexOf('.background::before {'),
+    )
+    const paused = CSS.indexOf('.background-paused .background-field,', last)
+    expect(paused).toBeGreaterThan(last)
+    expect(CSS.slice(paused, CSS.indexOf('{', paused))).toMatch(
+      /,\s*\.background-paused::before\s*$/,
+    )
     expect(declarations(blockAt(CSS, paused))).toEqual([['animation-play-state', 'paused']])
   })
 })
@@ -470,7 +641,6 @@ describe('the state of the motion', () => {
     expect(windowActive(page(false, 'hidden'))).toBe(false)
   })
 })
-
 describe('the Animated background setting', () => {
   it('gives each motion its class', () => {
     expect(backgroundClass('moving')).toBe('background')
@@ -491,9 +661,10 @@ describe('the Animated background setting', () => {
   })
 })
 
-// The brief of 2026-11-06: at the brightest point of the background, under a panel at the default
-// Panel transparency, the text stays readable and the boxes stay clearly visible.
-describe('the contrast over the background', () => {
+// The brief of 2026-11-06: at the brightest and the darkest point of the background, under a
+// panel at the default Panel transparency, the text stays readable and the boxes stay clearly
+// visible.
+describe('the cover and the contrast of the background', () => {
   const DEFAULT_TRANSPARENCY = 15
   const grey = (n: number): string => hex([n, n, n])
   const rowOpacity = (): number => {
@@ -504,10 +675,9 @@ describe('the contrast over the background', () => {
     return [...values][0]
   }
 
-  // The panel and the focused panel over the brightest point. The blur can only make the
-  // background darker than its brightest point.
-  function panels(): [string, string][] {
-    const back = brightestBackground()
+  // The panel and the focused panel over a background colour. The blur can only make the
+  // background closer to its mean, so the extremes are the worst cases.
+  function panels(back: string): [string, string][] {
     const alpha = 1 - DEFAULT_TRANSPARENCY / 100
     return [
       ['panel', mix(grey(level('panel')), alpha, back)],
@@ -528,27 +698,57 @@ describe('the contrast over the background', () => {
     ])
   }
 
+  function backs(): [string, string][] {
+    const { brightest, darkest } = extremes()
+    return [
+      ['brightest', brightest],
+      ['darkest', darkest],
+    ]
+  }
+
+  it('covers the whole window at all times: no point is near black', () => {
+    const { darkest } = extremes()
+    if (process.env.EXTREMES_OUT) {
+      const { brightest } = extremes()
+      writeFileSync(
+        process.env.EXTREMES_OUT,
+        `${brightest} ${luminance(brightest).toFixed(4)} ${contrast(brightest, token('bg')).toFixed(3)} | ${darkest} ${luminance(darkest).toFixed(4)}`,
+      )
+    }
+    expect(luminance(darkest)).toBeGreaterThanOrEqual(DARKEST_LUMINANCE)
+    // The darkest point is a colour of the mix, not a grey.
+    const channels = rgb(darkest)
+    expect(Math.max(...channels) - Math.min(...channels)).toBeGreaterThanOrEqual(4)
+  })
+
   // A gentle glow, not a bright rainbow: the brightest point is only a little lighter than the
-  // base colour, at less than 1.5:1.
+  // base colour, at less than 1.6:1.
   it('stays dark: the brightest point is a faint glow over --color-bg', () => {
-    const brightest = brightestBackground()
-    expect(contrast(brightest, token('bg'))).toBeLessThan(1.5)
+    const { brightest } = extremes()
+    expect(contrast(brightest, token('bg'))).toBeLessThan(1.6)
     // Guard: the search finds at least the centre of each field at its full glow.
     for (const field of FIELDS) {
-      const centre = mix(token(field.colour), glowStrength() * field.weight, token('bg'))
+      const centre = mix(
+        token(field.colour),
+        themeNumber('background-glow') * field.weight,
+        token('bg'),
+      )
       expect(luminance(brightest), field.colour).toBeGreaterThanOrEqual(luminance(centre))
     }
   })
 
   it('keeps the panel text at 4.5:1 or more on each row', () => {
     const bad: string[] = []
-    for (const [panel, surface] of panels()) {
-      // The dim text shows on the panel itself, for example the hints of Settings.
-      if (contrast(token('text-dim'), surface) < 4.5) bad.push(`text-dim on ${panel}`)
-      for (const [row, background] of rows(surface)) {
-        for (const text of ['text', 'text-strong']) {
-          const ratio = contrast(token(text), background)
-          if (ratio < 4.5) bad.push(`${text} on ${row} on ${panel}: ${ratio.toFixed(2)}`)
+    for (const [where, back] of backs()) {
+      for (const [panel, surface] of panels(back)) {
+        // The dim text shows on the panel itself, for example the hints of Settings.
+        const dim = contrast(token('text-dim'), surface)
+        if (dim < 4.5) bad.push(`text-dim on ${panel} at the ${where} point: ${dim.toFixed(2)}`)
+        for (const [row, background] of rows(surface)) {
+          for (const text of ['text', 'text-strong']) {
+            const ratio = contrast(token(text), background)
+            if (ratio < 4.5) bad.push(`${text} on ${row} on ${panel} at the ${where} point`)
+          }
         }
       }
     }
@@ -557,11 +757,15 @@ describe('the contrast over the background', () => {
 
   it('keeps the box red and the box yellow at 3:1 or more on each row', () => {
     const bad: string[] = []
-    for (const [panel, surface] of panels()) {
-      for (const [row, background] of rows(surface)) {
-        for (const box of ['box-red', 'box-yellow']) {
-          const ratio = contrast(token(box), background)
-          if (ratio < 3) bad.push(`${box} on ${row} on ${panel}: ${ratio.toFixed(2)}`)
+    for (const [where, back] of backs()) {
+      for (const [panel, surface] of panels(back)) {
+        for (const [row, background] of rows(surface)) {
+          for (const box of ['box-red', 'box-yellow']) {
+            const ratio = contrast(token(box), background)
+            if (ratio < 3) {
+              bad.push(`${box} on ${row} on ${panel} at the ${where} point: ${ratio.toFixed(2)}`)
+            }
+          }
         }
       }
     }

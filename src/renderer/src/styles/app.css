@@ -60,9 +60,13 @@
   --color-icon-5: #5e9bec;
   --color-icon-6: #9b80e6;
 
-  /* The strength of the colour fields of the animated background (.background): the alpha of
-     each icon colour at the centre of its field. The background stays dark (spec 8.10). */
-  --background-glow: 20%;
+  /* The strengths of the animated background (.background, spec 8.10). The background stays dark.
+     --background-glow: the alpha of each icon colour at the centre of its field.
+     --background-base: the alpha of the icon colours of the base layer under the fields.
+     --background-noise: the opacity of the fixed fine noise on top. It hides colour bands. */
+  --background-glow: 15%;
+  --background-base: 9%;
+  --background-noise: 0.02;
 
   /* The colours of the priorities 1 to 5. */
   --color-prio-1: #d4730a;
@@ -210,13 +214,16 @@
   }
 
   /* The animated background (spec 8.10, the user 2026-11-06): one layer behind all frames and the
-     side bar. Six large, soft colour fields of the app icon colours drift, scale and turn
-     slowly. The cool colours have the most space. The warm colours stay near the edges. The
-     fields overlap with plain alpha. Each field has its own cycle. The cycles are primes from 40
-     to 90 s, so the pattern does not repeat in a way that a person sees. The fields move mostly
-     to the side and only a little up and down, so no field rises or sinks. Only transform and
-     opacity change, so the compositor runs the motion. The soft edge comes from the gradient
-     stops, not from a blur. */
+     side bar. It shows a mix of the app icon colours over the whole window at all times, with no
+     black gaps. Three parts paint in this order:
+     - The base layer (::before): a large linear gradient of the icon colours. It drifts slowly.
+     - Six colour fields, each larger than the window. They drift, scale and turn, and they
+       overlap with plain alpha, so their colours merge.
+     - A fixed, very fine noise (::after). It hides the bands of 8-bit colour (dither).
+     Each layer has its own cycle. The cycles are primes, so the pattern does not repeat in a way
+     that a person sees. The layers move mostly to the side and only a little up and down, so no
+     field rises or sinks. Only transform and opacity change, so the compositor runs the motion.
+     The soft edges come from the gradient stops, not from a blur. */
   .background {
     position: fixed;
     inset: 0;
@@ -226,9 +233,44 @@
     background-color: var(--color-bg);
   }
 
+  /* The base layer: two times the window in each direction, centred, so its motion never shows
+     an edge. It goes from green through blue and violet to red. Yellow and orange come only from
+     the fields, because a dark yellow or orange looks brown. */
+  .background::before {
+    content: "";
+    position: absolute;
+    left: -50%;
+    top: -50%;
+    width: 200%;
+    height: 200%;
+    will-change: transform;
+    background-image: linear-gradient(
+      120deg,
+      color-mix(in oklab, var(--color-icon-4) var(--background-base), transparent),
+      color-mix(in oklab, var(--color-icon-5) var(--background-base), transparent),
+      color-mix(in oklab, var(--color-icon-6) var(--background-base), transparent),
+      color-mix(in oklab, var(--color-icon-1) var(--background-base), transparent),
+      color-mix(in oklab, var(--color-icon-6) var(--background-base), transparent)
+    );
+    animation: background-base-drift 41s ease-in-out infinite alternate;
+  }
+
+  /* The noise: an SVG turbulence in grey, made one time as an image, with its contrast raised
+     around the mid grey. It does not move. */
+  .background::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--background-noise);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0 0 0 0 1'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='3' intercept='-1'/%3E%3CfeFuncG type='linear' slope='3' intercept='-1'/%3E%3CfeFuncB type='linear' slope='3' intercept='-1'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 256px 256px;
+  }
+
   /* Each field has a weight from 0 to 1. Its glow is the strength token times its weight. The
      warm colours have a lower weight, because a dark yellow or orange looks brown. The fade goes
-     out from the centre on an eased curve, to transparent at the edge. */
+     out from the centre on an eased curve and is almost zero before the edge, so the edge shows
+     no line and no fringe of colour. */
   .background-field {
     --field-glow: calc(var(--background-glow) * var(--field-weight));
     position: absolute;
@@ -236,10 +278,10 @@
     background-image: radial-gradient(
       closest-side,
       color-mix(in oklab, var(--field-colour) var(--field-glow), transparent),
-      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.88), transparent) 20%,
-      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.62), transparent) 40%,
-      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.34), transparent) 60%,
-      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.14), transparent) 80%,
+      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.7), transparent) 20%,
+      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.38), transparent) 40%,
+      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.14), transparent) 60%,
+      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.03), transparent) 80%,
       transparent 100%
     );
   }
@@ -247,61 +289,61 @@
   .background-field:nth-child(1) {
     --field-colour: var(--color-icon-6);
     --field-weight: 1;
-    left: 8%;
-    top: 47%;
-    width: 80%;
-    height: 70%;
-    animation: background-drift-1 71s ease-in-out infinite alternate;
+    left: -15%;
+    top: 25%;
+    width: 125%;
+    height: 120%;
+    animation: background-drift-1 37s ease-in-out infinite alternate;
   }
 
   .background-field:nth-child(2) {
     --field-colour: var(--color-icon-5);
     --field-weight: 1;
-    left: 42%;
-    top: -27%;
-    width: 80%;
-    height: 70%;
-    animation: background-drift-2 53s ease-in-out infinite alternate;
+    left: 22%;
+    top: -55%;
+    width: 125%;
+    height: 120%;
+    animation: background-drift-2 29s ease-in-out infinite alternate;
   }
 
   .background-field:nth-child(3) {
     --field-colour: var(--color-icon-4);
     --field-weight: 0.85;
-    left: -25%;
-    top: 21%;
-    width: 70%;
-    height: 78%;
-    animation: background-drift-3 89s ease-in-out infinite alternate;
+    left: -52%;
+    top: -5%;
+    width: 120%;
+    height: 125%;
+    animation: background-drift-3 31s ease-in-out infinite alternate;
   }
 
   .background-field:nth-child(4) {
     --field-colour: var(--color-icon-3);
     --field-weight: 0.4;
-    left: 4%;
-    top: -16%;
-    width: 55%;
-    height: 55%;
-    animation: background-drift-4 43s ease-in-out infinite alternate;
+    left: -28%;
+    top: -55%;
+    width: 120%;
+    height: 120%;
+    animation: background-drift-4 17s ease-in-out infinite alternate;
   }
 
   .background-field:nth-child(5) {
     --field-colour: var(--color-icon-2);
     --field-weight: 0.55;
-    left: 66%;
-    top: 19%;
-    width: 60%;
-    height: 66%;
-    animation: background-drift-5 61s ease-in-out infinite alternate;
+    left: 40%;
+    top: -8%;
+    width: 120%;
+    height: 125%;
+    animation: background-drift-5 23s ease-in-out infinite alternate;
   }
 
   .background-field:nth-child(6) {
     --field-colour: var(--color-icon-1);
     --field-weight: 0.75;
-    left: 50%;
-    top: 69%;
-    width: 72%;
-    height: 62%;
-    animation: background-drift-6 79s ease-in-out infinite alternate;
+    left: 28%;
+    top: 45%;
+    width: 125%;
+    height: 120%;
+    animation: background-drift-6 19s ease-in-out infinite alternate;
   }
 
   @keyframes background-drift-1 {
@@ -418,23 +460,45 @@
     }
   }
 
-  /* The stop rules. They have the same specificity as the field rules and come after them, so
-     they win over them. The field rules set the animation shorthand, and the shorthand sets the
+  @keyframes background-base-drift {
+    0% {
+      transform: none;
+      opacity: 1;
+    }
+    33% {
+      transform: translate(8%, 3%) rotate(10deg) scale(1.05);
+      opacity: 1;
+    }
+    67% {
+      transform: translate(-6%, -4%) rotate(-8deg) scale(0.96);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(10%, -2%) rotate(14deg) scale(1.02);
+      opacity: 1;
+    }
+  }
+
+  /* The stop rules. They have the same specificity as the layer rules and come after them, so
+     they win over them. The layer rules set the animation shorthand, and the shorthand sets the
      play state to running. So the pause rule must also come after them.
      Paused: the window does not have the focus, the page is hidden, or the Animated background
-     setting went off. The fields stop where they are and continue from there, with no jump.
-     Still: reduced motion, or the setting is off at the start. The fields stay at their still
+     setting went off. The layers stop where they are and continue from there, with no jump.
+     Still: reduced motion, or the setting is off at the start. The layers stay at their still
      position, the first step of each cycle. */
-  .background-paused .background-field {
+  .background-paused .background-field,
+  .background-paused::before {
     animation-play-state: paused;
   }
 
-  .background-still .background-field {
+  .background-still .background-field,
+  .background-still::before {
     animation: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .background .background-field {
+    .background .background-field,
+    .background::before {
       animation: none;
     }
   }
