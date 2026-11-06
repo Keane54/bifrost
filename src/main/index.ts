@@ -20,6 +20,7 @@ import {
 import { buildMenuTemplate, menuKeys, modeHandlers, zoomStep } from './menu'
 import { refusedTestHome, testHomeConfig, testHomeError } from './test-home'
 import { createModeController, type ModeController } from './window/display-mode'
+import { devDockIcon } from './window/dock-icon'
 import { openWindowStateStore, restoreBounds } from './window/window-state'
 
 // The test home (D12). Read it before the single instance lock, because the lock uses the
@@ -197,6 +198,9 @@ function startApp(): void {
   // Electron fires this event when it is ready to create windows.
   app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.keyholding.bifrost')
+    // A dev start shows the Bifrost icon in the Dock, not the Electron icon.
+    const dockIcon = devDockIcon(process.platform, app.isPackaged, icon)
+    if (dockIcon) app.dock?.setIcon(dockIcon)
 
     // A change of a menu key in the settings builds the menu again.
     setMenuRebuild(showMenu)
