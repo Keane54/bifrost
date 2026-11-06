@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createServiceMonitor } from '../../../src/main/service-status/monitor'
+import {
+  createServiceMonitor,
+  serviceList,
+  TEST_HOME_SERVICE,
+} from '../../../src/main/service-status/monitor'
 import { SERVICES, type ServiceDef } from '../../../src/main/service-status/statuspage'
+import { levelText } from '../../../src/renderer/src/service/service-view'
 import type { ServiceStatus } from '../../../src/shared/types'
 
 function status(def: ServiceDef, checkedAt: number): ServiceStatus {
@@ -39,6 +44,25 @@ describe('createServiceMonitor', () => {
     expect(check).toHaveBeenCalledTimes(SERVICES.length * 2)
     expect(emit).toHaveBeenCalledTimes(2)
     m.stop()
+  })
+
+  it('a throw in emit never stops the loop (final review Minor 5)', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const check = vi.fn(async (d: ServiceDef) => status(d, Date.now()))
+    const emit = vi.fn(() => {
+      throw new Error('emit failed')
+    })
+    const m = createServiceMonitor({ check, emit, now: () => Date.now() })
+    m.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(emit).toHaveBeenCalledTimes(1)
+    expect(m.current().every(s => s.level === 'none')).toBe(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(check).toHaveBeenCalledTimes(SERVICES.length * 2)
+    expect(emit).toHaveBeenCalledTimes(2)
+    expect(logged).toHaveBeenCalledTimes(2)
+    m.stop()
+    logged.mockRestore()
   })
 
   it('the monitor never runs two rounds at a time', async () => {
@@ -98,5 +122,28 @@ describe('createServiceMonitor', () => {
     await vi.advanceTimersByTimeAsync(200_000)
     expect(emit).not.toHaveBeenCalled()
     expect(check).toHaveBeenCalledTimes(SERVICES.length)
+  })
+})
+
+describe('serviceList (final review parked T5)', () => {
+  it('a test home has no monitor, so each service shows No data with the reason', () => {
+    expect(TEST_HOME_SERVICE).toBe("Bifrost doesn't check status pages in a test home.")
+    const list = serviceList(null)
+    expect(list.map(s => s.id)).toEqual(SERVICES.map(d => d.id))
+    for (const s of list) {
+      expect(s).toMatchObject({
+        checkedAt: 0,
+        error: TEST_HOME_SERVICE,
+        incidents: [],
+        level: 'unknown',
+        since: null,
+      })
+      expect(levelText(s.level)).toBe('No data')
+    }
+  })
+
+  it('with a monitor, the list is the current list of the monitor', () => {
+    const current = SERVICES.map(d => status(d, 5))
+    expect(serviceList({ current: () => current })).toBe(current)
   })
 })

@@ -31,6 +31,55 @@ export const NO_ANSWER = "The status page didn't answer."
 
 export type FetchJson = (url: string) => Promise<unknown>
 
+// The fetch of the main process (net.fetch). A test passes a fake.
+export type FetchFn = (url: string, init: RequestInit) => Promise<Response>
+
+// Bifrost reads at most this many bytes of one answer. A status page answer has a few kB.
+export const MAX_BODY_BYTES = 1_000_000
+const TOO_LARGE = 'The answer of the status page is too large.'
+
+// Read the text of a body with the cap. A content-length over the cap stops before the read. A
+// body that gets past the cap stops the read at once.
+async function cappedText(res: Response, max: number): Promise<string> {
+  const length = Number(res.headers.get('content-length'))
+  if (Number.isFinite(length) && length > max) {
+    await res.body?.cancel().catch(() => {})
+    throw new Error(TOO_LARGE)
+  }
+  if (res.body === null) return ''
+  const reader = res.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > max) {
+      await reader.cancel().catch(() => {})
+      throw new Error(TOO_LARGE)
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+// The fetchJson of the monitor. It asks for JSON, stops after FETCH_TIMEOUT_MS, and reads at most
+// MAX_BODY_BYTES of the body (final review parked T5). A bad answer rejects, and checkService then
+// gives unknown.
+export function createFetchJson(fetch: FetchFn): FetchJson {
+  return async url => {
+    const res = await fetch(url, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => {})
+      throw new Error(`The status page answered ${res.status}.`)
+    }
+    return JSON.parse(await cappedText(res, MAX_BODY_BYTES))
+  }
+}
+
 const INDICATORS: readonly string[] = ['none', 'minor', 'major', 'critical', 'maintenance']
 const WORDS: readonly Impact[] = ['none', 'minor', 'major', 'critical']
 

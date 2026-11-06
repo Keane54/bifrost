@@ -5,8 +5,11 @@ import {
   checkService,
   combine,
   componentIndicator,
+  createFetchJson,
+  type FetchFn,
   type FetchJson,
   indicatorOf,
+  MAX_BODY_BYTES,
   parseIncidents,
   SERVICES,
 } from '../../../src/main/service-status/statuspage'
@@ -196,5 +199,70 @@ describe('checkService', () => {
       1,
     )
     expect(second.level).toBe('minor')
+  })
+})
+
+describe('createFetchJson (final review parked T5: a cap on the body size)', () => {
+  const URL = 'https://status.claude.com/api/v2/status.json'
+  const answer = (body: BodyInit | null, init?: ResponseInit): FetchFn => {
+    return async () => new Response(body, init)
+  }
+
+  it('reads the JSON of a small answer and asks for JSON with a time limit', async () => {
+    let seen: RequestInit | undefined
+    const fetch: FetchFn = async (_url, init) => {
+      seen = init
+      return new Response('{"status":{"indicator":"none"}}')
+    }
+    expect(await createFetchJson(fetch)(URL)).toEqual({ status: { indicator: 'none' } })
+    expect(seen?.headers).toEqual({ accept: 'application/json' })
+    expect(seen?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('refuses an answer that is not ok', async () => {
+    await expect(createFetchJson(answer('{}', { status: 503 }))(URL)).rejects.toThrow('503')
+  })
+
+  it('refuses a body over the cap, also when it is good JSON', async () => {
+    expect(MAX_BODY_BYTES).toBe(1_000_000)
+    const big = JSON.stringify({ pad: 'x'.repeat(MAX_BODY_BYTES) })
+    await expect(createFetchJson(answer(big))(URL)).rejects.toThrow('too large')
+  })
+
+  it('refuses a content-length over the cap before it reads the body', async () => {
+    let pulls = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1
+        controller.enqueue(new TextEncoder().encode('{}'))
+        controller.close()
+      },
+    })
+    const fetch = answer(body, { headers: { 'content-length': String(MAX_BODY_BYTES + 1) } })
+    await expect(createFetchJson(fetch)(URL)).rejects.toThrow('too large')
+    expect(pulls).toBeLessThanOrEqual(1)
+  })
+
+  it('stops the read of a body that never ends', async () => {
+    let pulls = 0
+    let cancelled = false
+    const chunk = new Uint8Array(64 * 1024).fill(32)
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true
+      },
+      pull(controller) {
+        pulls += 1
+        controller.enqueue(chunk)
+      },
+    })
+    await expect(createFetchJson(answer(body))(URL)).rejects.toThrow('too large')
+    expect(cancelled).toBe(true)
+    // The read stops at the first chunk over the cap (16 chunks of 64 KiB), plus the queue.
+    expect(pulls).toBeLessThanOrEqual(20)
+  }, 2000)
+
+  it('a bad JSON body rejects, so checkService gives unknown', async () => {
+    await expect(createFetchJson(answer('<html>portal</html>'))(URL)).rejects.toThrow()
   })
 })

@@ -4,6 +4,7 @@ import type { ServiceStatus } from '../../shared/types'
 import { NO_ANSWER, SERVICES, type ServiceDef } from './statuspage'
 
 export const SERVICE_INTERVAL_MS = 60_000
+export const TEST_HOME_SERVICE = "Bifrost doesn't check status pages in a test home."
 
 export interface MonitorDeps {
   check(def: ServiceDef): Promise<ServiceStatus>
@@ -49,8 +50,15 @@ export function createServiceMonitor(
     const next = await Promise.all(SERVICES.map(one))
     if (stopped) return
     list = next
-    deps.emit(list)
-    timer = setTimeout(() => void round(), intervalMs)
+    // A throw in emit goes to the log. The next round always gets its timer, so the loop never
+    // stops (final review Minor 5).
+    try {
+      deps.emit(list)
+    } catch (error) {
+      console.error('Bifrost cannot send the service status.', error)
+    } finally {
+      if (!stopped) timer = setTimeout(() => void round(), intervalMs)
+    }
   }
 
   return {
@@ -66,4 +74,11 @@ export function createServiceMonitor(
       timer = null
     },
   }
+}
+
+// The list for the page. A test home starts no monitor. Then each service is unknown ("No data"),
+// with the reason.
+export function serviceList(monitor: Pick<ServiceMonitor, 'current'> | null): ServiceStatus[] {
+  if (monitor) return monitor.current()
+  return SERVICES.map(def => unknown(def, 0, TEST_HOME_SERVICE))
 }
