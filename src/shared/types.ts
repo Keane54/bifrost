@@ -91,7 +91,7 @@ export interface SessionRow {
   // Only for a red box.
   boxReason?: BoxReason
   boxSince: number | null
-  // True while a box exists and the setting allows the flash.
+  // True while a box exists. The renderer also checks the Row flash setting.
   flashing: boolean
   lastMessage?: string
   lastActivity: number

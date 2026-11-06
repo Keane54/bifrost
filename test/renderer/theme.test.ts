@@ -15,7 +15,7 @@ function token(name: string): string {
   return match[1].toLowerCase()
 }
 
-// The colour families that the hue and distance checks read.
+// The colour families that the hex check and the distance check read.
 const FAMILIES = ['project', 'tab', 'watch', 'prio', 'svc', 'usage', 'ctx'] as const
 const SVC_USAGE = [
   'svc-ok',
@@ -447,7 +447,7 @@ describe('theme', () => {
 describe('the Service status tokens', () => {
   const NAMES = ['ok', 'minor', 'major', 'critical', 'maint'].map(n => `svc-${n}`)
 
-  // Purple and pink, and the distance to the box colours, are checked for all families above.
+  // The distance to the box colours is checked for all families above. The purple and pink check covers only the Overview families.
   it('are not yellow or red', () => {
     for (const name of NAMES) {
       const { h } = hsl(token(name))

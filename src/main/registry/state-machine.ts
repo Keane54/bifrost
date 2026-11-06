@@ -60,7 +60,7 @@ function confirm(s: MachineState): MachineState {
   return s.confirmed ? s : { ...s, confirmed: true }
 }
 
-// Return the red prompt box. A repeated prompt event keeps the box, its time and its flash state.
+// Return the red prompt box. A repeated prompt event keeps the box and its time.
 // The box keeps its confirmed flag. So a later idle or busy sample can still clear it.
 function promptBox(s: MachineState, at: number): MachineState {
   if (isPromptBox(s)) return s
@@ -94,8 +94,7 @@ export function onHookEvent(s: MachineState, ev: HookEvent): MachineState {
       if (ev.lastAssistantMessage !== undefined) next.lastMessage = ev.lastAssistantMessage
       return next
     }
-    // The mod can send the same error two times. A repeated error keeps the box, its time and
-    // its flash state.
+    // The mod can send the same error two times. A repeated error keeps the box and its time.
     case 'StopFailure':
       if (s.box === 'red' && s.redReason === 'error') return s
       return withBox(s, 'error', 'red', ev.at, 'error')

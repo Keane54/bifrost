@@ -10,11 +10,11 @@ import { PRIO_TEXT, TONE_TEXT } from '../overview/cells'
 import {
   barFill,
   type ContextBand,
-  contextBand,
   formatCost,
   formatPercent,
   previewLines,
   projectLabel,
+  shownContextBand,
   stateLabel,
   stateTone,
 } from '../overview/format'
@@ -38,7 +38,7 @@ function orDash(text: string | undefined): string {
 function Details({ row }: { row: SessionRow }): React.JSX.Element {
   const lines = previewLines(row.lastMessage, 3)
   const percent = formatPercent(row.contextPercent)
-  const band = contextBand(row.contextPercent)
+  const band = shownContextBand(row.contextPercent)
   return (
     <div className='flex min-w-0 select-text flex-col gap-2 p-3 text-xs'>
       {/* 1. The icon, the name, the state and the priority. */}
@@ -72,9 +72,11 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
         <dt className={LABEL}>Model</dt>
         <dd className='flex min-w-0 items-center gap-2'>
           {/* The model name keeps its width. It is cut off only when the row is too narrow. */}
-          <span className='min-w-0 truncate'>{orDash(row.model)}</span>
+          <span className='min-w-0 truncate' title={row.model}>
+            {orDash(row.model)}
+          </span>
           {/* The bar takes the free width. With no percent, the bar is empty. */}
-          <div className='h-1 min-w-0 flex-1 bg-panel-edge' title='Context'>
+          <div className='h-1 min-w-8 flex-1 bg-panel-edge' title='Context'>
             <div
               className={cx('h-full', band ? BAND_FILL[band] : 'bg-text-strong')}
               style={{ width: `${barFill(row.contextPercent)}%` }}

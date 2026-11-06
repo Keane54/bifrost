@@ -98,7 +98,7 @@ describe('hook events', () => {
       state: 'error',
     })
   })
-  test('a red box replaces a yellow box with a new time and a new flash', () => {
+  test('a red box replaces a yellow box with a new time', () => {
     const y = onHookEvent(INITIAL_STATE, ev('Stop', 1, { lastAssistantMessage: 'm' }))
     expect(onHookEvent(y, ev('PermissionRequest', 50))).toMatchObject({
       box: 'red',
@@ -131,7 +131,7 @@ describe('hook events', () => {
     })
   })
   // Review Focus 3: turn.complete with an error and classic.StopFailure give the same error.
-  test('a second StopFailure keeps the error box, its time and its flash state', () => {
+  test('a second StopFailure keeps the error box and its time', () => {
     const e = onHookEvent(working, ev('StopFailure', 5))
     expect(onHookEvent(e, ev('StopFailure', 6))).toEqual(e)
     expect(e).toMatchObject({ boxSince: 5, redReason: 'error' })
@@ -242,7 +242,7 @@ describe('status samples', () => {
 })
 
 describe('tick', () => {
-  test('a yellow box becomes red after the escalation time and flashes again', () => {
+  test('a yellow box becomes red after the escalation time', () => {
     const y = onHookEvent(INITIAL_STATE, ev('Stop', 0))
     const r = onTick(y, 600_000, 600_000)
     expect(r).toMatchObject({ box: 'red', redReason: 'escalated' })
@@ -295,7 +295,7 @@ describe('purity', () => {
 })
 
 describe('fix round 1', () => {
-  test('a repeated prompt event keeps the flash state and the box time', () => {
+  test('a repeated prompt event keeps the box and its time', () => {
     const r = onHookEvent(INITIAL_STATE, ev('PermissionRequest', 100))
     expect(
       onHookEvent(r, ev('Notification', 200, { notificationType: 'permission_prompt' })),
@@ -433,7 +433,7 @@ describe('box confirmation (spec section 7, rule 10)', () => {
     expect(onHookEvent(y, ev('PermissionRequest', 12_000)).confirmed).toBe(false)
   })
 
-  test('a repeated prompt event keeps the time, the flash and the confirmed flag', () => {
+  test('a repeated prompt event keeps the time and the confirmed flag', () => {
     const r = onStatus(onHookEvent(working, ev('PermissionRequest', 20_000)), waiting(20_500))
     const again = onHookEvent(
       r,

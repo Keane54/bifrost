@@ -7,11 +7,19 @@ import {
   formatPercent,
   previewLines,
   projectLabel,
+  shownContextBand,
   stateLabel,
   stateTone,
 } from '../../../src/renderer/src/overview/format'
 
 describe('format', () => {
+  it('shownContextBand uses the rounded percent, as the text shows it', () => {
+    expect(shownContextBand(39.4)).toBe('low')
+    expect(shownContextBand(39.6)).toBe('mid')
+    expect(shownContextBand(69.6)).toBe('high')
+    expect(shownContextBand(undefined)).toBeNull()
+  })
+
   it('contextBand gives low below 40, mid from 40 to below 70, and high from 70', () => {
     expect(contextBand(0)).toBe('low')
     expect(contextBand(39.9)).toBe('low')
