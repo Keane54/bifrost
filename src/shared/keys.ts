@@ -228,8 +228,9 @@ export function parseBinding(text: string): Chord | null {
   if (typeof text !== 'string' || text === '') return null
   const chord: Chord = { alt: false, ctrl: false, key: '', mod: false, shift: false }
   for (const token of text.split('+')) {
-    const modifier = MODIFIERS[token.toLowerCase()]
-    if (modifier) {
+    const lower = token.toLowerCase()
+    if (Object.hasOwn(MODIFIERS, lower)) {
+      const modifier = MODIFIERS[lower]
       if (chord[modifier]) return null
       chord[modifier] = true
       continue
@@ -280,7 +281,7 @@ export function recordedToBinding(recorded: string): string | null {
     const code = match[1]
     if (/^Key[A-Z]$/.test(code)) return code.slice(3)
     if (/^Digit[0-9]$/.test(code)) return code.slice(5)
-    return CODE_CHARS[code] ?? token
+    return Object.hasOwn(CODE_CHARS, code) ? CODE_CHARS[code] : token
   })
   return canonicalBinding(tokens.join('+'))
 }
@@ -402,11 +403,13 @@ export function parseCustomKeys(data: unknown): CustomKeys {
 }
 
 // Set the binding of a slot. A binding that equals the default removes the entry.
-// Return the same object when nothing changes. The caller checks the binding first.
+// Return the same object when nothing changes, also for a text that is not a binding.
 export function setSlotKey(custom: CustomKeys, slotId: string, binding: string | null): CustomKeys {
   const item = slotById(slotId)
   if (!item) return custom
-  const value = binding === null ? null : (canonicalBinding(binding) ?? binding)
+  const value = binding === null ? null : canonicalBinding(binding)
+  // A text that is not a binding changes nothing.
+  if (binding !== null && value === null) return custom
   if (value === item.default) return resetSlotKey(custom, slotId)
   if (Object.hasOwn(custom, slotId) && custom[slotId] === value) return custom
   return { ...custom, [slotId]: value }
@@ -495,6 +498,6 @@ export function toAccelerator(binding: string): string {
   if (chord.ctrl) parts.push('Ctrl')
   if (chord.alt) parts.push('Alt')
   if (chord.shift) parts.push('Shift')
-  parts.push(ACCELERATOR_KEYS[chord.key] ?? chord.key)
+  parts.push(Object.hasOwn(ACCELERATOR_KEYS, chord.key) ? ACCELERATOR_KEYS[chord.key] : chord.key)
   return parts.join('+')
 }

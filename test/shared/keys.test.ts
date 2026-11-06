@@ -92,6 +92,9 @@ test('canonicalBinding orders the modifiers and reads the aliases', () => {
   expect(canonicalBinding('Hyper+A')).toBeNull()
   expect(canonicalBinding('Mod+F13')).toBeNull()
   expect(canonicalBinding('')).toBeNull()
+  expect(canonicalBinding('constructor+K')).toBeNull()
+  expect(canonicalBinding('__proto__+K')).toBeNull()
+  expect(canonicalBinding('Mod+toString')).toBeNull()
   expect(parseBinding('Mod+Alt+K')).toEqual({
     alt: true,
     ctrl: false,
@@ -109,6 +112,8 @@ test('recordedToBinding changes physical codes to key names', () => {
   expect(recordedToBinding('Control+[Backquote]')).toBe('Control+`')
   expect(recordedToBinding('Shift+Backspace')).toBe('Shift+Backspace')
   expect(recordedToBinding('Mod+[Foo]')).toBeNull()
+  expect(recordedToBinding('Mod+[constructor]')).toBeNull()
+  expect(recordedToBinding('Mod+[__proto__]')).toBeNull()
 })
 
 test('reservedReason refuses the shortcuts of spec 9.7 and of the menus', () => {
@@ -251,6 +256,7 @@ test('setSlotKey removes an entry that equals the default and keeps the object w
   const empty: CustomKeys = {}
   expect(setSlotKey(empty, 'open:mod', 'cmd+enter')).toBe(empty)
   expect(setSlotKey(empty, 'nope:mod', 'Mod+K')).toBe(empty)
+  expect(setSlotKey(empty, 'open:mod', 'Hyper+K')).toBe(empty)
   const changed = setSlotKey(empty, 'open:mod', 'Mod+K')
   expect(changed).toEqual({ 'open:mod': 'Mod+K' })
   expect(empty).toEqual({})
