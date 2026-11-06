@@ -466,7 +466,7 @@ Send box rules:
 - During Take control, the chat window shows the Take control loader in place of the terminal (section 9.2).
 - The terminal has a transparent background (user decision, 2026-11-06). The frame colour and its blur show through, so the "Panel transparency" setting also applies to chat windows. The token `--color-terminal-bg` is fully transparent, and xterm.js has `allowTransparency`. The WebGL renderer and the DOM renderer both draw the transparent background, also after a WebGL context loss. `app.css` replaces the black viewport and the native scroll bar of `xterm.css`.
 - The blur behind a chat window is light: 8 pixels (`backdrop-blur-sm`). The other panels keep 12 pixels. So it is clear when a chat window is over another panel, as in EVE.
-- The terminal text stays easy to read. A test checks the contrast of white text and of a mid-grey dim text on the panel colour at each transparency, over the blurred text of another panel.
+- The terminal text stays easy to read. A test checks the contrast of white text (7:1 or more) and of a mid-grey dim text (4.5:1 or more) on the panel colour at each transparency. The backdrops are the blurred text of another panel, a white watch row, a selected row and the rainbow of another loader.
 
 Size rule (the user approved this on 2026-11-04; M3 builds it):
 
@@ -559,7 +559,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
   1. Full: as above, when the widest row fits.
   2. When the full view cuts off a text of a row, the button hides its text "Open status page". It keeps the icon, its `aria-label` and gets a tooltip (`title`) with the same text as the `aria-label`.
   3. When view 2 still cuts off a text, the row also hides the level text. The level square keeps the level as its tooltip and as its accessible name. The since text stays. "No data" has no square, so it keeps its text.
-- The panel measures invisible copies of the full rows at their natural width. So the choice does not depend on the view on the screen, and a wider panel goes back to a fuller view. The panel chooses the view before the paint, after each render and at each resize (a `ResizeObserver`). So the view does not flicker or change in a loop. A pure function, `serviceView(available, needs)`, makes the choice.
+- The panel measures invisible copies of the full rows at their natural width. So the choice does not depend on the view on the screen, and a wider panel goes back to a fuller view. The panel chooses the view before the paint, after each render, at each resize (a `ResizeObserver`), at each change of the width of a measure copy, and when a web font loads (`document.fonts`). So a font that loads late, for example Geist Mono, does not leave a wrong view. So the view does not flicker or change in a loop. A pure function, `serviceView(available, needs)`, makes the choice.
 
 ## 9. Actions and keys
 
@@ -608,7 +608,7 @@ Bifrost does these steps:
 5. Wait for the process to end, for a maximum of 5 seconds.
 6. Run `claude --bg --settings <statusline override> --resume <session-id>` in the session directory (D13).
 7. Find the new entry by `sessionId`, not by name.
-8. The chat window attaches to the session. The loader goes away when the terminal shows its first output from Claude.
+8. Restart the chat window. A terminal that ended before Take control attaches again only after a restart. The chat window attaches to the session. The loader goes away when the terminal shows its first output from Claude.
 
 If the process does not end in 5 seconds, Bifrost stops and shows an error. It does not start a copy of the session.
 
@@ -617,9 +617,10 @@ If Take control fails, Bifrost removes the loader, closes the chat window and sh
 The Take control loader (user decision, 2026-11-06):
 
 - The loader shows in the chat window while Take control runs, and until the terminal shows its first output from Claude. A terminal that ends also removes the loader, so the window shows why it ended.
+- After a good Take control, a loader that waits only for the first output has a time limit of 20 seconds. Then the loader goes away, and the window shows the terminal, with its note when it cannot attach (review Important 2).
 - During that time, the chat window hides the terminal. The terminal keeps its size and its focus.
-- The top two thirds of the window show the normal panel background and the line "Taking control of <name>...".
-- The bottom third shows a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge, so it has no hard line. It is at 40% opacity.
+- The window shows the normal panel background and the line "Taking control of <name>...".
+- The bottom two fifths show a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge on an eased curve: the upper half stays faint, and the colour reaches full strength only at the bottom edge. It is at 25% opacity (the user, 2026-11-06: softer, a more gradual fade, and a slightly taller band).
 - A CSS animation shifts the gradient slowly: 12 seconds from one end to the other, and back. With `prefers-reduced-motion: reduce`, the gradient does not move.
 
 ### 9.3 Key rules
@@ -717,6 +718,7 @@ Esc (user decision, 2026-11-06):
 3. Else, Esc opens Settings and brings it to the front, as Cmd+, does.
 
 - Esc does not clear the selection.
+- A held Esc acts one time. A key repeat does not open or close Settings again.
 - In a chat window, Esc goes to Claude.
 - A dialog, a menu, a popover, a text field (for example the Rename field or a Settings field) and the key recorder of Settings > Keys keep their own Esc. Esc then does not open or close Settings. The same applies to an Esc that ends a Watchlist drag.
 - The Esc key of Bifrost waits for the end of the key event. A handler that takes Esc calls `preventDefault` or stops the event. Then Bifrost does nothing.
@@ -912,7 +914,7 @@ Save rules (user decision, 2026-11-06):
 - Each change applies at once. A checkbox, a radio button or a select saves on change. A text field or a number field saves on Enter and on blur.
 - The Settings panel has a footer with a Save button. The footer shows on each section.
 - A click on Save blurs the focused field, so that its draft saves. Save also adds a slash command that you typed and did not add.
-- Save waits for each save that runs. If a save fails, Settings stays open, and the row shows the error. Else Save closes the Settings panel.
+- Save waits for each save that runs. While a row has a failed save, Settings stays open, and the row shows the error. A good save of the row, a click on the close button of the error, or a change of section (the row then does not show) clears it. Else Save closes the Settings panel. A slash command that Save cannot add keeps Settings open while the field still has text.
 
 Search (user decision, 2026-11-06):
 
@@ -995,9 +997,9 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 | Unit | Vitest | The state machine, the registry merge, install and uninstall, and key map conflicts. |
 | Mod | `claude plugin test` | The hooks module, with a fake `http.fetch`. |
 | Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. |
-
-With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)` and `stopLoader(sessionId)` show and remove the Take control loader with no real Take control. A visual check uses it. An app with the real home has no hook.
 | Manual | Checklist | The M0 questions, Take control and the DMG. |
+
+With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)`, `finishLoader(sessionId)` and `stopLoader(sessionId)` show the Take control loader, end its Take control part and remove it, with no real Take control. A visual check uses it. An app with the real home has no hook.
 
 ## 16. Milestones
 

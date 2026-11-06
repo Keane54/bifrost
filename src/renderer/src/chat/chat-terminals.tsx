@@ -11,7 +11,13 @@ import { useSettings } from '../settings/settings-context'
 import { useWmState } from '../wm/context'
 import { recentAttaches } from './agent-view'
 import { type AttachHistory, ChatTerminal } from './chat-terminal'
-import { type LoaderState, loaderStep } from './loader'
+import {
+  LOADER_WAIT_MS,
+  type LoaderEvent,
+  type LoaderState,
+  loaderStep,
+  loaderWaits,
+} from './loader'
 import {
   type ChatView,
   chatSessionId,
@@ -36,6 +42,8 @@ export class ChatTerminals {
   private readonly listeners = new Set<() => void>()
   // The Take control loaders by session ID (spec 9.2).
   private readonly loaders = new Map<string, LoaderState>()
+  // The time limit of each loader that waits only for the first output.
+  private readonly loaderTimers = new Map<string, number>()
   private views = new Map<string, ChatView>()
   private font: TerminalFont = DEFAULT_SETTINGS.terminalFont
   private unsubscribe: Array<() => void> = []
@@ -82,7 +90,7 @@ export class ChatTerminals {
       terminal.dispose()
       changed = true
       // A loader whose Take control ended waits for this terminal only.
-      if (this.loaders.get(id)?.running === false) this.loaders.delete(id)
+      if (loaderWaits(this.loaders.get(id) ?? null)) this.stepLoader(id, 'stop')
     }
     for (const id of openIds) {
       if (this.terminals.has(id)) continue
@@ -162,6 +170,8 @@ export class ChatTerminals {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    for (const timer of this.loaderTimers.values()) window.clearTimeout(timer)
+    this.loaderTimers.clear()
     for (const off of this.unsubscribe) off()
     this.unsubscribe = []
     for (const terminal of this.terminals.values()) terminal.dispose()
@@ -169,12 +179,24 @@ export class ChatTerminals {
     this.parking.remove()
   }
 
-  private stepLoader(sessionId: string, event: 'start' | 'finish' | 'shown' | 'stop'): void {
+  private stepLoader(sessionId: string, event: LoaderEvent): void {
     if (this.disposed) return
     const before = this.loaders.get(sessionId) ?? null
     const after = loaderStep(before, event)
     if (after === null) this.loaders.delete(sessionId)
     else this.loaders.set(sessionId, after)
+    // A loader that waits only for the first output gets its time limit (review Important 2).
+    const timer = this.loaderTimers.get(sessionId)
+    if (!loaderWaits(after)) {
+      window.clearTimeout(timer)
+      this.loaderTimers.delete(sessionId)
+    } else if (timer === undefined) {
+      const next = window.setTimeout(() => {
+        this.loaderTimers.delete(sessionId)
+        this.stepLoader(sessionId, 'timeout')
+      }, LOADER_WAIT_MS)
+      this.loaderTimers.set(sessionId, next)
+    }
     if ((before === null) !== (after === null)) {
       for (const listener of this.listeners) listener()
     }
@@ -227,7 +249,11 @@ const ChatsContext = createContext<ChatTerminals | null>(null)
 
 // The test hook of an app with a test home.
 interface TestWindow extends Window {
-  bifrostTest?: { startLoader(sessionId: string): void; stopLoader(sessionId: string): void }
+  bifrostTest?: {
+    finishLoader(sessionId: string): void
+    startLoader(sessionId: string): void
+    stopLoader(sessionId: string): void
+  }
 }
 
 // One ChatTerminals for the app. It must be inside the registry and window manager providers.
@@ -261,6 +287,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }): Reac
       info => {
         if (!active || !info.testHome) return
         page.bifrostTest = {
+          finishLoader: sessionId => chats.finishLoader(sessionId),
           startLoader: sessionId => chats.startLoader(sessionId),
           stopLoader: sessionId => chats.stopLoader(sessionId),
         }

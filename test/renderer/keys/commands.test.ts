@@ -243,6 +243,19 @@ describe('planKey', () => {
       })
     })
 
+    // Review Minor 1: a held Esc repeats its keydown. Only the first keydown toggles Settings.
+    it('ignores a key repeat, so a held Esc does not toggle Settings again and again', () => {
+      expect(plan('escape:key', { repeat: true })).toEqual({ kind: 'none' })
+      expect(plan('escape:key', { frames: [f1, settings], repeat: true })).toEqual({
+        kind: 'none',
+      })
+      expect(plan('escape:key', { repeat: false })).toEqual(OPEN)
+      // A repeat in the send box still leaves it. That has no effect after the first keydown.
+      expect(plan('escape:key', { repeat: true, zone: 'send-box' })).toEqual({
+        kind: 'leave-send-box',
+      })
+    })
+
     it('does nothing in a chat window, a text field, a dialog, a menu or the key recorder', () => {
       for (const zone of ['chat', 'text', 'modal'] as const) {
         expect(plan('escape:key', { zone }), zone).toEqual({ kind: 'none' })

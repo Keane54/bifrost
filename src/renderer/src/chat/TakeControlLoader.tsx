@@ -1,6 +1,6 @@
 // The Take control loader of a chat window (spec 9.2). It shows while Take control runs, and until
-// the terminal shows Claude. The chat panel hides the terminal during that time, so the top two
-// thirds show the normal panel background and the line. The bottom third shows a soft rainbow of
+// the terminal shows Claude. The chat panel hides the terminal during that time, so the window
+// shows the normal panel background and the line. The bottom two fifths show a soft rainbow of
 // the app icon colours that shifts slowly. With reduced motion, the rainbow does not move.
 import { useRegistry } from '../data/registry'
 import { loaderText } from './loader'
@@ -19,7 +19,7 @@ export default function TakeControlLoader({ sessionId }: { sessionId: string }):
       >
         {loaderText(name)}
       </p>
-      <div className='loader-rainbow absolute inset-x-0 bottom-0 h-1/3 animate-loader-shift opacity-40 motion-reduce:animate-none' />
+      <div className='loader-rainbow absolute inset-x-0 bottom-0 h-2/5 animate-loader-shift opacity-25 motion-reduce:animate-none' />
     </div>
   )
 }

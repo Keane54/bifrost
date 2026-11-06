@@ -109,11 +109,6 @@ export default function SettingsPanel(): React.JSX.Element {
   )
   const hits = useMemo(() => searchSettings(query, index), [index, query])
 
-  // The row of a failed save is not on the screen after a change of section. So that failure
-  // does not keep Settings open.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: each change of section resets.
-  useEffect(() => tracker.reset(), [section, tracker])
-
   // Cmd+F moves the focus to the search field while Settings has the focus (spec 12). A key of
   // the key map that uses Cmd+F runs first and stops the event.
   useEffect(() => {
@@ -129,8 +124,8 @@ export default function SettingsPanel(): React.JSX.Element {
   }, [])
 
   // Each change saves at once. Save blurs the focused field, so that its draft saves, and waits
-  // for all saves. A failure keeps Settings open, and its row shows the error. Else Save closes
-  // Settings (spec 12).
+  // for all saves. A row with a failed save keeps Settings open, and the row shows the error.
+  // A row of another section unmounted, so it does not count. Else Save closes Settings (spec 12).
   const save = async (): Promise<void> => {
     const active = document.activeElement
     if (active instanceof HTMLElement && content.current?.contains(active)) active.blur()

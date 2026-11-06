@@ -1,7 +1,7 @@
 // One row of the Settings panel: the label on the left, the control on the right (spec 12).
 // An optional hint shows under the row. An optional error shows under the hint.
 // During a search, a row that does not match shows nothing.
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { friendlyError } from '../actions/errors'
 import { cx } from '../lib/cx'
 import { ErrorLine } from '../lib/ErrorLine'
@@ -49,11 +49,18 @@ export interface RowSave {
 }
 
 // The error state of one row. The error stays until the user closes it or the next save works.
-// In the Settings panel, the Save button waits for each save of a row (spec 12).
+// In the Settings panel, the Save button waits for each save of a row. The tracker keeps the
+// state of the row, so Save stays open only while the row has a failed save (spec 12).
 export function useRowSave(): RowSave {
   const tracker = useSaveTracker()
+  // The key of this row in the tracker.
+  const [key] = useState(() => ({}))
   const [error, setError] = useState<string | null>(null)
-  const closeError = useCallback(() => setError(null), [])
+  useEffect(() => () => tracker?.remove(key), [tracker, key])
+  const closeError = useCallback(() => {
+    setError(null)
+    tracker?.forget(key)
+  }, [tracker, key])
   const save = useCallback(
     (run: () => Promise<void>): Promise<boolean> => {
       const result = (async (): Promise<boolean> => {
@@ -66,10 +73,10 @@ export function useRowSave(): RowSave {
           return false
         }
       })()
-      tracker?.track(result)
+      tracker?.track(key, result)
       return result
     },
-    [tracker],
+    [tracker, key],
   )
   return { closeError, error, save }
 }
