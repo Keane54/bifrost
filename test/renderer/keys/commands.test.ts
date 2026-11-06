@@ -75,6 +75,18 @@ describe('planKey', () => {
     })
   })
 
+  it('a session key in a chat window acts on the selection, which the chat focus sets', () => {
+    // focusChange selects the session of a focused chat window. So S1 is the selection here.
+    for (const id of ['interrupt:mod', 'stop:mod', 'resume:mod', 'run-slash:mod']) {
+      const slot = slotById(id)
+      expect(plan(id, { selectedId: S1, zone: 'chat' })).toEqual({
+        action: slot?.command,
+        kind: 'action',
+        sessionId: S1,
+      })
+    }
+  })
+
   it('a session command without a selection gives none', () => {
     expect(plan('open:key', { selectedId: null })).toEqual({ kind: 'none' })
   })

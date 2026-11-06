@@ -25,7 +25,7 @@ import { useSettings } from '../settings/settings-context'
 import { useLayouts, useWmControls, useWmState } from '../wm/context'
 import { topOverview } from '../wm/SideBar'
 import { type KeyContext, type KeyIntent, planHold, planKey } from './commands'
-import { focusZone, OVERVIEW_ROWS_ATTR } from './focus-zone'
+import { focusChange, focusZone, OVERVIEW_ROWS_ATTR } from './focus-zone'
 import { HoldGate } from './hold-gate'
 import { gateChange, toRawChord } from './raw-chord'
 
@@ -271,6 +271,8 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
   // comes. It also forgets all keys at a keydown or a keyup of Cmd, because macOS sends no keyup
   // for a key that goes up while Cmd is down. A keyup with a modifier does not match the hotkey of
   // a hold key, so a listener here removes that key from the gate.
+  // A focus in a chat window selects its session, and a focus on the key recorder clears the gate
+  // (see focusChange).
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const type = event.type === 'keyup' ? 'keyup' : 'keydown'
@@ -278,17 +280,26 @@ export function KeysProvider({ children }: { children: React.ReactNode }): React
       if (change?.kind === 'clear') gate.clear()
       else if (change?.kind === 'up') gate.up(change.key)
     }
+    const onFocusIn = (event: FocusEvent): void => {
+      const now = latest.current
+      const target = event.target instanceof Element ? event.target : null
+      const change = focusChange(target, now.selectedId, now.rows)
+      if (change.clearGate) gate.clear()
+      if (change.select !== null) now.select(change.select)
+    }
     const onBlur = (): void => gate.clear()
     const onVisibility = (): void => {
       if (document.visibilityState === 'hidden') gate.clear()
     }
     document.addEventListener('keydown', onKey, true)
     document.addEventListener('keyup', onKey, true)
+    document.addEventListener('focusin', onFocusIn, true)
     window.addEventListener('blur', onBlur)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       document.removeEventListener('keydown', onKey, true)
       document.removeEventListener('keyup', onKey, true)
+      document.removeEventListener('focusin', onFocusIn, true)
       window.removeEventListener('blur', onBlur)
       document.removeEventListener('visibilitychange', onVisibility)
     }

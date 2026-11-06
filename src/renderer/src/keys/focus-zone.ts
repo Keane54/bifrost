@@ -9,6 +9,7 @@ export interface ZoneElement {
   closest(selector: string): unknown
 }
 
+// The element of a chat window has this attribute. Its value is the session ID.
 export const CHAT_ATTR = 'data-chat-terminal'
 export const SEND_BOX_ATTR = 'data-send-box'
 export const OVERVIEW_ROWS_ATTR = 'data-overview-rows'
@@ -40,4 +41,35 @@ export function focusZone(el: ZoneElement | null): FocusZone {
   if (tag === 'INPUT' && !isControlInput) return 'text'
   if (tag === 'BUTTON' || tag === 'A' || tag === 'SUMMARY' || isControlInput) return 'control'
   return el.closest(CONTROL_ROLES) ? 'control' : 'other'
+}
+
+// The part of a DOM element that focusChange reads. A test passes a fake.
+export interface FocusElement extends ZoneElement {
+  closest(selector: string): { getAttribute(name: string): string | null } | null
+}
+
+// What a new focus changes, apart from the keys.
+export interface FocusChange {
+  // The session to select, or null for no change.
+  select: string | null
+  // True when the hold gate must forget all keys.
+  clearGate: boolean
+}
+
+// A focus in a chat window selects its session. So the Selected Item panel shows that session,
+// and each session key acts on it (final review Important 1). Only a known session that is not
+// selected now changes the selection.
+// While the key recorder records, the library calls no hotkey callback. So the keyup of a hold
+// key that is down never gets to the gate. A focus on the recorder clears the gate
+// (final review Minor 4).
+export function focusChange(
+  el: FocusElement | null,
+  selectedId: string | null,
+  rows: readonly { sessionId: string }[],
+): FocusChange {
+  if (el === null) return { clearGate: false, select: null }
+  const clearGate = el.closest(`[${KEY_RECORDER_ATTR}]`) !== null
+  const sessionId = el.closest(`[${CHAT_ATTR}]`)?.getAttribute(CHAT_ATTR) ?? null
+  const known = sessionId !== null && rows.some(row => row.sessionId === sessionId)
+  return { clearGate, select: known && sessionId !== selectedId ? sessionId : null }
 }

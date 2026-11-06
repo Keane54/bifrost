@@ -117,8 +117,9 @@ export class ChatTerminal {
 
     this.element = document.createElement('div')
     this.element.className = cx('relative h-full w-full overflow-hidden')
-    // The focus zone of the keys finds a chat window by this attribute (spec 9.3).
-    this.element.setAttribute(CHAT_ATTR, 'true')
+    // The focus zone of the keys finds a chat window by this attribute (spec 9.3). A focus in the
+    // window selects the session in the value.
+    this.element.setAttribute(CHAT_ATTR, sessionId)
     this.host = document.createElement('div')
     this.host.className = cx('relative z-0 h-full w-full')
     this.host.style.transformOrigin = '0 0'
