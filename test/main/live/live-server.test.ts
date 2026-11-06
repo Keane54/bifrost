@@ -218,4 +218,37 @@ describe('createLiveServer', () => {
     await vi.waitFor(() => expect(seen).toHaveLength(1))
     expect(spy).toHaveBeenCalled()
   })
+
+  test('a stop during start keeps the server closed', async () => {
+    const { onEvent } = setup()
+    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const starting = server.start()
+    server.stop()
+    expect(await starting).toEqual({ listening: false })
+    expect(server.state()).toEqual({ listening: false })
+    expect(existsSync(socketPath)).toBe(false)
+  })
+
+  test('two starts at once listen one time', async () => {
+    const { onEvent } = setup()
+    const { server } = await make(await tempDir(), onEvent)
+    const listen = vi.spyOn(http.Server.prototype, 'listen')
+    const [a, b] = await Promise.all([server.start(), server.start()])
+    expect(a).toEqual({ listening: true })
+    expect(b).toEqual({ listening: true })
+    expect(listen).toHaveBeenCalledTimes(1)
+  })
+
+  test('start after stop listens again', async () => {
+    const { events, onEvent } = setup()
+    const { server, socketPath } = await make(await tempDir(), onEvent)
+    const first = server.start()
+    server.stop()
+    await first
+    expect(await server.start()).toEqual({ listening: true })
+    expect(await send(socketPath, 'POST', '/v1/event', good)).toBe(204)
+    await vi.waitFor(() => expect(events).toHaveLength(1))
+    server.stop()
+    expect(await server.start()).toEqual({ listening: true })
+  })
 })

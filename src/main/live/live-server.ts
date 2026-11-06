@@ -76,6 +76,9 @@ export function createLiveServer(opts: LiveServerOptions): LiveServer {
   let owned = false
   let current: LiveServerState = { listening: false }
   let starting: Promise<LiveServerState> | null = null
+  let startingGen = 0
+  // A stop adds 1. A start that sees a new number must not listen.
+  let generation = 0
 
   function handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     if (req.method !== 'POST' || req.url !== LIVE_PATH) {
@@ -110,7 +113,12 @@ export function createLiveServer(opts: LiveServerOptions): LiveServer {
     req.on('error', () => {})
   }
 
-  function listen(): Promise<LiveServerState> {
+  const stopped = (): LiveServerState => {
+    current = { listening: false }
+    return current
+  }
+
+  function listen(gen: number): Promise<LiveServerState> {
     return new Promise(resolve => {
       const created = http.createServer(
         {
@@ -128,6 +136,13 @@ export function createLiveServer(opts: LiveServerOptions): LiveServer {
         resolve(current)
       })
       created.listen(socketPath, () => {
+        if (gen !== generation) {
+          created.close()
+          created.closeAllConnections()
+          rmSync(socketPath, { force: true })
+          resolve({ listening: false })
+          return
+        }
         try {
           chmodSync(socketPath, 0o600)
         } catch (err) {
@@ -146,18 +161,19 @@ export function createLiveServer(opts: LiveServerOptions): LiveServer {
     })
   }
 
-  async function run(): Promise<LiveServerState> {
+  async function run(gen: number): Promise<LiveServerState> {
     try {
       const dir = dirname(socketPath)
       mkdirSync(dir, { mode: 0o700, recursive: true })
       chmodSync(dir, 0o700)
       const found = await probe(socketPath)
+      if (gen !== generation) return stopped()
       if (typeof found === 'object') {
         current = { error: found.error, listening: false }
         return current
       }
       if (found === 'stale') rmSync(socketPath, { force: true })
-      return await listen()
+      return await listen(gen)
     } catch (err) {
       current = { error: (err as Error).message, listening: false }
       return current
@@ -167,15 +183,22 @@ export function createLiveServer(opts: LiveServerOptions): LiveServer {
   return {
     start() {
       if (server) return Promise.resolve(current)
-      if (!starting) {
-        starting = run().finally(() => {
-          starting = null
+      if (starting && startingGen === generation) return starting
+      // A stop came while an old start ran. The new start waits for the old start to end.
+      const gen = generation
+      const previous = starting ?? Promise.resolve(current)
+      const next: Promise<LiveServerState> = previous
+        .then(() => run(gen))
+        .finally(() => {
+          if (starting === next) starting = null
         })
-      }
-      return starting
+      starting = next
+      startingGen = gen
+      return next
     },
     state: () => current,
     stop() {
+      generation += 1
       const closing = server
       server = null
       if (!closing) return
