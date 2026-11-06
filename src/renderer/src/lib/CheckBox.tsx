@@ -15,11 +15,14 @@ export function CheckBox(props: {
   checked: boolean
   disabled?: boolean
   label: string
+  // The accessible name when it differs from the label, for example the name of a settings row.
+  ariaLabel?: string
   onChange(checked: boolean): void
   ref?: Ref<HTMLElement>
 }): React.JSX.Element {
   return (
     <Checkbox.Root
+      aria-label={props.ariaLabel}
       checked={props.checked}
       className={CHECKBOX}
       disabled={props.disabled}

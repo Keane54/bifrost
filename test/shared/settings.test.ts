@@ -6,6 +6,8 @@ import {
   cssFontFamily,
   DEFAULT_SETTINGS,
   defaultProjectApp,
+  INTERFACE_SCALE_CHOICES,
+  PANEL_TRANSPARENCY_CHOICES,
   POLL_CHOICES,
   parseSettings,
   REASON_FONT,
@@ -343,5 +345,21 @@ describe('the other helpers', () => {
 
   test('TERMINAL_APP_IDS equals TERMINAL_ORDER', () => {
     expect([...TERMINAL_APP_IDS]).toEqual(TERMINAL_ORDER)
+  })
+})
+
+describe('the choices of the two step selects (final review Minor 5)', () => {
+  test('Panel transparency offers 0 to 50 in steps of 5, and each choice saves', () => {
+    expect(PANEL_TRANSPARENCY_CHOICES).toEqual([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
+    for (const value of PANEL_TRANSPARENCY_CHOICES) {
+      expect(reasonOf(defaults(), { panelTransparency: value })).toBe('ok')
+    }
+  })
+
+  test('Interface scale offers 80 to 150 in steps of 10, and each choice saves', () => {
+    expect(INTERFACE_SCALE_CHOICES).toEqual([80, 90, 100, 110, 120, 130, 140, 150])
+    for (const value of INTERFACE_SCALE_CHOICES) {
+      expect(reasonOf(defaults(), { interfaceScale: value })).toBe('ok')
+    }
   })
 })

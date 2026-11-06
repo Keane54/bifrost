@@ -61,6 +61,21 @@ export const PANEL_TRANSPARENCY_STEP = 5
 export const INTERFACE_SCALE_MIN = 80
 export const INTERFACE_SCALE_MAX = 150
 export const INTERFACE_SCALE_STEP = 10
+// The values from min to max in steps of step.
+function stepValues(min: number, max: number, step: number): readonly number[] {
+  return Array.from({ length: Math.floor((max - min) / step) + 1 }, (_, i) => min + i * step)
+}
+// The choices of the Panel transparency and Interface scale selects (final review Minor 5).
+export const PANEL_TRANSPARENCY_CHOICES = stepValues(
+  0,
+  PANEL_TRANSPARENCY_MAX,
+  PANEL_TRANSPARENCY_STEP,
+)
+export const INTERFACE_SCALE_CHOICES = stepValues(
+  INTERFACE_SCALE_MIN,
+  INTERFACE_SCALE_MAX,
+  INTERFACE_SCALE_STEP,
+)
 export const FONT_SIZE_MIN = 9
 export const FONT_SIZE_MAX = 24
 export const MAX_SLASH_COMMANDS = 12

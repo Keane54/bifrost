@@ -45,13 +45,14 @@ async function findInstalled(
   return found
 }
 
-// Return each installed terminal app, in the order of TERMINAL_ORDER.
+// Return each installed terminal app, in the order of TERMINAL_ORDER. A test gives another order.
 export async function findTerminalApps(
   home: string,
   exists: (path: string) => Promise<boolean>,
+  order: readonly ProjectAppId[] = TERMINAL_ORDER,
 ): Promise<InstalledApp[]> {
   const found = await findInstalled(home, exists)
-  return TERMINAL_ORDER.flatMap(id => found.get(id) ?? [])
+  return order.flatMap(id => found.get(id) ?? [])
 }
 
 // Return Finder, then VS Code and Zed if installed, then one terminal app.

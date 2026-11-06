@@ -7,21 +7,20 @@ import { useEffect, useState } from 'react'
 import {
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
-  INTERFACE_SCALE_MAX,
-  INTERFACE_SCALE_MIN,
-  INTERFACE_SCALE_STEP,
+  INTERFACE_SCALE_CHOICES,
   type LabelSet,
   MAX_ESCALATION_MINUTES,
   MAX_SNAP,
-  PANEL_TRANSPARENCY_MAX,
-  PANEL_TRANSPARENCY_STEP,
+  PANEL_TRANSPARENCY_CHOICES,
   POLL_CHOICES,
   TERMINAL_APP_IDS,
   type TerminalAppId,
 } from '../../../shared/settings'
 import type { DisplayMode, ProjectApp, ProjectAppId } from '../../../shared/types'
+import { useActions } from '../actions/actions-context'
 import { CheckBox } from '../lib/CheckBox'
 import { cx } from '../lib/cx'
+import { draftToSave } from './draft'
 import { useLive } from './live-context'
 import { claudeVersionNotice } from './live-notice'
 import { ROW_FIELD, SettingRow, useRowSave } from './SettingRow'
@@ -63,8 +62,8 @@ function Choices(props: {
   )
 }
 
-// A field with a draft. Enter blurs the field, and the blur saves. The draft goes back to the
-// saved value when the save is rejected, or when the text did not change.
+// A field with a draft. Enter blurs the field, and the blur saves the trimmed text. The draft goes
+// back to the saved value when the save is rejected, or when the trimmed text did not change.
 function DraftField(props: {
   label: string
   value: string
@@ -73,7 +72,6 @@ function DraftField(props: {
   list?: string
   min?: number
   max?: number
-  step?: number
   // Resolves true when the value saved.
   onCommit(text: string): Promise<boolean>
 }): React.JSX.Element {
@@ -88,8 +86,12 @@ function DraftField(props: {
       max={props.max}
       min={props.min}
       onBlur={() => {
-        if (draft.trim() === props.value) return
-        onCommit(draft).then(ok => {
+        const text = draftToSave(draft, props.value)
+        if (text === null) {
+          setDraft(props.value)
+          return
+        }
+        onCommit(text).then(ok => {
           if (!ok) setDraft(props.value)
         })
       }}
@@ -102,7 +104,6 @@ function DraftField(props: {
         }
       }}
       spellCheck={false}
-      step={props.step}
       type={props.type}
       value={draft}
     />
@@ -115,7 +116,6 @@ function NumberRow(props: {
   value: number
   min: number
   max: number
-  step?: number
   unit: string
   hint?: string
   save(value: number): Promise<void>
@@ -142,7 +142,6 @@ function NumberRow(props: {
           }
           return row.save(() => save(n))
         }}
-        step={props.step}
         type='number'
         value={String(props.value)}
         width='w-16'
@@ -169,6 +168,7 @@ function CheckRow(props: {
       onCloseError={row.closeError}
     >
       <CheckBox
+        ariaLabel={props.label}
         checked={props.checked}
         disabled={props.disabled}
         label={props.checked ? 'On' : 'Off'}
@@ -176,6 +176,37 @@ function CheckRow(props: {
           row.save(() => save(value))
         }}
       />
+    </SettingRow>
+  )
+}
+
+// A select of numbers that saves on change.
+function SelectRow(props: {
+  label: string
+  value: number
+  choices: readonly number[]
+  text(value: number): string
+  save(value: number): Promise<void>
+}): React.JSX.Element {
+  const row = useRowSave()
+  const { save } = props
+  return (
+    <SettingRow error={row.error} label={props.label} onCloseError={row.closeError}>
+      <select
+        aria-label={props.label}
+        className={ROW_FIELD}
+        onChange={e => {
+          const value = Number(e.target.value)
+          row.save(() => save(value))
+        }}
+        value={String(props.value)}
+      >
+        {props.choices.map(value => (
+          <option key={value} value={String(value)}>
+            {props.text(value)}
+          </option>
+        ))}
+      </select>
     </SettingRow>
   )
 }
@@ -223,13 +254,13 @@ export default function GeneralSection(): React.JSX.Element {
   const { version, versionFailed } = useLive()
   const versionText = claudeVersionNotice(version, versionFailed)
   const [terminalApps, setTerminalApps] = useState<ProjectApp[]>([])
-  const [projectApps, setProjectApps] = useState<ProjectApp[]>([])
+  // The ActionsProvider has the list of "Open project". It follows the Terminal app setting.
+  const { apps: projectApps } = useActions()
   const [info, setInfo] = useState<{ packaged: boolean; version: string } | null>(null)
   const [mode, setMode] = useState<DisplayMode>('window')
   const labelsRow = useRowSave()
   const terminalRow = useRowSave()
   const projectRow = useRowSave()
-  const pollRow = useRowSave()
   const fontRow = useRowSave()
   const modeRow = useRowSave()
 
@@ -254,19 +285,6 @@ export default function GeneralSection(): React.JSX.Element {
       off()
     }
   }, [])
-
-  // The list for "Open project" has one terminal app, the one of the Terminal app setting.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the list follows the Terminal app setting.
-  useEffect(() => {
-    let active = true
-    window.bifrost.actions.apps().then(
-      list => active && setProjectApps(list),
-      err => console.error('Bifrost cannot get the list of apps.', err),
-    )
-    return () => {
-      active = false
-    }
-  }, [settings.terminalApp])
 
   const font = settings.terminalFont
   return (
@@ -350,23 +368,13 @@ export default function GeneralSection(): React.JSX.Element {
         label='Start at login'
         save={value => update({ startAtLogin: value })}
       />
-      <SettingRow error={pollRow.error} label='Poll interval' onCloseError={pollRow.closeError}>
-        <select
-          aria-label='Poll interval'
-          className={ROW_FIELD}
-          onChange={e => {
-            const seconds = Number(e.target.value)
-            pollRow.save(() => update({ pollSeconds: seconds }))
-          }}
-          value={String(settings.pollSeconds)}
-        >
-          {POLL_CHOICES.map(seconds => (
-            <option key={seconds} value={String(seconds)}>
-              {seconds === 1 ? '1 second' : `${seconds} seconds`}
-            </option>
-          ))}
-        </select>
-      </SettingRow>
+      <SelectRow
+        choices={POLL_CHOICES}
+        label='Poll interval'
+        save={value => update({ pollSeconds: value })}
+        text={seconds => (seconds === 1 ? '1 second' : `${seconds} seconds`)}
+        value={settings.pollSeconds}
+      />
       <NumberRow
         label='Snap distance'
         max={MAX_SNAP}
@@ -375,22 +383,18 @@ export default function GeneralSection(): React.JSX.Element {
         unit='pixels'
         value={settings.snapDistance}
       />
-      <NumberRow
+      <SelectRow
+        choices={PANEL_TRANSPARENCY_CHOICES}
         label='Panel transparency'
-        max={PANEL_TRANSPARENCY_MAX}
-        min={0}
         save={value => update({ panelTransparency: value })}
-        step={PANEL_TRANSPARENCY_STEP}
-        unit='% (0 is solid)'
+        text={percent => (percent === 0 ? '0% (solid)' : `${percent}%`)}
         value={settings.panelTransparency}
       />
-      <NumberRow
+      <SelectRow
+        choices={INTERFACE_SCALE_CHOICES}
         label='Interface scale'
-        max={INTERFACE_SCALE_MAX}
-        min={INTERFACE_SCALE_MIN}
         save={value => update({ interfaceScale: value })}
-        step={INTERFACE_SCALE_STEP}
-        unit='%'
+        text={percent => `${percent}%`}
         value={settings.interfaceScale}
       />
       <SettingRow error={fontRow.error} label='Terminal font' onCloseError={fontRow.closeError}>

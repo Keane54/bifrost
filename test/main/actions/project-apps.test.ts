@@ -62,4 +62,14 @@ describe('findTerminalApps', () => {
     )
     expect(apps.map(a => a.id)).toEqual(['warp', 'terminal'])
   })
+
+  it('follows the order that it gets, not the order of the candidates', async () => {
+    // The candidates list Warp before Terminal. This order puts Terminal first.
+    const apps = await findTerminalApps(
+      '/home/u',
+      have('/System/Applications/Utilities/Terminal.app', '/Applications/Warp.app'),
+      ['terminal', 'iterm2', 'ghostty', 'warp'],
+    )
+    expect(apps.map(a => a.id)).toEqual(['terminal', 'warp'])
+  })
 })

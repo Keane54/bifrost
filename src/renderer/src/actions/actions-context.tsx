@@ -56,6 +56,8 @@ const DELETING_NOTICE = 'Deleting the session...'
 const DIALOG_BUSY_NOTICE = 'Another dialog is open. Finish that one first.'
 
 export interface ActionsValue {
+  // The apps of "Open project". The list follows the Terminal app setting.
+  apps: ProjectApp[]
   run(id: ActionId, sessionId: string, arg?: MenuArg): void
   runGlobal(id: GlobalActionId): void
   // Type the text into the session. The promise rejects with the message of the failure.
@@ -485,6 +487,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
 
   const value = useMemo<ActionsValue>(
     () => ({
+      apps,
       clearFocusRequest,
       closeError,
       contextFor: sessionId =>
