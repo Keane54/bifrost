@@ -172,13 +172,14 @@ Row ID and current ID (the user, 2026-11-06: one row for a session across `/clea
 - Each row has a row ID. It is the first session ID that Bifrost saw for the session. It never changes. The row field `sessionId` is the row ID.
 - All stored values use the row ID: the local name, the priority, the watch entry, the worktree record, the "started by Bifrost" mark, `lastActive` and the names. All renderer IDs use it too: the chat panels, the Show Info panels, the selection and the Event log. So a `/clear` moves no value and changes no panel.
 - Each row also has a current ID. It is the session ID of the entry of the row in the newest active list. The row field `currentId` gives it when it is not the row ID. An `--all` entry does not change it.
-- The live lines of the mod come with the current ID. A line goes to the row whose current ID is its session ID. The usage data and the live flag of a row come from its current ID. A line of the old conversation of a row goes to no row.
+- The live lines of the mod come with the current ID. A line goes to the row whose current ID is its session ID. The usage data and the live flag of a row come from its current ID. A line of the old conversation of a row changes no row.
+- Two processes can run one conversation, for example a job and a terminal that resumed its current ID. Then two rows have one current ID, and the live lines go to one of them only. The row that has the lines keeps them while the active list has that row. Another row takes them only when the active list does not have that row. So the lines do not move at each poll.
 - The registry store keeps the current ID of each row where it is not the row ID (`current`), and the short ID of each background row (`jobs`). A store without these fields is valid. After a restart, Bifrost uses them to find the row of an entry.
 
 Bifrost finds the row of each entry of a list with these rules, in this order. The first rule that matches gives the row.
 
 1. A background entry goes to the row with the same short ID. Only one row can have that short ID, and only one entry of the list. The folders must agree. A stopped job reports its start folder, so a folder in a worktree agrees with the same place in the main checkout. An empty folder is not known, so it agrees. This rule applies to the active list and to `--all`.
-2. An entry goes to the known row whose current ID is the session ID of the entry. A background entry with a different short ID from that row is another job. This rule does not apply to it.
+2. An entry goes to a known row whose current ID is the session ID of the entry. A row with a short ID belongs to its job, so only an entry with that same short ID goes there. For example, `claude --continue` in a terminal can resume the conversation of a stopped job after a `/clear`. That terminal gets its own row, and the job keeps its row, its short ID and its resume ID.
 3. Only in the active list: an entry with no short ID goes to a row when all of these are true:
    - The `pid` of the entry is a positive number and equals the `pid` of the row.
    - The `cwd` is not empty and is equal.

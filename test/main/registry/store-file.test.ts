@@ -439,14 +439,15 @@ test('loadStore keeps good current IDs and short IDs and drops bad values', asyn
   await writeFile(
     file,
     JSON.stringify({
-      // r2 has the same current ID as r1, r3 has its own row ID, r4 is not a UUID, r5 is no text.
+      // Two processes can run one conversation, so r1 and r2 keep one current ID. A has its own
+      // row ID, r4 is not a UUID and r5 is no text.
       current: { r1: B, r2: B, [A]: A, r4: 'not-a-uuid', r5: 7 },
       jobs: { [A]: '2f493bf0', r2: 'ABCDEF12', r3: '123', r4: 9, r5: '' },
       names: {},
     }),
   )
   const store = await loadStore(file)
-  expect(store.current).toEqual({ r1: B })
+  expect(store.current).toEqual({ r1: B, r2: B })
   expect(store.jobs).toEqual({ [A]: '2f493bf0' })
   await writeFile(file, JSON.stringify({ current: ['x'], jobs: 'x', names: {} }))
   expect(await loadStore(file)).toMatchObject({ current: {}, jobs: {} })

@@ -33,7 +33,8 @@ function emptyStore(): RegistryStore {
 // A file without aliases (from before the local name) gives no local names.
 // A local name that is not a valid, non-empty string is dropped. A valid name is trimmed.
 // A file without current or jobs (from before the row ID) gives no current IDs and no short IDs.
-// A current ID must be a UUID that is not its row ID and not the current ID of an earlier row.
+// A current ID must be a UUID that is not its row ID. Two rows can have one current ID, because
+// two processes can run one conversation.
 // A short ID must have the form of a short ID.
 // A file without lastActive (from M3) gives an empty list.
 // A file without watch (from M3) gives an empty watchlist.
@@ -75,11 +76,8 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   }
   const current: Record<string, string> = {}
   if (isObject(data.current)) {
-    const used = new Set<string>()
     for (const [rowId, id] of Object.entries(data.current)) {
-      if (!isUuid(id) || id === rowId || used.has(id)) continue
-      used.add(id)
-      current[rowId] = id
+      if (isUuid(id) && id !== rowId) current[rowId] = id
     }
   }
   const jobs: Record<string, string> = {}

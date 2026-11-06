@@ -238,10 +238,11 @@ export class SessionRegistry {
     this.jobs = new Map(Object.entries(opts.store.jobs ?? {}))
     this.currents = new Map()
     for (const [rowId, id] of Object.entries(opts.store.current ?? {})) {
-      // A current ID equal to the row ID is the default. Two rows cannot have one current ID.
-      if (id === rowId || this.byCurrent.has(id)) continue
+      // A current ID equal to the row ID is the default. When two rows have one current ID, the
+      // first one gets its live lines until the next active list.
+      if (id === rowId) continue
       this.currents.set(rowId, id)
-      this.byCurrent.set(id, rowId)
+      if (!this.byCurrent.has(id)) this.byCurrent.set(id, rowId)
     }
     this.names = new Map(Object.entries(opts.store.names))
     this.started = new Set(opts.store.started)
@@ -263,7 +264,7 @@ export class SessionRegistry {
     for (const { entry, rowId } of matches) {
       const known = this.sessions.get(rowId)
       const s = known ?? this.add(rowId)
-      this.setCurrent(rowId, entry.sessionId)
+      this.setCurrent(rowId, entry.sessionId, ids)
       this.keepName(rowId, entry)
       this.keepJob(rowId, entry)
       // The status before this sample. A new session has none. A parked session has ''.
@@ -284,7 +285,7 @@ export class SessionRegistry {
       }
       copyEntry(s, entry)
       s.machine = onStatus(s.machine, {
-        live: this.isLive(entry.sessionId),
+        live: this.liveOf(rowId),
         prevStatus,
         sampledAt,
         status: entry.status,
@@ -309,18 +310,19 @@ export class SessionRegistry {
   // Find the row of each entry of a list (spec 6.1). The rules come in this order:
   // 1. A background entry goes to the one row with its short ID, when the folder agrees. Only one
   //    entry of the list can have that short ID. A /clear keeps the short ID of a job.
-  // 2. An entry goes to the known row whose current ID is the session ID of the entry. A
-  //    background entry with another short ID than that row is another job, so it does not go.
+  // 2. An entry goes to a known row whose current ID is the session ID of the entry. A row with a
+  //    short ID belongs to its job. Only an entry with that same short ID goes there. So a
+  //    terminal that resumes the conversation of a stopped job gets its own row (review I1).
   // 3. Only with link (the active list): links finds a /clear of a session with no short ID.
   // 4. A new row. Its row ID is the session ID of the entry. When a row or a stored value has
   //    that ID already, the row ID is a new UUID.
   private match(entries: AgentEntry[], link: boolean): Match[] {
     const found = new Map<AgentEntry, Match>()
-    // The session ID of the entry that took each row in this list.
-    const taken = new Map<string, string>()
+    // The entry that took each row in this list.
+    const taken = new Map<string, AgentEntry>()
     const take = (entry: AgentEntry, rowId: string, isNew: boolean): void => {
       found.set(entry, { entry, isNew, rowId })
-      taken.set(rowId, entry.sessionId)
+      taken.set(rowId, entry)
     }
     const shortIds = new Map<string, number>()
     for (const { id } of entries) if (id) shortIds.set(id, (shortIds.get(id) ?? 0) + 1)
@@ -333,13 +335,15 @@ export class SessionRegistry {
     }
     for (const entry of entries) {
       if (found.has(entry)) continue
-      const rowId = this.rowOf(entry.sessionId)
-      if (rowId === undefined || !this.isKnown(rowId)) continue
-      const by = taken.get(rowId)
-      if (by !== undefined && by !== entry.sessionId) continue
-      const job = this.jobs.get(rowId)
-      if (entry.kind === 'background' && entry.id && job !== undefined && job !== entry.id) continue
-      take(entry, rowId, false)
+      for (const rowId of this.rowsOfCurrent(entry.sessionId)) {
+        // Two entries with no short ID and one session ID share a row, as before.
+        const by = taken.get(rowId)
+        if (by !== undefined && (by.sessionId !== entry.sessionId || by.id || entry.id)) continue
+        const job = this.jobs.get(rowId)
+        if (job !== undefined && job !== entry.id) continue
+        take(entry, rowId, false)
+        break
+      }
     }
     if (link) {
       for (const [entry, rowId] of this.links(entries, found, taken)) take(entry, rowId, false)
@@ -367,7 +371,7 @@ export class SessionRegistry {
   private links(
     entries: AgentEntry[],
     found: Map<AgentEntry, Match>,
-    taken: Map<string, string>,
+    taken: Map<string, AgentEntry>,
   ): [AgentEntry, string][] {
     const sample = new Set(entries.map(entry => entry.sessionId))
     const pairs: [AgentEntry, string][] = []
@@ -376,8 +380,7 @@ export class SessionRegistry {
       if (found.has(entry) || entry.id || pid === undefined || !(pid > 0) || entry.cwd === '') {
         continue
       }
-      const own = this.rowOf(entry.sessionId)
-      if (own !== undefined && this.isKnown(own)) continue
+      if (this.rowsOfCurrent(entry.sessionId).length > 0) continue
       for (const s of this.sessions.values()) {
         const current = this.currentOf(s.sessionId)
         if (taken.has(s.sessionId) || s.shortId !== undefined) continue
@@ -438,26 +441,48 @@ export class SessionRegistry {
     return this.byCurrent.get(sessionId) ?? sessionId
   }
 
-  // Make id the current ID of a row. Another row with this current ID loses it.
+  // The known rows whose current ID is id. Two processes can run one conversation, so more than
+  // one row can have it. The row that gets the live lines of id comes first.
+  private rowsOfCurrent(id: string): string[] {
+    const rows = new Set<string>()
+    const owner = this.rowOf(id)
+    if (owner !== undefined && this.isKnown(owner)) rows.add(owner)
+    for (const [rowId, current] of this.currents) if (current === id) rows.add(rowId)
+    if (!this.currents.has(id) && this.isKnown(id)) rows.add(id)
+    return [...rows]
+  }
+
+  // True when the row gets the live lines of its current ID.
+  private ownsCurrent(rowId: string): boolean {
+    return this.rowOf(this.currentOf(rowId)) === rowId
+  }
+
+  // True when the row gets the live lines of its current ID and the mod sent one recently.
+  private liveOf(rowId: string): boolean {
+    return this.ownsCurrent(rowId) && this.isLive(this.currentOf(rowId))
+  }
+
+  // Make id the current ID of a row. listed holds the rows of this active list.
+  // The live lines of id go to one row only. A row that has them keeps them while the list has
+  // it. Another row takes them only when the list does not have that row. So two processes of one
+  // conversation do not move the lines at each poll (review M5).
   // The process or the job of the old ID now runs the new ID. So the time of the newest line of
   // the mod carries over, and the state events that wait for the new ID apply to the row.
-  private setCurrent(rowId: string, id: string): void {
-    if (this.rowOf(id) === rowId && this.currentOf(rowId) === id) return
+  private setCurrent(rowId: string, id: string, listed: ReadonlySet<string>): void {
     const old = this.currentOf(rowId)
-    const other = this.byCurrent.get(id)
-    if (other !== undefined) {
-      this.currents.delete(other)
-      this.byCurrent.delete(id)
+    if (old !== id) {
+      if (id === rowId) this.currents.delete(rowId)
+      else this.currents.set(rowId, id)
+      if (this.byCurrent.get(old) === rowId) this.byCurrent.delete(old)
+      this.changed = true
+      const at = this.liveAt.get(old)
+      if (at !== undefined) this.touch(id, at)
     }
-    if (this.byCurrent.get(old) === rowId) this.byCurrent.delete(old)
-    if (id === rowId) this.currents.delete(rowId)
-    else {
-      this.currents.set(rowId, id)
-      this.byCurrent.set(id, rowId)
-    }
-    this.changed = true
-    const at = this.liveAt.get(old)
-    if (old !== id && at !== undefined) this.touch(id, at)
+    const owner = this.rowOf(id)
+    if (owner === rowId) return
+    if (owner !== undefined && this.isKnown(owner) && listed.has(owner)) return
+    if (id === rowId) this.byCurrent.delete(id)
+    else this.byCurrent.set(id, rowId)
     const s = this.sessions.get(rowId)
     if (s) this.applyPending(s, id)
   }
@@ -532,7 +557,7 @@ export class SessionRegistry {
       // An entry with a pid has a process. The active list gives its data.
       if (entry.pid !== undefined || this.active.has(rowId)) continue
       const s = this.sessions.get(rowId) ?? this.add(rowId)
-      if (isNew) this.setCurrent(rowId, entry.sessionId)
+      if (isNew) this.setCurrent(rowId, entry.sessionId, this.active)
       copyEntry(s, entry)
       this.keepJobId(s, entry)
       this.park(s)
@@ -635,7 +660,7 @@ export class SessionRegistry {
   liveCount(): number {
     let count = 0
     for (const s of this.sessions.values()) {
-      if (s.machine.state !== 'parked' && this.isLive(this.currentOf(s.sessionId))) count += 1
+      if (s.machine.state !== 'parked' && this.liveOf(s.sessionId)) count += 1
     }
     return count
   }
@@ -654,12 +679,12 @@ export class SessionRegistry {
   }
 
   // Remove a session and all values that the registry keeps for it. sessionId is a row ID.
-  // The lines of the mod of its current ID go too. The lines of its row ID go when no other row
-  // has that ID as its current ID.
+  // The lines of the mod of its row ID and its current ID go too, when no other row has that ID
+  // as its current ID.
   forget(sessionId: string): void {
     const current = this.currentOf(sessionId)
     for (const id of new Set([sessionId, current])) {
-      if ((this.byCurrent.get(id) ?? sessionId) !== sessionId) continue
+      if (this.rowsOfCurrent(id).some(rowId => rowId !== sessionId)) continue
       this.pending = this.pending.filter(ev => ev.sessionId !== id)
       this.usageLines.delete(id)
       this.liveAt.delete(id)
@@ -1071,11 +1096,12 @@ export class SessionRegistry {
     return rowName(s.sessionId, this.names.get(s.sessionId), s.shortId)
   }
 
-  // The session ID of a row is its row ID. The usage and the live flag come from its current ID.
+  // The session ID of a row is its row ID. The usage and the live flag come from its current ID,
+  // when the row gets the live lines of that ID.
   private toRow(s: Session): SessionRow {
     const m = s.machine
     const current = this.currentOf(s.sessionId)
-    const usage = this.usageLines.get(current)
+    const usage = this.ownsCurrent(s.sessionId) ? this.usageLines.get(current) : undefined
     const row: SessionRow = {
       box: m.box,
       boxSince: m.boxSince,
@@ -1112,7 +1138,7 @@ export class SessionRegistry {
     if (usage?.effort !== undefined) row.effort = usage.effort
     if (usage?.permissionMode !== undefined) row.permissionMode = usage.permissionMode
     if (usage?.transcriptPath !== undefined) row.transcriptPath = usage.transcriptPath
-    if (this.isLive(current)) row.live = true
+    if (this.liveOf(s.sessionId)) row.live = true
     const branch = this.branches.get(this.branchDir(s))
     if (branch !== undefined) row.branch = branch
     const worktree = this.worktrees.get(s.sessionId)

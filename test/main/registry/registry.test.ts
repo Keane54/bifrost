@@ -2045,6 +2045,92 @@ describe('one row across /clear (2026-11-06)', () => {
     expect(r.rows()[0]).toMatchObject({ resumeId: ORIGINAL, sessionId: CLEARED })
   })
 
+  // claude --continue in a terminal of the project picks the conversation after the clear.
+  const terminal: AgentEntry = {
+    cwd: before.cwd,
+    kind: 'interactive',
+    name: 'bifrost-test-cl1',
+    pid: 777,
+    sessionId: CLEARED,
+    startedAt: 9,
+    status: 'idle',
+  }
+
+  test('a terminal of the current ID of a stopped job gets its own row (review I1)', () => {
+    const r = cleared()
+    r.applyAgents([], 4100)
+    r.applyAllAgents([stopped], true)
+    r.applyAgents([terminal], 6100)
+    r.applyAgents([terminal], 8100)
+    const rows = r.rows()
+    expect(rows).toHaveLength(2)
+    expect(rows.find(row => row.sessionId === ORIGINAL)).toMatchObject({
+      kind: 'owned',
+      name: 'Work',
+      resumeId: ORIGINAL,
+      shortId: SHORT,
+      state: 'parked',
+    })
+    const other = rows.find(row => row.sessionId !== ORIGINAL)
+    expect(other).toMatchObject({ kind: 'external', pid: 777, state: 'idle' })
+    expect(other?.priority).toBeUndefined()
+    // The live lines of the conversation go to the process that runs it.
+    r.applyUsage(CLEARED, { costUsd: 2 }, 8200)
+    const after2 = r.rows()
+    expect(after2.find(row => row.sessionId !== ORIGINAL)?.costUsd).toBe(2)
+    expect(after2.find(row => row.sessionId === ORIGINAL)?.costUsd).toBeUndefined()
+  })
+
+  test('the job wakes while the terminal runs: two rows that stay as they are', () => {
+    const r = cleared()
+    r.applyAgents([], 4100)
+    r.applyAllAgents([stopped], true)
+    r.applyAgents([terminal], 6100)
+    r.applyAgents([{ ...after, pid: 22400 }, terminal], 8100)
+    r.applyAgents([{ ...after, pid: 22400 }, terminal], 10_100)
+    r.storeChanged()
+    r.applyAgents([{ ...after, pid: 22400 }, terminal], 12_100)
+    expect(r.storeChanged()).toBe(false)
+    const rows = r.rows()
+    expect(rows).toHaveLength(2)
+    expect(rows.find(row => row.sessionId === ORIGINAL)).toMatchObject({
+      currentId: CLEARED,
+      kind: 'owned',
+      name: 'Work',
+      pid: 22400,
+    })
+    expect(rows.find(row => row.sessionId !== ORIGINAL)).toMatchObject({ pid: 777 })
+    // A restart gives the same two rows.
+    const next = registry(r.store())
+    next.applyAgents([{ ...after, pid: 22400 }, terminal], 100)
+    expect(next.rows().map(row => [row.sessionId === ORIGINAL, row.name, row.pid])).toEqual([
+      [false, 'bifrost-test-cl1', 777],
+      [true, 'Work', 22400],
+    ])
+  })
+
+  test('two jobs of one conversation do not move the current ID at each poll (review M5)', () => {
+    const r = cleared()
+    // claude --bg --resume <ID after the clear>, typed by hand, starts a second job (test 4).
+    const copy: AgentEntry = { ...after, id: '1db82d17', pid: 23000 }
+    r.applyAgents([after, copy], 4100)
+    r.applyAgents([after, copy], 6100)
+    r.storeChanged()
+    r.applyAgents([after, copy], 8100)
+    expect(r.storeChanged()).toBe(false)
+    const rows = r.rows()
+    expect(rows).toHaveLength(2)
+    expect(rows.find(row => row.sessionId === ORIGINAL)).toMatchObject({
+      name: 'Work',
+      shortId: SHORT,
+    })
+    expect(rows.find(row => row.sessionId !== ORIGINAL)).toMatchObject({ shortId: '1db82d17' })
+    // The row that had the conversation first keeps its live lines.
+    r.applyUsage(CLEARED, { costUsd: 3 }, 8200)
+    expect(r.rows().find(row => row.sessionId === ORIGINAL)?.costUsd).toBe(3)
+    expect(r.rows().find(row => row.sessionId !== ORIGINAL)?.costUsd).toBeUndefined()
+  })
+
   test('the woken job maps to the same row (test 4)', () => {
     const r = cleared()
     r.applyAgents([], 4100)
