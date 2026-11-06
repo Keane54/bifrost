@@ -160,6 +160,35 @@ describe('searchSettings', () => {
     expect(searchSettings('turn', sections)?.map(h => h.id)).toEqual(['live'])
   })
 
+  // Review Minor 4: each word can match the section title, the row label or the key.
+  it('finds a row by a mix of the section title, the label and the key', () => {
+    expect(searchSettings('keys take', sections)).toEqual([
+      { id: 'keys', rows: ['take-control:mod'], title: 'Keys', whole: false },
+    ])
+    expect(searchSettings('general flash', sections)?.[0]?.rows).toEqual(['Row flash'])
+    expect(searchSettings('take cmd', sections)?.[0]?.rows).toEqual(['take-control:mod'])
+    expect(searchSettings('keys flash', sections)).toEqual([])
+  })
+
+  it('in a mix, a word of one character must be a key name, so a key search stays exact', () => {
+    const keys: SearchSection[] = [
+      {
+        id: 'keys',
+        rows: [
+          { binding: 'Mod+Shift+T', id: 'take-control:mod', text: 'Take control' },
+          {
+            binding: 'Mod+Shift+O',
+            id: 'open-project:mod',
+            text: 'Open project in the default app',
+          },
+        ],
+        title: 'Keys',
+      },
+    ]
+    expect(searchSettings('cmd shift t', keys)?.[0]?.rows).toEqual(['take-control:mod'])
+    expect(searchSettings('project cmd o', keys)?.[0]?.rows).toEqual(['open-project:mod'])
+  })
+
   it('gives an empty list when nothing matches', () => {
     expect(searchSettings('xyz', sections)).toEqual([])
   })

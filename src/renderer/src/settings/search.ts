@@ -109,23 +109,40 @@ function bindingNames(binding: string): (readonly string[])[] | null {
   return names
 }
 
-// True when each part of the query names a part of the binding. A part of one character must be
-// a name, for example "t" is only the key T. A longer part can be the start of a name, for
-// example "sh" for Shift or "ta" for Tab.
+// True when the part of a query names a part of a binding. A part of one character must be a
+// name, for example "t" is only the key T. A longer part can be the start of a name, for example
+// "sh" for Shift or "ta" for Tab.
+function namesPart(names: (readonly string[])[], part: string): boolean {
+  return names.some(list =>
+    list.some(name => (part.length === 1 ? name === part : name.startsWith(part))),
+  )
+}
+
+// True when each part of the query names a part of the binding.
 export function keyMatches(binding: string | null | undefined, query: string): boolean {
   if (binding === null || binding === undefined) return false
   const parts = keyParts(query)
   const names = bindingNames(binding)
   if (parts.length === 0 || names === null) return false
-  return parts.every(part =>
-    names.some(list =>
-      list.some(name => (part.length === 1 ? name === part : name.startsWith(part))),
-    ),
-  )
+  return parts.every(part => namesPart(names, part))
 }
 
-function rowMatches(row: SearchRow, query: string): boolean {
-  return textMatches(row.text, query) || keyMatches(row.binding, query)
+// True when the row matches the query (review Minor 4). Each word of the label can match, as in
+// textMatches. Or each part of the query matches the title of the section, the label or a part of
+// the key. In such a mix, a part of one character must be a key name, so "cmd shift t" stays an
+// exact key search.
+function rowMatches(row: SearchRow, title: string, query: string): boolean {
+  if (textMatches(row.text, query)) return true
+  const parts = keyParts(query)
+  if (parts.length === 0) return false
+  const text = row.text.toLowerCase()
+  const head = title.toLowerCase()
+  const names = row.binding ? bindingNames(row.binding) : null
+  return parts.every(
+    part =>
+      (part.length > 1 && (text.includes(part) || head.includes(part))) ||
+      (names !== null && namesPart(names, part)),
+  )
 }
 
 // The rows of all sections, in the order of the tabs.
@@ -156,7 +173,9 @@ export function searchSettings(
   const hits: SearchHit[] = []
   for (const section of sections) {
     const whole = textMatches(section.title, query)
-    const rows = section.rows.filter(row => whole || rowMatches(row, query)).map(row => row.id)
+    const rows = section.rows
+      .filter(row => whole || rowMatches(row, section.title, query))
+      .map(row => row.id)
     if (whole || rows.length > 0) hits.push({ id: section.id, rows, title: section.title, whole })
   }
   return hits
