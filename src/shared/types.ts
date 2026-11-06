@@ -182,3 +182,30 @@ export type PrInfo =
   | { kind: 'pr'; number: number; title: string; url: string; state: string }
   | { kind: 'none' }
   | { kind: 'unavailable'; reason: string }
+
+// Service status (spec 8.11). The main process checks the public status pages.
+export type ServiceId = 'claude' | 'github' | 'sentry'
+export type ServiceLevel = 'none' | 'minor' | 'major' | 'critical' | 'maintenance' | 'unknown'
+export type Impact = 'none' | 'minor' | 'major' | 'critical'
+
+export interface Incident {
+  name: string
+  impact: Impact
+  status: string
+  // The start time in ms, or null when the page gives none.
+  startedAt: number | null
+  // The weight of the incident: 0 to 3. A monitoring incident counts as 1 at most.
+  rank: number
+}
+
+export interface ServiceStatus {
+  id: ServiceId
+  name: string
+  level: ServiceLevel
+  // The start of the oldest incident at the shown level, or null.
+  since: number | null
+  incidents: Incident[]
+  // The time of the check in ms. 0 means that no check ran yet.
+  checkedAt: number
+  error?: string
+}

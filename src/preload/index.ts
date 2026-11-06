@@ -87,6 +87,11 @@ const api: BifrostApi = {
       remove: sessionId => invoke('registry:watch-remove', sessionId),
     },
   },
+  service: {
+    onUpdate: cb => subscribe('service:update', cb),
+    openPage: id => invoke('service:open-page', id),
+    status: () => invoke('service:status'),
+  },
   sessions: {
     create: spec => invoke('sessions:create', spec),
     deleteCheck: sessionId => invoke('sessions:delete-check', sessionId),

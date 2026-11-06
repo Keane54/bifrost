@@ -1,0 +1,6 @@
+{
+  "components": [
+    { "group": false, "name": "Claude Console", "status": "major_outage" },
+    { "group": false, "name": "Claude Code", "status": "degraded_performance" }
+  ]
+}

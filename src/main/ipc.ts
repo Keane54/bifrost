@@ -9,6 +9,7 @@ import {
   type IpcMainInvokeEvent,
   ipcMain,
   nativeImage,
+  net,
   type OpenDialogOptions,
   shell,
   type WebContents,
@@ -16,7 +17,13 @@ import {
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
-import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
+import type {
+  ClaudeVersion,
+  DisplayMode,
+  LiveStatus,
+  ServiceStatus,
+  WatchColour,
+} from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
 import { isWatchColour } from '../shared/watch'
 import { createActions } from './actions/actions'
@@ -66,6 +73,8 @@ import { SessionRegistry } from './registry/registry'
 import { RegistryService, SERVICE_TIMING, type ServiceDeps } from './registry/service'
 import { openStore } from './registry/store-file'
 import { readProcessTable } from './registry/terminal-app'
+import { createServiceMonitor, type ServiceMonitor } from './service-status/monitor'
+import { checkService, FETCH_TIMEOUT_MS, SERVICES } from './service-status/statuspage'
 import { loginItemPatch, type SettingsEffect, settingsEffects } from './settings/effects'
 import { createKeyRecording, resetOnPageEnd } from './settings/key-recording'
 import { openSettingsStore, type SettingsStore } from './store/settings-store'
@@ -123,6 +132,33 @@ const pendingOpen = new PendingOpen()
 // the entries. The batcher sends new entries to the page at most 4 times each second.
 const eventLog = new EventLog()
 const eventBatcher = createBatcher(entries => send('events:append', entries))
+
+// The service status monitor (spec 8.11). It starts with the IPC handlers. A test home starts none.
+let serviceMonitor: ServiceMonitor | null = null
+const TEST_HOME_SERVICE = "Bifrost doesn't check status pages in a test home."
+
+async function fetchJson(url: string): Promise<unknown> {
+  const res = await net.fetch(url, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
+  if (!res.ok) throw new Error(`The status page answered ${res.status}.`)
+  return res.json()
+}
+
+// The list for the page. A test home shows every service as unknown, with the reason.
+function serviceList(): ServiceStatus[] {
+  if (serviceMonitor) return serviceMonitor.current()
+  return SERVICES.map(def => ({
+    checkedAt: 0,
+    error: TEST_HOME_SERVICE,
+    id: def.id,
+    incidents: [],
+    level: 'unknown',
+    name: def.name,
+    since: null,
+  }))
+}
 
 // Bifrost sets the login item only in the packaged app, and never in a test home (D2, D12).
 // A dev Electron binary must not become a login item.
@@ -341,6 +377,14 @@ export function registerIpc(home: TestHome | null = null): void {
   if (registered) return
   registered = true
   testHome = home
+  if (home === null) {
+    serviceMonitor = createServiceMonitor({
+      check: def => checkService(def, fetchJson, Date.now()),
+      emit: list => send('service:update', list),
+      now: () => Date.now(),
+    })
+    serviceMonitor.start()
+  }
 
   const claudePath = home
     ? Promise.resolve(findOnPath('claude', process.env.PATH, defaultIsExecutable))
@@ -433,6 +477,14 @@ export function registerIpc(home: TestHome | null = null): void {
   })
   ipcMain.handle('registry:rows', async () => (await service).rows())
   ipcMain.handle('events:list', e => fromPage(e, async () => eventLog.list()))
+  ipcMain.handle('service:status', e => fromPage(e, async () => serviceList()))
+  ipcMain.handle('service:open-page', (e, id: unknown) =>
+    fromPage(e, async () => {
+      const def = SERVICES.find(s => s.id === id)
+      if (!def) throw new Error('refused: unknown service')
+      await shell.openExternal(def.base)
+    }),
+  )
   ipcMain.handle('usage:get', e => fromPage(e, async () => (await service).usage()))
   ipcMain.handle('registry:ack', async (_e, sessionId: unknown) => {
     if (typeof sessionId === 'string') (await service).acknowledge(sessionId)
@@ -825,4 +877,5 @@ export function stopRegistry(): void {
   liveService?.stop()
   eventBatcher.stop()
   liveControl?.stop()
+  serviceMonitor?.stop()
 }

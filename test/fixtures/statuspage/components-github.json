@@ -1,0 +1,7 @@
+{
+  "components": [
+    { "group": false, "name": "Copilot", "status": "major_outage" },
+    { "group": false, "name": "API Requests", "status": "operational" },
+    { "group": true, "name": "Git Operations", "status": "partial_outage" }
+  ]
+}

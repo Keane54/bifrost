@@ -356,3 +356,33 @@ describe('theme', () => {
     for (let i = 1; i <= 12; i++) expect(CSS).toMatch(new RegExp(`--color-tab-${i}:`))
   })
 })
+
+// Ruling R4: the Service status colours are greens, teals, blues and amber. They stay clear of
+// the box colours and of each other.
+describe('the Service status tokens', () => {
+  const NAMES = ['ok', 'minor', 'major', 'critical', 'maint'].map(n => `svc-${n}`)
+
+  it('are not purple, pink, yellow, red or grey', () => {
+    for (const name of NAMES) {
+      const { h } = hsl(token(name))
+      expect(h >= 255 && h <= 345, `${name} is purple or pink`).toBe(false)
+      expect(h >= 330 || h < 20 || (h >= 40 && h < 80), `${name} is red or yellow`).toBe(false)
+    }
+  })
+
+  it('stay 0.10 or more from the box red and the box yellow', () => {
+    for (const name of NAMES) {
+      for (const box of ['box-red', 'box-yellow']) {
+        expect(distance(token(name), token(box)), `${name} to ${box}`).toBeGreaterThanOrEqual(0.1)
+      }
+    }
+  })
+
+  it('differ from each other', () => {
+    for (const a of NAMES) {
+      for (const b of NAMES) {
+        if (a < b) expect(distance(token(a), token(b)), `${a} to ${b}`).toBeGreaterThanOrEqual(0.1)
+      }
+    }
+  })
+})

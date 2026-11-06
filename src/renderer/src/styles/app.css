@@ -76,6 +76,14 @@
   --color-usage: #5fb3c9;
   --color-usage-high: #d4730a;
 
+  /* The Service status levels (spec 8.11, ruling R4). Greens, teals, blues and amber only: no
+     yellow, red, grey, purple or pink. Critical is the amber. No two tokens are alike. */
+  --color-svc-ok: #86c48f;
+  --color-svc-minor: #22b8c8;
+  --color-svc-major: #5b9cf2;
+  --color-svc-critical: #d4730a;
+  --color-svc-maint: #a5c8f5;
+
   --font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
 

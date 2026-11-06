@@ -36,6 +36,12 @@ describe('wm state', () => {
     expect(run([open('event-log')]).frames[0]?.rect).toMatchObject({ h: 360, w: 640 })
   })
 
+  it('panelKind accepts service-status', () => {
+    expect(panelKind('service-status')).toBe('service-status')
+    expect(DEFAULT_SIZES['service-status']).toEqual({ h: 240, w: 420 })
+    expect(run([open('service-status')]).frames[0]?.rect).toMatchObject({ h: 240, w: 420 })
+  })
+
   it('panelKind accepts usage-hud', () => {
     expect(panelKind('usage-hud')).toBe('usage-hud')
     expect(DEFAULT_SIZES['usage-hud']).toEqual({ h: 170, w: 360 })

@@ -11,6 +11,8 @@ import type {
   ProjectAppId,
   ResumeAllResult,
   SeenCounts,
+  ServiceId,
+  ServiceStatus,
   SessionRow,
   TermSize,
   UsageSnapshot,
@@ -44,6 +46,15 @@ export interface BifrostApi {
     // The error is the error of the last poll of the session list, or null.
     // The returned function removes only this listener.
     onUpdate(cb: (rows: SessionRow[], error: string | null) => void): () => void
+  }
+  // Service status (spec 8.11): the public status pages of Claude, GitHub and Sentry.
+  service: {
+    status(): Promise<ServiceStatus[]>
+    // The main process sends the list after each round of checks. The returned function
+    // removes only this listener.
+    onUpdate(cb: (list: ServiceStatus[]) => void): () => void
+    // Open the status page of the service in the browser.
+    openPage(id: ServiceId): Promise<void>
   }
   // The newest rate limits of the plan, from the newest live usage line with rate limits.
   // null means that no usage line has rate limits, for example with Live details off.

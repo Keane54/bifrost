@@ -1,0 +1,25 @@
+{
+  "incidents": [
+    {
+      "components": [{ "name": "Copilot" }],
+      "impact": "major",
+      "name": "Copilot is slow",
+      "started_at": "2026-11-06T08:00:00.000Z",
+      "status": "investigating"
+    },
+    {
+      "components": [],
+      "impact": "minor",
+      "name": "Slow webhooks",
+      "started_at": "2026-11-06T07:00:00.000Z",
+      "status": "monitoring"
+    },
+    {
+      "components": [{ "name": "Git Operations" }],
+      "impact": "critical",
+      "name": "Git pushes fail",
+      "started_at": "2026-11-06T09:00:00.000Z",
+      "status": "investigating"
+    }
+  ]
+}

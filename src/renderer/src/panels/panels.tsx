@@ -13,6 +13,7 @@ import OverviewPanel from '../overview/OverviewPanel'
 import OverviewSettingsPanel from '../overview/OverviewSettingsPanel'
 import { useOverview } from '../overview/overviews-context'
 import { SessionIcon } from '../overview/SessionIcon'
+import ServiceStatusPanel from '../service/ServiceStatusPanel'
 import SettingsPanel from '../settings/SettingsPanel'
 import UsagePanel from '../usage/UsagePanel'
 import WatchlistPanel from '../watch/WatchlistPanel'
@@ -44,6 +45,8 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
       return 'Event log'
     case 'usage-hud':
       return 'Usage HUD'
+    case 'service-status':
+      return 'Service status'
     case 'show-info': {
       const id = showInfoSessionId(panelId)
       const name = rows?.find(r => r.sessionId === id)?.name
@@ -137,6 +140,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <EventLogPanel />
     case 'usage-hud':
       return <UsagePanel />
+    case 'service-status':
+      return <ServiceStatusPanel />
     default:
       return <div className='p-3 text-[13px] text-text-dim'>This panel is not known.</div>
   }

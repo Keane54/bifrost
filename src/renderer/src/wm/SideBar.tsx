@@ -1,5 +1,6 @@
 import { Button } from '@base-ui/react/button'
 import {
+  Activity,
   Crosshair,
   Eye,
   Gauge,
@@ -153,6 +154,7 @@ function SideBar(): React.JSX.Element {
       <SideButton icon={Eye} label='Watchlist' onClick={() => open('watchlist')} />
       <SideButton icon={ScrollText} label='Event log' onClick={() => open('event-log')} />
       <SideButton icon={Gauge} label='Usage HUD' onClick={() => open('usage-hud')} />
+      <SideButton icon={Activity} label='Service status' onClick={() => open('service-status')} />
       <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />
       <GlobalButton action='new-session' icon={SquarePlus} />
       <GlobalButton action='resume-all' icon={RotateCcw} />
