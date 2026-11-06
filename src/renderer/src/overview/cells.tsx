@@ -86,7 +86,7 @@ export const TONE_TEXT: Record<Tone, string> = {
   yellow: 'text-box-yellow',
 }
 
-// The content of one cell. The age in the Last activity column uses the time now.
+// The content of one cell. The age in the Activity column uses the time now.
 export function CellContent({
   column,
   row,

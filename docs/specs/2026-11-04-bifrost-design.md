@@ -228,7 +228,7 @@ The mod sends a `usage` line at these times:
 Rules for the usage data:
 
 - The registry keeps the last `usage` line of each session.
-- A `usage` line is not activity. The column "Last activity" ignores it.
+- A `usage` line is not activity. The column "Activity" ignores it.
 - A row is live for 90,000 ms after its last live line. The heartbeat keeps an idle row live.
 - Turn off and Remove end the live flag of each row directly after the server stops (section 11.2). The usage of each row stays.
 - The parser keeps the windows `five_hour` and `seven_day` of the rate limits. It drops other windows.
@@ -385,7 +385,7 @@ Columns:
 | Model | The model name from the newest live usage line (section 6.3). |
 | Context % | The context percent from the newest live usage line. |
 | Cost | The cost from the newest live usage line, in US dollars with 2 decimals. A cost above 0 and below one cent shows as `<$0.01`. A cost of 0 shows as `$0.00`. |
-| Last activity | The time of the latest event from any source. |
+| Activity | The time of the latest event from any source. |
 
 Default tabs:
 
@@ -406,7 +406,7 @@ Tab rules:
 - Click a column header to sort by that column. Click it again to reverse the sort.
 - The menu of the Overview (the vertical dots in its title bar) has "Overview settings…". It opens the Overview Settings panel, as in EVE.
 - The Overview Settings panel has a tab selector for the Overview tab that you edit, and two tabs. Columns: a checkbox for each column and a drag to change the column order. The kind icon column is always on. Filters: checkboxes for the states, the kinds and the watched sessions that the tab shows. "Reset to default" restores the tab.
-- The default columns are Kind, Name, State, Project and Last activity. You turn on the other columns in the Overview Settings panel.
+- The default columns are Kind, Name, State, Project and Activity. You turn on the other columns in the Overview Settings panel.
 
 Mouse:
 
