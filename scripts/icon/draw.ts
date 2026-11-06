@@ -1,12 +1,13 @@
 // This module draws the Bifrost app icon. It uses the colours of app.css and no library.
+// The icon is a rainbow gradient inside the rounded square.
 import { crc32, deflateSync } from 'node:zlib'
 
 type Rgb = [number, number, number]
 
 export interface IconPalette {
-  bg: Rgb
-  edge: Rgb
-  bands: Rgb[]
+  // The gradient colours from the bottom-right corner to the top-left corner.
+  stops: Rgb[]
+  edge: Rgba
 }
 
 // A colour and its alpha from 0 to 1.
@@ -38,47 +39,126 @@ function blend(top: Rgba, under: Rgb): Rgb {
   return top.rgb.map((c, i) => Math.round(under[i] + (c - under[i]) * top.alpha)) as Rgb
 }
 
-// The edge token is translucent white. The icon blends it over the background, the same as the
-// app shows a panel edge. So the edge is subtle on a dark Dock (Task 6 ruling).
+// The icon has six gradient stops and a panel edge. The edge token is translucent white. The
+// icon blends it over the gradient colour at each point.
 export function readPalette(css: string): IconPalette {
-  const bg = blend(readColour(css, 'bg'), [0, 0, 0])
   return {
-    bands: ['tab-1', 'tab-4', 'tab-2'].map(name => blend(readColour(css, name), bg)),
-    bg,
-    edge: blend(readColour(css, 'panel-edge'), bg),
+    edge: readColour(css, 'panel-edge'),
+    stops: [1, 2, 3, 4, 5, 6].map(i => blend(readColour(css, `icon-${i}`), [0, 0, 0])),
   }
 }
 
-// The distance from the point to the rounded square that fills the image. Negative is inside.
-function roundedBoxDistance(x: number, y: number, size: number, radius: number): number {
-  const half = size / 2
-  const dx = Math.abs(x - half) - (half - radius)
-  const dy = Math.abs(y - half) - (half - radius)
+type Lab = [number, number, number]
+
+const toLinear = (c: number): number => {
+  const v = c / 255
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
+}
+
+const fromLinear = (v: number): number => {
+  const c = v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055
+  return Math.round(Math.min(1, Math.max(0, c)) * 255)
+}
+
+// Convert sRGB to OKLab (Bjorn Ottosson).
+function toOklab([r8, g8, b8]: Rgb): Lab {
+  const r = toLinear(r8)
+  const g = toLinear(g8)
+  const b = toLinear(b8)
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ]
+}
+
+function fromOklab([L, a, b]: Lab): Rgb {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3
+  return [
+    fromLinear(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    fromLinear(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    fromLinear(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+  ]
+}
+
+// The gradient colour at t from 0 (the first stop) to 1 (the last stop). It blends in OKLab. A
+// Catmull-Rom spline passes through the stops. So the stops show no sharp ridge.
+function gradient(t: number, stops: Rgb[]): Rgb {
+  const labs = stops.map(toOklab)
+  const pos = Math.min(1, Math.max(0, t)) * (labs.length - 1)
+  const i = Math.min(labs.length - 2, Math.floor(pos))
+  const f = pos - i
+  const p0 = labs[Math.max(0, i - 1)]
+  const p1 = labs[i]
+  const p2 = labs[i + 1]
+  const p3 = labs[Math.min(labs.length - 1, i + 2)]
+  const lab = p1.map((v, k) => {
+    const a = p0[k]
+    const d = p3[k]
+    const c = p2[k]
+    return (
+      0.5 *
+      (2 * v + (c - a) * f + (2 * a - 5 * v + 4 * c - d) * f * f + (3 * v - a - 3 * c + d) * f ** 3)
+    )
+  })
+  return fromOklab(lab as Lab)
+}
+
+// The icon follows the macOS icon grid at 1024 pixels. The rounded square is 824 pixels wide and
+// has a 100 pixel margin. Its corner radius is 22.5% of its width. The shadow is black with 30%
+// alpha. It is 10 pixels down and 20 pixels of blur. All values scale with the image size.
+const MARGIN = 100 / 1024
+const SHAPE = 824 / 1024
+const RADIUS = 0.225 * SHAPE
+const SHADOW_ALPHA = 0.3
+const SHADOW_DOWN = 10 / 1024
+const SHADOW_BLUR = 20 / 1024
+
+// The distance from the point to the rounded square. Negative is inside. The centre of the square
+// is (cx, cy), its width is side, and its corner radius is radius.
+function roundedBoxDistance(
+  x: number,
+  y: number,
+  cx: number,
+  cy: number,
+  side: number,
+  radius: number,
+): number {
+  const half = side / 2
+  const dx = Math.abs(x - cx) - (half - radius)
+  const dy = Math.abs(y - cy) - (half - radius)
   return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - radius
 }
 
-const RING_RADII = [0.38, 0.29, 0.2]
-const RING_WIDTH = 0.07
-
-// The colour at one point, or null when the point is outside the rounded square.
-function sample(x: number, y: number, size: number, palette: IconPalette): Rgb | null {
-  const distance = roundedBoxDistance(x, y, size, size * 0.22)
-  if (distance > 0) return null
-  if (distance > -size / 32) return palette.edge
-  // The bridge is the upper half of three rings.
-  const dy = y - size * 0.74
-  if (dy <= 0) {
-    const r = Math.hypot(x - size / 2, dy)
-    for (let i = 0; i < RING_RADII.length; i++) {
-      const outer = size * RING_RADII[i]
-      if (r <= outer && r >= outer - size * RING_WIDTH) return palette.bands[i]
-    }
+// The colour and alpha at one point. A point outside the shape has the shadow or is transparent.
+function sample(x: number, y: number, size: number, palette: IconPalette): Rgba {
+  const side = size * SHAPE
+  const c = size / 2
+  const radius = size * RADIUS
+  const distance = roundedBoxDistance(x, y, c, c, side, radius)
+  if (distance > 0) {
+    // The shadow fades from full to nothing across the blur width, centred on the moved edge.
+    const moved = roundedBoxDistance(x, y - size * SHADOW_DOWN, c, c, side, radius)
+    const blur = size * SHADOW_BLUR
+    const k = Math.min(1, Math.max(0, 0.5 - moved / blur))
+    return { alpha: SHADOW_ALPHA * k * k * (3 - 2 * k), rgb: [0, 0, 0] }
   }
-  return palette.bg
+  // The gradient runs along the diagonal of the shape. It is 0 at the bottom-right corner and 1
+  // at the top-left corner.
+  const origin = size * MARGIN
+  const t = 1 - (x - origin + (y - origin)) / (2 * side)
+  const colour = gradient(t, palette.stops)
+  if (distance > -size / 128) return { alpha: 1, rgb: blend(palette.edge, colour) }
+  return { alpha: 1, rgb: colour }
 }
 
-// RGBA bytes. The anti-alias uses 4 x 4 samples for each pixel. A pixel colour is the mean of
-// the colours of the samples inside the rounded square. Its alpha is the share of those samples.
+// RGBA bytes. The anti-alias uses 4 x 4 samples for each pixel. The samples are mixed with their
+// alpha as weight. The alpha of the pixel is the mean alpha of the samples.
 export function drawIcon(size: number, palette: IconPalette): Uint8Array {
   const out = new Uint8Array(size * size * 4)
   const n = 4
@@ -87,23 +167,22 @@ export function drawIcon(size: number, palette: IconPalette): Uint8Array {
       let r = 0
       let g = 0
       let b = 0
-      let hits = 0
+      let a = 0
       for (let sy = 0; sy < n; sy++) {
         for (let sx = 0; sx < n; sx++) {
           const c = sample(px + (sx + 0.5) / n, py + (sy + 0.5) / n, size, palette)
-          if (!c) continue
-          r += c[0]
-          g += c[1]
-          b += c[2]
-          hits++
+          r += c.rgb[0] * c.alpha
+          g += c.rgb[1] * c.alpha
+          b += c.rgb[2] * c.alpha
+          a += c.alpha
         }
       }
-      if (hits === 0) continue
+      if (a === 0) continue
       const i = (py * size + px) * 4
-      out[i] = Math.round(r / hits)
-      out[i + 1] = Math.round(g / hits)
-      out[i + 2] = Math.round(b / hits)
-      out[i + 3] = Math.round((hits / (n * n)) * 255)
+      out[i] = Math.round(r / a)
+      out[i + 1] = Math.round(g / a)
+      out[i + 2] = Math.round(b / a)
+      out[i + 3] = Math.round((a / (n * n)) * 255)
     }
   }
   return out
