@@ -1,6 +1,6 @@
 # Bifrost Performance: design
 
-Status: draft after the builder check, 2026-11-09. The user approved the mockup (version 4) and asked to start on 2026-11-09.
+Status: Built, 2026-11-09. The user approved the mockup (version 4) and asked to start on 2026-11-09.
 
 The Performance panel answers one question at a glance: does Bifrost use too many resources, or is something wrong with Bifrost's health? A headline gives the answer. Details below the headline show Bifrost's processes, the Claude sessions, the Mac, the network, and the limits and disk.
 
@@ -55,7 +55,7 @@ The sections, in this order:
 
 | Section | Content |
 |---|---|
-| Bifrost | The total RAM and CPU in the section title. A trend line of RAM and CPU for the last 10 minutes. One row for each process group: Main process, Window, GPU, Chat terminals (with the count), and Other helpers if any. Each row shows RAM and CPU. Two more rows: Frame rate and Main process delay. |
+| Bifrost | The total RAM and CPU in the section title. A trend line of RAM and CPU for the last 10 minutes. The memory line is amber. The CPU line is blue. One row for each process group: Main process, Window, GPU, Chat terminals (with the count), and Other helpers if any. Each row shows RAM and CPU. Two more rows: Frame rate and Main process delay. |
 | Claude sessions | The total RAM and CPU of all `claude` processes in the section title. The three heaviest sessions by RAM, each with RAM, CPU and a Stop button. Then one "N more" row with their total. |
 | Your Mac | Memory pressure (a bar and a word: Normal, Medium, High), swap used of total, CPU load, thermal state, battery level and charging state. |
 | Network | Online or offline and the interface type (Wi-Fi, Ethernet, VPN) in the title. Download and upload rates. The response times to Anthropic and to GitHub. |
@@ -63,7 +63,7 @@ The sections, in this order:
 
 ### 5.3 The side bar
 
-- A Performance button in the side bar opens the panel.
+- A Performance button in the side bar opens the panel. Its icon is a heart pulse, because Service status already uses the activity line.
 - While the state is Warning or Problem, the button shows a dot in the state colour.
 
 ### 5.4 The Stop button
@@ -125,6 +125,8 @@ Definitions (my calls after the builder check, 2026-11-09):
 | GitHub points | The `rateLimit` of the last Reviews poll (the query adds `limit` and `resetAt`). With Reviews off, `gh api rate_limit` (it costs no points), only while the panel shows. Without `gh`, or with `gh` logged out, the row shows "Not available" and the reason. | each poll, or 60 s while the panel shows |
 | Free disk | Node `fs.statfs` of the home folder | 60 s |
 | Reviews clones | The size of `~/.bifrost/reviews/repos` | 10 min, only when the folder exists |
+
+While the panel shows, the `ps` and `netstat` commands run at most every 6 s, not every 2 s. Memory pressure and swap run at most every 15 s. This keeps the monitor below 1% of one core (section 8 wins over the 2 s in this table). The Electron metrics and the snapshot keep the 2 s tick.
 
 The monitor keeps 60 minutes of samples in memory. It writes nothing to disk, except the Details open state with the other UI state.
 

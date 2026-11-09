@@ -405,6 +405,7 @@ Bifrost uses its own window manager, because the snap and stack rules are specif
 | Watchlist | The sessions that you track, in your own order and colours. |
 | Service status | The status of Claude, GitHub and Sentry. |
 | Reviews | The PRs that need you. The To review tab lists the requests for your review. The My PRs tab lists your open PRs. See `docs/specs/2026-11-09-bifrost-reviews-design.md`. |
+| Performance | The health of Bifrost. A headline shows OK, Warning or Problem. A Details row opens the sections Bifrost, Claude sessions, Your Mac, Network, and Limits and disk. See `docs/specs/2026-11-09-bifrost-performance-design.md`. |
 
 ### 8.3 Overview
 
@@ -642,6 +643,14 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
   2. When the full view cuts off a text of a row, the button hides its text "Open status page". It keeps the icon, its `aria-label` and gets a tooltip (`title`) with the same text as the `aria-label`.
   3. When view 2 still cuts off a text, the row also hides the level text. The level square keeps the level as its tooltip and as its accessible name. The since text stays. "No data" has no square, so it keeps its text.
 - The panel measures invisible copies of the full rows at their natural width. So the choice does not depend on the view on the screen, and a wider panel goes back to a fuller view. The panel chooses the view before the paint, after each render, at each resize (a `ResizeObserver`), at each change of the width of a measure copy, and when a web font loads (`document.fonts`). So a font that loads late, for example Geist Mono, does not leave a wrong view. So the view does not flicker or change in a loop. A pure function, `serviceView(available, needs)`, makes the choice.
+
+### 8.13 Performance
+
+- The Performance panel shows the health of Bifrost. It answers one question: does Bifrost use too many resources, or is something wrong?
+- A side bar button opens the panel. Its icon is a heart pulse. The button shows a dot while the state is Warning or Problem.
+- The headline shows OK, Warning or Problem. The Details row opens the sections. The panel code is in `src/renderer/src/performance/`. The monitor is in `src/main/performance/`.
+- The monitor stays below 1% of one core. It makes no network request in a test home.
+- The Performance design (`docs/specs/2026-11-09-bifrost-performance-design.md`) describes the checks, the data sources and the limits.
 
 ## 9. Actions and keys
 
@@ -1130,7 +1139,7 @@ Bifrost uses the same tools as Overseer and Herald where a feature needs them. B
 |---|---|---|
 | Unit | Vitest | The state machine, the registry merge, install and uninstall, and key map conflicts. |
 | Mod | `claude plugin test` | The hooks module, with a fake `http.fetch`. |
-| Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. The test also checks that the animated background moves, that it stays still with reduced motion, that it pauses in place without the window focus and with the setting off, and that each frame has the light blur (section 8.10). |
+| Smoke | Playwright for Electron | Bifrost starts with a fake `claude` command on the PATH and shows the sample sessions. Bifrost runs with `BIFROST_TEST_HOME`, so the test does not use the real home. The test also checks that the animated background moves, that it stays still with reduced motion, that it pauses in place without the window focus and with the setting off, and that each frame has the light blur (section 8.10). Other smoke tests cover the Reviews panel and the Performance panel. The Performance test checks the headline and the Details row. |
 | Manual | Checklist | The M0 questions, Take control and the DMG. |
 
 With a test home, `system.info()` gives `testHome: true`, and the page has the hook `window.bifrostTest`. Its `startLoader(sessionId)`, `finishLoader(sessionId)` and `stopLoader(sessionId)` show the Take control loader, end its Take control part and remove it, with no real Take control. A visual check uses it. An app with the real home has no hook.
