@@ -6,13 +6,13 @@ const MB_PER_GB = 1024
 const NET_STEP = 1000
 
 // A RAM value. Below 1024 MB it is a whole number of MB. From 1024 MB it is GB with two
-// decimals. The nearest whole MB value decides, so 1023.6 MB gives "1.00 GB" (ruling 3).
+// decimals. The nearest whole MB value decides, so 1023.6 MB gives "1.00 GB" and not "1024 MB".
 export function mb(value: number): string {
   const whole = Math.round(value)
   return whole < MB_PER_GB ? `${whole} MB` : `${(value / MB_PER_GB).toFixed(2)} GB`
 }
 
-// A whole number of GB, for the free disk (ruling 5).
+// A whole number of GB, for the free disk. A decimal adds no use there.
 export function gb(value: number | null): string {
   return value === null ? '-' : `${Math.round(value)} GB`
 }
@@ -66,7 +66,7 @@ export function pressureText(p: Pressure): string {
 }
 
 // The GitHub GraphQL points: what is left of the limit and the reset time, or the reason when
-// Bifrost cannot read them (ruling 6). The time zone argument is for tests.
+// Bifrost cannot read them (design section 7). The time zone argument is for tests.
 export function pointsText(
   github: PerformanceSnapshot['limits']['github'],
   timeZone?: string,

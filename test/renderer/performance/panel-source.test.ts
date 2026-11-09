@@ -45,19 +45,19 @@ describe('PerformancePanel source', () => {
     expect(base).not.toMatch(/\bborder-b\b/)
   })
 
-  // Review finding 6: each headline state has the data attribute, also the first check.
+  // Each headline state has the data attribute, also the first check.
   it('marks the headline while Bifrost waits for the first sample', () => {
     expect(PANEL).toMatch(/data-perf-headline='checking'/)
     expect(PANEL).toMatch(/data-perf-headline=\{snapshot\.state\}/)
   })
 
-  // Review finding 4: each className with a condition uses cx().
+  // Each className with a condition uses cx().
   it('builds the class of the thermal state with cx()', () => {
     expect(PANEL).toContain('className={cx(thermal !== null && THERMAL_TEXT[thermal])}')
     expect(PANEL).not.toMatch(/className=\{[^}]*\? undefined/)
   })
 
-  // Ruling A (fix round 1): main and the panel use the shared group names.
+  // Main and the panel use the shared group names.
   it('finds the chat terminal group through the shared PROC_GROUPS name', () => {
     expect(PANEL).toMatch(
       /import \{[^}]*\bPROC_GROUPS\b[^}]*\} from '\.\.\/\.\.\/\.\.\/shared\/performance'/,
@@ -91,7 +91,7 @@ describe('PerformancePanel source', () => {
     expect(TREND).not.toContain('Last 10 minutes')
   })
 
-  // Ruling B (fix round 1): the mockup colours, from tokens with no status meaning. The key
+  // The mockup colours (design section 5.2), from tokens with no status meaning. The key
   // under the line uses the same classes.
   it('draws memory in tab-8 and CPU in icon-5, and the key matches', () => {
     expect(TREND).toContain("const RAM_LINE = 'text-tab-8'")
@@ -118,7 +118,7 @@ describe('one Performance subscription', () => {
     expect(SIDE_BAR).toContain('usePerformanceState()')
   })
 
-  it('has one view reporter, in the window manager (ruling 4)', () => {
+  it('has one view reporter, in the window manager', () => {
     expect(STORE.match(/performance\.view\(/g)).toHaveLength(1)
     expect(PANEL).not.toContain('.view(')
     expect(WM).toContain('usePerformanceReport(state.frames)')

@@ -1,4 +1,4 @@
-// The app-wide state of the Performance panel (design section 5, ruling 4). One store holds the
+// The app-wide state of the Performance panel (design section 5). One store holds the
 // newest snapshot from the main process. The side bar and the panel read it, so the app has one
 // subscription. The window manager reports the view and the frame rate to the main process.
 import {
@@ -115,8 +115,9 @@ export function performanceView(
 }
 
 // A function that sends the view only when it is different from the last view that it sent.
-// When a send fails, the function forgets that view, so the next report sends it again (review
-// finding 2). A failed send of an older view does not change the record of a newer view.
+// When a send fails, the function forgets that view, so the next report sends it again. Else the
+// main process can keep an old view. A failed send of an older view does not change the record
+// of a newer view.
 export function createViewReporter(
   send: (view: PerformanceView) => Promise<void>,
 ): (view: PerformanceView) => void {
@@ -199,10 +200,10 @@ function usePage(): Page {
   return page
 }
 
-// The one reporter of the app (ruling 4). The window manager calls it with its frames. It sends
-// the view on each change, also while the panel is closed, so the main process knows the open
-// chat panels (P2). While the panel shows and the window has the focus, it also sends the frame
-// rate one time each second (P9).
+// The one reporter of the app, so two reports cannot disagree. The window manager calls it with
+// its frames. It sends the view on each change, also while the panel is closed, so the main
+// process knows the open chat panels (P2). While the panel shows and the window has the focus,
+// it also sends the frame rate one time each second (P9).
 export function usePerformanceReport(frames: readonly Frame[]): void {
   const page = usePage()
   const view = useMemo(() => performanceView(frames, page), [frames, page])

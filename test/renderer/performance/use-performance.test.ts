@@ -1,4 +1,4 @@
-// The app-wide Performance store and the reports to the main process (ruling 4, P2, P9).
+// The app-wide Performance store and the reports to the main process (P2, P9).
 import { describe, expect, it, vi } from 'vitest'
 import {
   createPerformanceStore,
@@ -172,7 +172,7 @@ describe('createViewReporter', () => {
     ])
   })
 
-  // Review finding 2: a view that the main process did not get goes again at the next report.
+  // A view that the main process did not get goes again at the next report.
   it('sends a view again after its send failed', async () => {
     const send = vi
       .fn(async (_v: PerformanceView) => {})

@@ -55,7 +55,7 @@ export function createServiceMonitor(
     if (stopped) return
     list = next
     // A throw in the health log or in emit goes to the log. The next round always gets its
-    // timer, so the loop never stops (final review Minor 5).
+    // timer, so the loop never stops.
     try {
       // A round fails only when no service answered (P7).
       health.poll('service-status', next.every(s => s.error !== undefined) ? 'failed' : 'ok')

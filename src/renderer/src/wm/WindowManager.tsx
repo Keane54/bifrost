@@ -191,7 +191,7 @@ export default function WindowManager(): React.JSX.Element {
     performanceRef.current = performance
   }, [performance])
 
-  // The one report of the view and the frame rate to the main process (ruling 4, P2, P9).
+  // The one report of the view and the frame rate to the main process (P2, P9).
   usePerformanceReport(state.frames)
 
   // Send the store with the current layout, the Overview configs, the dialog history and the

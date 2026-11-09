@@ -86,14 +86,14 @@ describe('pressureText', () => {
 })
 
 describe('gb', () => {
-  it('gives a whole number of GB (ruling 5)', () => {
+  it('gives a whole number of GB', () => {
     expect(gb(212.4)).toBe('212 GB')
     expect(gb(null)).toBe('-')
   })
 })
 
 describe('pointsText', () => {
-  it('gives the points left of the limit and the reset time (ruling 6)', () => {
+  it('gives the points left of the limit and the reset time', () => {
     const resetAt = Date.UTC(2026, 10, 9, 14, 52)
     expect(pointsText({ limit: 5000, remaining: 4320, resetAt }, 'UTC')).toBe(
       '4,320 of 5,000 left · resets 14:52',

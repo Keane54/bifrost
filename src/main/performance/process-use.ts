@@ -73,8 +73,8 @@ export function bifrostUse(metrics: readonly AppMetric[], terminals: readonly Us
   }
 }
 
-// The Claude sessions: each registry row with a pid and its process tree (design section 6,
-// ruling 5). own holds the pids of Bifrost. They and their descendants count for no session.
+// The Claude sessions: each registry row with a pid and its process tree (design section 6).
+// own holds the pids of Bifrost. They and their descendants count for no session.
 // One children index serves all rows. A session that started inside another session keeps its
 // own processes, because the smaller tree goes first. So each process counts one time, and
 // procCpu runs one time for each process.

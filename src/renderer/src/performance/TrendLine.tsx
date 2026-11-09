@@ -7,7 +7,8 @@ import { TREND_H, TREND_W, trendLabel, trendLines } from './format'
 
 type Trend = NonNullable<PerformanceSnapshot['bifrost']>['trend']
 
-// The colours of the approved mockup, from tokens with no status meaning (fix round 1, ruling B).
+// The colours of the approved mockup (design section 5.2), from tokens with no status meaning. So
+// a line does not look like a health state.
 // The RAM line is amber and the stronger line. The CPU line is blue and thin. The key under the
 // line uses the same classes.
 const RAM_LINE = 'text-tab-8'

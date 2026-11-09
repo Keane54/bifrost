@@ -44,7 +44,7 @@ export function parseGhRateLimit(stdout: string): GithubLimit | null {
   return { limit, remaining, resetAt: reset * 1000 }
 }
 
-// The GitHub limit with Reviews off (ruling 6). A failure gives a friendly reason.
+// The GitHub limit with Reviews off (design section 7, P11). A failure gives a friendly reason.
 export async function readGhRateLimit(
   gh: Pick<Gh, 'run'>,
 ): Promise<GithubLimit | { unavailable: string }> {
@@ -60,7 +60,8 @@ export async function readGhRateLimit(
   }
 }
 
-// One HEAD request with no login, no token and no cookie (ruling 9). Any HTTP status is an answer.
+// One HEAD request with no login, no token and no cookie (design sections 7 and 8). Any HTTP
+// status is an answer.
 // The time is until the response headers. The timeout gives 'no-answer'. A DNS or connection
 // error gives 'unreachable'.
 export async function probeUrl(

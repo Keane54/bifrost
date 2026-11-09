@@ -70,7 +70,7 @@ describe('bifrostUse', () => {
     expect(use).toMatchObject({ cpu: 17, ramMb: 810, terminals: { cpu: 4, ramMb: 60 } })
   })
 
-  // The panel finds the chat terminal group by the shared name (fix round 1, ruling A).
+  // The panel finds the chat terminal group by the shared name.
   it('names the groups with the shared names of PROC_GROUPS', () => {
     expect(PROC_GROUPS).toEqual({
       gpu: 'GPU',

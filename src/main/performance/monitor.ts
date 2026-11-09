@@ -33,13 +33,13 @@ import {
 export const TICK_MS = 15_000
 export const FAST_TICK_MS = 2_000
 // ps and netstat run at most this often. While the panel is closed, ps runs on each tick
-// (ruling A).
+// (design section 7).
 export const COMMAND_MS = 6_000
 // The memory pressure and the swap, at most this often in each state (design section 7).
 export const MAC_MS = 15_000
 // The response times and the gh rate limit, at most this often, only while the panel shows.
 export const PROBE_MS = 60_000
-// The battery, the free disk and the size of the Reviews clones, in each state (ruling 10).
+// The battery, the free disk and the size of the Reviews clones, in each state (design section 7).
 export const BATTERY_MS = 60_000
 export const DISK_MS = 60_000
 export const CLONES_MS = 600_000
@@ -91,7 +91,7 @@ export interface MonitorDeps {
   thermal(): string | null
   online(): boolean
   freeDiskBytes(): Promise<number | null>
-  // True when the folder exists. du runs only for a folder that exists (ruling B).
+  // True when the folder exists. du runs only for a folder that exists (design section 7).
   exists(path: string): Promise<boolean>
   // One HEAD request. The time until the response headers in ms, or the failure.
   probe(url: string): Promise<ProbeResult>
@@ -150,7 +150,7 @@ function freshState(linkDue: boolean) {
     battery: null as Mac['battery'],
     clonesMb: null as number | null,
     fpsFrom: null as number | null,
-    // The frame rate reports of the current count (ruling 1).
+    // The frame rate reports of the current count (design section 6).
     fpsReports: [] as Array<{ at: number; value: number }>,
     freeDiskGb: null as number | null,
     ghLimit: null as GithubLimit | { unavailable: string } | null,
@@ -175,7 +175,8 @@ function freshState(linkDue: boolean) {
     psAt: NEVER,
     rates: null as { down: number; up: number } | null,
     samples: [] as Sample[],
-    // The sessions and the chat terminal values (by pid) of the last good ps read (ruling C).
+    // The sessions and the chat terminal values (by pid) of the last good ps read. A failed ps
+    // read keeps them.
     sessions: null as Sessions | null,
     sides: {
       battery: newSide(),
@@ -285,7 +286,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
 
   // Mark and give the commands that this tick runs. ps and netstat run at most every 6 s, the
   // pressure and the swap at most every 15 s. The network commands run only while the panel
-  // shows (ruling 3).
+  // shows (design section 7).
   function planReads(now: number) {
     const plan = {
       bytes: showing && due(now - st.netAt, COMMAND_MS),
@@ -312,9 +313,9 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
 
   function applyNetwork(now: number, read: Awaited<ReturnType<typeof readNetwork>>): void {
     if (read.readKind) {
-      // A failed read runs again at the next tick (review 4).
+      // A failed read runs again at the next tick, so the panel does not wait 60 s for the kind.
       if (read.link === null) st.linkDue = true
-      // A new interface starts the rates again (review 3).
+      // A new interface starts the rates again. The counters of two interfaces give no rate.
       if (read.link?.device !== st.link?.device) {
         st.lastBytes = null
         st.rates = null
@@ -382,7 +383,8 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
   }
 
   // A send PTY is an orphan after 60 s. A chat PTY is an orphan 60 s after the renderer reports
-  // no chat panel for it. Before the first report, no chat PTY is an orphan (P2, ruling 11).
+  // no chat panel for it. Before the first report, no chat PTY is an orphan, because the chat
+  // panels are not known (P2).
   function trackOrphans(now: number, ptys: Pty[]): number {
     const next = new Map<string, number>()
     let count = 0
@@ -401,7 +403,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
   }
 
   // True while the panel shows and has focus, the count started at least 10 s ago, and each report
-  // of the last 10 s is below the limit (ruling 1).
+  // of the last 10 s is below the limit (design section 6).
   function fpsLow(now: number): boolean {
     if (!showing || !focused || st.fpsFrom === null) return false
     const windowMs = LIMITS.fpsLowSeconds * 1000
@@ -510,7 +512,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     const gen = generation
     try {
       const now = deps.now()
-      // A Reviews value after its reset time is old. Then gh gives the limit (review 6).
+      // A Reviews value after its reset time is old. Then gh gives the limit (design section 7).
       const fromReviews = deps.rateLimit()
       const reviewsLimit = fromReviews !== null && fromReviews.resetAt > now ? fromReviews : null
       startSideReads(now, reviewsLimit)
