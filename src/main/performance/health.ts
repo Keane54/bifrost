@@ -71,8 +71,20 @@ function localTime(at: number): string {
   return `${two(d.getHours())}:${two(d.getMinutes())}`
 }
 
+// The OK text form. The rounded MB value decides, so 1023.6 MB gives "1.0 GB".
 function ramText(mb: number): string {
-  return mb < 1024 ? `${Math.round(mb)} MB` : `${(mb / 1024).toFixed(1)} GB`
+  const whole = Math.round(mb)
+  return whole < 1024 ? `${whole} MB` : `${(mb / 1024).toFixed(1)} GB`
+}
+
+// The reason text form. A whole MB value with a fixed locale.
+function ramMbText(mb: number): string {
+  return `${Math.round(mb).toLocaleString('en-US')} MB`
+}
+
+// A limit in GB for a reason text, for example "1 GB" or "1.5 GB".
+function limitGb(mb: number): string {
+  return `${mb / 1024} GB`
 }
 
 const POLL_NAMES: Record<PollPart, string> = {
@@ -105,9 +117,15 @@ export function healthReasons(
     const latest = samples.reduce((a, s) => (s.at >= a.at ? s : a))
     const mb = latest.bifrostRamMb
     if (mb > LIMITS.ramProblemMb) {
-      add('problem', `Bifrost is using ${ramText(mb)} RAM, above the 1.5 GB limit.`)
+      add(
+        'problem',
+        `Bifrost is using ${ramMbText(mb)} RAM, above the ${limitGb(LIMITS.ramProblemMb)} limit.`,
+      )
     } else if (mb > LIMITS.ramWarnMb) {
-      add('warning', `Bifrost is using ${ramText(mb)} RAM, above the 1 GB limit.`)
+      add(
+        'warning',
+        `Bifrost is using ${ramMbText(mb)} RAM, above the ${limitGb(LIMITS.ramWarnMb)} limit.`,
+      )
     }
   }
 
@@ -126,7 +144,7 @@ export function healthReasons(
       const recent = samples.filter(s => s.at >= now - LIMITS.cpuWindowMs)
       if (recent.length > 0) {
         const avg = recent.reduce((a, s) => a + s.bifrostCpuNoTerm, 0) / recent.length
-        const text = `Bifrost is using ${Math.round(avg)}% CPU on average over the last 2 minutes.`
+        const text = `Bifrost is using ${Math.round(avg)}% CPU on average over the last ${LIMITS.cpuWindowMs / 60_000} minutes.`
         if (avg > LIMITS.cpuProblem) add('problem', text)
         else if (avg > LIMITS.cpuWarn) add('warning', text)
       }
@@ -134,7 +152,10 @@ export function healthReasons(
   }
 
   if (input.fpsLow10s) {
-    add('warning', 'The Performance panel ran below 30 fps for 10 seconds.')
+    add(
+      'warning',
+      `The Performance panel ran below ${LIMITS.fpsLow} fps for ${LIMITS.fpsLowSeconds} seconds.`,
+    )
   }
 
   if (input.delayP99Ms !== null) {

@@ -62,31 +62,40 @@ describe('limits', () => {
 })
 
 describe('RAM', () => {
-  test('1024 MB gives no reason, above 1 GB is a warning', () => {
-    expect(reasons({ samples: [sample(NOW, { bifrostRamMb: 1024 })] })).toEqual([])
-    expect(reasons({ samples: [sample(NOW, { bifrostRamMb: 1025 })] })).toEqual([
-      { level: 'warning', text: 'Bifrost is using 1.0 GB RAM, above the 1 GB limit.' },
+  const ram = (mb: number) => reasons({ samples: [sample(NOW, { bifrostRamMb: mb })] })
+  test('1024 MB gives no reason, above 1 GB is one warning', () => {
+    expect(ram(1024)).toEqual([])
+    expect(ram(1025)).toEqual([
+      { level: 'warning', text: 'Bifrost is using 1,025 MB RAM, above the 1 GB limit.' },
     ])
   })
-  test('above 1.5 GB is a problem that replaces the warning', () => {
-    expect(reasons({ samples: [sample(NOW, { bifrostRamMb: 1536 })] })).toHaveLength(1)
-    expect(reasons({ samples: [sample(NOW, { bifrostRamMb: 1537 })] })).toEqual([
-      { level: 'problem', text: 'Bifrost is using 1.5 GB RAM, above the 1.5 GB limit.' },
+  test('at 1.5 GB it is a warning, above it one problem that replaces the warning', () => {
+    expect(ram(1536)).toEqual([
+      { level: 'warning', text: 'Bifrost is using 1,536 MB RAM, above the 1 GB limit.' },
     ])
+    expect(ram(1537)).toEqual([
+      { level: 'problem', text: 'Bifrost is using 1,537 MB RAM, above the 1.5 GB limit.' },
+    ])
+  })
+  test('the OK text rounds before it picks MB or GB', () => {
+    expect(okText(sample(NOW, { bifrostRamMb: 1023.4 }))).toContain('1023 MB')
+    expect(okText(sample(NOW, { bifrostRamMb: 1023.6 }))).toContain('1.0 GB')
   })
 })
 
 describe('growth', () => {
-  test('300 MB an hour gives no reason, above it is a warning', () => {
-    expect(reasons({ samples: ramp(300, 60) })).toEqual([])
-    expect(reasons({ samples: ramp(450, 60) })).toEqual([
-      { level: 'warning', text: "Bifrost's memory is growing by about 450 MB an hour." },
+  test('299 MB an hour gives no reason, 301 is one warning', () => {
+    expect(reasons({ samples: ramp(299, 60) })).toEqual([])
+    expect(reasons({ samples: ramp(301, 60) })).toEqual([
+      { level: 'warning', text: "Bifrost's memory is growing by about 301 MB an hour." },
     ])
   })
-  test('above 800 MB an hour is a problem', () => {
-    expect(reasons({ samples: ramp(800, 60) })[0]?.level).toBe('warning')
-    expect(reasons({ samples: ramp(900, 60) })).toEqual([
-      { level: 'problem', text: "Bifrost's memory is growing by about 900 MB an hour." },
+  test('799 MB an hour is one warning, 801 is one problem', () => {
+    expect(reasons({ samples: ramp(799, 60) })).toEqual([
+      { level: 'warning', text: "Bifrost's memory is growing by about 799 MB an hour." },
+    ])
+    expect(reasons({ samples: ramp(801, 60) })).toEqual([
+      { level: 'problem', text: "Bifrost's memory is growing by about 801 MB an hour." },
     ])
   })
   test('chat terminals do not count in the growth trend', () => {
@@ -111,15 +120,19 @@ describe('CPU', () => {
     Array.from({ length: spanMin + 1 }, (_, i) =>
       sample(NOW - (spanMin - i) * MIN, { bifrostCpuNoTerm: cpu }),
     )
-  test('50% average gives no reason, above it is a warning', () => {
+  test('50% average gives no reason, 51% is one warning', () => {
     expect(reasons({ samples: cpuSamples(50) })).toEqual([])
-    expect(reasons({ samples: cpuSamples(64) })).toEqual([
-      { level: 'warning', text: 'Bifrost is using 64% CPU on average over the last 2 minutes.' },
+    expect(reasons({ samples: cpuSamples(51) })).toEqual([
+      { level: 'warning', text: 'Bifrost is using 51% CPU on average over the last 2 minutes.' },
     ])
   })
-  test('above 100% average is a problem', () => {
-    expect(reasons({ samples: cpuSamples(100) })[0]?.level).toBe('warning')
-    expect(reasons({ samples: cpuSamples(101) })[0]?.level).toBe('problem')
+  test('100% average is one warning, 101% is one problem', () => {
+    expect(reasons({ samples: cpuSamples(100) })).toEqual([
+      { level: 'warning', text: 'Bifrost is using 100% CPU on average over the last 2 minutes.' },
+    ])
+    expect(reasons({ samples: cpuSamples(101) })).toEqual([
+      { level: 'problem', text: 'Bifrost is using 101% CPU on average over the last 2 minutes.' },
+    ])
   })
   test('only the last 2 minutes count', () => {
     const samples = [sample(NOW - 10 * MIN, { bifrostCpuNoTerm: 900 }), ...cpuSamples(2, 3)]
@@ -135,7 +148,9 @@ describe('CPU', () => {
       sample(NOW - 2 * MIN, { bifrostCpuNoTerm: 300 }),
       sample(NOW, { bifrostCpuNoTerm: 300 }),
     ]
-    expect(reasons({ samples: ok })[0]?.level).toBe('problem')
+    expect(reasons({ samples: ok })).toEqual([
+      { level: 'problem', text: 'Bifrost is using 300% CPU on average over the last 2 minutes.' },
+    ])
   })
 })
 
@@ -146,13 +161,17 @@ describe('frame rate and delay', () => {
       { level: 'warning', text: 'The Performance panel ran below 30 fps for 10 seconds.' },
     ])
   })
-  test('delay: 200 ms none, above is a warning, above 1 s a problem', () => {
+  test('delay: 200 ms none, 201 one warning, 1000 one warning, 1001 one problem', () => {
     expect(reasons({ delayP99Ms: 200 })).toEqual([])
-    expect(reasons({ delayP99Ms: 340 })).toEqual([
-      { level: 'warning', text: "Bifrost's main process was slow to respond (up to 340 ms)." },
+    expect(reasons({ delayP99Ms: 201 })).toEqual([
+      { level: 'warning', text: "Bifrost's main process was slow to respond (up to 201 ms)." },
     ])
-    expect(reasons({ delayP99Ms: 1000 })[0]?.level).toBe('warning')
-    expect(reasons({ delayP99Ms: 1001 })[0]?.level).toBe('problem')
+    expect(reasons({ delayP99Ms: 1000 })).toEqual([
+      { level: 'warning', text: "Bifrost's main process was slow to respond (up to 1000 ms)." },
+    ])
+    expect(reasons({ delayP99Ms: 1001 })).toEqual([
+      { level: 'problem', text: "Bifrost's main process was slow to respond (up to 1001 ms)." },
+    ])
   })
 })
 
@@ -191,12 +210,15 @@ describe('polls', () => {
     expect(reasons({ log: withFails('sessions', 4) })).toEqual([
       { level: 'warning', text: "Bifrost couldn't check for sessions 4 times in a row." },
     ])
-    expect(reasons({ log: withFails('reviews', 3) })[0]?.level).toBe('warning')
-    expect(reasons({ log: withFails('reviews', 9) })[0]?.level).toBe('warning')
-    expect(reasons({ log: withFails('reviews', 10) })[0]).toEqual({
-      level: 'problem',
-      text: "Bifrost couldn't check GitHub for reviews 10 times in a row.",
-    })
+    expect(reasons({ log: withFails('reviews', 3) })).toEqual([
+      { level: 'warning', text: "Bifrost couldn't check GitHub for reviews 3 times in a row." },
+    ])
+    expect(reasons({ log: withFails('reviews', 9) })).toEqual([
+      { level: 'warning', text: "Bifrost couldn't check GitHub for reviews 9 times in a row." },
+    ])
+    expect(reasons({ log: withFails('reviews', 10) })).toEqual([
+      { level: 'problem', text: "Bifrost couldn't check GitHub for reviews 10 times in a row." },
+    ])
   })
   test('each part has its own friendly name', () => {
     expect(reasons({ log: withFails('account-usage', 3) })[0]?.text).toContain(
