@@ -394,7 +394,7 @@ Voice: the voice design defines the contract between Reviews and `write-as-me`. 
 
 - Use the `gh` CLI for all GitHub calls. Add no GitHub library.
 - Tests never call the real GitHub. Smoke tests use a fake `gh`, the same way they use a fake `claude`.
-- A live test against GitHub needs the user's OK first, and it uses a test repository that he names.
+- No test repository and no dry-run mode (user decision, 2026-11-09). The tests use a fake `gh`. The first real run is on the user's own PRs, after he turns on "Handle comments on my PRs automatically".
 - Specs, plans, comments and commit bodies use ASD-STE100. The text in the app is plain, friendly English.
 - All rules of the project `CLAUDE.md` apply.
 

@@ -61,14 +61,16 @@ User token scopes (no bot scopes):
 
 | Scope | Use |
 |---|---|
-| `channels:read`, `groups:read`, `im:read`, `mpim:read` | List your channels, private channels, DMs and group DMs. |
-| `channels:history`, `groups:history`, `im:history`, `mpim:history` | Read their messages. |
+| `channels:read`, `groups:read` | List your channels and private channels. |
+| `channels:history`, `groups:history` | Read their messages. |
 | `chat:write` | Send a message as you. |
 | `users:read` | Show the names of the senders. |
 
 App-level token: `connections:write` (the Socket Mode connection).
 
-User events: `message.channels`, `message.groups`, `message.im`, `message.mpim`.
+User events: `message.channels`, `message.groups`.
+
+Bifrost never reads or sends DMs or group DMs (user decision, 2026-11-09). The app has no `im` or `mpim` scope and no DM events. Bifrost also refuses each conversation ID that starts with `D`, and sends only to the channels that `conversations.list` gives for the types `public_channel` and `private_channel`.
 
 ## Limits
 
