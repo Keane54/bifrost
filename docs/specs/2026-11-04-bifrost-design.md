@@ -888,7 +888,7 @@ Cmd+Ctrl+F keeps its macOS meaning. In Bifrost, it toggles Fullscreen (section 8
 | Row flash | On | A yellow box or red box flashes until it clears. |
 | macOS notification | On | A new box when Bifrost is not in focus. |
 | Sound | On | A new red box. |
-| Review request notification | On | A new direct request for your review, when Bifrost is not in focus. A click opens the Reviews panel on the To review tab. Many new requests in one poll give one summary. See the Reviews design. |
+| Review request notification | The macOS notification setting | A new direct request for your review, when Bifrost is not in focus. It is not a separate setting: the macOS notification setting turns it on and off. A click opens the Reviews panel on the To review tab. Many new requests in one poll give one summary. See the Reviews design. |
 
 Click a notification to select the session and open its chat window. This also works when the Bifrost window is closed. Bifrost opens the window and keeps the session until the page has loaded. Then it opens the session.
 
@@ -1026,7 +1026,7 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Display mode | Window |
 | Keys | Section 9.4 |
 | Live details | Not installed. The section has Install, Turn on, Turn off and Remove (section 11.2). |
-| Watch GitHub | Off. The first turn-on asks you to confirm. |
+| Watch GitHub | Off. Each turn-on asks you to confirm. |
 | Handle comments on my PRs automatically | On. It has no effect in R1. |
 | Show team requests | On |
 | Maximum PR sessions | 3 |
