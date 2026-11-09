@@ -127,3 +127,15 @@ describe('countFailed', () => {
     expect(countFailed(contexts)).toBe(7)
   })
 })
+
+describe('POLL_QUERY comment selections', () => {
+  it('asks for pullRequestReview only inside reviewThreads', () => {
+    const at = POLL_QUERY.indexOf('reviewThreads(')
+    const top = POLL_QUERY.indexOf('comments(last: 100)')
+    expect(at).toBeGreaterThan(-1)
+    expect(top).toBeGreaterThan(at)
+    expect(POLL_QUERY.slice(0, at)).not.toContain('pullRequestReview')
+    expect(POLL_QUERY.slice(top)).not.toContain('pullRequestReview')
+    expect(POLL_QUERY.slice(at, top)).toContain('pullRequestReview { id }')
+  })
+})

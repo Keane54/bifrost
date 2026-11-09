@@ -12,8 +12,11 @@ import type {
 
 const SEARCH_OPEN = 'is:pr is:open archived:false'
 
+// A thread reads 20 comments. With 50, GitHub refuses the query: more than 500,000 nodes.
 const AUTHOR = 'author { login __typename } authorAssociation'
-const COMMENT_FIELDS = `id databaseId ${AUTHOR} body createdAt pullRequestReview { id }`
+// IssueComment (top level) has no pullRequestReview. Only a thread comment has it.
+const COMMENT_FIELDS = `id databaseId ${AUTHOR} body createdAt`
+const THREAD_COMMENT_FIELDS = `${COMMENT_FIELDS} pullRequestReview { id }`
 
 const PR_FRAGMENT = `
 fragment PrFields on PullRequest {
@@ -51,9 +54,9 @@ fragment PrFields on PullRequest {
       isResolved
       path
       line
-      comments(first: 50) {
+      comments(first: 20) {
         pageInfo { hasNextPage }
-        nodes { ${COMMENT_FIELDS} }
+        nodes { ${THREAD_COMMENT_FIELDS} }
       }
     }
   }
