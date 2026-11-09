@@ -1,11 +1,29 @@
+# Dependencies and build output
 node_modules/
 dist/
 out/
-.DS_Store
-*.log*
-.m0-sandbox/
-resources/live-mod/.claude-plugin/types/
-resources/live-mod/tsconfig.json
+*.tsbuildinfo
+
+# Test output
 test-results/
 playwright-report/
-*.tsbuildinfo
+
+# Local folders. Only this Mac uses them.
+.m0-sandbox/
+.worktrees/
+.superpowers/
+.claude/settings.local.json
+.claude/worktrees/
+.claude/.cc-writes/
+
+# Secrets
+.env
+.env.*
+
+# Files that Claude Code can write into the live mod folder
+resources/live-mod/.claude-plugin/types/
+resources/live-mod/tsconfig.json
+
+# Other
+.DS_Store
+*.log*

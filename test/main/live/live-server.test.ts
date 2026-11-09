@@ -166,7 +166,12 @@ describe('createLiveServer', () => {
     const dir = await tempDir()
     const { server, socketPath } = make(dir, onEvent)
     mkdirSync(join(dir, 'run'), { mode: 0o700 })
-    const other = net.createServer(s => s.end('hi'))
+    // The probe closes its connection at once. On Linux, this socket then gets ECONNRESET. On
+    // macOS, it gets an end of file. The test ignores the error, because only the answer matters.
+    const other = net.createServer(s => {
+      s.on('error', () => {})
+      s.end('hi')
+    })
     others.push(other)
     await new Promise(r => other.listen(socketPath, () => r(null)))
     expect(await server.start()).toEqual({
