@@ -1046,7 +1046,7 @@ export function attachWindow(win: BrowserWindow): void {
   // A new page has no recorder. The old page cannot say that it ended.
   resetOnPageEnd(win, keyRecording)
   win.webContents.on('did-navigate', () => {
-    page.end()
+    endPage()
   })
   // Apply the Interface scale to each page that loads.
   win.webContents.on('dom-ready', () => {
@@ -1057,14 +1057,14 @@ export function attachWindow(win: BrowserWindow): void {
   win.webContents.on('render-process-gone', (_e, details) => {
     if (currentWindow === win) unloadPendingOpens()
     if (details.reason !== 'clean-exit') healthLog?.crash('window', details.reason)
-    page.end()
+    endPage()
   })
   win.on('closed', () => {
     if (currentWindow === win) {
       currentWindow = null
       unloadPendingOpens()
     }
-    page.end()
+    endPage()
   })
   // A notification click while no page is loaded waits for the next load (D13).
   win.webContents.on('did-start-loading', () => {
@@ -1078,6 +1078,13 @@ export function attachWindow(win: BrowserWindow): void {
   })
 }
 
+// The page ended. Close its PTYs. The Performance monitor then stops its fast checks, because
+// no panel shows until the next page reports (design section 7).
+function endPage(): void {
+  page.end()
+  perfMonitor?.pageGone()
+}
+
 // No page is loaded now. A notification click waits for the next page.
 function unloadPendingOpens(): void {
   pendingOpen.unload()
@@ -1086,7 +1093,7 @@ function unloadPendingOpens(): void {
 
 // Close all PTYs. Call it when the app quits.
 export function closeAllPtys(): void {
-  page.end()
+  endPage()
 }
 
 // Stop the registry service, the server of Live details, the pollers, the Performance monitor and

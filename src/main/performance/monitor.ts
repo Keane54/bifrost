@@ -117,6 +117,10 @@ export interface PerformanceMonitor {
   current(): PerformanceSnapshot
   // The renderer reports the panel and the open chat panels on each change (P2, P9).
   view(v: PanelView): void
+  // The page went away: a reload, a renderer crash or a closed window. The page cannot report
+  // that, so ipc.ts calls this. No panel shows, and the chat panels are not known until the next
+  // report. The tick goes back to 15 s.
+  pageGone(): void
   // The renderer reports the frame rate once a second while the panel shows and has focus.
   fps(value: number): void
 }
@@ -470,6 +474,31 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     }
   }
 
+  // Apply a new state of the panel. The caller sets reported first.
+  function setView(v: PanelView): void {
+    const opened = v.showing && !showing
+    const closed = !v.showing && showing
+    // A change of showing or focus starts a new count of the frame rate.
+    if (v.showing !== showing || v.focused !== focused) {
+      st.fpsReports = []
+      st.fpsFrom = null
+    }
+    showing = v.showing
+    focused = v.focused
+    chatPanels = new Set(v.chatPanels)
+    if (opened) st.linkDue = true
+    // The rates stop. The next showing reads the bytes at its first tick.
+    if (closed) {
+      st.rates = null
+      st.lastBytes = null
+      st.netAt = NEVER
+    }
+    if (!running) return
+    trackOrphans(deps.now(), deps.ptys())
+    // During a tick, the end of the tick sets the timer.
+    if ((opened || closed) && !busy) schedule()
+  }
+
   async function tick(): Promise<void> {
     if (!running || busy) return
     busy = true
@@ -533,6 +562,11 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       st.fpsReports.push({ at: now, value })
       st.fpsReports = st.fpsReports.filter(r => r.at >= now - LIMITS.fpsLowSeconds * 1000)
     },
+    // Before the first report of a page, no chat PTY is an orphan (P2).
+    pageGone() {
+      reported = false
+      setView({ chatPanels: [], focused: false, showing: false })
+    },
     start() {
       if (running) return
       running = true
@@ -550,28 +584,8 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       st = freshState(showing)
     },
     view(v) {
-      const opened = v.showing && !showing
-      const closed = !v.showing && showing
-      // A change of showing or focus starts a new count of the frame rate.
-      if (v.showing !== showing || v.focused !== focused) {
-        st.fpsReports = []
-        st.fpsFrom = null
-      }
-      showing = v.showing
-      focused = v.focused
-      chatPanels = new Set(v.chatPanels)
       reported = true
-      if (opened) st.linkDue = true
-      // The rates stop. The next showing reads the bytes at its first tick.
-      if (closed) {
-        st.rates = null
-        st.lastBytes = null
-        st.netAt = NEVER
-      }
-      if (!running) return
-      trackOrphans(deps.now(), deps.ptys())
-      // During a tick, the end of the tick sets the timer.
-      if ((opened || closed) && !busy) schedule()
+      setView(v)
     },
   }
 }

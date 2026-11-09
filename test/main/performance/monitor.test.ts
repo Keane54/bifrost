@@ -1025,6 +1025,43 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
+  it('pageGone goes back to 15 s ticks with no probe, no gh call and no network command', async () => {
+    const t = setup()
+    t.world.ptys = [{ pid: 200, viewId: chat(uuid(1)) }]
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    t.monitor.view({ ...SHOW, chatPanels: [chat(uuid(1))] })
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    t.monitor.fps(60)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    expect(t.probe).toHaveBeenCalledTimes(2)
+    expect(t.ghRateLimit).toHaveBeenCalledTimes(1)
+    expect(t.netCalls()).toBeGreaterThan(0)
+    expect(t.monitor.current().bifrost?.fps).toBe(60)
+    // The window closes. The renderer sends no report for that.
+    const ticks = t.emitted.length
+    const net = t.netCalls()
+    t.monitor.pageGone()
+    await vi.advanceTimersByTimeAsync(TICK_MS - 1)
+    expect(t.emitted).toHaveLength(ticks)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(t.emitted).toHaveLength(ticks + 1)
+    expect(t.monitor.current().bifrost?.fps).toBeNull()
+    expect(t.monitor.current().network).toMatchObject({ downBps: null, upBps: null })
+    await vi.advanceTimersByTimeAsync(10 * MIN)
+    expect(t.emitted).toHaveLength(ticks + 1 + (10 * MIN) / TICK_MS)
+    expect(t.netCalls()).toBe(net)
+    expect(t.probe).toHaveBeenCalledTimes(2)
+    expect(t.ghRateLimit).toHaveBeenCalledTimes(1)
+    // The chat panels are not known until the next report. So the chat PTY is no orphan.
+    expect(orphan(t)).toBe(false)
+    // The next report of a new page works as before.
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    expect(t.probe).toHaveBeenCalledTimes(4)
+    t.monitor.stop()
+  })
+
   it('a view report during a busy tick moves the next tick to the new interval', async () => {
     const t = setup()
     const releasePs = holdNext(t, PS)
