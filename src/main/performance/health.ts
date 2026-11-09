@@ -36,7 +36,8 @@ export interface HealthInput {
   now: number
   samples: Sample[]
   fpsLow10s: boolean
-  delayP99Ms: number | null
+  // The longest main process delay of the last 60 s window in ms.
+  delayMs: number | null
   log: HealthLogView
   online: boolean
   // The terminals with no chat window that the monitor found older than 60 s.
@@ -158,11 +159,11 @@ export function healthReasons(
     )
   }
 
-  if (input.delayP99Ms !== null) {
-    const ms = Math.round(input.delayP99Ms)
+  if (input.delayMs !== null) {
+    const ms = Math.round(input.delayMs)
     const text = `Bifrost's main process was slow to respond (up to ${ms} ms).`
-    if (input.delayP99Ms > LIMITS.delayProblemMs) add('problem', text)
-    else if (input.delayP99Ms > LIMITS.delayWarnMs) add('warning', text)
+    if (input.delayMs > LIMITS.delayProblemMs) add('problem', text)
+    else if (input.delayMs > LIMITS.delayWarnMs) add('warning', text)
   }
 
   for (const crash of log.crashes) {

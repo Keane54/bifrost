@@ -4,6 +4,7 @@ import {
   checkFps,
   checkView,
   createLoopDelay,
+  DELAY_RESOLUTION_MS,
   DELAY_WINDOW_MS,
   GH_LIMIT_FAILED,
   GH_LIMIT_LOGGED_OUT,
@@ -104,29 +105,59 @@ describe('probeUrl', () => {
 })
 
 describe('createLoopDelay', () => {
-  it('gives the 99th percentile of the last full 60 s window in ms', async () => {
+  // A fake of the Node event loop delay histogram. Its values are in ns. Each value is the time
+  // between two runs of the timer: the resolution plus the delay.
+  function fakeHistogram() {
     const h = {
       count: 0,
       disable: vi.fn(),
       enable: vi.fn(),
-      percentile: vi.fn((_p: number) => 250e6),
+      max: 0,
+      // A 1 s freeze every 4 s at a 10 ms resolution gave this 99th percentile: 11.1 ms.
+      percentile: vi.fn((_p: number) => 11.1e6),
       reset: vi.fn(() => {
         h.count = 0
+        h.max = 0
       }),
     }
-    const delay = createLoopDelay(h)
+    return h
+  }
+
+  it('makes the histogram with a 50 ms resolution', () => {
+    const h = fakeHistogram()
+    const make = vi.fn((_options: { resolution: number }) => h)
+    const delay = createLoopDelay(make)
+    expect(DELAY_RESOLUTION_MS).toBe(50)
+    expect(make).toHaveBeenCalledWith({ resolution: DELAY_RESOLUTION_MS })
     expect(h.enable).toHaveBeenCalledTimes(1)
-    h.count = 5000
+    delay.stop()
+  })
+
+  it('gives the longest delay of the last full 60 s window, without the resolution', async () => {
+    const h = fakeHistogram()
+    const delay = createLoopDelay(() => h)
+    // Repeated 1 s freezes. The longest time between two timer runs is 1050 ms.
+    h.count = 1000
+    h.max = 1050e6
     // The first window has not ended.
-    expect(delay.p99()).toBeNull()
+    expect(delay.longestMs()).toBeNull()
     await vi.advanceTimersByTimeAsync(DELAY_WINDOW_MS)
-    expect(delay.p99()).toBe(250)
-    expect(h.percentile).toHaveBeenCalledWith(99)
+    expect(delay.longestMs()).toBe(1000)
+    expect(h.percentile).not.toHaveBeenCalled()
     expect(h.reset).toHaveBeenCalledTimes(1)
+    // A quiet window. A value below the resolution gives 0, never less.
+    h.count = 1200
+    h.max = 49e6
+    await vi.advanceTimersByTimeAsync(DELAY_WINDOW_MS)
+    expect(delay.longestMs()).toBe(0)
+    h.count = 1200
+    h.max = 62e6
+    await vi.advanceTimersByTimeAsync(DELAY_WINDOW_MS)
+    expect(delay.longestMs()).toBe(12)
     // A window with no data gives null.
     await vi.advanceTimersByTimeAsync(DELAY_WINDOW_MS)
-    expect(delay.p99()).toBeNull()
-    expect(h.reset).toHaveBeenCalledTimes(2)
+    expect(delay.longestMs()).toBeNull()
+    expect(h.reset).toHaveBeenCalledTimes(4)
     delay.stop()
     expect(h.disable).toHaveBeenCalledTimes(1)
     expect(vi.getTimerCount()).toBe(0)

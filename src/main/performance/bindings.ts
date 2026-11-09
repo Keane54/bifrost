@@ -87,36 +87,45 @@ export async function probeUrl(
 }
 
 // The part of the Node event loop delay histogram that the monitor uses. Its values are in ns.
+// Each value is the time between two runs of its timer: the resolution plus the delay.
 export interface DelayHistogram {
   readonly count: number
-  percentile(p: number): number
+  readonly max: number
   reset(): void
   enable(): unknown
   disable(): unknown
 }
 
-// The main process delay of ruling 8.
+// The timer interval of the histogram. A longer interval costs less CPU. A delay check of 200 ms
+// does not need a finer value.
+export const DELAY_RESOLUTION_MS = 50
+
+// The main process delay (design section 6).
 export interface LoopDelay {
-  // The 99th percentile of the last full window in ms. null before the end of the first window,
-  // and for a window with no data.
-  p99(): number | null
+  // The longest delay of the last full window in ms, without the timer interval. null before
+  // the end of the first window, and for a window with no data.
+  longestMs(): number | null
   stop(): void
 }
 
-// Enable the histogram. At the end of each 60 s window, keep its 99th percentile and reset it
-// (ruling 8). stop clears the timer and disables the histogram.
-export function createLoopDelay(h: DelayHistogram): LoopDelay {
+// Make and enable the histogram with a 50 ms resolution. At the end of each 60 s window, keep
+// its longest delay and reset it. The longest delay shows a repeated freeze that a percentile
+// can hide. stop clears the timer and disables the histogram.
+export function createLoopDelay(
+  make: (options: { resolution: number }) => DelayHistogram,
+): LoopDelay {
+  const h = make({ resolution: DELAY_RESOLUTION_MS })
   let last: number | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
   h.enable()
   const roll = (): void => {
-    last = h.count > 0 ? h.percentile(99) / NS_PER_MS : null
+    last = h.count > 0 ? Math.max(0, h.max / NS_PER_MS - DELAY_RESOLUTION_MS) : null
     h.reset()
     timer = setTimeout(roll, DELAY_WINDOW_MS)
   }
   timer = setTimeout(roll, DELAY_WINDOW_MS)
   return {
-    p99: () => last,
+    longestMs: () => last,
     stop() {
       if (timer === null) return
       clearTimeout(timer)

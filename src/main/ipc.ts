@@ -410,14 +410,14 @@ function startPerformance(
   gh: Gh,
   health: HealthLog,
 ): void {
-  const delay = createLoopDelay(monitorEventLoopDelay())
+  const delay = createLoopDelay(monitorEventLoopDelay)
   loopDelay = delay
   const homeFolder = home?.home ?? homedir()
   const monitor = createPerformanceMonitor({
     appMetrics: () => app.getAppMetrics(),
     clonesPath: join(bifrostHome, 'reviews', 'repos'),
     cpus: () => cpus(),
-    delayP99: () => delay.p99(),
+    delayMs: () => delay.longestMs(),
     emit: snapshot => send('performance:update', snapshot),
     exec: execFile,
     exists: path =>

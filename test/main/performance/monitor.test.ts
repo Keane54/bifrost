@@ -209,7 +209,7 @@ function setup(opts: { network?: boolean; clonesPath?: string | null } = {}) {
     },
     clonesPath: opts.clonesPath ?? null,
     cpus: () => world.cpus,
-    delayP99: () => world.delay,
+    delayMs: () => world.delay,
     emit: s => {
       if (world.emitThrows) throw new Error('no window')
       emitted.push(s)

@@ -100,8 +100,8 @@ export interface MonitorDeps {
   // The folder of the Reviews clones. null reads no size.
   clonesPath: string | null
   health: HealthLog
-  // The 99th percentile of the main process delay in ms, or null.
-  delayP99(): number | null
+  // The longest main process delay of the last 60 s window in ms, or null (design section 6).
+  delayMs(): number | null
   now(): number
   emit(s: PerformanceSnapshot): void
   // False in a test home: no probes and no gh call.
@@ -422,9 +422,9 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
   }): PerformanceSnapshot {
     const { now, use, reviewsLimit } = t
     const online = deps.online()
-    const delay = deps.delayP99()
+    const delay = deps.delayMs()
     const reasons = healthReasons({
-      delayP99Ms: delay,
+      delayMs: delay,
       fpsLow10s: fpsLow(now),
       log: deps.health.view(now),
       now,

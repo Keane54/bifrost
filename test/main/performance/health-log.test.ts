@@ -111,7 +111,7 @@ test('failures while offline give no reason at the reconnect', () => {
   }
   online = true
   const input = {
-    delayP99Ms: null,
+    delayMs: null,
     fpsLow10s: false,
     log: log.view(START),
     now: START,

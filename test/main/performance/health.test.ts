@@ -30,7 +30,7 @@ function sample(at: number, over: Partial<Sample> = {}): Sample {
 
 function input(over: Partial<HealthInput> = {}): HealthInput {
   return {
-    delayP99Ms: null,
+    delayMs: null,
     fpsLow10s: false,
     log: emptyLog(),
     now: NOW,
@@ -162,14 +162,14 @@ describe('frame rate and delay', () => {
     ])
   })
   test('delay: 200 ms none, 201 one warning, 1000 one warning, 1001 one problem', () => {
-    expect(reasons({ delayP99Ms: 200 })).toEqual([])
-    expect(reasons({ delayP99Ms: 201 })).toEqual([
+    expect(reasons({ delayMs: 200 })).toEqual([])
+    expect(reasons({ delayMs: 201 })).toEqual([
       { level: 'warning', text: "Bifrost's main process was slow to respond (up to 201 ms)." },
     ])
-    expect(reasons({ delayP99Ms: 1000 })).toEqual([
+    expect(reasons({ delayMs: 1000 })).toEqual([
       { level: 'warning', text: "Bifrost's main process was slow to respond (up to 1000 ms)." },
     ])
-    expect(reasons({ delayP99Ms: 1001 })).toEqual([
+    expect(reasons({ delayMs: 1001 })).toEqual([
       { level: 'problem', text: "Bifrost's main process was slow to respond (up to 1001 ms)." },
     ])
   })
