@@ -17,6 +17,7 @@ import {
 import { checkAliasRequest } from '../shared/alias'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
+import type { ToReviewRow } from '../shared/reviews'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
@@ -70,6 +71,16 @@ import { SessionRegistry } from './registry/registry'
 import { RegistryService, SERVICE_TIMING, type ServiceDeps } from './registry/service'
 import { openStore } from './registry/store-file'
 import { readProcessTable } from './registry/terminal-app'
+import { createGh } from './reviews/gh'
+import { openReviewsStateStore, reviewsStateFile } from './reviews/state-store'
+import {
+  checkPrKey,
+  createReviewsWatcher,
+  type ReviewsWatcher,
+  requestNotice,
+  urlToOpen,
+  whileOn,
+} from './reviews/watcher'
 import { createServiceMonitor, type ServiceMonitor, serviceList } from './service-status/monitor'
 import { checkService, createFetchJson, SERVICES } from './service-status/statuspage'
 import { loginItemPatch, type SettingsEffect, settingsEffects } from './settings/effects'
@@ -136,6 +147,15 @@ let serviceMonitor: ServiceMonitor | null = null
 // The account usage poller (spec 8.8). It runs only while the setting accountUsage is on. A test
 // home creates none, so a test never reads the Keychain.
 let accountUsage: AccountUsagePoller | null = null
+
+// The Reviews watcher (Reviews design). registerIpc makes it after the Reviews state opens. It also
+// runs in a test home (R1-4). It polls only while Watch GitHub is on.
+let reviewsWatcher: ReviewsWatcher | null = null
+// A click on a review request notification while no page is loaded waits for the next page, as
+// pendingOpen does for a session. PendingOpen keeps one ID. The Reviews open needs no ID, so it
+// keeps this fixed one.
+const pendingReviewsOpen = new PendingOpen()
+const REVIEWS_OPEN = 'reviews'
 
 const fetchJson = createFetchJson((url, init) => net.fetch(url, init))
 
@@ -239,8 +259,12 @@ function runSettingsEffect(effect: SettingsEffect): void {
       else accountUsage?.stop()
       return
     case 'reviews':
+      if (effect.on) reviewsWatcher?.start()
+      else reviewsWatcher?.stop()
+      return
     case 'reviews-view':
-      // Task 5 of the Reviews plan fills these two effects.
+      // A change of Show team requests or of the ignore list needs no gh call.
+      reviewsWatcher?.rebuild()
       return
   }
 }
@@ -277,6 +301,55 @@ async function openSettings(file: string): Promise<SettingsStore> {
   // keys.
   menuRebuild?.()
   return store
+}
+
+// Show a refused notification one time in the Event log, as a plain line (R12).
+function logRefusedNotification(): void {
+  const line = eventLog.notice(NOTIFICATION_REFUSED, Date.now())
+  if (line) eventBatcher.push([line])
+}
+
+// A new direct review request (R1-5). The notification shows only when the setting is on and the
+// window is not focused, as for a box. A click shows the window and opens the Reviews panel.
+function notifyReviewRequest(row: ToReviewRow): void {
+  if (!getSettings().notifications || (currentWindow?.isFocused() ?? false)) return
+  showNotification(
+    { ...requestNotice(row), sessionId: null },
+    () => {
+      showWindowFn?.()
+      // With no loaded page, the open waits for the did-finish-load of the next page.
+      if (pendingReviewsOpen.click(REVIEWS_OPEN) !== null) send('reviews:open')
+    },
+    logRefusedNotification,
+  )
+}
+
+// Open the Reviews state and make the watcher. Then start it when Watch GitHub is on. After this,
+// the reviews effect starts and stops it. The state goes to bifrostHome, so a test home uses its
+// own state (R1-4). gh gets the login-shell env. In a test home, that is the env of the process,
+// so the PATH of the smoke test decides which gh runs.
+async function startReviews(
+  bifrostHome: string,
+  loginEnv: Promise<Record<string, string>>,
+  settingsReady: Promise<SettingsStore>,
+): Promise<ReviewsWatcher> {
+  const [store, settings] = await Promise.all([
+    openReviewsStateStore(reviewsStateFile(bifrostHome)),
+    settingsReady,
+  ])
+  const watcher = createReviewsWatcher({
+    emit: snapshot => send('reviews:update', snapshot),
+    gh: createGh({ env: async () => childEnv(await loginEnv, { pty: false }), exec: execFile }),
+    log: message => console.error(message),
+    notifyRequest: notifyReviewRequest,
+    now: () => Date.now(),
+    settings: () => settings.get(),
+    store,
+  })
+  reviewsWatcher = watcher
+  // The app can quit before the state opens. Then do not start the watcher.
+  if (!serviceStopped && settings.get().reviewsWatch) watcher.start()
+  return watcher
 }
 
 // Load the store and start the registry service.
@@ -328,11 +401,7 @@ async function startService(
           const now = pendingOpen.click(sessionId)
           if (now !== null) send('alerts:open', now)
         },
-        () => {
-          // Show a refused notification one time in the Event log, as a plain line (R12).
-          const line = eventLog.notice(NOTIFICATION_REFUSED, now())
-          if (line) eventBatcher.push([line])
-        },
+        logRefusedNotification,
       ),
     now,
     playSound: () => {
@@ -433,6 +502,7 @@ export function registerIpc(home: TestHome | null = null): void {
   // The settings store opens one time. Each user gets the same store (ruling C6).
   const settings = openSettings(join(app.getPath('userData'), 'settings.json'))
   const service = startService(run, settings)
+  const reviews = startReviews(paths.bifrostHome, loginEnv, settings)
   ipcMain.handle('settings:get', e => fromPage(e, async () => (await settings).get()))
   // The key recorder starts or ends. A value that is not a boolean is refused.
   ipcMain.handle('settings:recording', (e, on: unknown) =>
@@ -489,6 +559,22 @@ export function registerIpc(home: TestHome | null = null): void {
     fromPage(e, async () => {
       accountUsage?.requestPoll()
     }),
+  )
+  // The Reviews panel. The page sends a PR key or nothing. Each call except the snapshot refuses
+  // while Watch GitHub is off. Open on GitHub opens only a URL that gh gave and that starts with
+  // https://github.com/.
+  ipcMain.handle('reviews:snapshot', e => fromPage(e, async () => (await reviews).current()))
+  ipcMain.handle('reviews:refresh', e =>
+    fromPage(e, async () => whileOn(await reviews).requestPoll()),
+  )
+  ipcMain.handle('reviews:pause', (e, key: unknown) =>
+    fromPage(e, async () => whileOn(await reviews).pause(checkPrKey(key))),
+  )
+  ipcMain.handle('reviews:end-pause', (e, key: unknown) =>
+    fromPage(e, async () => whileOn(await reviews).endPause(checkPrKey(key))),
+  )
+  ipcMain.handle('reviews:open-pr', (e, key: unknown) =>
+    fromPage(e, async () => shell.openExternal(urlToOpen(await reviews, key))),
   )
   ipcMain.handle('registry:set-alias', (e, sessionId: unknown, name: unknown) =>
     fromPage(e, async () => {
@@ -855,25 +941,32 @@ export function attachWindow(win: BrowserWindow): void {
     if (currentWindow === win) applyZoom()
   })
   win.webContents.on('render-process-gone', () => {
-    if (currentWindow === win) pendingOpen.unload()
+    if (currentWindow === win) unloadPendingOpens()
     page.end()
   })
   win.on('closed', () => {
     if (currentWindow === win) {
       currentWindow = null
-      pendingOpen.unload()
+      unloadPendingOpens()
     }
     page.end()
   })
   // A notification click while no page is loaded waits for the next load (D13).
   win.webContents.on('did-start-loading', () => {
-    if (currentWindow === win) pendingOpen.unload()
+    if (currentWindow === win) unloadPendingOpens()
   })
   win.webContents.on('did-finish-load', () => {
     if (currentWindow !== win) return
     const sessionId = pendingOpen.load()
     if (sessionId !== null) send('alerts:open', sessionId)
+    if (pendingReviewsOpen.load() !== null) send('reviews:open')
   })
+}
+
+// No page is loaded now. A notification click waits for the next page.
+function unloadPendingOpens(): void {
+  pendingOpen.unload()
+  pendingReviewsOpen.unload()
 }
 
 // Close all PTYs. Call it when the app quits.
@@ -881,7 +974,8 @@ export function closeAllPtys(): void {
   page.end()
 }
 
-// Stop the registry service and the server of Live details. Call it when the app quits.
+// Stop the registry service, the server of Live details and the pollers. Call it when the app
+// quits.
 export function stopRegistry(): void {
   serviceStopped = true
   liveService?.stop()
@@ -889,4 +983,5 @@ export function stopRegistry(): void {
   liveControl?.stop()
   serviceMonitor?.stop()
   accountUsage?.stop()
+  reviewsWatcher?.stop()
 }
