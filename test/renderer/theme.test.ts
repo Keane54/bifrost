@@ -235,7 +235,7 @@ describe('theme', () => {
     expect(bad).toEqual([])
   })
 
-  // the user, 2026-11-06: each frame very slightly blurs the animated background behind it. A chat
+  // User decision, 2026-11-06: each frame very slightly blurs the animated background behind it. A chat
   // window and the other panels use the same light blur.
   it('gives each frame one light backdrop blur of 6 to 8 px', () => {
     expect(source('wm/Frame.tsx').match(/backdrop-blur-[\w[\]-]+/g)).toEqual([
@@ -344,7 +344,7 @@ describe('theme', () => {
     expect(CSS).not.toMatch(/saira|font-narrow/i)
   })
 
-  // the user, 2026-11-06: purple and pink must not show on the Overview. Other panels may use them.
+  // User decision, 2026-11-06: purple and pink must not show on the Overview. Other panels may use them.
   // So this check covers only the families that the Overview uses.
   it('the project, tab and prio tokens have no purple or pink', () => {
     // Each token of the families is hex, so the check reads all of them.
@@ -354,7 +354,7 @@ describe('theme', () => {
     expect(hueProblems(CSS, OVERVIEW_FAMILIES, [PURPLE_HUES, PINK_HUES])).toEqual([])
   })
 
-  // the user, 2026-11-06: the watch colours tint and stripe Overview rows. So they have no purple.
+  // User decision, 2026-11-06: the watch colours tint and stripe Overview rows. So they have no purple.
   // Pink is allowed for them.
   it('the watch tokens have no purple, and may have pink', () => {
     const all = [...CSS.matchAll(/--color-watch[\w-]*:/g)]
@@ -385,7 +385,7 @@ describe('theme', () => {
     ])
   })
 
-  // the user, 2026-11-05: the yellow box and the red box stay clearly visible on every watched row.
+  // User decision, 2026-11-05: the yellow box and the red box stay clearly visible on every watched row.
   it('the boxes stay clearly visible on each watched row', () => {
     const rowOpacity = watchRowOpacity()
     const surfaces: [string, string][] = []
@@ -416,7 +416,7 @@ describe('theme', () => {
     }
   })
 
-  // the user, 2026-11-05: dark red was too close to red (Task 17, contrast 1.34:1).
+  // User decision, 2026-11-05: dark red was too close to red (Task 17, contrast 1.34:1).
   it('the stripes of dark red and red differ clearly', () => {
     expect(token('watch-dark-red')).toBe('#7f1d1d')
     expect(contrast(token('watch-dark-red'), token('watch-red'))).toBeGreaterThanOrEqual(2)
@@ -435,7 +435,7 @@ describe('theme', () => {
     expect(source('watch/WatchlistPanel.tsx')).toContain('WATCH_SWATCH[row.watch.colour]')
   })
 
-  // the user, 2026-11-05: reds, ambers and yellows can be Overview colours. The box red and the box
+  // User decision, 2026-11-05: reds, ambers and yellows can be Overview colours. The box red and the box
   // yellow stay reserved shades.
   it('each project, tab, watch, prio, svc, usage and ctx colour differs clearly from the box colours', () => {
     const tokens = [
@@ -535,7 +535,7 @@ function terminalSurfaces(): [string, string][] {
   return surfaces
 }
 
-// the user, 2026-11-06: the chat terminal has no black background. The frame colour and its blur show
+// User decision, 2026-11-06: the chat terminal has no black background. The frame colour and its blur show
 // through, so the Panel transparency setting applies to chat windows too.
 describe('the chat terminal background', () => {
   // The default text colour of xterm.js, and a mid grey as the dim text of Claude Code.
@@ -569,7 +569,7 @@ describe('the chat terminal background', () => {
   })
 })
 
-// the user, 2026-11-09: the scroll bar of a chat window is clearly visible. xterm.js reads the slider
+// User decision, 2026-11-09: the scroll bar of a chat window is clearly visible. xterm.js reads the slider
 // colours of its theme from these tokens. It reads a colour with an alpha only as hex or as
 // rgba() with commas, so the tokens are hex.
 describe('the chat terminal scroll bar', () => {

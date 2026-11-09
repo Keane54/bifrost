@@ -357,7 +357,7 @@ function extremes(): { brightest: string; darkest: string } {
   return extremesCache
 }
 
-// the user, 2026-11-06: no gaps. Each point of the window shows a colour of the mix at each time. The
+// User decision, 2026-11-06: no gaps. Each point of the window shows a colour of the mix at each time. The
 // darkest point has a luminance of 0.008 or more (the base colour --color-bg has 0.003).
 const DARKEST_LUMINANCE = 0.008
 
@@ -410,7 +410,7 @@ describe('the background layer', () => {
     expect(all.join('\n')).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
   })
 
-  // the user, 2026-11-06: no gaps between the fields. So each field is larger than the window.
+  // User decision, 2026-11-06: no gaps between the fields. So each field is larger than the window.
   it('makes each field larger than the window: 120 to 160%, with a soft radial gradient', () => {
     for (const field of FIELDS) {
       for (const size of [field.width, field.height]) {
@@ -449,7 +449,7 @@ describe('the background layer', () => {
     expect(strength).toBeLessThanOrEqual(0.15)
   })
 
-  // the user, 2026-11-06: some colour banding. A fixed, very fine noise on top hides the steps of
+  // User decision, 2026-11-06: some colour banding. A fixed, very fine noise on top hides the steps of
   // 8-bit colour (dither).
   it('has one fixed noise layer on top, at a few percent', () => {
     expect(value(NOISE_RULE, 'content')).toBe('""')
@@ -475,7 +475,7 @@ describe('the background layer', () => {
 })
 
 describe('the motion of the background', () => {
-  // the user, 2026-11-06: the motion felt a little slow.
+  // User decision, 2026-11-06: the motion felt a little slow.
   it('gives each field its own cycle: 17 to 37 s, with no common factor below 5', () => {
     const cycles = FIELDS.map(f => f.cycle)
     expect(new Set(cycles).size).toBe(cycles.length)
@@ -525,7 +525,7 @@ describe('the motion of the background', () => {
     }
   })
 
-  // the user: "not with the whole bubbles going up and down". The layers drift mostly to the side.
+  // User decision: "not with the whole bubbles going up and down". The layers drift mostly to the side.
   it('moves no layer up or down far: no bubble rises or sinks', () => {
     for (const layer of LAYERS) {
       for (const step of steps(layer.keyframes)) {

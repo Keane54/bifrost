@@ -136,7 +136,7 @@ describe('the icon script', { timeout: 30_000 }, () => {
     expect(white(minX + w * 0.5, minY + h * 0.25)).toBe(false)
   })
 
-  // the user (2026-11-06): the B is 75% of the height of the quadrant, and it has the same space to
+  // User decision (2026-11-06): the B is 75% of the height of the quadrant, and it has the same space to
   // the right edge and to the bottom edge of the rounded square.
   it('drawIcon draws the B at 75% of the quadrant, with equal space right and below', () => {
     const size = 512

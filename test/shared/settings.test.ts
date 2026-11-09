@@ -95,7 +95,7 @@ describe('parseSettings', () => {
     })
   })
 
-  // the user, 2026-11-06: the background shifts slowly. A setting turns the motion off.
+  // User decision, 2026-11-06: the background shifts slowly. A setting turns the motion off.
   test('parseSettings keeps a boolean animatedBackground and gives true for a bad value', () => {
     const animated = (value: unknown) =>
       parseSettings({ animatedBackground: value, version: 1 }).animatedBackground

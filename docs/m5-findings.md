@@ -387,7 +387,7 @@ Changes to the method:
 - `usage.get()` at 05:55:06: `limits: { sevenDay: { usedPercent: 33, resetsAt: 1794016800000 } }`, from `bifrost-test-m5c`, `updatedAt` 05:55:05.853. The rows of m5c and m5d had the same `rateLimits`, with no `fiveHour`.
 - The HUD: "5-hour limit", `-`, `No data for this limit yet.` "7-day limit", `33%`, a bar of width 33% in `--color-usage` (`#5fb3c9`), `Resets in 20 h 04 min (Sat 02:00)`. The last line was `From bifrost-test-m5c, 0 s ago.`
 - No window was at 90% or more. So the amber `usage-high` bar did not show (For the user).
-- Values for the user: the 7-day limit was at 33% and resets on 2026-11-07 at 02:00 GMT. This plan has no 5-hour window.
+- Values for the user: the 7-day limit was 33% and resets on 2026-11-07 at 02:00 GMT. This plan has no 5-hour window.
 - Bug B2: at the default size the last line is cut. See "M5b: bugs".
 
 ### M5b: Step 4

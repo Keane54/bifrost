@@ -80,7 +80,7 @@ describe('loaderStep', () => {
   })
 })
 
-// the user, 2026-11-06: no spaceship. A soft rainbow of the app icon colours fills the bottom of the window.
+// User decision, 2026-11-06: no spaceship. A soft rainbow of the app icon colours fills the bottom of the window.
 describe('the rainbow of the loader', () => {
   it('uses the six icon tokens and adds no colour token of its own', () => {
     const rule = rainbowRule()
@@ -95,7 +95,7 @@ describe('the rainbow of the loader', () => {
     expect(rainbowRule()).toMatch(/mask-image:\s*linear-gradient\(\s*to bottom,\s*transparent/)
   })
 
-  // the user (2026-11-06): the fade was too harsh. The mask now eases in over the whole height: it
+  // User decision (2026-11-06): the fade was too harsh. The mask now eases in over the whole height: it
   // has many steps, the upper half stays faint, and it is at full strength only at the bottom.
   it('fades in gradually over the whole height, with an eased curve', () => {
     const mask = rainbowRule().match(/mask-image:\s*linear-gradient\(([^;]*)\);/)?.[1] ?? ''
@@ -116,7 +116,7 @@ describe('the rainbow of the loader', () => {
     expect(LOADER).toContain('motion-reduce:animate-none')
   })
 
-  // the user (2026-11-06): the band was a little small, so it fills the bottom two fifths.
+  // User decision (2026-11-06): the band was a little small, so it fills the bottom two fifths.
   it('fills only the bottom two fifths, softly, and draws no canvas', () => {
     expect(LOADER).toMatch(/bottom-0[^']*h-2\/5|h-2\/5[^']*bottom-0/)
     expect(LOADER).toMatch(/loader-rainbow[^']*opacity-(\d+)|opacity-(\d+)[^']*loader-rainbow/)

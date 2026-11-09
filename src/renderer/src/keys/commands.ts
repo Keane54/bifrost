@@ -97,7 +97,7 @@ export function stepStack(frames: Frame[], by: -1 | 1): string | null {
   return frame.panels[(index + by + count) % count] ?? null
 }
 
-// Esc (spec 9.4, the user 2026-11-06). In the send box, Esc leaves the send box. Else it closes
+// Esc (spec 9.4; user decision, 2026-11-06). In the send box, Esc leaves the send box. Else it closes
 // Settings when Settings is the active panel of the top frame. Else it opens Settings and brings it
 // to the front. Esc does nothing when another handler took it, for example a popover or a drag.
 // A chat window, a text field, a dialog, a menu and the key recorder keep their own Esc.

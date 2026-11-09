@@ -343,4 +343,4 @@
 
 - All checks pass on the branch: `pnpm test`, `pnpm typecheck`, `pnpm check`, `pnpm smoke`.
 - `check-reader.ts` prints sensible counts from the real GitHub.
-- The user turns on Watch GitHub in his own Bifrost after the merge and sees his requests and PRs. The controller does not drive his app.
+- The user turns on Watch GitHub in their own Bifrost after the merge and sees the requests and PRs. The controller does not drive their app.

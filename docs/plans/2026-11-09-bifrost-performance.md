@@ -220,4 +220,4 @@
 ## Exit check
 
 - All checks pass: `pnpm test`, `pnpm typecheck`, `pnpm check`, `pnpm smoke`.
-- The user opens the Performance panel in his own Bifrost after the merge. The controller does not drive his app.
+- The user opens the Performance panel in their own Bifrost after the merge. The controller does not drive their app.

@@ -17,14 +17,14 @@ describe('SelectedItemPanel source', () => {
     for (const cls of ['bg-ctx-low', 'bg-ctx-mid', 'bg-ctx-high']) expect(PANEL).toContain(cls)
   })
 
-  // the user (2026-11-06): the panel shows no preview of the last reply.
+  // User decision (2026-11-06): the panel shows no preview of the last reply.
   it('shows no preview of the last reply', () => {
     expect(PANEL).not.toContain('previewLines')
     expect(PANEL).not.toContain('lastMessage')
   })
 })
 
-// the user (2026-11-06): the texts show in a status icon of the name line, not under the send box.
+// User decision (2026-11-06): the texts show in a status icon of the name line, not under the send box.
 describe('SelectedItemPanel status icon source', () => {
   const body = PANEL.split('\n')
     .filter(line => !line.startsWith('import '))

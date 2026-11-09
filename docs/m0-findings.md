@@ -30,7 +30,7 @@ Other facts:
 - The scripts are in `scripts/m0/`. Run each script with Electron as Node, because node-pty uses the Electron ABI: `ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m0/<name>.ts`.
 - The scripts did the plan steps without the harness window. Each attach is a node-pty PTY of 120 x 32. A headless xterm.js 6.0.0 (the package that Bifrost uses) reads the output. The xterm.js replies to terminal queries go back to the PTY, as in the app.
 - Each action on a session goes through `assertTestTarget` in `scripts/m0/lib.ts`. The check reads `claude agents --json` and accepts only one entry with a `bifrost-test-` name. It refuses `bifrost-test-idle`. `scripts/m0/check-safety.ts` showed that it refuses each real session.
-- "the user checks by eye" marks a result that a script cannot decide.
+- "The user checks by eye" marks a result that a script cannot decide.
 - Code spans quote CLI output exactly. `<U+2014>` in a quote marks an em dash character in the CLI output. This file does not use that character.
 
 ### Environment of each experiment

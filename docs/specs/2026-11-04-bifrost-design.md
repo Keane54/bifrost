@@ -95,7 +95,7 @@ These facts come from Claude Code 2.1.318 and its docs, on 2026-11-04.
 - `session.start` cannot tell a background session from an interactive one. Both give `isInteractive` `true`.
 - `$.session.model()` gives a model ID, not a display name.
 - The cost can change about 2 s after a turn ends. A side request of Claude Code makes this cost.
-- `classic.*` hooks do not run where the guard `cc-plugin-sec-default` loads. The user checked on 2026-11-05 that this guard is not in his list.
+- `classic.*` hooks do not run where the guard `cc-plugin-sec-default` loads. The user checked on 2026-11-05 that this guard is not in their list.
 - A send to a missing socket fails in about 1 ms with no message on the screen.
 - No documented API lets a program type into an interactive session that a terminal owns.
 - The transcript JSONL format is internal. Bifrost does not read transcripts.
@@ -167,7 +167,7 @@ Bifrost runs `claude agents --json` every 2 seconds. This gives the active sessi
 
 Bifrost keeps an entry that has no `pid`.
 
-Row ID and current ID (the user, 2026-11-06: one row for a session across `/clear`):
+Row ID and current ID (user decision, 2026-11-06: one row for a session across `/clear`):
 
 - A `/clear` gives the process a new session ID (section 4). Bifrost shows one row for the session, not a new row and a parked copy. The old conversation stays in Claude Code.
 - Each row has a row ID. It is the first session ID that Bifrost saw for the session. It never changes. The row field `sessionId` is the row ID.
@@ -520,7 +520,7 @@ Send box rules:
 - The blur behind a chat window is light: 8 pixels, the same blur as the other panels (section 8.10). So it is clear when a chat window is over another panel, as in EVE.
 - The terminal text stays easy to read. A test checks the contrast of white text (7:1 or more) and of a mid-grey dim text (4.5:1 or more) on the panel colour at each transparency. The backdrops are the blurred text of another panel, a white watch row, a selected row and the rainbow of another loader.
 
-Size rule (the user approved this on 2026-11-04; M3 builds it):
+Size rule (user decision, 2026-11-04; M3 builds it):
 
 - A session has one terminal size for all its clients. The last resize from any client sets it (M0 question 3).
 - Only the chat window that has focus sends a resize to the session.
@@ -747,7 +747,7 @@ The Take control loader (user decision, 2026-11-06):
 - After a good Take control, a loader that waits only for the first output has a time limit of 20 seconds. Then the loader goes away, and the window shows the terminal, with its note when it cannot attach (review Important 2).
 - During that time, the chat window hides the terminal. The terminal keeps its size and its focus.
 - The window shows the normal panel background and the line "Taking control of <name>...".
-- The bottom two fifths show a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge on an eased curve: the upper half stays faint, and the colour reaches full strength only at the bottom edge. It is at 25% opacity (the user, 2026-11-06: softer, a more gradual fade, and a slightly taller band).
+- The bottom two fifths show a soft rainbow gradient of the app icon colours (the tokens `--color-icon-1` to `--color-icon-6`), as in the app icon: violet on the left and red on the right. The gradient fades in from transparent at its top edge on an eased curve: the upper half stays faint, and the colour reaches full strength only at the bottom edge. It is at 25% opacity (user decision, 2026-11-06: softer, a more gradual fade, and a slightly taller band).
 - A CSS animation shifts the gradient slowly: 12 seconds from one end to the other, and back. With `prefers-reduced-motion: reduce`, the gradient does not move.
 
 ### 9.3 Key rules
@@ -1220,7 +1220,7 @@ The user gave these directions on 2026-11-04:
 
 ## 21. Decisions on 2026-11-05 (UI review)
 
-The user gave these directions after he used the M2 build:
+The user gave these directions after using the M2 build:
 
 1. The Overview columns can be resized (built in M3).
 2. The row icon shows the kind of the session, in a colour for each project. The box is four corner brackets around the icon (section 8.3).

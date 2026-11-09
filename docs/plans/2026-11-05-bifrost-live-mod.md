@@ -28,7 +28,7 @@
 - Context isolation and the sandbox stay on. Each new IPC handler uses `fromPage`. The renderer sends no path and no command.
 - `pnpm test`, `pnpm typecheck` and `pnpm check` pass after each task.
 - Text that a person reads inside the app (panel lines, button names, error messages that reach the renderer) is plain, friendly English, not STE. It says "folder", not "directory". Keep the facts exact. The exact texts of this plan are allowed as written.
-- A dev or check app always runs with its own `--user-data-dir` in the scratchpad: `pnpm exec electron-vite dev -- --user-data-dir=<dir> --remote-debugging-port=9333`. Quit it with SIGTERM to its own Electron main PID only. Never use `osascript`: The user's own Bifrost has the same bundle ID.
+- A dev or check app always runs with its own `--user-data-dir` in the scratchpad: `pnpm exec electron-vite dev -- --user-data-dir=<dir> --remote-debugging-port=9333`. Quit it with SIGTERM to its own Electron main PID only. Never use `osascript`: the user's own Bifrost has the same bundle ID.
 - Implementers never use `git stash`, `git checkout --`, `git restore` or `git reset`. Commit with `git commit -- <paths>` or after `git add` of the named paths only.
 
 ## Review Focus
@@ -650,7 +650,7 @@ git commit -m "docs(spec): describe Live details" \
 **Files:**
 - Create: `docs/live-findings.md`, `docs/live-findings/` (screenshots)
 
-The controller runs this task (or one check agent that the controller briefs). It starts `pnpm exec electron-vite dev -- --user-data-dir=<scratchpad>/live-check-ud --remote-debugging-port=9333` in the worktree and reads the rows with `agent-browser eval "window.bifrost.registry.rows()"` (the M1 method). It quits Bifrost with SIGTERM to its own Electron main PID only. It never uses `osascript`: The user's own Bifrost has the same bundle ID. Interactive sessions use `TestPty` of `scripts/m0/lib.ts` with `M0_CLAUDE=/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh`. The user's own Bifrost (main at 4c5a1fd or later, without this plan) has no live server, so the check app is the only listener on `~/.bifrost/live.sock`. If the check app gives `listening: false` with "Another program", stop the check and record it.
+The controller runs this task (or one check agent that the controller briefs). It starts `pnpm exec electron-vite dev -- --user-data-dir=<scratchpad>/live-check-ud --remote-debugging-port=9333` in the worktree and reads the rows with `agent-browser eval "window.bifrost.registry.rows()"` (the M1 method). It quits Bifrost with SIGTERM to its own Electron main PID only. It never uses `osascript`: the user's own Bifrost has the same bundle ID. Interactive sessions use `TestPty` of `scripts/m0/lib.ts` with `M0_CLAUDE=/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh`. The user's own Bifrost (main at 4c5a1fd or later, without this plan) has no live server, so the check app is the only listener on `~/.bifrost/live.sock`. If the check app gives `listening: false` with "Another program", stop the check and record it.
 
 Safety:
 - Part A installs nothing. Before and after Part A, record the SHA-256 of `~/.claude/settings.json` and `~/.claude/plugins/installed_plugins.json`. They must not change.
@@ -696,7 +696,7 @@ git commit -m "docs(live): record the Live details checks"
 
 ---
 
-## the user's answers (2026-11-05)
+## The user's answers (2026-11-05)
 
 These replace the "waits for the user" marks above.
 

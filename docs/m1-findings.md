@@ -2,7 +2,7 @@
 
 Date: 2026-11-05, 05:01 to 06:46 (GMT). Claude Code 2.1.318. Branch `m1` at `5631121`.
 
-The controller ran this task while the user was asleep. The user gave permission to install Bifrost into his real `~/.claude/settings.json` and to uninstall it at the end. The run used the Bifrost buttons for the install and the uninstall. Nobody edited the settings file by hand.
+The controller ran this task while the user was asleep. The user gave permission to install Bifrost into their real `~/.claude/settings.json` and to uninstall it at the end. The run used the Bifrost buttons for the install and the uninstall. Nobody edited the settings file by hand.
 
 ## Summary
 

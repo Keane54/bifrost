@@ -6,7 +6,7 @@ The Performance panel answers one question at a glance: does Bifrost use too man
 
 ## 1. Intent
 
-On 2026-11-09 the user's Mac slowed down, and he thought that Bifrost had a memory leak. The cause was not clear without Activity Monitor and shell commands. Bifrost was not running. Six Claude sessions used 270 to 850 MB each, and swap was at 4.6 of 6 GB. The Performance panel gives that answer inside Bifrost, in a few seconds.
+On 2026-11-09 the user's Mac slowed down, and the user thought that Bifrost had a memory leak. The cause was not clear without Activity Monitor and shell commands. Bifrost was not running. Six Claude sessions used 270 to 850 MB each, and swap was at 4.6 of 6 GB. The Performance panel gives that answer inside Bifrost, in a few seconds.
 
 ## 2. Goals
 
@@ -19,7 +19,7 @@ On 2026-11-09 the user's Mac slowed down, and he thought that Bifrost had a memo
 
 - No replacement for Activity Monitor. The panel shows no list of other apps.
 - No history beyond 60 minutes. No charts other than the 10-minute trend line.
-- No macOS notification for a state change (the user's call, unless he asks later).
+- No macOS notification for a state change (user decision, unless the user asks later).
 - No automatic action. Bifrost never stops a session or a process by itself.
 - No settings for the limits in the first version.
 

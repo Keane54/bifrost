@@ -53,7 +53,7 @@ describe('sinceText (final wave item 11)', () => {
   })
 })
 
-// the user, 2026-11-06: three views of a service row by width. needs gives the width that the widest
+// User decision, 2026-11-06: three views of a service row by width. needs gives the width that the widest
 // row needs in the full view, then without the text of the status page button.
 describe('serviceView', () => {
   const NEEDS = [400, 290] as const

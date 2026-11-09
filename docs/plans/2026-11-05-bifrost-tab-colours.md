@@ -31,7 +31,7 @@
 
 | # | Decision | Reason |
 |---|---|---|
-| C1 | Reds, ambers and yellows are normal Overview colours. The box red (`#f5766d`) and the box yellow (`#e2b93b`) are reserved shades. Each token of the families `tab`, `prio`, `project` and `watch` has an OKLab distance of at least 0.10 from both box colours. | The user, 2026-11-05: "any reds or yellows used for red or yellow boxes must be different from reds elsewhere". 0.10 in OKLab is about five steps that a person can see. |
+| C1 | Reds, ambers and yellows are normal Overview colours. The box red (`#f5766d`) and the box yellow (`#e2b93b`) are reserved shades. Each token of the families `tab`, `prio`, `project` and `watch` has an OKLab distance of at least 0.10 from both box colours. | User decision, 2026-11-05: "any reds or yellows used for red or yellow boxes must be different from reds elsewhere". 0.10 in OKLab is about five steps that a person can see. |
 | C2 | The amber `#f59e0b` (priority 1 and the watch colour amber) is 0.066 from the box yellow. It becomes `#d97706`. | C1. |
 | C3 | Six new tab colours, indices 6 to 11: red `#e0443c`, amber `#d97706`, yellow `#fde68a`, lime `#a3e635`, white `#f2f2f2`, sky blue `#7dd3fc`. Each has a text contrast of at least 4 on both panel backgrounds (`#181818`, `#080808`). | The red is the lightest red that is still 0.10 from the box red. |
 | C4 | The project icon colours stay blue and green. | The icon sits inside the box. A red icon in a red box is the worst clash. The user can ask for warm project colours later. |

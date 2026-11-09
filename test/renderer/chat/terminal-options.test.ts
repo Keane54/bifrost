@@ -22,7 +22,7 @@ const VALUES: Record<string, string> = {
 }
 
 describe('terminalOptions', () => {
-  // the user, 2026-11-06: the frame colour and its blur show through the chat terminal.
+  // User decision, 2026-11-06: the frame colour and its blur show through the chat terminal.
   it('gives a transparent background that the WebGL renderer also draws', () => {
     const options = terminalOptions(FONT, { background: CLEAR })
     expect(options.allowTransparency).toBe(true)
@@ -38,7 +38,7 @@ describe('terminalOptions', () => {
     })
   })
 
-  // the user, 2026-11-09: the scroll bar of a chat window is clearly visible.
+  // User decision, 2026-11-09: the scroll bar of a chat window is clearly visible.
   it('gives the slider colours of the tokens to xterm.js', () => {
     const theme = terminalOptions(
       FONT,

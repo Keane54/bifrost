@@ -193,12 +193,12 @@
 }
 
 @layer components {
-  /* The Take control loader (spec 9.2, the user 2026-11-06): a soft rainbow of the app icon colours
+  /* The Take control loader (spec 9.2; user decision, 2026-11-06): a soft rainbow of the app icon colours
      in the bottom two fifths of a chat window, as in the app icon: violet on the left, red on the
      right. The colours blend in OKLab, as in the icon. The gradient is two times the width, so
      the animation can shift it. The mask fades it in from transparent at its top edge, on an
      eased curve over the whole height: the upper half stays faint, and the colour is at full
-     strength only at the bottom edge (the user: the first fade was too harsh). */
+     strength only at the bottom edge (user decision: the first fade was too harsh). */
   .loader-rainbow {
     background-image: linear-gradient(
       in oklab 100deg,
@@ -223,7 +223,7 @@
     );
   }
 
-  /* The animated background (spec 8.10, the user 2026-11-06): one layer behind all frames and the
+  /* The animated background (spec 8.10; user decision, 2026-11-06): one layer behind all frames and the
      side bar. It shows a mix of the app icon colours over the whole window at all times, with no
      black gaps. Three parts paint in this order:
      - The base layer (::before): a large linear gradient of the icon colours. It drifts slowly.

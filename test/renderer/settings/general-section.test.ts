@@ -19,7 +19,7 @@ function checkRow(name: string): string {
 }
 
 describe('Settings > General', () => {
-  // the user, 2026-11-06: the background shifts slowly. A check row turns the motion off.
+  // User decision, 2026-11-06: the background shifts slowly. A check row turns the motion off.
   it('has an Animated background check row with a friendly hint', () => {
     expect(GENERAL_ROWS.animatedBackground).toBe('Animated background')
     const row = checkRow('animatedBackground')
