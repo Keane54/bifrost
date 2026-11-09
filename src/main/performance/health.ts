@@ -23,12 +23,15 @@ export const LIMITS = {
   fpsLowSeconds: 10,
   growthProblemMbPerHour: 800,
   growthWarnMbPerHour: 300,
+  // The OK text needs a sample that is not older than this.
+  okSampleMaxAgeMs: 60_000,
   orphanSeconds: 60,
   pollFailProblem: 10,
   pollFailWarn: 3,
   ramProblemMb: 1536,
   ramWarnMb: 1024,
-  trendMinSpanMs: 30 * 60_000,
+  // The trend needs samples for the full 60 minutes, so one RAM step cannot give a reason.
+  trendMinSpanMs: 60 * 60_000,
   windowMs: HEALTH_WINDOW_MS,
 } as const
 
@@ -46,13 +49,15 @@ export interface HealthInput {
 
 const HOUR_MS = 60 * 60_000
 
-// The least-squares slope of the RAM without chat terminals, in MB per hour.
+// The least-squares slope of the RAM without chat terminals over the last 60 minutes, in MB per
+// hour. null until the samples cover 60 minutes. A sample from before the window shows that
+// the window is full, because the ticks do not fall exactly on its start.
 export function trendMbPerHour(samples: Sample[], now: number): number | null {
+  if (samples.length === 0) return null
+  const oldest = Math.min(...samples.map(s => s.at))
+  if (now - oldest < LIMITS.trendMinSpanMs) return null
   const used = samples.filter(s => s.at >= now - LIMITS.windowMs)
   if (used.length < 2) return null
-  const times = used.map(s => s.at)
-  const span = Math.max(...times) - Math.min(...times)
-  if (span < LIMITS.trendMinSpanMs) return null
   const n = used.length
   const meanT = used.reduce((a, s) => a + s.at, 0) / n
   const meanY = used.reduce((a, s) => a + s.bifrostRamNoTermMb, 0) / n
@@ -211,8 +216,10 @@ export function healthState(reasons: Reason[]): HealthState {
   return reasons.length > 0 ? 'warning' : 'ok'
 }
 
-export function okText(sample: Sample | undefined): string | null {
-  if (!sample) return null
+// The OK text of the newest sample. null with no sample, or with a sample that is older than
+// 60 s, for example while ps fails. Then the headline says "Checking Bifrost…".
+export function okText(sample: Sample | undefined, now: number): string | null {
+  if (!sample || now - sample.at > LIMITS.okSampleMaxAgeMs) return null
   const cpu = `${Math.round(sample.bifrostCpuNoTerm)}%`
   return `Bifrost is using ${ramText(sample.bifrostRamMb)} RAM and ${cpu} CPU.`
 }

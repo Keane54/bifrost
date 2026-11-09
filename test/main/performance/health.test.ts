@@ -78,8 +78,8 @@ describe('RAM', () => {
     ])
   })
   test('the OK text rounds before it picks MB or GB', () => {
-    expect(okText(sample(NOW, { bifrostRamMb: 1023.4 }))).toContain('1023 MB')
-    expect(okText(sample(NOW, { bifrostRamMb: 1023.6 }))).toContain('1.0 GB')
+    expect(okText(sample(NOW, { bifrostRamMb: 1023.4 }), NOW)).toContain('1023 MB')
+    expect(okText(sample(NOW, { bifrostRamMb: 1023.6 }), NOW)).toContain('1.0 GB')
   })
 })
 
@@ -103,11 +103,26 @@ describe('growth', () => {
     expect(trendMbPerHour(samples, NOW)).toBeCloseTo(0, 5)
     expect(reasons({ samples }).filter(r => r.text.includes('growing'))).toEqual([])
   })
-  test('the trend needs 30 minutes of samples', () => {
-    expect(trendMbPerHour(ramp(900, 29), NOW)).toBeNull()
-    expect(trendMbPerHour(ramp(900, 30), NOW)).toBeCloseTo(900, 5)
+  test('the trend needs a full 60 minutes of samples', () => {
+    expect(LIMITS.trendMinSpanMs).toBe(60 * MIN)
+    expect(trendMbPerHour(ramp(900, 30), NOW)).toBeNull()
+    expect(trendMbPerHour(ramp(900, 59), NOW)).toBeNull()
+    expect(trendMbPerHour(ramp(900, 60), NOW)).toBeCloseTo(900, 5)
     expect(trendMbPerHour([sample(NOW)], NOW)).toBeNull()
     expect(trendMbPerHour([], NOW)).toBeNull()
+  })
+  test('one RAM step of 120 MB after 30 minutes gives no reason', () => {
+    // With 30 minutes of samples, this step was a trend of about 350 MB an hour.
+    const step = ramp(0, 30).map((s, i) => (i < 15 ? s : { ...s, bifrostRamNoTermMb: 520 }))
+    expect(reasons({ samples: step })).toEqual([])
+  })
+  test('a sample before the window shows that the window is full', () => {
+    // The samples of the last 60 minutes start 15 s after the start of the window. The one
+    // sample before the window shows that Bifrost ran for the full 60 minutes.
+    const inside = ramp(900, 60).slice(1)
+    expect(trendMbPerHour(inside, NOW)).toBeNull()
+    const before = sample(NOW - 60 * MIN - 15_000, { bifrostRamNoTermMb: 9000 })
+    expect(trendMbPerHour([before, ...inside], NOW)).toBeCloseTo(900, 5)
   })
   test('the trend ignores samples older than 60 minutes', () => {
     const old = [sample(NOW - 90 * MIN, { bifrostRamNoTermMb: 9000 }), ...ramp(0, 60)]
@@ -282,13 +297,18 @@ describe('state and text', () => {
   test('no data gives no reason and the OK text names only measured values', () => {
     expect(reasons()).toEqual([])
     expect(healthState([])).toBe('ok')
-    expect(okText(undefined)).toBeNull()
-    expect(okText(sample(NOW, { bifrostCpuNoTerm: 2.4, bifrostRamMb: 712 }))).toBe(
+    expect(okText(undefined, NOW)).toBeNull()
+    expect(okText(sample(NOW, { bifrostCpuNoTerm: 2.4, bifrostRamMb: 712 }), NOW)).toBe(
       'Bifrost is using 712 MB RAM and 2% CPU.',
     )
-    expect(okText(sample(NOW, { bifrostCpuNoTerm: 0.4, bifrostRamMb: 1331 }))).toBe(
+    expect(okText(sample(NOW, { bifrostCpuNoTerm: 0.4, bifrostRamMb: 1331 }), NOW)).toBe(
       'Bifrost is using 1.3 GB RAM and 0% CPU.',
     )
+  })
+  test('the OK text needs a sample from the last 60 s', () => {
+    expect(LIMITS.okSampleMaxAgeMs).toBe(60_000)
+    expect(okText(sample(NOW - 60_000), NOW)).toBe('Bifrost is using 500 MB RAM and 2% CPU.')
+    expect(okText(sample(NOW - 60_001), NOW)).toBeNull()
   })
   test('problem reasons come before warning reasons', () => {
     const log = emptyLog()

@@ -43,7 +43,8 @@ export const PROBE_MS = 60_000
 export const BATTERY_MS = 60_000
 export const DISK_MS = 60_000
 export const CLONES_MS = 600_000
-// The monitor keeps the samples of the health model for this time.
+// The monitor keeps the samples of the health model for this time, and the newest sample before
+// it. That sample shows that the samples cover the full time (design section 6).
 export const HISTORY_MS = 3_600_000
 // The trend line of the panel shows this time.
 export const TREND_MS = 600_000
@@ -163,6 +164,9 @@ function freshState(linkDue: boolean) {
     linkAt: NEVER,
     linkDue,
     macAt: NEVER,
+    // False until the first tick with Electron metrics. The first read of getAppMetrics gives 0%
+    // CPU for each process, so that tick adds no sample.
+    metricsRead: false,
     netAt: NEVER,
     // For each PTY that can be an orphan, the time when it started to be one. The key is the view
     // ID and the pid.
@@ -372,7 +376,8 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       bifrostRamNoTermMb: use.ramMb - use.terminals.ramMb,
     })
     st.trend.push({ at: now, cpu: use.cpu, ramMb: use.ramMb })
-    while ((st.samples[0]?.at ?? now) < now - HISTORY_MS) st.samples.shift()
+    // Remove a sample only when the next sample is also at the start of the history or before it.
+    while ((st.samples[1]?.at ?? now) <= now - HISTORY_MS) st.samples.shift()
     while ((st.trend[0]?.at ?? now) < now - TREND_MS) st.trend.shift()
   }
 
@@ -467,7 +472,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
         online,
         upBps: st.rates?.up ?? null,
       },
-      okText: okText(st.samples.at(-1)),
+      okText: okText(st.samples.at(-1), now),
       reasons,
       sessions: st.sessions,
       state: healthState(reasons),
@@ -528,8 +533,10 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
         metrics,
         ptys.map(p => st.terminals.get(p.pid) ?? NO_USE),
       )
-      // A tick with a failed ps adds no sample (ruling C).
-      if (metrics.length > 0 && table !== null) addSample(now, use)
+      // A tick with a failed ps adds no sample, because its chat terminal values are old. The
+      // first tick with metrics adds no sample either.
+      if (metrics.length > 0 && table !== null && st.metricsRead) addSample(now, use)
+      if (metrics.length > 0) st.metricsRead = true
       const load = st.lastCpus === null ? null : cpuLoad(st.lastCpus, cpus)
       st.lastCpus = cpus
       snapshot = build({

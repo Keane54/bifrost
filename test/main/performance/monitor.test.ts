@@ -791,6 +791,7 @@ describe('createPerformanceMonitor', () => {
     t.world.rows = [sessionRow(uuid(1), 'alpha', 300)]
     t.monitor.start()
     await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(TICK_MS)
     const before = t.monitor.current()
     expect(before.okText).toBe('Bifrost is using 740 MB RAM and 12% CPU.')
     t.world.psFails = true
@@ -816,6 +817,48 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
+  it('the first metrics tick adds no sample, so the headline waits', async () => {
+    const t = setup()
+    // The first read of the Electron metrics fails. The next one is the first real read.
+    t.world.metricsThrow = true
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    t.world.metricsThrow = false
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    // Electron gives 0% CPU at its first read. That tick adds no sample and no trend point.
+    let snap = t.monitor.current()
+    expect(snap.bifrost?.trend).toEqual([])
+    expect(snap.okText).toBeNull()
+    expect(snap.state).toBe('ok')
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    snap = t.monitor.current()
+    expect(snap.bifrost?.trend).toHaveLength(1)
+    expect(snap.okText).toBe('Bifrost is using 700 MB RAM and 12% CPU.')
+    t.monitor.stop()
+    error.mockRestore()
+  })
+
+  it('the OK text needs a sample from the last 60 s', async () => {
+    const t = setup()
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.monitor.current().okText).toBe('Bifrost is using 700 MB RAM and 12% CPU.')
+    // ps fails. The sample of 60 s ago is still new enough.
+    t.world.psFails = true
+    await vi.advanceTimersByTimeAsync(4 * TICK_MS)
+    expect(t.monitor.current().okText).toBe('Bifrost is using 700 MB RAM and 12% CPU.')
+    // A sample of 75 s ago is too old. The headline then shows "Checking Bifrost…".
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.monitor.current().okText).toBeNull()
+    expect(t.monitor.current().state).toBe('ok')
+    t.world.psFails = false
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.monitor.current().okText).toBe('Bifrost is using 700 MB RAM and 12% CPU.')
+    t.monitor.stop()
+  })
+
   it('ignores a Reviews rate limit whose reset time is past', async () => {
     const t = setup()
     t.world.rateLimit = { limit: 5000, remaining: 3, resetAt: Date.now() - MIN }
@@ -838,6 +881,7 @@ describe('createPerformanceMonitor', () => {
     t.world.metrics = BIFROST.slice(0, 3).map(m => ({ ...m }))
     t.monitor.start()
     await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(TICK_MS)
     let snap = t.monitor.current()
     expect(snap.state).toBe('ok')
     expect(snap.reasons).toEqual([])
@@ -866,17 +910,38 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
-  it('keeps the samples for the memory trend', async () => {
+  it('gives the memory trend after a full hour, also when the ticks drift', async () => {
     const t = setup()
+    // Each ps read takes 10 ms. So the ticks drift, and no sample is exactly 60 minutes old.
+    const real = t.exec.getMockImplementation() as ExecFn
+    t.exec.mockImplementation(async (file, args, opts) => {
+      if (file === PS) await new Promise(resolve => setTimeout(resolve, 10))
+      return real(file, args, opts)
+    })
+    const growing = () => hasReason(t, "Bifrost's memory is growing by about")
     t.monitor.start()
     await vi.advanceTimersByTimeAsync(0)
-    // The main process grows by 10 MB in each 15 s, which is 2,400 MB an hour.
-    for (let i = 0; i < 30 * 4; i++) {
-      const main = t.world.metrics[0]
-      if (main) main.ramMb += 10
-      await vi.advanceTimersByTimeAsync(TICK_MS)
+    // The main process grows by 10 MB in each tick of about 15 s: about 2,400 MB an hour.
+    const grow = async (minutes: number): Promise<void> => {
+      const end = Date.now() + minutes * MIN
+      while (Date.now() < end) {
+        const main = t.world.metrics[0]
+        if (main) main.ramMb += 10
+        await vi.advanceTimersByTimeAsync(TICK_MS)
+      }
     }
-    expect(hasReason(t, "Bifrost's memory is growing by about 2400 MB an hour.")).toBe(true)
+    // After 30 minutes, the trend gives no reason yet.
+    await grow(30)
+    expect(growing()).toBe(false)
+    await grow(29)
+    expect(growing()).toBe(false)
+    // After the first full hour, and later, the trend gives the reason.
+    await grow(2)
+    expect(growing()).toBe(true)
+    await grow(60)
+    expect(growing()).toBe(true)
+    const texts = t.monitor.current().reasons.map(r => r.text)
+    expect(texts.some(text => /growing by about 23\d\d MB an hour\./.test(text))).toBe(true)
     expect(HISTORY_MS).toBe(60 * MIN)
     t.monitor.stop()
   })
