@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish Release
+    # Release only after a CI run for a push to main that passed. A PR run never releases.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    # The job builds the DMG, so it needs macOS.
+    runs-on: macos-latest
+
+    # contents: write lets semantic-release push the tag, make the GitHub release and attach the
+    # DMG. The github plugin makes no comments and no labels (.releaserc.json), so the job needs
+    # no issues or pull-requests permission.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      # If main gained commits while CI ran, skip. The CI run of the newer commit starts a new
+      # release, and that release includes all the commits.
+      - name: Check main has not moved on
+        id: guard
+        env:
+          CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$CI_SHA" ]; then
+            echo "main is ahead of the commit that CI checked. This run makes no release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install pnpm
+        if: steps.guard.outputs.skip != 'true'
+        uses: pnpm/action-setup@v6.1.0
+
+      - name: Setup Node.js
+        if: steps.guard.outputs.skip != 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        if: steps.guard.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+
+      # The exec plugin sets the package.json version to the release version and runs pnpm dist
+      # (.releaserc.json). It makes no commit. The github plugin then attaches the DMG.
+      # GITHUB_TOKEN is enough: no workflow starts on a release or on a tag.
+      - name: Run semantic-release
+        if: steps.guard.outputs.skip != 'true'
+        run: pnpm exec semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
