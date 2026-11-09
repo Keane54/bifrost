@@ -275,7 +275,7 @@ describe('reviewStatus', () => {
     expect(status(pr())).toBe('pending')
   })
 
-  it('an older open thread and a top-level work item give comments', () => {
+  it('an older open thread gives comments, a top-level work item does not', () => {
     const p = pr({
       reviews: [review('r1', member, { state: 'APPROVED' })],
       threads: [thread('t1', member)],
@@ -285,8 +285,38 @@ describe('reviewStatus', () => {
       comments: [comment('pc1', member)],
       reviews: [review('r1', member, { state: 'APPROVED' })],
     })
-    expect(status(q)).toBe('comments')
+    // The comment stays work for a later round, but it does not change the status word.
+    expect(ids(splitWork(q, VIEWER, prState(), NONE, null).work)).toEqual(['pc1'])
+    expect(status(q)).toBe('approved')
     expect(status(q, prState({ handled: { pc1: { at: 1, lastReplyAt: null } } }))).toBe('approved')
+  })
+
+  it('a CHANGES_REQUESTED body followed by an approval gives approved', () => {
+    const p = pr({
+      reviews: [
+        review('r1', member, { body: 'Please fix', state: 'CHANGES_REQUESTED', submittedAt: 1 }),
+        review('r2', member, { state: 'APPROVED', submittedAt: 2 }),
+      ],
+    })
+    expect(ids(splitWork(p, VIEWER, prState(), NONE, null).work)).toEqual(['r1'])
+    expect(status(p)).toBe('approved')
+  })
+
+  it("an approved PR with a member's Thanks comment gives approved", () => {
+    const p = pr({
+      comments: [{ ...comment('pc1', member), body: 'Thanks!' }],
+      reviews: [review('r1', member, { state: 'APPROVED' })],
+    })
+    expect(status(p)).toBe('approved')
+  })
+
+  it('a top-level work item alone gives pending, not comments', () => {
+    const p = pr({
+      comments: [comment('pc1', member)],
+      reviews: [review('r1', member, { body: 'See below', state: 'COMMENTED' })],
+    })
+    expect(splitWork(p, VIEWER, prState(), NONE, null).work).toHaveLength(2)
+    expect(status(p)).toBe('pending')
   })
 })
 

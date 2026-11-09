@@ -192,9 +192,11 @@ Bifrost computes the status from the latest review of each human reviewer. Copil
 | Status | Rule |
 |---|---|
 | Changes requested | The latest review of one or more human reviewers is `CHANGES_REQUESTED`. |
-| Comments | One or more threads from trusted authors or the first Copilot review are not resolved, or one or more top-level comments that are work (section 10.2) are not handled yet. Unresolved threads from before the first turn-on count too. |
-| Approved | One or more human reviewers approved, and nothing is open. |
+| Comments | One or more threads from trusted authors or from the first Copilot review are not resolved. Unresolved threads from before the first turn-on count too. |
+| Approved | One or more human reviewers approved, and no thread is open. |
 | Pending | Any other case, also when no reviewer is requested. |
+
+Only threads count for Comments. A review body or a top-level comment does not change the status. It stays work for the request session (section 10.2). So a "Thanks" comment does not hide an approval.
 
 Copilot comments can make a PR show Comments. Copilot can never make a PR Approved.
 

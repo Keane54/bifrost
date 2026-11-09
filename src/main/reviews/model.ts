@@ -138,10 +138,12 @@ function humanDecisions(pr: PrData, viewer: string): PrReview[] {
 // Design 9.2. The first match wins.
 // The decision of a reviewer is the latest APPROVED, CHANGES_REQUESTED or DISMISSED review.
 // A COMMENTED or PENDING review does not change it (the GitHub rule).
+// Only an open thread in work or older gives Comments. A review body or a PR comment stays work
+// for a later round, but it does not change the status word (final review I1).
 export function reviewStatus(pr: PrData, viewer: string, split: WorkSplit): ReviewStatus {
   const decisions = humanDecisions(pr, viewer)
   if (decisions.some(r => r.state === 'CHANGES_REQUESTED')) return 'changes-requested'
-  const open = split.work.length > 0 || split.older.some(item => item.kind === 'thread')
+  const open = [...split.work, ...split.older].some(item => item.kind === 'thread')
   if (open) return 'comments'
   if (decisions.some(r => r.state === 'APPROVED')) return 'approved'
   return 'pending'
