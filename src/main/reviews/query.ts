@@ -105,9 +105,11 @@ export const POLL_QUERY = `query Poll {
   viewer { login }
   rateLimit { cost remaining }
   toReview: search(query: "review-requested:@me ${SEARCH_OPEN}", type: ISSUE, first: 50) {
+    pageInfo { hasNextPage }
     nodes { ... on PullRequest { ...ToReviewFields } }
   }
   mine: search(query: "author:@me ${SEARCH_OPEN}", type: ISSUE, first: 50) {
+    pageInfo { hasNextPage }
     nodes { ... on PullRequest { ...MineFields } }
   }
 }
@@ -349,5 +351,14 @@ export function parsePoll(
   const viewer = str(obj(data?.viewer)?.login)
   if (!data || !viewer) return { message: 'GitHub did not say who you are.', ok: false }
   const list = (v: unknown): PrData[] => nodes(v).flatMap(n => readPr(n, viewer) ?? [])
-  return { data: { mine: list(data.mine), toReview: list(data.toReview), viewer }, ok: true }
+  return {
+    data: {
+      mine: list(data.mine),
+      mineHasMore: more(data.mine),
+      toReview: list(data.toReview),
+      toReviewHasMore: more(data.toReview),
+      viewer,
+    },
+    ok: true,
+  }
 }

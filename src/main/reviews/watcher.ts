@@ -89,35 +89,59 @@ export interface ReviewsWatcher {
 
 type Outcome = { ok: true; data: PollData } | { ok: false; failure: GhFailure }
 
-// The state after a good poll. arrived holds the To review keys that were not in requests before
-// this poll. changed is false when the poll changes nothing in the state.
+// The state after a good poll. arrived holds the To review keys that are new with this poll: a
+// key that was not in requests before, or a re-request. changed is false when the poll changes
+// nothing in the state.
 // The first poll after the first turn-on writes the baseline. No key arrives with that poll.
 // A key that goes loses its request entry and its pause, so a request that comes back is new.
+// Rules for more than 50 requests and for a re-request (final review I3):
+// - A key that shows later, with a request from before the turn-on, goes in the baseline. It was
+//   beyond the first page at the turn-on.
+// - While GitHub has more requests than the first page, a key that is not in the answer can
+//   still be open. It keeps its entry and its pause.
+// - A known key with a request time after its firstSeen is a re-request. It is new again and
+//   loses its pause.
+// firstSeen is never before the request time, so a late local clock cannot give a re-request at
+// each poll.
 function nextState(
   s: ReviewsState,
   poll: PollData,
   now: number,
 ): { state: ReviewsState; arrived: Set<string>; changed: boolean } {
   const first = s.turnedOnAt === null
-  const open = new Set(poll.toReview.map(pr => pr.key))
   const requests: ReviewsState['requests'] = {}
   const arrived = new Set<string>()
-  for (const key of open) {
+  let edited = false
+  for (const pr of poll.toReview) {
+    const { key } = pr
     const known = s.requests[key]
-    if (first) requests[key] = { baseline: true, firstSeen: known?.firstSeen ?? now }
-    else if (known !== undefined) requests[key] = known
-    else {
-      requests[key] = { baseline: false, firstSeen: now }
+    const seen = Math.max(now, pr.requestedAt)
+    if (first) {
+      requests[key] = { baseline: true, firstSeen: known?.firstSeen ?? seen }
+    } else if (known === undefined) {
+      const baseline = s.turnedOnAt !== null && pr.requestedAt < s.turnedOnAt
+      requests[key] = { baseline, firstSeen: seen }
+      if (!baseline) arrived.add(key)
+    } else if (pr.requestedAt > known.firstSeen) {
+      requests[key] = { baseline: false, firstSeen: seen }
       arrived.add(key)
+    } else {
+      requests[key] = known
+    }
+    if (requests[key] !== known) edited = true
+  }
+  if (poll.toReviewHasMore) {
+    for (const [key, known] of Object.entries(s.requests)) {
+      if (!Object.hasOwn(requests, key)) requests[key] = known
     }
   }
   const pauses: ReviewsState['pauses'] = {}
   for (const [key, until] of Object.entries(s.pauses)) {
-    if (until > now && open.has(key)) pauses[key] = until
+    if (until > now && Object.hasOwn(requests, key) && !arrived.has(key)) pauses[key] = until
   }
-  const gone = Object.keys(s.requests).some(key => !open.has(key))
+  const gone = Object.keys(s.requests).some(key => !Object.hasOwn(requests, key))
   const ended = Object.keys(pauses).length !== Object.keys(s.pauses).length
-  const changed = first || arrived.size > 0 || gone || ended
+  const changed = first || edited || gone || ended
   const state: ReviewsState = first
     ? { ...s, baseline: baselineOf(poll).items, pauses, requests, turnedOnAt: now }
     : { ...s, pauses, requests }

@@ -317,7 +317,10 @@
           "updatedAt": "2026-11-08T09:00:00Z",
           "url": "https://github.com/acme/api/pull/31"
         }
-      ]
+      ],
+      "pageInfo": {
+        "hasNextPage": false
+      }
     },
     "rateLimit": {
       "cost": 11,
@@ -606,7 +609,10 @@
           "updatedAt": "2026-11-09T09:00:00Z",
           "url": "https://github.com/acme/web/pull/103"
         }
-      ]
+      ],
+      "pageInfo": {
+        "hasNextPage": false
+      }
     },
     "viewer": {
       "login": "dev-user"

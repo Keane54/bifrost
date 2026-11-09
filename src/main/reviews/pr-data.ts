@@ -86,4 +86,7 @@ export interface PollData {
   viewer: string
   toReview: PrData[]
   mine: PrData[]
+  // True when a search has more than the 50 PRs that the poll reads (final review I3).
+  toReviewHasMore: boolean
+  mineHasMore: boolean
 }

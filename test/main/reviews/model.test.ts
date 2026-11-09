@@ -418,7 +418,9 @@ describe('buildSnapshot', () => {
         pr({ key: 'acme/app#2', number: 2 }),
         pr({ key: 'keep/app#3', number: 3, owner: 'keep' }),
       ],
+      mineHasMore: false,
       toReview: [pr({ key: 'acme/app#1', requestedUsers: [VIEWER] })],
+      toReviewHasMore: false,
       viewer: VIEWER,
     }
     const snap = buildSnapshot(
@@ -447,10 +449,12 @@ describe('buildSnapshot', () => {
     })
     const poll: PollData = {
       mine: [mine],
+      mineHasMore: false,
       toReview: [
         pr({ key: 'acme/app#1', requestedAt: 50, requestedUsers: [VIEWER] }),
         pr({ key: 'acme/app#9', number: 9, requestedAt: 10, requestedUsers: [VIEWER] }),
       ],
+      toReviewHasMore: false,
       viewer: VIEWER,
     }
     const state = structuredClone(EMPTY_STATE)
@@ -476,7 +480,7 @@ describe('buildSnapshot of a busy PR', () => {
   const input = (mine: PrData[]) => ({
     claude: () => ({ claude: 'waiting' as const, error: null, fixing: 0, sessionId: null }),
     now: 5000,
-    poll: { mine, toReview: [], viewer: VIEWER },
+    poll: { mine, mineHasMore: false, toReview: [], toReviewHasMore: false, viewer: VIEWER },
     session: () => null,
     settings: { reviewsIgnore: [] as string[], reviewsTeamRequests: true },
     state: structuredClone(EMPTY_STATE),
@@ -514,7 +518,9 @@ describe('baselineOf', () => {
   it('collects the open items of My PRs and the To review keys', () => {
     const poll: PollData = {
       mine: [pr({ comments: [comment('pc1', member)], threads: [thread('t1', member)] })],
+      mineHasMore: false,
       toReview: [pr({ key: 'acme/app#7' }), pr({ key: 'acme/app#8' })],
+      toReviewHasMore: false,
       viewer: VIEWER,
     }
     const b = baselineOf(poll)
@@ -525,7 +531,9 @@ describe('baselineOf', () => {
   it('adds the visible items of a truncated PR to the baseline', () => {
     const poll: PollData = {
       mine: [pr({ threads: [thread('t1', member)], truncatedThreads: true })],
+      mineHasMore: false,
       toReview: [],
+      toReviewHasMore: false,
       viewer: VIEWER,
     }
     expect(baselineOf(poll).items).toEqual(['t1'])

@@ -32,6 +32,8 @@ describe('pollArgs', () => {
     expect(POLL_QUERY).toContain('mine: search(')
     expect(POLL_QUERY).toContain('review-requested:@me')
     expect(POLL_QUERY).toContain('author:@me')
+    expect(POLL_QUERY).toMatch(/toReview: search\([^)]*\) \{\s*pageInfo \{ hasNextPage \}/)
+    expect(POLL_QUERY).toMatch(/mine: search\([^)]*\) \{\s*pageInfo \{ hasNextPage \}/)
   })
 })
 
@@ -168,6 +170,18 @@ describe('parsePoll', () => {
     ])
     const contexts = ['commits', 'nodes', 0, 'commit', 'statusCheckRollup', 'contexts']
     expect(cut([...contexts, 'pageInfo', 'hasNextPage'], true)).toEqual([false, false, false, true])
+  })
+
+  it('reads whether each search has more PRs than the first page', () => {
+    expect(basic()).toMatchObject({ mineHasMore: false, toReviewHasMore: false })
+    const raw = JSON.parse(fixture('poll-basic'))
+    raw.data.toReview.pageInfo.hasNextPage = true
+    const r = parsePoll(JSON.stringify(raw))
+    expect(r.ok && r.data).toMatchObject({ mineHasMore: false, toReviewHasMore: true })
+    raw.data.toReview.pageInfo.hasNextPage = false
+    raw.data.mine.pageInfo.hasNextPage = true
+    const m = parsePoll(JSON.stringify(raw))
+    expect(m.ok && m.data).toMatchObject({ mineHasMore: true, toReviewHasMore: false })
   })
 
   it('drops a PR that lacks a key field', () => {

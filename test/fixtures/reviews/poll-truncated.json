@@ -88,14 +88,20 @@
           "updatedAt": "2026-11-08T09:00:00Z",
           "url": "https://github.com/acme/web/pull/200"
         }
-      ]
+      ],
+      "pageInfo": {
+        "hasNextPage": false
+      }
     },
     "rateLimit": {
       "cost": 11,
       "remaining": 4930
     },
     "toReview": {
-      "nodes": []
+      "nodes": [],
+      "pageInfo": {
+        "hasNextPage": false
+      }
     },
     "viewer": {
       "login": "dev-user"

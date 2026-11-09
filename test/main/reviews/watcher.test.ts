@@ -40,7 +40,13 @@ interface FakePr {
   team?: boolean
   // The ID of one top-level comment of a trusted human. Only for a My PR.
   comment?: string
+  // The time of the request event for the viewer (ISO). Without it, the request time is the
+  // creation time of the PR, which is before the start of each test.
+  asked?: string
 }
+
+// A request time after the first poll of a test (10:00) and before the second poll (10:02).
+const ASKED = '2026-11-09T10:01:00Z'
 
 function prNode(pr: FakePr): Record<string, unknown> {
   const repo = pr.repo ?? 'web'
@@ -77,18 +83,23 @@ function prNode(pr: FakePr): Record<string, unknown> {
         },
       ],
     },
-    timelineItems: { nodes: [] },
+    timelineItems: {
+      nodes: pr.asked
+        ? [{ createdAt: pr.asked, requestedReviewer: { __typename: 'User', login: VIEWER } }]
+        : [],
+    },
     title: pr.title ?? `Change ${pr.number}`,
     updatedAt: '2026-11-08T09:00:00Z',
     url: pr.url ?? `https://github.com/acme/${repo}/pull/${pr.number}`,
   }
 }
 
-// A good gh answer: the To review list and the My PRs list.
-function answer(toReview: FakePr[], mine: FakePr[] = []): ExecResult {
+// A good gh answer: the To review list and the My PRs list. more says that GitHub has more
+// requests than the first page.
+function answer(toReview: FakePr[], mine: FakePr[] = [], more = false): ExecResult {
   const data = {
-    mine: { nodes: mine.map(prNode) },
-    toReview: { nodes: toReview.map(prNode) },
+    mine: { nodes: mine.map(prNode), pageInfo: { hasNextPage: false } },
+    toReview: { nodes: toReview.map(prNode), pageInfo: { hasNextPage: more } },
     viewer: { login: VIEWER },
   }
   return { code: 0, stderr: '', stdout: JSON.stringify({ data }) }
@@ -218,7 +229,10 @@ describe('createReviewsWatcher', () => {
 
   test('a new request after the baseline flashes and notifies once', async () => {
     const t = setup({
-      replies: [answer([{ number: 101 }]), answer([{ number: 101 }, { number: 103 }])],
+      replies: [
+        answer([{ number: 101 }]),
+        answer([{ number: 101 }, { asked: ASKED, number: 103 }]),
+      ],
     })
     t.watcher.start()
     await vi.advanceTimersByTimeAsync(0)
@@ -239,7 +253,7 @@ describe('createReviewsWatcher', () => {
   test('a request that is known after a restart does not flash', async () => {
     const before = Date.now() - 24 * 60 * MIN
     const t = setup({
-      replies: [answer([{ number: 101 }, { number: 104 }])],
+      replies: [answer([{ number: 101 }, { asked: '2026-11-09T09:00:00Z', number: 104 }])],
       state: { requests: { [K101]: { baseline: true, firstSeen: before } }, turnedOnAt: before },
     })
     t.watcher.start()
@@ -271,7 +285,11 @@ describe('createReviewsWatcher', () => {
 
   test('a request that comes back flashes and notifies', async () => {
     const t = setup({
-      replies: [answer([{ number: 101 }]), answer([]), answer([{ number: 101 }])],
+      replies: [
+        answer([{ number: 101 }]),
+        answer([]),
+        answer([{ asked: '2026-11-09T10:03:00Z', number: 101 }]),
+      ],
     })
     t.watcher.start()
     await vi.advanceTimersByTimeAsync(0)
@@ -290,7 +308,10 @@ describe('createReviewsWatcher', () => {
 
   test('pause stops the flash and the end of the pause brings it back', async () => {
     const t = setup({
-      replies: [answer([{ number: 101 }]), answer([{ number: 101 }, { number: 103 }])],
+      replies: [
+        answer([{ number: 101 }]),
+        answer([{ number: 101 }, { asked: ASKED, number: 103 }]),
+      ],
     })
     t.watcher.start()
     await vi.advanceTimersByTimeAsync(0)
@@ -320,7 +341,10 @@ describe('createReviewsWatcher', () => {
 
   test('the flash comes back at the end of the pause, before the next poll', async () => {
     const t = setup({
-      replies: [answer([{ number: 101 }]), answer([{ number: 101 }, { number: 103 }])],
+      replies: [
+        answer([{ number: 101 }]),
+        answer([{ number: 101 }, { asked: ASKED, number: 103 }]),
+      ],
       settings: { reviewsPollMinutes: 10 },
     })
     t.watcher.start()
@@ -339,7 +363,10 @@ describe('createReviewsWatcher', () => {
 
   test('stop during a pause clears all timers', async () => {
     const t = setup({
-      replies: [answer([{ number: 101 }]), answer([{ number: 101 }, { number: 103 }])],
+      replies: [
+        answer([{ number: 101 }]),
+        answer([{ number: 101 }, { asked: ASKED, number: 103 }]),
+      ],
     })
     t.watcher.start()
     await vi.advanceTimersByTimeAsync(0)
@@ -354,7 +381,10 @@ describe('createReviewsWatcher', () => {
 
   test('endPause brings the flash back at once', async () => {
     const t = setup({
-      replies: [answer([{ number: 101 }]), answer([{ number: 101 }, { number: 103 }])],
+      replies: [
+        answer([{ number: 101 }]),
+        answer([{ number: 101 }, { asked: ASKED, number: 103 }]),
+      ],
     })
     t.watcher.start()
     await vi.advanceTimersByTimeAsync(0)
@@ -400,6 +430,107 @@ describe('createReviewsWatcher', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(t.store.get().pauses).toEqual({})
     expect(t.store.get().requests).toEqual({})
+    t.watcher.stop()
+  })
+
+  test('a request from before the turn-on that shows later does not flash', async () => {
+    // At the turn-on, GitHub had more than 50 requests. K104 was beyond the first page.
+    const t = setup({
+      replies: [answer([{ number: 101 }], [], true), answer([{ number: 101 }, { number: 104 }])],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    const turnedOnAt = Date.now()
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(row(t.watcher, K104)).toMatchObject({ flash: false, state: 'waiting' })
+    expect(t.store.get().requests[K104]).toEqual({ baseline: true, firstSeen: Date.now() })
+    expect(t.store.get().turnedOnAt).toBe(turnedOnAt)
+    expect(t.notified).toEqual([])
+    t.watcher.stop()
+  })
+
+  test('while GitHub has more requests, a missing request keeps its entry and its pause', async () => {
+    const before = Date.now() - 60 * MIN
+    const until = Date.now() + 30 * MIN
+    const t = setup({
+      replies: [answer([{ number: 101 }], [], true), answer([{ number: 101 }])],
+      state: {
+        pauses: { [K103]: until },
+        requests: {
+          [K101]: { baseline: true, firstSeen: before },
+          [K103]: { baseline: false, firstSeen: before },
+        },
+        turnedOnAt: before,
+      },
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    // K103 is not in the first page, but it can still be open.
+    expect(t.store.get().requests[K103]).toEqual({ baseline: false, firstSeen: before })
+    expect(t.store.get().pauses).toEqual({ [K103]: until })
+    expect(row(t.watcher, K103)).toBeUndefined()
+    // All requests fit in one page again, so K103 is gone.
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(Object.keys(t.store.get().requests)).toEqual([K101])
+    expect(t.store.get().pauses).toEqual({})
+    t.watcher.stop()
+  })
+
+  test('a known request with a newer request event is new again and notifies once', async () => {
+    const t = setup({
+      replies: [
+        answer([{ number: 101 }]),
+        answer([{ number: 101 }]),
+        answer([{ asked: '2026-11-09T10:03:00Z', number: 101 }]),
+      ],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(row(t.watcher, K101)).toMatchObject({ flash: false, state: 'waiting' })
+    // The author asks again while the request is still open.
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(row(t.watcher, K101)).toMatchObject({ flash: true, state: 'new' })
+    expect(t.store.get().requests[K101]).toEqual({ baseline: false, firstSeen: Date.now() })
+    expect(t.notified.map(n => n.title)).toEqual(['web #101'])
+    // The next poll has the same request event. It does not notify again.
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(row(t.watcher, K101)?.state).toBe('new')
+    expect(t.notified).toHaveLength(1)
+    t.watcher.stop()
+  })
+
+  test('a re-request ends the pause of the request', async () => {
+    const before = Date.now() - 60 * MIN
+    const t = setup({
+      replies: [answer([{ asked: '2026-11-09T09:59:00Z', number: 103 }])],
+      state: {
+        pauses: { [K103]: Date.now() + 30 * MIN },
+        requests: { [K103]: { baseline: false, firstSeen: before } },
+        turnedOnAt: before,
+      },
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(row(t.watcher, K103)).toMatchObject({ flash: true, state: 'new' })
+    expect(t.store.get().pauses).toEqual({})
+    expect(t.notified.map(n => n.title)).toEqual(['web #103'])
+    t.watcher.stop()
+  })
+
+  test('a request time after the local clock notifies only once', async () => {
+    // The clock of this Mac is late, so the request time is in the future.
+    const asked = '2026-11-09T11:00:00Z'
+    const t = setup({
+      replies: [answer([{ number: 101 }]), answer([{ number: 101 }, { asked, number: 103 }])],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(row(t.watcher, K103)?.state).toBe('new')
+    expect(t.store.get().requests[K103]).toEqual({ baseline: false, firstSeen: Date.parse(asked) })
+    await vi.advanceTimersByTimeAsync(4 * MIN)
+    expect(t.notified.map(n => n.title)).toEqual(['web #103'])
     t.watcher.stop()
   })
 
@@ -514,7 +645,10 @@ describe('createReviewsWatcher', () => {
 
   test('a stop during the save emits nothing and notifies nothing', async () => {
     const t = setup({
-      replies: [answer([{ number: 101 }]), answer([{ number: 101 }, { number: 103 }])],
+      replies: [
+        answer([{ number: 101 }]),
+        answer([{ number: 101 }, { asked: ASKED, number: 103 }]),
+      ],
     })
     t.watcher.start()
     await vi.advanceTimersByTimeAsync(0)
@@ -669,7 +803,10 @@ describe('createReviewsWatcher', () => {
 
   test('a failed save logs, shows the rows and does not notify', async () => {
     const t = setup({
-      replies: [answer([{ number: 101 }]), answer([{ number: 101 }, { number: 103 }])],
+      replies: [
+        answer([{ number: 101 }]),
+        answer([{ number: 101 }, { asked: ASKED, number: 103 }]),
+      ],
     })
     t.watcher.start()
     await vi.advanceTimersByTimeAsync(0)
@@ -684,7 +821,12 @@ describe('createReviewsWatcher', () => {
   test('a failed save keeps the computed rows and logs once until a save works', async () => {
     const both = [{ number: 101 }, { number: 102 }]
     const t = setup({
-      replies: [answer(both), answer(both), answer(both), answer([...both, { number: 103 }])],
+      replies: [
+        answer(both),
+        answer(both),
+        answer(both),
+        answer([...both, { asked: '2026-11-09T10:05:00Z', number: 103 }]),
+      ],
     })
     const memory = t.change.getMockImplementation() as NonNullable<
       ReturnType<typeof t.change.getMockImplementation>
@@ -752,7 +894,10 @@ describe('createReviewsWatcher', () => {
     const t = setup({
       replies: [
         answer([{ number: 101 }]),
-        answer([101, 103, 104, 105, 106].map(number => ({ number }))),
+        answer([
+          { number: 101 },
+          ...[103, 104, 105, 106].map(number => ({ asked: ASKED, number })),
+        ]),
       ],
     })
     t.watcher.start()
