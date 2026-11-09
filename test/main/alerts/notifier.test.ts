@@ -39,6 +39,19 @@ describe('showNotification', () => {
     expect(onFailed).not.toHaveBeenCalled()
   })
 
+  test('the log line of a shown notification names its label', () => {
+    const log = vi.mocked(console.log)
+    showNotification({ body: 'b', label: 'review requests', sessionId: null, title: 't' }, () => {})
+    made[0]?.emit('show')
+    expect(log).toHaveBeenCalledWith('Bifrost showed a notification for review requests.')
+    showNotification({ body: 'b', sessionId: 's1', title: 't' }, () => {})
+    made[1]?.emit('show')
+    expect(log).toHaveBeenCalledWith('Bifrost showed a notification for s1.')
+    showNotification({ body: 'b', sessionId: null, title: 't' }, () => {})
+    made[2]?.emit('show')
+    expect(log).toHaveBeenCalledWith('Bifrost showed a notification for a summary.')
+  })
+
   test('a refused notification works with no onFailed', () => {
     showNotification({ body: 'b', sessionId: null, title: 't' }, () => {})
     expect(() => made[0]?.emit('failed', {}, 'denied')).not.toThrow()

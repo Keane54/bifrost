@@ -4,6 +4,7 @@
 import { parseBinding } from '../../../shared/keys'
 import { GENERAL_ROWS } from './general-rows'
 import type { KeyRow } from './key-editor'
+import { REVIEWS_ROWS } from './reviews-rows'
 import type { SettingsSection } from './settings-nav'
 
 // The titles of the sections, in the order of the tabs.
@@ -11,15 +12,16 @@ export const SECTION_TITLES: Readonly<Record<SettingsSection, string>> = {
   general: 'General',
   keys: 'Keys',
   live: 'Live details',
+  reviews: 'Reviews',
   slash: 'Slash commands',
 }
-const SECTION_ORDER: readonly SettingsSection[] = ['general', 'slash', 'keys', 'live']
+const SECTION_ORDER: readonly SettingsSection[] = ['general', 'slash', 'keys', 'reviews', 'live']
 
 // The labels of the rows of Settings > General. GENERAL_ROWS is their one source.
 export const GENERAL_LABELS: readonly string[] = Object.values(GENERAL_ROWS)
 
 // One row that the search can find. The ID is the label of a General row, the slash command, the
-// slot ID of a key, or "live" for Live details.
+// slot ID of a key, the label of a Reviews row, or "live" for Live details.
 export interface SearchRow {
   id: string
   text: string
@@ -158,6 +160,7 @@ export function settingsIndex(input: {
       group.rows.map(row => ({ binding: row.binding, id: row.slot.id, text: row.label })),
     ),
     live: [{ id: 'live', text: input.live.join(' ') }],
+    reviews: Object.values(REVIEWS_ROWS).map(label => ({ id: label, text: label })),
     slash: input.slash.map(command => ({ id: command, text: command })),
   }
   return SECTION_ORDER.map(id => ({ id, rows: rows[id], title: SECTION_TITLES[id] }))

@@ -1,0 +1,85 @@
+// A read-only check of the GitHub reader against the real GitHub. It runs the one query of the
+// Reviews panel with the real gh, and it prints only counts. It prints no title, no body and no
+// token.
+//
+// Run it from the root of the repository: node scripts/reviews/check-reader.ts
+//
+// The modules of src/main import each other with no file extension. Plain node cannot load them.
+// So the script first adds a resolve hook that tries a .ts file when a path fails.
+
+import { registerHooks } from 'node:module'
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    try {
+      return nextResolve(specifier, context)
+    } catch (err) {
+      const relative = specifier.startsWith('.') || specifier.startsWith('/')
+      if (!relative) throw err
+      for (const suffix of ['.ts', '/index.ts']) {
+        try {
+          return nextResolve(specifier + suffix, context)
+        } catch {
+          // Try the next suffix.
+        }
+      }
+      throw err
+    }
+  },
+})
+
+const { execFile } = await import('../../src/main/claude/cli.ts')
+const { createGh, ghFailure } = await import('../../src/main/reviews/gh.ts')
+const { parsePoll, pollArgs } = await import('../../src/main/reviews/query.ts')
+const { isTruncated } = await import('../../src/main/reviews/model.ts')
+
+function fail(message: string): never {
+  console.error(`check-reader failed: ${message}`)
+  process.exit(1)
+}
+
+const env: Record<string, string> = {}
+for (const [key, value] of Object.entries(process.env)) {
+  if (value !== undefined) env[key] = value
+}
+
+const gh = createGh({ env: async () => env, exec: execFile })
+const result = await gh.run(pollArgs())
+const failure = ghFailure(result)
+const parsed = parsePoll(result.stdout)
+// gh exits with an error code for a partial answer (data and errors). The watcher keeps the data
+// of such an answer, so the check does too.
+const partial = parsed.ok && parsed.data.errors.length > 0
+if (failure !== null && !partial) fail(`${failure.availability}: ${failure.message}`)
+if (!parsed.ok) fail(parsed.message)
+const { errors, mine, toReview, viewer } = parsed.data
+
+// The cost of the query is in the raw answer. It is a number only.
+let cost: unknown = null
+try {
+  cost = JSON.parse(result.stdout)?.data?.rateLimit?.cost
+} catch {
+  // The parse worked above, so this does not happen.
+}
+
+const direct = toReview.filter(pr => pr.requestedUsers.includes(viewer))
+const team = toReview.length - direct.length
+const approved = direct.filter(pr => pr.reviewDecision === 'APPROVED')
+const all = [...toReview, ...mine]
+const count = (test: (pr: (typeof all)[number]) => boolean): number => all.filter(test).length
+
+console.log(`viewer login: ${viewer}`)
+console.log(
+  `To review: ${toReview.length} (direct ${direct.length}, team ${team}, ` +
+    `direct and approved by others ${approved.length})`,
+)
+console.log(`My PRs: ${mine.length}`)
+console.log(`To review with failed checks: ${toReview.filter(pr => pr.failedChecks > 0).length}`)
+console.log(`My PRs with failed checks: ${mine.filter(pr => pr.failedChecks > 0).length}`)
+console.log(
+  `PRs with a cut list: ${count(isTruncated)} (threads ${count(pr => pr.truncatedThreads)}, ` +
+    `reviews ${count(pr => pr.truncatedReviews)}, comments ${count(pr => pr.truncatedComments)}, ` +
+    `checks ${count(pr => pr.truncatedChecks)})`,
+)
+console.log(`GitHub errors in the answer: ${errors.length}`)
+console.log(`GraphQL cost: ${typeof cost === 'number' ? cost : 'unknown'}`)

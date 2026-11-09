@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { GENERAL_ROWS } from '../../../src/renderer/src/settings/general-rows'
 import { keyGroups } from '../../../src/renderer/src/settings/key-editor'
+import { REVIEWS_ROWS } from '../../../src/renderer/src/settings/reviews-rows'
 import {
   focusLost,
   GENERAL_LABELS,
@@ -90,9 +91,15 @@ describe('the index of all sections', () => {
     slash: ['/compact', '/clear'],
   })
 
-  it('has the four sections in the order of the tabs, with their titles', () => {
-    expect(index.map(s => s.id)).toEqual(['general', 'slash', 'keys', 'live'])
-    expect(index.map(s => s.title)).toEqual(['General', 'Slash commands', 'Keys', 'Live details'])
+  it('has the five sections in the order of the tabs, with their titles', () => {
+    expect(index.map(s => s.id)).toEqual(['general', 'slash', 'keys', 'reviews', 'live'])
+    expect(index.map(s => s.title)).toEqual([
+      'General',
+      'Slash commands',
+      'Keys',
+      'Reviews',
+      'Live details',
+    ])
     expect(SECTION_TITLES.keys).toBe('Keys')
   })
 
@@ -105,7 +112,13 @@ describe('the index of all sections', () => {
       id: 'take-control:mod',
       text: 'Take control',
     })
-    expect(index[3].rows).toEqual([{ id: 'live', text: 'Live details Off. Turn on Remove' }])
+    expect(index[3].rows.map(r => r.id)).toEqual(Object.values(REVIEWS_ROWS))
+    expect(index[4].rows).toEqual([{ id: 'live', text: 'Live details Off. Turn on Remove' }])
+  })
+
+  it('finds Show team requests in Reviews with the word team', () => {
+    const hits = searchSettings('team', index)
+    expect(hits?.find(hit => hit.id === 'reviews')?.rows).toContain('Show team requests')
   })
 })
 

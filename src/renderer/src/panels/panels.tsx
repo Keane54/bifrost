@@ -13,6 +13,7 @@ import OverviewPanel from '../overview/OverviewPanel'
 import OverviewSettingsPanel from '../overview/OverviewSettingsPanel'
 import { useOverview } from '../overview/overviews-context'
 import { SessionIcon } from '../overview/SessionIcon'
+import ReviewsPanel from '../reviews/ReviewsPanel'
 import ServiceStatusPanel from '../service/ServiceStatusPanel'
 import SettingsPanel from '../settings/SettingsPanel'
 import UsagePanel from '../usage/UsagePanel'
@@ -47,6 +48,8 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
       return 'Usage HUD'
     case 'service-status':
       return 'Service status'
+    case 'reviews':
+      return 'Reviews'
     case 'show-info': {
       const id = showInfoSessionId(panelId)
       const name = rows?.find(r => r.sessionId === id)?.name
@@ -142,6 +145,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <UsagePanel />
     case 'service-status':
       return <ServiceStatusPanel />
+    case 'reviews':
+      return <ReviewsPanel />
     default:
       return <div className='p-3 text-[13px] text-text-dim'>This panel is not known.</div>
   }

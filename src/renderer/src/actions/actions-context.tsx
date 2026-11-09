@@ -18,6 +18,7 @@ import { useChats } from '../chat/chat-terminals'
 import { chatPanelId } from '../chat/views'
 import { useRegistry } from '../data/registry'
 import { errorMessage } from '../lib/error-message'
+import { setReviewsTab } from '../reviews/reviews-tab'
 import { rememberSlash } from '../sessions/history'
 import { useHistory } from '../sessions/history-context'
 import NewSessionDialog from '../sessions/NewSessionDialog'
@@ -463,6 +464,16 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
         openNotified()
       }),
     [openNotified],
+  )
+
+  // A click on a review notification opens the Reviews panel on the To review tab.
+  useEffect(
+    () =>
+      window.bifrost.reviews.onOpen(() => {
+        setReviewsTab('to-review')
+        dispatch({ panelId: 'reviews', type: 'open' })
+      }),
+    [dispatch],
   )
 
   // New rows or the first load of the registry can end the wait.

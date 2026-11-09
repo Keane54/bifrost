@@ -39,6 +39,29 @@ describe('settingsEffects', () => {
     expect(settingsEffects(prev, { ...prev, accountUsage: false })).toEqual([])
   })
 
+  test('the Reviews settings give the Reviews effects', () => {
+    const prev = base()
+    expect(settingsEffects(prev, { ...prev, reviewsWatch: true })).toEqual([
+      { kind: 'reviews', on: true },
+    ])
+    expect(settingsEffects({ ...prev, reviewsWatch: true }, prev)).toEqual([
+      { kind: 'reviews', on: false },
+    ])
+    expect(settingsEffects(prev, { ...prev, reviewsIgnore: ['acme/*'] })).toEqual([
+      { kind: 'reviews-view' },
+    ])
+    expect(settingsEffects(prev, { ...prev, reviewsTeamRequests: false })).toEqual([
+      { kind: 'reviews-view' },
+    ])
+    expect(settingsEffects(prev, { ...prev, reviewsPollMinutes: 5 })).toEqual([
+      { kind: 'reviews-poll' },
+    ])
+    expect(
+      settingsEffects(prev, { ...prev, reviewsIgnore: ['acme/*'], reviewsPollMinutes: 10 }),
+    ).toEqual([{ kind: 'reviews-view' }, { kind: 'reviews-poll' }])
+    expect(settingsEffects(prev, { ...prev, reviewsMaxSessions: 5 })).toEqual([])
+  })
+
   test('a key change gives a menu effect only for a menu slot', () => {
     const prev = base()
     expect(settingsEffects(prev, { ...prev, keys: { 'open:mod': 'Mod+K' } })).toEqual([])

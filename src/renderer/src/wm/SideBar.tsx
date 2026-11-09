@@ -4,6 +4,7 @@ import {
   Crosshair,
   Eye,
   Gauge,
+  GitPullRequest,
   List,
   ListPlus,
   type LucideIcon,
@@ -24,6 +25,7 @@ import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { Tip } from '../lib/menu'
 import { panelTitle } from '../panels/panels'
+import { useReviews } from '../reviews/use-reviews'
 import { useLive } from '../settings/live-context'
 import { useSettingsNav } from '../settings/settings-nav'
 import { useWmControls, useWmState } from './context'
@@ -97,6 +99,7 @@ function SideButton(props: {
   )
 }
 
+const REVIEWS_ATTENTION = 'Reviews - a pull request waits for you'
 const SETTINGS_ATTENTION = 'Settings - something needs your attention'
 
 // A button for an action that needs no row (D8). A disabled button shows darker and faded.
@@ -130,6 +133,7 @@ function SideBar(): React.JSX.Element {
   const { rows } = useRegistry()
   const settingsNav = useSettingsNav()
   const { warning } = useLive()
+  const reviews = useReviews()
   const open = (panelId: string): void => dispatch({ panelId, type: 'open' })
   const free = freeOverview(state)
   const minimised = state.frames.filter(f => f.minimised)
@@ -155,6 +159,12 @@ function SideBar(): React.JSX.Element {
       <SideButton icon={ScrollText} label='Event log' onClick={() => open('event-log')} />
       <SideButton icon={Gauge} label='Usage HUD' onClick={() => open('usage-hud')} />
       <SideButton icon={Activity} label='Service status' onClick={() => open('service-status')} />
+      <SideButton
+        dot={reviews.toReview.some(r => r.flash) ? REVIEWS_ATTENTION : undefined}
+        icon={GitPullRequest}
+        label='Reviews'
+        onClick={() => open('reviews')}
+      />
       <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />
       <GlobalButton action='new-session' icon={SquarePlus} />
       <GlobalButton action='resume-all' icon={RotateCcw} />
