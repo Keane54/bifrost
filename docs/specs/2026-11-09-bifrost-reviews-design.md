@@ -1,6 +1,6 @@
 # Bifrost Reviews: design
 
-Status: approved by the user, 2026-11-09.
+Status: approved by the user, 2026-11-09. R1 built.
 
 The Reviews panel shows the GitHub pull requests (PRs) that need you. It has two tabs:
 
@@ -117,11 +117,19 @@ For each PR, the query reads:
 
 - the repository, number, title, URL, author, draft flag, additions, deletions, created and updated times;
 - the open review requests: users and teams, so Bifrost can tell a direct request from a team request;
-- the reviews: author, `authorAssociation`, state, submitted time, commit;
-- the review threads: ID, `isResolved`, path, line, and each comment with its author, `authorAssociation`, body and time;
-- the top-level comments, with the same fields;
-- the status check rollup of the head commit;
+- the request events. A direct request uses the newest event for you. A team request uses the newest team event. Without an event, Bifrost uses the creation time of the PR;
+- the first 30 reviews: author, `authorAssociation`, state, submitted time, commit. They give the first Copilot review and the review bodies;
+- the latest review with a decision of each reviewer (`latestOpinionatedReviews`): author, state, submitted time. The review status (section 9.2) uses only these reviews;
+- the newest 20 review threads: ID, `isResolved`, path, line, and each comment with its author, `authorAssociation`, body and time;
+- the newest 30 top-level comments, with the same fields;
+- the status check rollup of the head commit: its state and the first 20 checks. A rollup state of `FAILURE` or `ERROR` gives one or more failed checks;
 - the head branch, the head repository and the head commit.
+
+Limits of the query (final review, 2026-11-09):
+
+- Each search reads the first 50 PRs. Bifrost also reads if GitHub has more.
+- A list of a PR can have more items than the query reads. Bifrost then marks the list as cut. A My PRs row with a cut list shows a tip on its status.
+- An answer from GitHub can have data and errors. Bifrost then keeps the data and writes the error messages to the log. Only an answer without usable data fails the poll.
 
 The poll interval is 2 minutes. A manual Refresh button in the panel polls at once. When `gh` is missing or not logged in, the panel shows a friendly message that tells you to run `gh auth login`. Facts from the spike of 2026-11-09:
 
@@ -158,6 +166,9 @@ Rules for the flash:
 
 - At the first turn-on, the requests that are open do not flash (user decision, 2026-11-09). Only a request that arrives after the turn-on flashes.
 - A request is new when the PR was not in the list at the last poll. So a request that you finish, and that the author makes again, flashes.
+- A request is also new when its newest request event is after the time when Bifrost first saw it. So a request that the author makes again while it is open flashes. It also loses its pause.
+- A request that shows after the turn-on, but that the author made before the turn-on, does not flash. This occurs when more than 50 requests are open.
+- GitHub can have more than 50 requests. Then a request that is not in the answer keeps its entry and its pause. An answer with errors does the same.
 - A PR whose `reviewDecision` is `APPROVED` does not flash (my call). The required approvals are complete, so your approval changes nothing. This follows the user's rule for merged PRs. A PR with no required reviews has no `reviewDecision`, and it flashes as usual.
 
 ### 8.3 The flash
@@ -172,7 +183,7 @@ Rules for the flash:
 - **Pause** stops the flash for the pause time (setting, default 1 hour). When the pause ends, the row flashes again.
 - Pauses survive a restart of Bifrost.
 - A row leaves the tab when GitHub no longer requests your review, for example after you submit your review.
-- If the author asks for your review again, the row comes back as Waiting for you.
+- If the author asks for your review again, the row comes back as a new request and flashes.
 
 ## 9. My PRs tab
 
@@ -192,9 +203,11 @@ Bifrost computes the status from the latest review of each human reviewer. Copil
 | Status | Rule |
 |---|---|
 | Changes requested | The latest review of one or more human reviewers is `CHANGES_REQUESTED`. |
-| Comments | One or more threads from trusted authors or the first Copilot review are not resolved, or one or more top-level comments that are work (section 10.2) are not handled yet. Unresolved threads from before the first turn-on count too. |
-| Approved | One or more human reviewers approved, and nothing is open. |
+| Comments | One or more threads from trusted authors or from the first Copilot review are not resolved. Unresolved threads from before the first turn-on count too. |
+| Approved | One or more human reviewers approved, and no thread is open. |
 | Pending | Any other case, also when no reviewer is requested. |
+
+Only threads count for Comments. A review body or a top-level comment does not change the status. It stays work for the request session (section 10.2). So a "Thanks" comment does not hide an approval.
 
 Copilot comments can make a PR show Comments. Copilot can never make a PR Approved.
 
@@ -348,7 +361,7 @@ A new "Reviews" section in Settings:
 
 | Setting | Default |
 |---|---|
-| Watch GitHub | Off. The first turn-on shows what Bifrost will do on GitHub. |
+| Watch GitHub | Off. Each turn-on shows what Bifrost will do on GitHub and asks you to confirm. |
 | Handle comments on my PRs automatically | On |
 | Show team requests | On |
 | Maximum PR sessions | 3 (1 to 10) |

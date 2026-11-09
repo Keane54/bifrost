@@ -95,3 +95,15 @@ test('resolveClaudePath does not check the fallback paths when the shell finds c
   await resolveClaudePath(exec, '/bin/zsh', isExecutable)
   expect(isExecutable).not.toHaveBeenCalled()
 })
+
+test('execFile stops at the maxBuffer limit and names the limit', async () => {
+  const result = await execFile('/bin/sh', ['-c', 'printf "%064d" 0'], { maxBuffer: 16 })
+  expect(result.code).toBe(1)
+  expect(result.stderr).toContain('maxBuffer')
+})
+
+test('execFile keeps the Node default limit without maxBuffer', async () => {
+  const result = await execFile('/bin/sh', ['-c', 'printf "%064d" 0'])
+  expect(result.code).toBe(0)
+  expect(result.stdout).toHaveLength(64)
+})

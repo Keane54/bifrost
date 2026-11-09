@@ -1,4 +1,5 @@
 import type { DirInfo, NewSessionSpec } from './new-session'
+import type { ReviewsSnapshot } from './reviews'
 import type { Settings, SettingsPatch } from './settings'
 import type {
   AccountUsage,
@@ -148,6 +149,28 @@ export interface BifrostApi {
   alerts: {
     // A click on a notification of a box. The main process sends the session ID.
     onOpen(cb: (sessionId: string) => void): () => void
+  }
+  // The Reviews panel (Reviews design). The main process polls GitHub with gh while Watch GitHub
+  // is on. A key is a PR key, owner/repo#123. Each call except snapshot rejects while Watch
+  // GitHub is off.
+  reviews: {
+    // The newest snapshot. While Watch GitHub is off, its availability is 'off'.
+    snapshot(): Promise<ReviewsSnapshot>
+    // The main process sends each new snapshot.
+    onUpdate(cb: (s: ReviewsSnapshot) => void): () => void
+    // Poll now. The main process ignores a call during a poll or within 5 seconds of the last
+    // poll. The new snapshot comes through onUpdate.
+    refresh(): Promise<void>
+    // Stop the flash of a To review row for the Pause time setting. This rejects for a key that
+    // is not a To review row.
+    pause(key: string): Promise<void>
+    // End the pause of a To review row now. This rejects as pause does.
+    endPause(key: string): Promise<void>
+    // Open the PR page on GitHub. The main process finds the URL. This rejects for a key with no
+    // PR in the last poll.
+    openPr(key: string): Promise<void>
+    // A click on a notification of a new review request.
+    onOpen(cb: () => void): () => void
   }
   // Live details (D11). Each action resolves with the new status. It rejects with the message
   // of its failure. A switch calls install when plugin is not-installed, else enable or disable.

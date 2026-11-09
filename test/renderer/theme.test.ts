@@ -225,6 +225,8 @@ describe('theme', () => {
       'overview/SessionIcon.tsx',
       'overview/cells.tsx',
       'overview/OverviewTable.tsx',
+      'reviews/ReviewRow.tsx',
+      'reviews/ReviewsPanel.tsx',
       'watch/WatchlistPanel.tsx',
     ]
     const bad = FILES.filter(f => /-box-yellow|-box-red|-parked/.test(f.text))

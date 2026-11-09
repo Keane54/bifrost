@@ -13,6 +13,7 @@ import { keyGroups } from './key-editor'
 import LiveSection from './LiveSection'
 import { useLive } from './live-context'
 import { claudeVersionLine, LIVE_ACTION_LABELS, liveActions, liveStateLine } from './live-notice'
+import ReviewsSection from './ReviewsSection'
 import { ROW_FIELD } from './SettingRow'
 import SlashSection from './SlashSection'
 import { SaveTrackerContext } from './save-context'
@@ -31,7 +32,7 @@ import {
 import { useSettings } from './settings-context'
 import { type SettingsSection, useSettingsNav } from './settings-nav'
 
-const TABS: SettingsSection[] = ['general', 'slash', 'keys', 'live']
+const TABS: SettingsSection[] = ['general', 'slash', 'keys', 'reviews', 'live']
 
 // The focus for Cmd+F: in Settings, nowhere (the page body), or in another place.
 function focusPlace(root: HTMLElement | null): 'settings' | 'none' | 'other' {
@@ -68,6 +69,7 @@ function Hit({ hit, readLive }: { hit: SearchHit; readLive: () => void }): React
       {hit.id === 'general' && <GeneralSection only={only} />}
       {hit.id === 'slash' && <SlashSection only={only} />}
       {hit.id === 'keys' && <KeysSection only={only} />}
+      {hit.id === 'reviews' && <ReviewsSection only={only} />}
       {hit.id === 'live' && <LiveSection readStatus={readLive} />}
     </section>
   )
@@ -256,6 +258,7 @@ export default function SettingsPanel(): React.JSX.Element {
           {hits === null && section === 'general' && <GeneralSection />}
           {hits === null && section === 'slash' && <SlashSection />}
           {hits === null && section === 'keys' && <KeysSection />}
+          {hits === null && section === 'reviews' && <ReviewsSection />}
           {hits === null && section === 'live' && <LiveSection readStatus={readLive} />}
           {hits !== null && (
             <section aria-label='Search results' data-search-results={true}>

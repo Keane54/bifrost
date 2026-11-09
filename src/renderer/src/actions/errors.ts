@@ -41,6 +41,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: bad new session data': "Some of the New session values aren't valid.",
   'refused: bad priority': "That priority isn't valid.",
   'refused: bad process ID': "The process ID of this session isn't valid.",
+  'refused: bad reviewsIgnore': "That list of repositories to ignore isn't valid.",
   'refused: bad session ID': "That session ID isn't valid.",
   'refused: bad settings': "Bifrost couldn't read those settings.",
   'refused: bad slashCommands': "That list of slash commands isn't valid.",
@@ -61,6 +62,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: only an external session': REASON_ONLY_EXTERNAL,
   'refused: only an owned session that runs': ONLY_RUNNING,
   'refused: Resume all runs': REASON_RESUME_ALL_RUNS,
+  'refused: reviews are off': 'Turn on Watch GitHub in Settings first.',
   'refused: Take control needs a confirmation': 'Take control needs your confirmation first.',
   'refused: the attach is not for the session of the chat view':
     "That connection doesn't match the session of this chat window.",
@@ -102,6 +104,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: unknown app': "Bifrost doesn't know that app.",
   'refused: unknown model': "Bifrost doesn't know that model.",
   'refused: unknown permission mode': "Bifrost doesn't know that permission mode.",
+  'refused: unknown pull request': "That pull request isn't in the list any more.",
   'refused: unknown service': "Bifrost doesn't know that service.",
   'refused: unknown session': REASON_GONE,
 }
