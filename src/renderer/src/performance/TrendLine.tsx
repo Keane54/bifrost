@@ -1,8 +1,9 @@
 // The trend line of the Bifrost section (design section 5.2): the RAM and the CPU of Bifrost in
-// the last 10 minutes. An inline SVG. Each line takes its colour from a token class.
+// the last 10 minutes, or since the start when Bifrost ran for less time. An inline SVG. Each
+// line takes its colour from a token class.
 import type { PerformanceSnapshot } from '../../../shared/performance'
 import { cx } from '../lib/cx'
-import { TREND_H, TREND_W, trendLines } from './format'
+import { TREND_H, TREND_W, trendLabel, trendLines } from './format'
 
 type Trend = NonNullable<PerformanceSnapshot['bifrost']>['trend']
 
@@ -52,7 +53,7 @@ export default function TrendLine({ trend }: { trend: Trend }): React.JSX.Elemen
       <div className='mb-1 flex gap-3 text-[10px] text-text-dim'>
         <Key label='Memory' line={RAM_LINE} />
         <Key label='CPU' line={CPU_LINE} />
-        <span>Last 10 minutes</span>
+        <span>{trendLabel(trend)}</span>
       </div>
     </div>
   )

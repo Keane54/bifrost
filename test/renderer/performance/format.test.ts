@@ -9,6 +9,7 @@ import {
   pressureText,
   rate,
   thermalText,
+  trendLabel,
   trendLines,
 } from '../../../src/renderer/src/performance/format'
 
@@ -124,13 +125,23 @@ describe('trendLines', () => {
     expect(lines.cpu).toBe('0,32 500,17')
   })
 
-  it('starts a short trend at the right side', () => {
+  it('spreads a short trend over the full width, from the oldest point to the newest', () => {
     const lines = trendLines([
       { at: t0, cpu: 10, ramMb: 700 },
       { at: t0 + 60_000, cpu: 10, ramMb: 700 },
     ])
-    // One minute is a tenth of the width. A flat RAM line is in the middle.
-    expect(lines.ram).toBe('450,17 500,17')
+    // One minute fills the width. A flat RAM line is in the middle.
+    expect(lines.ram).toBe('0,17 500,17')
+    const three = trendLines([
+      { at: t0, cpu: 0, ramMb: 700 },
+      { at: t0 + 30_000, cpu: 0, ramMb: 700 },
+      { at: t0 + 120_000, cpu: 0, ramMb: 700 },
+    ])
+    expect(three.ram).toBe('0,17 125,17 500,17')
+  })
+
+  it('puts one point at the right edge', () => {
+    expect(trendLines([{ at: t0, cpu: 0, ramMb: 700 }])).toEqual({ cpu: '500,32', ram: '500,17' })
   })
 
   it('drops points older than 10 minutes', () => {
@@ -148,5 +159,31 @@ describe('trendLines', () => {
       { at: t0 + 600_000, cpu: 200, ramMb: 700 },
     ])
     expect(lines.cpu).toBe('0,32 500,2')
+  })
+})
+
+describe('trendLabel', () => {
+  const t0 = 1_000_000
+  const span = (ms: number) => [
+    { at: t0, cpu: 0, ramMb: 700 },
+    { at: t0 + ms, cpu: 0, ramMb: 700 },
+  ]
+
+  it('gives the whole minutes of a short trend, rounded up, from 1', () => {
+    expect(trendLabel([])).toBe('Last 1 min')
+    expect(trendLabel([{ at: t0, cpu: 0, ramMb: 700 }])).toBe('Last 1 min')
+    expect(trendLabel(span(30_000))).toBe('Last 1 min')
+    expect(trendLabel(span(60_000))).toBe('Last 1 min')
+    expect(trendLabel(span(61_000))).toBe('Last 2 min')
+    expect(trendLabel(span(8 * 60_000 + 30_000))).toBe('Last 9 min')
+  })
+
+  it('gives "Last 10 minutes" when the trend fills its 10 minutes', () => {
+    expect(trendLabel(span(9 * 60_000 + 1000))).toBe('Last 10 minutes')
+    expect(trendLabel(span(600_000))).toBe('Last 10 minutes')
+    // Only the points of the 10-minute window count.
+    expect(trendLabel([{ at: t0 - 60_000, cpu: 0, ramMb: 1 }, ...span(600_000)])).toBe(
+      'Last 10 minutes',
+    )
   })
 })

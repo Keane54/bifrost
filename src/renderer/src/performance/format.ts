@@ -83,6 +83,7 @@ export const TREND_W = 500
 export const TREND_H = 34
 const TREND_PAD = 2
 const TREND_MS = 600_000
+const MINUTE_MS = 60_000
 // The RAM line shows at least this range, so a small change does not fill the height.
 const MIN_RAM_SPAN_MB = 64
 // The CPU line shows at least 0 to 100% of one core.
@@ -100,14 +101,25 @@ function yOf(value: number, low: number, high: number): number {
   return TREND_H - TREND_PAD - ((value - low) / (high - low)) * inner
 }
 
-// The polyline points of the RAM line and the CPU line. The newest point is at the right edge.
-// The full width is 10 minutes, so a short trend starts at the right side. The RAM line uses its
-// own range. The CPU line starts at 0.
-export function trendLines(trend: readonly TrendPoint[]): { ram: string; cpu: string } {
+// The points of the 10 minutes before the newest point, and the time from the oldest of them to
+// the newest.
+function trendWindow(trend: readonly TrendPoint[]): { points: TrendPoint[]; spanMs: number } {
   const last = trend.at(-1)
-  if (last === undefined) return { cpu: '', ram: '' }
+  if (last === undefined) return { points: [], spanMs: 0 }
   const points = trend.filter(p => p.at >= last.at - TREND_MS)
-  const xOf = (at: number): number => TREND_W - ((last.at - at) / TREND_MS) * TREND_W
+  return { points, spanMs: last.at - (points[0]?.at ?? last.at) }
+}
+
+// The polyline points of the RAM line and the CPU line. The x axis goes from the oldest point of
+// the 10-minute window at the left edge to the newest point at the right edge. So a short trend
+// also fills the width. One point is at the right edge. The RAM line uses its own range. The
+// CPU line starts at 0.
+export function trendLines(trend: readonly TrendPoint[]): { ram: string; cpu: string } {
+  const { points, spanMs } = trendWindow(trend)
+  const first = points[0]
+  if (first === undefined) return { cpu: '', ram: '' }
+  const xOf = (at: number): number =>
+    spanMs === 0 ? TREND_W : ((at - first.at) / spanMs) * TREND_W
   const rams = points.map(p => p.ramMb)
   let low = Math.min(...rams)
   let high = Math.max(...rams)
@@ -123,4 +135,12 @@ export function trendLines(trend: readonly TrendPoint[]): { ram: string; cpu: st
     cpu: line(p => yOf(p.cpu, 0, cpuTop)),
     ram: line(p => yOf(p.ramMb, low, high)),
   }
+}
+
+// The time of the trend key. Until the trend fills its 10 minutes, it gives the minutes up to the
+// next whole minute, from 1. For example, 2 minutes and 10 s give "Last 3 min". Then it gives
+// "Last 10 minutes".
+export function trendLabel(trend: readonly TrendPoint[]): string {
+  const minutes = Math.max(1, Math.ceil(trendWindow(trend).spanMs / MINUTE_MS))
+  return minutes >= TREND_MS / MINUTE_MS ? 'Last 10 minutes' : `Last ${minutes} min`
 }

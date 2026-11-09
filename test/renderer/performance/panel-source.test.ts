@@ -86,6 +86,11 @@ describe('PerformancePanel source', () => {
     expect(PANEL).toContain('<TrendLine')
   })
 
+  it('takes the time of the trend key from the trend, not a fixed text', () => {
+    expect(TREND).toContain('{trendLabel(trend)}')
+    expect(TREND).not.toContain('Last 10 minutes')
+  })
+
   // Ruling B (fix round 1): the mockup colours, from tokens with no status meaning. The key
   // under the line uses the same classes.
   it('draws memory in tab-8 and CPU in icon-5, and the key matches', () => {
