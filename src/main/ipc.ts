@@ -238,6 +238,10 @@ function runSettingsEffect(effect: SettingsEffect): void {
       if (effect.on) accountUsage?.start()
       else accountUsage?.stop()
       return
+    case 'reviews':
+    case 'reviews-view':
+      // Task 5 of the Reviews plan fills these two effects.
+      return
   }
 }
 

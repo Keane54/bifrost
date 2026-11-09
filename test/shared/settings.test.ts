@@ -47,6 +47,15 @@ describe('parseSettings', () => {
       pollSeconds: 2,
       projectApp: null,
       redBoxSound: true,
+      reviewsAutoFix: true,
+      reviewsIgnore: [],
+      reviewsMaxSessions: 3,
+      reviewsPauseMinutes: 60,
+      reviewsPollMinutes: 2,
+      reviewsRequestModel: '',
+      reviewsReviewModel: '',
+      reviewsTeamRequests: true,
+      reviewsWatch: false,
       rowFlash: true,
       setupDone: false,
       slashCommands: ['/compact', '/clear', '/context'],
@@ -208,6 +217,44 @@ describe('the checks of a text', () => {
       expect(checkFontFamily(text)).toEqual({ ok: false, reason: REASON_FONT })
     }
     expect(REASON_FONT).toBe('Use 1 to 64 characters, without quotes or ; { } < >.')
+  })
+})
+
+describe('Reviews settings', () => {
+  test('applyPatch refuses a bad Reviews value and keeps a good one', () => {
+    const current = defaults()
+    expect(reasonOf(current, { reviewsMaxSessions: 11 })).toBe('refused: bad reviewsMaxSessions')
+    expect(reasonOf(current, { reviewsPauseMinutes: 45 })).toBe('refused: bad reviewsPauseMinutes')
+    expect(reasonOf(current, { reviewsPollMinutes: 3 })).toBe('refused: bad reviewsPollMinutes')
+    expect(reasonOf(current, { reviewsRequestModel: 'gpt' })).toBe(
+      'refused: bad reviewsRequestModel',
+    )
+    expect(reasonOf(current, { reviewsWatch: 'yes' })).toBe('refused: bad reviewsWatch')
+    expect(reasonOf(current, { reviewsMaxSessions: 10, reviewsReviewModel: 'haiku' })).toBe('ok')
+  })
+
+  test('parseSettings gives an empty ignore list for a value that is not a list', () => {
+    expect(parseSettings({ reviewsIgnore: 'x', version: 1 }).reviewsIgnore).toEqual([])
+  })
+
+  test('the ignore parse trims, lower-cases, drops bad entries and duplicates', () => {
+    const parsed = parseSettings({
+      reviewsIgnore: [' Acme/API ', 'acme/*', 'acme/api', 'bad'],
+      version: 1,
+    })
+    expect(parsed.reviewsIgnore).toEqual(['acme/api', 'acme/*'])
+  })
+
+  test('applyPatch checks the ignore list', () => {
+    const current = defaults()
+    const result = applyPatch(current, { reviewsIgnore: [' Acme/API ', 'acme/*'] })
+    expect(result.ok && result.settings.reviewsIgnore).toEqual(['acme/api', 'acme/*'])
+    expect(reasonOf(current, { reviewsIgnore: 'x' })).toBe('refused: bad reviewsIgnore')
+    expect(reasonOf(current, { reviewsIgnore: ['bad'] })).toBe('refused: bad reviewsIgnore')
+    expect(reasonOf(current, { reviewsIgnore: [5] })).toBe('refused: bad reviewsIgnore')
+    expect(reasonOf(current, { reviewsIgnore: ['a/b', 'A/B'] })).toBe('refused: bad reviewsIgnore')
+    const many = Array.from({ length: 51 }, (_, i) => `acme/r${i}`)
+    expect(reasonOf(current, { reviewsIgnore: many })).toBe('refused: bad reviewsIgnore')
   })
 })
 

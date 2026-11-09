@@ -9,6 +9,8 @@ export type SettingsEffect =
   | { kind: 'menu' }
   | { kind: 'zoom'; factor: number }
   | { kind: 'account-usage'; on: boolean }
+  | { kind: 'reviews'; on: boolean }
+  | { kind: 'reviews-view' }
 
 // The slots of the menu accelerators (D7).
 const MENU_SLOTS = KEY_SLOTS.filter(slot => slot.menu).map(slot => slot.id)
@@ -21,8 +23,13 @@ function menuKeysChanged(prev: Settings, next: Settings): boolean {
   return MENU_SLOTS.some(id => before[id] !== after[id])
 }
 
+// Return true when two lists have the same items in the same order.
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((item, index) => item === b[index])
+}
+
 // Return the effects of a change, in this order: escalation, poll, login item, menu, zoom,
-// account usage.
+// account usage, reviews, reviews view.
 // A change of the terminal app needs no effect here. The main process finds the apps at each
 // call and keeps no cache.
 export function settingsEffects(prev: Settings, next: Settings): SettingsEffect[] {
@@ -42,6 +49,15 @@ export function settingsEffects(prev: Settings, next: Settings): SettingsEffect[
   }
   if (prev.accountUsage !== next.accountUsage) {
     effects.push({ kind: 'account-usage', on: next.accountUsage })
+  }
+  if (prev.reviewsWatch !== next.reviewsWatch) {
+    effects.push({ kind: 'reviews', on: next.reviewsWatch })
+  }
+  if (
+    prev.reviewsTeamRequests !== next.reviewsTeamRequests ||
+    !sameList(prev.reviewsIgnore, next.reviewsIgnore)
+  ) {
+    effects.push({ kind: 'reviews-view' })
   }
   return effects
 }

@@ -16,6 +16,8 @@ export type ExecFn = (
     timeoutMs?: number
     env?: Record<string, string>
     killSignal?: KillSignal
+    // The limit of stdout and of stderr in bytes. The default is the default of Node.
+    maxBuffer?: number
   },
 ) => Promise<ExecResult>
 
@@ -39,6 +41,7 @@ export const execFile: ExecFn = (file, args, opts) =>
         encoding: 'utf8',
         env: opts?.env,
         killSignal: opts?.killSignal ?? 'SIGKILL',
+        maxBuffer: opts?.maxBuffer,
         timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       },
       (error, stdout, stderr) => {

@@ -9,6 +9,7 @@ import {
   parseCustomKeys,
   slotById,
 } from './keys'
+import type { ModelChoice } from './new-session'
 import { isPlainObject } from './plain-object'
 import type { ProjectApp, ProjectAppId } from './types'
 
@@ -49,6 +50,20 @@ export interface Settings {
   // The colour fields of the background move slowly. false pauses them (spec 8.10).
   animatedBackground: boolean
   slashCommands: string[]
+  // Watch GitHub for the review requests and the PRs of the user (Reviews). Off by default.
+  reviewsWatch: boolean
+  // Fix the review comments on the PRs of the user without a request.
+  reviewsAutoFix: boolean
+  // Show the review requests that a team gets, and not only the direct ones.
+  reviewsTeamRequests: boolean
+  reviewsMaxSessions: number
+  reviewsPauseMinutes: number
+  reviewsPollMinutes: number
+  // '' means the default model of Claude Code.
+  reviewsRequestModel: ModelChoice
+  reviewsReviewModel: ModelChoice
+  // Entries of the form owner/repo or owner/*. The Reviews panel hides them.
+  reviewsIgnore: string[]
   terminalFont: TerminalFont
   // Only the changed key slots (D3).
   keys: CustomKeys
@@ -86,6 +101,10 @@ export const FONT_SIZE_MAX = 24
 export const MAX_SLASH_COMMANDS = 12
 export const MAX_SLASH_LENGTH = 200
 export const MAX_FONT_FAMILY = 64
+// An entry of the ignore list of Reviews: owner/repo or owner/*.
+export const REVIEWS_IGNORE_ENTRY =
+  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?:\*|[A-Za-z0-9._-]{1,100})$/
+export const MAX_REVIEWS_IGNORE = 50
 
 // The defaults of spec 12.
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -100,6 +119,15 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   pollSeconds: 2,
   projectApp: null,
   redBoxSound: true,
+  reviewsAutoFix: true,
+  reviewsIgnore: [],
+  reviewsMaxSessions: 3,
+  reviewsPauseMinutes: 60,
+  reviewsPollMinutes: 2,
+  reviewsRequestModel: '',
+  reviewsReviewModel: '',
+  reviewsTeamRequests: true,
+  reviewsWatch: false,
   rowFlash: true,
   setupDone: false,
   slashCommands: ['/compact', '/clear', '/context'],
@@ -117,6 +145,7 @@ export const REASON_FONT = `Use 1 to ${MAX_FONT_FAMILY} characters, without quot
 
 const REFUSED_SETTINGS = 'refused: bad settings'
 const REFUSED_SLASH = 'refused: bad slashCommands'
+const REFUSED_REVIEWS_IGNORE = 'refused: bad reviewsIgnore'
 const REFUSED_KEYS = 'refused: bad keys'
 const REFUSED_KEY_CONFLICT = 'refused: two keys have the same binding'
 
@@ -159,7 +188,7 @@ const isProjectAppId: Check = value =>
 const isFontSize = onStep(FONT_SIZE_MIN, FONT_SIZE_MAX)
 
 // The settings with one value and one check.
-type SimpleKey = Exclude<SettingKey, 'keys' | 'slashCommands' | 'terminalFont'>
+type SimpleKey = Exclude<SettingKey, 'keys' | 'reviewsIgnore' | 'slashCommands' | 'terminalFont'>
 
 const SIMPLE_CHECKS: Readonly<Record<SimpleKey, Check>> = {
   accountUsage: isBoolean,
@@ -172,6 +201,14 @@ const SIMPLE_CHECKS: Readonly<Record<SimpleKey, Check>> = {
   pollSeconds: oneOf(POLL_CHOICES),
   projectApp: nullOr(isProjectAppId),
   redBoxSound: isBoolean,
+  reviewsAutoFix: isBoolean,
+  reviewsMaxSessions: onStep(1, 10, 1),
+  reviewsPauseMinutes: oneOf([15, 30, 60, 120, 240, 480]),
+  reviewsPollMinutes: oneOf([1, 2, 5, 10]),
+  reviewsRequestModel: oneOf(['', 'opus', 'sonnet', 'haiku']),
+  reviewsReviewModel: oneOf(['', 'opus', 'sonnet', 'haiku']),
+  reviewsTeamRequests: isBoolean,
+  reviewsWatch: isBoolean,
   rowFlash: isBoolean,
   setupDone: isBoolean,
   snapDistance: onStep(0, MAX_SNAP),
@@ -232,6 +269,7 @@ function defaultSettings(): Settings {
   return {
     ...DEFAULT_SETTINGS,
     keys: {},
+    reviewsIgnore: [],
     slashCommands: [...DEFAULT_SETTINGS.slashCommands],
     terminalFont: { ...DEFAULT_SETTINGS.terminalFont },
   }
@@ -254,6 +292,38 @@ function parseSlashCommands(value: unknown): string[] | null {
     if (check.ok && !list.includes(check.text)) list.push(check.text)
   }
   return list
+}
+
+// Return the clean form of an ignore entry (trimmed, lower-case), or null for a bad entry.
+function cleanReviewsIgnore(item: unknown): string | null {
+  if (typeof item !== 'string') return null
+  const entry = item.trim().toLowerCase()
+  return REVIEWS_IGNORE_ENTRY.test(entry) ? entry : null
+}
+
+// Keep the good entries of a stored ignore list, each one time, and only the first 50.
+// Return an empty list when the value is not an array.
+export function parseReviewsIgnore(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const list: string[] = []
+  for (const item of value) {
+    if (list.length >= MAX_REVIEWS_IGNORE) break
+    const entry = cleanReviewsIgnore(item)
+    if (entry !== null && !list.includes(entry)) list.push(entry)
+  }
+  return list
+}
+
+// Return true when the value is a list of good entries, with no duplicate and not more than 50.
+export function checkReviewsIgnore(value: unknown): boolean {
+  if (!Array.isArray(value) || value.length > MAX_REVIEWS_IGNORE) return false
+  const seen = new Set<string>()
+  for (const item of value) {
+    const entry = cleanReviewsIgnore(item)
+    if (entry === null || seen.has(entry)) return false
+    seen.add(entry)
+  }
+  return true
 }
 
 // Read the stored terminal font. Each part that is bad gets its default alone.
@@ -279,6 +349,7 @@ export function parseSettings(data: unknown): Settings {
     if (SIMPLE_CHECKS[key](value)) target[key] = value
   }
   settings.slashCommands = parseSlashCommands(own(data, 'slashCommands')) ?? settings.slashCommands
+  settings.reviewsIgnore = parseReviewsIgnore(own(data, 'reviewsIgnore'))
   settings.terminalFont = parseFont(own(data, 'terminalFont'))
   settings.keys = parseCustomKeys(own(data, 'keys'))
   return settings
@@ -302,6 +373,12 @@ function checkSlashList(value: unknown): FieldResult {
     list.push(check.text)
   }
   return { ok: true, value: list }
+}
+
+// A patch gives the full list. The entries get their clean form.
+function checkReviewsIgnoreList(value: unknown): FieldResult {
+  if (!checkReviewsIgnore(value)) return refuse(REFUSED_REVIEWS_IGNORE)
+  return { ok: true, value: parseReviewsIgnore(value) }
 }
 
 // A patch gives the family and the size, and nothing more. Return null for a bad font.
@@ -346,6 +423,7 @@ function checkKeys(value: unknown, current: CustomKeys): FieldResult {
 
 function checkField(key: SettingKey, value: unknown, current: Settings): FieldResult {
   if (key === 'slashCommands') return checkSlashList(value)
+  if (key === 'reviewsIgnore') return checkReviewsIgnoreList(value)
   if (key === 'terminalFont') return checkFont(value) ?? refuse(`refused: bad ${key}`)
   if (key === 'keys') return checkKeys(value, current.keys)
   return SIMPLE_CHECKS[key](value) ? { ok: true, value } : refuse(`refused: bad ${key}`)
