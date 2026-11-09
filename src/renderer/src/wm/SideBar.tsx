@@ -59,6 +59,7 @@ function freeOverview(state: WmState): string | undefined {
   return undefined
 }
 
+// The tooltip at the right of the button gives the name of the button (user decision, 2026-11-09).
 // With dot, the button shows a 6 px square white dot at its top right corner, and the
 // tooltip gives the reason. The name stays the label. A hidden text gives the reason to a
 // screen reader as the description.
@@ -73,29 +74,30 @@ function SideButton(props: {
   const Icon = props.icon
   const dotId = useId()
   return (
-    <button
-      aria-describedby={props.dot === undefined ? undefined : dotId}
-      aria-label={props.label}
-      className={cx(BUTTON, 'relative h-8')}
-      disabled={props.disabled}
-      onClick={props.onClick}
-      title={props.dot ?? props.label}
-      type='button'
-    >
-      <Icon aria-hidden={true} size={props.size ?? 16} />
-      {props.dot !== undefined && (
-        <>
-          <span
-            aria-hidden={true}
-            className='absolute top-1.5 right-1.5 size-1.5 bg-text-strong'
-            data-side-warning={true}
-          />
-          <span className='sr-only' id={dotId}>
-            {props.dot}
-          </span>
-        </>
-      )}
-    </button>
+    <Tip label={props.dot ?? props.label} side='right'>
+      <button
+        aria-describedby={props.dot === undefined ? undefined : dotId}
+        aria-label={props.label}
+        className={cx(BUTTON, 'relative h-8')}
+        disabled={props.disabled}
+        onClick={props.onClick}
+        type='button'
+      >
+        <Icon aria-hidden={true} size={props.size ?? 16} />
+        {props.dot !== undefined && (
+          <>
+            <span
+              aria-hidden={true}
+              className='absolute top-1.5 right-1.5 size-1.5 bg-text-strong'
+              data-side-warning={true}
+            />
+            <span className='sr-only' id={dotId}>
+              {props.dot}
+            </span>
+          </>
+        )}
+      </button>
+    </Tip>
   )
 }
 
@@ -173,16 +175,19 @@ function SideBar(): React.JSX.Element {
         {minimised.map(frame => {
           const title = panelTitle(frame.active, rows)
           return (
-            <button
-              aria-label={`Restore ${title}`}
-              className={cx(BUTTON, 'max-h-40 rotate-180 truncate py-2 [writing-mode:vertical-rl]')}
-              key={frame.id}
-              onClick={() => dispatch({ frameId: frame.id, type: 'restore' })}
-              title={title}
-              type='button'
-            >
-              {title}
-            </button>
+            <Tip key={frame.id} label={title} side='right'>
+              <button
+                aria-label={`Restore ${title}`}
+                className={cx(
+                  BUTTON,
+                  'max-h-40 rotate-180 truncate py-2 [writing-mode:vertical-rl]',
+                )}
+                onClick={() => dispatch({ frameId: frame.id, type: 'restore' })}
+                type='button'
+              >
+                {title}
+              </button>
+            </Tip>
           )
         })}
       </div>
