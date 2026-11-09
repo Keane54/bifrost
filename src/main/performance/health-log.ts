@@ -13,6 +13,9 @@ export interface HealthEvents {
   save(part: StorePart, ok: boolean): void
   crash(kind: 'window' | 'gpu', reason: string): void
   liveStartFailed(message: string): void
+  // The Live details server started, or Bifrost stopped it on purpose (Turn off, Remove or the
+  // quit). The last start error then does not apply.
+  liveStartCleared(): void
   // A poll part stopped while the app runs, for example the user turned it off. No more polls
   // come, so its failures in a row go to 0.
   stopped(part: PollPart): void
@@ -36,6 +39,7 @@ export const HEALTH_WINDOW_MS = 60 * 60_000
 // The default dep of each module. Each event does nothing.
 export const NO_HEALTH: HealthEvents = {
   crash: () => {},
+  liveStartCleared: () => {},
   liveStartFailed: () => {},
   poll: () => {},
   save: () => {},
@@ -59,8 +63,13 @@ export async function reportSave(
   health.save(part, true)
 }
 
-// now gives the time of each event, in milliseconds since the epoch.
-export function createHealthLog(now: () => number): HealthLog {
+// The network poll parts. While the Mac is offline, a failure of these parts counts as no data
+// (design section 6, P7).
+const NETWORK_PARTS: ReadonlySet<PollPart> = new Set(['reviews', 'account-usage', 'service-status'])
+
+// now gives the time of each event, in milliseconds since the epoch. online gives the network
+// state at the time of each poll result. ipc.ts binds it to net.isOnline.
+export function createHealthLog(now: () => number, online: () => boolean = () => true): HealthLog {
   const failsInARow: Record<PollPart, number> = {
     'account-usage': 0,
     reviews: 0,
@@ -81,13 +90,19 @@ export function createHealthLog(now: () => number): HealthLog {
       crashes = crashes.filter(c => recent(c.at, at))
       crashes.push({ at, kind, reason })
     },
+    liveStartCleared() {
+      liveStartFailedAt = null
+    },
     liveStartFailed() {
       liveStartFailedAt = now()
     },
-    // A good poll sets the count to 0. A poll with no data does not change it.
+    // A good poll sets the count to 0. A poll with no data does not change it. While offline, a
+    // failed network poll is a poll with no data. So the reconnect shows no old failures.
     poll(part, result) {
       if (result === 'ok') failsInARow[part] = 0
-      else if (result === 'failed') failsInARow[part] += 1
+      else if (result === 'failed' && (online() || !NETWORK_PARTS.has(part))) {
+        failsInARow[part] += 1
+      }
     },
     // A good save does not clear an earlier failure (P6).
     save(part, ok) {

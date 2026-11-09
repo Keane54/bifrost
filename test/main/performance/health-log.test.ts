@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { healthReasons } from '../../../src/main/performance/health'
 import {
   createHealthLog,
   HEALTH_WINDOW_MS,
@@ -68,6 +69,59 @@ test('a poll with no data keeps the failures in a row', () => {
   expect(log.view(START).failsInARow.sessions).toBe(0)
 })
 
+test('while offline, a failed network poll counts as no data, a failed session poll counts', () => {
+  let online = true
+  const log = createHealthLog(
+    () => START,
+    () => online,
+  )
+  log.poll('reviews', 'failed')
+  online = false
+  for (let i = 0; i < 12; i++) {
+    log.poll('reviews', 'failed')
+    log.poll('account-usage', 'failed')
+    log.poll('service-status', 'failed')
+    log.poll('sessions', 'failed')
+  }
+  expect(log.view(START).failsInARow).toEqual({
+    'account-usage': 0,
+    reviews: 1,
+    'service-status': 0,
+    sessions: 12,
+  })
+  // A good poll while offline still sets the count to 0.
+  log.poll('reviews', 'ok')
+  expect(log.view(START).failsInARow.reviews).toBe(0)
+  online = true
+  log.poll('service-status', 'failed')
+  expect(log.view(START).failsInARow['service-status']).toBe(1)
+})
+
+test('failures while offline give no reason at the reconnect', () => {
+  let online = false
+  const log = createHealthLog(
+    () => START,
+    () => online,
+  )
+  // 10 minutes offline: 10 rounds of each network poll fail.
+  for (let i = 0; i < 10; i++) {
+    log.poll('reviews', 'failed')
+    log.poll('account-usage', 'failed')
+    log.poll('service-status', 'failed')
+  }
+  online = true
+  const input = {
+    delayP99Ms: null,
+    fpsLow10s: false,
+    log: log.view(START),
+    now: START,
+    online,
+    orphans: 0,
+    samples: [],
+  }
+  expect(healthReasons(input)).toEqual([])
+})
+
 test('a stopped part has 0 failures in a row, the other parts keep their count', () => {
   const { log } = setup()
   for (let i = 0; i < 3; i++) log.poll('reviews', 'failed')
@@ -134,6 +188,16 @@ test('a failed Live details start gives the time of the last failure', () => {
   expect(log.view(START + 60_000).liveStartFailedAt).toBe(START + 60_000)
 })
 
+test('a good Live details start or a stop clears the start error', () => {
+  const { log } = setup()
+  log.liveStartCleared()
+  expect(log.view(START).liveStartFailedAt).toBeNull()
+  log.liveStartFailed('Another program listens on /x.')
+  expect(log.view(START).liveStartFailedAt).toBe(START)
+  log.liveStartCleared()
+  expect(log.view(START).liveStartFailedAt).toBeNull()
+})
+
 test('a change to a view does not change the log', () => {
   const { log } = setup()
   log.crash('window', 'oom')
@@ -155,6 +219,7 @@ test('NO_HEALTH accepts each event and does nothing', () => {
     NO_HEALTH.save('settings', false)
     NO_HEALTH.crash('gpu', 'crashed')
     NO_HEALTH.liveStartFailed('x')
+    NO_HEALTH.liveStartCleared()
     NO_HEALTH.stopped('reviews')
   }).not.toThrow()
 })

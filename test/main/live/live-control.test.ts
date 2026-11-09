@@ -11,6 +11,7 @@ import {
 import type { LiveServer, LiveServerState } from '../../../src/main/live/live-server'
 import { MOD_FILES, modFolderCurrent } from '../../../src/main/live/mod-folder'
 import type { MarketplaceEntry, PluginCli, PluginEntry } from '../../../src/main/live/plugin-cli'
+import { createHealthLog } from '../../../src/main/performance/health-log'
 import { LIVE_MIN_CLAUDE_VERSION } from '../../../src/shared/live'
 
 let root: string
@@ -505,15 +506,54 @@ describe('start', () => {
     expect(console.warn).toHaveBeenCalled()
   })
 
-  test('a server error at start goes to the health log, a good start does not', async () => {
+  test('a server error at start goes to the health log, a good start clears it', async () => {
     const liveStartFailed = vi.fn()
+    const liveStartCleared = vi.fn()
+    const health = { liveStartCleared, liveStartFailed }
     const failing = setup({ forceListen: true, serverError: 'Another program listens on /x.' })
-    await createLiveControl({ ...failing.deps, health: { liveStartFailed } }).start()
+    await createLiveControl({ ...failing.deps, health }).start()
     expect(liveStartFailed.mock.calls).toEqual([['Another program listens on /x.']])
+    expect(liveStartCleared).not.toHaveBeenCalled()
     const good = setup({ forceListen: true })
-    await createLiveControl({ ...good.deps, health: { liveStartFailed } }).start()
+    await createLiveControl({ ...good.deps, health }).start()
     expect(good.calls).toContain('server.start')
     expect(liveStartFailed).toHaveBeenCalledTimes(1)
+    expect(liveStartCleared).toHaveBeenCalledTimes(1)
+  })
+
+  test('the Live details reason clears after a good Turn on, Install, Turn off or Remove', async () => {
+    const log = createHealthLog(() => 1000)
+    const failedAt = () => log.view(1000).liveStartFailedAt
+    fillModDir()
+    const t = setup({
+      plugin: { enabled: false, errors: [], folder: modDir },
+      serverError: 'Another program listens on /x.',
+    })
+    const control = createLiveControl({ ...t.deps, health: log })
+    // A failed start of Turn on gives the reason. A good start of Turn on clears it.
+    await control.enable()
+    expect(failedAt()).toBe(1000)
+    t.w.serverError = undefined
+    await control.enable()
+    expect(failedAt()).toBeNull()
+    // The same for Install.
+    t.w.serverError = 'Another program listens on /x.'
+    t.w.marketplace = { path: modDir, source: 'directory' }
+    await control.install()
+    expect(failedAt()).toBe(1000)
+    t.w.serverError = undefined
+    await control.install()
+    expect(failedAt()).toBeNull()
+    // Turn off and Remove stop the server on purpose. Then the start error does not apply.
+    t.w.serverError = 'Another program listens on /x.'
+    await control.enable()
+    expect(failedAt()).toBe(1000)
+    await control.disable()
+    expect(failedAt()).toBeNull()
+    await control.enable()
+    expect(failedAt()).toBe(1000)
+    await control.uninstall()
+    expect(failedAt()).toBeNull()
   })
 
   test('a stop during start keeps the server closed', async () => {

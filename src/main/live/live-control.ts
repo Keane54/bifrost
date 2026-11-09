@@ -32,8 +32,9 @@ export interface LiveControlDeps {
   // End the live flag of each row. Turn off and Remove call it after the server stops.
   clearLive(): void
   forceListen: boolean
-  // The health log gets each server start error of the start rule (P5). The default does nothing.
-  health?: Pick<HealthEvents, 'liveStartFailed'>
+  // The health log gets the result of each server start, and each stop (P5). The default does
+  // nothing.
+  health?: Pick<HealthEvents, 'liveStartFailed' | 'liveStartCleared'>
 }
 
 export interface LiveControl {
@@ -133,19 +134,29 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
     return result
   }
 
-  async function listen(gen: number): Promise<void> {
-    if (gen !== generation) return
+  // Start the server and give the result to the health log. A good start clears the reason of
+  // an earlier failed start.
+  async function startServer(): Promise<void> {
     const state = await server.start()
     if (state.error) {
       console.warn('Live details: the server did not start.', state.error)
       health.liveStartFailed(state.error)
+    } else {
+      health.liveStartCleared()
     }
   }
 
-  // Stop the server. A start or an action that runs now then does not start it again.
+  async function listen(gen: number): Promise<void> {
+    if (gen !== generation) return
+    await startServer()
+  }
+
+  // Stop the server. A start or an action that runs now then does not start it again. A server
+  // that Bifrost stops on purpose has no start error.
   function halt(): void {
     generation += 1
     server.stop()
+    health.liveStartCleared()
   }
 
   // Stop the server and end the live flags at once. No line can arrive after the stop. So the
@@ -208,7 +219,7 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
         await removeOldInstall("didn't change anything")
         await syncModFolder(modSource, modDir)
         await cli.enable()
-        if (gen === generation) await server.start()
+        if (gen === generation) await startServer()
         return status()
       }),
     install: () =>
@@ -233,7 +244,7 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
           entry = await cli.plugin()
         }
         if (entry !== null && !entry.enabled) await cli.enable()
-        if (gen === generation) await server.start()
+        if (gen === generation) await startServer()
         return status()
       }),
     start() {

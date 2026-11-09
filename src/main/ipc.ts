@@ -537,7 +537,11 @@ export function registerIpc(home: TestHome | null = null): void {
   if (registered) return
   registered = true
   testHome = home
-  const health = createHealthLog(() => Date.now())
+  // While the Mac is offline, a failed network poll counts as no data (design section 6).
+  const health = createHealthLog(
+    () => Date.now(),
+    () => net.isOnline(),
+  )
   healthLog = health
   if (home === null) {
     serviceMonitor = createServiceMonitor({
