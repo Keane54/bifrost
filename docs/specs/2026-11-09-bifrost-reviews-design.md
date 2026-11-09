@@ -99,7 +99,7 @@ Claude Code enforces this rule. A prompt or a deny list alone is not sufficient:
 
 | Session | Enforcement |
 |---|---|
-| Review session | `--restricted` and `--strict-mcp-config` (my call). Claude has no shell and no code-running tools, so it cannot run PR code, `gh`, `git` or `curl`. The mode ignores the settings, hooks and MCP servers of the PR head, so a PR from an outsider cannot run code as you. The file tools stay inside the worktree. |
+| Review session | `--restricted` and `--strict-mcp-config` (my call). Claude has no shell and no code-running tools, so it cannot run PR code, `gh`, `git` or `curl`. The mode ignores the settings, hooks and MCP servers of the PR head, so a PR from an outsider cannot run code as you. The file tools stay inside the worktree. Restricted mode keeps `EnterWorktree`, `Agent` and `WebSearch`, so the start also passes `--disallowedTools EnterWorktree Agent` (spike, 2026-11-09). |
 | Request session | The Claude Code sandbox, with no network access to GitHub (user decision, 2026-11-09). The escape from the sandbox (`allowUnsandboxedCommands`) is off. A deny list for `git push`, `gh` and `WebFetch` is a second layer. |
 
 ## 7. GitHub data
@@ -123,7 +123,13 @@ For each PR, the query reads:
 - the status check rollup of the head commit;
 - the head branch, the head repository and the head commit.
 
-The poll interval is 2 minutes. A manual Refresh button in the panel polls at once. When `gh` is missing or not logged in, the panel shows a friendly message that tells you to run `gh auth login`. Builder: confirm the exact login of Copilot in GraphQL and in REST (for example `copilot-pull-request-reviewer`) with a real PR before you write the filter.
+The poll interval is 2 minutes. A manual Refresh button in the panel polls at once. When `gh` is missing or not logged in, the panel shows a friendly message that tells you to run `gh auth login`. Facts from the spike of 2026-11-09:
+
+- In GraphQL, Copilot is `__typename` `Bot` with the login `copilot-pull-request-reviewer` and the `authorAssociation` `NONE`, for reviews and for thread comments. In REST, a review author is `copilot-pull-request-reviewer[bot]` and a thread comment author is `Copilot`.
+- `requestedReviewer.__typename` is `User` (with `login`) or `Team` (with `slug`).
+- A full query for 20 PRs costs 11 GraphQL points.
+
+Merged and closed PRs never show, because both searches use `is:open`. GitHub keeps your request on merged PRs: on 2026-11-09, 489 merged PRs still listed you as a requested reviewer.
 
 ## 8. To review tab
 
@@ -138,13 +144,21 @@ Each PR uses two lines (the user chose layout B):
 
 | Order | State | Right side of line 2 | Flash |
 |---|---|---|---|
-| 1 | Waiting for you: a direct request with no session and no pause | Review, Pause | Yes |
+| 1 | New request: a direct request that arrived after the first turn-on, with no session and no pause | Review, Pause | Yes |
 | 2 | Draft ready: the pending review exists | "Draft ready" | No |
-| 3 | Reviewing or Queued | "Reviewing" or "Queued" | No |
-| 4 | Paused | "Paused 42m" (the time left) | No |
-| 5 | Team request | Review | No |
+| 3 | Waiting for you: a direct request that was open at the first turn-on | Review | No |
+| 4 | Reviewing or Queued | "Reviewing" or "Queued" | No |
+| 5 | Paused | "Paused 42m" (the time left) | No |
+| 6 | Approved by others: the GitHub `reviewDecision` is `APPROVED` | Review | No |
+| 7 | Team request | Review | No |
 
 Inside a group, the oldest request comes first. Paused rows: the first to end comes first.
+
+Rules for the flash:
+
+- At the first turn-on, the requests that are open do not flash (user decision, 2026-11-09). Only a request that arrives after the turn-on flashes.
+- A request is new when the PR was not in the list at the last poll. So a request that you finish, and that the author makes again, flashes.
+- A PR whose `reviewDecision` is `APPROVED` does not flash (my call). The required approvals are complete, so your approval changes nothing. This follows the user's rule for merged PRs. A PR with no required reviews has no `reviewDecision`, and it flashes as usual.
 
 ### 8.3 The flash
 
@@ -212,7 +226,7 @@ Inside a group, the last update comes first.
 
 A round starts automatically when a poll finds new work (section 10.2) on one of your PRs and the PR has no running round. Draft PRs count too.
 
-First turn-on (user decision, 2026-11-09): Bifrost marks all existing threads and comments as seen. Only work that arrives after the turn-on starts a round. A row with older open items shows their count, and its menu has "Handle now", which starts one round on them. Existing direct review requests flash as usual (my call), because they are real requests.
+First turn-on (user decision, 2026-11-09): Bifrost marks all existing threads and comments as seen. Only work that arrives after the turn-on starts a round. A row with older open items shows their count, and its menu has "Handle now", which starts one round on them. The review requests that are open at the first turn-on do not flash (section 8.2).
 
 ### 10.2 What is work
 
