@@ -54,7 +54,7 @@
 ### Task 1: Settings keys, the Watch GitHub effect, and a larger stdout limit
 
 **Files:**
-- Modify: `src/shared/settings.ts`, `src/main/settings/effects.ts`, `src/main/claude/cli.ts`
+- Modify: `src/shared/settings.ts`, `src/main/settings/effects.ts`, `src/main/claude/cli.ts`, `src/main/ipc.ts` (the two new effect kinds do nothing yet)
 - Test: `test/shared/settings.test.ts`, `test/main/settings/effects.test.ts`, `test/main/claude/cli.test.ts`
 
 **Interfaces:**
@@ -180,7 +180,7 @@
   - `export interface WorkItem { id: string; kind: 'thread' | 'comment' | 'review-body' }`
   - `export interface WorkSplit { work: WorkItem[]; older: WorkItem[]; laterCopilot: WorkItem[] }`
   - `export function splitWork(pr: PrData, viewer: string, prState: PrState, baseline: ReadonlySet<string>): WorkSplit` (design 10.2: unresolved threads whose first comment is from a trusted human or from the first Copilot review; non-empty review bodies and PR comments from trusted humans; items in `prState.handled` are not work unless a trusted human commented after `lastReplyAt`; items in `baseline` go to `older`; Copilot threads of later reviews go to `laterCopilot`; Copilot review bodies and other bots are never work)
-  - `export function reviewStatus(pr: PrData, viewer: string, split: WorkSplit): ReviewStatus` (design 9.2; open work counts `work`, `older` and `laterCopilot` threads that are unresolved, and `work` top-level items)
+  - `export function reviewStatus(pr: PrData, viewer: string, split: WorkSplit): ReviewStatus` (design 9.2; open work counts the unresolved threads of `work` and `older`, and the top-level items of `work`; `laterCopilot` threads never change the status)
   - `export interface RequestContext { now: number; known: { baseline: boolean } | undefined; pauseEndsAt: number | null; teamRequests: boolean; session: 'reviewing' | 'queued' | null }`
   - `export function toReviewState(pr: PrData, viewer: string, ctx: RequestContext): ToReviewState | null` (precedence: session, then `draft-ready` when `viewerPendingReviewId` is set, then `paused` while `now < pauseEndsAt`, then `approved-by-others`, then `team` (or `null` when `teamRequests` is off), then `waiting` for a baseline request, else `new`)
   - `export function isIgnored(owner: string, repo: string, ignore: readonly string[]): boolean`
@@ -202,6 +202,7 @@
   - `baseline items go to older`
   - `reviewStatus: changes requested wins over open threads`
   - `reviewStatus: open Copilot thread gives comments, Copilot approval never gives approved`
+  - `reviewStatus: an open thread of a later Copilot review alone gives pending, not comments`
   - `reviewStatus: approved with all threads resolved gives approved; no reviewer gives pending`
   - `toReviewState: precedence session > draft-ready > paused > approved-by-others > team > waiting > new`
   - `toReviewState: a team request is null when teamRequests is off`
