@@ -962,8 +962,8 @@ export function attachWindow(win: BrowserWindow): void {
   win.webContents.on('dom-ready', () => {
     if (currentWindow === win) applyZoom()
   })
-  // A renderer that stops with a reason other than clean-exit is a crash (P8). This listener is
-  // the only one for the window, so the health log gets each crash one time.
+  // A renderer that stops with a reason other than clean-exit is a crash (P8). Only this listener
+  // reports to the health log, so each crash gives one event.
   win.webContents.on('render-process-gone', (_e, details) => {
     if (currentWindow === win) unloadPendingOpens()
     if (details.reason !== 'clean-exit') healthLog?.crash('window', details.reason)

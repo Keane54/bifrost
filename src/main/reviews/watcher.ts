@@ -63,8 +63,8 @@ export interface WatcherDeps {
   // it shows.
   notify(notice: RequestNotice): void
   log(m: string): void
-  // The health log gets the result of each poll (P5, P7). The default does nothing.
-  health?: Pick<HealthEvents, 'poll'>
+  // The health log gets the result of each poll and the stop (P5, P7). The default does nothing.
+  health?: Pick<HealthEvents, 'poll' | 'stopped'>
 }
 
 export interface ReviewsWatcher {
@@ -406,6 +406,8 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       polledAt = null
       failure = null
       unsaved = null
+      // No more polls come. So the failures in a row of Reviews go to 0.
+      health.stopped('reviews')
       if (snapshot !== EMPTY_REVIEWS) set(EMPTY_REVIEWS)
     },
     urlOf(key) {

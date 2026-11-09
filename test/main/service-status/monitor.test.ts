@@ -116,7 +116,7 @@ describe('createServiceMonitor', () => {
     const m = createServiceMonitor({
       check,
       emit: () => {},
-      health: { poll },
+      health: { poll, stopped: () => {} },
       now: () => Date.now(),
     })
     m.start()
@@ -134,6 +134,43 @@ describe('createServiceMonitor', () => {
       ['service-status', 'ok'],
     ])
     m.stop()
+  })
+
+  it('a health dep that throws never stops the loop', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const check = vi.fn(async (d: ServiceDef) => status(d, Date.now()))
+    const poll = vi.fn(() => {
+      throw new Error('health failed')
+    })
+    const m = createServiceMonitor({
+      check,
+      emit: () => {},
+      health: { poll, stopped: () => {} },
+      now: () => Date.now(),
+    })
+    m.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(poll).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(check).toHaveBeenCalledTimes(SERVICES.length * 2)
+    expect(poll).toHaveBeenCalledTimes(2)
+    m.stop()
+    logged.mockRestore()
+  })
+
+  it('stop tells the health log that Service status stopped', async () => {
+    const stopped = vi.fn()
+    const m = createServiceMonitor({
+      check: async d => status(d, 1),
+      emit: () => {},
+      health: { poll: () => {}, stopped },
+      now: () => 1,
+    })
+    m.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(stopped).not.toHaveBeenCalled()
+    m.stop()
+    expect(stopped.mock.calls).toEqual([['service-status']])
   })
 
   it('stop ends the rounds and a late round does not emit', async () => {

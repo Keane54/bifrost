@@ -24,8 +24,8 @@ export interface PollerDeps {
   now(): number
   // The new values, or null when there are none.
   emit(value: AccountUsage | null): void
-  // The health log gets the result of each poll (P5, P7). The default does nothing.
-  health?: Pick<HealthEvents, 'poll'>
+  // The health log gets the result of each poll and the stop (P5, P7). The default does nothing.
+  health?: Pick<HealthEvents, 'poll' | 'stopped'>
 }
 
 export interface AccountUsagePoller {
@@ -188,6 +188,8 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
       if (timer) clearTimeout(timer)
       timer = null
       lastPollAt = Number.NEGATIVE_INFINITY
+      // No more polls come. So the failures in a row of account usage go to 0.
+      health.stopped('account-usage')
       if (value !== null) set(null)
     },
   }

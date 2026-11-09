@@ -13,6 +13,9 @@ export interface HealthEvents {
   save(part: StorePart, ok: boolean): void
   crash(kind: 'window' | 'gpu', reason: string): void
   liveStartFailed(message: string): void
+  // A poll part stopped while the app runs, for example the user turned it off. No more polls
+  // come, so its failures in a row go to 0.
+  stopped(part: PollPart): void
 }
 
 export interface HealthLogView {
@@ -36,6 +39,7 @@ export const NO_HEALTH: HealthEvents = {
   liveStartFailed: () => {},
   poll: () => {},
   save: () => {},
+  stopped: () => {},
 }
 
 // Run one write of a store and give its result to the health log. A failed write still rejects
@@ -88,6 +92,9 @@ export function createHealthLog(now: () => number): HealthLog {
     // A good save does not clear an earlier failure (P6).
     save(part, ok) {
       if (!ok) saveFailedAt[part] = now()
+    },
+    stopped(part) {
+      failsInARow[part] = 0
     },
     // The view has no crash and no save failure that is 60 minutes old or older. It is a copy, so
     // a change to it does not change the log.

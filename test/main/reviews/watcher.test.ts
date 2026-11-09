@@ -157,7 +157,7 @@ function setup(
     replies?: Reply[]
     state?: Partial<ReviewsState>
     settings?: { reviewsIgnore?: string[]; reviewsPollMinutes?: number }
-    health?: Pick<HealthEvents, 'poll'>
+    health?: Pick<HealthEvents, 'poll' | 'stopped'>
   } = {},
 ) {
   const replies = [...(opts.replies ?? [answer([])])]
@@ -955,7 +955,7 @@ describe('createReviewsWatcher', () => {
   test('the health log gets each poll: an error fails, no gh and logged out give no data', async () => {
     const poll = vi.fn()
     const t = setup({
-      health: { poll },
+      health: { poll, stopped: () => {} },
       replies: [
         answer([]),
         LOGGED_OUT,
@@ -983,6 +983,16 @@ describe('createReviewsWatcher', () => {
       ['reviews', 'failed'],
     ])
     t.watcher.stop()
+  })
+
+  test('stop tells the health log that Reviews stopped', async () => {
+    const stopped = vi.fn()
+    const t = setup({ health: { poll: () => {}, stopped }, replies: [LOGGED_OUT] })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(stopped).not.toHaveBeenCalled()
+    t.watcher.stop()
+    expect(stopped.mock.calls).toEqual([['reviews']])
   })
 
   test('four new requests in one poll give one summary notification', async () => {

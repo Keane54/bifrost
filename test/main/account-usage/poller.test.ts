@@ -23,7 +23,7 @@ const MIN = 60_000
 
 type Reply = { status: number; body: string } | Error
 
-function setup(token: string | null = FAKE, health?: Pick<HealthEvents, 'poll'>) {
+function setup(token: string | null = FAKE, health?: Pick<HealthEvents, 'poll' | 'stopped'>) {
   const replies: Reply[] = []
   const fetch = vi.fn(async (_url: string, _init: RequestInit) => {
     const reply = replies.shift() ?? { body: sample, status: 200 }
@@ -389,7 +389,7 @@ describe('createAccountUsagePoller', () => {
 
   test('the health log gets each poll: 401, 403, 429 and no token give no data (P7)', async () => {
     const poll = vi.fn()
-    const { fetch, poller, readToken, replies } = setup(FAKE, { poll })
+    const { fetch, poller, readToken, replies } = setup(FAKE, { poll, stopped: () => {} })
     replies.push(
       { body: sample, status: 200 },
       { body: '', status: 401 },
@@ -423,6 +423,16 @@ describe('createAccountUsagePoller', () => {
       ['account-usage', 'no-data'],
     ])
     poller.stop()
+  })
+
+  test('stop tells the health log that account usage stopped', async () => {
+    const stopped = vi.fn()
+    const { poller } = setup(FAKE, { poll: () => {}, stopped })
+    poller.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(stopped).not.toHaveBeenCalled()
+    poller.stop()
+    expect(stopped.mock.calls).toEqual([['account-usage']])
   })
 
   test('start twice does not start two timers', async () => {

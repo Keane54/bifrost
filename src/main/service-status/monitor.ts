@@ -11,8 +11,8 @@ export interface MonitorDeps {
   check(def: ServiceDef): Promise<ServiceStatus>
   emit(list: ServiceStatus[]): void
   now(): number
-  // The health log gets the result of each round (P5, P7). The default does nothing.
-  health?: Pick<HealthEvents, 'poll'>
+  // The health log gets the result of each round and the stop (P5, P7). The default does nothing.
+  health?: Pick<HealthEvents, 'poll' | 'stopped'>
 }
 
 export interface ServiceMonitor {
@@ -54,11 +54,11 @@ export function createServiceMonitor(
     const next = await Promise.all(SERVICES.map(one))
     if (stopped) return
     list = next
-    // A round fails only when no service answered (P7).
-    health.poll('service-status', next.every(s => s.error !== undefined) ? 'failed' : 'ok')
-    // A throw in emit goes to the log. The next round always gets its timer, so the loop never
-    // stops (final review Minor 5).
+    // A throw in the health log or in emit goes to the log. The next round always gets its
+    // timer, so the loop never stops (final review Minor 5).
     try {
+      // A round fails only when no service answered (P7).
+      health.poll('service-status', next.every(s => s.error !== undefined) ? 'failed' : 'ok')
       deps.emit(list)
     } catch (error) {
       console.error('Bifrost cannot send the service status.', error)
@@ -78,6 +78,8 @@ export function createServiceMonitor(
       stopped = true
       if (timer) clearTimeout(timer)
       timer = null
+      // No more rounds come. So the failures in a row of Service status go to 0.
+      health.stopped('service-status')
     },
   }
 }

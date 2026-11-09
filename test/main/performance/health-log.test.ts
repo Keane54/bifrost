@@ -68,6 +68,19 @@ test('a poll with no data keeps the failures in a row', () => {
   expect(log.view(START).failsInARow.sessions).toBe(0)
 })
 
+test('a stopped part has 0 failures in a row, the other parts keep their count', () => {
+  const { log } = setup()
+  for (let i = 0; i < 3; i++) log.poll('reviews', 'failed')
+  log.poll('sessions', 'failed')
+  log.stopped('reviews')
+  expect(log.view(START).failsInARow).toEqual({
+    'account-usage': 0,
+    reviews: 0,
+    'service-status': 0,
+    sessions: 1,
+  })
+})
+
 test('a crash stays in the view for 60 minutes, then it drops', () => {
   const { log, setTime } = setup()
   log.crash('window', 'crashed')
@@ -142,6 +155,7 @@ test('NO_HEALTH accepts each event and does nothing', () => {
     NO_HEALTH.save('settings', false)
     NO_HEALTH.crash('gpu', 'crashed')
     NO_HEALTH.liveStartFailed('x')
+    NO_HEALTH.stopped('reviews')
   }).not.toThrow()
 })
 
