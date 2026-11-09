@@ -14,7 +14,9 @@ function reader(pixels: Uint8Array, size: number) {
   }
 }
 
-describe('the icon script', () => {
+// A drawIcon call at 512 pixels takes up to 3 seconds on a fast Mac. A CI runner with fewer and
+// slower cores can take more than the default limit of 5 seconds. So these tests get 30 seconds.
+describe('the icon script', { timeout: 30_000 }, () => {
   it('readPalette reads the six stops and the edge from app.css', () => {
     const palette = readPalette(CSS)
     expect(palette.stops).toHaveLength(6)

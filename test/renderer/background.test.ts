@@ -664,7 +664,9 @@ describe('the Animated background setting', () => {
 // The brief of 2026-11-06: at the brightest and the darkest point of the background, under a
 // panel at the default Panel transparency, the text stays readable and the boxes stay clearly
 // visible.
-describe('the cover and the contrast of the background', () => {
+// The search of the extremes takes about 3 seconds on a fast Mac. A CI runner with fewer and
+// slower cores can take more than the default limit of 5 seconds. So these tests get 30 seconds.
+describe('the cover and the contrast of the background', { timeout: 30_000 }, () => {
   const DEFAULT_TRANSPARENCY = 15
   const grey = (n: number): string => hex([n, n, n])
   const rowOpacity = (): number => {
