@@ -43,6 +43,9 @@ export interface ToReviewRow {
   deletions: number
   requestedAt: number
   state: ToReviewState
+  // True for a team request: the open requests do not list the viewer. The row shows a team tag
+  // in each state (design 8.1).
+  team: boolean
   flash: boolean
   pauseEndsAt: number | null
   sessionId: string | null

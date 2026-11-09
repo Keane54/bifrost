@@ -1065,6 +1065,7 @@ describe('IPC helpers', () => {
       requestedAt: 0,
       sessionId: null,
       state: 'new',
+      team: false,
       title: 'Add search box',
     })
     expect(notice).toEqual({
@@ -1089,6 +1090,7 @@ describe('requestNotices', () => {
       requestedAt: 0,
       sessionId: null,
       state: 'new',
+      team: false,
       title: `Change ${i + 1}`,
     }))
 

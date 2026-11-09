@@ -27,6 +27,7 @@ function to(patch: Partial<ToReviewRow>): ToReviewRow {
     requestedAt: NOW,
     sessionId: null,
     state: 'new',
+    team: false,
     title: 't',
     ...patch,
   }

@@ -478,6 +478,40 @@ describe('buildSnapshot', () => {
   })
 })
 
+describe('buildSnapshot team flag', () => {
+  it('sets team for each team-only request, in each state', () => {
+    const poll: PollData = {
+      errors: [],
+      mine: [],
+      mineHasMore: false,
+      toReview: [
+        pr({ key: 'acme/app#1', number: 1, requestedTeams: ['core'] }),
+        pr({ key: 'acme/app#2', number: 2, requestedTeams: ['core'], reviewDecision: 'APPROVED' }),
+        pr({ key: 'acme/app#3', number: 3, requestedTeams: ['core'] }),
+        pr({ key: 'acme/app#4', number: 4, requestedTeams: ['core'], requestedUsers: [VIEWER] }),
+      ],
+      toReviewHasMore: false,
+      viewer: VIEWER,
+    }
+    const state = structuredClone(EMPTY_STATE)
+    state.pauses['acme/app#3'] = 9000
+    const snap = buildSnapshot({
+      claude: () => ({ claude: 'waiting', error: null, fixing: 0, sessionId: null }),
+      now: 5000,
+      poll,
+      session: () => null,
+      settings: { reviewsIgnore: [], reviewsTeamRequests: true },
+      state,
+    })
+    expect(snap.toReview.map(r => [r.key, r.state, r.team]).sort()).toEqual([
+      ['acme/app#1', 'team', true],
+      ['acme/app#2', 'approved-by-others', true],
+      ['acme/app#3', 'paused', true],
+      ['acme/app#4', 'new', false],
+    ])
+  })
+})
+
 describe('buildSnapshot of a busy PR', () => {
   const input = (mine: PrData[]) => ({
     claude: () => ({ claude: 'waiting' as const, error: null, fixing: 0, sessionId: null }),

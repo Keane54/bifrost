@@ -246,6 +246,7 @@ export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
       requestedAt: pr.requestedAt,
       sessionId: null,
       state: rowState,
+      team: !pr.requestedUsers.includes(poll.viewer),
       title: pr.title,
     })
   }

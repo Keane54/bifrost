@@ -9,6 +9,7 @@ import { errorMessage } from '../lib/error-message'
 import { Tip } from '../lib/menu'
 import { useNow } from '../lib/use-now'
 import { useSettingsNav } from '../settings/settings-nav'
+import { panelBody } from './panel-body'
 import { MyPrItem, ToReviewItem } from './ReviewRow'
 import { type ReviewsTab, setReviewsTab, useReviewsTab } from './reviews-tab'
 import { useReviews } from './use-reviews'
@@ -48,8 +49,9 @@ export default function ReviewsPanel(): React.JSX.Element {
     'to-review': snapshot.toReview.length,
   }
 
+  const kind = panelBody(snapshot, rows.length)
   let body: React.ReactNode
-  if (availability === 'off') {
+  if (kind === 'off') {
     body = (
       <div className='flex flex-col items-start gap-2 px-3 py-2'>
         <p className='text-text-dim text-xs'>
@@ -64,11 +66,14 @@ export default function ReviewsPanel(): React.JSX.Element {
         </button>
       </div>
     )
-  } else if (availability === 'starting') {
+  } else if (kind === 'starting') {
     body = <Notice>Checking GitHub…</Notice>
-  } else if (availability === 'no-gh' || availability === 'logged-out') {
+  } else if (kind === 'notice') {
     body = <Notice>{snapshot.message}</Notice>
-  } else if (rows.length === 0) {
+  } else if (kind === 'error') {
+    // The error line under the body shows the message.
+    body = null
+  } else if (kind === 'empty') {
     body = <Notice>Nothing needs you here.</Notice>
   } else if (tab === 'to-review') {
     body = snapshot.toReview.map(row => (

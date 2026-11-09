@@ -35,7 +35,7 @@ describe('Settings > Reviews', () => {
     expect(used).toEqual(new Set(Object.keys(REVIEWS_ROWS)))
   })
 
-  it('asks with useConfirm before it saves the first turn-on of Watch GitHub', () => {
+  it('asks with useConfirm before it saves each turn-on of Watch GitHub', () => {
     expect(SECTION).toContain('useConfirm()')
     const ask = SECTION.indexOf('await confirm(')
     const save = SECTION.indexOf('update({ reviewsWatch: true })')
@@ -44,8 +44,17 @@ describe('Settings > Reviews', () => {
     expect(SECTION).toContain('!settings.reviewsWatch')
   })
 
-  it('shows the hint of the automatic comment row', () => {
-    expect(SECTION).toContain("hint='Comes in a later version.'")
+  it('shows the later-version hint on each row that has no effect in R1', () => {
+    for (const row of ['autoFix', 'maxSessions', 'requestModel', 'reviewModel']) {
+      const at = SECTION.indexOf(`label={REVIEWS_ROWS.${row}}`)
+      expect(at, row).toBeGreaterThan(-1)
+      // The hint is a prop of the same element: it comes before the next element.
+      const start = SECTION.lastIndexOf('<', at)
+      const end = SECTION.indexOf('/>', at)
+      expect(SECTION.slice(start, end), row).toContain('hint={LATER}')
+    }
+    expect(SECTION).toContain("const LATER = 'Comes in a later version.'")
+    expect(SECTION).toMatch(/<SettingRow[\s\S]*?hint=\{props\.hint\}[\s\S]*?label=\{props\.label\}/)
   })
 
   it('has the ignore field, the Add button and the Remove button', () => {

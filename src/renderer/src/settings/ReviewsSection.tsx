@@ -16,7 +16,7 @@ import { ROW_FIELD, SettingRow, useRowSave } from './SettingRow'
 import { useSaveTracker } from './save-context'
 import { useSettings } from './settings-context'
 
-// The first turn-on of Watch GitHub asks first.
+// Each turn-on of Watch GitHub asks first.
 const WATCH_CONFIRM: ConfirmText = {
   body: 'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It only reads for now. Later versions can start Claude sessions that reply on your PRs and draft reviews, and only when you turn those on.',
   confirm: 'Turn on',
@@ -26,6 +26,9 @@ const WATCH_CONFIRM: ConfirmText = {
 // The minutes that Pause time and the poll interval offer. They match the settings checks.
 const PAUSE_CHOICES = [15, 30, 60, 120, 240, 480] as const
 const POLL_CHOICES = [1, 2, 5, 10] as const
+
+// The hint of a row that saves but has no effect in R1.
+const LATER = 'Comes in a later version.'
 
 const MODEL_CHOICES: { label: string; value: string }[] = [
   { label: 'Claude Code default', value: '' },
@@ -44,12 +47,18 @@ function minutesText(minutes: number): string {
 function ModelRow(props: {
   label: string
   value: string
+  hint?: string
   save(value: string): Promise<void>
 }): React.JSX.Element {
   const row = useRowSave(props.label)
   const { save } = props
   return (
-    <SettingRow error={row.error} label={props.label} onCloseError={row.closeError}>
+    <SettingRow
+      error={row.error}
+      hint={props.hint}
+      label={props.label}
+      onCloseError={row.closeError}
+    >
       <select
         aria-label={props.label}
         className={ROW_FIELD}
@@ -188,7 +197,7 @@ function ReviewsRows(): React.JSX.Element {
         checked={settings.reviewsWatch}
         label={REVIEWS_ROWS.watch}
         save={async value => {
-          // The first turn-on asks first. A Cancel saves nothing.
+          // Each turn-on asks first. A Cancel saves nothing.
           if (value && !settings.reviewsWatch) {
             if (!(await confirm(WATCH_CONFIRM))) return
             await update({ reviewsWatch: true })
@@ -197,10 +206,11 @@ function ReviewsRows(): React.JSX.Element {
           await update({ reviewsWatch: value })
         }}
       />
-      {/* The setting saves, but it has no effect in R1. */}
+      {/* These settings save, but they have no effect in R1: automatic comments, the maximum
+          PR sessions and the two models. */}
       <CheckRow
         checked={settings.reviewsAutoFix}
-        hint='Comes in a later version.'
+        hint={LATER}
         label={REVIEWS_ROWS.autoFix}
         save={value => update({ reviewsAutoFix: value })}
       />
@@ -210,6 +220,7 @@ function ReviewsRows(): React.JSX.Element {
         save={value => update({ reviewsTeamRequests: value })}
       />
       <NumberRow
+        hint={LATER}
         label={REVIEWS_ROWS.maxSessions}
         max={10}
         min={1}
@@ -232,11 +243,13 @@ function ReviewsRows(): React.JSX.Element {
         value={settings.reviewsPollMinutes}
       />
       <ModelRow
+        hint={LATER}
         label={REVIEWS_ROWS.requestModel}
         save={value => update({ reviewsRequestModel: value as ModelChoice })}
         value={settings.reviewsRequestModel}
       />
       <ModelRow
+        hint={LATER}
         label={REVIEWS_ROWS.reviewModel}
         save={value => update({ reviewsReviewModel: value as ModelChoice })}
         value={settings.reviewsReviewModel}

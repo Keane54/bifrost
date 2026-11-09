@@ -173,7 +173,7 @@ export function ToReviewItem({
     <Shell flash={row.flash} menu={menu} onAct={onAct} prKey={row.key} sessionId={row.sessionId}>
       <Line1
         extra={
-          row.state === 'team' && (
+          row.team && (
             <span className='shrink-0 border border-panel-edge px-0.5 text-[10px] text-text-dim'>
               team
             </span>
@@ -183,11 +183,12 @@ export function ToReviewItem({
         repo={row.repo}
         title={row.title}
       />
-      <div className='relative flex items-center gap-2.5 whitespace-nowrap text-text-dim'>
-        <span>{row.author}</span>
-        <span>{sizeText(row.additions, row.deletions)}</span>
-        <span>{ageText(now - row.requestedAt)}</span>
-        <span className='ml-auto flex items-center gap-1.5 text-text'>
+      {/* Line 2 cuts the author first, so the state on the right always shows. */}
+      <div className='relative flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap text-text-dim'>
+        <span className='min-w-0 truncate'>{row.author}</span>
+        <span className='shrink-0'>{sizeText(row.additions, row.deletions)}</span>
+        <span className='shrink-0'>{ageText(now - row.requestedAt)}</span>
+        <span className='ml-auto flex shrink-0 items-center gap-1.5 text-text'>
           {text !== '' && (
             <span className={row.state === 'draft-ready' ? 'text-svc-ok' : undefined}>{text}</span>
           )}
@@ -236,19 +237,24 @@ export function MyPrItem({ onAct, row }: Common & { row: MyPrRow }): React.JSX.E
         repo={row.repo}
         title={row.title}
       />
-      <div className='relative flex items-center gap-2.5 whitespace-nowrap text-text-dim'>
+      {/* Line 2 cuts the reviewers first, so the Claude state on the right always shows. */}
+      <div className='relative flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap text-text-dim'>
         <Tip label={truncatedText(row)}>
-          <span className={cx('inline-flex items-center gap-1.5', STATUS_TEXT[row.status])}>
+          <span
+            className={cx('inline-flex shrink-0 items-center gap-1.5', STATUS_TEXT[row.status])}
+          >
             <span aria-hidden={true} className='size-1.5 shrink-0 bg-current' />
             {statusText(row.status)}
           </span>
         </Tip>
-        {row.reviewers.length > 0 && <span>{row.reviewers.join(', ')}</span>}
-        {later !== null && <span>{later}</span>}
+        {row.reviewers.length > 0 && (
+          <span className='min-w-0 truncate'>{row.reviewers.join(', ')}</span>
+        )}
+        {later !== null && <span className='shrink-0'>{later}</span>}
         <Tip label={row.error}>
           <span
             className={cx(
-              'ml-auto inline-flex items-center gap-1.5',
+              'ml-auto inline-flex shrink-0 items-center gap-1.5',
               needsYou ? 'text-box-red' : row.claude === 'fixing' ? 'text-text' : 'text-text-dim',
             )}
           >
