@@ -960,50 +960,58 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
-  it('the frame rate is low only after 10 s of low reports while the panel shows and has focus', async () => {
+  it('the frame rate is low when the last two burst reports of this showing are low', async () => {
     const t = setup()
     const low = (): boolean => hasReason(t, 'fps')
-    // One report each second.
-    const report = async (seconds: number, value: number): Promise<void> => {
-      for (let i = 0; i < seconds; i++) {
-        await vi.advanceTimersByTimeAsync(SEC)
-        t.monitor.fps(value)
-      }
+    // One burst report each 10 s, as the renderer sends them. The tick after it reads it.
+    const burst = async (value: number): Promise<void> => {
+      await vi.advanceTimersByTimeAsync(10 * SEC - FAST_TICK_MS)
+      t.monitor.fps(value)
+      await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
     }
     t.monitor.start()
     await vi.advanceTimersByTimeAsync(0)
     // A report while the panel is closed does not count.
     t.monitor.fps(5)
     t.monitor.view(SHOW)
-    // The tick at 10 s: the first report is 9 s old.
-    await report(10, 20)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.monitor.current().bifrost?.fps).toBeNull()
+    // One low burst is not enough.
+    await burst(20)
     expect(low()).toBe(false)
     expect(t.monitor.current().bifrost?.fps).toBe(20)
-    await report(1, 20)
-    await vi.advanceTimersByTimeAsync(SEC)
+    // The fps row keeps the last burst value between the bursts.
+    await vi.advanceTimersByTimeAsync(6 * SEC)
+    expect(t.monitor.current().bifrost?.fps).toBe(20)
+    // Two low bursts in a row cover 10 s.
+    await burst(25)
     expect(low()).toBe(true)
     expect(t.monitor.current().reasons).toContainEqual({
       level: 'warning',
       text: 'The Performance panel ran below 30 fps for 10 seconds.',
     })
-    // One report at 30 fps or more in the last 10 s ends it.
-    t.monitor.fps(45)
-    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    // One burst at 30 fps or more ends it. The next low burst alone does not start it again.
+    await burst(30)
     expect(low()).toBe(false)
+    await burst(10)
+    expect(low()).toBe(false)
+    await burst(10)
+    expect(low()).toBe(true)
     // A change of focus starts a new count. A report without focus does not count.
     t.monitor.view({ ...SHOW, focused: false })
-    await report(12, 10)
+    await burst(10)
+    await burst(10)
     expect(low()).toBe(false)
     expect(t.monitor.current().bifrost?.fps).toBeNull()
     t.monitor.view(SHOW)
-    await report(10, 10)
+    await burst(10)
     expect(low()).toBe(false)
-    await report(2, 10)
+    await burst(10)
     expect(low()).toBe(true)
     // A change of showing also starts a new count.
     t.monitor.view(HIDE)
     t.monitor.view(SHOW)
-    await report(4, 10)
+    await burst(10)
     expect(low()).toBe(false)
     t.monitor.stop()
   })

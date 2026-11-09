@@ -1,6 +1,8 @@
 // The app-wide Performance store and the reports to the main process (P2, P9).
 import { describe, expect, it, vi } from 'vitest'
 import {
+  BURST_EVERY_MS,
+  BURST_MS,
   createPerformanceStore,
   createViewReporter,
   type FrameClock,
@@ -210,45 +212,95 @@ describe('createViewReporter', () => {
 })
 
 describe('startFpsCounter', () => {
+  // A fake clock: a queue of frame callbacks and a list of timers. The test runs each one.
   function fakeClock() {
-    const queue = new Map<number, (t: number) => void>()
+    const frames = new Map<number, (t: number) => void>()
+    const timers = new Map<number, { ms: number; cb: () => void }>()
     let next = 1
     const clock: FrameClock = {
+      after: (ms, cb) => {
+        timers.set(next, { cb, ms })
+        return next++
+      },
       cancel: id => {
-        queue.delete(id)
+        frames.delete(id)
+      },
+      cancelAfter: id => {
+        timers.delete(id)
       },
       request: cb => {
-        queue.set(next, cb)
+        frames.set(next, cb)
         return next++
       },
     }
-    // Run the waiting callback at the time t.
+    // Run the waiting frame callback at the time t.
     const frameAt = (t: number): void => {
-      const [id, cb] = [...queue][0] ?? []
+      const [id, cb] = [...frames][0] ?? []
       if (id === undefined || cb === undefined) return
-      queue.delete(id)
+      frames.delete(id)
       cb(t)
     }
-    return { clock, frameAt, queue }
+    // Run the waiting timer and give its time.
+    const runTimer = (): number | undefined => {
+      const [id, timer] = [...timers][0] ?? []
+      if (id === undefined || timer === undefined) return undefined
+      timers.delete(id)
+      timer.cb()
+      return timer.ms
+    }
+    return { clock, frameAt, frames, runTimer, timers }
   }
 
-  it('reports the frames of each second', () => {
+  it('counts the frames of one 2 s burst and reports one value', () => {
     const fake = fakeClock()
     const report = vi.fn()
     startFpsCounter(fake.clock, report)
-    for (let i = 0; i <= 60; i++) fake.frameAt((i * 1000) / 60)
-    expect(report).toHaveBeenCalledWith(60)
-    expect(report).toHaveBeenCalledTimes(1)
-    for (let i = 61; i <= 90; i++) fake.frameAt(1000 + ((i - 60) * 1000) / 30)
-    expect(report).toHaveBeenLastCalledWith(30)
+    expect(fake.frames.size).toBe(1)
+    // 60 fps for 2 s. The first frame starts the count.
+    for (let i = 0; i < 120; i++) fake.frameAt((i * 1000) / 60)
+    expect(report).not.toHaveBeenCalled()
+    fake.frameAt(2000)
+    expect(report.mock.calls).toEqual([[60]])
+    // No frame callback waits between the bursts. One timer waits for the next burst.
+    expect(fake.frames.size).toBe(0)
+    expect(fake.timers.size).toBe(1)
   })
 
-  it('stops the count', () => {
+  it('starts a burst every 10 s, with the real time of each burst', () => {
+    const fake = fakeClock()
+    const report = vi.fn()
+    startFpsCounter(fake.clock, report)
+    for (let i = 0; i <= 60; i++) fake.frameAt((i * 2000) / 60)
+    expect(report).toHaveBeenLastCalledWith(30)
+    // The next burst starts 8 s after the end of this one.
+    expect(fake.runTimer()).toBe(BURST_EVERY_MS - BURST_MS)
+    expect(fake.frames.size).toBe(1)
+    // A slow frame: 50 frames in 2.5 s is 20 fps.
+    const start = 10_000
+    for (let i = 0; i < 50; i++) fake.frameAt(start + i * 40)
+    fake.frameAt(start + 2500)
+    expect(report).toHaveBeenLastCalledWith(20)
+    expect(report).toHaveBeenCalledTimes(2)
+    expect(BURST_MS).toBe(2000)
+    expect(BURST_EVERY_MS).toBe(10_000)
+  })
+
+  it('stops at once, during a burst and between bursts', () => {
     const fake = fakeClock()
     const report = vi.fn()
     const stop = startFpsCounter(fake.clock, report)
-    expect(fake.queue.size).toBe(1)
+    fake.frameAt(0)
+    fake.frameAt(16)
     stop()
-    expect(fake.queue.size).toBe(0)
+    expect(fake.frames.size).toBe(0)
+    expect(fake.timers.size).toBe(0)
+    const later = fakeClock()
+    const stopLater = startFpsCounter(later.clock, report)
+    for (let i = 0; i <= 60; i++) later.frameAt((i * 2000) / 60)
+    expect(later.timers.size).toBe(1)
+    stopLater()
+    expect(later.frames.size).toBe(0)
+    expect(later.timers.size).toBe(0)
+    expect(report).toHaveBeenCalledTimes(1)
   })
 })

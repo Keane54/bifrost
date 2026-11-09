@@ -82,7 +82,7 @@ Bifrost runs the checks every 15 seconds, also while the panel is closed, so the
 | Bifrost RAM (all Bifrost processes, chat terminals included) | above 1 GB | above 1.5 GB |
 | Memory growth (a leak), on Bifrost RAM without the chat terminals | the trend over the last 60 minutes rises faster than 300 MB per hour | the trend rises faster than 800 MB per hour |
 | Bifrost CPU without the chat terminals, the average over 2 minutes | above 50% of one core | above 100% of one core |
-| Frame rate while the panel shows and the window has focus | below 30 fps for 10 s | not used |
+| Frame rate while the panel shows and the window has focus | below 30 fps for 10 s: the last two burst values of this showing are both below 30 fps | not used |
 | Main process delay (event loop) | above 200 ms (the longest delay in 60 s) | above 1 s |
 | Window or GPU crash in the last 60 minutes | not used | each one, with its time |
 | A background poll that keeps failing (the session list, GitHub for Reviews, account usage, Service status) | 3 failures in a row | 10 failures in a row |
@@ -103,6 +103,7 @@ Definitions (my calls after the builder check, 2026-11-09):
 - **CPU** is a percentage of one core, as in Activity Monitor. A total can be above 100%.
 - **The trend** is the least-squares slope of the samples of the last 60 minutes. The check needs samples for the full 60 minutes, so one step in RAM cannot give a reason. After Bifrost starts, the check gives no reason for 60 minutes. The monitor keeps the newest sample before the 60 minutes. That sample shows that the samples cover the full 60 minutes. The history is in memory only.
 - **The main process delay** is the longest delay of the Node event loop in each 60 s window. The histogram of `monitorEventLoopDelay()` uses a 50 ms resolution. Each value of the histogram is the timer interval plus the delay. So Bifrost subtracts the 50 ms, and the value is never below 0. The longest delay shows a repeated freeze that a percentile can hide.
+- **A low frame rate** needs two burst values below 30 fps in a row. The bursts start 10 s apart, so the two values cover 10 s or more. A change of showing or of the focus starts a new count.
 - **A crash** is a `render-process-gone` event of the main window, or a `child-process-gone` event of the GPU process. Its reason is not `clean-exit`. A reload that you start (the View menu, Cmd+R) is not a crash. A reload of the development server is not a crash.
 - **A Claude session** is a registry row with a PID. Its RAM and CPU are the sum of its process and all its child processes. MCP servers and tools are examples of child processes. One `ps` call reads all processes. Processes outside the registry do not count.
 
@@ -113,7 +114,7 @@ Definitions (my calls after the builder check, 2026-11-09):
 | Bifrost processes | Electron `app.getAppMetrics()` (type, CPU, memory) | 15 s; 2 s while the panel shows |
 | Chat terminals | The PIDs of the PTY manager, in one `ps -axo pid=,ppid=,rss=,time=,comm=` table of all processes. The CPU is the change of the CPU time (`time=`) between two reads (P3). | each `ps` read |
 | Claude sessions | The PIDs of the registry rows, in the same `ps` table. Bifrost calculates the sessions on each `ps` read. | each `ps` read: 15 s; at most every 6 s while the panel shows |
-| Frame rate | The renderer counts frames while the panel shows and the window has the focus | 1 s |
+| Frame rate | The renderer counts frames in bursts: 2 s of `requestAnimationFrame` in each 10 s, only while the panel shows and the window has the focus. Each burst gives one value: the frames divided by the real time of the burst. No frame callback runs between the bursts. The bursts stop at once when the panel closes or the window loses the focus. The Frame rate row shows the value of the last burst. | one value each 10 s |
 | Main process delay | Node `perf_hooks.monitorEventLoopDelay()` with a 50 ms resolution | continuous; the check uses each 60 s window |
 | Crashes | `render-process-gone` of the main window, and `child-process-gone` of the GPU process | event |
 | End of a page | `did-navigate`, `render-process-gone` and `closed` of the main window. The monitor then works as for a closed panel (15 s, no network command, no probe) until the next page reports. | event |
@@ -138,21 +139,19 @@ The monitor keeps 60 minutes of samples in memory. It writes nothing to disk, ex
 ## 8. Constraints
 
 - The goal: the monitor stays below 1% CPU of one core on average and below 10 MB of memory.
-- The measured CPU (2026-11-09). A test copy of Bifrost ran in the smoke harness, with a test home and a fake `claude`. It made no network request. The Mac was busy (load average 12 to 27). Before each measurement, the app ran for 30 s. `/bin/ps -o pid=,time=,comm=` gave the CPU time of each Bifrost process at the start and at the end of 2 minutes. The window had the focus. The values are percent of one core.
+- The measured CPU (2026-11-09). A test copy of Bifrost ran in the smoke harness, with a test home and a fake `claude`. It made no network request. The Mac was busy (load average 8 to 27). Before each measurement, the app ran for 30 s. `/bin/ps -o pid=,time=,comm=` gave the CPU time of each Bifrost process at the start and at the end of 2 minutes. The window had the focus, and the animated background was off. The values are percent of one core. The frame rate counter used bursts, as section 7 describes.
 
 | State | Main process | Window | GPU | Other | Total |
 |---|---|---|---|---|---|
-| Panel closed, animated background off | 0.57% | 0.17% | 0.02% | 0.01% | 0.77% |
-| Panel open, Details closed, animated background off | 0.62% | 2.86% | 1.96% | 0.02% | 5.45% |
-| Panel open, Details open, animated background off | 1.55% | 3.09% | 2.05% | 0.00% | 6.69% |
-| Panel closed, animated background on | 0.42% | 3.94% | 19.26% | 0.00% | 23.62% |
-| Panel open, Details closed, animated background on | 0.49% | 7.07% | 20.33% | 0.00% | 27.89% |
-| Panel open, Details open, animated background on | 2.12% | 8.21% | 21.75% | 0.00% | 32.07% |
+| Panel closed | 0.71% | 0.22% | 0.03% | 0.00% | 0.96% |
+| Panel open, Details closed | 0.55% | 0.71% | 0.45% | 0.00% | 1.71% |
+| Panel open, Details open | 1.12% | 1.01% | 0.98% | 0.00% | 3.11% |
 
 - The values above do not include the short commands of the monitor. One run of `ps` uses about 38 ms of CPU. One run of `networksetup` uses about 23 ms, and one run of `pmset` about 8 ms. One run of `netstat` uses about 6 ms, and one run of `sysctl` or `route` about 3 ms. At the intervals of section 7, the commands add about 0.3% of one core with the panel closed. They add about 0.8% while the panel shows.
-- With the panel closed, the monitor is near the goal. All of Bifrost used 0.77% of one core, and the commands add about 0.3%.
-- While the panel shows and has the focus, the goal is not met. For the frame rate, the panel keeps a `requestAnimationFrame` loop at the display rate (118 fps in this test). So the window and the GPU process draw a frame for each display refresh. That adds about 4.6% of one core.
-- The animated background uses about 19% to 20% of one core in the GPU process. It is not part of the monitor.
+- With the panel closed, the monitor is near the goal. All of Bifrost used 0.96% of one core (0.77% in an earlier run), and the commands add about 0.3%.
+- While the panel shows and has the focus, the goal is not met. All of Bifrost used 1.71% of one core, and the commands add about 0.8%.
+- An earlier counter counted the frames at all times while the panel showed. Its frame loop made the page draw a frame for each display refresh (118 fps in this test). With that counter, the panel open gave 5.45% of one core (window 2.86%, GPU 1.96%). The bursts cut this to 1.71%.
+- With the animated background on, the GPU process used about 19% to 22% of one core in each state. The background is not part of the monitor.
 - No new library. Use Electron, Node and macOS commands with absolute paths (`/bin/ps`, `/usr/sbin/sysctl`, `/usr/bin/pmset`, `/usr/sbin/netstat`, `/sbin/route`, `/usr/sbin/networksetup`, `/usr/bin/du`). All are read only.
 - Build order: Reviews R1 merges into `main` first. This work starts from that `main`, because the GitHub points and a poll counter come from the Reviews watcher.
 - The response-time requests send no token, no cookie and no user data.

@@ -122,7 +122,8 @@ export interface PerformanceMonitor {
   // that, so ipc.ts calls this. No panel shows, and the chat panels are not known until the next
   // report. The tick goes back to 15 s.
   pageGone(): void
-  // The renderer reports the frame rate once a second while the panel shows and has focus.
+  // The renderer reports the frame rate of each burst, one time each 10 s, while the panel shows
+  // and has focus (design section 7).
   fps(value: number): void
 }
 
@@ -149,9 +150,8 @@ function freshState(linkDue: boolean) {
     anthropicMs: null as ProbeResult | null,
     battery: null as Mac['battery'],
     clonesMb: null as number | null,
-    fpsFrom: null as number | null,
-    // The frame rate reports of the current count (design section 6).
-    fpsReports: [] as Array<{ at: number; value: number }>,
+    // The last two burst reports of the current count (design section 6).
+    fpsReports: [] as number[],
     freeDiskGb: null as number | null,
     ghLimit: null as GithubLimit | { unavailable: string } | null,
     githubMs: null as ProbeResult | null,
@@ -402,20 +402,18 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     return count
   }
 
-  // True while the panel shows and has focus, the count started at least 10 s ago, and each report
-  // of the last 10 s is below the limit (design section 6).
-  function fpsLow(now: number): boolean {
-    if (!showing || !focused || st.fpsFrom === null) return false
-    const windowMs = LIMITS.fpsLowSeconds * 1000
-    if (now - st.fpsFrom < windowMs) return false
-    const recent = st.fpsReports.filter(r => r.at >= now - windowMs)
-    return recent.length > 0 && recent.every(r => r.value < LIMITS.fpsLow)
+  // True while the panel shows and has focus, and the last two burst reports of this count are
+  // below the limit. The bursts start 10 s apart, so two reports cover 10 s or more (design
+  // section 6).
+  function fpsLow(): boolean {
+    if (!showing || !focused || st.fpsReports.length < 2) return false
+    return st.fpsReports.every(value => value < LIMITS.fpsLow)
   }
 
-  function lastFps(now: number): number | null {
+  // The value of the last burst of this count.
+  function lastFps(): number | null {
     if (!showing || !focused) return null
-    const last = st.fpsReports.at(-1)
-    return last !== undefined && last.at >= now - LIMITS.fpsLowSeconds * 1000 ? last.value : null
+    return st.fpsReports.at(-1) ?? null
   }
 
   // The snapshot of a tick, with the result of the health model.
@@ -432,7 +430,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     const delay = deps.delayMs()
     const reasons = healthReasons({
       delayMs: delay,
-      fpsLow10s: fpsLow(now),
+      fpsLow10s: fpsLow(),
       log: deps.health.view(now),
       now,
       online,
@@ -452,7 +450,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
         ? {
             cpu: use.cpu,
             delayMs: delay,
-            fps: lastFps(now),
+            fps: lastFps(),
             groups: use.groups,
             ramMb: use.ramMb,
             trend: [...st.trend],
@@ -488,7 +486,6 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     // A change of showing or focus starts a new count of the frame rate.
     if (v.showing !== showing || v.focused !== focused) {
       st.fpsReports = []
-      st.fpsFrom = null
     }
     showing = v.showing
     focused = v.focused
@@ -566,10 +563,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     current: () => snapshot,
     fps(value) {
       if (!showing || !focused) return
-      const now = deps.now()
-      if (st.fpsFrom === null) st.fpsFrom = now
-      st.fpsReports.push({ at: now, value })
-      st.fpsReports = st.fpsReports.filter(r => r.at >= now - LIMITS.fpsLowSeconds * 1000)
+      st.fpsReports = [...st.fpsReports, value].slice(-2)
     },
     // Before the first report of a page, no chat PTY is an orphan (P2).
     pageGone() {

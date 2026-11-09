@@ -132,40 +132,65 @@ export function createViewReporter(
   }
 }
 
-// The frame callbacks of the page. A test gives a fake.
+// The frame callbacks and the timers of the page. A test gives a fake.
 export interface FrameClock {
   request(cb: (time: number) => void): number
   cancel(id: number): void
+  after(ms: number, cb: () => void): number
+  cancelAfter(id: number): void
 }
 
 const SECOND_MS = 1000
 const MAX_FPS = 1000
+// The counter counts frames for 2 s in each 10 s (design section 7). A frame loop at the display
+// rate makes the page draw each frame. So a short burst costs much less CPU than a loop that
+// runs at all times.
+export const BURST_MS = 2000
+export const BURST_EVERY_MS = 10_000
 
-// Count the frames and report the frame rate one time each second. The returned function stops
-// the count.
+// Count the frames in bursts. Each burst starts with a frame callback, counts the frames for 2 s
+// and reports one frame rate: the frames divided by the real time of the burst. The next burst
+// starts 8 s after the end of the burst. No frame callback runs between the bursts. The
+// returned function stops the count at once.
 export function startFpsCounter(clock: FrameClock, report: (fps: number) => void): () => void {
   let from: number | null = null
   let frames = 0
-  let id = clock.request(step)
+  let frameId: number | null = null
+  let timerId: number | null = null
+  function burst(): void {
+    timerId = null
+    from = null
+    frames = 0
+    frameId = clock.request(step)
+  }
   function step(time: number): void {
+    frameId = null
     if (from === null) {
       from = time
     } else {
       frames += 1
       const span = time - from
-      if (span >= SECOND_MS) {
+      if (span >= BURST_MS) {
         report(Math.min(MAX_FPS, Math.round((frames * SECOND_MS) / span)))
-        from = time
-        frames = 0
+        timerId = clock.after(BURST_EVERY_MS - BURST_MS, burst)
+        return
       }
     }
-    id = clock.request(step)
+    frameId = clock.request(step)
   }
-  return () => clock.cancel(id)
+  burst()
+  return () => {
+    if (frameId !== null) clock.cancel(frameId)
+    if (timerId !== null) clock.cancelAfter(timerId)
+    frameId = null
+    timerId = null
+  }
 }
 
 const PAGE_CLOCK: FrameClock = {
+  after: (ms, cb) => window.setTimeout(cb, ms),
   cancel: id => window.cancelAnimationFrame(id),
+  cancelAfter: id => window.clearTimeout(id),
   request: cb => window.requestAnimationFrame(cb),
 }
 
@@ -203,7 +228,7 @@ function usePage(): Page {
 // The one reporter of the app, so two reports cannot disagree. The window manager calls it with
 // its frames. It sends the view on each change, also while the panel is closed, so the main
 // process knows the open chat panels (P2). While the panel shows and the window has the focus,
-// it also sends the frame rate one time each second (P9).
+// it also sends the frame rate of each burst, one time each 10 s (design section 7).
 export function usePerformanceReport(frames: readonly Frame[]): void {
   const page = usePage()
   const view = useMemo(() => performanceView(frames, page), [frames, page])

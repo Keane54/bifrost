@@ -650,7 +650,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 - The Performance panel shows the health of Bifrost. It answers one question: does Bifrost use too many resources, or is something wrong?
 - A button in the side bar opens the panel. Its icon is a heart pulse. The button shows a dot while the state is Warning or Problem.
 - The headline shows OK, Warning or Problem. The Details row opens the sections. The panel code is in `src/renderer/src/performance/`. The monitor is in `src/main/performance/`.
-- The goal is that the monitor uses less than 1% of one core. A measurement on 2026-11-09 used a test copy of Bifrost with a test home. The animated background was off. With the panel closed, all Bifrost processes used 0.77% of one core. The commands of the monitor added about 0.3%. With the panel open and focused, the Bifrost processes used 5.45%, and the commands added about 0.8%. Most of that cost comes from the frame rate count. Section 8 of the Performance design gives all the values.
+- The goal is that the monitor uses less than 1% of one core. A measurement on 2026-11-09 used a test copy of Bifrost with a test home. The animated background was off. With the panel closed, all Bifrost processes used 0.96% of one core. The commands of the monitor added about 0.3%. With the panel open and focused, the Bifrost processes used 1.71%, and the commands added about 0.8%. To keep this cost low, the panel counts the frame rate in short bursts. Section 8 of the Performance design gives all the values.
 - The monitor makes no network request in a test home.
 - The Performance design (`docs/specs/2026-11-09-bifrost-performance-design.md`) describes the checks, the data sources and the limits.
 
