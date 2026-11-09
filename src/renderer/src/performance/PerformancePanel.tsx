@@ -13,7 +13,17 @@ import { actionStateFor } from '../actions/action-model'
 import { useActions } from '../actions/actions-context'
 import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
-import { gb, mb, ms, percent, pointsText, pressureText, rate, thermalText } from './format'
+import {
+  batteryText,
+  gb,
+  mb,
+  ms,
+  percent,
+  pointsText,
+  pressureText,
+  rate,
+  thermalText,
+} from './format'
 import TrendLine from './TrendLine'
 import { usePerformance, usePerformanceDetails } from './use-performance'
 
@@ -233,11 +243,6 @@ function SessionsSection({ sessions }: { sessions: Snapshot['sessions'] }): Reac
 function swapText(swap: Mac['swap']): string {
   if (swap === null) return '-'
   return swap.totalMb === 0 ? 'None' : `${mb(swap.usedMb)} of ${mb(swap.totalMb)}`
-}
-
-function batteryText(battery: Mac['battery']): string {
-  if (battery === null) return '-'
-  return `${Math.round(battery.percent)}%, ${battery.charging ? 'charging' : 'not charging'}`
 }
 
 function MacSection({ mac }: { mac: Snapshot['mac'] }): React.JSX.Element {

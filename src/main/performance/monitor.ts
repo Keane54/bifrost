@@ -249,7 +249,8 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     runSide(sides.battery, BATTERY_MS, now, async () => {
       const b = await readBattery(deps.exec)
       return () => {
-        st.battery = b === null ? null : { charging: b.charging, percent: b.percent }
+        st.battery =
+          b === null ? null : { charging: b.charging, onBattery: b.onBattery, percent: b.percent }
       }
     })
     runSide(sides.disk, DISK_MS, now, async () => {
