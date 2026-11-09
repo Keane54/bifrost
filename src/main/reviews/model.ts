@@ -93,6 +93,8 @@ export function splitWork(
 
   for (const review of pr.reviews) {
     if (!isTrustedHuman(review.author, viewer) || review.body.trim() === '') continue
+    // An approval or a dismissed review needs no action.
+    if (review.state !== 'CHANGES_REQUESTED' && review.state !== 'COMMENTED') continue
     if (handledState(review.id) !== undefined) continue
     place({ id: review.id, kind: 'review-body' }, false)
   }
@@ -122,6 +124,8 @@ function humanDecisions(pr: PrData, viewer: string): Map<string, PrReview> {
 }
 
 // Design 9.2. The first match wins.
+// The decision of a reviewer is the latest APPROVED, CHANGES_REQUESTED or DISMISSED review.
+// A COMMENTED or PENDING review does not change it (the GitHub rule).
 export function reviewStatus(pr: PrData, viewer: string, split: WorkSplit): ReviewStatus {
   const decisions = [...humanDecisions(pr, viewer).values()]
   if (decisions.some(r => r.state === 'CHANGES_REQUESTED')) return 'changes-requested'
@@ -146,10 +150,13 @@ export function toReviewState(
   ctx: RequestContext,
 ): ToReviewState | null {
   if (ctx.session !== null) return ctx.session
+  const direct = pr.requestedUsers.includes(viewer)
+  // With team requests off, a team-only request is hidden in every state except a session.
+  if (!direct && !ctx.teamRequests) return null
   if (pr.viewerPendingReviewId !== null) return 'draft-ready'
   if (ctx.pauseEndsAt !== null && ctx.now < ctx.pauseEndsAt) return 'paused'
   if (pr.reviewDecision === 'APPROVED') return 'approved-by-others'
-  if (!pr.requestedUsers.includes(viewer)) return ctx.teamRequests ? 'team' : null
+  if (!direct) return 'team'
   return ctx.known?.baseline === true ? 'waiting' : 'new'
 }
 

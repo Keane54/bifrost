@@ -215,6 +215,20 @@ describe('reviewStatus', () => {
     expect(status(p)).toBe('changes-requested')
   })
 
+  it('an APPROVED review body is not work, so an approved PR with no open thread gives approved', () => {
+    const p = pr({
+      reviews: [
+        review('r1', member, { body: 'LGTM', state: 'APPROVED' }),
+        review('r2', outsider, { body: 'x', state: 'DISMISSED' }),
+        review('r3', member, { body: 'x', state: 'DISMISSED', submittedAt: 5 }),
+      ],
+    })
+    expect(splitWork(p, VIEWER, prState(), NONE).work).toEqual([])
+    expect(
+      status(pr({ reviews: [review('r1', member, { body: 'LGTM', state: 'APPROVED' })] })),
+    ).toBe('approved')
+  })
+
   it('the latest review of a reviewer counts', () => {
     const p = pr({
       reviews: [
@@ -308,6 +322,15 @@ describe('toReviewState', () => {
     const team = pr({ requestedTeams: ['core'] })
     expect(toReviewState(team, VIEWER, ctx({ teamRequests: false }))).toBeNull()
     expect(toReviewState(direct, VIEWER, ctx({ teamRequests: false }))).toBe('new')
+  })
+
+  it('toReviewState: teamRequests off hides a paused team request but keeps a session', () => {
+    const off = ctx({ teamRequests: false })
+    const team = pr({ requestedTeams: ['core'] })
+    expect(toReviewState(team, VIEWER, { ...off, pauseEndsAt: 2000 })).toBeNull()
+    expect(toReviewState({ ...team, reviewDecision: 'APPROVED' }, VIEWER, off)).toBeNull()
+    expect(toReviewState(team, VIEWER, { ...off, session: 'reviewing' })).toBe('reviewing')
+    expect(toReviewState(team, VIEWER, { ...off, session: 'queued' })).toBe('queued')
   })
 })
 
