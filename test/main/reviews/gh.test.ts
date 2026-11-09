@@ -47,7 +47,10 @@ describe('ghFailure', () => {
   it('maps ENOENT to no-gh', () => {
     const f = ghFailure(res({ stderr: 'spawn gh ENOENT' }))
     expect(f?.availability).toBe('no-gh')
-    expect(f?.message).toBe("GitHub CLI (gh) isn't installed.")
+    expect(f?.message).toBe(
+      "GitHub CLI (gh) isn't installed. Install it with Homebrew (brew install gh), log in with " +
+        'gh auth login, then click Refresh.',
+    )
   })
 
   it('maps exit code 4 to logged-out', () => {

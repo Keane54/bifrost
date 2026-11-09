@@ -91,6 +91,25 @@ describe('parseState', () => {
     expect(state.posted).toEqual(valid().posted)
   })
 
+  it('skips the keys __proto__, constructor and prototype in handled and rerequested', () => {
+    const text = JSON.stringify({
+      handled: { constructor: { at: 2 }, prototype: { at: 3 }, t1: { at: 4 } },
+      rerequested: { constructor: 'y', prototype: 'z', r1: 'w' },
+    })
+    // JSON.parse makes an own key __proto__. An object literal does not.
+    const entry = JSON.parse(
+      text
+        .replace('"handled":{', '"handled":{"__proto__":{"at":1,"lastReplyAt":5},')
+        .replace('"rerequested":{', '"rerequested":{"__proto__":"x",'),
+    )
+    expect(Object.keys(entry.handled)).toContain('__proto__')
+    const pr = parseState({ ...valid(), prs: { [KEY]: entry } }).prs[KEY]
+    expect(Object.keys(pr?.handled ?? {})).toEqual(['t1'])
+    expect(Object.getPrototypeOf(pr?.handled)).toBe(Object.prototype)
+    expect(Object.keys(pr?.rerequested ?? {})).toEqual(['r1'])
+    expect(Object.getPrototypeOf(pr?.rerequested)).toBe(Object.prototype)
+  })
+
   it('gives EMPTY_STATE for another version or a non-object', () => {
     expect(parseState({ version: 2 })).toEqual(EMPTY_STATE)
     expect(parseState(null)).toEqual(EMPTY_STATE)

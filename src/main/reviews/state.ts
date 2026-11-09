@@ -112,12 +112,20 @@ function sessionRef(value: unknown): SessionRef | null {
   return { name: value.name, sessionId: value.sessionId }
 }
 
+// Keys that change an object or its prototype. A file can hold them as own keys, because
+// JSON.parse makes an own key __proto__ (final review M13).
+const UNSAFE_KEYS: readonly string[] = ['__proto__', 'constructor', 'prototype']
+
+function safeKey(key: string): boolean {
+  return key !== '' && !UNSAFE_KEYS.includes(key)
+}
+
 function parsePrState(value: unknown): PrState {
   const state = emptyPrState()
   if (!isObject(value)) return state
   if (isObject(value.handled)) {
     for (const [id, entry] of Object.entries(value.handled)) {
-      if (id === '' || !isObject(entry) || !isNumber(entry.at)) continue
+      if (!safeKey(id) || !isObject(entry) || !isNumber(entry.at)) continue
       state.handled[id] = {
         at: entry.at,
         lastReplyAt: isNumber(entry.lastReplyAt) ? entry.lastReplyAt : null,
@@ -126,7 +134,7 @@ function parsePrState(value: unknown): PrState {
   }
   if (isObject(value.rerequested)) {
     for (const [id, text] of Object.entries(value.rerequested)) {
-      if (isString(text)) state.rerequested[id] = text
+      if (safeKey(id) && isString(text)) state.rerequested[id] = text
     }
   }
   state.firstCopilotReview = stringOrNull(value.firstCopilotReview)

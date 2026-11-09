@@ -50,6 +50,7 @@ const prChecks = (contexts: number): string => `
       commit {
         oid
         statusCheckRollup {
+          state
           contexts(first: ${contexts}) {
             pageInfo { hasNextPage }
             nodes {
@@ -129,6 +130,8 @@ const FAILED_CONCLUSIONS = new Set([
   'ACTION_REQUIRED',
 ])
 const FAILED_STATES = new Set(['FAILURE', 'ERROR'])
+// The longest error message that a partial answer keeps.
+const ERROR_MAX = 200
 
 // Count the check contexts that failed.
 export function countFailed(contexts: unknown[]): number {
@@ -275,13 +278,17 @@ function readPr(v: unknown, viewer: string): PrData | null {
   }
 
   const createdAt = time(o.createdAt) ?? 0
-  // The request time: the newest request event for the viewer or for a team.
+  // The request time. A direct request uses only the request events for the viewer. A team
+  // request uses the newest team event. Without an event, the time is createdAt
+  // (final review M10).
+  const direct = requestedUsers.includes(viewer)
   let requestedAt = 0
   for (const n of nodes(o.timelineItems)) {
     const e = obj(n)
     const r = reviewer(e?.requestedReviewer)
     const at = time(e?.createdAt)
-    if (at === null || (r.user !== viewer && r.team === null)) continue
+    const counts = direct ? r.user === viewer : r.team !== null
+    if (at === null || !counts) continue
     if (at > requestedAt) requestedAt = at
   }
 
@@ -295,7 +302,14 @@ function readPr(v: unknown, viewer: string): PrData | null {
   }
 
   const commit = obj(obj(nodes(o.commits)[0])?.commit)
-  const contexts = obj(obj(commit?.statusCheckRollup)?.contexts)
+  const rollup = obj(commit?.statusCheckRollup)
+  const contexts = obj(rollup?.contexts)
+  // The rollup state also counts the checks that the query does not read. A failed rollup with
+  // no failed context in the first page gives one failed check (final review M6).
+  const failedChecks = Math.max(
+    countFailed(nodes(contexts)),
+    FAILED_STATES.has(str(rollup?.state) ?? '') ? 1 : 0,
+  )
 
   const decision = str(o.reviewDecision)
   return {
@@ -306,7 +320,7 @@ function readPr(v: unknown, viewer: string): PrData | null {
     createdAt,
     decisions: nodes(o.latestOpinionatedReviews).flatMap(r => readReview(r) ?? []),
     deletions: num(o.deletions),
-    failedChecks: countFailed(nodes(contexts)),
+    failedChecks,
     headRef: str(o.headRefName) ?? '',
     headSha: str(o.headRefOid) ?? '',
     isCrossRepository: o.isCrossRepository === true,
@@ -332,6 +346,20 @@ function readPr(v: unknown, viewer: string): PrData | null {
   }
 }
 
+// The messages of the errors of an answer, each one time. Only the message, cut to ERROR_MAX.
+function errorMessages(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  const messages = new Set<string>()
+  for (const e of v) {
+    const message = str(obj(e)?.message)?.trim().slice(0, ERROR_MAX)
+    if (message) messages.add(message)
+  }
+  return [...messages]
+}
+
+// Read the answer of the poll. An answer with data and errors (a partial answer) keeps its data,
+// and data.errors has the messages. An answer with errors fails only when it has no viewer or no
+// result for one of the two searches (final review M7).
 export function parsePoll(
   stdout: string,
 ): { ok: true; data: PollData } | { ok: false; message: string } {
@@ -342,17 +370,18 @@ export function parsePoll(
     return { message: "GitHub gave an answer that Bifrost can't read.", ok: false }
   }
   const top = obj(root)
-  const errors = top?.errors
-  if (Array.isArray(errors) && errors.length > 0) {
-    const message = str(obj(errors[0])?.message)
-    return { message: message ?? 'GitHub gave an error.', ok: false }
-  }
+  const errors = errorMessages(top?.errors)
   const data = obj(top?.data)
   const viewer = str(obj(data?.viewer)?.login)
+  if (errors.length > 0) {
+    const usable = viewer !== null && obj(data?.toReview) !== null && obj(data?.mine) !== null
+    if (!usable) return { message: errors[0] ?? 'GitHub gave an error.', ok: false }
+  }
   if (!data || !viewer) return { message: 'GitHub did not say who you are.', ok: false }
   const list = (v: unknown): PrData[] => nodes(v).flatMap(n => readPr(n, viewer) ?? [])
   return {
     data: {
+      errors,
       mine: list(data.mine),
       mineHasMore: more(data.mine),
       toReview: list(data.toReview),

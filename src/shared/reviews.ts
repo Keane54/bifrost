@@ -91,7 +91,8 @@ export const EMPTY_REVIEWS: ReviewsSnapshot = {
   trust: [],
 }
 
-export const REASON_GH_MISSING = "GitHub CLI (gh) isn't installed."
+export const REASON_GH_MISSING =
+  "GitHub CLI (gh) isn't installed. Install it with Homebrew (brew install gh), log in with gh auth login, then click Refresh."
 export const REASON_GH_LOGGED_OUT =
   "GitHub CLI (gh) isn't logged in. Run gh auth login in a terminal, then click Refresh."
 export const REASON_GH_TIMEOUT = "GitHub didn't answer in time. Bifrost will try again."

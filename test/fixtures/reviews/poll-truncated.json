@@ -27,7 +27,8 @@
                         "hasNextPage": false,
                         "hasPreviousPage": false
                       }
-                    }
+                    },
+                    "state": "SUCCESS"
                   }
                 }
               }

@@ -98,7 +98,8 @@ type Outcome = { ok: true; data: PollData } | { ok: false; failure: GhFailure }
 // - A key that shows later, with a request from before the turn-on, goes in the baseline. It was
 //   beyond the first page at the turn-on.
 // - While GitHub has more requests than the first page, a key that is not in the answer can
-//   still be open. It keeps its entry and its pause.
+//   still be open. It keeps its entry and its pause. A partial answer (with errors) does the
+//   same, because it can lack PRs that are open.
 // - A known key with a request time after its firstSeen is a re-request. It is new again and
 //   loses its pause.
 // firstSeen is never before the request time, so a late local clock cannot give a re-request at
@@ -130,7 +131,7 @@ function nextState(
     }
     if (requests[key] !== known) edited = true
   }
-  if (poll.toReviewHasMore) {
+  if (poll.toReviewHasMore || poll.errors.length > 0) {
     for (const [key, known] of Object.entries(s.requests)) {
       if (!Object.hasOwn(requests, key)) requests[key] = known
     }
@@ -245,7 +246,13 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
   async function fetchPoll(): Promise<Outcome> {
     const result = await deps.gh.run(pollArgs())
     const failed = ghFailure(result)
-    if (failed !== null) return { failure: failed, ok: false }
+    if (failed !== null) {
+      // gh exits with an error code when GitHub gives errors next to the data. Such a partial
+      // answer keeps its data. Each other failure fails the poll (final review M7).
+      const partial = result.timedOut ? null : parsePoll(result.stdout)
+      if (partial?.ok && partial.data.errors.length > 0) return { data: partial.data, ok: true }
+      return { failure: failed, ok: false }
+    }
     const parsed = parsePoll(result.stdout)
     if (!parsed.ok) {
       return { failure: { availability: 'error', message: parsed.message }, ok: false }
@@ -317,8 +324,14 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
         }),
       ])
       if (outcome === null || !running || gen !== generation) return
-      if (outcome.ok) await apply(gen, outcome.data)
-      else fail(outcome.failure)
+      if (outcome.ok) {
+        // One log line for each poll with errors. It has only the messages, no PR text.
+        const { errors } = outcome.data
+        if (errors.length > 0) {
+          deps.log(`GitHub gave errors with the Reviews poll: ${errors.join(' | ')}`)
+        }
+        await apply(gen, outcome.data)
+      } else fail(outcome.failure)
     } catch (error) {
       deps.log(`Bifrost cannot apply the Reviews poll. ${error}`)
     } finally {

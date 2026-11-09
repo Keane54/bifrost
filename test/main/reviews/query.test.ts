@@ -172,6 +172,54 @@ describe('parsePoll', () => {
     expect(cut([...contexts, 'pageInfo', 'hasNextPage'], true)).toEqual([false, false, false, true])
   })
 
+  it('a direct request uses only the request events for the viewer', () => {
+    const raw = JSON.parse(fixture('poll-basic'))
+    const direct = raw.data.toReview.nodes[0]
+    // A team request event that is newer than the request for the viewer.
+    direct.timelineItems.nodes.push({
+      createdAt: '2026-11-07T00:00:00Z',
+      requestedReviewer: { __typename: 'Team', slug: 'web-team' },
+    })
+    const team = raw.data.toReview.nodes[1]
+    // A request event for another user. A team request uses only team events.
+    team.timelineItems.nodes.push({
+      createdAt: '2026-11-07T00:00:00Z',
+      requestedReviewer: { __typename: 'User', login: 'carol' },
+    })
+    const r = parsePoll(JSON.stringify(raw))
+    if (!r.ok) throw new Error(r.message)
+    expect(r.data.toReview[0]?.requestedAt).toBe(Date.parse('2026-11-05T12:30:00Z'))
+    expect(r.data.toReview[1]?.requestedAt).toBe(Date.parse('2026-11-04T08:00:00Z'))
+    // A direct request with only team events uses createdAt.
+    direct.timelineItems.nodes = direct.timelineItems.nodes.slice(2)
+    const only = parsePoll(JSON.stringify(raw))
+    expect(only.ok && only.data.toReview[0]?.requestedAt).toBe(Date.parse('2026-11-01T09:00:00Z'))
+  })
+
+  it('a failed rollup state gives at least one failed check', () => {
+    const rollup = (state: string | null, conclusions: string[]) => {
+      const raw = JSON.parse(fixture('poll-basic'))
+      raw.data.mine.nodes[0].commits.nodes[0].commit.statusCheckRollup = {
+        contexts: {
+          nodes: conclusions.map(conclusion => ({ __typename: 'CheckRun', conclusion })),
+          pageInfo: { hasNextPage: false },
+        },
+        state,
+      }
+      const r = parsePoll(JSON.stringify(raw))
+      if (!r.ok) throw new Error(r.message)
+      return r.data.mine[0]?.failedChecks
+    }
+    // The failed check is beyond the first 20 contexts, or GitHub counts a check that the
+    // query does not read.
+    expect(rollup('FAILURE', ['SUCCESS'])).toBe(1)
+    expect(rollup('ERROR', [])).toBe(1)
+    expect(rollup('FAILURE', ['FAILURE', 'TIMED_OUT'])).toBe(2)
+    expect(rollup('SUCCESS', [])).toBe(0)
+    expect(rollup('PENDING', [])).toBe(0)
+    expect(rollup(null, [])).toBe(0)
+  })
+
   it('reads whether each search has more PRs than the first page', () => {
     expect(basic()).toMatchObject({ mineHasMore: false, toReviewHasMore: false })
     const raw = JSON.parse(fixture('poll-basic'))
@@ -205,6 +253,36 @@ describe('parsePoll', () => {
     const err = parsePoll(JSON.stringify({ errors: [{ message: 'Bad credentials' }] }))
     expect(err).toEqual({ message: 'Bad credentials', ok: false })
     expect(parsePoll('{"data":{}}').ok).toBe(false)
+  })
+
+  it('keeps the data of an answer with data and errors', () => {
+    const raw = JSON.parse(fixture('poll-basic'))
+    raw.data.toReview.nodes[1] = null
+    raw.errors = [
+      { message: 'Something went wrong while executing your query.', path: ['toReview'] },
+      { message: 'Something went wrong while executing your query.' },
+      { message: 'Resource not accessible by integration' },
+      { path: ['x'] },
+    ]
+    const r = parsePoll(JSON.stringify(raw))
+    if (!r.ok) throw new Error(r.message)
+    expect(r.data.toReview.map(pr => pr.key)).toEqual(['acme/web#101', 'acme/web#102'])
+    expect(r.data.mine).toHaveLength(2)
+    // Each message one time, with no other field of the error.
+    expect(r.data.errors).toEqual([
+      'Something went wrong while executing your query.',
+      'Resource not accessible by integration',
+    ])
+    expect(basic().errors).toEqual([])
+  })
+
+  it('fails on errors when a search has no data', () => {
+    const raw = JSON.parse(fixture('poll-basic'))
+    raw.data.toReview = null
+    raw.errors = [{ message: 'Timeout on search' }]
+    expect(parsePoll(JSON.stringify(raw))).toEqual({ message: 'Timeout on search', ok: false })
+    const noData = parsePoll(JSON.stringify({ data: null, errors: [{ message: 'Bad query' }] }))
+    expect(noData).toEqual({ message: 'Bad query', ok: false })
   })
 })
 

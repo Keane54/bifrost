@@ -46,11 +46,13 @@ for (const [key, value] of Object.entries(process.env)) {
 const gh = createGh({ env: async () => env, exec: execFile })
 const result = await gh.run(pollArgs())
 const failure = ghFailure(result)
-if (failure !== null) fail(`${failure.availability}: ${failure.message}`)
-
 const parsed = parsePoll(result.stdout)
+// gh exits with an error code for a partial answer (data and errors). The watcher keeps the data
+// of such an answer, so the check does too.
+const partial = parsed.ok && parsed.data.errors.length > 0
+if (failure !== null && !partial) fail(`${failure.availability}: ${failure.message}`)
 if (!parsed.ok) fail(parsed.message)
-const { mine, toReview, viewer } = parsed.data
+const { errors, mine, toReview, viewer } = parsed.data
 
 // The cost of the query is in the raw answer. It is a number only.
 let cost: unknown = null
@@ -79,4 +81,5 @@ console.log(
     `reviews ${count(pr => pr.truncatedReviews)}, comments ${count(pr => pr.truncatedComments)}, ` +
     `checks ${count(pr => pr.truncatedChecks)})`,
 )
+console.log(`GitHub errors in the answer: ${errors.length}`)
 console.log(`GraphQL cost: ${typeof cost === 'number' ? cost : 'unknown'}`)

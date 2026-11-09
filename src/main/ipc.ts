@@ -317,7 +317,7 @@ function logRefusedNotification(): void {
 function notifyReviewRequest(notice: RequestNotice): void {
   if (!getSettings().notifications || (currentWindow?.isFocused() ?? false)) return
   showNotification(
-    { ...notice, sessionId: null },
+    { ...notice, label: 'review requests', sessionId: null },
     () => {
       showWindowFn?.()
       // With no loaded page, the open waits for the did-finish-load of the next page.

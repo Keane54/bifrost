@@ -22,6 +22,7 @@ import {
   EMPTY_REVIEWS,
   REASON_GH_FAILED,
   REASON_GH_LOGGED_OUT,
+  REASON_GH_MISSING,
   REASON_GH_TIMEOUT,
   type ReviewsSnapshot,
   type ToReviewRow,
@@ -103,6 +104,14 @@ function answer(toReview: FakePr[], mine: FakePr[] = [], more = false): ExecResu
     viewer: { login: VIEWER },
   }
   return { code: 0, stderr: '', stdout: JSON.stringify({ data }) }
+}
+
+// A partial answer: gh exits with code 1 when GitHub gives errors next to the data.
+function partial(toReview: FakePr[], messages: string[], nulls = 0): ExecResult {
+  const good = JSON.parse(answer(toReview).stdout)
+  for (let i = 0; i < nulls; i++) good.data.toReview.nodes.push(null)
+  good.errors = messages.map(message => ({ message, path: ['toReview', 'nodes', 1] }))
+  return { code: 1, stderr: `gh: ${messages[0]}`, stdout: JSON.stringify(good) }
 }
 
 const LOGGED_OUT: ExecResult = {
@@ -567,6 +576,56 @@ describe('createReviewsWatcher', () => {
     t.watcher.stop()
   })
 
+  test('a partial answer keeps its data and logs the errors once for each poll', async () => {
+    const message = 'Something went wrong while executing your query.'
+    const t = setup({ replies: [partial([{ number: 101 }], [message, message], 1)] })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.watcher.current()).toMatchObject({ availability: 'ok', message: null })
+    expect(t.watcher.current().toReview.map(r => r.key)).toEqual([K101])
+    const lines = (): string[] => t.logs.filter(m => m.includes(message))
+    expect(lines()).toEqual([`GitHub gave errors with the Reviews poll: ${message}`])
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(lines()).toHaveLength(2)
+    t.watcher.stop()
+  })
+
+  test('a partial answer keeps a request that it does not show', async () => {
+    const before = Date.now() - 60 * MIN
+    const t = setup({
+      replies: [partial([{ number: 101 }], ['Not accessible'], 1)],
+      state: {
+        requests: {
+          [K101]: { baseline: true, firstSeen: before },
+          [K103]: { baseline: false, firstSeen: before },
+        },
+        turnedOnAt: before,
+      },
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.watcher.current().availability).toBe('ok')
+    expect(Object.keys(t.store.get().requests).sort()).toEqual([K101, K103])
+    t.watcher.stop()
+  })
+
+  test('gh output with errors and no data fails the poll', async () => {
+    const t = setup({
+      replies: [
+        {
+          code: 1,
+          stderr: 'gh: Bad query',
+          stdout: JSON.stringify({ errors: [{ message: 'Bad query' }] }),
+        },
+      ],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.watcher.current()).toMatchObject({ availability: 'error', message: 'gh: Bad query' })
+    expect(t.change).not.toHaveBeenCalled()
+    t.watcher.stop()
+  })
+
   test('a failed first poll gives the message and no rows', async () => {
     const t = setup({ replies: [{ code: 1, stderr: 'spawn gh ENOENT', stdout: '' }] })
     t.watcher.start()
@@ -574,7 +633,7 @@ describe('createReviewsWatcher', () => {
     expect(t.watcher.current()).toEqual({
       ...EMPTY_REVIEWS,
       availability: 'no-gh',
-      message: "GitHub CLI (gh) isn't installed.",
+      message: REASON_GH_MISSING,
     })
     expect(t.change).not.toHaveBeenCalled()
     t.watcher.stop()

@@ -89,4 +89,7 @@ export interface PollData {
   // True when a search has more than the 50 PRs that the poll reads (final review I3).
   toReviewHasMore: boolean
   mineHasMore: boolean
+  // The error messages of a partial answer: GitHub gave errors next to the data. A list can then
+  // lack PRs that are open (final review M7).
+  errors: string[]
 }

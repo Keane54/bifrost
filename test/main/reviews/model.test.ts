@@ -414,6 +414,7 @@ describe('buildSnapshot', () => {
 
   it('buildSnapshot: an ignored repo shows in neither list', () => {
     const poll: PollData = {
+      errors: [],
       mine: [
         pr({ key: 'acme/app#2', number: 2 }),
         pr({ key: 'keep/app#3', number: 3, owner: 'keep' }),
@@ -448,6 +449,7 @@ describe('buildSnapshot', () => {
       ],
     })
     const poll: PollData = {
+      errors: [],
       mine: [mine],
       mineHasMore: false,
       toReview: [
@@ -480,7 +482,14 @@ describe('buildSnapshot of a busy PR', () => {
   const input = (mine: PrData[]) => ({
     claude: () => ({ claude: 'waiting' as const, error: null, fixing: 0, sessionId: null }),
     now: 5000,
-    poll: { mine, mineHasMore: false, toReview: [], toReviewHasMore: false, viewer: VIEWER },
+    poll: {
+      errors: [],
+      mine,
+      mineHasMore: false,
+      toReview: [],
+      toReviewHasMore: false,
+      viewer: VIEWER,
+    },
     session: () => null,
     settings: { reviewsIgnore: [] as string[], reviewsTeamRequests: true },
     state: structuredClone(EMPTY_STATE),
@@ -517,6 +526,7 @@ describe('buildSnapshot of a busy PR', () => {
 describe('baselineOf', () => {
   it('collects the open items of My PRs and the To review keys', () => {
     const poll: PollData = {
+      errors: [],
       mine: [pr({ comments: [comment('pc1', member)], threads: [thread('t1', member)] })],
       mineHasMore: false,
       toReview: [pr({ key: 'acme/app#7' }), pr({ key: 'acme/app#8' })],
@@ -530,6 +540,7 @@ describe('baselineOf', () => {
 
   it('adds the visible items of a truncated PR to the baseline', () => {
     const poll: PollData = {
+      errors: [],
       mine: [pr({ threads: [thread('t1', member)], truncatedThreads: true })],
       mineHasMore: false,
       toReview: [],
