@@ -37,6 +37,7 @@ export interface PrReview {
   commit: string | null
 }
 
+// In R1, a To review PR carries no reviews, threads or comments: these lists are empty.
 export interface PrData {
   key: string
   owner: string

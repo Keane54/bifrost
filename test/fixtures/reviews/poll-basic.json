@@ -295,13 +295,6 @@
             "login": "alice"
           },
           "baseRefName": "main",
-          "comments": {
-            "nodes": [],
-            "pageInfo": {
-              "hasNextPage": false,
-              "hasPreviousPage": false
-            }
-          },
           "commits": {
             "nodes": [
               {
@@ -353,20 +346,6 @@
               }
             ]
           },
-          "reviews": {
-            "nodes": [],
-            "pageInfo": {
-              "hasNextPage": false,
-              "hasPreviousPage": false
-            }
-          },
-          "reviewThreads": {
-            "nodes": [],
-            "pageInfo": {
-              "hasNextPage": false,
-              "hasPreviousPage": false
-            }
-          },
           "timelineItems": {
             "nodes": [
               {
@@ -395,13 +374,6 @@
             "login": "bob"
           },
           "baseRefName": "main",
-          "comments": {
-            "nodes": [],
-            "pageInfo": {
-              "hasNextPage": false,
-              "hasPreviousPage": false
-            }
-          },
           "commits": {
             "nodes": [
               {
@@ -453,20 +425,6 @@
               }
             ]
           },
-          "reviews": {
-            "nodes": [],
-            "pageInfo": {
-              "hasNextPage": false,
-              "hasPreviousPage": false
-            }
-          },
-          "reviewThreads": {
-            "nodes": [],
-            "pageInfo": {
-              "hasNextPage": false,
-              "hasPreviousPage": false
-            }
-          },
           "timelineItems": {
             "nodes": [
               {
@@ -488,13 +446,6 @@
             "login": "alice"
           },
           "baseRefName": "main",
-          "comments": {
-            "nodes": [],
-            "pageInfo": {
-              "hasNextPage": false,
-              "hasPreviousPage": false
-            }
-          },
           "commits": {
             "nodes": [
               {
@@ -539,36 +490,6 @@
                 }
               }
             ]
-          },
-          "reviews": {
-            "nodes": [
-              {
-                "author": {
-                  "__typename": "User",
-                  "login": "dave"
-                },
-                "authorAssociation": "MEMBER",
-                "body": "",
-                "commit": {
-                  "oid": "aaaa111"
-                },
-                "databaseId": 5001,
-                "id": "R_a1",
-                "state": "APPROVED",
-                "submittedAt": "2026-11-07T09:00:00Z"
-              }
-            ],
-            "pageInfo": {
-              "hasNextPage": false,
-              "hasPreviousPage": false
-            }
-          },
-          "reviewThreads": {
-            "nodes": [],
-            "pageInfo": {
-              "hasNextPage": false,
-              "hasPreviousPage": false
-            }
           },
           "timelineItems": {
             "nodes": []

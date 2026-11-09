@@ -1,18 +1,11 @@
 {
   "data": {
     "mine": {
-      "nodes": []
-    },
-    "rateLimit": {
-      "cost": 11,
-      "remaining": 4930
-    },
-    "toReview": {
       "nodes": [
         {
           "additions": 10,
           "author": {
-            "login": "alice"
+            "login": "dev-user"
           },
           "baseRefName": "main",
           "comments": {
@@ -89,6 +82,13 @@
           "url": "https://github.com/acme/web/pull/200"
         }
       ]
+    },
+    "rateLimit": {
+      "cost": 11,
+      "remaining": 4930
+    },
+    "toReview": {
+      "nodes": []
     },
     "viewer": {
       "login": "dev-user"

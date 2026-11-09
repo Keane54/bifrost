@@ -1,6 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { countFailed, POLL_QUERY, parsePoll, pollArgs } from '../../../src/main/reviews/query'
+import {
+  countFailed,
+  MINE_FRAGMENT,
+  POLL_QUERY,
+  parsePoll,
+  pollArgs,
+  TO_REVIEW_FRAGMENT,
+} from '../../../src/main/reviews/query'
 
 const fixture = (name: string): string =>
   readFileSync(new URL(`../../fixtures/reviews/${name}.json`, import.meta.url), 'utf8')
@@ -89,7 +96,7 @@ describe('parsePoll', () => {
 
   it('sets truncated when a page has a next page', () => {
     const r = parsePoll(fixture('poll-truncated'))
-    expect(r.ok && r.data.toReview[0]?.truncated).toBe(true)
+    expect(r.ok && r.data.mine[0]?.truncated).toBe(true)
   })
 
   it('drops a PR that lacks a key field', () => {
@@ -131,11 +138,28 @@ describe('countFailed', () => {
 describe('POLL_QUERY comment selections', () => {
   it('asks for pullRequestReview only inside reviewThreads', () => {
     const at = POLL_QUERY.indexOf('reviewThreads(')
-    const top = POLL_QUERY.indexOf('comments(last: 100)')
+    const top = POLL_QUERY.indexOf('comments(last:')
     expect(at).toBeGreaterThan(-1)
     expect(top).toBeGreaterThan(at)
     expect(POLL_QUERY.slice(0, at)).not.toContain('pullRequestReview')
     expect(POLL_QUERY.slice(top)).not.toContain('pullRequestReview')
     expect(POLL_QUERY.slice(at, top)).toContain('pullRequestReview { id }')
+  })
+})
+
+describe('POLL_QUERY fragments', () => {
+  it('has no threads and no comments in the To review fragment', () => {
+    expect(TO_REVIEW_FRAGMENT).not.toContain('reviewThreads')
+    expect(TO_REVIEW_FRAGMENT).not.toContain('comments(')
+    expect(MINE_FRAGMENT).toContain('reviewThreads')
+    expect(POLL_QUERY).toContain('...ToReviewFields')
+    expect(POLL_QUERY).toContain('...MineFields')
+  })
+
+  it('gives empty lists for a To review PR', () => {
+    for (const pr of basic().toReview) {
+      expect(pr.threads).toEqual([])
+      expect(pr.comments).toEqual([])
+    }
   })
 })

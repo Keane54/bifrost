@@ -12,14 +12,14 @@ import type {
 
 const SEARCH_OPEN = 'is:pr is:open archived:false'
 
-// A thread reads 20 comments. With 50, GitHub refuses the query: more than 500,000 nodes.
+// A thread reads 10 comments. With 50, GitHub refuses the query: more than 500,000 nodes.
 const AUTHOR = 'author { login __typename } authorAssociation'
 // IssueComment (top level) has no pullRequestReview. Only a thread comment has it.
 const COMMENT_FIELDS = `id databaseId ${AUTHOR} body createdAt`
 const THREAD_COMMENT_FIELDS = `${COMMENT_FIELDS} pullRequestReview { id }`
 
-const PR_FRAGMENT = `
-fragment PrFields on PullRequest {
+// The fields of both fragments. A fragment of To review PRs has no reviews, threads or comments.
+const PR_HEAD = `
   number
   title
   url
@@ -31,10 +31,10 @@ fragment PrFields on PullRequest {
   repository { name owner { login } }
   author { login }
   reviewDecision
-  reviewRequests(first: 20) {
+  reviewRequests(first: 10) {
     nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } } }
   }
-  timelineItems(last: 20, itemTypes: [REVIEW_REQUESTED_EVENT]) {
+  timelineItems(last: 10, itemTypes: [REVIEW_REQUESTED_EVENT]) {
     nodes {
       ... on ReviewRequestedEvent {
         createdAt
@@ -42,34 +42,15 @@ fragment PrFields on PullRequest {
       }
     }
   }
-  reviews(first: 100) {
-    pageInfo { hasNextPage }
-    nodes { id databaseId ${AUTHOR} state body submittedAt commit { oid } }
-  }
-  pendingReviews: reviews(states: PENDING, first: 1) { nodes { id } }
-  reviewThreads(first: 100) {
-    pageInfo { hasNextPage }
-    nodes {
-      id
-      isResolved
-      path
-      line
-      comments(first: 20) {
-        pageInfo { hasNextPage }
-        nodes { ${THREAD_COMMENT_FIELDS} }
-      }
-    }
-  }
-  comments(last: 100) {
-    pageInfo { hasPreviousPage }
-    nodes { ${COMMENT_FIELDS} }
-  }
+  pendingReviews: reviews(states: PENDING, first: 1) { nodes { id } }`
+
+const prChecks = (contexts: number): string => `
   commits(last: 1) {
     nodes {
       commit {
         oid
         statusCheckRollup {
-          contexts(first: 100) {
+          contexts(first: ${contexts}) {
             pageInfo { hasNextPage }
             nodes {
               __typename
@@ -84,20 +65,48 @@ fragment PrFields on PullRequest {
   headRefName
   headRefOid
   baseRefName
-  isCrossRepository
+  isCrossRepository`
+
+const PR_CONVERSATION = `
+  reviews(first: 30) {
+    pageInfo { hasNextPage }
+    nodes { id databaseId ${AUTHOR} state body submittedAt commit { oid } }
+  }
+  reviewThreads(first: 20) {
+    pageInfo { hasNextPage }
+    nodes {
+      id
+      isResolved
+      path
+      line
+      comments(first: 10) {
+        pageInfo { hasNextPage }
+        nodes { ${THREAD_COMMENT_FIELDS} }
+      }
+    }
+  }
+  comments(last: 30) {
+    pageInfo { hasPreviousPage }
+    nodes { ${COMMENT_FIELDS} }
+  }`
+
+export const TO_REVIEW_FRAGMENT = `fragment ToReviewFields on PullRequest {${PR_HEAD}${prChecks(20)}
+}`
+export const MINE_FRAGMENT = `fragment MineFields on PullRequest {${PR_HEAD}${PR_CONVERSATION}${prChecks(20)}
 }`
 
 export const POLL_QUERY = `query Poll {
   viewer { login }
   rateLimit { cost remaining }
   toReview: search(query: "review-requested:@me ${SEARCH_OPEN}", type: ISSUE, first: 50) {
-    nodes { ... on PullRequest { ...PrFields } }
+    nodes { ... on PullRequest { ...ToReviewFields } }
   }
   mine: search(query: "author:@me ${SEARCH_OPEN}", type: ISSUE, first: 50) {
-    nodes { ... on PullRequest { ...PrFields } }
+    nodes { ... on PullRequest { ...MineFields } }
   }
 }
-${PR_FRAGMENT}
+${TO_REVIEW_FRAGMENT}
+${MINE_FRAGMENT}
 `
 
 export function pollArgs(): string[] {
