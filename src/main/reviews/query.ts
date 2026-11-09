@@ -347,12 +347,13 @@ function readPr(v: unknown, viewer: string): PrData | null {
 }
 
 // The messages of the errors of an answer, each one time. Only the message, cut to ERROR_MAX.
+// An error with no message gives a general text.
 function errorMessages(v: unknown): string[] {
   if (!Array.isArray(v)) return []
   const messages = new Set<string>()
   for (const e of v) {
     const message = str(obj(e)?.message)?.trim().slice(0, ERROR_MAX)
-    if (message) messages.add(message)
+    messages.add(message ? message : 'GitHub gave an error.')
   }
   return [...messages]
 }

@@ -268,10 +268,12 @@ describe('parsePoll', () => {
     if (!r.ok) throw new Error(r.message)
     expect(r.data.toReview.map(pr => pr.key)).toEqual(['acme/web#101', 'acme/web#102'])
     expect(r.data.mine).toHaveLength(2)
-    // Each message one time, with no other field of the error.
+    // Each message one time, with no other field of the error. An error with no message gives a
+    // general text.
     expect(r.data.errors).toEqual([
       'Something went wrong while executing your query.',
       'Resource not accessible by integration',
+      'GitHub gave an error.',
     ])
     expect(basic().errors).toEqual([])
   })
@@ -283,6 +285,10 @@ describe('parsePoll', () => {
     expect(parsePoll(JSON.stringify(raw))).toEqual({ message: 'Timeout on search', ok: false })
     const noData = parsePoll(JSON.stringify({ data: null, errors: [{ message: 'Bad query' }] }))
     expect(noData).toEqual({ message: 'Bad query', ok: false })
+    expect(parsePoll(JSON.stringify({ errors: [{}] }))).toEqual({
+      message: 'GitHub gave an error.',
+      ok: false,
+    })
   })
 })
 
