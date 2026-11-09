@@ -25,14 +25,16 @@ export function isTrustedHuman(a: Author, viewer: string): boolean {
 
 // The Copilot review with the earliest submittedAt. A review that is not submitted does not count.
 export function firstCopilotReviewId(pr: PrData): string | null {
-  let best: PrReview | null = null
+  let bestId: string | null = null
+  let bestTime = Number.POSITIVE_INFINITY
   for (const review of pr.reviews) {
     if (!isCopilot(review.author) || review.submittedAt === null) continue
-    if (best === null || review.submittedAt < (best.submittedAt ?? Number.POSITIVE_INFINITY)) {
-      best = review
+    if (bestId === null || review.submittedAt < bestTime) {
+      bestId = review.id
+      bestTime = review.submittedAt
     }
   }
-  return best === null ? null : best.id
+  return bestId
 }
 
 export interface WorkItem {
@@ -58,35 +60,45 @@ function commentedAfterReply(
 }
 
 // Design 10.2. Only a PR with full data (a My PR) gives a useful result.
+// An item that is not in the baseline, but was created before turnedOnAt, is also older.
+// This covers the items beyond the page that the poll reads. A null turnedOnAt gives no time rule.
 export function splitWork(
   pr: PrData,
   viewer: string,
   prState: PrState,
   baseline: ReadonlySet<string>,
+  turnedOnAt: number | null,
 ): WorkSplit {
   const split: WorkSplit = { laterCopilot: [], older: [], work: [] }
   const firstCopilot = firstCopilotReviewId(pr)
 
   // Put an item in the right list. A reopened item is always work.
-  const place = (item: WorkItem, reopened: boolean): void => {
-    if (!reopened && !prState.handleOlder && baseline.has(item.id)) split.older.push(item)
-    else split.work.push(item)
+  const place = (item: WorkItem, createdAt: number | null, reopened: boolean): void => {
+    const before = turnedOnAt !== null && createdAt !== null && createdAt < turnedOnAt
+    if (!reopened && !prState.handleOlder && (baseline.has(item.id) || before)) {
+      split.older.push(item)
+    } else {
+      split.work.push(item)
+    }
   }
-  const handledState = (id: string) => prState.handled[id]
 
   for (const thread of pr.threads) {
     const first = thread.comments[0]
     if (thread.isResolved || first === undefined) continue
-    const handled = handledState(thread.id)
+    const handled = prState.handled[thread.id]
     const reopened =
       handled !== undefined && commentedAfterReply(thread.comments, handled.lastReplyAt, viewer)
     if (handled !== undefined && !reopened) continue
     const item: WorkItem = { id: thread.id, kind: 'thread' }
-    if (isTrustedHuman(first.author, viewer)) {
-      place(item, reopened)
+    if (reopened) {
+      // A reopened item is always work, also a later Copilot thread.
+      if (isTrustedHuman(first.author, viewer) || isCopilot(first.author)) split.work.push(item)
+    } else if (isTrustedHuman(first.author, viewer)) {
+      place(item, first.createdAt, false)
     } else if (isCopilot(first.author)) {
-      if (thread.reviewId !== null && thread.reviewId === firstCopilot) place(item, reopened)
-      else if (prState.handleCopilot) split.work.push(item)
+      if (thread.reviewId !== null && thread.reviewId === firstCopilot) {
+        place(item, first.createdAt, false)
+      } else if (prState.handleCopilot) split.work.push(item)
       else split.laterCopilot.push(item)
     }
   }
@@ -95,39 +107,39 @@ export function splitWork(
     if (!isTrustedHuman(review.author, viewer) || review.body.trim() === '') continue
     // An approval or a dismissed review needs no action.
     if (review.state !== 'CHANGES_REQUESTED' && review.state !== 'COMMENTED') continue
-    if (handledState(review.id) !== undefined) continue
-    place({ id: review.id, kind: 'review-body' }, false)
+    if (prState.handled[review.id] !== undefined) continue
+    place({ id: review.id, kind: 'review-body' }, review.submittedAt, false)
   }
 
   for (const comment of pr.comments) {
     if (!isTrustedHuman(comment.author, viewer)) continue
-    if (handledState(comment.id) !== undefined) continue
-    place({ id: comment.id, kind: 'comment' }, false)
+    if (prState.handled[comment.id] !== undefined) continue
+    place({ id: comment.id, kind: 'comment' }, comment.createdAt, false)
   }
 
   return split
 }
 
 // The latest decision of each human reviewer. A comment review does not change a decision.
-function humanDecisions(pr: PrData, viewer: string): Map<string, PrReview> {
-  const latest = new Map<string, PrReview>()
+function humanDecisions(pr: PrData, viewer: string): PrReview[] {
+  const latest = new Map<string, { review: PrReview; time: number }>()
   for (const review of pr.reviews) {
     const { author } = review
     if (author.bot || author.login === viewer || review.submittedAt === null) continue
     if (review.state === 'COMMENTED' || review.state === 'PENDING') continue
     const before = latest.get(author.login)
-    if (before === undefined || (before.submittedAt ?? 0) <= review.submittedAt) {
-      latest.set(author.login, review)
+    if (before === undefined || before.time <= review.submittedAt) {
+      latest.set(author.login, { review, time: review.submittedAt })
     }
   }
-  return latest
+  return [...latest.values()].map(entry => entry.review)
 }
 
 // Design 9.2. The first match wins.
 // The decision of a reviewer is the latest APPROVED, CHANGES_REQUESTED or DISMISSED review.
 // A COMMENTED or PENDING review does not change it (the GitHub rule).
 export function reviewStatus(pr: PrData, viewer: string, split: WorkSplit): ReviewStatus {
-  const decisions = [...humanDecisions(pr, viewer).values()]
+  const decisions = humanDecisions(pr, viewer)
   if (decisions.some(r => r.state === 'CHANGES_REQUESTED')) return 'changes-requested'
   const open = split.work.length > 0 || split.older.some(item => item.kind === 'thread')
   if (open) return 'comments'
@@ -151,7 +163,7 @@ export function toReviewState(
 ): ToReviewState | null {
   if (ctx.session !== null) return ctx.session
   const direct = pr.requestedUsers.includes(viewer)
-  // With team requests off, a team-only request is hidden in every state except a session.
+  // With team requests off, Bifrost hides a team-only request in all states except a session.
   if (!direct && !ctx.teamRequests) return null
   if (pr.viewerPendingReviewId !== null) return 'draft-ready'
   if (ctx.pauseEndsAt !== null && ctx.now < ctx.pauseEndsAt) return 'paused'
@@ -231,7 +243,7 @@ export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
   for (const pr of poll.mine) {
     if (isIgnored(pr.owner, pr.repo, settings.reviewsIgnore)) continue
     const prState = state.prs[pr.key] ?? emptyPrState()
-    const split = splitWork(pr, poll.viewer, prState, baseline)
+    const split = splitWork(pr, poll.viewer, prState, baseline, state.turnedOnAt)
     const claude = input.claude(pr.key)
     mine.push({
       claude: claude.claude,
@@ -262,12 +274,11 @@ export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
 }
 
 // The items to mark as seen at the first turn-on, and the To review keys that are open then.
-// A truncated PR adds no items, because its lists are not complete.
+// A truncated PR adds its visible items. The time rule of splitWork covers the rest.
 export function baselineOf(poll: PollData): { items: string[]; requests: string[] } {
   const items = new Set<string>()
   for (const pr of poll.mine) {
-    if (pr.truncated) continue
-    const split = splitWork(pr, poll.viewer, emptyPrState(), new Set())
+    const split = splitWork(pr, poll.viewer, emptyPrState(), new Set(), null)
     for (const item of [...split.work, ...split.older]) items.add(item.id)
   }
   return { items: [...items], requests: poll.toReview.map(pr => pr.key) }

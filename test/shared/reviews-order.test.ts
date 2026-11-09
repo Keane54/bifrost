@@ -91,3 +91,20 @@ describe('sortMine', () => {
     ])
   })
 })
+
+describe('order tables and tiebreaks', () => {
+  it('sorts all eight To review states and all four status groups', () => {
+    const states = [...TO_REVIEW_ORDER].reverse()
+    const rows = states.map(state => tr(state, { state }))
+    expect(sortToReview(rows).map(r => r.state)).toEqual([...TO_REVIEW_ORDER])
+    const statuses = [...MINE_ORDER].reverse()
+    expect(sortMine(statuses.map(status => mp(status, { status }))).map(r => r.status)).toEqual([
+      ...MINE_ORDER,
+    ])
+  })
+
+  it('ends with the key, so equal rows keep their place', () => {
+    expect(sortToReview([tr('b', {}), tr('a', {})]).map(r => r.key)).toEqual(['a', 'b'])
+    expect(sortMine([mp('b', {}), mp('a', {})]).map(r => r.key)).toEqual(['a', 'b'])
+  })
+})

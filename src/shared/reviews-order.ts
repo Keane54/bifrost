@@ -30,7 +30,7 @@ export function sortToReview(rows: ToReviewRow[]): ToReviewRow[] {
         (a.pauseEndsAt ?? Number.POSITIVE_INFINITY) - (b.pauseEndsAt ?? Number.POSITIVE_INFINITY)
       if (byPause !== 0 && !Number.isNaN(byPause)) return byPause
     }
-    return a.requestedAt - b.requestedAt
+    return a.requestedAt - b.requestedAt || a.key.localeCompare(b.key)
   })
 }
 
@@ -38,5 +38,7 @@ export function sortToReview(rows: ToReviewRow[]): ToReviewRow[] {
 export function sortMine(rows: MyPrRow[]): MyPrRow[] {
   const rank = (row: MyPrRow): number =>
     row.claude === 'needs-you' ? -1 : MINE_ORDER.indexOf(row.status)
-  return [...rows].sort((a, b) => rank(a) - rank(b) || b.updatedAt - a.updatedAt)
+  return [...rows].sort(
+    (a, b) => rank(a) - rank(b) || b.updatedAt - a.updatedAt || a.key.localeCompare(b.key),
+  )
 }

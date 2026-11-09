@@ -113,7 +113,7 @@ describe('author tests', () => {
 describe('splitWork', () => {
   it('a MEMBER thread is work and an outsider thread is not', () => {
     const p = pr({ threads: [thread('t1', member), thread('t2', outsider)] })
-    const split = splitWork(p, VIEWER, prState(), NONE)
+    const split = splitWork(p, VIEWER, prState(), NONE, null)
     expect(split.work).toEqual([{ id: 't1', kind: 'thread' }])
     expect(split.older).toEqual([])
     expect(split.laterCopilot).toEqual([])
@@ -123,7 +123,7 @@ describe('splitWork', () => {
     const p = pr({
       threads: [thread('t1', member, { comments: [] }), thread('t2', member, { isResolved: true })],
     })
-    expect(splitWork(p, VIEWER, prState(), NONE).work).toEqual([])
+    expect(splitWork(p, VIEWER, prState(), NONE, null).work).toEqual([])
   })
 
   it('only the first Copilot review gives work; later Copilot threads count as laterCopilot', () => {
@@ -137,10 +137,10 @@ describe('splitWork', () => {
         thread('t2', copilot, { reviewId: 'r2' }),
       ],
     })
-    const split = splitWork(p, VIEWER, prState(), NONE)
+    const split = splitWork(p, VIEWER, prState(), NONE, null)
     expect(ids(split.work)).toEqual(['t1'])
     expect(ids(split.laterCopilot)).toEqual(['t2'])
-    const again = splitWork(p, VIEWER, prState({ handleCopilot: true }), NONE)
+    const again = splitWork(p, VIEWER, prState({ handleCopilot: true }), NONE, null)
     expect(ids(again.work)).toEqual(['t1', 't2'])
     expect(again.laterCopilot).toEqual([])
   })
@@ -151,11 +151,13 @@ describe('splitWork', () => {
     })
     const handled = (lastReplyAt: number | null): PrState =>
       prState({ handled: { t1: { at: 150, lastReplyAt } } })
-    expect(splitWork(pr({ threads: [t] }), VIEWER, handled(200), NONE).work).toEqual([])
+    expect(splitWork(pr({ threads: [t] }), VIEWER, handled(200), NONE, null).work).toEqual([])
     const t2 = { ...t, comments: [...t.comments, comment('c3', member, 400)] }
-    expect(ids(splitWork(pr({ threads: [t2] }), VIEWER, handled(200), NONE).work)).toEqual(['t1'])
-    expect(splitWork(pr({ threads: [t2] }), VIEWER, handled(500), NONE).work).toEqual([])
-    expect(splitWork(pr({ threads: [t2] }), VIEWER, handled(null), NONE).work).toEqual([])
+    expect(ids(splitWork(pr({ threads: [t2] }), VIEWER, handled(200), NONE, null).work)).toEqual([
+      't1',
+    ])
+    expect(splitWork(pr({ threads: [t2] }), VIEWER, handled(500), NONE, null).work).toEqual([])
+    expect(splitWork(pr({ threads: [t2] }), VIEWER, handled(null), NONE, null).work).toEqual([])
   })
 
   it("the viewer's own comments are never work", () => {
@@ -164,7 +166,7 @@ describe('splitWork', () => {
       reviews: [review('r1', viewer, { body: 'note' })],
       threads: [thread('t1', viewer)],
     })
-    const split = splitWork(p, VIEWER, prState(), NONE)
+    const split = splitWork(p, VIEWER, prState(), NONE, null)
     expect(split.work).toEqual([])
     expect(split.older).toEqual([])
   })
@@ -179,14 +181,18 @@ describe('splitWork', () => {
         review('r5', otherBot, { body: 'bot' }),
       ],
     })
-    expect(splitWork(p, VIEWER, prState(), NONE).work).toEqual([{ id: 'r2', kind: 'review-body' }])
+    expect(splitWork(p, VIEWER, prState(), NONE, null).work).toEqual([
+      { id: 'r2', kind: 'review-body' },
+    ])
   })
 
   it('a PR comment from a trusted human is work, from a bot or outsider it is not', () => {
     const p = pr({
       comments: [comment('pc1', member), comment('pc2', outsider), comment('pc3', otherBot)],
     })
-    expect(splitWork(p, VIEWER, prState(), NONE).work).toEqual([{ id: 'pc1', kind: 'comment' }])
+    expect(splitWork(p, VIEWER, prState(), NONE, null).work).toEqual([
+      { id: 'pc1', kind: 'comment' },
+    ])
   })
 
   it('baseline items go to older', () => {
@@ -194,10 +200,10 @@ describe('splitWork', () => {
       comments: [comment('pc1', member)],
       threads: [thread('t1', member), thread('t2', member)],
     })
-    const split = splitWork(p, VIEWER, prState(), new Set(['t1', 'pc1']))
+    const split = splitWork(p, VIEWER, prState(), new Set(['t1', 'pc1']), null)
     expect(ids(split.work)).toEqual(['t2'])
     expect(ids(split.older).sort()).toEqual(['pc1', 't1'])
-    const now = splitWork(p, VIEWER, prState({ handleOlder: true }), new Set(['t1', 'pc1']))
+    const now = splitWork(p, VIEWER, prState({ handleOlder: true }), new Set(['t1', 'pc1']), null)
     expect(now.older).toEqual([])
     expect(ids(now.work).sort()).toEqual(['pc1', 't1', 't2'])
   })
@@ -205,7 +211,7 @@ describe('splitWork', () => {
 
 describe('reviewStatus', () => {
   const status = (p: PrData, state: PrState = prState(), baseline = NONE) =>
-    reviewStatus(p, VIEWER, splitWork(p, VIEWER, state, baseline))
+    reviewStatus(p, VIEWER, splitWork(p, VIEWER, state, baseline, null))
 
   it('reviewStatus: changes requested wins over open threads', () => {
     const p = pr({
@@ -223,7 +229,7 @@ describe('reviewStatus', () => {
         review('r3', member, { body: 'x', state: 'DISMISSED', submittedAt: 5 }),
       ],
     })
-    expect(splitWork(p, VIEWER, prState(), NONE).work).toEqual([])
+    expect(splitWork(p, VIEWER, prState(), NONE, null).work).toEqual([])
     expect(
       status(pr({ reviews: [review('r1', member, { body: 'LGTM', state: 'APPROVED' })] })),
     ).toBe('approved')
@@ -431,12 +437,86 @@ describe('baselineOf', () => {
     expect(b.requests).toEqual(['acme/app#7', 'acme/app#8'])
   })
 
-  it('does not add items of a truncated PR to the baseline', () => {
+  it('adds the visible items of a truncated PR to the baseline', () => {
     const poll: PollData = {
       mine: [pr({ threads: [thread('t1', member)], truncated: true })],
       toReview: [],
       viewer: VIEWER,
     }
-    expect(baselineOf(poll).items).toEqual([])
+    expect(baselineOf(poll).items).toEqual(['t1'])
+  })
+})
+
+describe('splitWork pins', () => {
+  it('an item created before the first turn-on and not in the baseline is older', () => {
+    const p = pr({
+      comments: [comment('pc1', member, 50), comment('pc2', member, 500)],
+      threads: [thread('t1', member, { comments: [comment('c1', member, 60)] })],
+    })
+    const split = splitWork(p, VIEWER, prState(), NONE, 100)
+    expect(ids(split.older).sort()).toEqual(['pc1', 't1'])
+    expect(ids(split.work)).toEqual(['pc2'])
+    expect(ids(splitWork(p, VIEWER, prState({ handleOlder: true }), NONE, 100).older)).toEqual([])
+  })
+
+  it('a handled thread from a later Copilot review with a newer MEMBER comment is work', () => {
+    const reviews = [
+      review('r1', copilot, { submittedAt: 1 }),
+      review('r2', copilot, { submittedAt: 2 }),
+    ]
+    const t = thread('t2', copilot, {
+      comments: [comment('c1', copilot, 100), comment('c2', member, 400)],
+      reviewId: 'r2',
+    })
+    const handled = prState({ handled: { t2: { at: 150, lastReplyAt: 200 } } })
+    expect(ids(splitWork(pr({ reviews, threads: [t] }), VIEWER, handled, NONE, null).work)).toEqual(
+      ['t2'],
+    )
+    const never = splitWork(pr({ reviews, threads: [t] }), VIEWER, prState(), NONE, null)
+    expect(ids(never.laterCopilot)).toEqual(['t2'])
+    expect(never.work).toEqual([])
+  })
+
+  it('a reopened item in the baseline goes to work, not older', () => {
+    const t = thread('t1', member, {
+      comments: [comment('c1', member, 100), comment('c2', member, 400)],
+    })
+    const handled = prState({ handled: { t1: { at: 150, lastReplyAt: 200 } } })
+    const split = splitWork(pr({ threads: [t] }), VIEWER, handled, new Set(['t1']), 1000)
+    expect(ids(split.work)).toEqual(['t1'])
+    expect(split.older).toEqual([])
+  })
+
+  it('a non-empty COMMENTED body from a trusted human is work', () => {
+    const p = pr({ reviews: [review('r1', member, { body: 'See below', state: 'COMMENTED' })] })
+    expect(splitWork(p, VIEWER, prState(), NONE, null).work).toEqual([
+      { id: 'r1', kind: 'review-body' },
+    ])
+  })
+
+  it('a COMMENTED or PENDING review after a decision does not change the decision', () => {
+    const later = [
+      review('r2', member, { state: 'COMMENTED', submittedAt: 9 }),
+      review('r3', member, { state: 'PENDING', submittedAt: 10 }),
+    ]
+    const cr = pr({
+      reviews: [review('r1', member, { state: 'CHANGES_REQUESTED', submittedAt: 1 }), ...later],
+    })
+    const ap = pr({
+      reviews: [review('r1', member, { state: 'APPROVED', submittedAt: 1 }), ...later],
+    })
+    const st = (p: PrData) => reviewStatus(p, VIEWER, { laterCopilot: [], older: [], work: [] })
+    expect(st(cr)).toBe('changes-requested')
+    expect(st(ap)).toBe('approved')
+  })
+
+  it('an older top-level item does not give comments', () => {
+    const p = pr({
+      comments: [comment('pc1', member)],
+      reviews: [review('r1', member, { state: 'APPROVED' })],
+    })
+    const split = splitWork(p, VIEWER, prState(), new Set(['pc1']), null)
+    expect(ids(split.older)).toEqual(['pc1'])
+    expect(reviewStatus(p, VIEWER, split)).toBe('approved')
   })
 })
