@@ -1,6 +1,6 @@
 # Bifrost Reviews: design
 
-Status: approved by the user, 2026-11-09.
+Status: approved by the user, 2026-11-09. R1 built.
 
 The Reviews panel shows the GitHub pull requests (PRs) that need you. It has two tabs:
 
@@ -172,7 +172,7 @@ Rules for the flash:
 - **Pause** stops the flash for the pause time (setting, default 1 hour). When the pause ends, the row flashes again.
 - Pauses survive a restart of Bifrost.
 - A row leaves the tab when GitHub no longer requests your review, for example after you submit your review.
-- If the author asks for your review again, the row comes back as Waiting for you.
+- If the author asks for your review again, the row comes back as a new request and flashes.
 
 ## 9. My PRs tab
 

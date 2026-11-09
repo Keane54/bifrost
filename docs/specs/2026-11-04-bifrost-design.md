@@ -154,6 +154,7 @@ Context isolation is on. The preload script supplies a typed API. The renderer h
 | `~/.bifrost/live.sock` | The socket where Bifrost listens for live lines. Mode 0600, in a folder with mode 0700. |
 | `~/.bifrost/statusline-original.json` | Your statusLine setting from before an old hook install. Bifrost needs it to remove that install. |
 | `~/.bifrost/backups/` | Copies of `settings.json` from before each change. Bifrost needs them to remove an old hook install. |
+| `~/.bifrost/reviews/` | The state of the Reviews panel (`state.json`): the PRs that Bifrost has seen and the pauses. Folder mode 0700. See the Reviews design. |
 | `~/Library/Application Support/Bifrost/` | Settings, layouts, priorities, local names and panel positions. |
 
 Bifrost uses `~/.bifrost/` because that path has no spaces. The mod folder is also the marketplace folder.
@@ -403,6 +404,7 @@ Bifrost uses its own window manager, because the snap and stack rules are specif
 | Usage HUD | The 5-hour and 7-day rate limits. |
 | Watchlist | The sessions that you track, in your own order and colours. |
 | Service status | The status of Claude, GitHub and Sentry. |
+| Reviews | The PRs that need you. The To review tab lists the requests for your review. The My PRs tab lists your open PRs. See `docs/specs/2026-11-09-bifrost-reviews-design.md`. |
 
 ### 8.3 Overview
 
@@ -886,6 +888,7 @@ Cmd+Ctrl+F keeps its macOS meaning. In Bifrost, it toggles Fullscreen (section 8
 | Row flash | On | A yellow box or red box flashes until it clears. |
 | macOS notification | On | A new box when Bifrost is not in focus. |
 | Sound | On | A new red box. |
+| Review request notification | On | A new direct request for your review, when Bifrost is not in focus. A click opens the Reviews panel on the To review tab. Many new requests in one poll give one summary. See the Reviews design. |
 
 Click a notification to select the session and open its chat window. This also works when the Bifrost window is closed. Bifrost opens the window and keeps the session until the page has loaded. Then it opens the session.
 
@@ -1023,6 +1026,17 @@ If you select "Skip", Bifrost shows only the data from `claude agents --json`. T
 | Display mode | Window |
 | Keys | Section 9.4 |
 | Live details | Not installed. The section has Install, Turn on, Turn off and Remove (section 11.2). |
+| Watch GitHub | Off. The first turn-on asks you to confirm. |
+| Handle comments on my PRs automatically | On. It has no effect in R1. |
+| Show team requests | On |
+| Maximum PR sessions | 3 |
+| Pause time | 1 hour |
+| GitHub poll interval | 2 minutes |
+| Model for request sessions | Claude Code default |
+| Model for review sessions | Claude Code default |
+| Repositories to ignore | Empty. Entries have the form `owner/repo` or `owner/*`. |
+
+The Reviews rows are in the section Reviews. The Reviews design (`docs/specs/2026-11-09-bifrost-reviews-design.md`) describes them.
 
 Save rules (user decision, 2026-11-06):
 
