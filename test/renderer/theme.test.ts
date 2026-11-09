@@ -497,6 +497,44 @@ describe('the Service status tokens', () => {
   })
 })
 
+// The surfaces under the text of a chat terminal: the panel colour at each transparency, over each
+// backdrop (review Minor 4). The light blur spreads the backdrops:
+// - blurred text of another panel: a quarter of the text colour over the panel colour,
+// - the brightest watch row tint (white, at the row opacity) over the panel colour,
+// - a selected row: the accent at 15% over the panel colour,
+// - the rainbow of another loader at its full strength: the brightest icon colour at 25%.
+// Each item is a label and the colour of the surface.
+function terminalSurfaces(): [string, string][] {
+  const level = (name: string): number => {
+    const match = CSS.match(new RegExp(`--color-${name}: rgb\\((\\d+) `))
+    return Number(match?.[1])
+  }
+  const grey = (n: number): string => hex([n, n, n])
+  const panel = grey(level('panel'))
+  const icons = [1, 2, 3, 4, 5, 6].map(n => token(`icon-${n}`))
+  const brightest = icons.reduce((a, b) => (luminance(b) > luminance(a) ? b : a))
+  const backdrops: [string, string][] = [
+    ['blurred text', mix(token('text'), 0.25, panel)],
+    ['a white watch row', mix(token('watch-white'), watchRowOpacity(), panel)],
+    ['a selected row', mix(token('accent'), 0.15, panel)],
+    ['a loader rainbow', mix(brightest, 0.25, panel)],
+  ]
+  const surfaces: [string, string][] = []
+  for (const [where, backdrop] of backdrops) {
+    for (const percent of PANEL_TRANSPARENCY_CHOICES) {
+      const alpha = 1 - percent / 100
+      const panels = [
+        ['panel', mix(panel, alpha, backdrop)],
+        ['focused panel', mix(grey(level('panel-focus')), Math.min(1, alpha + 0.1), backdrop)],
+      ]
+      for (const [name, surface] of panels) {
+        surfaces.push([`on ${name} at ${percent}% over ${where}`, surface])
+      }
+    }
+  }
+  return surfaces
+}
+
 // the user, 2026-11-06: the chat terminal has no black background. The frame colour and its blur show
 // through, so the Panel transparency setting applies to chat windows too.
 describe('the chat terminal background', () => {
@@ -521,41 +559,50 @@ describe('the chat terminal background', () => {
     expect(match?.[1].toLowerCase()).toBe('#00000000')
   })
 
-  // The backdrops under a chat window (review Minor 4). The light blur spreads them:
-  // - blurred text of another panel: a quarter of the text colour over the panel colour,
-  // - the brightest watch row tint (white, at the row opacity) over the panel colour,
-  // - a selected row: the accent at 15% over the panel colour,
-  // - the rainbow of another loader at its full strength: the brightest icon colour at 25%.
   it('keeps the text easy to read on the panel at each transparency, over bright backdrops', () => {
-    const level = (name: string): number => {
-      const match = CSS.match(new RegExp(`--color-${name}: rgb\\((\\d+) `))
-      return Number(match?.[1])
-    }
-    const grey = (n: number): string => hex([n, n, n])
-    const panel = grey(level('panel'))
-    const icons = [1, 2, 3, 4, 5, 6].map(n => token(`icon-${n}`))
-    const brightest = icons.reduce((a, b) => (luminance(b) > luminance(a) ? b : a))
-    const backdrops: [string, string][] = [
-      ['blurred text', mix(token('text'), 0.25, panel)],
-      ['a white watch row', mix(token('watch-white'), watchRowOpacity(), panel)],
-      ['a selected row', mix(token('accent'), 0.15, panel)],
-      ['a loader rainbow', mix(brightest, 0.25, panel)],
-    ]
     const bad: string[] = []
-    for (const [where, backdrop] of backdrops) {
-      for (const percent of PANEL_TRANSPARENCY_CHOICES) {
-        const alpha = 1 - percent / 100
-        const panels = [
-          ['panel', mix(panel, alpha, backdrop)],
-          ['focused panel', mix(grey(level('panel-focus')), Math.min(1, alpha + 0.1), backdrop)],
-        ]
-        for (const [name, surface] of panels) {
-          const label = `on ${name} at ${percent}% over ${where}`
-          if (contrast(TEXT, surface) < 7) bad.push(`text ${label}`)
-          if (contrast(DIM, surface) < 4.5) bad.push(`dim text ${label}`)
-        }
-      }
+    for (const [label, surface] of terminalSurfaces()) {
+      if (contrast(TEXT, surface) < 7) bad.push(`text ${label}`)
+      if (contrast(DIM, surface) < 4.5) bad.push(`dim text ${label}`)
     }
+    expect(bad).toEqual([])
+  })
+})
+
+// the user, 2026-11-09: the scroll bar of a chat window is clearly visible. xterm.js reads the slider
+// colours of its theme from these tokens. It reads a colour with an alpha only as hex or as
+// rgba() with commas, so the tokens are hex.
+describe('the chat terminal scroll bar', () => {
+  const NAMES = ['terminal-slider', 'terminal-slider-hover', 'terminal-slider-active']
+
+  // The colour and the alpha of a slider token.
+  function slider(name: string): { colour: string; alpha: number } {
+    const match = CSS.match(new RegExp(`--color-${name}:\\s*#([0-9a-fA-F]{6})([0-9a-fA-F]{2});`))
+    if (!match) throw new Error(`No hex token ${name} with an alpha`)
+    return { alpha: Number.parseInt(match[2], 16) / 255, colour: `#${match[1].toLowerCase()}` }
+  }
+
+  it.each(NAMES)('defines --color-%s in hex with an alpha', name => {
+    expect(() => slider(name)).not.toThrow()
+  })
+
+  it('makes the slider stronger under the pointer, and stronger again during a drag', () => {
+    const [rest, hover, active] = NAMES.map(name => slider(name).alpha)
+    expect(hover).toBeGreaterThan(rest)
+    expect(active).toBeGreaterThan(hover)
+  })
+
+  // A part of the interface needs a contrast of 3:1 or more (WCAG 1.4.11). The xterm.js default
+  // is white at 20%, which gives less than 2:1 on the panel.
+  it('shows the slider at rest clearly on the panel at each transparency, over bright backdrops', () => {
+    const { alpha, colour } = slider('terminal-slider')
+    const bad = terminalSurfaces()
+      .map(([label, surface]): [string, number] => [
+        label,
+        contrast(mix(colour, alpha, surface), surface),
+      ])
+      .filter(([, ratio]) => ratio < 3)
+      .map(([label, ratio]) => `${label}: ${ratio.toFixed(2)}`)
     expect(bad).toEqual([])
   })
 })
