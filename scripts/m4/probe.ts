@@ -1,7 +1,7 @@
 // biome-ignore-all lint/suspicious/noControlCharactersInRegex: The regexes match terminal escape sequences.
 // M4 Task 1: the worktree flag, the slash command form and the terminal launch.
 // Usage:
-//   M0_CLAUDE=/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh M0_OUT="$TMPDIR/bifrost-m4" \
+//   M0_CLAUDE=~/Developer/bifrost/.m0-sandbox/cl.sh M0_OUT="$TMPDIR/bifrost-m4" \
 //     ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m4/probe.ts
 // Part A starts bifrost-test-wt with "--worktree bifrost-test-wt".
 // It records the entry, the branch and the git worktrees. Then it stops and removes the session.
@@ -24,7 +24,7 @@ import { terminalOf } from '../m0/terminal-of.ts'
 
 const { TestPty, log, sleep, writeOut } = L
 
-const CL_SH = '/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh'
+const CL_SH = path.join(process.env.HOME ?? '', 'Developer/bifrost/.m0-sandbox/cl.sh')
 const PROMPT = 'Reply with the word READY.'
 const PS = '\x1b[200~'
 const PE = '\x1b[201~'

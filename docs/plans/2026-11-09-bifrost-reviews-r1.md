@@ -12,7 +12,7 @@
 
 **Order:** This is plan 1 of 3. R2 (repositories, trust, review sessions) and R3 (request sessions) get their own plans after R1 is on `main`. R1 defines all shared Reviews types now, so R2 and R3 add no new state version.
 
-**Inputs that exist:** the code map `/private/tmp/claude-501/-Users-dev-user-Developer-claude-statusline/b72dc96f-be42-469c-abbe-a0fee6807fa2/scratchpad/reviews-code-map.md` (file paths, signatures, conventions) and the spike report `/private/tmp/claude-501/-Users-dev-user-Developer-claude-statusline/b72dc96f-be42-469c-abbe-a0fee6807fa2/scratchpad/reviews-spike-report.md` (GitHub field facts). Read the code map section that a task names before the task starts.
+**Inputs that exist:** the code map `<scratchpad>/reviews-code-map.md` (file paths, signatures, conventions) and the spike report `<scratchpad>/reviews-spike-report.md` (GitHub field facts). Read the code map section that a task names before the task starts.
 
 ## Global Constraints
 

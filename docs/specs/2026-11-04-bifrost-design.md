@@ -6,7 +6,6 @@
 |---|---|
 | Status | Approved on 2026-11-04 |
 | Date | 2026-11-04 |
-| Owner | Bifrost |
 | Repository | `~/Developer/bifrost` (local only) |
 
 ## 1. Purpose

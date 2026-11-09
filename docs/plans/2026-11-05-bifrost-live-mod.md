@@ -23,8 +23,8 @@
 - Bifrost runs `claude` only with the M4 list of arguments and these: `plugin list --json`, `plugin marketplace list --json`, `plugin marketplace add <absolute mod folder> --scope user --json`, `plugin install bifrost-live@bifrost-local --scope user --json`, `plugin enable bifrost-live@bifrost-local --scope user --json`, `plugin disable bifrost-live@bifrost-local --scope user --json`, `plugin uninstall bifrost-live@bifrost-local --scope user --json`, `plugin marketplace remove bifrost-local --scope user --json`.
 - Live details needs Claude Code 2.1.290 or later. The minimum version of the app stays 2.1.281 (spec 11.5).
 - The poll of `claude agents --json` stays the source of `kind`, `name`, `pid`, `cwd`, `status` and `waitingFor`. A red box for a `waiting` session needs no mod. The mod never sets `kind`.
-- Safety: Vitest tests use temporary directories and a fake `RunClaude`. They never touch `~/.claude` or `~/.bifrost`. The mod tests answer `http.fetch` and `env.get` in the test, so no line reaches a real socket. Every `claude` call that an implementer or the controller types goes through `/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh`, also `plugin validate` and `plugin test`. (The running app uses its own `claude` path, as in M1 to M4.) No task installs the mod at user scope, except Task 9 Part B, and only after the user says yes (O1). Do not write files under `~/.claude/dev-mods/`.
-- Test sessions: the name starts with `bifrost-test-`, `--model haiku`, the directory `/Users/dev-user/Developer/bifrost/.m0-sandbox`. Never send input, a signal, `/reload-plugins`, `claude stop` or `claude rm` to another session. The user has real sessions open.
+- Safety: Vitest tests use temporary directories and a fake `RunClaude`. They never touch `~/.claude` or `~/.bifrost`. The mod tests answer `http.fetch` and `env.get` in the test, so no line reaches a real socket. Every `claude` call that an implementer or the controller types goes through `~/Developer/bifrost/.m0-sandbox/cl.sh`, also `plugin validate` and `plugin test`. (The running app uses its own `claude` path, as in M1 to M4.) No task installs the mod at user scope, except Task 9 Part B, and only after the user says yes (O1). Do not write files under `~/.claude/dev-mods/`.
+- Test sessions: the name starts with `bifrost-test-`, `--model haiku`, the directory `~/Developer/bifrost/.m0-sandbox`. Never send input, a signal, `/reload-plugins`, `claude stop` or `claude rm` to another session. The user has real sessions open.
 - Context isolation and the sandbox stay on. Each new IPC handler uses `fromPage`. The renderer sends no path and no command.
 - `pnpm test`, `pnpm typecheck` and `pnpm check` pass after each task.
 - Text that a person reads inside the app (panel lines, button names, error messages that reach the renderer) is plain, friendly English, not STE. It says "folder", not "directory". Keep the facts exact. The exact texts of this plan are allowed as written.
@@ -239,17 +239,17 @@ Rules for `register.ts` (`export const register: Register = on => { ... }`):
 
 - [ ] **Step 2: Run the tests and see them fail**
 
-Run: `/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh plugin test "$PWD/resources/live-mod"`
+Run: `~/Developer/bifrost/.m0-sandbox/cl.sh plugin test "$PWD/resources/live-mod"`
 Expected: exit 1. The tests fail, because `register.ts` has no hooks yet (write it with an empty `register` first).
 
 - [ ] **Step 3: Implement `register.ts`**
 
 - [ ] **Step 4: Run the mod checks**
 
-Run: `/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh plugin test "$PWD/resources/live-mod"`
+Run: `~/Developer/bifrost/.m0-sandbox/cl.sh plugin test "$PWD/resources/live-mod"`
 Expected: exit 0. All tests pass.
 
-Run: `/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh plugin validate "$PWD/resources/live-mod"`
+Run: `~/Developer/bifrost/.m0-sandbox/cl.sh plugin validate "$PWD/resources/live-mod"`
 Expected: exit 0, no error. The report lists the 8 hooks and the `$` calls of the Interfaces block, and the env name `HOME`.
 
 Write a tsconfig in your scratchpad, not in the repository: the options of the type file header, and `"include": ["<type file>", "<absolute path>/resources/live-mod/hooks", "<absolute path>/resources/live-mod/tests"]`. Run: `pnpm exec tsc -p <that tsconfig>`
@@ -650,11 +650,11 @@ git commit -m "docs(spec): describe Live details" \
 **Files:**
 - Create: `docs/live-findings.md`, `docs/live-findings/` (screenshots)
 
-The controller runs this task (or one check agent that the controller briefs). It starts `pnpm exec electron-vite dev -- --user-data-dir=<scratchpad>/live-check-ud --remote-debugging-port=9333` in the worktree and reads the rows with `agent-browser eval "window.bifrost.registry.rows()"` (the M1 method). It quits Bifrost with SIGTERM to its own Electron main PID only. It never uses `osascript`: the user's own Bifrost has the same bundle ID. Interactive sessions use `TestPty` of `scripts/m0/lib.ts` with `M0_CLAUDE=/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh`. The user's own Bifrost (main at 4c5a1fd or later, without this plan) has no live server, so the check app is the only listener on `~/.bifrost/live.sock`. If the check app gives `listening: false` with "Another program", stop the check and record it.
+The controller runs this task (or one check agent that the controller briefs). It starts `pnpm exec electron-vite dev -- --user-data-dir=<scratchpad>/live-check-ud --remote-debugging-port=9333` in the worktree and reads the rows with `agent-browser eval "window.bifrost.registry.rows()"` (the M1 method). It quits Bifrost with SIGTERM to its own Electron main PID only. It never uses `osascript`: the user's own Bifrost has the same bundle ID. Interactive sessions use `TestPty` of `scripts/m0/lib.ts` with `M0_CLAUDE=~/Developer/bifrost/.m0-sandbox/cl.sh`. The user's own Bifrost (main at 4c5a1fd or later, without this plan) has no live server, so the check app is the only listener on `~/.bifrost/live.sock`. If the check app gives `listening: false` with "Another program", stop the check and record it.
 
 Safety:
 - Part A installs nothing. Before and after Part A, record the SHA-256 of `~/.claude/settings.json` and `~/.claude/plugins/installed_plugins.json`. They must not change.
-- Copy the four `MOD_FILES` to `/Users/dev-user/Developer/bifrost/.m0-sandbox/live-check/bifrost-live/`. Load the mod only with `--plugin-dir` on that copy. Then the engine writes its types into the sandbox, not into the repository.
+- Copy the four `MOD_FILES` to `~/Developer/bifrost/.m0-sandbox/live-check/bifrost-live/`. Load the mod only with `--plugin-dir` on that copy. Then the engine writes its types into the sandbox, not into the repository.
 - Never run `/reload-plugins` or any input in a session of the user.
 - Part B runs only after the user says yes to O1.
 

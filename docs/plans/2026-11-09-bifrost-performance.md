@@ -8,9 +8,9 @@
 
 **Tech Stack:** Electron 44 (`app.getAppMetrics`, `powerMonitor`, `net`), Node 24 (`perf_hooks`, `os`, `fs.statfs`), macOS commands with absolute paths, React 19, Tailwind 4, Vitest, Playwright. No new library.
 
-**Spec:** `docs/specs/2026-11-09-bifrost-performance-design.md`. Main spec: `docs/specs/2026-11-04-bifrost-design.md`. The approved mockup: `/Users/dev-user/Developer/bifrost/.superpowers/brainstorm/74668-1794218564/content/performance-panel-v4.html`.
+**Spec:** `docs/specs/2026-11-09-bifrost-performance-design.md`. Main spec: `docs/specs/2026-11-04-bifrost-design.md`. The approved mockup: `~/Developer/bifrost/.superpowers/brainstorm/74668-1794218564/content/performance-panel-v4.html`.
 
-**Code map:** `/private/tmp/claude-501/-Users-dev-user-Developer-claude-statusline/b72dc96f-be42-469c-abbe-a0fee6807fa2/scratchpad/performance-code-map.md` (and `reviews-code-map.md` next to it for general conventions). Read the sections that a task names.
+**Code map:** `<scratchpad>/performance-code-map.md` (and `reviews-code-map.md` next to it for general conventions). Read the sections that a task names.
 
 ## Global Constraints
 

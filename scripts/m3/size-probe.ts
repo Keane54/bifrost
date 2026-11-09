@@ -1,7 +1,7 @@
 // M3 Task 1: can Bifrost learn the terminal size of a background session
 // after a different client resized it?
 // Usage:
-//   M0_CLAUDE=/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh M0_OUT="$TMPDIR/bifrost-m3" \
+//   M0_CLAUDE=~/Developer/bifrost/.m0-sandbox/cl.sh M0_OUT="$TMPDIR/bifrost-m3" \
 //     ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m3/size-probe.ts
 // The script starts the test session bifrost-test-size. The prompt goes with startBg.
 // The script types nothing into the session.

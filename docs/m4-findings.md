@@ -14,9 +14,9 @@ The experiment agent ran `scripts/m4/probe.ts` on 2026-11-05 in two runs. Run 1 
 Commands, in the main checkout:
 
 ```bash
-M4_PARTS=A M0_CLAUDE=/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh \
+M4_PARTS=A M0_CLAUDE=~/Developer/bifrost/.m0-sandbox/cl.sh \
   M0_OUT="$TMPDIR/bifrost-m4" ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m4/probe.ts
-M4_PARTS=B,C M0_CLAUDE=/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh \
+M4_PARTS=B,C M0_CLAUDE=~/Developer/bifrost/.m0-sandbox/cl.sh \
   M0_OUT="$TMPDIR/bifrost-m4" ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m4/probe.ts
 ```
 
@@ -43,14 +43,14 @@ Changes to the plan method:
 
 ### Part A: the worktree flag
 
-Before Part A, `/Users/dev-user/Developer/bifrost/.claude` did not exist. `git worktree list` gave the main checkout and `.worktrees/m2`. No branch matched `worktree-bifrost-test-*`.
+Before Part A, `~/Developer/bifrost/.claude` did not exist. `git worktree list` gave the main checkout and `.worktrees/m2`. No branch matched `worktree-bifrost-test-*`.
 
 | Step | Method | Result | Delay |
 |---|---|---|---|
 | 1. Start | `claude --bg --worktree bifrost-test-wt --model haiku --name bifrost-test-wt "Reply with the word READY."` | Exit code 0. Stdout `backgrounded · b2287433 · bifrost-test-wt` and the 4 hint lines. Stderr `Starting background service…`. No trust error. | The command took 4.3 s. |
-| 2. Entry | `watchEntry` until the entry has a `pid`. | `cwd` `/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-wt`, `pid` 8105, `status` `busy`, `state` `working`, `name` `bifrost-test-wt`. The status was `idle` 4.1 s later. The transcript has the reply `READY`. | The entry showed without a `pid` after 1.2 s, and with the `pid` after 3.2 s. |
+| 2. Entry | `watchEntry` until the entry has a `pid`. | `cwd` `~/Developer/bifrost/.claude/worktrees/bifrost-test-wt`, `pid` 8105, `status` `busy`, `state` `working`, `name` `bifrost-test-wt`. The status was `idle` 4.1 s later. The transcript has the reply `READY`. | The entry showed without a `pid` after 1.2 s, and with the `pid` after 3.2 s. |
 | 3. Git | `git -C <cwd> rev-parse --abbrev-ref HEAD` and `git worktree list --porcelain`. | `HEAD` is `worktree-bifrost-test-wt`. `--show-toplevel` gives the worktree path. The worktree list has a new worktree at that path, with the branch `refs/heads/worktree-bifrost-test-wt` and the commit `4f7ff02` (the `HEAD` of `main`). | - |
-| 4. Stop and rm | `stopTest`, then `rmTest`. Then a wait of 3 s. | Stop: exit code 0, `stopped b2287433`, `worktree retained at /Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-wt`, `run 'claude rm b2287433' to remove worktree and job state`. Rm: exit code 0, `removed b2287433`, `worktree: “/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-wt”`. After the wait, `git worktree list` gave only the main checkout and `.worktrees/m2`. No `worktree-bifrost-test-*` branch stayed. | Stop 0.9 s. Rm 2.7 s. |
+| 4. Stop and rm | `stopTest`, then `rmTest`. Then a wait of 3 s. | Stop: exit code 0, `stopped b2287433`, `worktree retained at ~/Developer/bifrost/.claude/worktrees/bifrost-test-wt`, `run 'claude rm b2287433' to remove worktree and job state`. Rm: exit code 0, `removed b2287433`, `worktree: “~/Developer/bifrost/.claude/worktrees/bifrost-test-wt”`. After the wait, `git worktree list` gave only the main checkout and `.worktrees/m2`. No `worktree-bifrost-test-*` branch stayed. | Stop 0.9 s. Rm 2.7 s. |
 
 After step 4, the script removed the two empty directories that Part A made: `.claude/worktrees` and `.claude`. No `git worktree remove` and no `git branch -D` was necessary. Claude Code keeps the transcript directory `~/.claude/projects/-Users-dev-user-Developer-bifrost--claude-worktrees-bifrost-test-wt`, as for each test session.
 
@@ -80,7 +80,7 @@ The file `$TMPDIR/bifrost-m4/bifrost-test-attach.command` had the mode 0700 and 
 
 ```sh
 #!/bin/sh
-exec /Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh attach e5d4c91b
+exec ~/Developer/bifrost/.m0-sandbox/cl.sh attach e5d4c91b
 ```
 
 The walk goes from the attach process to its parents (`scripts/m0/terminal-of.ts`).
@@ -140,7 +140,7 @@ The user can close these:
 ### Clean-up
 
 - `cl.sh agents --json --all` after the runs: 9 entries, and no entry starts with `bifrost-test-`.
-- `git worktree list`: the main checkout and `.worktrees/m2` only. `git branch --list`: `m2` and `main`. `/Users/dev-user/Developer/bifrost/.claude` does not exist.
+- `git worktree list`: the main checkout and `.worktrees/m2` only. `git branch --list`: `m2` and `main`. `~/Developer/bifrost/.claude` does not exist.
 - No `claude attach e5d4c91b` process runs.
 - These files stay: the output in `$TMPDIR/bifrost-m4` (also the `.command` file), and the transcripts of the two test sessions in `~/.claude/projects`.
 - Each start printed `Starting background service…` on stderr. So `cl.sh` started the shared background service each time, with the clean environment. `cl.sh` expects this.
@@ -189,7 +189,7 @@ Changes to the plan method:
 | Step 9: worktree delete (ruling 4) | One empty commit `c72de0f` in the worktree. Delete, then the tests of Task 8 item 3, then confirm. | Fail. See bugs 1 and 2. The dialog text is correct: `This session has 1 commit that is not merged on worktree-bifrost-test-m4wt. Are you sure you want to delete this?`. But `claude rm` refused and kept the worktree folder and the branch. The agent removed both by hand after a name check. Then a third Delete removed the session. | `m4-findings/t10-14-dialog-delete-worktree.png`, `m4-findings/t10-15-delete-refused.png` |
 | Step 10: Take control, session with a message | `.command` file in Terminal with a first prompt (m4ext3). Menu > Take control. | Pass. The dialog shows `This closes the session in Terminal and moves it into Bifrost.`. Cancel has the first focus. After the confirm, the row became owned with the same session ID in 6 s. The chat window opened. The Terminal tab shows `[Process completed]`. | `m4-findings/t10-21-dialog-take-control.png`, `m4-findings/t10-23-take-control-ok.png` |
 | Step 10: Take control, session with no message | `.command` file with no prompt (m4ext, m4ext2). | Fail. See bug 3. | `m4-findings/t10-22-take-control-no-transcript.png` |
-| Step 11: Open in terminal | Selected Item > Open in terminal on m4c2. Walk the parents of the new attach. | Pass. A Warp shell ran `claude attach e1bfaa66` (PID 2247, parents `-zsh` 1136 and Warp `stable` 866). The command was exactly `/Users/dev-user/.local/bin/claude attach e1bfaa66`. SIGHUP ended it. No notice showed (Warp uses the command file). | - |
+| Step 11: Open in terminal | Selected Item > Open in terminal on m4c2. Walk the parents of the new attach. | Pass. A Warp shell ran `claude attach e1bfaa66` (PID 2247, parents `-zsh` 1136 and Warp `stable` 866). The command was exactly `~/.local/bin/claude attach e1bfaa66`. SIGHUP ended it. No notice showed (Warp uses the command file). | - |
 | Step 12: Resume all | SIGTERM to the dev main PID. `cl.sh stop` for m4c2 and m4ext3. Start the app. Safety check, then Resume all. | Pass. The quit took less than 1 s and left no attach process. The resumable names were only `bifrost-test-m4c2` and `bifrost-test-m4ext3`. Both rows ran again in 12 s. No chat window opened. The notice `Resumed 2 sessions.` showed and went away in about 5 s. Then the button was off again. | - |
 | Step 13: icons | Read the kind cells of the external Warp rows of the user. Only look. | Fail. See bug 5. The 12 px image loads from a data URL, with the title `Warp`, and no content security error. But the image is a generic square, not the Warp icon. | `m4-findings/t10-26-terminal-icons.png`, `m4-findings/t10-27-warp-icon-data-url.png` |
 | Step 14: clean-up | Delete through the app (name check in the dialog title), `claude agents --all`, `git worktree list`, `ps`. | Pass, with one item for the user. All test sessions are gone except `d64bb329`. No worktree, branch, attach process, `.command` file or temp folder stays. | - |
@@ -304,7 +304,7 @@ The controller ran this check after Task 10, with the test session `bifrost-test
 The stdout of step 5 (the quotes are U+201C and U+201D, the dash is U+2014):
 
 ```
-kept abd71478 — its worktree is still at “/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-rmx”
+kept abd71478 — its worktree is still at “~/Developer/bifrost/.claude/worktrees/bifrost-test-rmx”
   169 unpushed commits on “worktree-bifrost-test-rmx”: f7698d3 “test: bifrost-test commit” and 168 more. They exist on no remote, so deleting the worktree would lose them.
   push them and run 'claude rm abd71478' again, or discard the worktree and its commits: claude rm abd71478 --discard-unpushed f7698d38614ba22b41f996fab73124361d2fe389@598a160a880168020f78fdeda23f998a
 ```
@@ -379,7 +379,7 @@ Changes to the method:
    1. Start `bifrost-test-wt1` with New session and Use a worktree.
    2. Make one commit in the worktree through the git hooks of the repository. The hooks run `pnpm`, and `pnpm` installs `node_modules` in the worktree.
    3. While the install runs, click Delete session..., then Delete anyway two times.
-   4. Result: the app ran `claude stop` at 18:32:57, `claude rm` at 18:32:58 and the discard at 18:33:02. The discard ended with no exit code. The dev log has only `Command failed: /Users/dev-user/.local/bin/claude rm 27b87cbf --discard-unpushed ...`. Node gives this text when a signal ends the process, and Bifrost sends SIGKILL at the timeout of 60 s. The discard had deleted 75 tracked files and a part of `node_modules`. The worktree, the branch and the session stayed. The row parked.
+   4. Result: the app ran `claude stop` at 18:32:57, `claude rm` at 18:32:58 and the discard at 18:33:02. The discard ended with no exit code. The dev log has only `Command failed: ~/.local/bin/claude rm 27b87cbf --discard-unpushed ...`. Node gives this text when a signal ends the process, and Bifrost sends SIGKILL at the timeout of 60 s. The discard had deleted 75 tracked files and a part of `node_modules`. The worktree, the branch and the session stayed. The row parked.
    5. The error line showed for 5 s only, so the agent did not see it in the app.
    6. The next Delete dialog says `1 commit that is not merged and 75 changed files`. Then `claude rm` refuses with "The worktree has uncommitted changes" and gives no discard value. Bifrost cannot delete the session (bug 2).
    7. The agent removed the rest by hand: `git worktree remove --force` took 26 s, then `git branch -D` and `cl.sh rm 27b87cbf`. On `bifrost-test-wt2` (748 MB `node_modules`, no install) the discard took 8 s. So the probable cause is the install that wrote into `node_modules` during the delete.
@@ -391,7 +391,7 @@ Changes to the method:
    1. Start a session from Bifrost (it goes into the `started` list).
    2. Remove it with `claude rm <id>` in a terminal.
    3. Result: `claude agents --json --all` has no entry. Bifrost still shows the parked row `bifrost-test-wt1`, with the worktree path of a worktree that is gone. `registry.json` keeps the ID in `started` and in `worktrees`.
-4. **The session list error shows a raw command (seen one time).** During the second Delete of `bifrost-test-wt1`, `claude rm` ran from 18:48:21 to 18:48:29. At 18:48:22 the Overview showed `Command failed: /Users/dev-user/.local/bin/claude agents --json`. The poll of the session list probably reached its timeout while `claude rm` ran.
+4. **The session list error shows a raw command (seen one time).** During the second Delete of `bifrost-test-wt1`, `claude rm` ran from 18:48:21 to 18:48:29. At 18:48:22 the Overview showed `Command failed: ~/.local/bin/claude agents --json`. The poll of the session list probably reached its timeout while `claude rm` ran.
 5. **The Delete check failed one time.** The Delete dialog of the running `bifrost-test-wt2` said `Bifrost could not check this session for unmerged work.`. This was about 10 min before the sleep, soon after a `pnpm` install in that worktree. Later `git status --porcelain` took 0.09 s, and the next dialog gave the count. The agent could not find the cause.
 
 ### For the user

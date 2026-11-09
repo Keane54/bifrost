@@ -8,8 +8,7 @@ const CLOSE_QUOTE = String.fromCharCode(0x201d)
 
 // The short ID, the worktree and the HEAD commit of the worktree in the output.
 export const KEPT_SHORT_ID = 'abd71478'
-export const KEPT_WORKTREE =
-  '/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-rmx'
+export const KEPT_WORKTREE = '/Users/dev-user/Developer/bifrost/.claude/worktrees/bifrost-test-rmx'
 export const KEPT_HEAD = 'f7698d38614ba22b41f996fab73124361d2fe389'
 
 // The value of --discard-unpushed in the output. The first part is the HEAD commit.

@@ -27,7 +27,7 @@ Changes to the method:
 - In Step 2, "Track" in the row menu is a submenu of colours. The agent used Green for m5a and Light blue for m5b.
 - At the end of Step 2, the agent selected Plain with `window.bifrost.settings.set({ labels: 'plain' })` in the page, not with a click.
 - The test home is `$TMPDIR/bifrost-m5a-home`, as the brief says, and not a folder in the scratch folder. A scratch path gives a socket path of 152 bytes. The limit is 100 bytes (D12). The test-home path gives 84 bytes.
-- `HOME=<test home> cl.sh plugin list --json` gave `zsh:1: command not found: claude`. `cl.sh` runs a login shell, and that shell reads the dotfiles of the test home. The agent added `<test home>/.zshenv` with `export PATH=/Users/dev-user/.local/bin:$PATH`. Then `plugin list --json` and `plugin marketplace list --json` gave `[]` in the test home (03:31). The test-home dev app did not start.
+- `HOME=<test home> cl.sh plugin list --json` gave `zsh:1: command not found: claude`. `cl.sh` runs a login shell, and that shell reads the dotfiles of the test home. The agent added `<test home>/.zshenv` with `export PATH=~/.local/bin:$PATH`. Then `plugin list --json` and `plugin marketplace list --json` gave `[]` in the test home (03:31). The test-home dev app did not start.
 
 ### Results
 
@@ -204,7 +204,7 @@ Changes to the method:
 | R | The Rename dialog opened with the focus in "Session name". Esc closed it. |
 | Cmd+N | The New session dialog opened. Esc closed it. |
 | J, Cmd+Shift+J | Terminal opened and ran `claude attach 41d718e9`, one window for each press. |
-| P, Cmd+Shift+O | The dev app ran `/usr/bin/open -a /System/Library/CoreServices/Finder.app /Users/dev-user/Developer/bifrost/.m0-sandbox`. |
+| P, Cmd+Shift+O | The dev app ran `/usr/bin/open -a /System/Library/CoreServices/Finder.app ~/Developer/bifrost/.m0-sandbox`. |
 | Backspace (m5d, idle) | m5d stopped at once, with no dialog, and became parked. |
 | Cmd+R (real key) | m5d resumed. The page did not reload. |
 | Cmd+Shift+Backspace | m5d stopped. |
@@ -368,7 +368,7 @@ Changes to the method:
 | Name, Session ID, Short ID | `bifrost-test-m5c`, `32f54b87-6690-4ac7-9afb-73b647443139`, `32f54b87` | `cl.sh agents --json`: the same `name`, `sessionId` and `id` |
 | Kind | Owned | `kind: background`. Bifrost shows a background session as Owned. |
 | PID | 34610 | `pid: 34610` |
-| Project folder | `/Users/dev-user/Developer/bifrost/.m0-sandbox` | `cwd` |
+| Project folder | `~/Developer/bifrost/.m0-sandbox` | `cwd` |
 | Transcript | `~/.claude/projects/-Users-dev-user-Developer-bifrost--m0-sandbox/32f54b87-....jsonl` | `transcriptPath` of the row. The file exists (404,896 bytes). |
 | Branch, PR, Worktree | `main`, `no git remotes found`, `None` | `git branch --show-current` gives `main`. `gh pr view --json number,title,url,state` in `.m0-sandbox` gives `no git remotes found` (exit 1). This is the `gh` reason. |
 | Model, Effort, Permission mode | Haiku 5.5, medium, auto | `model`, `effort`, `permissionMode` of the row (D28) |

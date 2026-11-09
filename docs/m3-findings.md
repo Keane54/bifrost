@@ -9,7 +9,7 @@ The experiment agent ran `scripts/m3/size-probe.ts` two times on 2026-11-05, at 
 Command, in the main checkout:
 
 ```bash
-M0_CLAUDE=/Users/dev-user/Developer/bifrost/.m0-sandbox/cl.sh M0_OUT="$TMPDIR/bifrost-m3" \
+M0_CLAUDE=~/Developer/bifrost/.m0-sandbox/cl.sh M0_OUT="$TMPDIR/bifrost-m3" \
   ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron scripts/m3/size-probe.ts
 ```
 

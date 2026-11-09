@@ -90,7 +90,7 @@ The change list of the preview:
 
 - "Add the hook for" SessionStart, SessionEnd, UserPromptSubmit, PreToolUse with the matcher AskUserQuestion, PermissionRequest with the matcher *, PostToolUse with the matcher *, Notification with the matcher permission_prompt, Notification with the matcher idle_prompt, Stop, StopFailure.
 - "Change the statusLine command to the Bifrost wrapper."
-- "Backup path: /Users/dev-user/.bifrost/backups/settings-20261105T050720Z.json".
+- "Backup path: ~/.bifrost/backups/settings-20261105T050720Z.json".
 - "Original command: sh ~/.claude/statusline-command.sh".
 
 Result after the install:
