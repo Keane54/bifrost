@@ -1,0 +1,586 @@
+{
+  "data": {
+    "mine": {
+      "nodes": [
+        {
+          "additions": 10,
+          "author": {
+            "login": "dev-user"
+          },
+          "baseRefName": "main",
+          "comments": {
+            "nodes": [
+              {
+                "author": {
+                  "__typename": "User",
+                  "login": "erin"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "Thanks for the update.",
+                "createdAt": "2026-11-07T08:00:00Z",
+                "databaseId": 7009,
+                "id": "C_9",
+                "pullRequestReview": null
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "bbbb222",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [
+                        {
+                          "__typename": "CheckRun",
+                          "conclusion": "FAILURE"
+                        },
+                        {
+                          "__typename": "CheckRun",
+                          "conclusion": "SUCCESS"
+                        },
+                        {
+                          "__typename": "StatusContext",
+                          "state": "SUCCESS"
+                        }
+                      ],
+                      "pageInfo": {
+                        "hasNextPage": false,
+                        "hasPreviousPage": false
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-01T09:00:00Z",
+          "deletions": 2,
+          "headRefName": "feature-90",
+          "headRefOid": "bbbb222",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "number": 90,
+          "pendingReviews": {
+            "nodes": []
+          },
+          "repository": {
+            "name": "web",
+            "owner": {
+              "login": "acme"
+            }
+          },
+          "reviewDecision": "CHANGES_REQUESTED",
+          "reviewRequests": {
+            "nodes": []
+          },
+          "reviews": {
+            "nodes": [
+              {
+                "author": {
+                  "__typename": "User",
+                  "login": "erin"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "Please split this.",
+                "commit": {
+                  "oid": "bbbb222"
+                },
+                "databaseId": 6001,
+                "id": "R_c1",
+                "state": "CHANGES_REQUESTED",
+                "submittedAt": "2026-11-06T10:00:00Z"
+              },
+              {
+                "author": {
+                  "__typename": "Bot",
+                  "login": "copilot-pull-request-reviewer"
+                },
+                "authorAssociation": "NONE",
+                "body": "",
+                "commit": {
+                  "oid": "bbbb222"
+                },
+                "databaseId": 6002,
+                "id": "R_c2",
+                "state": "COMMENTED",
+                "submittedAt": "2026-11-06T11:00:00Z"
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "reviewThreads": {
+            "nodes": [
+              {
+                "comments": {
+                  "nodes": [
+                    {
+                      "author": {
+                        "__typename": "Bot",
+                        "login": "copilot-pull-request-reviewer"
+                      },
+                      "authorAssociation": "NONE",
+                      "body": "Possible null here.",
+                      "createdAt": "2026-11-06T11:00:01Z",
+                      "databaseId": 7001,
+                      "id": "C_1",
+                      "pullRequestReview": {
+                        "id": "R_c2"
+                      }
+                    }
+                  ],
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "hasPreviousPage": false
+                  }
+                },
+                "id": "T_1",
+                "isResolved": false,
+                "line": 42,
+                "path": "src/menu.ts"
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "timelineItems": {
+            "nodes": []
+          },
+          "title": "Rework the menu",
+          "updatedAt": "2026-11-08T09:00:00Z",
+          "url": "https://github.com/acme/web/pull/90"
+        },
+        {
+          "additions": 10,
+          "author": {
+            "login": "dev-user"
+          },
+          "baseRefName": "main",
+          "comments": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "cccc333",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [],
+                      "pageInfo": {
+                        "hasNextPage": false,
+                        "hasPreviousPage": false
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-01T09:00:00Z",
+          "deletions": 2,
+          "headRefName": "feature-31",
+          "headRefOid": "cccc333",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "number": 31,
+          "pendingReviews": {
+            "nodes": [
+              {
+                "id": "R_p1"
+              }
+            ]
+          },
+          "repository": {
+            "name": "api",
+            "owner": {
+              "login": "acme"
+            }
+          },
+          "reviewDecision": "APPROVED",
+          "reviewRequests": {
+            "nodes": []
+          },
+          "reviews": {
+            "nodes": [
+              {
+                "author": {
+                  "__typename": "User",
+                  "login": "frank"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "commit": {
+                  "oid": "cccc333"
+                },
+                "databaseId": 8001,
+                "id": "R_d1",
+                "state": "APPROVED",
+                "submittedAt": "2026-11-08T07:00:00Z"
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "reviewThreads": {
+            "nodes": [
+              {
+                "comments": {
+                  "nodes": [
+                    {
+                      "author": {
+                        "__typename": "User",
+                        "login": "frank"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "Nit.",
+                      "createdAt": "2026-11-08T06:00:00Z",
+                      "databaseId": 7002,
+                      "id": "C_2",
+                      "pullRequestReview": {
+                        "id": "R_d1"
+                      }
+                    }
+                  ],
+                  "pageInfo": {
+                    "hasNextPage": false,
+                    "hasPreviousPage": false
+                  }
+                },
+                "id": "T_2",
+                "isResolved": true,
+                "line": null,
+                "path": "src/retry.ts"
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "timelineItems": {
+            "nodes": []
+          },
+          "title": "Add retry",
+          "updatedAt": "2026-11-08T09:00:00Z",
+          "url": "https://github.com/acme/api/pull/31"
+        }
+      ]
+    },
+    "rateLimit": {
+      "cost": 11,
+      "remaining": 4930
+    },
+    "toReview": {
+      "nodes": [
+        {
+          "additions": 10,
+          "author": {
+            "login": "alice"
+          },
+          "baseRefName": "main",
+          "comments": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "aaaa111",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [],
+                      "pageInfo": {
+                        "hasNextPage": false,
+                        "hasPreviousPage": false
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-01T09:00:00Z",
+          "deletions": 2,
+          "headRefName": "feature-101",
+          "headRefOid": "aaaa111",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "number": 101,
+          "pendingReviews": {
+            "nodes": []
+          },
+          "repository": {
+            "name": "web",
+            "owner": {
+              "login": "acme"
+            }
+          },
+          "reviewDecision": null,
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "dev-user"
+                }
+              },
+              {
+                "requestedReviewer": {
+                  "__typename": "Team",
+                  "slug": "web-team"
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "reviewThreads": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "timelineItems": {
+            "nodes": [
+              {
+                "createdAt": "2026-11-02T10:00:00Z",
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "dev-user"
+                }
+              },
+              {
+                "createdAt": "2026-11-05T12:30:00Z",
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "dev-user"
+                }
+              }
+            ]
+          },
+          "title": "Add search box",
+          "updatedAt": "2026-11-08T09:00:00Z",
+          "url": "https://github.com/acme/web/pull/101"
+        },
+        {
+          "additions": 10,
+          "author": {
+            "login": "bob"
+          },
+          "baseRefName": "main",
+          "comments": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "aaaa111",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [],
+                      "pageInfo": {
+                        "hasNextPage": false,
+                        "hasPreviousPage": false
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-01T09:00:00Z",
+          "deletions": 2,
+          "headRefName": "feature-7",
+          "headRefOid": "aaaa111",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "number": 7,
+          "pendingReviews": {
+            "nodes": []
+          },
+          "repository": {
+            "name": "api",
+            "owner": {
+              "login": "acme"
+            }
+          },
+          "reviewDecision": null,
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "carol"
+                }
+              },
+              {
+                "requestedReviewer": {
+                  "__typename": "Team",
+                  "slug": "api-team"
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "reviewThreads": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "timelineItems": {
+            "nodes": [
+              {
+                "createdAt": "2026-11-04T08:00:00Z",
+                "requestedReviewer": {
+                  "__typename": "Team",
+                  "slug": "api-team"
+                }
+              }
+            ]
+          },
+          "title": "Cache the token",
+          "updatedAt": "2026-11-08T09:00:00Z",
+          "url": "https://github.com/acme/api/pull/7"
+        },
+        {
+          "additions": 10,
+          "author": {
+            "login": "alice"
+          },
+          "baseRefName": "main",
+          "comments": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "aaaa111",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [],
+                      "pageInfo": {
+                        "hasNextPage": false,
+                        "hasPreviousPage": false
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-01T09:00:00Z",
+          "deletions": 2,
+          "headRefName": "feature-102",
+          "headRefOid": "aaaa111",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "number": 102,
+          "pendingReviews": {
+            "nodes": []
+          },
+          "repository": {
+            "name": "web",
+            "owner": {
+              "login": "acme"
+            }
+          },
+          "reviewDecision": "APPROVED",
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "dev-user"
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "nodes": [
+              {
+                "author": {
+                  "__typename": "User",
+                  "login": "dave"
+                },
+                "authorAssociation": "MEMBER",
+                "body": "",
+                "commit": {
+                  "oid": "aaaa111"
+                },
+                "databaseId": 5001,
+                "id": "R_a1",
+                "state": "APPROVED",
+                "submittedAt": "2026-11-07T09:00:00Z"
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "reviewThreads": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "timelineItems": {
+            "nodes": []
+          },
+          "title": "Fix typo",
+          "updatedAt": "2026-11-08T09:00:00Z",
+          "url": "https://github.com/acme/web/pull/102"
+        }
+      ]
+    },
+    "viewer": {
+      "login": "dev-user"
+    }
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "data": {
+    "mine": {
+      "nodes": []
+    },
+    "rateLimit": {
+      "cost": 11,
+      "remaining": 4930
+    },
+    "toReview": {
+      "nodes": [
+        {
+          "additions": 10,
+          "author": {
+            "login": "alice"
+          },
+          "baseRefName": "main",
+          "comments": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "aaaa111",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [],
+                      "pageInfo": {
+                        "hasNextPage": false,
+                        "hasPreviousPage": false
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-01T09:00:00Z",
+          "deletions": 2,
+          "headRefName": "feature-200",
+          "headRefOid": "aaaa111",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "number": 200,
+          "pendingReviews": {
+            "nodes": []
+          },
+          "repository": {
+            "name": "web",
+            "owner": {
+              "login": "acme"
+            }
+          },
+          "reviewDecision": null,
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "dev-user"
+                }
+              }
+            ]
+          },
+          "reviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
+          "reviewThreads": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": true,
+              "hasPreviousPage": false
+            }
+          },
+          "timelineItems": {
+            "nodes": []
+          },
+          "title": "Big change",
+          "updatedAt": "2026-11-08T09:00:00Z",
+          "url": "https://github.com/acme/web/pull/200"
+        }
+      ]
+    },
+    "viewer": {
+      "login": "dev-user"
+    }
+  }
+}
