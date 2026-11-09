@@ -603,7 +603,7 @@
           "timelineItems": {
             "nodes": [
               {
-                "createdAt": "2026-11-09T09:00:00Z",
+                "createdAt": "@ASKED@",
                 "requestedReviewer": {
                   "__typename": "User",
                   "login": "dev-user"

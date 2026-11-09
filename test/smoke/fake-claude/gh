@@ -3,6 +3,10 @@
 # The script answers the poll of the Reviews panel with fixed JSON. The first poll gets
 # reviews-1.json. Each later poll gets reviews-2.json, which has one more direct request. The
 # script does not call GitHub.
+#
+# A request flashes only when its request event is after the turn-on. So the script puts the
+# time of the first later poll in place of @ASKED@ in reviews-2.json. It keeps that time in the
+# test home, so each later poll gives the same time and the request is not a re-request.
 
 dir=$(cd "$(dirname "$0")" && pwd)
 
@@ -20,7 +24,15 @@ if [ "$#" -ge 3 ] && [ "$1 $2 $3" = 'api graphql -f' ]; then
   if [ "$count" -eq 1 ]; then
     cat "$dir/../fixtures/reviews-1.json"
   else
-    cat "$dir/../fixtures/reviews-2.json"
+    asked=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    if [ -n "${BIFROST_TEST_HOME:-}" ]; then
+      stamp="$BIFROST_TEST_HOME/gh-asked"
+      if [ ! -f "$stamp" ]; then
+        echo "$asked" >"$stamp"
+      fi
+      asked=$(cat "$stamp")
+    fi
+    sed "s/@ASKED@/$asked/" "$dir/../fixtures/reviews-2.json"
   fi
   exit 0
 fi
