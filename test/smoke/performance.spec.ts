@@ -45,8 +45,11 @@ test('the Performance panel shows a headline and opens and closes the details', 
     await expect(details).toHaveAttribute('aria-expanded', 'true')
     const sections = panel.locator('[data-perf-sections]')
     await expect(sections).toBeVisible()
-    await expect(sections.getByRole('heading', { exact: true, name: /^Bifrost/ })).toBeVisible()
-    await expect(sections.getByText('Main process', { exact: true })).toBeVisible({
+    const bifrostHeading = sections.getByRole('heading', { exact: true, name: /^Bifrost/ })
+    await expect(bifrostHeading).toBeVisible()
+    // Only the Bifrost section has the Main process row. The check looks only in that section.
+    const bifrostSection = sections.locator('section').filter({ has: bifrostHeading })
+    await expect(bifrostSection.getByText('Main process', { exact: true })).toBeVisible({
       timeout: 15_000,
     })
 
