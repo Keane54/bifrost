@@ -11,13 +11,16 @@ import {
   REFRESH_GAP_MS,
   REFUSED_REVIEWS_OFF,
   REFUSED_UNKNOWN_PR,
+  type RequestNotice,
   type ReviewsWatcher,
   requestNotice,
+  requestNotices,
   urlToOpen,
   whileOn,
 } from '../../../src/main/reviews/watcher'
 import {
   EMPTY_REVIEWS,
+  REASON_GH_FAILED,
   REASON_GH_LOGGED_OUT,
   REASON_GH_TIMEOUT,
   type ReviewsSnapshot,
@@ -151,13 +154,13 @@ function setup(
     ...opts.settings,
   }
   const emitted: ReviewsSnapshot[] = []
-  const notified: ToReviewRow[] = []
+  const notified: RequestNotice[] = []
   const logs: string[] = []
   const watcher = createReviewsWatcher({
     emit: s => emitted.push(s),
     gh: { run },
     log: m => logs.push(m),
-    notifyRequest: row => notified.push(row),
+    notify: notice => notified.push(notice),
     now: () => Date.now(),
     settings: () => settings,
     store,
@@ -224,7 +227,7 @@ describe('createReviewsWatcher', () => {
     expect(row(t.watcher, K103)).toMatchObject({ flash: true, state: 'new' })
     expect(row(t.watcher, K101)).toMatchObject({ flash: false, state: 'waiting' })
     expect(t.store.get().requests[K103]).toEqual({ baseline: false, firstSeen: Date.now() })
-    expect(t.notified.map(r => r.key)).toEqual([K103])
+    expect(t.notified.map(n => n.title)).toEqual(['web #103'])
     // The next poll has the same list. The row still flashes, with no second notification.
     await vi.advanceTimersByTimeAsync(2 * MIN)
     expect(t.run).toHaveBeenCalledTimes(3)
@@ -244,7 +247,7 @@ describe('createReviewsWatcher', () => {
     expect(row(t.watcher, K101)).toMatchObject({ flash: false, state: 'waiting' })
     // A request that arrived while Bifrost was closed flashes and notifies.
     expect(row(t.watcher, K104)).toMatchObject({ flash: true, state: 'new' })
-    expect(t.notified.map(r => r.key)).toEqual([K104])
+    expect(t.notified.map(n => n.title)).toEqual(['web #104'])
     const state = t.store.get()
     expect(state.turnedOnAt).toBe(before)
     expect(state.requests[K101]).toEqual({ baseline: true, firstSeen: before })
@@ -281,7 +284,7 @@ describe('createReviewsWatcher', () => {
     await vi.advanceTimersByTimeAsync(2 * MIN)
     expect(row(t.watcher, K101)).toMatchObject({ flash: true, state: 'new' })
     expect(t.store.get().requests[K101]).toEqual({ baseline: false, firstSeen: Date.now() })
-    expect(t.notified.map(r => r.key)).toEqual([K101])
+    expect(t.notified.map(n => n.title)).toEqual(['web #101'])
     t.watcher.stop()
   })
 
@@ -311,7 +314,7 @@ describe('createReviewsWatcher', () => {
     // A poll after the end removes the ended pause.
     await vi.advanceTimersByTimeAsync(2 * MIN)
     expect(t.store.get().pauses).toEqual({})
-    expect(t.notified.map(r => r.key)).toEqual([K103])
+    expect(t.notified.map(n => n.title)).toEqual(['web #103'])
     t.watcher.stop()
   })
 
@@ -543,12 +546,65 @@ describe('createReviewsWatcher', () => {
     expect(t.run).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(1)
     expect(t.run).toHaveBeenCalledTimes(2)
-    // A change of the setting applies from the next poll.
+    // Without reschedule, a change of the setting applies from the next poll.
     t.settings.reviewsPollMinutes = 1
     await vi.advanceTimersByTimeAsync(5 * MIN)
     expect(t.run).toHaveBeenCalledTimes(3)
     await vi.advanceTimersByTimeAsync(MIN)
     expect(t.run).toHaveBeenCalledTimes(4)
+    t.watcher.stop()
+  })
+
+  test('a change of the poll interval reschedules the next poll', async () => {
+    const t = setup({ replies: [answer([{ number: 101 }])], settings: { reviewsPollMinutes: 10 } })
+    t.watcher.reschedule()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.run).not.toHaveBeenCalled()
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(3 * MIN)
+    expect(t.run).toHaveBeenCalledTimes(1)
+    // A shorter interval: the next poll was due 1 minute after the end of the last poll, so it
+    // runs at once.
+    t.settings.reviewsPollMinutes = 1
+    t.watcher.reschedule()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.run).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(MIN - 1)
+    expect(t.run).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(t.run).toHaveBeenCalledTimes(3)
+    // A longer interval moves the next poll later.
+    t.settings.reviewsPollMinutes = 10
+    t.watcher.reschedule()
+    await vi.advanceTimersByTimeAsync(10 * MIN - 1)
+    expect(t.run).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(t.run).toHaveBeenCalledTimes(4)
+    t.watcher.stop()
+  })
+
+  test('the pause-end timer waits at most the poll interval', async () => {
+    const before = Date.now() - 60 * MIN
+    const t = setup({
+      replies: [answer([{ number: 103 }])],
+      state: {
+        // 100 days is more than the largest timer delay (2^31 - 1 ms).
+        pauses: { [K103]: Date.now() + 100 * 24 * 60 * MIN },
+        requests: { [K103]: { baseline: false, firstSeen: before } },
+        turnedOnAt: before,
+      },
+    })
+    const spy = vi.spyOn(globalThis, 'setTimeout')
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(row(t.watcher, K103)?.state).toBe('paused')
+    const count = t.emitted.length
+    await vi.advanceTimersByTimeAsync(MIN)
+    expect(t.emitted).toHaveLength(count)
+    const delays = spy.mock.calls.map(call => Number(call[1] ?? 0))
+    expect(Math.max(...delays)).toBeLessThanOrEqual(2 * MIN)
+    spy.mockRestore()
     t.watcher.stop()
   })
 
@@ -622,6 +678,87 @@ describe('createReviewsWatcher', () => {
     expect(t.logs.some(m => m.includes('disk full'))).toBe(true)
     expect(row(t.watcher, K103)?.state).toBe('new')
     expect(t.notified).toEqual([])
+    t.watcher.stop()
+  })
+
+  test('a failed save keeps the computed rows and logs once until a save works', async () => {
+    const both = [{ number: 101 }, { number: 102 }]
+    const t = setup({
+      replies: [answer(both), answer(both), answer(both), answer([...both, { number: 103 }])],
+    })
+    const memory = t.change.getMockImplementation() as NonNullable<
+      ReturnType<typeof t.change.getMockImplementation>
+    >
+    const broken = async (): Promise<ReviewsState> => {
+      throw new Error('disk full')
+    }
+    const saveLogs = (): string[] => t.logs.filter(m => m.includes('disk full'))
+    t.change.mockImplementation(broken)
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    // The first poll did not save, but its rows are the baseline rows. Nothing flashes.
+    expect(t.store.get().turnedOnAt).toBeNull()
+    expect(t.watcher.current().toReview.map(r => [r.key, r.state, r.flash])).toEqual([
+      [K101, 'waiting', false],
+      [K102, 'waiting', false],
+    ])
+    expect(saveLogs()).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(row(t.watcher, K101)?.flash).toBe(false)
+    expect(saveLogs()).toHaveLength(1)
+    // The save works again.
+    t.change.mockImplementation(memory)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.store.get().turnedOnAt).toBe(Date.now())
+    // It fails again: one new log line. The new request shows, with no notification.
+    t.change.mockImplementation(broken)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(saveLogs()).toHaveLength(2)
+    expect(row(t.watcher, K103)).toMatchObject({ flash: true, state: 'new' })
+    expect(row(t.watcher, K101)?.flash).toBe(false)
+    expect(t.notified).toEqual([])
+    t.watcher.stop()
+  })
+
+  test('a pause after a failed save keeps the computed rows', async () => {
+    const t = setup({ replies: [answer([{ number: 101 }, { number: 102 }])] })
+    const memory = t.change.getMockImplementation() as NonNullable<
+      ReturnType<typeof t.change.getMockImplementation>
+    >
+    t.change.mockImplementation(async () => {
+      throw new Error('disk full')
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    t.change.mockImplementation(memory)
+    await t.watcher.pause(K101)
+    expect(row(t.watcher, K101)?.state).toBe('paused')
+    expect(row(t.watcher, K102)).toMatchObject({ flash: false, state: 'waiting' })
+    t.watcher.stop()
+  })
+
+  test('a gh run that throws is an error', async () => {
+    const t = setup()
+    t.run.mockImplementationOnce(async () => {
+      throw new Error('boom')
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.watcher.current()).toMatchObject({ availability: 'error', message: REASON_GH_FAILED })
+    t.watcher.stop()
+  })
+
+  test('four new requests in one poll give one summary notification', async () => {
+    const t = setup({
+      replies: [
+        answer([{ number: 101 }]),
+        answer([101, 103, 104, 105, 106].map(number => ({ number }))),
+      ],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.notified).toEqual([{ body: '4 new review requests', title: 'Reviews' }])
     t.watcher.stop()
   })
 
@@ -730,5 +867,40 @@ describe('IPC helpers', () => {
       body: 'alice asked for your review: Add search box',
       title: 'web #101',
     })
+  })
+})
+
+describe('requestNotices', () => {
+  const rows = (count: number): ToReviewRow[] =>
+    Array.from({ length: count }, (_, i) => ({
+      additions: 1,
+      author: 'alice',
+      deletions: 1,
+      flash: true,
+      key: `acme/web#${i + 1}`,
+      number: i + 1,
+      owner: 'acme',
+      pauseEndsAt: null,
+      repo: 'web',
+      requestedAt: 0,
+      sessionId: null,
+      state: 'new',
+      title: `Change ${i + 1}`,
+    }))
+
+  test('3 requests give 3 single notifications', () => {
+    expect(requestNotices(rows(3))).toEqual([
+      { body: 'alice asked for your review: Change 1', title: 'web #1' },
+      { body: 'alice asked for your review: Change 2', title: 'web #2' },
+      { body: 'alice asked for your review: Change 3', title: 'web #3' },
+    ])
+  })
+
+  test('4 requests give one summary', () => {
+    expect(requestNotices(rows(4))).toEqual([{ body: '4 new review requests', title: 'Reviews' }])
+  })
+
+  test('no request gives no notification', () => {
+    expect(requestNotices([])).toEqual([])
   })
 })

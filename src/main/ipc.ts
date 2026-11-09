@@ -17,7 +17,6 @@ import {
 import { checkAliasRequest } from '../shared/alias'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
-import type { ToReviewRow } from '../shared/reviews'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
 import { CHAT_VIEW } from '../shared/view-id'
@@ -76,8 +75,8 @@ import { openReviewsStateStore, reviewsStateFile } from './reviews/state-store'
 import {
   checkPrKey,
   createReviewsWatcher,
+  type RequestNotice,
   type ReviewsWatcher,
-  requestNotice,
   urlToOpen,
   whileOn,
 } from './reviews/watcher'
@@ -266,6 +265,9 @@ function runSettingsEffect(effect: SettingsEffect): void {
       // A change of Show team requests or of the ignore list needs no gh call.
       reviewsWatcher?.rebuild()
       return
+    case 'reviews-poll':
+      reviewsWatcher?.reschedule()
+      return
   }
 }
 
@@ -309,12 +311,13 @@ function logRefusedNotification(): void {
   if (line) eventBatcher.push([line])
 }
 
-// A new direct review request (R1-5). The notification shows only when the setting is on and the
-// window is not focused, as for a box. A click shows the window and opens the Reviews panel.
-function notifyReviewRequest(row: ToReviewRow): void {
+// A notification for new direct review requests (R1-5): one request, or a summary of more. It
+// shows only when the setting is on and the window is not focused, as for a box. A click shows
+// the window and opens the Reviews panel.
+function notifyReviewRequest(notice: RequestNotice): void {
   if (!getSettings().notifications || (currentWindow?.isFocused() ?? false)) return
   showNotification(
-    { ...requestNotice(row), sessionId: null },
+    { ...notice, sessionId: null },
     () => {
       showWindowFn?.()
       // With no loaded page, the open waits for the did-finish-load of the next page.
@@ -341,7 +344,7 @@ async function startReviews(
     emit: snapshot => send('reviews:update', snapshot),
     gh: createGh({ env: async () => childEnv(await loginEnv, { pty: false }), exec: execFile }),
     log: message => console.error(message),
-    notifyRequest: notifyReviewRequest,
+    notify: notifyReviewRequest,
     now: () => Date.now(),
     settings: () => settings.get(),
     store,

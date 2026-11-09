@@ -107,6 +107,14 @@ describe('parsePoll', () => {
     expect(r.ok && r.data.toReview).toHaveLength(1)
   })
 
+  it('drops a PR whose key is not a PR key', () => {
+    const raw = JSON.parse(fixture('poll-basic'))
+    raw.data.toReview.nodes[0].repository.owner.login = '-acme'
+    raw.data.toReview.nodes[1].repository.name = 'a/b'
+    const r = parsePoll(JSON.stringify(raw))
+    expect(r.ok && r.data.toReview.map(pr => pr.key)).toEqual(['acme/web#102'])
+  })
+
   it('fails on bad JSON, on errors and on a missing viewer', () => {
     expect(parsePoll('not json').ok).toBe(false)
     const err = parsePoll(JSON.stringify({ errors: [{ message: 'Bad credentials' }] }))

@@ -53,6 +53,12 @@ describe('settingsEffects', () => {
     expect(settingsEffects(prev, { ...prev, reviewsTeamRequests: false })).toEqual([
       { kind: 'reviews-view' },
     ])
+    expect(settingsEffects(prev, { ...prev, reviewsPollMinutes: 5 })).toEqual([
+      { kind: 'reviews-poll' },
+    ])
+    expect(
+      settingsEffects(prev, { ...prev, reviewsIgnore: ['acme/*'], reviewsPollMinutes: 10 }),
+    ).toEqual([{ kind: 'reviews-view' }, { kind: 'reviews-poll' }])
     expect(settingsEffects(prev, { ...prev, reviewsMaxSessions: 5 })).toEqual([])
   })
 

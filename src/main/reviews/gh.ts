@@ -1,6 +1,11 @@
 // The GitHub CLI (gh) runner of the Reviews feature.
 
-import { REASON_GH_LOGGED_OUT, REASON_GH_MISSING, REASON_GH_TIMEOUT } from '../../shared/reviews'
+import {
+  REASON_GH_FAILED,
+  REASON_GH_LOGGED_OUT,
+  REASON_GH_MISSING,
+  REASON_GH_TIMEOUT,
+} from '../../shared/reviews'
 import type { ExecFn, ExecResult } from '../claude/cli'
 
 export const GH_TIMEOUT_MS = 30_000
@@ -45,5 +50,5 @@ export function ghFailure(result: ExecResult): GhFailure | null {
     return { availability: 'logged-out', message: REASON_GH_LOGGED_OUT }
   }
   const line = result.stderr.trim().split('\n')[0]?.trim().slice(0, MESSAGE_MAX)
-  return { availability: 'error', message: line ? line : "GitHub CLI (gh) couldn't read GitHub." }
+  return { availability: 'error', message: line ? line : REASON_GH_FAILED }
 }

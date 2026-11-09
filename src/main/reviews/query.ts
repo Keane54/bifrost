@@ -1,5 +1,5 @@
 // The one GraphQL query of a poll, and the reader of its answer.
-import { prKey } from '../../shared/reviews'
+import { PR_KEY, prKey } from '../../shared/reviews'
 import type {
   Author,
   PollData,
@@ -253,6 +253,10 @@ function readPr(v: unknown, viewer: string): PrData | null {
   const repo = str(repository?.name)
   if (typeof number !== 'number' || !Number.isInteger(number) || number < 1) return null
   if (!url || !owner || !repo) return null
+  // The state and the IPC take only a valid PR key. A PR with another key would notify again
+  // after each restart, and the page could not act on it.
+  const key = prKey(owner, repo, number)
+  if (!PR_KEY.test(key)) return null
 
   const requestedUsers: string[] = []
   const requestedTeams: string[] = []
@@ -299,7 +303,7 @@ function readPr(v: unknown, viewer: string): PrData | null {
     headSha: str(o.headRefOid) ?? '',
     isCrossRepository: o.isCrossRepository === true,
     isDraft: o.isDraft === true,
-    key: prKey(owner, repo, number),
+    key,
     number,
     owner,
     repo,

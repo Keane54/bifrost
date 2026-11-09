@@ -93,3 +93,5 @@ export const REASON_GH_MISSING = "GitHub CLI (gh) isn't installed."
 export const REASON_GH_LOGGED_OUT =
   "GitHub CLI (gh) isn't logged in. Run gh auth login in a terminal, then click Refresh."
 export const REASON_GH_TIMEOUT = "GitHub didn't answer in time. Bifrost will try again."
+// gh failed and gave no error text, or the run of gh threw.
+export const REASON_GH_FAILED = "GitHub CLI (gh) couldn't read GitHub."

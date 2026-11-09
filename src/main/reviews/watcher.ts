@@ -6,11 +6,13 @@ import {
   type ClaudeState,
   EMPTY_REVIEWS,
   PR_KEY,
+  REASON_GH_FAILED,
   REASON_GH_TIMEOUT,
   type ReviewsSnapshot,
   type ToReviewRow,
 } from '../../shared/reviews'
 import type { Settings } from '../../shared/settings'
+import { MAX_NOTIFICATIONS } from '../alerts/alert-monitor'
 import { type Gh, type GhFailure, ghFailure } from './gh'
 import { baselineOf, buildSnapshot } from './model'
 import type { PollData } from './pr-data'
@@ -36,9 +38,14 @@ const R1_CLAUDE: { claude: ClaudeState; fixing: number; error: string | null; se
   sessionId: null,
 }
 
-// ghFailure gives its general text for a failure with no stderr. A throw gets this text.
-const THROWN = ghFailure({ code: 1, stderr: '', stdout: '' }) as GhFailure
+const THROWN: GhFailure = { availability: 'error', message: REASON_GH_FAILED }
 const TIMEOUT: GhFailure = { availability: 'error', message: REASON_GH_TIMEOUT }
+
+// The text of one notification.
+export interface RequestNotice {
+  title: string
+  body: string
+}
 
 export interface WatcherDeps {
   gh: Gh
@@ -51,8 +58,9 @@ export interface WatcherDeps {
   // Milliseconds since the epoch (Date.now in the app).
   now(): number
   emit(s: ReviewsSnapshot): void
-  // A new direct request arrived. The main process decides if a notification shows.
-  notifyRequest(row: ToReviewRow): void
+  // One notification for new direct requests (see requestNotices). The main process decides if
+  // it shows.
+  notify(notice: RequestNotice): void
   log(m: string): void
 }
 
@@ -65,6 +73,9 @@ export interface ReviewsWatcher {
   requestPoll(): void
   // Build the snapshot again from the last poll data, with no gh call.
   rebuild(): void
+  // The poll interval changed. Set the next poll again: the new interval after the end of the
+  // last poll, or at once when that time is past. During a poll, the end of the poll does this.
+  reschedule(): void
   current(): ReviewsSnapshot
   // Stop the flash of a To review row for the pause time. A key that is not a To review row of
   // the current snapshot gets REFUSED_UNKNOWN_PR.
@@ -125,10 +136,18 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
   // Ends the poll that runs now. stop calls it.
   let endPoll: (() => void) | null = null
   let lastPollAt = Number.NEGATIVE_INFINITY
+  // The end of the last poll. The next poll comes the poll interval after it.
+  let lastEndAt = Number.NEGATIVE_INFINITY
   let lastPoll: PollData | null = null
   let polledAt: number | null = null
   // The failure of the last poll, or null after a good poll.
   let failure: GhFailure | null = null
+  // The state of the last good poll when the store could not save it, or null. The snapshot uses
+  // it, so a failed save does not change the rows. Without it, each row of the first poll would
+  // flash.
+  let unsaved: ReviewsState | null = null
+  // True after a failed save, until a save works again. One log line for each failure period.
+  let saveFailing = false
   let snapshot: ReviewsSnapshot = EMPTY_REVIEWS
 
   function set(next: ReviewsSnapshot): void {
@@ -148,17 +167,34 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       poll: lastPoll,
       session: () => null,
       settings: deps.settings(),
-      state: deps.store.get(),
+      state: unsaved ?? deps.store.get(),
     })
     return { ...built, polledAt, ...failed }
   }
 
+  function pollInterval(): number {
+    return deps.settings().reviewsPollMinutes * 60_000
+  }
+
+  // The next poll comes the poll interval after the end of the last poll.
   function schedule(): void {
     if (timer) clearTimeout(timer)
-    timer = setTimeout(() => void poll(), deps.settings().reviewsPollMinutes * 60_000)
+    const wait = Math.max(0, lastEndAt + pollInterval() - deps.now())
+    timer = setTimeout(() => void poll(), wait)
+  }
+
+  function saveWorked(): void {
+    saveFailing = false
+  }
+
+  function saveFailed(error: unknown): void {
+    if (!saveFailing) deps.log(`Bifrost cannot save the Reviews state. ${error}`)
+    saveFailing = true
   }
 
   // When a pause ends, the row flashes again at once. A poll can be minutes away.
+  // The wait is at most the poll interval. A pause far in the future or a clock change cannot
+  // give a wait above the timer limit, which Node runs after 1 ms.
   function schedulePauseEnd(): void {
     if (pauseTimer) clearTimeout(pauseTimer)
     pauseTimer = null
@@ -173,7 +209,7 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
         pauseTimer = null
         if (running && gen === generation) rebuild()
       },
-      Math.max(0, Math.min(...ends) - deps.now()),
+      Math.min(Math.max(0, Math.min(...ends) - deps.now()), pollInterval()),
     )
   }
 
@@ -199,34 +235,47 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
     set(build())
   }
 
-  // Save the state once, then emit the snapshot. Notify each new direct request that arrived
+  // Save the state once, then emit the snapshot. Notify the new direct requests that arrived
   // with this poll. A failed save notifies nothing, because the next poll finds the same keys.
   async function apply(gen: number, data: PollData): Promise<void> {
     const now = deps.now()
     let arrived = new Set<string>()
-    let saved = true
-    if (nextState(deps.store.get(), data, now).changed) {
+    let computed: ReviewsState | null = null
+    let notSaved: ReviewsState | null = null
+    const planned = nextState(deps.store.get(), data, now)
+    if (planned.changed) {
       try {
         // The function sees the newest state, also a pause that came during the poll.
         await deps.store.change(s => {
           const next = nextState(s, data, now)
           arrived = next.arrived
+          computed = next.state
           return next.state
         })
+        saveWorked()
       } catch (error) {
-        saved = false
-        deps.log(`Bifrost cannot save the Reviews state. ${error}`)
+        arrived = new Set()
+        notSaved = computed ?? planned.state
+        saveFailed(error)
       }
     }
     if (!running || gen !== generation) return
+    unsaved = notSaved
     lastPoll = data
     polledAt = now
     failure = null
     set(build())
-    if (!saved) return
-    for (const row of snapshot.toReview) {
-      if (row.state === 'new' && arrived.has(row.key)) deps.notifyRequest(row)
-    }
+    const rows = snapshot.toReview.filter(row => row.state === 'new' && arrived.has(row.key))
+    for (const notice of requestNotices(rows)) deps.notify(notice)
+  }
+
+  // Change the state for a pause or the end of a pause. A state that the store could not save
+  // gets the same change, so the rows stay correct.
+  async function changeState(fn: (s: ReviewsState) => ReviewsState): Promise<void> {
+    await deps.store.change(fn)
+    saveWorked()
+    if (unsaved !== null) unsaved = fn(unsaved)
+    rebuild()
   }
 
   // A poll never lasts longer than the deadline, so a hung gh cannot stop all later polls.
@@ -254,6 +303,7 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
         deadline = undefined
         endPoll = null
         busy = false
+        lastEndAt = deps.now()
         if (running) schedule()
       }
     }
@@ -267,23 +317,25 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
     current: () => snapshot,
     async endPause(key) {
       requestRow(key)
-      await deps.store.change(s => ({
+      await changeState(s => ({
         ...s,
         pauses: Object.fromEntries(Object.entries(s.pauses).filter(([k]) => k !== key)),
       }))
-      rebuild()
     },
     async pause(key) {
       requestRow(key)
       const until = deps.now() + deps.settings().reviewsPauseMinutes * 60_000
-      await deps.store.change(s => ({ ...s, pauses: { ...s.pauses, [key]: until } }))
-      rebuild()
+      await changeState(s => ({ ...s, pauses: { ...s.pauses, [key]: until } }))
     },
     rebuild,
     requestPoll() {
       if (!running || busy) return
       if (deps.now() - lastPollAt < REFRESH_GAP_MS) return
       void poll()
+    },
+    reschedule() {
+      if (!running || busy) return
+      schedule()
     },
     start() {
       if (running) return
@@ -305,9 +357,11 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       if (pauseTimer) clearTimeout(pauseTimer)
       pauseTimer = null
       lastPollAt = Number.NEGATIVE_INFINITY
+      lastEndAt = Number.NEGATIVE_INFINITY
       lastPoll = null
       polledAt = null
       failure = null
+      unsaved = null
       if (snapshot !== EMPTY_REVIEWS) set(EMPTY_REVIEWS)
     },
     urlOf(key) {
@@ -341,9 +395,16 @@ export function urlToOpen(watcher: ReviewsWatcher | null, key: unknown): string 
 }
 
 // The title and the body of the notification of a new review request.
-export function requestNotice(row: ToReviewRow): { title: string; body: string } {
+export function requestNotice(row: ToReviewRow): RequestNotice {
   return {
     body: `${row.author} asked for your review: ${row.title}`,
     title: `${row.repo} #${row.number}`,
   }
+}
+
+// The notifications for the new requests of one poll. At most MAX_NOTIFICATIONS single
+// notifications, as for the boxes. More requests give one summary.
+export function requestNotices(rows: readonly ToReviewRow[]): RequestNotice[] {
+  if (rows.length <= MAX_NOTIFICATIONS) return rows.map(requestNotice)
+  return [{ body: `${rows.length} new review requests`, title: 'Reviews' }]
 }
