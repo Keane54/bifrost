@@ -82,6 +82,15 @@ export interface PrData {
   truncatedChecks: boolean
 }
 
+// The GraphQL rate limit that GitHub gave with a poll (P11). cost is the points of the poll.
+// resetAt is the time when GitHub sets remaining to limit again.
+export interface RateLimit {
+  cost: number
+  limit: number
+  remaining: number
+  resetAt: number
+}
+
 export interface PollData {
   viewer: string
   toReview: PrData[]
@@ -92,4 +101,6 @@ export interface PollData {
   // The error messages of a partial answer: GitHub gave errors next to the data. A list can then
   // lack PRs that are open (final review M7).
   errors: string[]
+  // A missing or bad value gives null. It never fails the poll.
+  rateLimit: RateLimit | null
 }

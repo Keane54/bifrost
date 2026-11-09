@@ -1,4 +1,5 @@
 import type { DirInfo, NewSessionSpec } from './new-session'
+import type { PerformanceSnapshot } from './performance'
 import type { ReviewsSnapshot } from './reviews'
 import type { Settings, SettingsPatch } from './settings'
 import type {
@@ -171,6 +172,21 @@ export interface BifrostApi {
     openPr(key: string): Promise<void>
     // A click on a notification of a new review request.
     onOpen(cb: () => void): () => void
+  }
+  // The Performance panel (Performance design). The main process samples Bifrost, the Claude
+  // sessions and the Mac every 15 s, and every 2 s while the panel shows.
+  performance: {
+    // The newest snapshot.
+    snapshot(): Promise<PerformanceSnapshot>
+    // The main process sends the snapshot after each sample, also while the panel is closed.
+    // The returned function removes only this listener.
+    onUpdate(cb: (s: PerformanceSnapshot) => void): () => void
+    // Tell the main process if the panel shows, if the window has focus, and which chat panels
+    // are open. Send it on each change. This rejects for a value that is not a chat panel ID.
+    view(v: { showing: boolean; focused: boolean; chatPanels: string[] }): Promise<void>
+    // The frame rate of the panel, once a second while it shows and the window has focus. This
+    // rejects for a value that is not a finite number from 0 to 1000.
+    fps(value: number): Promise<void>
   }
   // Live details (D11). Each action resolves with the new status. It rejects with the message
   // of its failure. A switch calls install when plugin is not-installed, else enable or disable.

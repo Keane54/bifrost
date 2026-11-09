@@ -96,7 +96,9 @@
     },
     "rateLimit": {
       "cost": 11,
-      "remaining": 4930
+      "limit": 5000,
+      "remaining": 4930,
+      "resetAt": "2026-11-09T11:00:00Z"
     },
     "toReview": {
       "nodes": [],

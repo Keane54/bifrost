@@ -7,6 +7,7 @@ import type {
   PrData,
   PrReview,
   PrThread,
+  RateLimit,
   ReviewState,
 } from './pr-data'
 
@@ -104,7 +105,7 @@ export const MINE_FRAGMENT = `fragment MineFields on PullRequest {${PR_HEAD}${PR
 
 export const POLL_QUERY = `query Poll {
   viewer { login }
-  rateLimit { cost remaining }
+  rateLimit { cost limit remaining resetAt }
   toReview: search(query: "review-requested:@me ${SEARCH_OPEN}", type: ISSUE, first: 50) {
     pageInfo { hasNextPage }
     nodes { ... on PullRequest { ...ToReviewFields } }
@@ -346,6 +347,23 @@ function readPr(v: unknown, viewer: string): PrData | null {
   }
 }
 
+// A count of the rate limit: a finite number, 0 or more.
+function count(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null
+}
+
+// The rate limit of the answer (P11). GitHub gives resetAt as an ISO time. A missing or bad value
+// gives null.
+function readRateLimit(v: unknown): RateLimit | null {
+  const o = obj(v)
+  const cost = count(o?.cost)
+  const limit = count(o?.limit)
+  const remaining = count(o?.remaining)
+  const resetAt = time(o?.resetAt)
+  if (cost === null || limit === null || remaining === null || resetAt === null) return null
+  return { cost, limit, remaining, resetAt }
+}
+
 // The messages of the errors of an answer, each one time. Only the message, cut to ERROR_MAX.
 // An error with no message gives a general text.
 function errorMessages(v: unknown): string[] {
@@ -385,6 +403,7 @@ export function parsePoll(
       errors,
       mine: list(data.mine),
       mineHasMore: more(data.mine),
+      rateLimit: readRateLimit(data.rateLimit),
       toReview: list(data.toReview),
       toReviewHasMore: more(data.toReview),
       viewer,

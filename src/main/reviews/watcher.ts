@@ -16,7 +16,7 @@ import { MAX_NOTIFICATIONS } from '../alerts/alert-monitor'
 import { type HealthEvents, NO_HEALTH } from '../performance/health-log'
 import { type Gh, type GhFailure, ghFailure } from './gh'
 import { baselineOf, buildSnapshot } from './model'
-import type { PollData } from './pr-data'
+import type { PollData, RateLimit } from './pr-data'
 import { parsePoll, pollArgs } from './query'
 import type { ReviewsState } from './state'
 import type { ReviewsStateStore } from './state-store'
@@ -88,6 +88,9 @@ export interface ReviewsWatcher {
   // The URL of the PR from the last poll, or null. Only a URL that starts with
   // https://github.com/.
   urlOf(key: string): string | null
+  // The GraphQL rate limit of the last good poll, or null (P11). It is null before the first good
+  // poll, after a good poll with no rate limit, and after stop.
+  rateLimit(): RateLimit | null
 }
 
 type Outcome = { ok: true; data: PollData } | { ok: false; failure: GhFailure }
@@ -371,6 +374,7 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       const until = deps.now() + deps.settings().reviewsPauseMinutes * 60_000
       await changeState(s => ({ ...s, pauses: { ...s.pauses, [key]: until } }))
     },
+    rateLimit: () => lastPoll?.rateLimit ?? null,
     rebuild,
     requestPoll() {
       if (!running || busy) return

@@ -1,6 +1,7 @@
-import { access, mkdir, rm, stat, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
+import { access, mkdir, rm, stat, statfs, writeFile } from 'node:fs/promises'
+import { cpus, homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { monitorEventLoopDelay } from 'node:perf_hooks'
 import {
   app,
   type BrowserWindow,
@@ -11,6 +12,7 @@ import {
   nativeImage,
   net,
   type OpenDialogOptions,
+  powerMonitor,
   shell,
   type WebContents,
 } from 'electron'
@@ -61,6 +63,16 @@ import { createLiveServer } from './live/live-server'
 import { modSourceDir } from './live/mod-folder'
 import { createPluginCli } from './live/plugin-cli'
 import { createHealthLog, type HealthLog } from './performance/health-log'
+import {
+  checkFps,
+  checkView,
+  createLoopDelay,
+  createPerformanceMonitor,
+  type LoopDelay,
+  type PerformanceMonitor,
+  probeUrl,
+  readGhRateLimit,
+} from './performance/monitor'
 import { checkChatOpen, REFUSED_NOT_CHAT } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
@@ -71,7 +83,7 @@ import { SessionRegistry } from './registry/registry'
 import { RegistryService, SERVICE_TIMING, type ServiceDeps } from './registry/service'
 import { openStore } from './registry/store-file'
 import { readProcessTable } from './registry/terminal-app'
-import { createGh } from './reviews/gh'
+import { createGh, type Gh } from './reviews/gh'
 import { openReviewsStateStore, reviewsStateFile } from './reviews/state-store'
 import {
   checkPrKey,
@@ -160,6 +172,13 @@ let accountUsage: AccountUsagePoller | null = null
 // The Reviews watcher (Reviews design). registerIpc makes it after the Reviews state opens. It also
 // runs in a test home (R1-4). It polls only while Watch GitHub is on.
 let reviewsWatcher: ReviewsWatcher | null = null
+// The Performance monitor (Performance design). registerIpc starts it. It samples on a timer, also
+// in a test home, and sends a snapshot after each tick. stopRegistry stops it.
+let perfMonitor: PerformanceMonitor | null = null
+// The main process delay. registerIpc enables its histogram. stopRegistry clears its timer and
+// disables it.
+let loopDelay: LoopDelay | null = null
+
 // A click on a review request notification while no page is loaded waits for the next page, as
 // pendingOpen does for a session. PendingOpen keeps one ID. The Reviews open needs no ID, so it
 // keeps this fixed one.
@@ -339,11 +358,10 @@ function notifyReviewRequest(notice: RequestNotice): void {
 
 // Open the Reviews state and make the watcher. Then start it when Watch GitHub is on. After this,
 // the reviews effect starts and stops it. The state goes to bifrostHome, so a test home uses its
-// own state (R1-4). gh gets the login-shell env. In a test home, that is the env of the process,
-// so the PATH of the smoke test decides which gh runs.
+// own state (R1-4). The watcher and the Performance monitor use the same gh runner (P11).
 async function startReviews(
   bifrostHome: string,
-  loginEnv: Promise<Record<string, string>>,
+  gh: Gh,
   settingsReady: Promise<SettingsStore>,
   health: HealthLog,
 ): Promise<ReviewsWatcher> {
@@ -353,7 +371,7 @@ async function startReviews(
   ])
   const watcher = createReviewsWatcher({
     emit: snapshot => send('reviews:update', snapshot),
-    gh: createGh({ env: async () => childEnv(await loginEnv, { pty: false }), exec: execFile }),
+    gh,
     health,
     log: message => console.error(message),
     notify: notifyReviewRequest,
@@ -365,6 +383,70 @@ async function startReviews(
   // The app can quit before the state opens. Then do not start the watcher.
   if (!serviceStopped && settings.get().reviewsWatch) watcher.start()
   return watcher
+}
+
+// The thermal state of macOS, or null when Electron cannot read it.
+function thermalState(): string | null {
+  const state = powerMonitor.getCurrentThermalState()
+  return state === 'unknown' ? null : state
+}
+
+// The free space of the volume of the folder, or null.
+async function freeDiskBytes(folder: string): Promise<number | null> {
+  try {
+    const s = await statfs(folder)
+    return s.bavail * s.bsize
+  } catch {
+    return null
+  }
+}
+
+// Make and start the Performance monitor, and register its handlers. It reads the PTYs and the
+// rows from the module values, so it can start before the PTY manager and the registry load. A
+// test home makes no network request and no gh call. The page sends booleans, chat panel IDs and
+// a frame rate only.
+function startPerformance(
+  home: TestHome | null,
+  bifrostHome: string,
+  gh: Gh,
+  health: HealthLog,
+): void {
+  const delay = createLoopDelay(monitorEventLoopDelay())
+  loopDelay = delay
+  const homeFolder = home?.home ?? homedir()
+  const monitor = createPerformanceMonitor({
+    appMetrics: () => app.getAppMetrics(),
+    clonesPath: join(bifrostHome, 'reviews', 'repos'),
+    cpus: () => cpus(),
+    delayP99: () => delay.p99(),
+    emit: snapshot => send('performance:update', snapshot),
+    exec: execFile,
+    freeDiskBytes: () => freeDiskBytes(homeFolder),
+    ghRateLimit: () => readGhRateLimit(gh),
+    health,
+    network: home === null,
+    now: () => Date.now(),
+    online: () => net.isOnline(),
+    probe: url =>
+      probeUrl(
+        (u, init) => net.fetch(u, init),
+        url,
+        () => performance.now(),
+      ),
+    ptys: () => liveManager?.list() ?? [],
+    rateLimit: () => reviewsWatcher?.rateLimit() ?? null,
+    rows: () => liveService?.rows() ?? [],
+    thermal: thermalState,
+  })
+  perfMonitor = monitor
+  monitor.start()
+  ipcMain.handle('performance:snapshot', e => fromPage(e, async () => monitor.current()))
+  ipcMain.handle('performance:view', (e, v: unknown) =>
+    fromPage(e, async () => monitor.view(checkView(v))),
+  )
+  ipcMain.handle('performance:fps', (e, value: unknown) =>
+    fromPage(e, async () => monitor.fps(checkFps(value))),
+  )
 }
 
 // Load the store and start the registry service.
@@ -523,7 +605,11 @@ export function registerIpc(home: TestHome | null = null): void {
   // The settings store opens one time. Each user gets the same store (ruling C6).
   const settings = openSettings(join(app.getPath('userData'), 'settings.json'), health)
   const service = startService(run, settings, health)
-  const reviews = startReviews(paths.bifrostHome, loginEnv, settings, health)
+  // gh gets the login-shell env. In a test home, that is the env of the process, so the PATH of
+  // the smoke test decides which gh runs.
+  const gh = createGh({ env: async () => childEnv(await loginEnv, { pty: false }), exec: execFile })
+  const reviews = startReviews(paths.bifrostHome, gh, settings, health)
+  startPerformance(home, paths.bifrostHome, gh, health)
   ipcMain.handle('settings:get', e => fromPage(e, async () => (await settings).get()))
   // The key recorder starts or ends. A value that is not a boolean is refused.
   ipcMain.handle('settings:recording', (e, on: unknown) =>
@@ -999,8 +1085,8 @@ export function closeAllPtys(): void {
   page.end()
 }
 
-// Stop the registry service, the server of Live details and the pollers. Call it when the app
-// quits.
+// Stop the registry service, the server of Live details, the pollers, the Performance monitor and
+// its delay histogram. Call it when the app quits.
 export function stopRegistry(): void {
   serviceStopped = true
   liveService?.stop()
@@ -1009,4 +1095,6 @@ export function stopRegistry(): void {
   serviceMonitor?.stop()
   accountUsage?.stop()
   reviewsWatcher?.stop()
+  perfMonitor?.stop()
+  loopDelay?.stop()
 }

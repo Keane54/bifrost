@@ -34,6 +34,7 @@ describe('pollArgs', () => {
     expect(POLL_QUERY).toContain('author:@me')
     expect(POLL_QUERY).toMatch(/toReview: search\([^)]*\) \{\s*pageInfo \{ hasNextPage \}/)
     expect(POLL_QUERY).toMatch(/mine: search\([^)]*\) \{\s*pageInfo \{ hasNextPage \}/)
+    expect(POLL_QUERY).toContain('rateLimit { cost limit remaining resetAt }')
   })
 })
 
@@ -276,6 +277,37 @@ describe('parsePoll', () => {
       'GitHub gave an error.',
     ])
     expect(basic().errors).toEqual([])
+  })
+
+  it('reads rateLimit with resetAt in ms', () => {
+    expect(basic().rateLimit).toEqual({
+      cost: 11,
+      limit: 5000,
+      remaining: 4930,
+      resetAt: Date.parse('2026-11-09T11:00:00Z'),
+    })
+  })
+
+  it('a missing or bad rateLimit gives null and the poll still works', () => {
+    const good = { cost: 1, limit: 5000, remaining: 4930, resetAt: '2026-11-09T11:00:00Z' }
+    const bad: unknown[] = [
+      undefined,
+      null,
+      'soon',
+      { ...good, resetAt: 'soon' },
+      { ...good, resetAt: undefined },
+      { ...good, cost: '1' },
+      { ...good, limit: -1 },
+      { ...good, remaining: Number.NaN },
+    ]
+    for (const value of bad) {
+      const raw = JSON.parse(fixture('poll-basic'))
+      raw.data.rateLimit = value
+      const r = parsePoll(JSON.stringify(raw))
+      if (!r.ok) throw new Error(r.message)
+      expect(r.data.rateLimit).toBeNull()
+      expect(r.data.toReview).toHaveLength(3)
+    }
   })
 
   it('fails on errors when a search has no data', () => {

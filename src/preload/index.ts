@@ -63,6 +63,12 @@ const api: BifrostApi = {
     status: () => invoke('live:status'),
     uninstall: () => invoke('live:uninstall'),
   },
+  performance: {
+    fps: value => invoke('performance:fps', value),
+    onUpdate: cb => subscribe('performance:update', cb),
+    snapshot: () => invoke('performance:snapshot'),
+    view: v => invoke('performance:view', v),
+  },
   pty: {
     close: (viewId, signal) => invoke('pty:close', viewId, signal),
     onData: cb => subscribe('pty:data', cb),

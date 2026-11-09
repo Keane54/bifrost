@@ -995,6 +995,42 @@ describe('createReviewsWatcher', () => {
     expect(stopped.mock.calls).toEqual([['reviews']])
   })
 
+  test('rateLimit() gives the last value and null after stop', async () => {
+    const RESET = '2026-11-09T11:00:00Z'
+    // A good answer with the rate limit of the poll.
+    const limited = (remaining: number): ExecResult => {
+      const good = JSON.parse(answer([]).stdout)
+      good.data.rateLimit = { cost: 1, limit: 5000, remaining, resetAt: RESET }
+      return { code: 0, stderr: '', stdout: JSON.stringify(good) }
+    }
+    const failed: ExecResult = { code: 1, stderr: 'gh: HTTP 502', stdout: '' }
+    const t = setup({ replies: [limited(4930), failed, limited(4900), answer([])] })
+    expect(t.watcher.rateLimit()).toBeNull()
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.watcher.rateLimit()).toEqual({
+      cost: 1,
+      limit: 5000,
+      remaining: 4930,
+      resetAt: Date.parse(RESET),
+    })
+    // A failed poll keeps the value of the last good poll.
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.run).toHaveBeenCalledTimes(2)
+    expect(t.watcher.rateLimit()?.remaining).toBe(4930)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.watcher.rateLimit()?.remaining).toBe(4900)
+    // A good answer with no rate limit gives null.
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.run).toHaveBeenCalledTimes(4)
+    expect(t.watcher.rateLimit()).toBeNull()
+    t.replies.push(limited(4800))
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.watcher.rateLimit()?.remaining).toBe(4800)
+    t.watcher.stop()
+    expect(t.watcher.rateLimit()).toBeNull()
+  })
+
   test('four new requests in one poll give one summary notification', async () => {
     const t = setup({
       replies: [

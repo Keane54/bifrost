@@ -35,6 +35,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
     'Another action is still running on this session. Try again in a moment.',
   'refused: Bifrost does not delete an external session':
     "Bifrost can't delete a session that runs in another terminal.",
+  'refused: bad chat panel': "Bifrost couldn't read the list of chat windows.",
   'refused: bad input': "Bifrost couldn't read that request.",
   'refused: bad keys': "One of those keys isn't valid.",
   'refused: bad name': "That name isn't valid.",
