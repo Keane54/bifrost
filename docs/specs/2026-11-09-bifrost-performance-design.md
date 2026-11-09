@@ -44,6 +44,8 @@ The approved mockup is version 4: `.superpowers/brainstorm/74668-1794218564/cont
 - Each reason is its own list item, with a 6 px gap between items (user decision, 2026-11-09).
 - Each item starts with a small square in its own colour. The square is amber for a warning and red for a problem.
 - A reason is one short sentence with the facts. Example: "Bifrost's memory grew by 600 MB in the last hour."
+- The headline never shows OK without data. When no sample exists and no check gives a reason, the headline shows "Checking Bifrost…". This text has the dim colour, with no state word and no square. The headline also shows this text when the newest sample is older than 60 s, for example while `ps` fails.
+- The first tick after the start adds no sample. The first read of the Electron metrics gives 0% CPU for each process. Also, the window process does not exist yet.
 
 ### 5.2 The details
 
@@ -55,7 +57,7 @@ The sections, in this order:
 
 | Section | Content |
 |---|---|
-| Bifrost | The total RAM and CPU in the section title. A trend line of RAM and CPU for the last 10 minutes. The memory line is amber. The CPU line is blue. One row for each process group: Main process, Window, GPU, Chat terminals (with the count), and Other helpers if any. Each row shows RAM and CPU. Two more rows: Frame rate and Main process delay. |
+| Bifrost | The total RAM and CPU in the section title. A trend line of RAM and CPU for the last 10 minutes. The memory line is amber. The CPU line is blue. The line goes from the oldest sample of the 10 minutes at the left edge to the newest sample at the right edge. Before Bifrost has run for 10 minutes, the key under the line gives "Last N min" (the minutes up to the next whole minute). After that, it gives "Last 10 minutes". One row for each process group: Main process, Window, GPU, Chat terminals (with the count), and Other helpers if any. Each row shows RAM and CPU. Two more rows: Frame rate and Main process delay. |
 | Claude sessions | The total RAM and CPU of all `claude` processes in the section title. The three heaviest sessions by RAM, each with RAM, CPU and a Stop button. Then one "N more" row with their total. |
 | Your Mac | Memory pressure (a bar and a word: Normal, Medium, High), swap used of total, CPU load, thermal state, battery level and charging state. |
 | Network | Online or offline and the interface type (Wi-Fi, Ethernet, VPN) in the title. Download and upload rates. The response times to Anthropic and to GitHub. |
@@ -81,7 +83,7 @@ Bifrost runs the checks every 15 seconds, also while the panel is closed, so the
 | Memory growth (a leak), on Bifrost RAM without the chat terminals | the trend over the last 60 minutes rises faster than 300 MB per hour | the trend rises faster than 800 MB per hour |
 | Bifrost CPU without the chat terminals, the average over 2 minutes | above 50% of one core | above 100% of one core |
 | Frame rate while the panel shows and the window has focus | below 30 fps for 10 s | not used |
-| Main process delay (event loop) | above 200 ms (99th percentile over 60 s) | above 1 s |
+| Main process delay (event loop) | above 200 ms (the longest delay in 60 s) | above 1 s |
 | Window or GPU crash in the last 60 minutes | not used | each one, with its time |
 | A background poll that keeps failing (the session list, GitHub for Reviews, account usage, Service status) | 3 failures in a row | 10 failures in a row |
 | The Live details socket cannot start | each time | not used |
@@ -93,47 +95,65 @@ Rules:
 - A check with no data gives no reason. It never gives OK by itself.
 - A reason clears when its condition ends. A crash reason clears 60 minutes after the crash.
 - The Mac section, the network and the Claude sessions do not change Bifrost's state. They help you find the cause.
-- While the Mac is offline (`net.isOnline()` is false), failed network polls do not count. These are GitHub, account usage and Service status. The session list always counts.
+- While the Mac is offline (`net.isOnline()` is false), a failed poll of a network part counts as no data. The network parts are GitHub, account usage and Service status. So the failures in a row do not grow while offline. The reconnect then shows no failure from the offline time. The session list always counts. The health model also gives no reason for a network poll while offline.
 
 Definitions (my calls after the builder check, 2026-11-09):
 
 - **Bifrost RAM** is the sum of all Electron processes of Bifrost (`app.getAppMetrics()`) and the chat terminals. A chat terminal is the `claude attach` viewer process that the PTY manager starts for a chat window. It is not the session process, so no process counts twice.
 - **CPU** is a percentage of one core, as in Activity Monitor. A total can be above 100%.
-- **The trend** is the least-squares slope of the samples. The check needs at least 30 minutes of samples. After Bifrost starts, the check gives no reason for 30 minutes. The history is in memory only.
+- **The trend** is the least-squares slope of the samples of the last 60 minutes. The check needs samples for the full 60 minutes, so one step in RAM cannot give a reason. After Bifrost starts, the check gives no reason for 60 minutes. The monitor keeps the newest sample before the 60 minutes. That sample shows that the samples cover the full 60 minutes. The history is in memory only.
+- **The main process delay** is the longest delay of the Node event loop in each 60 s window. The histogram of `monitorEventLoopDelay()` uses a 50 ms resolution. Each value of the histogram is the timer interval plus the delay. So Bifrost subtracts the 50 ms, and the value is never below 0. The longest delay shows a repeated freeze that a percentile can hide.
 - **A crash** is a `render-process-gone` event of the main window, or a `child-process-gone` event of the GPU process. Its reason is not `clean-exit`. A reload that you start (the View menu, Cmd+R) is not a crash. A reload of the development server is not a crash.
-- **A Claude session** is a registry row with a PID. Its RAM and CPU are the sum of its process and all its child processes, for example MCP servers and tools. One `ps` call reads all processes. Processes outside the registry do not count.
+- **A Claude session** is a registry row with a PID. Its RAM and CPU are the sum of its process and all its child processes. MCP servers and tools are examples of child processes. One `ps` call reads all processes. Processes outside the registry do not count.
 
 ## 7. Data sources
 
 | Data | Source | Interval |
 |---|---|---|
 | Bifrost processes | Electron `app.getAppMetrics()` (type, CPU, memory) | 15 s; 2 s while the panel shows |
-| Chat terminals | The PIDs of the PTY manager, with `ps -o rss=,%cpu= -p <pids>` | same |
-| Claude sessions | The PIDs of the registry rows, with one `ps` call | 15 s |
-| Frame rate | The renderer counts frames while the panel shows | 1 s |
-| Main process delay | Node `perf_hooks.monitorEventLoopDelay()` | continuous |
-| Crashes and reloads | `render-process-gone` and page loads of the main window | event |
-| Poll failures | Counters in the registry service, the Reviews watcher, the Live details link and the Service status monitor | event |
+| Chat terminals | The PIDs of the PTY manager, in one `ps -axo pid=,ppid=,rss=,time=,comm=` table of all processes. The CPU is the change of the CPU time (`time=`) between two reads (P3). | each `ps` read |
+| Claude sessions | The PIDs of the registry rows, in the same `ps` table. Bifrost calculates the sessions on each `ps` read. | each `ps` read: 15 s; at most every 6 s while the panel shows |
+| Frame rate | The renderer counts frames while the panel shows and the window has the focus | 1 s |
+| Main process delay | Node `perf_hooks.monitorEventLoopDelay()` with a 50 ms resolution | continuous; the check uses each 60 s window |
+| Crashes | `render-process-gone` of the main window, and `child-process-gone` of the GPU process | event |
+| End of a page | `did-navigate`, `render-process-gone` and `closed` of the main window. The monitor then works as for a closed panel (15 s, no network command, no probe) until the next page reports. | event |
+| Poll failures | Results from the registry service, the Reviews watcher, the account usage poller and the Service status monitor. While offline, a failed poll of a network part counts as no data. | event |
+| Live details start errors | The result of each start of the Live details server. A good start, Turn off and Remove clear the reason. | event |
 | Failed saves | A counter in each store | event |
 | Memory pressure, swap | `sysctl kern.memorystatus_vm_pressure_level` and `sysctl vm.swapusage` | 15 s |
-| CPU load | `os.cpus()` time deltas | 15 s |
-| Thermal state | Electron `powerMonitor.getCurrentThermalState()` and its change event | event |
+| CPU load | `os.cpus()` time deltas | 15 s; 2 s while the panel shows |
+| Thermal state | Electron `powerMonitor.getCurrentThermalState()`, read on each tick | 15 s; 2 s while the panel shows |
 | Battery | `pmset -g batt` | 60 s |
 | Online | Electron `net.isOnline()` | 15 s |
-| Interface and rates | the default route interface from `/sbin/route -n get default`; its type from `/usr/sbin/networksetup -listallhardwareports` (Wi-Fi or Ethernet); a `utun` or `ipsec` interface is a VPN; byte counters from `netstat -ib` | 2 s while the panel shows, else not read |
+| Interface and rates | the default route interface from `/sbin/route -n get default`; its type from `/usr/sbin/networksetup -listallhardwareports` (Wi-Fi or Ethernet); a `utun` or `ipsec` interface is a VPN; byte counters from `netstat -ib` | the interface and its type when the panel opens, then at most every 60 s; the byte counters at most every 6 s; only while the panel shows |
 | Response times | One HTTPS `HEAD` request to `https://api.anthropic.com` and to `https://api.github.com` with Electron `net.fetch` (it uses the system proxy), with no login and no token. Any HTTP status counts as an answer. The time is until the response headers. After 5 s the row shows "No answer". A DNS or connection error shows "Can't reach". | 60 s while the panel shows |
-| GitHub points | The `rateLimit` of the last Reviews poll (the query adds `limit` and `resetAt`). With Reviews off, `gh api rate_limit` (it costs no points), only while the panel shows. Without `gh`, or with `gh` logged out, the row shows "Not available" and the reason. | each poll, or 60 s while the panel shows |
+| GitHub points | The `rateLimit` of the last Reviews poll (the query adds `limit` and `resetAt`). With Reviews off, or when the Reviews value is missing or past its reset time, `gh api rate_limit` (it costs no points), only while the panel shows. Without `gh`, or with `gh` logged out, the row shows "Not available" and the reason. | each poll, or 60 s while the panel shows |
 | Free disk | Node `fs.statfs` of the home folder | 60 s |
-| Reviews clones | The size of `~/.bifrost/reviews/repos` | 10 min, only when the folder exists |
+| Reviews clones | The size of `~/.bifrost/reviews/repos` from `/usr/bin/du -sk` | 10 min, only when the folder exists |
 
-While the panel shows, the `ps` and `netstat` commands run at most every 6 s, not every 2 s. Memory pressure and swap run at most every 15 s. This keeps the monitor below 1% of one core (section 8 wins over the 2 s in this table). The Electron metrics and the snapshot keep the 2 s tick.
+While the panel shows, the `ps` and `netstat` commands run at most every 6 s, not every 2 s. Memory pressure and swap run at most every 15 s. The `route` and `networksetup` commands run when the panel opens, then at most every 60 s. These limits keep the cost of the monitor low (section 8 gives the measured value). The Electron metrics and the snapshot keep the 2 s tick.
 
 The monitor keeps 60 minutes of samples in memory. It writes nothing to disk, except the Details open state with the other UI state.
 
 ## 8. Constraints
 
-- The monitor must stay below 1% CPU of one core on average and below 10 MB of memory.
-- No new library. Use Electron, Node and macOS commands with absolute paths (`/bin/ps`, `/usr/sbin/sysctl`, `/usr/bin/pmset`, `/usr/sbin/netstat`, `/sbin/route`, `/usr/sbin/networksetup`). All are read only.
+- The goal: the monitor stays below 1% CPU of one core on average and below 10 MB of memory.
+- The measured CPU (2026-11-09). A test copy of Bifrost ran in the smoke harness, with a test home and a fake `claude`. It made no network request. The Mac was busy (load average 12 to 27). Before each measurement, the app ran for 30 s. `/bin/ps -o pid=,time=,comm=` gave the CPU time of each Bifrost process at the start and at the end of 2 minutes. The window had the focus. The values are percent of one core.
+
+| State | Main process | Window | GPU | Other | Total |
+|---|---|---|---|---|---|
+| Panel closed, animated background off | 0.57% | 0.17% | 0.02% | 0.01% | 0.77% |
+| Panel open, Details closed, animated background off | 0.62% | 2.86% | 1.96% | 0.02% | 5.45% |
+| Panel open, Details open, animated background off | 1.55% | 3.09% | 2.05% | 0.00% | 6.69% |
+| Panel closed, animated background on | 0.42% | 3.94% | 19.26% | 0.00% | 23.62% |
+| Panel open, Details closed, animated background on | 0.49% | 7.07% | 20.33% | 0.00% | 27.89% |
+| Panel open, Details open, animated background on | 2.12% | 8.21% | 21.75% | 0.00% | 32.07% |
+
+- The values above do not include the short commands of the monitor. One run of `ps` uses about 38 ms of CPU. One run of `networksetup` uses about 23 ms, and one run of `pmset` about 8 ms. One run of `netstat` uses about 6 ms, and one run of `sysctl` or `route` about 3 ms. At the intervals of section 7, the commands add about 0.3% of one core with the panel closed. They add about 0.8% while the panel shows.
+- With the panel closed, the monitor is near the goal. All of Bifrost used 0.77% of one core, and the commands add about 0.3%.
+- While the panel shows and has the focus, the goal is not met. For the frame rate, the panel keeps a `requestAnimationFrame` loop at the display rate (118 fps in this test). So the window and the GPU process draw a frame for each display refresh. That adds about 4.6% of one core.
+- The animated background uses about 19% to 20% of one core in the GPU process. It is not part of the monitor.
+- No new library. Use Electron, Node and macOS commands with absolute paths (`/bin/ps`, `/usr/sbin/sysctl`, `/usr/bin/pmset`, `/usr/sbin/netstat`, `/sbin/route`, `/usr/sbin/networksetup`, `/usr/bin/du`). All are read only.
 - Build order: Reviews R1 merges into `main` first. This work starts from that `main`, because the GitHub points and a poll counter come from the Reviews watcher.
 - The response-time requests send no token, no cookie and no user data.
 - All text in the app is plain, friendly English. Specs, plans, comments and commit bodies use ASD-STE100.
