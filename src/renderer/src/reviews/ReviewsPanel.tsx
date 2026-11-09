@@ -57,7 +57,7 @@ export default function ReviewsPanel(): React.JSX.Element {
         </p>
         <button
           className='border border-panel-edge bg-black/35 px-1.5 text-text text-xs leading-4 hover:text-text-strong active:bg-accent/12'
-          onClick={() => settingsNav.open()}
+          onClick={() => settingsNav.open('reviews')}
           type='button'
         >
           Open Settings
