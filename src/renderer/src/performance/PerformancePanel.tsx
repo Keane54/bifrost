@@ -63,7 +63,8 @@ const orDash = <T,>(value: T | null, text: (v: T) => string): string =>
   value === null ? '-' : text(value)
 
 function Headline({ snapshot }: { snapshot: Snapshot }): React.JSX.Element {
-  // With no sample yet, the headline does not say OK (design section 4).
+  // The Checking state shows with no sample, or with a sample older than 60 s. The headline never
+  // says OK without data (design section 5.1).
   if (snapshot.state === 'ok' && snapshot.okText === null) {
     return (
       <div className='border-panel-edge border-b p-2 text-text-dim' data-perf-headline='checking'>

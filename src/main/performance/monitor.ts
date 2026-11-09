@@ -44,8 +44,13 @@ export const BATTERY_MS = 60_000
 export const DISK_MS = 60_000
 export const CLONES_MS = 600_000
 // The monitor keeps the samples of the health model for this time, and the newest sample before
-// it. That sample shows that the samples cover the full time (design section 6).
+// it. That sample shows that the samples cover the full time (design section 6). A gap in the
+// samples clears the history (SAMPLE_GAP_MS).
 export const HISTORY_MS = 3_600_000
+// A new sample more than this time after the last sample clears the samples and the trend line
+// first, for example after a sleep of the Mac or a long ps failure. Then the trend needs a new
+// full hour and the CPU check a new 2 minutes (design section 6). The ticks are 15 s at most.
+export const SAMPLE_GAP_MS = 60_000
 // The trend line of the panel shows this time.
 export const TREND_MS = 600_000
 // While the panel shows, the monitor reads the interface kind again after this time.
@@ -370,6 +375,11 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
   }
 
   function addSample(now: number, use: BifrostUse): void {
+    const last = st.samples.at(-1)
+    if (last !== undefined && now - last.at > SAMPLE_GAP_MS) {
+      st.samples = []
+      st.trend = []
+    }
     st.samples.push({
       at: now,
       bifrostCpuNoTerm: use.cpu - use.terminals.cpu,

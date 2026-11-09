@@ -16,6 +16,7 @@ import {
   PROBE_MS,
   PROBE_URLS,
   type ProbeResult,
+  SAMPLE_GAP_MS,
   TICK_MS,
   TREND_MS,
 } from '../../../src/main/performance/monitor'
@@ -907,6 +908,67 @@ describe('createPerformanceMonitor', () => {
     ])
     expect(snap.bifrost?.delayMs).toBe(1500)
     expect(snap.okText).toBe('Bifrost is using 1.1 GB RAM and 10% CPU.')
+    t.monitor.stop()
+  })
+
+  it('after an 8 h clock jump, the samples right after wake give no memory or CPU reason', async () => {
+    const t = setup()
+    const reasonFor = (part: string): boolean => hasReason(t, part)
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    // 30 minutes awake with a flat RAM.
+    await vi.advanceTimersByTimeAsync(30 * MIN)
+    expect(t.monitor.current().reasons).toEqual([])
+    // The Mac sleeps for 8 hours. The clock jumps, and no timer runs during the sleep.
+    vi.setSystemTime(Date.now() + 8 * 60 * MIN)
+    const main = t.world.metrics[0]
+    if (main) main.cpu = 60
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    if (main) main.ramMb += 4
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    // Without the gap rule: "growing by about 960 MB an hour" and a CPU warning.
+    expect(reasonFor('growing')).toBe(false)
+    expect(reasonFor('CPU on average')).toBe(false)
+    expect(t.monitor.current().bifrost?.trend).toHaveLength(2)
+    expect(SAMPLE_GAP_MS).toBe(60_000)
+    t.monitor.stop()
+  })
+
+  it('after a 5 minute clock jump, the CPU check waits for 2 new minutes of samples', async () => {
+    const t = setup()
+    const cpuReason = (): boolean => hasReason(t, 'CPU on average')
+    const main = t.world.metrics[0]
+    if (main) main.cpu = 60
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(5 * MIN)
+    expect(cpuReason()).toBe(true)
+    vi.setSystemTime(Date.now() + 5 * MIN)
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(cpuReason()).toBe(false)
+    // The new samples cover 2 minutes 15 s after the jump.
+    await vi.advanceTimersByTimeAsync(2 * MIN - TICK_MS)
+    expect(cpuReason()).toBe(false)
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(cpuReason()).toBe(true)
+    t.monitor.stop()
+  })
+
+  it('normal 15 s and 2 s ticks never clear the history', async () => {
+    const t = setup()
+    const start = Date.now()
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    // 5 minutes closed: the samples at 15 s to 300 s.
+    await vi.advanceTimersByTimeAsync(5 * MIN)
+    // 1 minute open: 30 samples. Then 1 minute closed: 4 samples.
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(MIN)
+    t.monitor.view(HIDE)
+    await vi.advanceTimersByTimeAsync(MIN)
+    const trend = t.monitor.current().bifrost?.trend ?? []
+    expect(trend).toHaveLength(20 + 30 + 4)
+    expect(trend[0]?.at).toBe(start + TICK_MS)
     t.monitor.stop()
   })
 

@@ -82,7 +82,7 @@ Bifrost runs the checks every 15 seconds, also while the panel is closed, so the
 | Bifrost RAM (all Bifrost processes, chat terminals included) | above 1 GB | above 1.5 GB |
 | Memory growth (a leak), on Bifrost RAM without the chat terminals | the trend over the last 60 minutes rises faster than 300 MB per hour | the trend rises faster than 800 MB per hour |
 | Bifrost CPU without the chat terminals, the average over 2 minutes | above 50% of one core | above 100% of one core |
-| Frame rate while the panel shows and the window has focus | below 30 fps for 10 s: the last two burst values of this showing are both below 30 fps | not used |
+| Frame rate while the panel shows and the window has focus | below 30 fps for 10 s: the last two burst values while the panel shows are both below 30 fps | not used |
 | Main process delay (event loop) | above 200 ms (the longest delay in 60 s) | above 1 s |
 | Window or GPU crash in the last 60 minutes | not used | each one, with its time |
 | A background poll that keeps failing (the session list, GitHub for Reviews, account usage, Service status) | 3 failures in a row | 10 failures in a row |
@@ -102,8 +102,9 @@ Definitions (my calls after the builder check, 2026-11-09):
 - **Bifrost RAM** is the sum of all Electron processes of Bifrost (`app.getAppMetrics()`) and the chat terminals. A chat terminal is the `claude attach` viewer process that the PTY manager starts for a chat window. It is not the session process, so no process counts twice.
 - **CPU** is a percentage of one core, as in Activity Monitor. A total can be above 100%.
 - **The trend** is the least-squares slope of the samples of the last 60 minutes. The check needs samples for the full 60 minutes, so one step in RAM cannot give a reason. After Bifrost starts, the check gives no reason for 60 minutes. The monitor keeps the newest sample before the 60 minutes. That sample shows that the samples cover the full 60 minutes. The history is in memory only.
+- **A gap in the samples** is more than 60 s between a new sample and the last sample. A sleep of the Mac or a long `ps` failure can cause a gap. Before it adds the new sample, the monitor clears the sample history and the trend line. So after a gap, the trend needs a new full hour, and the CPU check needs a new 2 minutes. The ticks are 15 s or 2 s, so normal ticks never clear the history.
 - **The main process delay** is the longest delay of the Node event loop in each 60 s window. The histogram of `monitorEventLoopDelay()` uses a 50 ms resolution. Each value of the histogram is the timer interval plus the delay. So Bifrost subtracts the 50 ms, and the value is never below 0. The longest delay shows a repeated freeze that a percentile can hide.
-- **A low frame rate** needs two burst values below 30 fps in a row. The bursts start 10 s apart, so the two values cover 10 s or more. A change of showing or of the focus starts a new count.
+- **A low frame rate** is two burst values below 30 fps in a row. The bursts start 10 s apart, so the two values cover 10 s or more. A change of the panel state or of the focus starts a new count.
 - **A crash** is a `render-process-gone` event of the main window, or a `child-process-gone` event of the GPU process. Its reason is not `clean-exit`. A reload that you start (the View menu, Cmd+R) is not a crash. A reload of the development server is not a crash.
 - **A Claude session** is a registry row with a PID. Its RAM and CPU are the sum of its process and all its child processes. MCP servers and tools are examples of child processes. One `ps` call reads all processes. Processes outside the registry do not count.
 
