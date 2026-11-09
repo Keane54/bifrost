@@ -388,7 +388,7 @@ Display mode:
 - The default mode is Window.
 - You select Borderless in the View menu or in Settings. Cmd+Ctrl+F toggles Fullscreen (section 9.4).
 
-The side bar is a thin bar on the left edge. It has one button for each panel type. It also holds the minimised panels.
+The side bar is a thin bar on the left edge. It has one button for each panel type. It also holds the minimised panels. Each button shows a short tooltip with its name at its right side, for example "Overview" or "Reviews" (user decision, 2026-11-09). The tooltip is the Bifrost tooltip, not the native tooltip of the browser.
 
 Bifrost uses its own window manager, because the snap and stack rules are specific. M2 can change this decision if a library meets all the rules.
 
