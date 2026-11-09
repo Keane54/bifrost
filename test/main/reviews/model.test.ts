@@ -66,6 +66,7 @@ function pr(over: Partial<PrData> = {}): PrData {
     baseRef: 'main',
     comments: [],
     createdAt: 1,
+    decisions: [],
     deletions: 1,
     failedChecks: 0,
     headRef: 'f',
@@ -83,7 +84,10 @@ function pr(over: Partial<PrData> = {}): PrData {
     reviews: [],
     threads: [],
     title: 't',
-    truncated: false,
+    truncatedChecks: false,
+    truncatedComments: false,
+    truncatedReviews: false,
+    truncatedThreads: false,
     updatedAt: 5,
     url: 'https://github.com/acme/app/pull/1',
     viewerPendingReviewId: null,
@@ -215,7 +219,7 @@ describe('reviewStatus', () => {
 
   it('reviewStatus: changes requested wins over open threads', () => {
     const p = pr({
-      reviews: [review('r1', member, { state: 'CHANGES_REQUESTED' })],
+      decisions: [review('r1', member, { state: 'CHANGES_REQUESTED' })],
       threads: [thread('t1', member)],
     })
     expect(status(p)).toBe('changes-requested')
@@ -230,14 +234,13 @@ describe('reviewStatus', () => {
       ],
     })
     expect(splitWork(p, VIEWER, prState(), NONE, null).work).toEqual([])
-    expect(
-      status(pr({ reviews: [review('r1', member, { body: 'LGTM', state: 'APPROVED' })] })),
-    ).toBe('approved')
+    const lgtm = review('r1', member, { body: 'LGTM', state: 'APPROVED' })
+    expect(status(pr({ decisions: [lgtm], reviews: [lgtm] }))).toBe('approved')
   })
 
   it('the latest review of a reviewer counts', () => {
     const p = pr({
-      reviews: [
+      decisions: [
         review('r1', member, { state: 'CHANGES_REQUESTED', submittedAt: 1 }),
         review('r2', member, { state: 'APPROVED', submittedAt: 2 }),
       ],
@@ -251,7 +254,7 @@ describe('reviewStatus', () => {
       threads: [thread('t1', copilot, { reviewId: 'r1' })],
     })
     expect(status(open)).toBe('comments')
-    const approved = pr({ reviews: [review('r1', copilot, { state: 'APPROVED' })] })
+    const approved = pr({ decisions: [review('r1', copilot, { state: 'APPROVED' })] })
     expect(status(approved)).toBe('pending')
   })
 
@@ -268,7 +271,7 @@ describe('reviewStatus', () => {
 
   it('reviewStatus: approved with all threads resolved gives approved; no reviewer gives pending', () => {
     const approved = pr({
-      reviews: [review('r1', member, { state: 'APPROVED' })],
+      decisions: [review('r1', member, { state: 'APPROVED' })],
       threads: [thread('t1', member, { isResolved: true })],
     })
     expect(status(approved)).toBe('approved')
@@ -277,13 +280,13 @@ describe('reviewStatus', () => {
 
   it('an older open thread gives comments, a top-level work item does not', () => {
     const p = pr({
-      reviews: [review('r1', member, { state: 'APPROVED' })],
+      decisions: [review('r1', member, { state: 'APPROVED' })],
       threads: [thread('t1', member)],
     })
     expect(status(p, prState(), new Set(['t1']))).toBe('comments')
     const q = pr({
       comments: [comment('pc1', member)],
-      reviews: [review('r1', member, { state: 'APPROVED' })],
+      decisions: [review('r1', member, { state: 'APPROVED' })],
     })
     // The comment stays work for a later round, but it does not change the status word.
     expect(ids(splitWork(q, VIEWER, prState(), NONE, null).work)).toEqual(['pc1'])
@@ -292,10 +295,12 @@ describe('reviewStatus', () => {
   })
 
   it('a CHANGES_REQUESTED body followed by an approval gives approved', () => {
+    const approval = review('r2', member, { state: 'APPROVED', submittedAt: 2 })
     const p = pr({
+      decisions: [approval],
       reviews: [
         review('r1', member, { body: 'Please fix', state: 'CHANGES_REQUESTED', submittedAt: 1 }),
-        review('r2', member, { state: 'APPROVED', submittedAt: 2 }),
+        approval,
       ],
     })
     expect(ids(splitWork(p, VIEWER, prState(), NONE, null).work)).toEqual(['r1'])
@@ -305,9 +310,21 @@ describe('reviewStatus', () => {
   it("an approved PR with a member's Thanks comment gives approved", () => {
     const p = pr({
       comments: [{ ...comment('pc1', member), body: 'Thanks!' }],
-      reviews: [review('r1', member, { state: 'APPROVED' })],
+      decisions: [review('r1', member, { state: 'APPROVED' })],
     })
     expect(status(p)).toBe('approved')
+  })
+
+  it('takes the decisions from latestOpinionatedReviews, not from the first 30 reviews', () => {
+    // The first page of reviews has an old request for changes. The newest decision is an
+    // approval that is not on the first page.
+    const p = pr({
+      decisions: [review('r40', member, { state: 'APPROVED', submittedAt: 40 })],
+      reviews: [review('r1', member, { state: 'CHANGES_REQUESTED', submittedAt: 1 })],
+    })
+    expect(status(p)).toBe('approved')
+    const q = pr({ decisions: [review('r40', member, { state: 'CHANGES_REQUESTED' })] })
+    expect(status(q)).toBe('changes-requested')
   })
 
   it('a top-level work item alone gives pending, not comments', () => {
@@ -455,6 +472,44 @@ describe('buildSnapshot', () => {
   })
 })
 
+describe('buildSnapshot of a busy PR', () => {
+  const input = (mine: PrData[]) => ({
+    claude: () => ({ claude: 'waiting' as const, error: null, fixing: 0, sessionId: null }),
+    now: 5000,
+    poll: { mine, toReview: [], viewer: VIEWER },
+    session: () => null,
+    settings: { reviewsIgnore: [] as string[], reviewsTeamRequests: true },
+    state: structuredClone(EMPTY_STATE),
+  })
+
+  it('a My PRs row is truncated when one of its lists is cut', () => {
+    const flags = [
+      'truncatedThreads',
+      'truncatedReviews',
+      'truncatedComments',
+      'truncatedChecks',
+    ] as const
+    const rows = buildSnapshot(
+      input([
+        pr({ key: 'acme/app#1', number: 1 }),
+        ...flags.map((flag, i) => pr({ key: `acme/app#${i + 2}`, number: i + 2, [flag]: true })),
+      ]),
+    ).mine
+    expect(rows.map(r => [r.key, r.truncated]).sort()).toEqual([
+      ['acme/app#1', false],
+      ['acme/app#2', true],
+      ['acme/app#3', true],
+      ['acme/app#4', true],
+      ['acme/app#5', true],
+    ])
+  })
+
+  it('a reviewer with only a decision shows in the reviewers', () => {
+    const p = pr({ decisions: [review('r9', member, { state: 'APPROVED' })] })
+    expect(buildSnapshot(input([p])).mine[0]?.reviewers).toEqual(['alice'])
+  })
+})
+
 describe('baselineOf', () => {
   it('collects the open items of My PRs and the To review keys', () => {
     const poll: PollData = {
@@ -469,7 +524,7 @@ describe('baselineOf', () => {
 
   it('adds the visible items of a truncated PR to the baseline', () => {
     const poll: PollData = {
-      mine: [pr({ threads: [thread('t1', member)], truncated: true })],
+      mine: [pr({ threads: [thread('t1', member)], truncatedThreads: true })],
       toReview: [],
       viewer: VIEWER,
     }
@@ -530,10 +585,10 @@ describe('splitWork pins', () => {
       review('r3', member, { state: 'PENDING', submittedAt: 10 }),
     ]
     const cr = pr({
-      reviews: [review('r1', member, { state: 'CHANGES_REQUESTED', submittedAt: 1 }), ...later],
+      decisions: [review('r1', member, { state: 'CHANGES_REQUESTED', submittedAt: 1 }), ...later],
     })
     const ap = pr({
-      reviews: [review('r1', member, { state: 'APPROVED', submittedAt: 1 }), ...later],
+      decisions: [review('r1', member, { state: 'APPROVED', submittedAt: 1 }), ...later],
     })
     const st = (p: PrData) => reviewStatus(p, VIEWER, { laterCopilot: [], older: [], work: [] })
     expect(st(cr)).toBe('changes-requested')
@@ -543,7 +598,7 @@ describe('splitWork pins', () => {
   it('an older top-level item does not give comments', () => {
     const p = pr({
       comments: [comment('pc1', member)],
-      reviews: [review('r1', member, { state: 'APPROVED' })],
+      decisions: [review('r1', member, { state: 'APPROVED' })],
     })
     const split = splitWork(p, VIEWER, prState(), new Set(['pc1']), null)
     expect(ids(split.older)).toEqual(['pc1'])

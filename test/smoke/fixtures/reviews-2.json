@@ -65,6 +65,24 @@
           "headRefOid": "bbbb222",
           "isCrossRepository": false,
           "isDraft": false,
+          "latestOpinionatedReviews": {
+            "nodes": [
+              {
+                "author": {
+                  "__typename": "User",
+                  "login": "erin"
+                },
+                "authorAssociation": "MEMBER",
+                "id": "R_c1",
+                "state": "CHANGES_REQUESTED",
+                "submittedAt": "2026-11-06T10:00:00Z"
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
           "number": 90,
           "pendingReviews": {
             "nodes": []
@@ -197,6 +215,24 @@
           "headRefOid": "cccc333",
           "isCrossRepository": false,
           "isDraft": false,
+          "latestOpinionatedReviews": {
+            "nodes": [
+              {
+                "author": {
+                  "__typename": "User",
+                  "login": "frank"
+                },
+                "authorAssociation": "MEMBER",
+                "id": "R_d1",
+                "state": "APPROVED",
+                "submittedAt": "2026-11-08T07:00:00Z"
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
           "number": 31,
           "pendingReviews": {
             "nodes": [

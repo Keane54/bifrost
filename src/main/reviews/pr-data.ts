@@ -37,7 +37,8 @@ export interface PrReview {
   commit: string | null
 }
 
-// In R1, a To review PR carries no reviews, threads or comments: these lists are empty.
+// In R1, a To review PR carries no reviews, decisions, threads or comments: these lists are
+// empty.
 export interface PrData {
   key: string
   owner: string
@@ -57,7 +58,13 @@ export interface PrData {
   // Slugs of the teams with an open review request.
   requestedTeams: string[]
   requestedAt: number
+  // The first 30 reviews. They give the first Copilot review and the review bodies.
   reviews: PrReview[]
+  // The latest review of each reviewer that gives a decision (latestOpinionatedReviews). The
+  // review status uses only this list, so a busy PR with more than 30 reviews keeps the newest
+  // decisions (final review I2).
+  decisions: PrReview[]
+  // The newest 20 threads.
   threads: PrThread[]
   comments: PrComment[]
   failedChecks: number
@@ -66,8 +73,13 @@ export interface PrData {
   baseRef: string
   isCrossRepository: boolean
   viewerPendingReviewId: string | null
-  // True when a list of the PR has more items than the query reads.
-  truncated: boolean
+  // Each flag is true when GitHub has more items in that list than the query reads.
+  // The threads flag is also true when a thread has more comments than the query reads.
+  // The reviews flag covers the reviews and the decisions.
+  truncatedThreads: boolean
+  truncatedReviews: boolean
+  truncatedComments: boolean
+  truncatedChecks: boolean
 }
 
 export interface PollData {

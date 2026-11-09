@@ -12,6 +12,13 @@ import {
 const fixture = (name: string): string =>
   readFileSync(new URL(`../../fixtures/reviews/${name}.json`, import.meta.url), 'utf8')
 
+// Set a value deep in a raw answer. The path has keys and list indexes.
+function setAt(root: unknown, path: (string | number)[], value: unknown): void {
+  let node = root as Record<string | number, unknown>
+  for (const key of path.slice(0, -1)) node = node[key] as Record<string | number, unknown>
+  node[path.at(-1) as string | number] = value
+}
+
 function basic() {
   const r = parsePoll(fixture('poll-basic'))
   if (!r.ok) throw new Error(r.message)
@@ -42,7 +49,10 @@ describe('parsePoll', () => {
       number: 101,
       owner: 'acme',
       repo: 'web',
-      truncated: false,
+      truncatedChecks: false,
+      truncatedComments: false,
+      truncatedReviews: false,
+      truncatedThreads: false,
       url: 'https://github.com/acme/web/pull/101',
     })
   })
@@ -94,9 +104,70 @@ describe('parsePoll', () => {
     expect(approved?.threads[0]?.line).toBeNull()
   })
 
-  it('sets truncated when a page has a next page', () => {
+  it('reads the decision of each reviewer from latestOpinionatedReviews', () => {
+    const [changes, approved] = basic().mine
+    expect(changes?.decisions).toHaveLength(1)
+    expect(changes?.decisions[0]).toMatchObject({
+      author: { association: 'MEMBER', bot: false, login: 'erin' },
+      id: 'R_c1',
+      state: 'CHANGES_REQUESTED',
+      submittedAt: Date.parse('2026-11-06T10:00:00Z'),
+    })
+    expect(approved?.decisions.map(d => [d.author.login, d.state])).toEqual([['frank', 'APPROVED']])
+    // A To review PR reads no decisions.
+    expect(basic().toReview[0]?.decisions).toEqual([])
+  })
+
+  it('sets truncatedThreads when GitHub has older threads', () => {
     const r = parsePoll(fixture('poll-truncated'))
-    expect(r.ok && r.data.mine[0]?.truncated).toBe(true)
+    expect(r.ok && r.data.mine[0]).toMatchObject({
+      truncatedChecks: false,
+      truncatedComments: false,
+      truncatedReviews: false,
+      truncatedThreads: true,
+    })
+  })
+
+  it('sets one flag for each list that GitHub cut', () => {
+    // Set one value of the first My PR of the raw answer, then give the four flags.
+    const cut = (path: (string | number)[], value: unknown) => {
+      const raw = JSON.parse(fixture('poll-basic'))
+      setAt(raw.data.mine.nodes[0], path, value)
+      const r = parsePoll(JSON.stringify(raw))
+      if (!r.ok) throw new Error(r.message)
+      const pr = r.data.mine[0]
+      return [
+        pr?.truncatedThreads,
+        pr?.truncatedReviews,
+        pr?.truncatedComments,
+        pr?.truncatedChecks,
+      ]
+    }
+    const none = [false, false, false, false]
+    expect(cut(['title'], 'x')).toEqual(none)
+    const threadComments = ['reviewThreads', 'nodes', 0, 'comments', 'pageInfo', 'hasNextPage']
+    expect(cut(threadComments, true)).toEqual([true, false, false, false])
+    expect(cut(['reviewThreads', 'pageInfo', 'hasPreviousPage'], true)).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ])
+    expect(cut(['reviews', 'pageInfo', 'hasNextPage'], true)).toEqual([false, true, false, false])
+    expect(cut(['latestOpinionatedReviews', 'pageInfo', 'hasNextPage'], true)).toEqual([
+      false,
+      true,
+      false,
+      false,
+    ])
+    expect(cut(['comments', 'pageInfo', 'hasPreviousPage'], true)).toEqual([
+      false,
+      false,
+      true,
+      false,
+    ])
+    const contexts = ['commits', 'nodes', 0, 'commit', 'statusCheckRollup', 'contexts']
+    expect(cut([...contexts, 'pageInfo', 'hasNextPage'], true)).toEqual([false, false, false, true])
   })
 
   it('drops a PR that lacks a key field', () => {
@@ -152,6 +223,17 @@ describe('POLL_QUERY comment selections', () => {
     expect(POLL_QUERY.slice(0, at)).not.toContain('pullRequestReview')
     expect(POLL_QUERY.slice(top)).not.toContain('pullRequestReview')
     expect(POLL_QUERY.slice(at, top)).toContain('pullRequestReview { id }')
+  })
+})
+
+describe('POLL_QUERY lists of a busy PR', () => {
+  it('reads the newest 20 threads, the first 30 reviews and the decisions', () => {
+    expect(MINE_FRAGMENT).toContain('reviewThreads(last: 20)')
+    expect(MINE_FRAGMENT).toContain('reviews(first: 30)')
+    expect(MINE_FRAGMENT).toMatch(
+      /latestOpinionatedReviews\(first: 20\) \{[\s\S]*?author \{ login __typename \}[\s\S]*?state[\s\S]*?submittedAt/,
+    )
+    expect(TO_REVIEW_FRAGMENT).not.toContain('latestOpinionatedReviews')
   })
 })
 

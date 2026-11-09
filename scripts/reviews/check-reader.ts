@@ -31,6 +31,7 @@ registerHooks({
 const { execFile } = await import('../../src/main/claude/cli.ts')
 const { createGh, ghFailure } = await import('../../src/main/reviews/gh.ts')
 const { parsePoll, pollArgs } = await import('../../src/main/reviews/query.ts')
+const { isTruncated } = await import('../../src/main/reviews/model.ts')
 
 function fail(message: string): never {
   console.error(`check-reader failed: ${message}`)
@@ -62,7 +63,8 @@ try {
 const direct = toReview.filter(pr => pr.requestedUsers.includes(viewer))
 const team = toReview.length - direct.length
 const approved = direct.filter(pr => pr.reviewDecision === 'APPROVED')
-const failed = mine.filter(pr => pr.failedChecks > 0)
+const all = [...toReview, ...mine]
+const count = (test: (pr: (typeof all)[number]) => boolean): number => all.filter(test).length
 
 console.log(`viewer login: ${viewer}`)
 console.log(
@@ -70,5 +72,11 @@ console.log(
     `direct and approved by others ${approved.length})`,
 )
 console.log(`My PRs: ${mine.length}`)
-console.log(`My PRs with failed checks: ${failed.length}`)
+console.log(`To review with failed checks: ${toReview.filter(pr => pr.failedChecks > 0).length}`)
+console.log(`My PRs with failed checks: ${mine.filter(pr => pr.failedChecks > 0).length}`)
+console.log(
+  `PRs with a cut list: ${count(isTruncated)} (threads ${count(pr => pr.truncatedThreads)}, ` +
+    `reviews ${count(pr => pr.truncatedReviews)}, comments ${count(pr => pr.truncatedComments)}, ` +
+    `checks ${count(pr => pr.truncatedChecks)})`,
+)
 console.log(`GraphQL cost: ${typeof cost === 'number' ? cost : 'unknown'}`)

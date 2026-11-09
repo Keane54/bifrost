@@ -121,9 +121,11 @@ export function splitWork(
 }
 
 // The latest decision of each human reviewer. A comment review does not change a decision.
+// The decisions come from latestOpinionatedReviews, not from the first page of reviews
+// (final review I2).
 function humanDecisions(pr: PrData, viewer: string): PrReview[] {
   const latest = new Map<string, { review: PrReview; time: number }>()
-  for (const review of pr.reviews) {
+  for (const review of pr.decisions) {
     const { author } = review
     if (author.bot || author.login === viewer || review.submittedAt === null) continue
     if (review.state === 'COMMENTED' || review.state === 'PENDING') continue
@@ -207,7 +209,13 @@ function reviewers(pr: PrData, viewer: string): string[] {
   }
   for (const login of pr.requestedUsers) add(login)
   for (const review of pr.reviews) add(review.author.login)
+  for (const review of pr.decisions) add(review.author.login)
   return names
+}
+
+// True when GitHub has more items in one or more lists of the PR than the query reads.
+export function isTruncated(pr: PrData): boolean {
+  return pr.truncatedThreads || pr.truncatedReviews || pr.truncatedComments || pr.truncatedChecks
 }
 
 export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
@@ -262,6 +270,7 @@ export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
       sessionId: claude.sessionId,
       status: reviewStatus(pr, poll.viewer, split),
       title: pr.title,
+      truncated: isTruncated(pr),
       updatedAt: pr.updatedAt,
     })
   }

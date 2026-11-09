@@ -67,13 +67,19 @@ const prChecks = (contexts: number): string => `
   baseRefName
   isCrossRepository`
 
+// A busy PR has more reviews and threads than one page. The decisions come from
+// latestOpinionatedReviews, and the threads are the newest 20 (final review I2).
 const PR_CONVERSATION = `
   reviews(first: 30) {
     pageInfo { hasNextPage }
     nodes { id databaseId ${AUTHOR} state body submittedAt commit { oid } }
   }
-  reviewThreads(first: 20) {
+  latestOpinionatedReviews(first: 20) {
     pageInfo { hasNextPage }
+    nodes { id ${AUTHOR} state submittedAt }
+  }
+  reviewThreads(last: 20) {
+    pageInfo { hasPreviousPage }
     nodes {
       id
       isResolved
@@ -278,17 +284,16 @@ function readPr(v: unknown, viewer: string): PrData | null {
   }
 
   const threads: PrThread[] = []
-  let truncated = more(o.reviewThreads) || more(o.reviews) || more(o.comments)
+  let truncatedThreads = more(o.reviewThreads)
   for (const t of nodes(o.reviewThreads)) {
     const read = readThread(t)
     if (!read) continue
     threads.push(read.thread)
-    if (read.truncated) truncated = true
+    if (read.truncated) truncatedThreads = true
   }
 
   const commit = obj(obj(nodes(o.commits)[0])?.commit)
   const contexts = obj(obj(commit?.statusCheckRollup)?.contexts)
-  if (more(contexts)) truncated = true
 
   const decision = str(o.reviewDecision)
   return {
@@ -297,6 +302,7 @@ function readPr(v: unknown, viewer: string): PrData | null {
     baseRef: str(o.baseRefName) ?? '',
     comments: readComments(o.comments),
     createdAt,
+    decisions: nodes(o.latestOpinionatedReviews).flatMap(r => readReview(r) ?? []),
     deletions: num(o.deletions),
     failedChecks: countFailed(nodes(contexts)),
     headRef: str(o.headRefName) ?? '',
@@ -314,7 +320,10 @@ function readPr(v: unknown, viewer: string): PrData | null {
     reviews: nodes(o.reviews).flatMap(r => readReview(r) ?? []),
     threads,
     title: str(o.title) ?? '',
-    truncated,
+    truncatedChecks: more(contexts),
+    truncatedComments: more(o.comments),
+    truncatedReviews: more(o.reviews) || more(o.latestOpinionatedReviews),
+    truncatedThreads,
     updatedAt: time(o.updatedAt) ?? createdAt,
     url,
     viewerPendingReviewId: str(obj(nodes(o.pendingReviews)[0])?.id),

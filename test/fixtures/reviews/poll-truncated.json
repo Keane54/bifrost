@@ -39,6 +39,13 @@
           "headRefOid": "aaaa111",
           "isCrossRepository": false,
           "isDraft": false,
+          "latestOpinionatedReviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false,
+              "hasPreviousPage": false
+            }
+          },
           "number": 200,
           "pendingReviews": {
             "nodes": []
@@ -70,8 +77,8 @@
           "reviewThreads": {
             "nodes": [],
             "pageInfo": {
-              "hasNextPage": true,
-              "hasPreviousPage": false
+              "hasNextPage": false,
+              "hasPreviousPage": true
             }
           },
           "timelineItems": {

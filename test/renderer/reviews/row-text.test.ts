@@ -6,6 +6,7 @@ import {
   sizeText,
   statusText,
   toReviewText,
+  truncatedText,
 } from '../../../src/renderer/src/reviews/row-text'
 import type { MyPrRow, ToReviewRow } from '../../../src/shared/reviews'
 
@@ -47,6 +48,7 @@ function mine(patch: Partial<MyPrRow>): MyPrRow {
     sessionId: null,
     status: 'pending',
     title: 't',
+    truncated: false,
     updatedAt: NOW,
     ...patch,
   }
@@ -95,6 +97,13 @@ describe('row text', () => {
     expect(claudeText(mine({ claude: 'cloning' }))).toBe('Cloning')
     expect(claudeText(mine({ claude: 'waiting' }))).toBe('Waiting')
     expect(claudeText(mine({ claude: 'error' }))).toBe('Error')
+  })
+
+  it('truncatedText gives the tip only for a row that GitHub cut', () => {
+    expect(truncatedText(mine({}))).toBeNull()
+    expect(truncatedText(mine({ truncated: true }))).toBe(
+      'Bifrost read only the newest items of this PR.',
+    )
   })
 
   it('laterCopilotText', () => {

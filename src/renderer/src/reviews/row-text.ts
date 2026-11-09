@@ -74,6 +74,11 @@ export function claudeText(row: MyPrRow): string {
   }
 }
 
+// The tip of the status of a My PRs row that GitHub cut. Null for a row with all its items.
+export function truncatedText(row: MyPrRow): string | null {
+  return row.truncated ? 'Bifrost read only the newest items of this PR.' : null
+}
+
 export function laterCopilotText(n: number): string | null {
   return n > 0 ? `Copilot: ${n} more` : null
 }

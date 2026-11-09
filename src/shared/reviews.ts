@@ -64,6 +64,8 @@ export interface MyPrRow {
   error: string | null
   sessionId: string | null
   updatedAt: number
+  // True when GitHub has more items of the PR than the poll reads (final review I2).
+  truncated: boolean
 }
 
 export interface TrustNeed {

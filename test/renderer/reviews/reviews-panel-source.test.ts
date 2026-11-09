@@ -21,6 +21,12 @@ describe('Reviews panel source', () => {
     expect(ROW).toMatch(/metaKey[\s\S]{0,200}openPr/)
   })
 
+  it('shows the truncated tip on the status of a My PRs row', () => {
+    expect(ROW).toMatch(
+      /<Tip label=\{truncatedText\(row\)\}>\s*<span[^>]*STATUS_TEXT\[row\.status\]/,
+    )
+  })
+
   it('opens Settings from the off state', () => {
     expect(PANEL).toContain('useSettingsNav')
   })

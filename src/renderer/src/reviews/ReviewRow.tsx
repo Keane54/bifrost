@@ -13,6 +13,7 @@ import {
   sizeText,
   statusText,
   toReviewText,
+  truncatedText,
 } from './row-text'
 
 // The colour of the dot of a review status. Red is only for the flash and for Needs you.
@@ -236,10 +237,12 @@ export function MyPrItem({ onAct, row }: Common & { row: MyPrRow }): React.JSX.E
         title={row.title}
       />
       <div className='relative flex items-center gap-2.5 whitespace-nowrap text-text-dim'>
-        <span className={cx('inline-flex items-center gap-1.5', STATUS_TEXT[row.status])}>
-          <span aria-hidden={true} className='size-1.5 shrink-0 bg-current' />
-          {statusText(row.status)}
-        </span>
+        <Tip label={truncatedText(row)}>
+          <span className={cx('inline-flex items-center gap-1.5', STATUS_TEXT[row.status])}>
+            <span aria-hidden={true} className='size-1.5 shrink-0 bg-current' />
+            {statusText(row.status)}
+          </span>
+        </Tip>
         {row.reviewers.length > 0 && <span>{row.reviewers.join(', ')}</span>}
         {later !== null && <span>{later}</span>}
         <Tip label={row.error}>
