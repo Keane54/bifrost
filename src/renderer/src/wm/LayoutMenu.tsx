@@ -1,6 +1,7 @@
 import { LayoutGrid } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { cx } from '../lib/cx'
+import { Tip } from '../lib/menu'
 import { useLayoutMenu, useLayouts, useWmControls } from './context'
 import { MAX_LAYOUTS, MAX_NAME } from './layout'
 import { useDismiss } from './popover'
@@ -110,18 +111,19 @@ export default function LayoutMenu(props: { className: string }): React.JSX.Elem
 
   return (
     <div className='relative mt-auto'>
-      <button
-        aria-expanded={open}
-        aria-haspopup='dialog'
-        aria-label='Layouts'
-        className={cx(props.className, 'h-8')}
-        onClick={() => setOpen(!open)}
-        ref={button}
-        title='Layouts'
-        type='button'
-      >
-        <LayoutGrid aria-hidden={true} size={16} />
-      </button>
+      <Tip label='Layouts' side='right'>
+        <button
+          aria-expanded={open}
+          aria-haspopup='dialog'
+          aria-label='Layouts'
+          className={cx(props.className, 'h-8')}
+          onClick={() => setOpen(!open)}
+          ref={button}
+          type='button'
+        >
+          <LayoutGrid aria-hidden={true} size={16} />
+        </button>
+      </Tip>
       {open && <LayoutPopover button={button} focusRequest={focusRequest} onClose={close} />}
     </div>
   )
