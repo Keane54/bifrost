@@ -55,7 +55,8 @@ export interface PerformanceSnapshot {
     swap: { usedMb: number; totalMb: number } | null
     cpuLoad: number | null
     thermal: string | null
-    battery: { percent: number; charging: boolean } | null
+    // onBattery is false while the Mac takes power from a power adapter.
+    battery: { percent: number; charging: boolean; onBattery: boolean } | null
   } | null
   network: {
     online: boolean

@@ -1,6 +1,7 @@
 // The texts and the trend line points of the Performance panel (design section 5.2).
 import { describe, expect, it } from 'vitest'
 import {
+  batteryText,
   gb,
   mb,
   ms,
@@ -185,5 +186,18 @@ describe('trendLabel', () => {
     expect(trendLabel([{ at: t0 - 60_000, cpu: 0, ramMb: 1 }, ...span(600_000)])).toBe(
       'Last 10 minutes',
     )
+  })
+})
+
+describe('batteryText', () => {
+  it('says charging, plugged in or on battery, with the whole percent', () => {
+    expect(batteryText({ charging: true, onBattery: false, percent: 82.4 })).toBe('82%, charging')
+    // A full battery on power is "charged", and macOS can also hold the charge at 80%. Both are on
+    // power and not charging, which is not a fault.
+    expect(batteryText({ charging: false, onBattery: false, percent: 100 })).toBe(
+      '100%, plugged in',
+    )
+    expect(batteryText({ charging: false, onBattery: true, percent: 64 })).toBe('64%, on battery')
+    expect(batteryText(null)).toBe('-')
   })
 })

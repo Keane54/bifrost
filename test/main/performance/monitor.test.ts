@@ -733,7 +733,7 @@ describe('createPerformanceMonitor', () => {
     await vi.advanceTimersByTimeAsync(CLONES_MS - BATTERY_MS)
     expect(counts()).toEqual([11, 11, 2])
     const snap = t.monitor.current()
-    expect(snap.mac?.battery).toEqual({ charging: false, percent: 80 })
+    expect(snap.mac?.battery).toEqual({ charging: false, onBattery: true, percent: 80 })
     expect(snap.limits).toMatchObject({ clonesMb: 2, freeDiskGb: 250 })
     t.monitor.stop()
   })
@@ -770,7 +770,7 @@ describe('createPerformanceMonitor', () => {
     // The tick at 2 s keeps the pressure and the swap of the last read.
     expect(t.calls(SYSCTL)).toBe(2)
     expect(t.monitor.current().mac).toEqual({
-      battery: { charging: false, percent: 80 },
+      battery: { charging: false, onBattery: true, percent: 80 },
       cpuLoad: 25,
       pressure: 'normal',
       swap: { totalMb: 2048, usedMb: 512 },

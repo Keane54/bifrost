@@ -52,6 +52,17 @@ export function thermalText(state: string | null): string {
   return (state !== null && THERMAL[state]) || '-'
 }
 
+type Battery = NonNullable<PerformanceSnapshot['mac']>['battery']
+
+// The battery level and the power state. A full battery on a power adapter is "charged", and macOS
+// can also hold the charge below 100%. Both are on power and not charging, so the text says
+// "plugged in" and not "not charging".
+export function batteryText(battery: Battery): string {
+  if (battery === null) return '-'
+  const state = battery.charging ? 'charging' : battery.onBattery ? 'on battery' : 'plugged in'
+  return `${Math.round(battery.percent)}%, ${state}`
+}
+
 type Pressure = NonNullable<PerformanceSnapshot['mac']>['pressure']
 
 const PRESSURE: Record<NonNullable<Pressure>, string> = {

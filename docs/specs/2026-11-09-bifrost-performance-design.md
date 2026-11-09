@@ -59,7 +59,7 @@ The sections, in this order:
 |---|---|
 | Bifrost | The total RAM and CPU in the section title. A trend line of RAM and CPU for the last 10 minutes. The memory line is amber. The CPU line is blue. The line goes from the oldest sample of the 10 minutes at the left edge to the newest sample at the right edge. Before Bifrost has run for 10 minutes, the key under the line gives "Last N min" (the minutes up to the next whole minute). After that, it gives "Last 10 minutes". One row for each process group: Main process, Window, GPU, Chat terminals (with the count), and Other helpers if any. Each row shows RAM and CPU. Two more rows: Frame rate and Main process delay. |
 | Claude sessions | The total RAM and CPU of all `claude` processes in the section title. The three heaviest sessions by RAM, each with RAM, CPU and a Stop button. Then one "N more" row with their total. |
-| Your Mac | Memory pressure (a bar and a word: Normal, Medium, High), swap used of total, CPU load, thermal state, battery level and charging state. |
+| Your Mac | Memory pressure (a bar and a word: Normal, Medium, High), swap used of total, CPU load, thermal state, battery level and power state: "charging", "plugged in" (on power and not charging, for example a full battery) or "on battery". |
 | Network | Online or offline and the interface type (Wi-Fi, Ethernet, VPN) in the title. Download and upload rates. The response times to Anthropic and to GitHub. |
 | Limits and disk | GitHub GraphQL points left of the limit, and the reset time. Free disk space. The size of the Reviews clones, when Reviews has clones. |
 
