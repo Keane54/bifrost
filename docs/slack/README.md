@@ -1,6 +1,6 @@
 # Bifrost Slack app
 
-This folder holds the Slack app that the Bifrost chat panels use (milestone M6). The panels show Slack channels, private channels, direct messages and group direct messages, as the Local and Corp chat windows do in EVE. You read and send messages as yourself.
+This folder holds the Slack app that the Bifrost chat panels use (milestone M6). The panels show Slack channels and private channels, as the Local and Corp chat windows do in EVE. They never show DMs or group DMs. You read and send messages as yourself.
 
 The full research, with a source for each fact, is in `.superpowers/research-slack.md` (not in git).
 
@@ -129,7 +129,7 @@ Notes for stage 2:
 - At 200 users, the history load at the start of the day reaches the shared Tier 3 limit. The relay or the clients need a load limit.
 - Test these first:
   - PKCE with user events.
-  - The authorizations for private channels, DMs and group DMs.
+  - The authorizations for private channels.
   - The stop of events when a user leaves a private channel.
 
 Methods that do not work:
