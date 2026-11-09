@@ -1,7 +1,12 @@
 // The RAM and CPU of the process groups of Bifrost and of the Claude sessions (Performance design
 // sections 5.2 and 6). This code is pure. The monitor gives it the Electron metrics, the chat
 // terminal values and one ps table.
-import type { PerformanceSnapshot, ProcGroup, SessionUse } from '../../shared/performance'
+import {
+  type PerformanceSnapshot,
+  PROC_GROUPS,
+  type ProcGroup,
+  type SessionUse,
+} from '../../shared/performance'
 import type { SessionRow } from '../../shared/types'
 import { childIndex, type ProcRow, treeSumIn } from './system'
 
@@ -34,13 +39,13 @@ const TOP = 3
 
 // Each Electron type that is not here is a helper.
 const GROUP_OF: Readonly<Record<string, string>> = {
-  Browser: 'Main process',
-  GPU: 'GPU',
-  Tab: 'Window',
+  Browser: PROC_GROUPS.main,
+  GPU: PROC_GROUPS.gpu,
+  Tab: PROC_GROUPS.window,
 }
-const TERMINALS = 'Chat terminals'
-const HELPERS = 'Other helpers'
-const GROUP_ORDER = ['Main process', 'Window', 'GPU', TERMINALS, HELPERS]
+const TERMINALS = PROC_GROUPS.terminals
+const HELPERS = PROC_GROUPS.helpers
+const GROUP_ORDER = [PROC_GROUPS.main, PROC_GROUPS.window, PROC_GROUPS.gpu, TERMINALS, HELPERS]
 
 // Group the Electron processes and the chat terminals (one value for each PTY). The groups are
 // in a fixed order. Other helpers shows only when a helper runs.

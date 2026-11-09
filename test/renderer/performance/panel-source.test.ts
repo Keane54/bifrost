@@ -31,14 +31,39 @@ describe('PerformancePanel source', () => {
   })
 
   it('gives the Details row a bottom border only while it is open (user decision, 2026-11-09)', () => {
-    const details = PANEL.slice(PANEL.indexOf('data-perf-details'))
-    const button = PANEL.slice(PANEL.lastIndexOf('<button', PANEL.indexOf('data-perf-details')))
-    expect(details.length).toBeGreaterThan(0)
+    const at = PANEL.indexOf('data-perf-details')
+    expect(at).toBeGreaterThan(-1)
+    // The source text of the button of the Details row.
+    const start = PANEL.lastIndexOf('<button', at)
+    const button = PANEL.slice(start, PANEL.indexOf('</button>', at))
+    expect(start).toBeGreaterThan(-1)
     expect(button).toMatch(/aria-expanded=\{open\}/)
-    expect(PANEL).toMatch(/open && 'border-panel-edge border-b'/)
+    expect(button).toMatch(/open && 'border-panel-edge border-b'/)
     // The base class of the row has no bottom border.
-    const base = button.match(/cx\(\s*'([^']*)'/)?.[1] ?? ''
+    const base = button.match(/className=\{cx\(\s*'([^']*)'/)?.[1]
+    expect(base).toBeDefined()
     expect(base).not.toMatch(/\bborder-b\b/)
+  })
+
+  // Review finding 6: each headline state has the data attribute, also the first check.
+  it('marks the headline while Bifrost waits for the first sample', () => {
+    expect(PANEL).toMatch(/data-perf-headline='checking'/)
+    expect(PANEL).toMatch(/data-perf-headline=\{snapshot\.state\}/)
+  })
+
+  // Review finding 4: each className with a condition uses cx().
+  it('builds the class of the thermal state with cx()', () => {
+    expect(PANEL).toContain('className={cx(thermal !== null && THERMAL_TEXT[thermal])}')
+    expect(PANEL).not.toMatch(/className=\{[^}]*\? undefined/)
+  })
+
+  // Ruling A (fix round 1): main and the panel use the shared group names.
+  it('finds the chat terminal group through the shared PROC_GROUPS name', () => {
+    expect(PANEL).toMatch(
+      /import \{[^}]*\bPROC_GROUPS\b[^}]*\} from '\.\.\/\.\.\/\.\.\/shared\/performance'/,
+    )
+    expect(PANEL).toContain('g.name === PROC_GROUPS.terminals')
+    expect(PANEL).not.toContain("'Chat terminals'")
   })
 
   it('keeps the Details choice in the UI state (P10)', () => {
@@ -59,6 +84,18 @@ describe('PerformancePanel source', () => {
     expect(TREND).toContain('<polyline')
     expect(TREND).toContain("stroke='currentColor'")
     expect(PANEL).toContain('<TrendLine')
+  })
+
+  // Ruling B (fix round 1): the mockup colours, from tokens with no status meaning. The key
+  // under the line uses the same classes.
+  it('draws memory in tab-8 and CPU in icon-5, and the key matches', () => {
+    expect(TREND).toContain("const RAM_LINE = 'text-tab-8'")
+    expect(TREND).toContain("const CPU_LINE = 'text-icon-5'")
+    expect(TREND).toMatch(/className=\{RAM_LINE\}/)
+    expect(TREND).toMatch(/className=\{CPU_LINE\}/)
+    expect(TREND).toMatch(/<Key label='Memory' line=\{RAM_LINE\} \/>/)
+    expect(TREND).toMatch(/<Key label='CPU' line=\{CPU_LINE\} \/>/)
+    expect(TREND).not.toMatch(/ctx-|text-usage/)
   })
 })
 

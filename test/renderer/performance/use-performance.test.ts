@@ -155,7 +155,7 @@ describe('createViewReporter', () => {
   })
 
   it('sends the first view, and then only a changed view', () => {
-    const send = vi.fn()
+    const send = vi.fn(async (_v: PerformanceView) => {})
     const report = createViewReporter(send)
     report(view())
     report(view())
@@ -170,6 +170,42 @@ describe('createViewReporter', () => {
       view({ focused: false, showing: true }),
       view({ chatPanels: [CHAT_A], focused: false, showing: true }),
     ])
+  })
+
+  // Review finding 2: a view that the main process did not get goes again at the next report.
+  it('sends a view again after its send failed', async () => {
+    const send = vi
+      .fn(async (_v: PerformanceView) => {})
+      .mockRejectedValueOnce(new Error('refused: bad input'))
+    const report = createViewReporter(send)
+    report(view({ showing: true }))
+    await Promise.resolve()
+    await Promise.resolve()
+    report(view({ showing: true }))
+    expect(send).toHaveBeenCalledTimes(2)
+    await Promise.resolve()
+    report(view({ showing: true }))
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps a newer view as sent when an older send fails', async () => {
+    let fail: (err: Error) => void = () => {}
+    const send = vi
+      .fn(async (_v: PerformanceView) => {})
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            fail = reject
+          }),
+      )
+    const report = createViewReporter(send)
+    report(view())
+    report(view({ showing: true }))
+    fail(new Error('refused: bad input'))
+    await Promise.resolve()
+    await Promise.resolve()
+    report(view({ showing: true }))
+    expect(send).toHaveBeenCalledTimes(2)
   })
 })
 

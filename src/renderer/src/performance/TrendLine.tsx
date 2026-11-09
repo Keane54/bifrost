@@ -6,9 +6,11 @@ import { TREND_H, TREND_W, trendLines } from './format'
 
 type Trend = NonNullable<PerformanceSnapshot['bifrost']>['trend']
 
-// The RAM line is the stronger line. The CPU line is thin and dim.
-const RAM_LINE = 'text-usage'
-const CPU_LINE = 'text-text-dim'
+// The colours of the approved mockup, from tokens with no status meaning (fix round 1, ruling B).
+// The RAM line is amber and the stronger line. The CPU line is blue and thin. The key under the
+// line uses the same classes.
+const RAM_LINE = 'text-tab-8'
+const CPU_LINE = 'text-icon-5'
 
 function Key({ label, line }: { label: string; line: string }): React.JSX.Element {
   return (

@@ -115,15 +115,19 @@ export function performanceView(
 }
 
 // A function that sends the view only when it is different from the last view that it sent.
+// When a send fails, the function forgets that view, so the next report sends it again (review
+// finding 2). A failed send of an older view does not change the record of a newer view.
 export function createViewReporter(
-  send: (view: PerformanceView) => void,
+  send: (view: PerformanceView) => Promise<void>,
 ): (view: PerformanceView) => void {
   let last: string | null = null
   return view => {
     const key = JSON.stringify([view.showing, view.focused, view.chatPanels])
     if (key === last) return
     last = key
-    send(view)
+    send(view).catch(() => {
+      if (last === key) last = null
+    })
   }
 }
 
@@ -202,11 +206,7 @@ function usePage(): Page {
 export function usePerformanceReport(frames: readonly Frame[]): void {
   const page = usePage()
   const view = useMemo(() => performanceView(frames, page), [frames, page])
-  const [report] = useState(() =>
-    createViewReporter(v => {
-      window.bifrost.performance.view(v).catch(() => {})
-    }),
-  )
+  const [report] = useState(() => createViewReporter(v => window.bifrost.performance.view(v)))
   useEffect(() => report(view), [report, view])
 
   const counting = view.showing && view.focused

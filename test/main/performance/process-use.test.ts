@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { type AppMetric, bifrostUse, sessionUse } from '../../../src/main/performance/process-use'
 import type { ProcRow } from '../../../src/main/performance/system'
+import { PROC_GROUPS } from '../../../src/shared/performance'
 import type { SessionRow } from '../../../src/shared/types'
 
 // The KB in one MB.
@@ -67,6 +68,25 @@ describe('bifrostUse', () => {
       { count: 2, cpu: 2, name: 'Other helpers', ramMb: 100 },
     ])
     expect(use).toMatchObject({ cpu: 17, ramMb: 810, terminals: { cpu: 4, ramMb: 60 } })
+  })
+
+  // The panel finds the chat terminal group by the shared name (fix round 1, ruling A).
+  it('names the groups with the shared names of PROC_GROUPS', () => {
+    expect(PROC_GROUPS).toEqual({
+      gpu: 'GPU',
+      helpers: 'Other helpers',
+      main: 'Main process',
+      terminals: 'Chat terminals',
+      window: 'Window',
+    })
+    const use = bifrostUse([metric(100, 'Browser', 200, 3), metric(101, 'Utility', 60, 1)], [])
+    expect(use.groups.map(g => g.name)).toEqual([
+      PROC_GROUPS.main,
+      PROC_GROUPS.window,
+      PROC_GROUPS.gpu,
+      PROC_GROUPS.terminals,
+      PROC_GROUPS.helpers,
+    ])
   })
 
   it('shows Other helpers only when a helper runs, and Chat terminals always', () => {

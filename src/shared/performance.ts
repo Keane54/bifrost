@@ -7,6 +7,16 @@ export interface Reason {
   text: string
 }
 
+// The names of the process groups of the Bifrost section. The main process gives these names to
+// the groups. The panel finds the chat terminal group by its name (fix round 1, ruling A).
+export const PROC_GROUPS = {
+  gpu: 'GPU',
+  helpers: 'Other helpers',
+  main: 'Main process',
+  terminals: 'Chat terminals',
+  window: 'Window',
+} as const
+
 export interface ProcGroup {
   name: string
   count: number

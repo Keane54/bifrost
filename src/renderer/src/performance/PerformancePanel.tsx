@@ -3,7 +3,12 @@
 // sessions, the Mac, the network, and the limits and disk.
 import { ChevronRight } from 'lucide-react'
 import { Fragment } from 'react'
-import type { HealthState, PerformanceSnapshot, Reason } from '../../../shared/performance'
+import {
+  type HealthState,
+  type PerformanceSnapshot,
+  PROC_GROUPS,
+  type Reason,
+} from '../../../shared/performance'
 import { actionStateFor } from '../actions/action-model'
 import { useActions } from '../actions/actions-context'
 import { useRegistry } from '../data/registry'
@@ -52,9 +57,6 @@ const LINK_TEXT: Partial<Record<NonNullable<Network['kind']>, string>> = {
   vpn: 'VPN',
   wifi: 'Wi-Fi',
 }
-// The main process gives this name to the group of the chat terminals. Only this group shows
-// its count (design section 5.2).
-const TERMINALS = 'Chat terminals'
 const KEY_VALUES = 'grid grid-cols-[130px_1fr] gap-y-0.5'
 
 const orDash = <T,>(value: T | null, text: (v: T) => string): string =>
@@ -63,7 +65,11 @@ const orDash = <T,>(value: T | null, text: (v: T) => string): string =>
 function Headline({ snapshot }: { snapshot: Snapshot }): React.JSX.Element {
   // With no sample yet, the headline does not say OK (design section 4).
   if (snapshot.state === 'ok' && snapshot.okText === null) {
-    return <div className='border-panel-edge border-b p-2 text-text-dim'>Checking Bifrost…</div>
+    return (
+      <div className='border-panel-edge border-b p-2 text-text-dim' data-perf-headline='checking'>
+        Checking Bifrost…
+      </div>
+    )
   }
   return (
     <div className='border-panel-edge border-b p-2' data-perf-headline={snapshot.state}>
@@ -152,7 +158,8 @@ function BifrostSection({ bifrost }: { bifrost: Snapshot['bifrost'] }): React.JS
       <div className='grid grid-cols-[1fr_auto_auto] gap-x-3.5 gap-y-0.5'>
         {bifrost.groups.map(g => (
           <Fragment key={g.name}>
-            <span>{g.name === TERMINALS ? `${g.name} (${g.count})` : g.name}</span>
+            {/* Only the group of the chat terminals shows its count (design section 5.2). */}
+            <span>{g.name === PROC_GROUPS.terminals ? `${g.name} (${g.count})` : g.name}</span>
             <span className='text-right'>{mb(g.ramMb)}</span>
             <span className='text-right text-text-dim'>{percent(g.cpu)}</span>
           </Fragment>
@@ -254,9 +261,7 @@ function MacSection({ mac }: { mac: Snapshot['mac'] }): React.JSX.Element {
         <dt>CPU load</dt>
         <dd>{orDash(mac?.cpuLoad ?? null, percent)}</dd>
         <dt>Thermal state</dt>
-        <dd className={thermal === null ? undefined : THERMAL_TEXT[thermal]}>
-          {thermalText(thermal)}
-        </dd>
+        <dd className={cx(thermal !== null && THERMAL_TEXT[thermal])}>{thermalText(thermal)}</dd>
         <dt>Battery</dt>
         <dd>{batteryText(mac?.battery ?? null)}</dd>
       </dl>

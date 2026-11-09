@@ -226,6 +226,7 @@ function SideBar(): React.JSX.Element {
   )
 }
 
-// The side bar has no props. It renders only when a context value changes.
-// A drag step changes no context value, so the side bar does not render at each step.
+// The side bar has no props. It renders only when a context value changes, or when the health
+// state of the Performance store changes. A drag step changes no context value, and a new
+// snapshot with the same health state gives the same value. So these do not render the side bar.
 export default memo(SideBar)
