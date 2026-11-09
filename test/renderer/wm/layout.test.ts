@@ -30,6 +30,7 @@ const store = (layouts: UiStore['layouts'] = []): UiStore => ({
   history: EMPTY_HISTORY,
   layouts,
   overviews: {},
+  performance: { detailsOpen: false },
   version: 1,
 })
 
@@ -71,6 +72,25 @@ describe('layout', () => {
       recentSlash: ['/compact'],
     }
     expect(parseUiStore({ history, version: 1 }).history).toEqual(history)
+  })
+
+  it('parseUiStore keeps performance.detailsOpen and defaults it to false', () => {
+    const open = parseUiStore({ performance: { detailsOpen: true }, version: 1 })
+    expect(open.performance).toEqual({ detailsOpen: true })
+    expect(EMPTY_STORE.performance).toEqual({ detailsOpen: false })
+    for (const bad of [undefined, null, 'x', [], {}, { detailsOpen: 'yes' }, { detailsOpen: 1 }]) {
+      expect(parseUiStore({ performance: bad, version: 1 }).performance).toEqual({
+        detailsOpen: false,
+      })
+    }
+  })
+
+  it('parseUiStore keeps a performance panel in a layout', () => {
+    const parsed = parseUiStore({
+      current: { frames: [{ ...frame, active: 'performance', panels: ['performance'] }] },
+      version: 1,
+    })
+    expect(parsed.current?.frames[0]?.panels).toEqual(['performance'])
   })
 
   it('parseUiStore drops bad rects, invalid panel IDs and empty frames', () => {

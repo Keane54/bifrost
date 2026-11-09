@@ -48,6 +48,12 @@ describe('wm state', () => {
     expect(run([open('reviews')]).frames[0]?.rect).toMatchObject({ h: 420, w: 480 })
   })
 
+  it('panelKind accepts performance', () => {
+    expect(panelKind('performance')).toBe('performance')
+    expect(DEFAULT_SIZES.performance).toEqual({ h: 460, w: 520 })
+    expect(run([open('performance')]).frames[0]?.rect).toMatchObject({ h: 460, w: 520 })
+  })
+
   it('panelKind accepts usage-hud', () => {
     expect(panelKind('usage-hud')).toBe('usage-hud')
     expect(DEFAULT_SIZES['usage-hud']).toEqual({ h: 180, w: 360 })

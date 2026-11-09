@@ -17,6 +17,13 @@ export interface UiStore {
   overviews: Record<string, OverviewConfig>
   // The dialog history: recent folders, last model and mode, recent slash commands.
   history: History
+  // The UI state of the Performance panel (P10).
+  performance: PerformanceUi
+}
+
+// The Details row of the Performance panel is open. Closed is the default (design 5.2).
+export interface PerformanceUi {
+  detailsOpen: boolean
 }
 
 export const EMPTY_STORE: UiStore = {
@@ -24,6 +31,7 @@ export const EMPTY_STORE: UiStore = {
   history: EMPTY_HISTORY,
   layouts: [],
   overviews: {},
+  performance: { detailsOpen: false },
   version: 1,
 }
 export const MAX_LAYOUTS = 20
@@ -88,6 +96,11 @@ function parseSnapshot(value: unknown): LayoutSnapshot | null {
   return { frames, memory }
 }
 
+// A value that is not true gives the closed Details row.
+function parsePerformance(value: unknown): PerformanceUi {
+  return { detailsOpen: isObject(value) && value.detailsOpen === true }
+}
+
 function validName(name: string): boolean {
   return name.length >= 1 && name.length <= MAX_NAME
 }
@@ -112,6 +125,7 @@ export function parseUiStore(data: unknown): UiStore {
     history: parseHistory(data.history),
     layouts,
     overviews: parseOverviews(data.overviews),
+    performance: parsePerformance(data.performance),
     version: 1,
   }
 }

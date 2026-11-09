@@ -5,6 +5,7 @@ import {
   Eye,
   Gauge,
   GitPullRequest,
+  HeartPulse,
   List,
   ListPlus,
   type LucideIcon,
@@ -25,6 +26,7 @@ import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { Tip } from '../lib/menu'
 import { panelTitle } from '../panels/panels'
+import { usePerformanceState } from '../performance/use-performance'
 import { useReviews } from '../reviews/use-reviews'
 import { useLive } from '../settings/live-context'
 import { useSettingsNav } from '../settings/settings-nav'
@@ -60,15 +62,16 @@ function freeOverview(state: WmState): string | undefined {
 }
 
 // The tooltip at the right of the button gives the name of the button (user decision, 2026-11-09).
-// With dot, the button shows a 6 px square white dot at its top right corner, and the
-// tooltip gives the reason. The name stays the label. A hidden text gives the reason to a
-// screen reader as the description.
+// With dot, the button shows a 6 px square dot at its top right corner, and the tooltip
+// gives the reason. The dot is white, or it has the colour class dotClass. The name stays the
+// label. A hidden text gives the reason to a screen reader as the description.
 function SideButton(props: {
   label: string
   icon: LucideIcon
   disabled?: boolean
   size?: number
   dot?: string
+  dotClass?: string
   onClick(): void
 }): React.JSX.Element {
   const Icon = props.icon
@@ -88,7 +91,10 @@ function SideButton(props: {
           <>
             <span
               aria-hidden={true}
-              className='absolute top-1.5 right-1.5 size-1.5 bg-text-strong'
+              className={cx(
+                'absolute top-1.5 right-1.5 size-1.5',
+                props.dotClass ?? 'bg-text-strong',
+              )}
               data-side-warning={true}
             />
             <span className='sr-only' id={dotId}>
@@ -103,6 +109,15 @@ function SideButton(props: {
 
 const REVIEWS_ATTENTION = 'Reviews - a pull request waits for you'
 const SETTINGS_ATTENTION = 'Settings - something needs your attention'
+// The Performance dot has the colour of the health state (design section 5.3). OK has no dot.
+const PERFORMANCE_ATTENTION: Record<'warning' | 'problem', string> = {
+  problem: 'Performance - Problem',
+  warning: 'Performance - Warning',
+}
+const PERFORMANCE_DOT: Record<'warning' | 'problem', string> = {
+  problem: 'bg-ctx-high',
+  warning: 'bg-ctx-mid',
+}
 
 // A button for an action that needs no row (D8). A disabled button shows darker and faded.
 // It keeps the focus and the tooltip with the reason. A click on it has no effect (spec 9.1).
@@ -136,6 +151,7 @@ function SideBar(): React.JSX.Element {
   const settingsNav = useSettingsNav()
   const { warning } = useLive()
   const reviews = useReviews()
+  const health = usePerformanceState()
   const open = (panelId: string): void => dispatch({ panelId, type: 'open' })
   const free = freeOverview(state)
   const minimised = state.frames.filter(f => f.minimised)
@@ -166,6 +182,13 @@ function SideBar(): React.JSX.Element {
         icon={GitPullRequest}
         label='Reviews'
         onClick={() => open('reviews')}
+      />
+      <SideButton
+        dot={health === 'ok' ? undefined : PERFORMANCE_ATTENTION[health]}
+        dotClass={health === 'ok' ? undefined : PERFORMANCE_DOT[health]}
+        icon={HeartPulse}
+        label='Performance'
+        onClick={() => open('performance')}
       />
       <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />
       <GlobalButton action='new-session' icon={SquarePlus} />
