@@ -197,3 +197,20 @@ test('a failed copy keeps the later file and turns the save off', async () => {
   await store.update({ pollSeconds: 5 })
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 4 })
 })
+
+test('the health log gets each write: a failed write and a good write', async () => {
+  const save = vi.fn()
+  const store = await openSettingsStore(file, vi.fn(), { save })
+  // A folder in place of the file makes the write fail.
+  await mkdir(file)
+  await expect(store.update({ labels: 'space' })).rejects.toThrow()
+  await rm(file, { recursive: true })
+  await store.update({ labels: 'space' })
+  // A refused patch and a patch that changes nothing write nothing.
+  await expect(store.update({ nope: 1 })).rejects.toThrow()
+  await store.update({ labels: 'space' })
+  expect(save.mock.calls).toEqual([
+    ['settings', false],
+    ['settings', true],
+  ])
+})

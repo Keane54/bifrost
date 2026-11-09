@@ -9,6 +9,7 @@ import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { LIVE_MIN_CLAUDE_VERSION } from '../../shared/live'
 import type { ClaudeVersion, LivePluginState, LiveStatus } from '../../shared/types'
+import { type HealthEvents, NO_HEALTH } from '../performance/health-log'
 import type { LiveServer } from './live-server'
 import { modFolderCurrent, removeModFolder, syncModFolder } from './mod-folder'
 import { MARKETPLACE_NAME, type PluginCli, type PluginEntry } from './plugin-cli'
@@ -31,6 +32,8 @@ export interface LiveControlDeps {
   // End the live flag of each row. Turn off and Remove call it after the server stops.
   clearLive(): void
   forceListen: boolean
+  // The health log gets each server start error of the start rule (P5). The default does nothing.
+  health?: Pick<HealthEvents, 'liveStartFailed'>
 }
 
 export interface LiveControl {
@@ -53,6 +56,7 @@ function samePath(a: string, b: string): boolean {
 
 export function createLiveControl(deps: LiveControlDeps): LiveControl {
   const { modDir, modSource, server } = deps
+  const health = deps.health ?? NO_HEALTH
   // stop(), Turn off and Remove add 1. A start, Install or Turn on that sees a new number must
   // not start the server.
   let generation = 0
@@ -132,7 +136,10 @@ export function createLiveControl(deps: LiveControlDeps): LiveControl {
   async function listen(gen: number): Promise<void> {
     if (gen !== generation) return
     const state = await server.start()
-    if (state.error) console.warn('Live details: the server did not start.', state.error)
+    if (state.error) {
+      console.warn('Live details: the server did not start.', state.error)
+      health.liveStartFailed(state.error)
+    }
   }
 
   // Stop the server. A start or an action that runs now then does not start it again.

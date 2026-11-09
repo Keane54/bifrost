@@ -480,6 +480,49 @@ describe('updates and the store', () => {
     error.mockRestore()
   })
 
+  test('the health log gets each save, also a failure that the log line does not show', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const saveStore = vi
+      .fn<ServiceDeps['saveStore']>()
+      .mockRejectedValueOnce(new Error('disk full'))
+      .mockRejectedValueOnce(new Error('disk full'))
+      .mockResolvedValue(undefined)
+    const save = vi.fn()
+    const deps = fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore })
+    startService({ ...deps, health: { poll: () => {}, save } })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(saveStore).toHaveBeenCalledTimes(3)
+    expect(save.mock.calls).toEqual([
+      ['registry', false],
+      ['registry', false],
+      ['registry', true],
+    ])
+    expect(error).toHaveBeenCalledTimes(1)
+    error.mockRestore()
+  })
+
+  test('the health log gets each active poll and no --all poll', async () => {
+    const listActive = vi
+      .fn<() => Promise<AgentList>>()
+      .mockResolvedValueOnce({ entries: [bg()] })
+      .mockResolvedValueOnce({ entries: [], error: 'boom' })
+      .mockRejectedValueOnce(new Error('spawn failed'))
+      .mockResolvedValue({ entries: [bg()] })
+    const listAll = vi.fn(async (): Promise<AgentList> => ({ entries: [], error: 'boom' }))
+    const poll = vi.fn()
+    startService({ ...fakeDeps({ listActive, listAll }), health: { poll, save: () => {} } })
+    await vi.advanceTimersByTimeAsync(3 * SERVICE_TIMING.activeMs)
+    expect(poll.mock.calls).toEqual([
+      ['sessions', 'ok'],
+      ['sessions', 'failed'],
+      ['sessions', 'failed'],
+      ['sessions', 'ok'],
+    ])
+    await vi.advanceTimersByTimeAsync(SERVICE_TIMING.allMs)
+    expect(listAll).toHaveBeenCalled()
+    expect(poll).toHaveBeenCalledTimes(listActive.mock.calls.length)
+  })
+
   test('a store change during a save goes out in the next save', async () => {
     const saveStore = vi.fn(async () => resolveLater(3000, undefined))
     const listActive = vi

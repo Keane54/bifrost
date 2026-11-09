@@ -1,6 +1,7 @@
 import type { Priority, SessionRow, UsageSnapshot, WatchColour } from '../../shared/types'
 import type { AgentList } from '../claude/agents'
 import type { LiveEvent } from '../live/live-event'
+import { type HealthEvents, NO_HEALTH } from '../performance/health-log'
 import type { HookEvent } from './hook-event'
 import type { RegistryStore, SessionRegistry } from './registry'
 import { type ProcessTable, type TerminalApp, terminalAppOf } from './terminal-app'
@@ -13,6 +14,8 @@ export interface ServiceDeps {
   readProcessTable(): Promise<ProcessTable | null>
   saveStore(store: RegistryStore): Promise<void>
   now(): number
+  // The health log gets each active poll and each save (P5). The default does nothing.
+  health?: Pick<HealthEvents, 'poll' | 'save'>
 }
 
 // The times of the loops and the minimum time between two updates, in milliseconds.
@@ -43,6 +46,7 @@ function messageOf(error: unknown): string {
 // The lines of the Live details mod come through pushLive.
 export class RegistryService {
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
+  private readonly health: Pick<HealthEvents, 'poll' | 'save'>
   private readonly callbacks: UpdateCallback[] = []
   private readonly usageCallbacks: UsageCallback[] = []
   private readonly eventCallbacks: EventsCallback[] = []
@@ -90,6 +94,7 @@ export class RegistryService {
     private readonly timing: typeof SERVICE_TIMING = SERVICE_TIMING,
   ) {
     this.activeMs = timing.activeMs
+    this.health = deps.health ?? NO_HEALTH
   }
 
   // Start all loops. A second call does nothing.
@@ -323,6 +328,8 @@ export class RegistryService {
       .listActive()
       .catch((error: unknown): AgentList => ({ entries: [], error: messageOf(error) }))
     if (this.stopped) return
+    // Only the active poll counts for the health of the session list (P7).
+    this.health.poll('sessions', list.error === undefined ? 'ok' : 'failed')
     if (list.error !== undefined) {
       // Keep the old rows. Send the error, also when the last poll had the same error.
       this.error = list.error
@@ -461,7 +468,7 @@ export class RegistryService {
   // Save the newest store. Only one save runs at a time.
   // A change during a save starts the next save when that save ends.
   // A failed save does not stop the service. The next loop tries the save again.
-  // The log shows only the first failure of a series.
+  // The log shows only the first failure of a series. The health log gets each save.
   private save(): void {
     if (this.stopped || this.saving || !this.storeToSave) return
     this.saving = true
@@ -474,11 +481,13 @@ export class RegistryService {
         () => {
           this.saving = false
           this.saveFailed = false
+          this.health.save('registry', true)
           this.save()
         },
         (error: unknown) => {
           this.saving = false
           this.storeToSave = true
+          this.health.save('registry', false)
           if (!this.saveFailed) console.error('Bifrost cannot save the registry store.', error)
           this.saveFailed = true
         },

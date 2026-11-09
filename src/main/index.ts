@@ -8,6 +8,7 @@ import {
   attachWindow,
   changeSettings,
   closeAllPtys,
+  getHealthLog,
   getSettings,
   isKeyRecording,
   registerIpc,
@@ -18,6 +19,7 @@ import {
   stopRegistry,
 } from './ipc'
 import { buildMenuTemplate, menuKeys, modeHandlers, zoomStep } from './menu'
+import { NO_HEALTH } from './performance/health-log'
 import { refusedTestHome, testHomeConfig, testHomeError } from './test-home'
 import { createModeController, type ModeController } from './window/display-mode'
 import { devDockIcon } from './window/dock-icon'
@@ -68,7 +70,12 @@ function showMenu(): void {
 }
 
 async function createWindow(): Promise<void> {
-  const store = await openWindowStateStore(join(app.getPath('userData'), 'window-state.json'))
+  // registerIpc makes the health log before the first window opens.
+  const store = await openWindowStateStore(
+    join(app.getPath('userData'), 'window-state.json'),
+    console.error,
+    getHealthLog() ?? NO_HEALTH,
+  )
   // The app can quit, or another call can open a window, during the wait above.
   if (BrowserWindow.getAllWindows().length > 0) return
   const workAreas = screen.getAllDisplays().map(d => d.workArea)
@@ -194,6 +201,14 @@ function startApp(): void {
 
   // A second start of Bifrost shows the window of this instance.
   app.on('second-instance', () => showWindow())
+
+  // A GPU process that stops with a reason other than clean-exit is a crash (P8). Before
+  // registerIpc, no health log exists, so Bifrost ignores the event.
+  app.on('child-process-gone', (_e, details) => {
+    if (details.type === 'GPU' && details.reason !== 'clean-exit') {
+      getHealthLog()?.crash('gpu', details.reason)
+    }
+  })
 
   // Electron fires this event when it is ready to create windows.
   app.whenReady().then(() => {

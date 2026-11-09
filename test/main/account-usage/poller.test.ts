@@ -9,6 +9,7 @@ import {
   POLL_INTERVAL_MS,
   RATE_LIMIT_WAIT_MS,
 } from '../../../src/main/account-usage/poller'
+import type { HealthEvents } from '../../../src/main/performance/health-log'
 import type { AccountUsage } from '../../../src/shared/types'
 
 const sample = readFileSync(
@@ -22,7 +23,7 @@ const MIN = 60_000
 
 type Reply = { status: number; body: string } | Error
 
-function setup(token: string | null = FAKE) {
+function setup(token: string | null = FAKE, health?: Pick<HealthEvents, 'poll'>) {
   const replies: Reply[] = []
   const fetch = vi.fn(async (_url: string, _init: RequestInit) => {
     const reply = replies.shift() ?? { body: sample, status: 200 }
@@ -34,6 +35,7 @@ function setup(token: string | null = FAKE) {
   const poller = createAccountUsagePoller({
     emit: value => emitted.push(value),
     fetch,
+    health,
     now: () => Date.now(),
     readToken,
   })
@@ -382,6 +384,44 @@ describe('createAccountUsagePoller', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(1)
     expect(fetch).toHaveBeenCalledTimes(2)
+    poller.stop()
+  })
+
+  test('the health log gets each poll: 401, 403, 429 and no token give no data (P7)', async () => {
+    const poll = vi.fn()
+    const { fetch, poller, readToken, replies } = setup(FAKE, { poll })
+    replies.push(
+      { body: sample, status: 200 },
+      { body: '', status: 401 },
+      { body: '', status: 403 },
+      { body: '', status: 500 },
+      new Error('network down'),
+      // Task 2 decision: another 4xx and an answer that Bifrost cannot read are failures too.
+      { body: '', status: 404 },
+      { body: 'not json', status: 200 },
+    )
+    poller.start()
+    await vi.advanceTimersByTimeAsync(0)
+    for (let i = 0; i < 6; i++) await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    readToken.mockResolvedValueOnce(null)
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    // A request that never ends fails at the poll deadline.
+    fetch.mockImplementationOnce(() => new Promise<Response>(() => {}))
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + POLL_DEADLINE_MS)
+    replies.push({ body: '', status: 429 })
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS)
+    expect(poll.mock.calls).toEqual([
+      ['account-usage', 'ok'],
+      ['account-usage', 'no-data'],
+      ['account-usage', 'no-data'],
+      ['account-usage', 'failed'],
+      ['account-usage', 'failed'],
+      ['account-usage', 'failed'],
+      ['account-usage', 'failed'],
+      ['account-usage', 'no-data'],
+      ['account-usage', 'failed'],
+      ['account-usage', 'no-data'],
+    ])
     poller.stop()
   })
 

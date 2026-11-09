@@ -56,6 +56,12 @@ export class PtyManager {
     return this.ptys.has(viewId)
   }
 
+  // Give each open PTY one time, with its view ID and its process ID (P1). The Performance
+  // monitor reads this list. It does not set the callbacks, because each callback has one slot.
+  list(): Array<{ viewId: string; pid: number }> {
+    return [...this.ptys].map(([viewId, proc]) => ({ pid: proc.pid, viewId }))
+  }
+
   write(viewId: string, data: string): boolean {
     const proc = this.ptys.get(viewId)
     if (!proc) return false

@@ -4,6 +4,7 @@
 // expired token or a 401 or 403, it waits and reads the Keychain again at the next poll, because
 // Claude Code refreshes the token itself.
 import type { AccountUsage } from '../../shared/types'
+import { type HealthEvents, NO_HEALTH, type PollResult } from '../performance/health-log'
 import { parseAccountUsage } from './parse'
 
 // Hard-coded. The token goes only to this URL.
@@ -23,6 +24,8 @@ export interface PollerDeps {
   now(): number
   // The new values, or null when there are none.
   emit(value: AccountUsage | null): void
+  // The health log gets the result of each poll (P5, P7). The default does nothing.
+  health?: Pick<HealthEvents, 'poll'>
 }
 
 export interface AccountUsagePoller {
@@ -36,6 +39,7 @@ export interface AccountUsagePoller {
 }
 
 export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
+  const health = deps.health ?? NO_HEALTH
   let running = false
   let busy = false
   // Each start and each stop makes a new generation. A poll of an old generation sends nothing,
@@ -59,11 +63,16 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
   }
 
   // One request. Return the new values, null for "no data", or undefined to keep the old values.
+  // The request sets the health result of the poll in outcome. When it sets no result, the
+  // result stays 'failed'. This applies to a fetch error, a 5xx or other bad status, a bad answer
+  // and a timeout (P7).
   async function request(
     gen: number,
     abort: AbortController,
+    outcome: { result: PollResult },
   ): Promise<AccountUsage | null | undefined> {
     const token = await deps.readToken()
+    if (token === null) outcome.result = 'no-data'
     // The setting can go off during the Keychain read, or the poll deadline can pass. Then drop
     // the token and send nothing.
     if (token === null || !running || gen !== generation || abort.signal.aborted) return undefined
@@ -85,8 +94,13 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
       // The error text can hold request data, so it goes nowhere.
       return undefined
     }
-    if (res.status === 401 || res.status === 403) return null
+    // An expired login and the rate limit give no data. They are not failures.
+    if (res.status === 401 || res.status === 403) {
+      outcome.result = 'no-data'
+      return null
+    }
     if (res.status === 429) {
+      outcome.result = 'no-data'
       waitUntil = deps.now() + RATE_LIMIT_WAIT_MS
       return undefined
     }
@@ -107,7 +121,9 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
     try {
       if (text.length > MAX_BODY_BYTES) return null
       const limits = parseAccountUsage(JSON.parse(text))
-      return limits ? { fetchedAt: deps.now(), limits } : null
+      if (!limits) return null
+      outcome.result = 'ok'
+      return { fetchedAt: deps.now(), limits }
     } catch {
       return null
     }
@@ -122,14 +138,17 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
     controller = abort
     lastPollAt = deps.now()
     let deadline: ReturnType<typeof setTimeout> | undefined
+    // Each poll has its own outcome, so a late request of an old poll cannot change it.
+    const outcome: { result: PollResult } = { result: 'failed' }
     try {
       const result = await Promise.race([
-        request(gen, abort),
+        request(gen, abort, outcome),
         new Promise<undefined>(resolve => {
           deadline = setTimeout(() => resolve(undefined), POLL_DEADLINE_MS)
         }),
       ])
       if (!running || gen !== generation) return
+      health.poll('account-usage', outcome.result)
       if (result !== undefined && (result !== null || value !== null)) set(result)
     } catch {
       // request() does not throw. A throw here keeps the old values.

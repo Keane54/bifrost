@@ -177,7 +177,7 @@ function setup(over: Partial<World> = {}) {
     }),
   }
   const writes = () => calls.filter(c => !READS.has(c))
-  return { calls, control: createLiveControl(deps), seen, w, writes }
+  return { calls, control: createLiveControl(deps), deps, seen, w, writes }
 }
 
 describe('constants', () => {
@@ -503,6 +503,17 @@ describe('start', () => {
     })
     await expect(control.start()).resolves.toBeUndefined()
     expect(console.warn).toHaveBeenCalled()
+  })
+
+  test('a server error at start goes to the health log, a good start does not', async () => {
+    const liveStartFailed = vi.fn()
+    const failing = setup({ forceListen: true, serverError: 'Another program listens on /x.' })
+    await createLiveControl({ ...failing.deps, health: { liveStartFailed } }).start()
+    expect(liveStartFailed.mock.calls).toEqual([['Another program listens on /x.']])
+    const good = setup({ forceListen: true })
+    await createLiveControl({ ...good.deps, health: { liveStartFailed } }).start()
+    expect(good.calls).toContain('server.start')
+    expect(liveStartFailed).toHaveBeenCalledTimes(1)
   })
 
   test('a stop during start keeps the server closed', async () => {

@@ -13,6 +13,7 @@ import {
 } from '../../shared/reviews'
 import type { Settings } from '../../shared/settings'
 import { MAX_NOTIFICATIONS } from '../alerts/alert-monitor'
+import { type HealthEvents, NO_HEALTH } from '../performance/health-log'
 import { type Gh, type GhFailure, ghFailure } from './gh'
 import { baselineOf, buildSnapshot } from './model'
 import type { PollData } from './pr-data'
@@ -62,6 +63,8 @@ export interface WatcherDeps {
   // it shows.
   notify(notice: RequestNotice): void
   log(m: string): void
+  // The health log gets the result of each poll (P5, P7). The default does nothing.
+  health?: Pick<HealthEvents, 'poll'>
 }
 
 export interface ReviewsWatcher {
@@ -150,6 +153,7 @@ function nextState(
 }
 
 export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
+  const health = deps.health ?? NO_HEALTH
   let running = false
   let busy = false
   // Each start and each stop makes a new generation. A poll of an old generation sends nothing,
@@ -260,9 +264,11 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
     return { data: parsed.data, ok: true }
   }
 
+  // Only an error is a failure for the health log. No gh and a logged-out gh give no data (P7).
   function fail(next: GhFailure): void {
     if (failure?.message !== next.message) deps.log(`The Reviews poll failed: ${next.message}`)
     failure = next
+    health.poll('reviews', next.availability === 'error' ? 'failed' : 'no-data')
     set(build())
   }
 
@@ -295,6 +301,7 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
     lastPoll = data
     polledAt = now
     failure = null
+    health.poll('reviews', 'ok')
     set(build())
     const rows = snapshot.toReview.filter(row => row.state === 'new' && arrived.has(row.key))
     for (const notice of requestNotices(rows)) deps.notify(notice)

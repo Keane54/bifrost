@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -77,4 +77,21 @@ test('two quick saves write in call order', async () => {
   ])
   expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ n: 3 })
   expect(opened.load()).toEqual({ n: 3 })
+})
+
+test('the health log gets each write and no refused save', async () => {
+  const file = join(dir, 'ui-state.json')
+  const save = vi.fn()
+  const opened = await openUiStore(file, vi.fn(), { save })
+  // A folder in place of the file makes the write fail.
+  await mkdir(file)
+  await expect(opened.save({ version: 1 })).rejects.toThrow()
+  await rm(file, { recursive: true })
+  await opened.save({ version: 1 })
+  await expect(opened.save([])).rejects.toThrow()
+  await expect(opened.save({ big: 'x'.repeat(MAX_UI_BYTES) })).rejects.toThrow()
+  expect(save.mock.calls).toEqual([
+    ['ui-state', false],
+    ['ui-state', true],
+  ])
 })

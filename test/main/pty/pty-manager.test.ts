@@ -213,6 +213,25 @@ describe('PtyManager', () => {
     m.closeAll()
     expect(m.has('v3')).toBe(false)
   })
+
+  test('list gives each open PTY once and drops a closed one', () => {
+    const m = new PtyManager(spawn, '/bin/claude', {})
+    expect(m.list()).toEqual([])
+    m.open('chat:a', [], size)
+    m.open('send:b', [], size)
+    // The second open of chat:a replaces its PTY.
+    m.open('chat:a', [], size)
+    for (const [i, f] of fakes.entries()) f.pid = 100 + i
+    const byView = () => m.list().sort((x, y) => x.viewId.localeCompare(y.viewId))
+    expect(byView()).toEqual([
+      { pid: 102, viewId: 'chat:a' },
+      { pid: 101, viewId: 'send:b' },
+    ])
+    m.close('send:b')
+    expect(m.list()).toEqual([{ pid: 102, viewId: 'chat:a' }])
+    fakes[2].emitExit({ exitCode: 0 })
+    expect(m.list()).toEqual([])
+  })
 })
 
 describe('PtyManager onClose', () => {

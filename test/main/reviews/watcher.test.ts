@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExecResult } from '../../../src/main/claude/cli'
+import type { HealthEvents } from '../../../src/main/performance/health-log'
 import type { Gh } from '../../../src/main/reviews/gh'
 import { pollArgs } from '../../../src/main/reviews/query'
 import { EMPTY_STATE, type ReviewsState } from '../../../src/main/reviews/state'
@@ -156,6 +157,7 @@ function setup(
     replies?: Reply[]
     state?: Partial<ReviewsState>
     settings?: { reviewsIgnore?: string[]; reviewsPollMinutes?: number }
+    health?: Pick<HealthEvents, 'poll'>
   } = {},
 ) {
   const replies = [...(opts.replies ?? [answer([])])]
@@ -179,6 +181,7 @@ function setup(
   const watcher = createReviewsWatcher({
     emit: s => emitted.push(s),
     gh: { run },
+    health: opts.health,
     log: m => logs.push(m),
     notify: notice => notified.push(notice),
     now: () => Date.now(),
@@ -946,6 +949,39 @@ describe('createReviewsWatcher', () => {
     t.watcher.start()
     await vi.advanceTimersByTimeAsync(0)
     expect(t.watcher.current()).toMatchObject({ availability: 'error', message: REASON_GH_FAILED })
+    t.watcher.stop()
+  })
+
+  test('the health log gets each poll: an error fails, no gh and logged out give no data', async () => {
+    const poll = vi.fn()
+    const t = setup({
+      health: { poll },
+      replies: [
+        answer([]),
+        LOGGED_OUT,
+        { code: 1, stderr: 'spawn gh ENOENT', stdout: '' },
+        TIMED_OUT,
+        { code: 1, stderr: 'HTTP 502', stdout: '' },
+        answer([]),
+      ],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(2 * MIN)
+    // A gh run that throws is an error too.
+    t.run.mockImplementationOnce(async () => {
+      throw new Error('boom')
+    })
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(poll.mock.calls).toEqual([
+      ['reviews', 'ok'],
+      ['reviews', 'no-data'],
+      ['reviews', 'no-data'],
+      ['reviews', 'failed'],
+      ['reviews', 'failed'],
+      ['reviews', 'ok'],
+      ['reviews', 'failed'],
+    ])
     t.watcher.stop()
   })
 

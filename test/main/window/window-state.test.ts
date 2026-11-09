@@ -87,3 +87,23 @@ test('the store does not write over a file that it cannot read', async () => {
     await rm(dir, { force: true, recursive: true })
   }
 })
+
+test('the health log gets each write of the window state', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bifrost-window-'))
+  try {
+    const file = join(dir, 'window-state.json')
+    const save = vi.fn()
+    const store = await openWindowStateStore(file, vi.fn(), { save })
+    // A folder in place of the file makes the write fail.
+    await mkdir(file)
+    await expect(store.update({ mode: 'borderless' })).rejects.toThrow()
+    await rm(file, { recursive: true })
+    await store.update({ mode: 'fullscreen' })
+    expect(save.mock.calls).toEqual([
+      ['window-state', false],
+      ['window-state', true],
+    ])
+  } finally {
+    await rm(dir, { force: true, recursive: true })
+  }
+})

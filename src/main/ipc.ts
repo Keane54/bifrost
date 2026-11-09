@@ -60,6 +60,7 @@ import { createLiveControl, type LiveControl } from './live/live-control'
 import { createLiveServer } from './live/live-server'
 import { modSourceDir } from './live/mod-folder'
 import { createPluginCli } from './live/plugin-cli'
+import { createHealthLog, type HealthLog } from './performance/health-log'
 import { checkChatOpen, REFUSED_NOT_CHAT } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
@@ -142,6 +143,15 @@ const eventBatcher = createBatcher(entries => send('events:append', entries))
 
 // The service status monitor (spec 8.11). It starts with the IPC handlers. A test home starts none.
 let serviceMonitor: ServiceMonitor | null = null
+
+// The health log of the Performance panel (P5). registerIpc makes it before it starts a module.
+// Each module gives its poll results, save results and start errors to it.
+let healthLog: HealthLog | null = null
+
+// The health log, or null before registerIpc. index.ts and the Performance monitor read it.
+export function getHealthLog(): HealthLog | null {
+  return healthLog
+}
 
 // The account usage poller (spec 8.8). It runs only while the setting accountUsage is on. A test
 // home creates none, so a test never reads the Keychain.
@@ -274,8 +284,8 @@ function runSettingsEffect(effect: SettingsEffect): void {
 // Open the settings store. In the packaged app, the real login item state wins over the file
 // (D2). A test home does not read the login item. Then send each change to the window and run
 // its effects.
-async function openSettings(file: string): Promise<SettingsStore> {
-  const store = await openSettingsStore(file)
+async function openSettings(file: string, health: HealthLog): Promise<SettingsStore> {
+  const store = await openSettingsStore(file, console.error, health)
   if (canSetLoginItem()) {
     // A failure here must not stop the start.
     try {
@@ -335,14 +345,16 @@ async function startReviews(
   bifrostHome: string,
   loginEnv: Promise<Record<string, string>>,
   settingsReady: Promise<SettingsStore>,
+  health: HealthLog,
 ): Promise<ReviewsWatcher> {
   const [store, settings] = await Promise.all([
-    openReviewsStateStore(reviewsStateFile(bifrostHome)),
+    openReviewsStateStore(reviewsStateFile(bifrostHome), console.error, health),
     settingsReady,
   ])
   const watcher = createReviewsWatcher({
     emit: snapshot => send('reviews:update', snapshot),
     gh: createGh({ env: async () => childEnv(await loginEnv, { pty: false }), exec: execFile }),
+    health,
     log: message => console.error(message),
     notify: notifyReviewRequest,
     now: () => Date.now(),
@@ -362,6 +374,7 @@ async function startReviews(
 async function startService(
   run: Promise<RunClaude | null>,
   settingsReady: Promise<SettingsStore>,
+  health: HealthLog,
 ): Promise<RegistryService> {
   const [opened, settings] = await Promise.all([
     openStore(join(app.getPath('userData'), 'registry.json')),
@@ -374,6 +387,7 @@ async function startService(
   }
   const now = (): number => Date.now()
   const deps: ServiceDeps = {
+    health,
     listActive: () => list(false),
     listAll: () => list(true),
     now,
@@ -437,16 +451,20 @@ export function registerIpc(home: TestHome | null = null): void {
   if (registered) return
   registered = true
   testHome = home
+  const health = createHealthLog(() => Date.now())
+  healthLog = health
   if (home === null) {
     serviceMonitor = createServiceMonitor({
       check: def => checkService(def, fetchJson, Date.now()),
       emit: list => send('service:update', list),
+      health,
       now: () => Date.now(),
     })
     serviceMonitor.start()
     accountUsage = createAccountUsagePoller({
       emit: value => send('usage:account-update', value),
       fetch: (url, init) => net.fetch(url, init),
+      health,
       now: () => Date.now(),
       readToken: () => readAccessToken(execFile, Date.now()),
     })
@@ -503,9 +521,9 @@ export function registerIpc(home: TestHome | null = null): void {
   })
   const paths = defaultPaths(home?.home ?? homedir())
   // The settings store opens one time. Each user gets the same store (ruling C6).
-  const settings = openSettings(join(app.getPath('userData'), 'settings.json'))
-  const service = startService(run, settings)
-  const reviews = startReviews(paths.bifrostHome, loginEnv, settings)
+  const settings = openSettings(join(app.getPath('userData'), 'settings.json'), health)
+  const service = startService(run, settings, health)
+  const reviews = startReviews(paths.bifrostHome, loginEnv, settings, health)
   ipcMain.handle('settings:get', e => fromPage(e, async () => (await settings).get()))
   // The key recorder starts or ends. A value that is not a boolean is refused.
   ipcMain.handle('settings:recording', (e, on: unknown) =>
@@ -523,7 +541,7 @@ export function registerIpc(home: TestHome | null = null): void {
     })),
   )
   // The UI store opens one time. The handlers use the same store.
-  const uiStore = openUiStore(join(app.getPath('userData'), 'ui-state.json'))
+  const uiStore = openUiStore(join(app.getPath('userData'), 'ui-state.json'), console.error, health)
   ipcMain.handle('ui:load', e => fromPage(e, async () => (await uiStore).load()))
   ipcMain.handle('ui:save', (e, data: unknown) =>
     fromPage(e, async () => (await uiStore).save(data)),
@@ -807,6 +825,7 @@ export function registerIpc(home: TestHome | null = null): void {
       return runClaude ? createPluginCli(runClaude) : null
     },
     forceListen: process.env.BIFROST_LIVE_LISTEN === '1',
+    health,
     liveSessions: () => liveService?.liveCount() ?? 0,
     modDir: join(paths.bifrostHome, 'mod'),
     modSource: modSourceDir(app.getAppPath()),
@@ -943,8 +962,11 @@ export function attachWindow(win: BrowserWindow): void {
   win.webContents.on('dom-ready', () => {
     if (currentWindow === win) applyZoom()
   })
-  win.webContents.on('render-process-gone', () => {
+  // A renderer that stops with a reason other than clean-exit is a crash (P8). This listener is
+  // the only one for the window, so the health log gets each crash one time.
+  win.webContents.on('render-process-gone', (_e, details) => {
     if (currentWindow === win) unloadPendingOpens()
+    if (details.reason !== 'clean-exit') healthLog?.crash('window', details.reason)
     page.end()
   })
   win.on('closed', () => {

@@ -2,6 +2,7 @@ import { chmod, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { isPlainObject } from '../../shared/plain-object'
 import { applyPatch, parseSettings, type Settings, type SettingsPatch } from '../../shared/settings'
+import { type HealthEvents, NO_HEALTH, reportSave } from '../performance/health-log'
 import { readJsonFile, writeJsonAtomic } from './json-file'
 
 type ChangeListener = (settings: Settings, prev: Settings) => void
@@ -41,9 +42,11 @@ async function copyPrivate(from: string, to: string): Promise<void> {
 // to settings.v<version>.backup.json in the same folder, one time. If the copy fails, the store
 // does not save. So the values of the later version stay.
 // Updates run one after the other, in the order of the calls.
+// The health log gets the result of each write (P6).
 export async function openSettingsStore(
   file: string,
   log: (message: string, error?: unknown) => void = console.error,
+  health: Pick<HealthEvents, 'save'> = NO_HEALTH,
 ): Promise<SettingsStore> {
   let current: Settings
   let canSave = true
@@ -77,7 +80,7 @@ export async function openSettingsStore(
         canSave = false
       }
     }
-    if (canSave) await writeJsonAtomic(file, result.settings)
+    if (canSave) await reportSave(health, 'settings', () => writeJsonAtomic(file, result.settings))
     const prev = current
     current = result.settings
     for (const cb of [...listeners]) {

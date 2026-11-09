@@ -4,7 +4,7 @@ import {
   serviceList,
   TEST_HOME_SERVICE,
 } from '../../../src/main/service-status/monitor'
-import { SERVICES, type ServiceDef } from '../../../src/main/service-status/statuspage'
+import { NO_ANSWER, SERVICES, type ServiceDef } from '../../../src/main/service-status/statuspage'
 import { levelText } from '../../../src/renderer/src/service/service-view'
 import type { ServiceStatus } from '../../../src/shared/types'
 
@@ -101,6 +101,38 @@ describe('createServiceMonitor', () => {
     const levels = Object.fromEntries(m.current().map(s => [s.id, s.level]))
     expect(levels).toEqual({ claude: 'none', github: 'unknown', sentry: 'none' })
     expect(m.current().find(s => s.id === 'github')).toMatchObject({ checkedAt: 7 })
+    m.stop()
+  })
+
+  it('the health log gets a failed round only when every service fails', async () => {
+    let failing: string[] = []
+    const check = async (d: ServiceDef): Promise<ServiceStatus> => {
+      if (!failing.includes(d.id)) return status(d, Date.now())
+      // A check that throws and a check with no answer both fail.
+      if (d.id === 'github') throw new Error('boom')
+      return { ...status(d, Date.now()), error: NO_ANSWER, level: 'unknown' }
+    }
+    const poll = vi.fn()
+    const m = createServiceMonitor({
+      check,
+      emit: () => {},
+      health: { poll },
+      now: () => Date.now(),
+    })
+    m.start()
+    await vi.advanceTimersByTimeAsync(0)
+    failing = ['claude', 'github']
+    await vi.advanceTimersByTimeAsync(60_000)
+    failing = SERVICES.map(d => d.id)
+    await vi.advanceTimersByTimeAsync(60_000)
+    failing = []
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(poll.mock.calls).toEqual([
+      ['service-status', 'ok'],
+      ['service-status', 'ok'],
+      ['service-status', 'failed'],
+      ['service-status', 'ok'],
+    ])
     m.stop()
   })
 

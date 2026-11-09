@@ -1,6 +1,7 @@
 // The monitor runs one round of checks at the start and then 60 s after the end of each round.
 // A round never starts while another round runs.
 import type { ServiceStatus } from '../../shared/types'
+import { type HealthEvents, NO_HEALTH } from '../performance/health-log'
 import { NO_ANSWER, SERVICES, type ServiceDef } from './statuspage'
 
 export const SERVICE_INTERVAL_MS = 60_000
@@ -10,6 +11,8 @@ export interface MonitorDeps {
   check(def: ServiceDef): Promise<ServiceStatus>
   emit(list: ServiceStatus[]): void
   now(): number
+  // The health log gets the result of each round (P5, P7). The default does nothing.
+  health?: Pick<HealthEvents, 'poll'>
 }
 
 export interface ServiceMonitor {
@@ -34,6 +37,7 @@ export function createServiceMonitor(
   deps: MonitorDeps,
   intervalMs: number = SERVICE_INTERVAL_MS,
 ): ServiceMonitor {
+  const health = deps.health ?? NO_HEALTH
   let list: ServiceStatus[] = SERVICES.map(def => unknown(def, 0))
   let timer: ReturnType<typeof setTimeout> | null = null
   let stopped = true
@@ -50,6 +54,8 @@ export function createServiceMonitor(
     const next = await Promise.all(SERVICES.map(one))
     if (stopped) return
     list = next
+    // A round fails only when no service answered (P7).
+    health.poll('service-status', next.every(s => s.error !== undefined) ? 'failed' : 'ok')
     // A throw in emit goes to the log. The next round always gets its timer, so the loop never
     // stops (final review Minor 5).
     try {

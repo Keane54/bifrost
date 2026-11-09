@@ -1,4 +1,5 @@
 import { isPlainObject } from '../../shared/plain-object'
+import { type HealthEvents, NO_HEALTH, reportSave } from '../performance/health-log'
 import { readJsonFile, writeJsonAtomic } from './json-file'
 
 export const MAX_UI_BYTES = 1_000_000
@@ -9,9 +10,11 @@ export const MAX_UI_BYTES = 1_000_000
 // Saves run one after the other, in the order of the calls.
 // If the file cannot be read, saving is off.
 // Then Bifrost cannot write over a file that it did not read.
+// The health log gets the result of each write. A refused save is not a write (P6).
 export async function openUiStore(
   file: string,
   log: (message: string, error: unknown) => void = console.error,
+  health: Pick<HealthEvents, 'save'> = NO_HEALTH,
 ): Promise<{ load(): unknown; save(data: unknown): Promise<void> }> {
   try {
     const result = await readJsonFile(file)
@@ -26,7 +29,7 @@ export async function openUiStore(
           return Promise.reject(new Error('refused: the UI state is too large'))
         }
         const run = queue.then(async () => {
-          await writeJsonAtomic(file, data)
+          await reportSave(health, 'ui-state', () => writeJsonAtomic(file, data))
           current = data
         })
         queue = run.catch(() => {})

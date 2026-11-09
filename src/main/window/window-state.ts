@@ -1,4 +1,5 @@
 import type { DisplayMode } from '../../shared/types'
+import { type HealthEvents, NO_HEALTH, reportSave } from '../performance/health-log'
 import { readJsonFile, writeJsonAtomic } from '../store/json-file'
 
 export interface Bounds {
@@ -81,9 +82,11 @@ export interface WindowStateStore {
 
 // Open window-state.json. A missing or damaged file gives the defaults.
 // If the file cannot be read, Bifrost does not write over it.
+// The health log gets the result of each write (P6).
 export async function openWindowStateStore(
   file: string,
   log: (message: string, error: unknown) => void = console.error,
+  health: Pick<HealthEvents, 'save'> = NO_HEALTH,
 ): Promise<WindowStateStore> {
   let state: WindowState = { bounds: null, mode: 'window' }
   let canWrite = true
@@ -103,7 +106,9 @@ export async function openWindowStateStore(
       state = { ...state, ...part }
       if (!canWrite) return Promise.resolve()
       const snapshot = state
-      const run = queue.then(() => writeJsonAtomic(file, snapshot))
+      const run = queue.then(() =>
+        reportSave(health, 'window-state', () => writeJsonAtomic(file, snapshot)),
+      )
       queue = run.catch(() => {})
       return run
     },
