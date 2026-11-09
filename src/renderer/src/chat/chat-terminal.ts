@@ -20,6 +20,7 @@ import {
   type ScreenRow,
   stepBlocks,
 } from './agent-view'
+import { HISTORY_ATTR, hasHistory } from './scroll-history'
 import {
   BUMP_GAP_MS,
   decideSize,
@@ -28,7 +29,7 @@ import {
   type Px,
   RESIZE_DEBOUNCE_MS,
 } from './size-rule'
-import { terminalBackground, terminalOptions } from './terminal-options'
+import { terminalOptions, terminalTheme } from './terminal-options'
 import { type AttachTarget, attachTarget, type ChatView, chatPanelId, HIDDEN_VIEW } from './views'
 import { addedContexts, releaseWebgl, type WebglContext } from './webgl-release'
 
@@ -140,14 +141,20 @@ export class ChatTerminal {
     deps.parking.append(this.element)
 
     const font = deps.font ?? DEFAULT_SETTINGS.terminalFont
-    // The background is transparent. The frame colour and its blur show through (spec 8.5).
+    // The background is transparent. The frame colour and its blur show through. The slider of
+    // the scroll bar has the Bifrost colours (spec 8.5).
     const style = getComputedStyle(document.documentElement)
-    const background = terminalBackground(name => style.getPropertyValue(name))
-    this.term = new Terminal(terminalOptions(font, background))
+    const theme = terminalTheme(name => style.getPropertyValue(name))
+    this.term = new Terminal(terminalOptions(font, theme))
     this.term.loadAddon(this.fit)
     this.term.open(this.host)
     // The keys and the xterm.js replies go to the PTY.
     this.term.onData(data => this.input(data))
+    // A write adds lines. A resize moves lines between the screen and the scrollback. A write can
+    // also change to the alternate buffer. So each of these events can change the history.
+    this.term.onWriteParsed(() => this.showHistory())
+    this.term.onResize(() => this.showHistory())
+    this.term.buffer.onBufferChange(() => this.showHistory())
     // xterm.js changes the screen size later when the terminal is not on the screen.
     // So the zoom follows the screen element.
     this.screen = this.host.querySelector<HTMLElement>('.xterm-screen')
@@ -310,6 +317,7 @@ export class ChatTerminal {
     this.agentWaiting = guard.waiting
     this.ended = false
     this.term.reset()
+    this.showHistory()
     this.maybeAttach()
     this.showNote()
   }
@@ -606,6 +614,7 @@ export class ChatTerminal {
     history.times.push(now)
     this.attached = false
     this.term.reset()
+    this.showHistory()
     // The PTY manager closes the old PTY of this view before it opens the new PTY.
     this.open(target, this.termSize())
   }
@@ -620,6 +629,13 @@ export class ChatTerminal {
       if (line) rows.push({ text: line.translateToString(false), wrapped: line.isWrapped })
     }
     return rows
+  }
+
+  // Set the history attribute while the terminal has lines above the screen. A rule in app.css
+  // then shows the vertical scroll bar at all times, not only near the pointer (spec 8.5).
+  private showHistory(): void {
+    if (this.disposed) return
+    this.element.toggleAttribute(HISTORY_ATTR, hasHistory(this.term.buffer.active))
   }
 
   private showNote(): void {

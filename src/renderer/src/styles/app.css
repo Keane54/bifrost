@@ -34,6 +34,14 @@
      through, so Panel transparency applies to chat windows too (spec 8.5). The terminal reads
      this token at run time. */
   --color-terminal-bg: #00000000;
+  /* The slider of the chat terminal scroll bar: at rest, under the pointer and during a drag. Each
+     is white with an alpha, so the panel colour shows through, as with --color-panel-edge. At rest
+     the slider is stronger than the 30% border of the focused frame, so it is clearly visible
+     (spec 8.5). The terminal reads these tokens at run time. xterm.js reads a colour with an
+     alpha only in hex or in rgba() with commas. So these tokens are in hex. */
+  --color-terminal-slider: #ffffff66;
+  --color-terminal-slider-hover: #ffffff99;
+  --color-terminal-slider-active: #ffffffcc;
 
   /* The text colours of the Overview tabs. The first six are the automatic colours. You choose the
      others. No token comes near the box colours (spec 8.10). */
@@ -507,11 +515,26 @@
 }
 
 /* The chat terminal is transparent (spec 8.5). xterm.css paints the viewport element of xterm.js
-   black, behind the screen, and gives it a native scroll bar. xterm.js 6 scrolls with its own
-   scroll element. The black scroll element hid the native scroll bar before, so this rule hides
-   it now. This rule is outside a layer, because the rules of xterm.css are outside a layer too,
-   and a rule in a layer always loses to them. */
+   black, behind the screen, and gives it a native scroll bar. xterm.js 6 does not use the native
+   scroll bar. It scrolls with its own scroll bar element (the rule below). So this rule hides the
+   native scroll bar. This rule is outside a layer, because the rules of xterm.css are outside a
+   layer too, and a rule in a layer always loses to them. */
 [data-chat-terminal] .xterm .xterm-viewport {
   background-color: var(--color-terminal-bg);
   scrollbar-width: none;
+}
+
+/* The scroll bar of xterm.js in a chat terminal (spec 8.5). xterm.js 6 shows its vertical scroll
+   bar only while the pointer is on the terminal, and for a short time after a scroll. At other
+   times, it gives the scroll bar the class "invisible". Tailwind also has a utility .invisible.
+   That utility sets visibility: hidden. The chat terminal sets data-terminal-history while its
+   buffer has lines above the screen. Then this rule shows the scroll bar at all times. The slider
+   then takes the pointer, so the user can drag it. The z-index is the z-index of the "visible"
+   class of xterm.css. The slider colours come from the --color-terminal-slider tokens, through
+   the theme of xterm.js. This rule is outside a layer for the same reason as the rule above. */
+[data-chat-terminal][data-terminal-history] .xterm .xterm-scrollable-element > .scrollbar.vertical {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  z-index: 11;
 }
