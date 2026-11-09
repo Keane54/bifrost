@@ -1,30 +1,21 @@
 import type * as os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExecFn, ExecResult } from '../../../src/main/claude/cli'
+import { GH_LIMIT_LOGGED_OUT } from '../../../src/main/performance/bindings'
 import { createHealthLog } from '../../../src/main/performance/health-log'
 import {
   BATTERY_MS,
   CLONES_MS,
-  checkFps,
-  checkView,
-  createLoopDelay,
+  COMMAND_MS,
   createPerformanceMonitor,
-  DELAY_WINDOW_MS,
   DISK_MS,
   FAST_TICK_MS,
-  GH_LIMIT_FAILED,
-  GH_LIMIT_LOGGED_OUT,
-  GH_LIMIT_MISSING,
   type GithubLimit,
   HISTORY_MS,
   type MonitorDeps,
   PROBE_MS,
   PROBE_URLS,
   type ProbeResult,
-  probeUrl,
-  RATE_LIMIT_ARGS,
-  REFUSED_BAD_CHAT_PANEL,
-  readGhRateLimit,
   TICK_MS,
   TREND_MS,
 } from '../../../src/main/performance/monitor'
@@ -37,7 +28,6 @@ import {
   ROUTE,
   SYSCTL,
 } from '../../../src/main/performance/system'
-import type { Gh } from '../../../src/main/reviews/gh'
 import { EMPTY_PERFORMANCE, type PerformanceSnapshot } from '../../../src/shared/performance'
 import type { SessionRow } from '../../../src/shared/types'
 
@@ -80,19 +70,29 @@ function psOut(procs: Proc[]): string {
     .join('\n')
 }
 
-function netstatOut(inBytes: number, outBytes: number): string {
+function netstatOut(device: string, inBytes: number, outBytes: number): string {
   return [
     'Name       Mtu   Network       Address            Ipkts Ierrs     Ibytes    Opkts Oerrs     Obytes  Coll',
     'lo0        16384 <Link#1>                       5610467     0 26388186710  5610467     0 26388186710     0',
-    `en0        1500  <Link#14>   aa:bb:cc:dd:ee:01  8000000     0  ${inBytes}  4000000     0  ${outBytes}     -`,
+    `${device}        1500  <Link#14>   aa:bb:cc:dd:ee:01  8000000     0  ${inBytes}  4000000     0  ${outBytes}     -`,
   ].join('\n')
 }
 
 const SWAP = 'total = 2048.00M  used = 512.00M  free = 1536.00M  (encrypted)'
 const BATTERY =
   "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1)\t80%; discharging; 3:00 remaining present: true\n"
-const ROUTE_OUT = '   route to: default\ndestination: default\n  interface: en0\n'
-const PORTS = 'Hardware Port: Wi-Fi\nDevice: en0\nEthernet Address: aa:bb:cc:dd:ee:01\n'
+const routeOut = (device: string): string =>
+  `   route to: default\ndestination: default\n  interface: ${device}\n`
+const PORTS = [
+  'Hardware Port: Wi-Fi',
+  'Device: en0',
+  'Ethernet Address: aa:bb:cc:dd:ee:01',
+  '',
+  'Hardware Port: Ethernet',
+  'Device: en1',
+  'Ethernet Address: aa:bb:cc:dd:ee:02',
+].join('\n')
+const FAILED: ExecResult = { code: 1, stderr: 'failed', stdout: '' }
 
 function ok(stdout: string): ExecResult {
   return { code: 0, stderr: '', stdout }
@@ -144,29 +144,42 @@ interface World {
   outBytes: number
   rateLimit: GithubLimit | null
   delay: number | null
+  // The default route interface.
+  device: string
+  psFails: boolean
+  routeFails: boolean
+  clonesExist: boolean
+  metricsThrow: boolean
+  emitThrows: boolean
 }
 
 function setup(opts: { network?: boolean; clonesPath?: string | null } = {}) {
   const world: World = {
+    clonesExist: true,
     cpus: [cpuInfo(0, 0)],
     delay: null,
+    device: 'en0',
+    emitThrows: false,
     inBytes: 1_000_000,
     metrics: BIFROST.map(m => ({ ...m })),
+    metricsThrow: false,
     online: true,
     outBytes: 500_000,
     procs: [{ cpu: 0, pid: 100, ppid: 1, rssMb: 1 }],
+    psFails: false,
     ptys: [],
     rateLimit: null,
+    routeFails: false,
     rows: [],
     thermal: 'nominal',
   }
   const exec = vi.fn<ExecFn>(async (file, args) => {
-    if (file === PS) return ok(psOut(world.procs))
+    if (file === PS) return world.psFails ? FAILED : ok(psOut(world.procs))
     if (file === SYSCTL) return ok(args.includes('vm.swapusage') ? SWAP : '1\n')
     if (file === PMSET) return ok(BATTERY)
-    if (file === ROUTE) return ok(ROUTE_OUT)
+    if (file === ROUTE) return world.routeFails ? FAILED : ok(routeOut(world.device))
     if (file === NETWORKSETUP) return ok(PORTS)
-    if (file === NETSTAT) return ok(netstatOut(world.inBytes, world.outBytes))
+    if (file === NETSTAT) return ok(netstatOut(world.device, world.inBytes, world.outBytes))
     if (file === DU) return ok(`2048\t${args.at(-1)}\n`)
     return { code: 1, stderr: `unknown command ${file}`, stdout: '' }
   })
@@ -181,21 +194,28 @@ function setup(opts: { network?: boolean; clonesPath?: string | null } = {}) {
     }),
   )
   const freeDiskBytes = vi.fn(async (): Promise<number | null> => 250e9)
+  const exists = vi.fn(async (_path: string): Promise<boolean> => world.clonesExist)
   const emitted: PerformanceSnapshot[] = []
   const health = createHealthLog(() => Date.now())
   const deps: MonitorDeps = {
-    appMetrics: () =>
-      world.metrics.map(m => ({
+    appMetrics: () => {
+      if (world.metricsThrow) throw new Error('no metrics')
+      return world.metrics.map(m => ({
         cpu: { percentCPUUsage: m.cpu },
         memory: { workingSetSize: m.ramMb * KB_PER_MB },
         pid: m.pid,
         type: m.type,
-      })),
+      }))
+    },
     clonesPath: opts.clonesPath ?? null,
     cpus: () => world.cpus,
     delayP99: () => world.delay,
-    emit: s => emitted.push(s),
+    emit: s => {
+      if (world.emitThrows) throw new Error('no window')
+      emitted.push(s)
+    },
     exec,
+    exists,
     freeDiskBytes,
     ghRateLimit,
     health,
@@ -215,6 +235,7 @@ function setup(opts: { network?: boolean; clonesPath?: string | null } = {}) {
     calls,
     emitted,
     exec,
+    exists,
     freeDiskBytes,
     ghRateLimit,
     health,
@@ -236,6 +257,24 @@ function hasReason(t: Setup, part: string): boolean {
 }
 
 const orphan = (t: Setup): boolean => hasReason(t, 'no chat window')
+
+// The next call of the command waits until the test calls the returned function.
+function holdNext(t: Setup, file: string): () => void {
+  const real = t.exec.getMockImplementation() as ExecFn
+  let release: () => void = () => {}
+  const held = new Promise<void>(resolve => {
+    release = resolve
+  })
+  let used = false
+  t.exec.mockImplementation(async (f, args, opts) => {
+    if (f === file && !used) {
+      used = true
+      await held
+    }
+    return real(f, args, opts)
+  })
+  return release
+}
 
 beforeEach(() => {
   vi.useFakeTimers()
@@ -276,35 +315,70 @@ describe('createPerformanceMonitor', () => {
 
   it('the tick is 2 s while showing and 15 s after the panel closes', async () => {
     const t = setup()
+    // Each tick emits one snapshot.
+    const ticks = (): number => t.emitted.length
     t.monitor.start()
     await vi.advanceTimersByTimeAsync(0)
-    expect(t.calls(PS)).toBe(1)
+    expect(ticks()).toBe(1)
     // The panel shows. The next tick comes 2 s after the end of the last tick.
     t.monitor.view(SHOW)
     await vi.advanceTimersByTimeAsync(FAST_TICK_MS - 1)
-    expect(t.calls(PS)).toBe(1)
+    expect(ticks()).toBe(1)
     await vi.advanceTimersByTimeAsync(1)
-    expect(t.calls(PS)).toBe(2)
+    expect(ticks()).toBe(2)
     await vi.advanceTimersByTimeAsync(10 * FAST_TICK_MS)
-    expect(t.calls(PS)).toBe(12)
+    expect(ticks()).toBe(12)
     // The panel closes. The next tick comes 15 s after the end of the last tick.
     t.monitor.view(HIDE)
     await vi.advanceTimersByTimeAsync(TICK_MS - 1)
-    expect(t.calls(PS)).toBe(12)
+    expect(ticks()).toBe(12)
     await vi.advanceTimersByTimeAsync(1)
-    expect(t.calls(PS)).toBe(13)
+    expect(ticks()).toBe(13)
     // The panel shows 10 s after a tick. The 2 s are past, so a tick comes at once.
     await vi.advanceTimersByTimeAsync(10 * SEC)
     t.monitor.view(SHOW)
     await vi.advanceTimersByTimeAsync(0)
-    expect(t.calls(PS)).toBe(14)
+    expect(ticks()).toBe(14)
     // A report that changes only the chat panels does not move the timer.
     t.monitor.view({ ...SHOW, chatPanels: [chat(uuid(1))] })
     await vi.advanceTimersByTimeAsync(FAST_TICK_MS - 1)
-    expect(t.calls(PS)).toBe(14)
+    expect(ticks()).toBe(14)
     await vi.advanceTimersByTimeAsync(1)
-    expect(t.calls(PS)).toBe(15)
-    expect(t.emitted).toHaveLength(15)
+    expect(ticks()).toBe(15)
+    t.monitor.stop()
+  })
+
+  it('while the panel shows, ps and netstat run at most every 6 s with real time deltas', async () => {
+    const t = setup()
+    t.world.procs = [{ cpu: 10, pid: 200, ppid: 100, rssMb: 40 }]
+    t.world.ptys = [{ pid: 200, viewId: chat(uuid(1)) }]
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.calls(PS)).toBe(1)
+    t.monitor.view(SHOW)
+    // 0.6 s of CPU time before the next ps read.
+    t.world.procs = [{ cpu: 10.6, pid: 200, ppid: 100, rssMb: 40 }]
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    // No ps at 2 s. The tick keeps the terminal values of the last ps read.
+    expect(t.calls(PS)).toBe(1)
+    expect(group(t.monitor.current(), 'Chat terminals')).toMatchObject({ cpu: 0, ramMb: 40 })
+    expect(t.calls(NETSTAT)).toBe(1)
+    t.world.inBytes += 6000
+    t.world.outBytes += 3000
+    await vi.advanceTimersByTimeAsync(2 * FAST_TICK_MS)
+    // The ps read at 6 s: 0.6 s of CPU time in 6 s is 10% of one core.
+    expect(t.calls(PS)).toBe(2)
+    expect(group(t.monitor.current(), 'Chat terminals')?.cpu).toBeCloseTo(10)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    // The netstat read at 8 s: 6000 bytes in 6 s.
+    expect(t.calls(NETSTAT)).toBe(2)
+    expect(t.monitor.current().network).toMatchObject({ downBps: 1000, upBps: 500 })
+    // 30 s of showing: 15 ticks, but only 5 ps reads and 5 netstat reads.
+    await vi.advanceTimersByTimeAsync(22 * SEC)
+    expect(t.emitted).toHaveLength(16)
+    expect(t.calls(PS)).toBe(1 + 5)
+    expect(t.calls(NETSTAT)).toBe(5)
+    expect(COMMAND_MS).toBe(6000)
     t.monitor.stop()
   })
 
@@ -555,7 +629,7 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
-  it('reads the interface when the panel shows, and the rates on each fast tick', async () => {
+  it('reads the interface when the panel shows, and the rates at most every 6 s', async () => {
     const t = setup()
     t.monitor.start()
     await vi.advanceTimersByTimeAsync(0)
@@ -569,32 +643,76 @@ describe('createPerformanceMonitor', () => {
       online: true,
       upBps: null,
     })
-    t.world.inBytes += 4000
-    t.world.outBytes += 2000
-    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
-    expect(t.monitor.current().network).toMatchObject({ downBps: 2000, upBps: 1000 })
+    t.world.inBytes += 6000
+    t.world.outBytes += 3000
+    await vi.advanceTimersByTimeAsync(COMMAND_MS)
+    expect(t.calls(NETSTAT)).toBe(2)
+    expect(t.monitor.current().network).toMatchObject({ downBps: 1000, upBps: 500 })
     // The monitor reads the interface again only after 60 s.
-    await vi.advanceTimersByTimeAsync(56 * SEC)
+    await vi.advanceTimersByTimeAsync(52 * SEC)
     expect(t.calls(ROUTE)).toBe(1)
-    expect(t.calls(NETSTAT)).toBe(30)
+    expect(t.calls(NETSTAT)).toBe(10)
     await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
     expect(t.calls(ROUTE)).toBe(2)
+    expect(t.calls(NETSTAT)).toBe(11)
     // The panel closes: no network command runs, and the rates go.
     t.monitor.view(HIDE)
-    const netstats = t.calls(NETSTAT)
     await vi.advanceTimersByTimeAsync(5 * MIN)
-    expect(t.calls(NETSTAT)).toBe(netstats)
+    expect(t.calls(NETSTAT)).toBe(11)
     expect(t.calls(ROUTE)).toBe(2)
     expect(t.monitor.current().network).toMatchObject({ downBps: null, upBps: null })
-    // The panel shows again: the monitor reads the interface at the next tick.
+    // The panel shows again: the monitor reads the interface and the bytes at the next tick.
     t.monitor.view(SHOW)
     await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
     expect(t.calls(ROUTE)).toBe(3)
+    expect(t.calls(NETSTAT)).toBe(12)
     // Online comes from net.isOnline in each state.
     t.world.online = false
     t.monitor.view(HIDE)
     await vi.advanceTimersByTimeAsync(TICK_MS)
     expect(t.monitor.current().network?.online).toBe(false)
+    t.monitor.stop()
+  })
+
+  it('a new interface clears the rates', async () => {
+    const t = setup()
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    t.world.inBytes += 6000
+    await vi.advanceTimersByTimeAsync(COMMAND_MS)
+    expect(t.monitor.current().network?.downBps).toBe(1000)
+    // The default route moves to the Ethernet port. The monitor reads it at 62 s.
+    t.world.device = 'en1'
+    await vi.advanceTimersByTimeAsync(54 * SEC)
+    expect(t.calls(ROUTE)).toBe(2)
+    expect(t.monitor.current().network).toMatchObject({
+      downBps: null,
+      kind: 'ethernet',
+      upBps: null,
+    })
+    // The next read of the new interface gives a rate again.
+    t.world.inBytes += 12_000
+    await vi.advanceTimersByTimeAsync(COMMAND_MS)
+    expect(t.monitor.current().network?.downBps).toBe(2000)
+    t.monitor.stop()
+  })
+
+  it('a failed interface read runs again at the next tick', async () => {
+    const t = setup()
+    t.world.routeFails = true
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    expect(t.calls(ROUTE)).toBe(1)
+    expect(t.calls(NETSTAT)).toBe(0)
+    expect(t.monitor.current().network?.kind).toBeNull()
+    t.world.routeFails = false
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    expect(t.calls(ROUTE)).toBe(2)
+    expect(t.monitor.current().network?.kind).toBe('wifi')
     t.monitor.stop()
   })
 
@@ -619,15 +737,37 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
-  it('reads the Mac on each tick', async () => {
+  it('reads the clones size only when the folder exists', async () => {
+    const clones = '/fake/home/.bifrost/reviews/repos'
+    const t = setup({ clonesPath: clones })
+    t.world.clonesExist = false
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.exists).toHaveBeenCalledWith(clones)
+    expect(t.calls(DU)).toBe(0)
+    expect(t.monitor.current().limits.clonesMb).toBeNull()
+    // The folder exists at the next check, 10 minutes after the first one.
+    t.world.clonesExist = true
+    await vi.advanceTimersByTimeAsync(CLONES_MS)
+    expect(t.calls(DU)).toBe(1)
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.monitor.current().limits.clonesMb).toBe(2)
+    t.monitor.stop()
+  })
+
+  it('reads the Mac, with the pressure and the swap at most every 15 s', async () => {
     const t = setup()
     t.monitor.start()
     await vi.advanceTimersByTimeAsync(0)
+    expect(t.calls(SYSCTL)).toBe(2)
     // The CPU load needs two samples of the CPU times.
     expect(t.monitor.current().mac?.cpuLoad).toBeNull()
+    t.monitor.view(SHOW)
     t.world.cpus = [cpuInfo(25, 75)]
     t.world.thermal = 'serious'
-    await vi.advanceTimersByTimeAsync(TICK_MS)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    // The tick at 2 s keeps the pressure and the swap of the last read.
+    expect(t.calls(SYSCTL)).toBe(2)
     expect(t.monitor.current().mac).toEqual({
       battery: { charging: false, percent: 80 },
       cpuLoad: 25,
@@ -635,7 +775,60 @@ describe('createPerformanceMonitor', () => {
       swap: { totalMb: 2048, usedMb: 512 },
       thermal: 'serious',
     })
+    // 30 s of showing: the reads at 0 s and 16 s.
+    await vi.advanceTimersByTimeAsync(28 * SEC)
     expect(t.calls(SYSCTL)).toBe(4)
+    t.monitor.stop()
+  })
+
+  it('a tick with a failed ps adds no sample and keeps the terminal and session values', async () => {
+    const t = setup()
+    t.world.procs = [
+      { cpu: 0, pid: 200, ppid: 100, rssMb: 40 },
+      { cpu: 0, pid: 300, ppid: 1, rssMb: 100 },
+    ]
+    t.world.ptys = [{ pid: 200, viewId: chat(uuid(1)) }]
+    t.world.rows = [sessionRow(uuid(1), 'alpha', 300)]
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    const before = t.monitor.current()
+    expect(before.okText).toBe('Bifrost is using 740 MB RAM and 12% CPU.')
+    t.world.psFails = true
+    const main = t.world.metrics[0]
+    if (main) main.ramMb += 100
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    const snap = t.monitor.current()
+    expect(snap.bifrost?.trend).toHaveLength(1)
+    expect(snap.okText).toBe(before.okText)
+    expect(group(snap, 'Chat terminals')).toEqual({
+      count: 1,
+      cpu: 0,
+      name: 'Chat terminals',
+      ramMb: 40,
+    })
+    expect(snap.sessions).toEqual(before.sessions)
+    expect(snap.sessions?.top[0]?.ramMb).toBe(100)
+    // ps works again.
+    t.world.psFails = false
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.monitor.current().bifrost?.trend).toHaveLength(2)
+    expect(t.monitor.current().okText).toBe('Bifrost is using 840 MB RAM and 12% CPU.')
+    t.monitor.stop()
+  })
+
+  it('ignores a Reviews rate limit whose reset time is past', async () => {
+    const t = setup()
+    t.world.rateLimit = { limit: 5000, remaining: 3, resetAt: Date.now() - MIN }
+    t.monitor.start()
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    expect(t.ghRateLimit).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
+    expect(t.monitor.current().limits.github).toEqual({
+      limit: 5000,
+      remaining: 4999,
+      resetAt: RESET,
+    })
     t.monitor.stop()
   })
 
@@ -787,140 +980,80 @@ describe('createPerformanceMonitor', () => {
     expect(vi.getTimerCount()).toBe(0)
     expect(t.monitor.current()).toEqual(EMPTY_PERFORMANCE)
   })
-})
 
-describe('readGhRateLimit', () => {
-  it('reads the GraphQL limit of gh api rate_limit, with the reset in ms', async () => {
-    const run = vi.fn<Gh['run']>(async () =>
-      ok(
-        JSON.stringify({
-          rate: { limit: 5000, remaining: 4990, reset: 1794229000, used: 10 },
-          resources: {
-            core: { limit: 5000, remaining: 4990, reset: 1794229000, used: 10 },
-            graphql: { limit: 5000, remaining: 4321, reset: 1794229200, used: 679 },
-          },
-        }),
-      ),
-    )
-    expect(await readGhRateLimit({ run })).toEqual({
-      limit: 5000,
-      remaining: 4321,
-      resetAt: 1794229200 * 1000,
-    })
-    expect(RATE_LIMIT_ARGS).toEqual(['api', 'rate_limit'])
-    expect(run).toHaveBeenCalledWith(RATE_LIMIT_ARGS, { timeoutMs: expect.any(Number) })
+  it('a dep that throws or a rejected side read keeps the loop running', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const t = setup()
+    t.world.metricsThrow = true
+    t.freeDiskBytes.mockRejectedValueOnce(new Error('statfs failed'))
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.emitted).toHaveLength(0)
+    t.world.metricsThrow = false
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.emitted).toHaveLength(1)
+    t.world.emitThrows = true
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.emitted).toHaveLength(1)
+    t.world.emitThrows = false
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.emitted).toHaveLength(2)
+    expect(t.monitor.current().limits.freeDiskGb).toBeNull()
+    // The rejected read runs again 60 s after the first one.
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.freeDiskBytes).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.monitor.current().limits.freeDiskGb).toBe(250)
+    expect(error).toHaveBeenCalled()
+    t.monitor.stop()
+    error.mockRestore()
   })
 
-  it('gives a friendly reason when gh cannot answer', async () => {
-    expect(GH_LIMIT_MISSING).toBe("GitHub CLI isn't installed")
-    expect(GH_LIMIT_LOGGED_OUT).toBe("GitHub CLI isn't signed in")
-    expect(GH_LIMIT_FAILED).toBe("Couldn't read the GitHub limit")
-    const cases: Array<[ExecResult, string]> = [
-      [{ code: -2, stderr: 'spawn gh ENOENT', stdout: '' }, GH_LIMIT_MISSING],
-      [{ code: 4, stderr: 'please run:  gh auth login', stdout: '' }, GH_LIMIT_LOGGED_OUT],
-      [{ code: 1, stderr: 'gh: HTTP 502', stdout: '' }, GH_LIMIT_FAILED],
-      [{ code: 1, stderr: '', stdout: '', timedOut: true }, GH_LIMIT_FAILED],
-      [ok('not json'), GH_LIMIT_FAILED],
-      [ok('{"resources":{"graphql":{"limit":5000}}}'), GH_LIMIT_FAILED],
-    ]
-    for (const [result, reason] of cases) {
-      expect(await readGhRateLimit({ run: async () => result })).toEqual({ unavailable: reason })
-    }
-    const thrown = async (): Promise<ExecResult> => {
-      throw new Error('spawn failed')
-    }
-    expect(await readGhRateLimit({ run: thrown })).toEqual({ unavailable: GH_LIMIT_FAILED })
-  })
-})
-
-describe('probeUrl', () => {
-  it('times a HEAD request with no login and counts any status as an answer', async () => {
-    let clock = 1000
-    const fetch = vi.fn(async (_url: string, _init: RequestInit) => {
-      clock += 87
-      return new Response(null, { status: 404 })
-    })
-    expect(await probeUrl(fetch, PROBE_URLS.anthropic, () => clock)).toBe(87)
-    const [url, init] = fetch.mock.calls[0] ?? []
-    expect(url).toBe('https://api.anthropic.com')
-    expect(init).toMatchObject({ cache: 'no-store', credentials: 'omit', method: 'HEAD' })
-    expect(init?.signal).toBeInstanceOf(AbortSignal)
-    expect(init?.headers).toBeUndefined()
+  it('start after stop works', async () => {
+    const t = setup()
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    t.monitor.stop()
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.emitted).toHaveLength(2)
+    expect(t.calls(PS)).toBe(2)
+    expect(t.monitor.current().state).toBe('ok')
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.emitted).toHaveLength(3)
+    t.monitor.stop()
   })
 
-  it('gives no-answer after the timeout and unreachable for a connection error', async () => {
-    const timeout = async (): Promise<Response> => {
-      throw new DOMException('The operation timed out.', 'TimeoutError')
-    }
-    expect(await probeUrl(timeout, PROBE_URLS.github, () => 0)).toBe('no-answer')
-    const refused = async (): Promise<Response> => {
-      throw new TypeError('net::ERR_NAME_NOT_RESOLVED')
-    }
-    expect(await probeUrl(refused, PROBE_URLS.github, () => 0)).toBe('unreachable')
-  })
-})
-
-describe('createLoopDelay', () => {
-  it('gives the 99th percentile of the last full 60 s window in ms', async () => {
-    const h = {
-      count: 0,
-      disable: vi.fn(),
-      enable: vi.fn(),
-      percentile: vi.fn((_p: number) => 250e6),
-      reset: vi.fn(() => {
-        h.count = 0
-      }),
-    }
-    const delay = createLoopDelay(h)
-    expect(h.enable).toHaveBeenCalledTimes(1)
-    h.count = 5000
-    // The first window has not ended.
-    expect(delay.p99()).toBeNull()
-    await vi.advanceTimersByTimeAsync(DELAY_WINDOW_MS)
-    expect(delay.p99()).toBe(250)
-    expect(h.percentile).toHaveBeenCalledWith(99)
-    expect(h.reset).toHaveBeenCalledTimes(1)
-    // A window with no data gives null.
-    await vi.advanceTimersByTimeAsync(DELAY_WINDOW_MS)
-    expect(delay.p99()).toBeNull()
-    expect(h.reset).toHaveBeenCalledTimes(2)
-    delay.stop()
-    expect(h.disable).toHaveBeenCalledTimes(1)
-    expect(vi.getTimerCount()).toBe(0)
-  })
-})
-
-describe('checkView and checkFps', () => {
-  it('checkView takes two booleans and chat panel IDs only', () => {
-    const good = { chatPanels: [chat(uuid(1))], focused: false, showing: true }
-    expect(checkView(good)).toEqual(good)
-    const base = { focused: false, showing: true }
-    expect(() => checkView({ ...base, chatPanels: ['/etc/passwd'] })).toThrow(
-      REFUSED_BAD_CHAT_PANEL,
-    )
-    expect(() => checkView({ ...base, chatPanels: [send(uuid(1))] })).toThrow(
-      REFUSED_BAD_CHAT_PANEL,
-    )
-    expect(() => checkView({ ...base, chatPanels: [7] })).toThrow(REFUSED_BAD_CHAT_PANEL)
-    expect(REFUSED_BAD_CHAT_PANEL).toBe('refused: bad chat panel')
-    const bad: unknown[] = [
-      null,
-      'showing',
-      { ...base, chatPanels: 'chat:x' },
-      { ...base },
-      { chatPanels: [], focused: 1, showing: true },
-      { chatPanels: [], focused: true, showing: 'yes' },
-      { ...base, chatPanels: Array.from({ length: 501 }, () => chat(uuid(1))) },
-    ]
-    for (const v of bad) expect(() => checkView(v)).toThrow('refused: bad input')
-  })
-
-  it('checkFps takes a finite number from 0 to 1000', () => {
-    expect(checkFps(0)).toBe(0)
-    expect(checkFps(59.5)).toBe(59.5)
-    expect(checkFps(1000)).toBe(1000)
-    for (const v of [-1, 1001, Number.NaN, Number.POSITIVE_INFINITY, '60', null]) {
-      expect(() => checkFps(v)).toThrow('refused: bad input')
-    }
+  it('a view report during a busy tick moves the next tick to the new interval', async () => {
+    const t = setup()
+    const releasePs = holdNext(t, PS)
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    // The panel shows during the first tick. The tick ends at 1 s.
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(SEC)
+    releasePs()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.emitted).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS - 1)
+    expect(t.emitted).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(t.emitted).toHaveLength(2)
+    // The panel closes during the tick at 9 s, which waits for netstat. The tick ends at 10 s.
+    const releaseNet = holdNext(t, NETSTAT)
+    await vi.advanceTimersByTimeAsync(COMMAND_MS)
+    expect(t.emitted).toHaveLength(4)
+    t.monitor.view(HIDE)
+    await vi.advanceTimersByTimeAsync(SEC)
+    releaseNet()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.emitted).toHaveLength(5)
+    expect(t.monitor.current().network).toMatchObject({ downBps: null, upBps: null })
+    await vi.advanceTimersByTimeAsync(TICK_MS - 1)
+    expect(t.emitted).toHaveLength(5)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(t.emitted).toHaveLength(6)
+    t.monitor.stop()
   })
 })

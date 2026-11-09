@@ -2,18 +2,19 @@
 // and the Mac on a timer, runs the health model and sends a snapshot after each tick. It never
 // imports electron. ipc.ts gives it each Electron, Node and command function.
 import type * as os from 'node:os'
-import {
-  EMPTY_PERFORMANCE,
-  type PerformanceSnapshot,
-  type ProcGroup,
-  type SessionUse,
-} from '../../shared/performance'
+import { EMPTY_PERFORMANCE, type PerformanceSnapshot } from '../../shared/performance'
 import type { SessionRow } from '../../shared/types'
-import { CHAT_VIEW } from '../../shared/view-id'
 import type { ExecFn } from '../claude/cli'
-import { type Gh, ghFailure } from '../reviews/gh'
 import { healthReasons, healthState, LIMITS, okText, type Sample } from './health'
 import type { HealthLog } from './health-log'
+import {
+  type AppMetric,
+  type BifrostUse,
+  bifrostUse,
+  type Sessions,
+  sessionUse,
+  type Use,
+} from './process-use'
 import {
   cpuLoad,
   cpuPercent,
@@ -26,12 +27,16 @@ import {
   readPressure,
   readPsStats,
   readSwap,
-  treeSum,
 } from './system'
 
 // The tick while the panel is closed, and while it shows (P9).
 export const TICK_MS = 15_000
 export const FAST_TICK_MS = 2_000
+// ps and netstat run at most this often. While the panel is closed, ps runs on each tick
+// (ruling A).
+export const COMMAND_MS = 6_000
+// The memory pressure and the swap, at most this often in each state (design section 7).
+export const MAC_MS = 15_000
 // The response times and the gh rate limit, at most this often, only while the panel shows.
 export const PROBE_MS = 60_000
 // The battery, the free disk and the size of the Reviews clones, in each state (ruling 10).
@@ -44,45 +49,17 @@ export const HISTORY_MS = 3_600_000
 export const TREND_MS = 600_000
 // While the panel shows, the monitor reads the interface kind again after this time.
 export const LINK_MS = 60_000
-// The window of the main process delay.
-export const DELAY_WINDOW_MS = 60_000
-// A response time request ends after this time with 'no-answer'.
-export const PROBE_TIMEOUT_MS = 5000
 // The two hosts of the response times (design section 7).
 export const PROBE_URLS = {
   anthropic: 'https://api.anthropic.com',
   github: 'https://api.github.com',
 } as const
 
-// gh api rate_limit costs no points (P11).
-export const RATE_LIMIT_ARGS = ['api', 'rate_limit']
-const RATE_LIMIT_TIMEOUT_MS = 15_000
-// The texts of the GitHub limit row when gh cannot give the limit.
-export const GH_LIMIT_MISSING = "GitHub CLI isn't installed"
-export const GH_LIMIT_LOGGED_OUT = "GitHub CLI isn't signed in"
-export const GH_LIMIT_FAILED = "Couldn't read the GitHub limit"
-
-// The renderer sent a chat panel ID that is not a chat view ID.
-export const REFUSED_BAD_CHAT_PANEL = 'refused: bad chat panel'
-const REFUSED_BAD_INPUT = 'refused: bad input'
-// More chat panels than this in one report is not a real window.
-const MAX_CHAT_PANELS = 500
-const MAX_FPS = 1000
-
 const KB_PER_MB = 1024
 // Finder shows the disk sizes in units of 1,000,000,000 bytes.
 const BYTES_PER_GB = 1e9
-const NS_PER_MS = 1e6
-
-// The process groups of the Bifrost section. Each Electron type that is not here is a helper.
-const GROUP_OF: Readonly<Record<string, string>> = {
-  Browser: 'Main process',
-  GPU: 'GPU',
-  Tab: 'Window',
-}
-const TERMINALS = 'Chat terminals'
-const HELPERS = 'Other helpers'
-const GROUP_ORDER = ['Main process', 'Window', 'GPU', TERMINALS, HELPERS]
+const NEVER = Number.NEGATIVE_INFINITY
+const NO_USE: Use = { cpu: 0, ramMb: 0 }
 
 // The time until the response headers in ms, or the failure.
 export type ProbeResult = number | 'no-answer' | 'unreachable'
@@ -104,13 +81,8 @@ export interface PanelView {
 // The Electron, Node and command functions of the monitor. ipc.ts binds them.
 export interface MonitorDeps {
   exec: ExecFn
-  // Electron app.getAppMetrics(). The memory is in KB.
-  appMetrics(): Array<{
-    pid: number
-    type: string
-    cpu: { percentCPUUsage: number }
-    memory: { workingSetSize: number }
-  }>
+  // Electron app.getAppMetrics().
+  appMetrics(): AppMetric[]
   // The PTYs of the PTY manager (P1).
   ptys(): Array<{ viewId: string; pid: number }>
   rows(): SessionRow[]
@@ -118,6 +90,8 @@ export interface MonitorDeps {
   thermal(): string | null
   online(): boolean
   freeDiskBytes(): Promise<number | null>
+  // True when the folder exists. du runs only for a folder that exists (ruling B).
+  exists(path: string): Promise<boolean>
   // One HEAD request. The time until the response headers in ms, or the failure.
   probe(url: string): Promise<ProbeResult>
   // The rate limit of the last Reviews poll, or null (P11).
@@ -147,10 +121,10 @@ export interface PerformanceMonitor {
   fps(value: number): void
 }
 
-type Network = NonNullable<PerformanceSnapshot['network']>
+type Pty = { viewId: string; pid: number }
 type Mac = NonNullable<PerformanceSnapshot['mac']>
-type Sessions = NonNullable<PerformanceSnapshot['sessions']>
 type TrendPoint = NonNullable<PerformanceSnapshot['bifrost']>['trend'][number]
+type Link = { device: string; kind: LinkKind }
 
 // A read that runs at its own interval, in the background of the ticks.
 interface SideRead {
@@ -158,88 +132,74 @@ interface SideRead {
   busy: boolean
 }
 
-const newSide = (): SideRead => ({ at: Number.NEGATIVE_INFINITY, busy: false })
-const newSides = () => ({
-  battery: newSide(),
-  clones: newSide(),
-  disk: newSide(),
-  gh: newSide(),
-  probes: newSide(),
-})
+const newSide = (): SideRead => ({ at: NEVER, busy: false })
 
 // True when the interval since the last read is past. A clock that went back also makes the read
 // due, so a clock change cannot stop a read for a long time.
 const due = (since: number, everyMs: number): boolean => since < 0 || since >= everyMs
 
-// Make the monitor. Each tick reads the Electron processes, the PTYs, one ps table, the rows, the
-// CPU times, the memory pressure and the swap. It keeps a sample, runs the health model and emits
-// the snapshot. The tick is 15 s, or 2 s while the panel shows (P9).
+// The sampled state of the monitor. stop() replaces it with a new one.
+function freshState(linkDue: boolean) {
+  return {
+    anthropicMs: null as ProbeResult | null,
+    battery: null as Mac['battery'],
+    clonesMb: null as number | null,
+    fpsFrom: null as number | null,
+    // The frame rate reports of the current count (ruling 1).
+    fpsReports: [] as Array<{ at: number; value: number }>,
+    freeDiskGb: null as number | null,
+    ghLimit: null as GithubLimit | { unavailable: string } | null,
+    githubMs: null as ProbeResult | null,
+    lastBytes: null as { device: string; inBytes: number; outBytes: number; at: number } | null,
+    // The cumulative CPU time of each ps process of the last good ps read (P3).
+    lastCpu: new Map<number, number>(),
+    lastCpuAt: 0,
+    lastCpus: null as os.CpuInfo[] | null,
+    link: null as Link | null,
+    linkAt: NEVER,
+    linkDue,
+    macAt: NEVER,
+    netAt: NEVER,
+    // For each PTY that can be an orphan, the time when it started to be one. The key is the view
+    // ID and the pid.
+    orphanSince: new Map<string, number>(),
+    pressure: null as Mac['pressure'],
+    psAt: NEVER,
+    rates: null as { down: number; up: number } | null,
+    samples: [] as Sample[],
+    // The sessions and the chat terminal values (by pid) of the last good ps read (ruling C).
+    sessions: null as Sessions | null,
+    sides: {
+      battery: newSide(),
+      clones: newSide(),
+      disk: newSide(),
+      gh: newSide(),
+      probes: newSide(),
+    },
+    swap: null as Mac['swap'],
+    terminals: new Map<number, Use>(),
+    trend: [] as TrendPoint[],
+  }
+}
+
+// Make the monitor. Each tick reads the Electron processes, the PTYs, the rows and the CPU times,
+// and the commands that are due. It keeps a sample, runs the health model and emits the snapshot.
+// The tick is 15 s, or 2 s while the panel shows (P9).
 export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor {
   let running = false
   let busy = false
   // Each start and each stop makes a new generation. A read of an old generation changes nothing.
   let generation = 0
   let timer: ReturnType<typeof setTimeout> | null = null
-  let lastEndAt = Number.NEGATIVE_INFINITY
+  let lastEndAt = NEVER
   let snapshot: PerformanceSnapshot = EMPTY_PERFORMANCE
-
   // The last report of the renderer. It stays after a stop, because the renderer reports only a
   // change.
   let reported = false
   let showing = false
   let focused = false
   let chatPanels = new Set<string>()
-
-  let samples: Sample[] = []
-  let trend: TrendPoint[] = []
-  // The cumulative CPU time of each ps process of the last good ps read (P3).
-  let lastCpu = new Map<number, number>()
-  let lastCpuAt = 0
-  let lastCpus: os.CpuInfo[] | null = null
-  // For each PTY that can be an orphan, the time when it started to be one. The key is the view ID
-  // and the pid.
-  let orphanSince = new Map<string, number>()
-  // The frame rate reports of the current count (ruling 1).
-  let fpsReports: Array<{ at: number; value: number }> = []
-  let fpsFrom: number | null = null
-
-  let link: { device: string; kind: LinkKind } | null = null
-  let linkAt = Number.NEGATIVE_INFINITY
-  let linkDue = false
-  let lastBytes: { device: string; inBytes: number; outBytes: number; at: number } | null = null
-  let rates: { down: number; up: number } | null = null
-
-  let sides = newSides()
-  let battery: Mac['battery'] = null
-  let freeDiskGb: number | null = null
-  let clonesMb: number | null = null
-  let anthropicMs: Network['anthropicMs'] = null
-  let githubMs: Network['githubMs'] = null
-  let ghLimit: GithubLimit | { unavailable: string } | null = null
-
-  function reset(): void {
-    snapshot = EMPTY_PERFORMANCE
-    samples = []
-    trend = []
-    lastCpu = new Map()
-    lastCpuAt = 0
-    lastCpus = null
-    orphanSince = new Map()
-    fpsReports = []
-    fpsFrom = null
-    link = null
-    linkAt = Number.NEGATIVE_INFINITY
-    linkDue = showing
-    lastBytes = null
-    rates = null
-    sides = newSides()
-    battery = null
-    freeDiskGb = null
-    clonesMb = null
-    anthropicMs = null
-    githubMs = null
-    ghLimit = null
-  }
+  let st = freshState(false)
 
   // The next tick comes the tick interval after the end of the last tick. The wait is never longer
   // than the interval, also when the clock went back.
@@ -271,25 +231,25 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
   }
 
   function startSideReads(now: number, reviewsLimit: GithubLimit | null): void {
+    const { sides } = st
     runSide(sides.battery, BATTERY_MS, now, async () => {
       const b = await readBattery(deps.exec)
       return () => {
-        battery = b === null ? null : { charging: b.charging, percent: b.percent }
+        st.battery = b === null ? null : { charging: b.charging, percent: b.percent }
       }
     })
     runSide(sides.disk, DISK_MS, now, async () => {
       const bytes = await deps.freeDiskBytes()
       return () => {
-        freeDiskGb = bytes === null ? null : bytes / BYTES_PER_GB
+        st.freeDiskGb = bytes === null ? null : bytes / BYTES_PER_GB
       }
     })
-    // du fails when the folder does not exist. Then the size is null.
     const clones = deps.clonesPath
     if (clones !== null) {
       runSide(sides.clones, CLONES_MS, now, async () => {
-        const kb = await readDuKb(deps.exec, clones)
+        const kb = (await deps.exists(clones)) ? await readDuKb(deps.exec, clones) : null
         return () => {
-          clonesMb = kb === null ? null : kb / KB_PER_MB
+          st.clonesMb = kb === null ? null : kb / KB_PER_MB
         }
       })
     }
@@ -301,8 +261,8 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
         deps.probe(PROBE_URLS.github),
       ])
       return () => {
-        anthropicMs = a
-        githubMs = g
+        st.anthropicMs = a
+        st.githubMs = g
       }
     })
     // With Reviews on, the rate limit comes from its poll and costs nothing more.
@@ -310,39 +270,111 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     runSide(sides.gh, PROBE_MS, now, async () => {
       const next = await deps.ghRateLimit()
       return () => {
-        ghLimit = next
+        st.ghLimit = next
       }
     })
   }
 
-  // The interface and its byte counters, only while the panel shows (ruling 3).
-  async function readNetwork(due: boolean) {
-    const next = due ? await readLink(deps.exec) : link
-    const bytes = next === null ? null : await readNetBytes(deps.exec, next.device)
-    return { bytes, link: next }
+  // Mark and give the commands that this tick runs. ps and netstat run at most every 6 s, the
+  // pressure and the swap at most every 15 s. The network commands run only while the panel
+  // shows (ruling 3).
+  function planReads(now: number) {
+    const plan = {
+      bytes: showing && due(now - st.netAt, COMMAND_MS),
+      kind: showing && (st.linkDue || due(now - st.linkAt, LINK_MS)),
+      mac: due(now - st.macAt, MAC_MS),
+      ps: due(now - st.psAt, COMMAND_MS),
+    }
+    if (plan.ps) st.psAt = now
+    if (plan.mac) st.macAt = now
+    if (plan.kind) {
+      st.linkDue = false
+      st.linkAt = now
+    }
+    if (plan.bytes) st.netAt = now
+    return plan
+  }
+
+  // The interface and its byte counters.
+  async function readNetwork(readKind: boolean, readBytes: boolean) {
+    const link = readKind ? await readLink(deps.exec) : st.link
+    const bytes = readBytes && link !== null ? await readNetBytes(deps.exec, link.device) : null
+    return { bytes, link, readBytes, readKind }
   }
 
   function applyNetwork(now: number, read: Awaited<ReturnType<typeof readNetwork>>): void {
-    if (read.link?.device !== link?.device) lastBytes = null
-    link = read.link
-    if (link === null || read.bytes === null) {
-      rates = null
-      lastBytes = null
+    if (read.readKind) {
+      // A failed read runs again at the next tick (review 4).
+      if (read.link === null) st.linkDue = true
+      // A new interface starts the rates again (review 3).
+      if (read.link?.device !== st.link?.device) {
+        st.lastBytes = null
+        st.rates = null
+      }
+      st.link = read.link
+    }
+    if (!read.readBytes) return
+    if (st.link === null || read.bytes === null) {
+      st.lastBytes = null
+      st.rates = null
       return
     }
-    if (lastBytes !== null && now > lastBytes.at) {
-      const seconds = (now - lastBytes.at) / 1000
-      rates = {
-        down: Math.max(0, (read.bytes.inBytes - lastBytes.inBytes) / seconds),
-        up: Math.max(0, (read.bytes.outBytes - lastBytes.outBytes) / seconds),
+    const last = st.lastBytes
+    if (last !== null && now > last.at) {
+      const seconds = (now - last.at) / 1000
+      st.rates = {
+        down: Math.max(0, (read.bytes.inBytes - last.inBytes) / seconds),
+        up: Math.max(0, (read.bytes.outBytes - last.outBytes) / seconds),
       }
     }
-    lastBytes = { at: now, device: link.device, ...read.bytes }
+    st.lastBytes = { at: now, device: st.link.device, ...read.bytes }
+  }
+
+  // Keep the chat terminal values and the sessions of one good ps read. The CPU of a ps process
+  // is the change of its CPU time since the last read, over the real time between the two reads
+  // (P3). The first read of a process gives 0.
+  function applyPs(
+    now: number,
+    table: Map<number, ProcRow>,
+    ptys: Pty[],
+    rows: SessionRow[],
+    metrics: AppMetric[],
+  ): void {
+    const elapsed = now - st.lastCpuAt
+    const nextCpu = new Map<number, number>()
+    const procCpu = (row: ProcRow): number => {
+      nextCpu.set(row.pid, row.cpuSeconds)
+      const before = st.lastCpu.get(row.pid)
+      return before === undefined ? 0 : cpuPercent(before, row.cpuSeconds, elapsed)
+    }
+    st.terminals = new Map(
+      ptys.map((p): [number, Use] => {
+        const row = table.get(p.pid)
+        return [p.pid, row ? { cpu: procCpu(row), ramMb: row.rssKb / KB_PER_MB } : NO_USE]
+      }),
+    )
+    // Bifrost's own processes count for no session (P4).
+    const own = new Set([...metrics.map(m => m.pid), ...ptys.map(p => p.pid)])
+    st.sessions = sessionUse(rows, table, own, procCpu)
+    st.lastCpu = nextCpu
+    st.lastCpuAt = now
+  }
+
+  function addSample(now: number, use: BifrostUse): void {
+    st.samples.push({
+      at: now,
+      bifrostCpuNoTerm: use.cpu - use.terminals.cpu,
+      bifrostRamMb: use.ramMb,
+      bifrostRamNoTermMb: use.ramMb - use.terminals.ramMb,
+    })
+    st.trend.push({ at: now, cpu: use.cpu, ramMb: use.ramMb })
+    while ((st.samples[0]?.at ?? now) < now - HISTORY_MS) st.samples.shift()
+    while ((st.trend[0]?.at ?? now) < now - TREND_MS) st.trend.shift()
   }
 
   // A send PTY is an orphan after 60 s. A chat PTY is an orphan 60 s after the renderer reports
   // no chat panel for it. Before the first report, no chat PTY is an orphan (P2, ruling 11).
-  function trackOrphans(now: number, ptys: Array<{ viewId: string; pid: number }>): number {
+  function trackOrphans(now: number, ptys: Pty[]): number {
     const next = new Map<string, number>()
     let count = 0
     for (const { viewId, pid } of ptys) {
@@ -351,28 +383,91 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
         (viewId.startsWith('chat:') && reported && !chatPanels.has(viewId))
       if (!candidate) continue
       const key = `${viewId} ${pid}`
-      const since = orphanSince.get(key) ?? now
+      const since = st.orphanSince.get(key) ?? now
       next.set(key, since)
       if (now - since > LIMITS.orphanSeconds * 1000) count++
     }
-    orphanSince = next
+    st.orphanSince = next
     return count
   }
 
   // True while the panel shows and has focus, the count started at least 10 s ago, and each report
   // of the last 10 s is below the limit (ruling 1).
   function fpsLow(now: number): boolean {
-    if (!showing || !focused || fpsFrom === null) return false
+    if (!showing || !focused || st.fpsFrom === null) return false
     const windowMs = LIMITS.fpsLowSeconds * 1000
-    if (now - fpsFrom < windowMs) return false
-    const recent = fpsReports.filter(r => r.at >= now - windowMs)
+    if (now - st.fpsFrom < windowMs) return false
+    const recent = st.fpsReports.filter(r => r.at >= now - windowMs)
     return recent.length > 0 && recent.every(r => r.value < LIMITS.fpsLow)
   }
 
   function lastFps(now: number): number | null {
     if (!showing || !focused) return null
-    const last = fpsReports.at(-1)
+    const last = st.fpsReports.at(-1)
     return last !== undefined && last.at >= now - LIMITS.fpsLowSeconds * 1000 ? last.value : null
+  }
+
+  // The snapshot of a tick, with the result of the health model.
+  function build(t: {
+    now: number
+    hasMetrics: boolean
+    use: BifrostUse
+    load: number | null
+    orphans: number
+    reviewsLimit: GithubLimit | null
+  }): PerformanceSnapshot {
+    const { now, use, reviewsLimit } = t
+    const online = deps.online()
+    const delay = deps.delayP99()
+    const reasons = healthReasons({
+      delayP99Ms: delay,
+      fpsLow10s: fpsLow(now),
+      log: deps.health.view(now),
+      now,
+      online,
+      orphans: t.orphans,
+      samples: st.samples,
+    })
+    const github =
+      reviewsLimit === null
+        ? st.ghLimit
+        : {
+            limit: reviewsLimit.limit,
+            remaining: reviewsLimit.remaining,
+            resetAt: reviewsLimit.resetAt,
+          }
+    return {
+      bifrost: t.hasMetrics
+        ? {
+            cpu: use.cpu,
+            delayMs: delay,
+            fps: lastFps(now),
+            groups: use.groups,
+            ramMb: use.ramMb,
+            trend: [...st.trend],
+          }
+        : null,
+      limits: { clonesMb: st.clonesMb, freeDiskGb: st.freeDiskGb, github },
+      mac: {
+        battery: st.battery,
+        cpuLoad: t.load,
+        pressure: st.pressure,
+        swap: st.swap,
+        thermal: deps.thermal(),
+      },
+      network: {
+        anthropicMs: st.anthropicMs,
+        downBps: st.rates?.down ?? null,
+        githubMs: st.githubMs,
+        kind: st.link?.kind ?? null,
+        online,
+        upBps: st.rates?.up ?? null,
+      },
+      okText: okText(st.samples.at(-1)),
+      reasons,
+      sessions: st.sessions,
+      state: healthState(reasons),
+    }
   }
 
   async function tick(): Promise<void> {
@@ -381,121 +476,41 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     const gen = generation
     try {
       const now = deps.now()
-      const reviewsLimit = deps.rateLimit()
+      // A Reviews value after its reset time is old. Then gh gives the limit (review 6).
+      const fromReviews = deps.rateLimit()
+      const reviewsLimit = fromReviews !== null && fromReviews.resetAt > now ? fromReviews : null
       startSideReads(now, reviewsLimit)
       const metrics = deps.appMetrics()
       const ptys = deps.ptys()
       const rows = deps.rows()
       const cpus = deps.cpus()
-      const showingAtStart = showing
-      const linkRead = showing && (linkDue || due(now - linkAt, LINK_MS))
-      if (linkRead) {
-        linkDue = false
-        linkAt = now
-      }
-      const [table, pressure, swap, net] = await Promise.all([
-        readPsStats(deps.exec),
-        readPressure(deps.exec),
-        readSwap(deps.exec),
-        showingAtStart ? readNetwork(linkRead) : null,
+      const plan = planReads(now)
+      const [table, mac, net] = await Promise.all([
+        plan.ps ? readPsStats(deps.exec) : undefined,
+        plan.mac ? Promise.all([readPressure(deps.exec), readSwap(deps.exec)]) : undefined,
+        plan.kind || plan.bytes ? readNetwork(plan.kind, plan.bytes) : undefined,
       ])
       if (!running || gen !== generation) return
-      // The panel can close during the reads. Then the rates go.
-      if (net !== null && showing) applyNetwork(now, net)
-
-      // CPU of a ps process: the change of its CPU time since the last read (P3). The first read
-      // of a process gives 0.
-      const elapsed = now - lastCpuAt
-      const nextCpu = new Map<number, number>()
-      const procCpu = (row: ProcRow): number => {
-        nextCpu.set(row.pid, row.cpuSeconds)
-        const before = lastCpu.get(row.pid)
-        return before === undefined ? 0 : cpuPercent(before, row.cpuSeconds, elapsed)
-      }
-
-      const groups = new Map<string, ProcGroup>(
-        GROUP_ORDER.map(name => [name, { count: 0, cpu: 0, name, ramMb: 0 }]),
+      if (mac !== undefined) [st.pressure, st.swap] = mac
+      // The panel can close during the reads. Then the rates stay away.
+      if (net !== undefined && showing) applyNetwork(now, net)
+      if (table) applyPs(now, table, ptys, rows, metrics)
+      const use = bifrostUse(
+        metrics,
+        ptys.map(p => st.terminals.get(p.pid) ?? NO_USE),
       )
-      const add = (name: string, ramMb: number, cpu: number): void => {
-        const g = groups.get(name) as ProcGroup
-        g.count += 1
-        g.ramMb += ramMb
-        g.cpu += cpu
-      }
-      for (const m of metrics) {
-        add(GROUP_OF[m.type] ?? HELPERS, m.memory.workingSetSize / KB_PER_MB, m.cpu.percentCPUUsage)
-      }
-      for (const p of ptys) {
-        const row = table?.get(p.pid)
-        add(TERMINALS, row ? row.rssKb / KB_PER_MB : 0, row ? procCpu(row) : 0)
-      }
-      const terminals = groups.get(TERMINALS) as ProcGroup
-      const shown = [...groups.values()].filter(g => g.name !== HELPERS || g.count > 0)
-      const ramMb = shown.reduce((a, g) => a + g.ramMb, 0)
-      const cpu = shown.reduce((a, g) => a + g.cpu, 0)
-
-      // Bifrost's own processes do not count for a session (P4).
-      const own = new Set([...metrics.map(m => m.pid), ...ptys.map(p => p.pid)])
-      const sessions = table === null ? null : sessionUse(rows, table, own, procCpu)
-      if (table !== null) {
-        lastCpu = nextCpu
-        lastCpuAt = now
-      }
-
-      if (metrics.length > 0) {
-        samples.push({
-          at: now,
-          bifrostCpuNoTerm: cpu - terminals.cpu,
-          bifrostRamMb: ramMb,
-          bifrostRamNoTermMb: ramMb - terminals.ramMb,
-        })
-        trend.push({ at: now, cpu, ramMb })
-      }
-      while ((samples[0]?.at ?? now) < now - HISTORY_MS) samples.shift()
-      while ((trend[0]?.at ?? now) < now - TREND_MS) trend.shift()
-
-      const load = lastCpus === null ? null : cpuLoad(lastCpus, cpus)
-      lastCpus = cpus
-      const online = deps.online()
-      const delay = deps.delayP99()
-      const orphans = trackOrphans(now, ptys)
-      const reasons = healthReasons({
-        delayP99Ms: delay,
-        fpsLow10s: fpsLow(now),
-        log: deps.health.view(now),
+      // A tick with a failed ps adds no sample (ruling C).
+      if (metrics.length > 0 && table !== null) addSample(now, use)
+      const load = st.lastCpus === null ? null : cpuLoad(st.lastCpus, cpus)
+      st.lastCpus = cpus
+      snapshot = build({
+        hasMetrics: metrics.length > 0,
+        load,
         now,
-        online,
-        orphans,
-        samples,
+        orphans: trackOrphans(now, ptys),
+        reviewsLimit,
+        use,
       })
-      const github =
-        reviewsLimit === null
-          ? ghLimit
-          : {
-              limit: reviewsLimit.limit,
-              remaining: reviewsLimit.remaining,
-              resetAt: reviewsLimit.resetAt,
-            }
-      snapshot = {
-        bifrost:
-          metrics.length === 0
-            ? null
-            : { cpu, delayMs: delay, fps: lastFps(now), groups: shown, ramMb, trend: [...trend] },
-        limits: { clonesMb, freeDiskGb, github },
-        mac: { battery, cpuLoad: load, pressure, swap, thermal: deps.thermal() },
-        network: {
-          anthropicMs,
-          downBps: rates?.down ?? null,
-          githubMs,
-          kind: link?.kind ?? null,
-          online,
-          upBps: rates?.up ?? null,
-        },
-        okText: okText(samples.at(-1)),
-        reasons,
-        sessions,
-        state: healthState(reasons),
-      }
       deps.emit(snapshot)
     } catch (error) {
       console.error('Bifrost cannot sample the performance data.', error)
@@ -514,9 +529,9 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     fps(value) {
       if (!showing || !focused) return
       const now = deps.now()
-      if (fpsFrom === null) fpsFrom = now
-      fpsReports.push({ at: now, value })
-      fpsReports = fpsReports.filter(r => r.at >= now - LIMITS.fpsLowSeconds * 1000)
+      if (st.fpsFrom === null) st.fpsFrom = now
+      st.fpsReports.push({ at: now, value })
+      st.fpsReports = st.fpsReports.filter(r => r.at >= now - LIMITS.fpsLowSeconds * 1000)
     },
     start() {
       if (running) return
@@ -530,25 +545,28 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       busy = false
       if (timer) clearTimeout(timer)
       timer = null
-      lastEndAt = Number.NEGATIVE_INFINITY
-      reset()
+      lastEndAt = NEVER
+      snapshot = EMPTY_PERFORMANCE
+      st = freshState(showing)
     },
     view(v) {
       const opened = v.showing && !showing
       const closed = !v.showing && showing
       // A change of showing or focus starts a new count of the frame rate.
       if (v.showing !== showing || v.focused !== focused) {
-        fpsReports = []
-        fpsFrom = null
+        st.fpsReports = []
+        st.fpsFrom = null
       }
       showing = v.showing
       focused = v.focused
       chatPanels = new Set(v.chatPanels)
       reported = true
-      if (opened) linkDue = true
+      if (opened) st.linkDue = true
+      // The rates stop. The next showing reads the bytes at its first tick.
       if (closed) {
-        rates = null
-        lastBytes = null
+        st.rates = null
+        st.lastBytes = null
+        st.netAt = NEVER
       }
       if (!running) return
       trackOrphans(deps.now(), deps.ptys())
@@ -556,178 +574,4 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       if ((opened || closed) && !busy) schedule()
     },
   }
-}
-
-// The Claude sessions: each registry row with a pid and its process tree (design section 6,
-// ruling 5). A session that started inside another session keeps its own processes, because the
-// smaller tree goes first. So each process counts one time.
-function sessionUse(
-  rows: SessionRow[],
-  table: Map<number, ProcRow>,
-  own: Set<number>,
-  procCpu: (row: ProcRow) => number,
-): Sessions {
-  const others = new Map(table)
-  for (const pid of own) others.delete(pid)
-  const trees = rows.flatMap(row =>
-    row.pid !== undefined && others.has(row.pid)
-      ? [{ pids: treeSum(others, row.pid).pids, row }]
-      : [],
-  )
-  trees.sort((a, b) => a.pids.length - b.pids.length)
-  const counted = new Set<number>()
-  const list: SessionUse[] = []
-  for (const { pids, row } of trees) {
-    let rssKb = 0
-    let cpu = 0
-    let found = 0
-    for (const pid of pids) {
-      const proc = others.get(pid)
-      if (proc === undefined || counted.has(pid)) continue
-      counted.add(pid)
-      found += 1
-      rssKb += proc.rssKb
-      cpu += procCpu(proc)
-    }
-    // A row with the same pid as an earlier row has no process left.
-    if (found === 0) continue
-    list.push({ cpu, name: row.name, ramMb: rssKb / KB_PER_MB, sessionId: row.sessionId })
-  }
-  list.sort((a, b) => b.ramMb - a.ramMb)
-  const rest = list.slice(3)
-  return {
-    cpu: list.reduce((a, s) => a + s.cpu, 0),
-    more: {
-      count: rest.length,
-      cpu: rest.reduce((a, s) => a + s.cpu, 0),
-      ramMb: rest.reduce((a, s) => a + s.ramMb, 0),
-    },
-    ramMb: list.reduce((a, s) => a + s.ramMb, 0),
-    top: list.slice(0, 3),
-  }
-}
-
-// Read the GraphQL limit from the REST answer of gh api rate_limit. reset is in seconds.
-export function parseGhRateLimit(stdout: string): GithubLimit | null {
-  let root: unknown
-  try {
-    root = JSON.parse(stdout)
-  } catch {
-    return null
-  }
-  type Answer = { resources?: { graphql?: Record<string, unknown> } } | null
-  const graphql = (root as Answer)?.resources?.graphql
-  const value = (v: unknown): number | null =>
-    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null
-  const limit = value(graphql?.limit)
-  const remaining = value(graphql?.remaining)
-  const reset = value(graphql?.reset)
-  if (limit === null || remaining === null || reset === null) return null
-  return { limit, remaining, resetAt: reset * 1000 }
-}
-
-// The GitHub limit with Reviews off (ruling 6). A failure gives a friendly reason.
-export async function readGhRateLimit(
-  gh: Pick<Gh, 'run'>,
-): Promise<GithubLimit | { unavailable: string }> {
-  try {
-    const result = await gh.run(RATE_LIMIT_ARGS, { timeoutMs: RATE_LIMIT_TIMEOUT_MS })
-    const failed = ghFailure(result)
-    if (failed?.availability === 'no-gh') return { unavailable: GH_LIMIT_MISSING }
-    if (failed?.availability === 'logged-out') return { unavailable: GH_LIMIT_LOGGED_OUT }
-    if (failed !== null) return { unavailable: GH_LIMIT_FAILED }
-    return parseGhRateLimit(result.stdout) ?? { unavailable: GH_LIMIT_FAILED }
-  } catch {
-    return { unavailable: GH_LIMIT_FAILED }
-  }
-}
-
-// One HEAD request with no login, no token and no cookie (ruling 9). Any HTTP status is an answer.
-// The time is until the response headers. The timeout gives 'no-answer'. A DNS or connection
-// error gives 'unreachable'.
-export async function probeUrl(
-  fetch: (url: string, init: RequestInit) => Promise<Response>,
-  url: string,
-  clock: () => number,
-): Promise<ProbeResult> {
-  const signal = AbortSignal.timeout(PROBE_TIMEOUT_MS)
-  const start = clock()
-  try {
-    const res = await fetch(url, {
-      cache: 'no-store',
-      credentials: 'omit',
-      method: 'HEAD',
-      signal,
-    })
-    const ms = Math.max(0, Math.round(clock() - start))
-    res.body?.cancel().catch(() => {})
-    return ms
-  } catch (error) {
-    const timedOut = signal.aborted || (error instanceof Error && error.name === 'TimeoutError')
-    return timedOut ? 'no-answer' : 'unreachable'
-  }
-}
-
-// The part of the Node event loop delay histogram that the monitor uses. Its values are in ns.
-export interface DelayHistogram {
-  readonly count: number
-  percentile(p: number): number
-  reset(): void
-  enable(): unknown
-  disable(): unknown
-}
-
-// The main process delay of ruling 8.
-export interface LoopDelay {
-  // The 99th percentile of the last full window in ms. null before the end of the first window,
-  // and for a window with no data.
-  p99(): number | null
-  stop(): void
-}
-
-// Enable the histogram. At the end of each 60 s window, keep its 99th percentile and reset it
-// (ruling 8). stop clears the timer and disables the histogram.
-export function createLoopDelay(h: DelayHistogram): LoopDelay {
-  let last: number | null = null
-  let timer: ReturnType<typeof setTimeout> | null = null
-  h.enable()
-  const roll = (): void => {
-    last = h.count > 0 ? h.percentile(99) / NS_PER_MS : null
-    h.reset()
-    timer = setTimeout(roll, DELAY_WINDOW_MS)
-  }
-  timer = setTimeout(roll, DELAY_WINDOW_MS)
-  return {
-    p99: () => last,
-    stop() {
-      if (timer === null) return
-      clearTimeout(timer)
-      timer = null
-      h.disable()
-    },
-  }
-}
-
-// Check the view report of the renderer. It has two booleans and the chat panel IDs only.
-export function checkView(v: unknown): PanelView {
-  if (typeof v !== 'object' || v === null) throw new Error(REFUSED_BAD_INPUT)
-  const { chatPanels, focused, showing } = v as Record<string, unknown>
-  if (typeof showing !== 'boolean' || typeof focused !== 'boolean') {
-    throw new Error(REFUSED_BAD_INPUT)
-  }
-  if (!Array.isArray(chatPanels) || chatPanels.length > MAX_CHAT_PANELS) {
-    throw new Error(REFUSED_BAD_INPUT)
-  }
-  for (const id of chatPanels) {
-    if (typeof id !== 'string' || !CHAT_VIEW.test(id)) throw new Error(REFUSED_BAD_CHAT_PANEL)
-  }
-  return { chatPanels: [...chatPanels] as string[], focused, showing }
-}
-
-// Check the frame rate of the renderer: a finite number from 0 to 1000.
-export function checkFps(v: unknown): number {
-  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > MAX_FPS) {
-    throw new Error(REFUSED_BAD_INPUT)
-  }
-  return v
 }

@@ -60,18 +60,38 @@ export function parsePsStats(stdout: string): Map<number, ProcRow> {
   return table
 }
 
+// The child pids of each pid. Build it one time for a table and give it to treeSumIn for each
+// root. A pid in skip is not a child of its parent, so a tree sum does not enter it or its
+// descendants.
+export function childIndex(
+  table: Map<number, ProcRow>,
+  skip: ReadonlySet<number> = new Set(),
+): Map<number, number[]> {
+  const children = new Map<number, number[]>()
+  for (const row of table.values()) {
+    if (skip.has(row.pid)) continue
+    const list = children.get(row.ppid)
+    if (list) list.push(row.pid)
+    else children.set(row.ppid, [row.pid])
+  }
+  return children
+}
+
 // Sum the RSS and the CPU time of a root process and all its descendants.
 // Each process counts once. A root that is not in the table gives zeros.
 export function treeSum(
   table: Map<number, ProcRow>,
   root: number,
 ): { rssKb: number; cpuSeconds: number; pids: number[] } {
-  const children = new Map<number, number[]>()
-  for (const row of table.values()) {
-    const list = children.get(row.ppid)
-    if (list) list.push(row.pid)
-    else children.set(row.ppid, [row.pid])
-  }
+  return treeSumIn(table, childIndex(table), root)
+}
+
+// treeSum with a children index from childIndex.
+export function treeSumIn(
+  table: Map<number, ProcRow>,
+  children: ReadonlyMap<number, number[]>,
+  root: number,
+): { rssKb: number; cpuSeconds: number; pids: number[] } {
   const sum = { cpuSeconds: 0, pids: [] as number[], rssKb: 0 }
   if (!table.has(root)) return sum
   const seen = new Set<number>()

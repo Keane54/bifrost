@@ -2,6 +2,7 @@ import type * as os from 'node:os'
 import { expect, test, vi } from 'vitest'
 import type { ExecFn } from '../../../src/main/claude/cli'
 import {
+  childIndex,
   cpuLoad,
   cpuPercent,
   linkKind,
@@ -21,6 +22,7 @@ import {
   readPsStats,
   readSwap,
   treeSum,
+  treeSumIn,
 } from '../../../src/main/performance/system'
 
 const ps = [
@@ -53,6 +55,32 @@ test('treeSum sums a root, its children and a grandchild, and ignores a sibling'
   expect(sum.cpuSeconds).toBe(10)
   expect([...sum.pids].sort()).toEqual([10, 11, 12, 13])
   expect(treeSum(table, 99)).toEqual({ cpuSeconds: 0, pids: [], rssKb: 0 })
+})
+
+test('treeSumIn with one children index gives the same sums as treeSum for each root', () => {
+  const row = (pid: number, ppid: number, rssKb: number, cpuSeconds: number) =>
+    [pid, { cpuSeconds, pid, ppid, rssKb }] as const
+  const table = new Map([
+    row(10, 1, 100, 1),
+    row(11, 10, 200, 2),
+    row(12, 10, 300, 3),
+    row(13, 11, 400, 4),
+    row(20, 1, 999, 9),
+    row(21, 20, 50, 5),
+  ])
+  const children = childIndex(table)
+  for (const root of [...table.keys(), 1, 99]) {
+    expect(treeSumIn(table, children, root)).toEqual(treeSum(table, root))
+  }
+})
+
+test('childIndex leaves out a skipped pid, so a tree does not enter it', () => {
+  const row = (pid: number, ppid: number, rssKb: number) =>
+    [pid, { cpuSeconds: 0, pid, ppid, rssKb }] as const
+  const table = new Map([row(10, 1, 100), row(11, 10, 200), row(12, 11, 300), row(13, 10, 400)])
+  const sum = treeSumIn(table, childIndex(table, new Set([11])), 10)
+  expect([...sum.pids].sort()).toEqual([10, 13])
+  expect(sum.rssKb).toBe(500)
 })
 
 test('cpuPercent gives percent of one core and never goes below 0', () => {

@@ -62,17 +62,16 @@ import { createLiveControl, type LiveControl } from './live/live-control'
 import { createLiveServer } from './live/live-server'
 import { modSourceDir } from './live/mod-folder'
 import { createPluginCli } from './live/plugin-cli'
-import { createHealthLog, type HealthLog } from './performance/health-log'
 import {
   checkFps,
   checkView,
   createLoopDelay,
-  createPerformanceMonitor,
   type LoopDelay,
-  type PerformanceMonitor,
   probeUrl,
   readGhRateLimit,
-} from './performance/monitor'
+} from './performance/bindings'
+import { createHealthLog, type HealthLog } from './performance/health-log'
+import { createPerformanceMonitor, type PerformanceMonitor } from './performance/monitor'
 import { checkChatOpen, REFUSED_NOT_CHAT } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { PageScope } from './pty/page-scope'
@@ -421,6 +420,11 @@ function startPerformance(
     delayP99: () => delay.p99(),
     emit: snapshot => send('performance:update', snapshot),
     exec: execFile,
+    exists: path =>
+      access(path).then(
+        () => true,
+        () => false,
+      ),
     freeDiskBytes: () => freeDiskBytes(homeFolder),
     ghRateLimit: () => readGhRateLimit(gh),
     health,
