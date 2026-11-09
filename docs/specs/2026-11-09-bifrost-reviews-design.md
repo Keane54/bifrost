@@ -301,9 +301,18 @@ Replies use the `write-as-me` voice. They have no note that Claude wrote them (u
 
 `claude --bg` refuses a directory that is not trusted, and Claude Code keeps trust for each git root (spec section 4). Bifrost never accepts trust for you.
 
-- A new clone shows "Trust needed" on its rows.
-- A "Trust repo" button opens a terminal in the clone that runs `claude`. You accept the trust prompt there one time for each repository.
-- Builder: test whether a worktree of a trusted clone needs its own trust. Use a test repository. The result decides where the worktrees go.
+You accept trust one time for each repository. Bifrost brings the prompt to you (user decision, 2026-11-09):
+
+1. **Set up at the first turn-on.** Bifrost finds the repositories of your open PRs and review requests. It clones them and lists the ones that need trust, so you can do all the trust steps at once.
+2. **The "Trust needed" strip.** A strip at the top of the Reviews panel shows each repository that needs trust. It also shows the number of PRs that wait for it. A new repository also sends one macOS notification.
+3. **The Trust button.** It opens a small Bifrost terminal window that runs `claude` in the clone, so the real trust prompt shows there. You accept the prompt.
+4. **The end of the step.** Bifrost reads `~/.claude.json` (read only) to see that trust is accepted. Then it closes the terminal, stops its `claude` process and starts the work that waited.
+
+Other rules:
+
+- The rows of a repository that needs trust show "Trust needed". Their work waits, and it does not block the queue for other repositories.
+- Bifrost never writes the trust setting. Every running `claude` process writes `~/.claude.json`, so a write from Bifrost can corrupt the file, and it skips the safety check.
+- A worktree of a trusted clone needs no second trust step. This is also true for a worktree outside the clone directory (spike, 2026-11-09).
 
 ### 12.3 PR sessions
 
