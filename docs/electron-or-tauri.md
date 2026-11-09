@@ -1,10 +1,8 @@
-# 0001. Bifrost stays on Electron for now
+# Electron or Tauri
 
-- **Status:** Accepted, 2026-11-09.
-- **Decision:** Bifrost stays on Electron. A move to Tauri 2 does not start now.
-- **Evidence:** a Tauri 2 spike that works, on the branch `tauri-spike` (commits `b755ed1` and `544b2fd`).
+Bifrost stays on Electron for now. Tauri 2 can run Bifrost, but the move costs more than it gives.
 
-Bifrost is a desktop app for macOS that shows Claude Code sessions. It has many terminals, a window manager inside the page, and visual effects that need the GPU. This record compares Electron 44 and Tauri 2 for this app, and gives the reasons to stay on Electron.
+Bifrost is a desktop app for macOS that shows Claude Code sessions. It has many terminals, a window manager inside the page, and visual effects that need the GPU. A Tauri 2 spike (branch `tauri-spike`) gave the evidence below.
 
 ## Comparison
 
@@ -55,7 +53,7 @@ Each gap has a fix. Together they are native code that Electron already supplies
 | Tauri DMG step (`tauri build`) | Failed on the test Mac (`hdiutil`: "Resource busy"). The Electron DMG built. |
 | Dim terminal text (SGR 2) with WebGL and a transparent theme | An opaque black cell background. Chromium gives the same result, so this is xterm.js behaviour, not a WebKit fault. |
 
-The spike shows that Tauri can run Bifrost. The decision is about cost and risk, not about whether the port is possible.
+The spike shows that Tauri can run Bifrost. The question is about cost and risk, not about whether the port is possible.
 
 ## Why Bifrost stays on Electron
 
@@ -65,9 +63,9 @@ The spike shows that Tauri can run Bifrost. The decision is about cost and risk,
 4. **Native features that already work.** Electron supplies the items in the gap table. The Slack plan also depends on three of them.
 5. **Small gain.** The main gain of Tauri for Bifrost is the download size. Memory is about the same, and Bifrost does not need mobile targets.
 
-## When to review this decision
+## When to look at Tauri again
 
-Review it when one of these becomes true:
+Look at it again when one of these becomes true:
 
 - One framework for all desktop apps of the company becomes a firm requirement.
 - The download size or the memory use becomes a real problem for users.
@@ -89,8 +87,8 @@ Review it when one of these becomes true:
 
 ## Related
 
-- [Bifrost design spec](../specs/2026-11-04-bifrost-design.md)
-- [Plans](../plans/)
+- [Bifrost design spec](specs/2026-11-04-bifrost-design.md)
+- [Plans](plans/)
 - The spike code: branch `tauri-spike` (`src-tauri/` and the Tauri adapter of `window.bifrost`).
 
 ## Sources
