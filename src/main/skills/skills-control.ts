@@ -4,7 +4,7 @@
 import { resolve } from 'node:path'
 import type { SkillInfo, SkillsStatus } from '../../shared/skills'
 import type { LivePluginState } from '../../shared/types'
-import type { PluginCli, PluginEntry } from '../live/plugin-cli'
+import type { MarketplaceEntry, PluginCli, PluginEntry } from '../live/plugin-cli'
 import {
   listSkills,
   removeSkillsFolder,
