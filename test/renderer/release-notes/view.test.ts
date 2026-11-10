@@ -67,9 +67,14 @@ describe('formatReleaseDate', () => {
 })
 
 describe('whatsNewMayOpen', () => {
-  it('waits for the settings and for the end of the setup dialog', () => {
-    expect(whatsNewMayOpen(false, true)).toBe(false)
-    expect(whatsNewMayOpen(true, false)).toBe(false)
-    expect(whatsNewMayOpen(true, true)).toBe(true)
+  it('waits for the settings and for the setup choice', () => {
+    expect(whatsNewMayOpen(false, true, false)).toBe(false)
+    expect(whatsNewMayOpen(true, false, false)).toBe(false)
+    expect(whatsNewMayOpen(true, true, false)).toBe(true)
+  })
+
+  it('waits while the setup dialog is open, also after the setup choice is saved', () => {
+    // The dialog stays open in its done phase after it saves setupDone.
+    expect(whatsNewMayOpen(true, true, true)).toBe(false)
   })
 })

@@ -11,6 +11,7 @@ const DIALOG = read('release-notes/ReleaseNotesDialog.tsx')
 const SECTION = read('settings/UpdatesSection.tsx')
 const NAV = read('settings/settings-nav.tsx')
 const WM = read('wm/WindowManager.tsx')
+const SETUP = read('settings/SetupDialog.tsx')
 
 describe('the release notes dialog source', () => {
   it('uses the dialog of Base UI with the styles of the app dialogs', () => {
@@ -38,7 +39,8 @@ describe('the release notes dialog source', () => {
     expect(DIALOG.match(/releaseNotes\.list\(\)/g)).toHaveLength(1)
     const open = DIALOG.slice(DIALOG.indexOf('const open = useCallback'))
     expect(open.indexOf('releaseNotes.list()')).toBeGreaterThan(-1)
-    expect(DIALOG).toContain('whatsNewMayOpen(ready, settings.setupDone)')
+    expect(DIALOG).toContain('whatsNewMayOpen(ready, settings.setupDone, setupOpen)')
+    expect(DIALOG).toContain('const { releaseNotesRequest, setupOpen } = useSettingsNav()')
   })
 
   it('shows the texts of the states', () => {
@@ -56,6 +58,21 @@ describe('the release notes dialog source', () => {
   it('is in the window manager, next to the setup dialog', () => {
     expect(WM).toContain("import ReleaseNotesDialog from '../release-notes/ReleaseNotesDialog'")
     expect(WM).toMatch(/<SetupDialog \/>\s*(\{[^}]*\}\s*)?<ReleaseNotesDialog \/>/)
+  })
+})
+
+describe('the open state of the setup dialog', () => {
+  it('is in the settings nav, so the release notes view can wait for it', () => {
+    expect(NAV).toContain('setupOpen: boolean')
+    expect(NAV).toContain('setSetupOpen(open: boolean): void')
+  })
+
+  it('comes from the setup dialog at each change, and goes back to false when it unmounts', () => {
+    expect(SETUP).toContain('const { introRequest, setSetupOpen } = useSettingsNav()')
+    expect(SETUP).toMatch(
+      /useEffect\(\(\) => \{\s*setSetupOpen\(open\)\s*\}, \[open, setSetupOpen\]\)/,
+    )
+    expect(SETUP).toMatch(/useEffect\(\(\) => \(\) => setSetupOpen\(false\), \[setSetupOpen\]\)/)
   })
 })
 

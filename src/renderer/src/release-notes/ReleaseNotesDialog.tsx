@@ -139,11 +139,11 @@ function ReleasesPage({ text }: { text: string }): React.JSX.Element {
 
 export default function ReleaseNotesDialog(): React.JSX.Element {
   const { ready, settings } = useSettings()
-  const { releaseNotesRequest } = useSettingsNav()
+  const { releaseNotesRequest, setupOpen } = useSettingsNav()
   const [visible, setVisible] = useState(false)
   const [view, setView] = useState<ReleaseNotesView>({ kind: 'all' })
   const [load, setLoad] = useState<Load>({ kind: 'loading' })
-  // The What's new start that waits for the end of the setup dialog.
+  // The What's new start that waits for the setup choice and for the close of the setup dialog.
   const [pending, setPending] = useState<WhatsNewStart | null>(null)
   // A new open makes the answer of an old open stale.
   const generation = useRef(0)
@@ -177,10 +177,10 @@ export default function ReleaseNotesDialog(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    if (pending === null || !whatsNewMayOpen(ready, settings.setupDone)) return
+    if (pending === null || !whatsNewMayOpen(ready, settings.setupDone, setupOpen)) return
     setPending(null)
     open({ kind: 'whats-new', start: pending })
-  }, [open, pending, ready, settings.setupDone])
+  }, [open, pending, ready, settings.setupDone, setupOpen])
 
   // The Release notes button of Settings > Updates.
   useEffect(() => {

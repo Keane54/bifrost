@@ -19,6 +19,10 @@ export interface SettingsNav {
   releaseNotesRequest: number
   // Ask the release notes view to open with the last releases.
   showReleaseNotes(): void
+  // True while the setup dialog is open. What's new waits until it is false.
+  setupOpen: boolean
+  // The setup dialog gives its open state here at each change.
+  setSetupOpen(open: boolean): void
 }
 
 const SettingsNavContext = createContext<SettingsNav | null>(null)
@@ -33,6 +37,7 @@ export function SettingsNavProvider({
   const [section, setSection] = useState<SettingsSection>('general')
   const [introRequest, setIntroRequest] = useState(0)
   const [releaseNotesRequest, setReleaseNotesRequest] = useState(0)
+  const [setupOpen, setSetupOpen] = useState(false)
   const open = useCallback(
     (next?: SettingsSection) => {
       if (next !== undefined) setSection(next)
@@ -49,10 +54,12 @@ export function SettingsNavProvider({
       releaseNotesRequest,
       section,
       setSection,
+      setSetupOpen,
+      setupOpen,
       showIntro,
       showReleaseNotes,
     }),
-    [introRequest, open, releaseNotesRequest, section, showIntro, showReleaseNotes],
+    [introRequest, open, releaseNotesRequest, section, setupOpen, showIntro, showReleaseNotes],
   )
   return <SettingsNavContext value={value}>{children}</SettingsNavContext>
 }

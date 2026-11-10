@@ -41,8 +41,13 @@ export function formatReleaseDate(iso: string, timeZone?: string): string {
   }).format(at)
 }
 
-// What's new waits for the settings and for the end of the setup dialog, so two dialogs never
-// show at the same time.
-export function whatsNewMayOpen(settingsReady: boolean, setupDone: boolean): boolean {
-  return settingsReady && setupDone
+// What's new waits for the settings, for the setup choice and for the close of the setup dialog.
+// The setup dialog stays open in its done phase after it saves setupDone. So the check of
+// setupDone alone is not sufficient, and What's new must also wait for setupOpen to be false.
+export function whatsNewMayOpen(
+  settingsReady: boolean,
+  setupDone: boolean,
+  setupOpen: boolean,
+): boolean {
+  return settingsReady && setupDone && !setupOpen
 }

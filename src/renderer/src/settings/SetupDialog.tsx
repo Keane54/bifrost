@@ -38,7 +38,7 @@ function logSaveError(err: unknown): void {
 export default function SetupDialog(): React.JSX.Element {
   const { ready, settings, update } = useSettings()
   const { busy, install, notice, refresh, status, version, versionFailed } = useLive()
-  const { introRequest } = useSettingsNav()
+  const { introRequest, setSetupOpen } = useSettingsNav()
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<SetupMode>('first')
   const [phase, setPhase] = useState<Phase>('ask')
@@ -61,6 +61,13 @@ export default function SetupDialog(): React.JSX.Element {
   useEffect(() => {
     if (show && !closed.current) setOpen(true)
   }, [show])
+
+  // The release notes view waits while this dialog is open, also in the done phase after the
+  // save of setupDone. So What's new never opens over this dialog.
+  useEffect(() => {
+    setSetupOpen(open)
+  }, [open, setSetupOpen])
+  useEffect(() => () => setSetupOpen(false), [setSetupOpen])
 
   // "Show introduction" opens the dialog again. The open saves nothing.
   useEffect(() => {
