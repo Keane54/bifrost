@@ -1,6 +1,7 @@
 // The health log of the Performance panel (P5). The existing modules report their poll results,
 // save results, crashes and Live details start errors here. The health checks read view().
-// The log keeps only counts and times, in memory.
+// The log keeps only counts and times, in memory. It also hands one line for each failure to a
+// writer, which ipc.ts binds to health.log in the logs folder.
 
 export type PollPart = 'sessions' | 'reviews' | 'account-usage' | 'service-status' | 'updates'
 export type StorePart = 'settings' | 'ui-state' | 'registry' | 'window-state' | 'reviews-state'
@@ -31,6 +32,10 @@ export interface HealthLogView {
 
 export interface HealthLog extends HealthEvents {
   view(now: number): HealthLogView
+  // The user cleared the past events from the panel. The crashes, the failed saves and the Live
+  // start error go away, and each count of failures in a row goes to 0. The live measurements
+  // are not part of this log, so they stay.
+  clear(): void
 }
 
 // A crash and a save failure stay in the view for this time.
@@ -73,8 +78,13 @@ const NETWORK_PARTS: ReadonlySet<PollPart> = new Set([
 ])
 
 // now gives the time of each event, in milliseconds since the epoch. online gives the network
-// state at the time of each poll result. ipc.ts binds it to net.isOnline.
-export function createHealthLog(now: () => number, online: () => boolean = () => true): HealthLog {
+// state at the time of each poll result. ipc.ts binds it to net.isOnline. log writes one line to
+// the health log file for each event that counts. The log never waits for it.
+export function createHealthLog(
+  now: () => number,
+  online: () => boolean = () => true,
+  log: (line: string) => void = () => {},
+): HealthLog {
   const failsInARow: Record<PollPart, number> = {
     'account-usage': 0,
     reviews: 0,
@@ -90,17 +100,26 @@ export function createHealthLog(now: () => number, online: () => boolean = () =>
   const recent = (at: number, time: number): boolean => time - at < HEALTH_WINDOW_MS
 
   return {
+    clear() {
+      crashes = []
+      liveStartFailedAt = null
+      for (const part of Object.keys(failsInARow) as PollPart[]) failsInARow[part] = 0
+      for (const part of Object.keys(saveFailedAt) as StorePart[]) delete saveFailedAt[part]
+      log('cleared by the user')
+    },
     // Remove the old crashes here. Then the list stays small also when no view comes.
     crash(kind, reason) {
       const at = now()
       crashes = crashes.filter(c => recent(c.at, at))
       crashes.push({ at, kind, reason })
+      log(`crash ${kind}: ${reason}`)
     },
     liveStartCleared() {
       liveStartFailedAt = null
     },
-    liveStartFailed() {
+    liveStartFailed(message) {
       liveStartFailedAt = now()
+      log(`live details did not start: ${message}`)
     },
     // A good poll sets the count to 0. A poll with no data does not change it. While offline, a
     // failed network poll is a poll with no data. So the reconnect shows no old failures.
@@ -108,11 +127,14 @@ export function createHealthLog(now: () => number, online: () => boolean = () =>
       if (result === 'ok') failsInARow[part] = 0
       else if (result === 'failed' && (online() || !NETWORK_PARTS.has(part))) {
         failsInARow[part] += 1
+        log(`poll failed: ${part} (${failsInARow[part]} in a row)`)
       }
     },
     // A good save does not clear an earlier failure (P6).
     save(part, ok) {
-      if (!ok) saveFailedAt[part] = now()
+      if (ok) return
+      saveFailedAt[part] = now()
+      log(`save failed: ${part}`)
     },
     stopped(part) {
       failsInARow[part] = 0

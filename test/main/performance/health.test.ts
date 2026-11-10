@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   type HealthInput,
+  healthClearable,
   healthReasons,
   healthState,
   LIMITS,
@@ -381,5 +382,62 @@ describe('state and text', () => {
     expect(out.map(r => r.level)).toEqual(['problem', 'warning', 'warning', 'warning'])
     expect(healthState(out)).toBe('problem')
     expect(healthState(out.filter(r => r.level === 'warning'))).toBe('warning')
+  })
+})
+
+describe('clearable', () => {
+  const log = (over: Partial<HealthLogView>): HealthLogView => ({ ...emptyLog(), ...over })
+
+  test('is false with no reason', () => {
+    expect(healthClearable(input())).toBe(false)
+  })
+
+  test('is true for a crash, a failed save, a Live start error and failed polls', () => {
+    const cases: Array<Partial<HealthLogView>> = [
+      { crashes: [{ at: NOW - MIN, kind: 'gpu', reason: 'x' }] },
+      { saveFailedAt: { settings: NOW - MIN } },
+      { liveStartFailedAt: NOW - MIN },
+      { failsInARow: { ...emptyLog().failsInARow, reviews: LIMITS.pollFailWarn } },
+    ]
+    for (const over of cases) {
+      expect(healthClearable(input({ log: log(over) }))).toBe(true)
+    }
+  })
+
+  test('is false for fewer failed polls than the warning limit', () => {
+    const failsInARow = { ...emptyLog().failsInARow, reviews: LIMITS.pollFailWarn - 1 }
+    expect(healthClearable(input({ log: log({ failsInARow }) }))).toBe(false)
+  })
+
+  test('is false for a crash or a failed save outside the window', () => {
+    const old = NOW - LIMITS.windowMs
+    expect(
+      healthClearable(input({ log: log({ crashes: [{ at: old, kind: 'window', reason: 'x' }] }) })),
+    ).toBe(false)
+    expect(healthClearable(input({ log: log({ saveFailedAt: { settings: old } }) }))).toBe(false)
+  })
+
+  test('is false for a failed network poll while offline', () => {
+    const failsInARow = { ...emptyLog().failsInARow, reviews: LIMITS.pollFailProblem }
+    expect(healthClearable(input({ log: log({ failsInARow }), online: false }))).toBe(false)
+  })
+
+  test('is false when only live reasons exist', () => {
+    const live = input({
+      delayMs: 2000,
+      fpsLow10s: true,
+      orphans: 2,
+      samples: [sample(NOW, { bifrostRamNoTermMb: 2000, largestTerminalRamMb: 900 })],
+    })
+    expect(healthReasons(live).length).toBeGreaterThan(0)
+    expect(healthClearable(live)).toBe(false)
+  })
+
+  test('is true when a live reason and a clearable reason exist together', () => {
+    const both = input({
+      delayMs: 2000,
+      log: log({ liveStartFailedAt: NOW }),
+    })
+    expect(healthClearable(both)).toBe(true)
   })
 })

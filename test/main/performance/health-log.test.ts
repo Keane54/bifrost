@@ -260,3 +260,81 @@ test('reportSave gives the result of each write and keeps the error of a failed 
     ['settings', true],
   ])
 })
+
+// A log with a line writer that the test reads.
+function withLines(online: () => boolean = () => true) {
+  const lines: string[] = []
+  const log = createHealthLog(
+    () => START,
+    online,
+    line => lines.push(line),
+  )
+  return { lines, log }
+}
+
+test('clear removes the crashes, the failed saves and the Live start error', () => {
+  const { log } = withLines()
+  log.crash('window', 'killed')
+  log.save('settings', false)
+  log.liveStartFailed('port in use')
+  log.clear()
+  const view = log.view(START)
+  expect(view.crashes).toEqual([])
+  expect(view.saveFailedAt).toEqual({})
+  expect(view.liveStartFailedAt).toBeNull()
+})
+
+test('clear sets every failure in a row to 0, so a new failure counts from 0', () => {
+  const { log } = withLines()
+  log.poll('reviews', 'failed')
+  log.poll('reviews', 'failed')
+  log.poll('sessions', 'failed')
+  log.clear()
+  expect(Object.values(log.view(START).failsInARow)).toEqual([0, 0, 0, 0, 0])
+  log.poll('reviews', 'failed')
+  expect(log.view(START).failsInARow.reviews).toBe(1)
+})
+
+test('each event writes its line', () => {
+  const { log, lines } = withLines()
+  log.crash('gpu', 'killed')
+  log.crash('window', 'oom')
+  log.save('ui-state', false)
+  log.liveStartFailed('port in use')
+  log.poll('reviews', 'failed')
+  log.poll('reviews', 'failed')
+  log.clear()
+  expect(lines).toEqual([
+    'crash gpu: killed',
+    'crash window: oom',
+    'save failed: ui-state',
+    'live details did not start: port in use',
+    'poll failed: reviews (1 in a row)',
+    'poll failed: reviews (2 in a row)',
+    'cleared by the user',
+  ])
+})
+
+test('a good save, a good poll and a no-data poll write nothing', () => {
+  const { log, lines } = withLines()
+  log.save('settings', true)
+  log.poll('reviews', 'ok')
+  log.poll('reviews', 'no-data')
+  log.liveStartCleared()
+  log.stopped('reviews')
+  expect(lines).toEqual([])
+})
+
+test('a failed network poll while offline writes nothing, a failed sessions poll writes', () => {
+  const { log, lines } = withLines(() => false)
+  log.poll('reviews', 'failed')
+  log.poll('sessions', 'failed')
+  expect(lines).toEqual(['poll failed: sessions (1 in a row)'])
+})
+
+test('a log with no writer works', () => {
+  const log = createHealthLog(() => START)
+  log.crash('gpu', 'x')
+  log.clear()
+  expect(log.view(START).crashes).toEqual([])
+})

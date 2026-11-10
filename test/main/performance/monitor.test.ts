@@ -912,6 +912,36 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
+  it('sets clearable from the past events and refreshes the snapshot at once', async () => {
+    const t = setup()
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.monitor.current().clearable).toBe(false)
+    t.health.crash('gpu', 'killed')
+    // The snapshot does not change before the next tick or a refresh.
+    expect(t.monitor.current().clearable).toBe(false)
+    const emits = t.emitted.length
+    t.monitor.refresh()
+    expect(t.monitor.current().clearable).toBe(true)
+    expect(t.monitor.current().reasons.map(r => r.text)).toEqual([
+      expect.stringContaining('The graphics process crashed'),
+    ])
+    expect(t.emitted).toHaveLength(emits + 1)
+    t.health.clear()
+    t.monitor.refresh()
+    expect(t.monitor.current().clearable).toBe(false)
+    expect(t.monitor.current().reasons).toEqual([])
+    expect(t.emitted).toHaveLength(emits + 2)
+    t.monitor.stop()
+  })
+
+  it('refresh before the first tick does nothing', () => {
+    const t = setup()
+    t.monitor.refresh()
+    expect(t.emitted).toEqual([])
+  })
+
   it('after an 8 h clock jump, the samples right after wake give no memory or CPU reason', async () => {
     const t = setup()
     const reasonFor = (part: string): boolean => hasReason(t, part)

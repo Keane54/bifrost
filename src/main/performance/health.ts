@@ -124,14 +124,20 @@ const STORE_NAMES: Record<StorePart, string> = {
   'window-state': 'the window position',
 }
 
-export function healthReasons(
+// The reasons, and whether one of them comes from a past event that the user can clear: a crash,
+// a failed save, a Live start error or failed polls in a row. A live measurement is not clearable.
+// One function gives both results, so the two can never disagree.
+function evaluate(
   input: HealthInput,
-  formatTime: (at: number) => string = localTime,
-): Reason[] {
+  formatTime: (at: number) => string,
+): { reasons: Reason[]; clearable: boolean } {
   const problems: Reason[] = []
   const warnings: Reason[] = []
-  const add = (level: Reason['level'], text: string) =>
-    (level === 'problem' ? problems : warnings).push({ level, text })
+  let clearable = false
+  const add = (level: Reason['level'], text: string, fromEvent = false) => {
+    if (fromEvent) clearable = true
+    ;(level === 'problem' ? problems : warnings).push({ level, text })
+  }
   const { now, samples, log } = input
 
   // RAM of the newest sample.
@@ -195,7 +201,7 @@ export function healthReasons(
   for (const crash of log.crashes) {
     if (now - crash.at >= LIMITS.windowMs) continue
     const what = crash.kind === 'window' ? 'The window' : 'The graphics process'
-    add('problem', `${what} crashed at ${formatTime(crash.at)}.`)
+    add('problem', `${what} crashed at ${formatTime(crash.at)}.`, true)
   }
 
   const parts = Object.keys(POLL_NAMES) as PollPart[]
@@ -204,12 +210,12 @@ export function healthReasons(
     if (!input.online && part !== 'sessions') continue
     const fails = log.failsInARow[part]
     const text = `Bifrost couldn't ${POLL_NAMES[part]} ${fails} times in a row.`
-    if (fails >= LIMITS.pollFailProblem) add('problem', text)
-    else if (fails >= LIMITS.pollFailWarn) add('warning', text)
+    if (fails >= LIMITS.pollFailProblem) add('problem', text, true)
+    else if (fails >= LIMITS.pollFailWarn) add('warning', text, true)
   }
 
   if (log.liveStartFailedAt !== null) {
-    add('warning', "Bifrost couldn't start the Live details link.")
+    add('warning', "Bifrost couldn't start the Live details link.", true)
   }
 
   if (input.orphans >= 1) {
@@ -226,10 +232,22 @@ export function healthReasons(
   for (const store of stores) {
     const at = log.saveFailedAt[store]
     if (at === undefined || now - at >= LIMITS.windowMs) continue
-    add('warning', `Bifrost couldn't save ${STORE_NAMES[store]} at ${formatTime(at)}.`)
+    add('warning', `Bifrost couldn't save ${STORE_NAMES[store]} at ${formatTime(at)}.`, true)
   }
 
-  return [...problems, ...warnings]
+  return { clearable, reasons: [...problems, ...warnings] }
+}
+
+export function healthReasons(
+  input: HealthInput,
+  formatTime: (at: number) => string = localTime,
+): Reason[] {
+  return evaluate(input, formatTime).reasons
+}
+
+// True when at least one reason of healthReasons comes from a clearable event.
+export function healthClearable(input: HealthInput): boolean {
+  return evaluate(input, localTime).clearable
 }
 
 export function healthState(reasons: Reason[]): HealthState {

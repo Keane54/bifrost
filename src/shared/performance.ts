@@ -35,6 +35,8 @@ export interface SessionUse {
 export interface PerformanceSnapshot {
   state: HealthState
   reasons: Reason[]
+  // True when at least one reason comes from a past event that the Clear button can remove.
+  clearable: boolean
   okText: string | null
   bifrost: {
     ramMb: number
@@ -75,6 +77,7 @@ export interface PerformanceSnapshot {
 
 export const EMPTY_PERFORMANCE: PerformanceSnapshot = {
   bifrost: null,
+  clearable: false,
   limits: { clonesMb: null, freeDiskGb: null, github: null },
   mac: null,
   network: null,

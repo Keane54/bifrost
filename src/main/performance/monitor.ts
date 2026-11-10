@@ -5,7 +5,7 @@ import type * as os from 'node:os'
 import { EMPTY_PERFORMANCE, type PerformanceSnapshot } from '../../shared/performance'
 import type { SessionRow } from '../../shared/types'
 import type { ExecFn } from '../claude/cli'
-import { healthReasons, healthState, LIMITS, okText, type Sample } from './health'
+import { healthClearable, healthReasons, healthState, LIMITS, okText, type Sample } from './health'
 import type { HealthLog } from './health-log'
 import {
   type AppMetric,
@@ -130,12 +130,25 @@ export interface PerformanceMonitor {
   // The renderer reports the frame rate of each burst, one time each 10 s, while the panel shows
   // and has focus (design section 7).
   fps(value: number): void
+  // Build the snapshot again at once and emit it, with the input of the last tick. ipc.ts calls
+  // this after the user clears the health log. Before the first tick, it does nothing.
+  refresh(): void
 }
 
 type Pty = { viewId: string; pid: number }
 type Mac = NonNullable<PerformanceSnapshot['mac']>
 type TrendPoint = NonNullable<PerformanceSnapshot['bifrost']>['trend'][number]
 type Link = { device: string; kind: LinkKind }
+
+// What the snapshot builder needs from a tick.
+interface BuildInput {
+  now: number
+  hasMetrics: boolean
+  use: BifrostUse
+  load: number | null
+  orphans: number
+  reviewsLimit: GithubLimit | null
+}
 
 // A read that runs at its own interval, in the background of the ticks.
 interface SideRead {
@@ -207,6 +220,8 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
   let timer: ReturnType<typeof setTimeout> | null = null
   let lastEndAt = NEVER
   let snapshot: PerformanceSnapshot = EMPTY_PERFORMANCE
+  // The input of the last tick. refresh() builds the snapshot again from it.
+  let lastBuild: BuildInput | null = null
   // The last report of the renderer. It stays after a stop, because the renderer reports only a
   // change.
   let reported = false
@@ -429,18 +444,11 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
   }
 
   // The snapshot of a tick, with the result of the health model.
-  function build(t: {
-    now: number
-    hasMetrics: boolean
-    use: BifrostUse
-    load: number | null
-    orphans: number
-    reviewsLimit: GithubLimit | null
-  }): PerformanceSnapshot {
+  function build(t: BuildInput): PerformanceSnapshot {
     const { now, use, reviewsLimit } = t
     const online = deps.online()
     const delay = deps.delayMs()
-    const reasons = healthReasons({
+    const healthInput = {
       delayMs: delay,
       fpsLow10s: fpsLow(),
       log: deps.health.view(now),
@@ -448,7 +456,8 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       online,
       orphans: t.orphans,
       samples: st.samples,
-    })
+    }
+    const reasons = healthReasons(healthInput)
     const github =
       reviewsLimit === null
         ? st.ghLimit
@@ -468,6 +477,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
             trend: [...st.trend],
           }
         : null,
+      clearable: healthClearable(healthInput),
       limits: { clonesMb: st.clonesMb, freeDiskGb: st.freeDiskGb, github },
       mac: {
         battery: st.battery,
@@ -550,14 +560,15 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       if (metrics.length > 0) st.metricsRead = true
       const load = st.lastCpus === null ? null : cpuLoad(st.lastCpus, cpus)
       st.lastCpus = cpus
-      snapshot = build({
+      lastBuild = {
         hasMetrics: metrics.length > 0,
         load,
         now,
         orphans: trackOrphans(now, ptys),
         reviewsLimit,
         use,
-      })
+      }
+      snapshot = build(lastBuild)
       deps.emit(snapshot)
     } catch (error) {
       console.error('Bifrost cannot sample the performance data.', error)
@@ -582,6 +593,15 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       reported = false
       setView({ chatPanels: [], focused: false, showing: false })
     },
+    refresh() {
+      if (!running || lastBuild === null) return
+      try {
+        snapshot = build({ ...lastBuild, now: deps.now() })
+        deps.emit(snapshot)
+      } catch (error) {
+        console.error('Bifrost cannot refresh the performance data.', error)
+      }
+    },
     start() {
       if (running) return
       running = true
@@ -596,6 +616,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       timer = null
       lastEndAt = NEVER
       snapshot = EMPTY_PERFORMANCE
+      lastBuild = null
       st = freshState(showing)
     },
     view(v) {
