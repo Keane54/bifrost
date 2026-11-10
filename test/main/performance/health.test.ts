@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  evaluateHealth,
   type HealthInput,
   healthClearable,
   healthReasons,
@@ -440,4 +441,16 @@ describe('clearable', () => {
     })
     expect(healthClearable(both)).toBe(true)
   })
+})
+
+test('evaluateHealth gives the same reasons and clearable flag as the two wrappers', () => {
+  const given = input({
+    delayMs: 2000,
+    log: { ...emptyLog(), liveStartFailedAt: NOW },
+  })
+  expect(evaluateHealth(given)).toEqual({
+    clearable: healthClearable(given),
+    reasons: healthReasons(given),
+  })
+  expect(evaluateHealth(given).clearable).toBe(true)
 })

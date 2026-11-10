@@ -83,8 +83,10 @@ const NETWORK_PARTS: ReadonlySet<PollPart> = new Set([
 export function createHealthLog(
   now: () => number,
   online: () => boolean = () => true,
-  log: (line: string) => void = () => {},
+  write: (line: string) => void = () => {},
 ): HealthLog {
+  // A message can hold a line break. One event must stay one line in the file.
+  const log = (line: string): void => write(line.replace(/\r?\n|\r/g, ' '))
   const failsInARow: Record<PollPart, number> = {
     'account-usage': 0,
     reviews: 0,

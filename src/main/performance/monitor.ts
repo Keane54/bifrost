@@ -5,7 +5,7 @@ import type * as os from 'node:os'
 import { EMPTY_PERFORMANCE, type PerformanceSnapshot } from '../../shared/performance'
 import type { SessionRow } from '../../shared/types'
 import type { ExecFn } from '../claude/cli'
-import { healthClearable, healthReasons, healthState, LIMITS, okText, type Sample } from './health'
+import { evaluateHealth, healthState, LIMITS, okText, type Sample } from './health'
 import type { HealthLog } from './health-log'
 import {
   type AppMetric,
@@ -457,7 +457,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       orphans: t.orphans,
       samples: st.samples,
     }
-    const reasons = healthReasons(healthInput)
+    const { clearable, reasons } = evaluateHealth(healthInput)
     const github =
       reviewsLimit === null
         ? st.ghLimit
@@ -477,7 +477,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
             trend: [...st.trend],
           }
         : null,
-      clearable: healthClearable(healthInput),
+      clearable,
       limits: { clonesMb: st.clonesMb, freeDiskGb: st.freeDiskGb, github },
       mac: {
         battery: st.battery,

@@ -127,9 +127,9 @@ const STORE_NAMES: Record<StorePart, string> = {
 // The reasons, and whether one of them comes from a past event that the user can clear: a crash,
 // a failed save, a Live start error or failed polls in a row. A live measurement is not clearable.
 // One function gives both results, so the two can never disagree.
-function evaluate(
+export function evaluateHealth(
   input: HealthInput,
-  formatTime: (at: number) => string,
+  formatTime: (at: number) => string = localTime,
 ): { reasons: Reason[]; clearable: boolean } {
   const problems: Reason[] = []
   const warnings: Reason[] = []
@@ -242,12 +242,12 @@ export function healthReasons(
   input: HealthInput,
   formatTime: (at: number) => string = localTime,
 ): Reason[] {
-  return evaluate(input, formatTime).reasons
+  return evaluateHealth(input, formatTime).reasons
 }
 
 // True when at least one reason of healthReasons comes from a clearable event.
 export function healthClearable(input: HealthInput): boolean {
-  return evaluate(input, localTime).clearable
+  return evaluateHealth(input).clearable
 }
 
 export function healthState(reasons: Reason[]): HealthState {

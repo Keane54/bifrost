@@ -641,7 +641,6 @@ export function registerIpc(home: TestHome | null = null): void {
   if (registered) return
   registered = true
   testHome = home
-  // While the Mac is offline, a failed network poll counts as no data (design section 6).
   // The health log also writes health.log in the logs folder. Clear does not touch that file.
   const healthFile = createRotatingLog(app.getPath('logs'), 'health.log', {
     appendFile,
@@ -650,6 +649,7 @@ export function registerIpc(home: TestHome | null = null): void {
     rename,
     stat,
   })
+  // While the Mac is offline, a failed network poll counts as no data (design section 6).
   const health = createHealthLog(
     () => Date.now(),
     () => net.isOnline(),

@@ -17,9 +17,8 @@ const flat = (text: string): string =>
 
 describe('the Clear wiring', () => {
   it('handles performance:clear through fromPage, clears the log and refreshes the monitor', () => {
-    const text = flat(ipc)
-    expect(text).toContain(
-      "ipcMain.handle('performance:clear', e => fromPage(e, async () => { health.clear() monitor.refresh() }),)",
+    expect(ipc).toMatch(
+      /performance:clear'[\s\S]*?fromPage[\s\S]*?health\.clear\(\)[\s\S]*?monitor\.refresh\(\)/,
     )
   })
 

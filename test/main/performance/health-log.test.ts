@@ -338,3 +338,10 @@ test('a log with no writer works', () => {
   log.clear()
   expect(log.view(START).crashes).toEqual([])
 })
+
+test('a line holds no line break, so one event is one line in the file', () => {
+  const { log, lines } = withLines()
+  log.liveStartFailed('first\nsecond\r\nthird')
+  log.crash('gpu', 'a\rb')
+  expect(lines).toEqual(['live details did not start: first second third', 'crash gpu: a b'])
+})

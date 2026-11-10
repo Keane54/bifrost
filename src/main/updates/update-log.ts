@@ -8,7 +8,6 @@ import {
 } from '../log/rotating-log'
 
 export const LOG_NAME = 'updater.log'
-export const OLD_LOG_NAME = 'updater.old.log'
 export const LOG_MAX_BYTES = ROTATING_LOG_MAX_BYTES
 
 export type UpdateLog = RotatingLog
