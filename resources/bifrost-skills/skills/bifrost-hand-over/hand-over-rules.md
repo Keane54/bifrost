@@ -2,9 +2,9 @@
 
 Write a hand-over note for this session. A new Claude session continues the work from the note.
 That session cannot see this conversation, and it cannot ask you. It has only the note, the files
-on disk, and what Claude Code loads at its start: the CLAUDE.md files, memory and skills. Write for
-that session, not for a person. It must be able to continue without asking the user again for
-anything that the user already said.
+on disk, and what Claude Code loads at its start: the CLAUDE.md files, memory, and the names and
+descriptions of the skills. Write for that session, not for a person. It must be able to continue
+without asking the user again for anything that the user already said.
 
 Go through the whole conversation, not only the last part. Rules and decisions from early in the
 session are easy to miss.
@@ -19,14 +19,16 @@ The note carries what exists only in this conversation. For what is on disk, giv
 - A plan, a design or a text that the user and you agreed in the chat and that no file holds. Give
   it in full.
 - Exact identifiers, as they are: paths, branch names, commit SHAs, commands, function names, error
-  text, numbers, versions, URLs.
+  text, numbers, versions, URLs. The one exception is a credential: remove it from a command, a URL
+  or error text, and say where it is.
 
 ## What to leave out
 
 - The history of the session. A step that failed goes in the traps, not as a story.
 - Tool output, and code or file content that is on disk. Give the path, and a line or a symbol when
   it helps.
-- What CLAUDE.md, memory or a skill already says. The new session loads them itself.
+- What CLAUDE.md or memory already says. The new session loads them itself.
+- The text of a skill. Name a skill that the work uses, so that the new session can start it.
 - Greetings, thanks, comments on the session, and text about the note itself.
 
 ## Format
@@ -47,7 +49,7 @@ The note carries what exists only in this conversation. For what is on disk, giv
   before the last edit.
 - Never write a secret, a token, a password, a private key or any other credential, not even part
   of one. When the new session needs one, say where it is, for example the name of the environment
-  variable.
+  variable. This rule comes before all other rules in this file.
 - Target: 2,000 tokens or less for a typical session. A long session can need more, because the
   meaning comes before the length. To make the note shorter, cut words, and give paths in place of
   copied file content. Never cut a user rule, the reason for a decision, an open question or a trap.
@@ -78,8 +80,9 @@ The note carries what exists only in this conversation. For what is on disk, giv
   the user did not answer. For each: who can answer it (the user, or a check), what it blocks, and
   your recommendation if you have one.
 - `## Traps`: approaches that failed, with the reason or the key error text, so that the new
-  session does not try them again. Actions that the user forbade or that would cause damage. Facts
-  that took effort to find and that a new session would likely get wrong.
+  session does not try them again. Actions that you found would cause damage. Facts that took
+  effort to find and that a new session would likely get wrong. A prohibition that the user gave
+  goes in the user rules only.
 - `## References`: the files, docs, PRs, tickets and URLs that the new session needs, each with a
   few words on why. The commands to build and test, if CLAUDE.md does not give them. Put first the
   files to read before the next steps, in reading order.

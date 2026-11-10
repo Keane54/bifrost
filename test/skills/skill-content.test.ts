@@ -9,7 +9,8 @@ const ROOT = join(__dirname, '../../resources/bifrost-skills')
 const MAX_LINE = 100
 const EM_DASH = String.fromCharCode(0x2014)
 const AMERICAN = /\b(humaniz|organiz|recogniz|realiz|summariz|prioritiz)\w*/i
-// Claude Code puts the folder of the skill in place of this variable. The skill text holds it as is.
+// Claude Code puts the folder of the skill in place of this variable.
+// The skill text holds it as is.
 // biome-ignore lint/suspicious/noTemplateCurlyInString: the test looks for the literal variable.
 const SKILL_DIR = '${CLAUDE_SKILL_DIR}'
 // Claude Code puts the folder of the plugin in place of this variable.
@@ -190,8 +191,10 @@ describe('bifrost-hand-over', () => {
     expect(at).toEqual([...at].sort((a, b) => a - b))
   })
 
-  it('keeps secrets out of the note', () => {
-    expect(rules()).toContain('secret')
+  it('keeps secrets out of the note, also out of an identifier', () => {
+    expect(rules()).toMatch(/^- Never write a secret, a token, a password/m)
+    expect(rules()).toContain('This rule comes before all other rules in this file.')
+    expect(rules()).toContain('The one exception is a credential')
   })
 
   it('reads the rules file and saves the note, but does not repeat the rules', () => {

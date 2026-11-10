@@ -22,7 +22,8 @@ session continues the work from the note.
    - Else use the default path: `~/.bifrost/handovers/<session name>-<time>.md`.
    - The session name is the name that the user gave this session with `/rename`, if you know it.
      Else it is the name of the current folder. In the name, change each run of characters other
-     than letters, digits, `.`, `_` and `-` to one `-`, and remove a `-` at the start or the end.
+     than ASCII letters, digits, `.`, `_` and `-` to one `-`, and remove a `-` at the start or the
+     end. If the name is then empty, use `session`.
    - The time is the local time from `date +%Y%m%d-%H%M%S`.
 5. Save the note:
    - If the folder does not exist, make it: `mkdir -p -m 700 ~/.bifrost/handovers` for the default
