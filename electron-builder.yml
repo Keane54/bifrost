@@ -37,5 +37,10 @@ dmg:
   # https://github.com/Keane54/bifrost/releases/latest/download/Bifrost-arm64.dmg
   # (README, Install) always gets the DMG of the latest release.
   artifactName: ${productName}-arm64.${ext}
+  # bzip2 compression. It is the smallest format that electron-builder 26 accepts. ULMO (lzma) is
+  # smaller, but the schema of electron-builder 26 refuses it. macOS 10.4 and later open UDBZ.
+  # The ZIP keeps the default Deflate level. "compression: maximum" made the ZIP only 0.2 MB
+  # smaller, and pnpm dist then took 3 times longer.
+  format: UDBZ
 npmRebuild: false
 publish: null
