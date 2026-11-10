@@ -54,8 +54,8 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     await expect(row('smoke-gamma')).toHaveCount(0)
 
     // Step 4b: the animated background (spec 8.10) is behind the frames and moves. Each layer is a
-    // canvas with a size. With reduced motion, it stays still. The frames of the default layout do
-    // not overlap, so they have no blur (user decision, 2026-11-10).
+    // canvas with a size. With reduced motion, it stays still. A frame has the blur only while it
+    // overlaps a lower frame (user decision, 2026-11-10).
     const layer = page.locator('.background')
     const fields = page.locator('.background canvas.background-field')
     await expect(fields).toHaveCount(6)
@@ -68,8 +68,33 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     )
     expect(sizes).toHaveLength(7)
     for (const size of sizes) expect(size).toBeGreaterThan(1)
-    for (const frame of await page.locator('[data-frame-id]').all()) {
-      await expect(frame).toHaveCSS('backdrop-filter', 'none')
+    // The default layout depends on the size of the screen. On a small screen, its frames can
+    // overlap, for example on the CI runner. So the test finds the overlaps from the rects and the
+    // z-order of the frames that show. Frames that only touch at an edge do not overlap.
+    const frameBlur = await page.evaluate(() => {
+      const shown = [...document.querySelectorAll<HTMLElement>('[data-frame-id]')]
+        .map(el => ({
+          id: el.dataset.frameId ?? '',
+          rect: el.getBoundingClientRect(),
+          z: Number(getComputedStyle(el).zIndex) || 0,
+        }))
+        .filter(f => f.rect.width > 0 && f.rect.height > 0)
+        .sort((a, b) => a.z - b.z)
+      const overlap = (a: DOMRect, b: DOMRect): boolean =>
+        Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 &&
+        Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5
+      return shown.map((f, i) => ({
+        blur: shown.slice(0, i).some(lower => overlap(f.rect, lower.rect)),
+        id: f.id,
+      }))
+    })
+    expect(frameBlur.length).toBeGreaterThan(0)
+    expect(frameBlur[0].blur).toBe(false)
+    for (const { blur, id } of frameBlur) {
+      await expect(page.locator(`[data-frame-id="${id}"]`)).toHaveCSS(
+        'backdrop-filter',
+        blur ? 'blur(8px)' : 'none',
+      )
     }
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect(layer).toHaveClass('background background-still')
