@@ -1,8 +1,8 @@
 // Read the hand-over note from the transcript of the old session (spec 8, step 3).
 // The transcript format is internal to Claude Code and can change. So the reader is strict for
-// each line and for each entry that it uses: the request, the replies and the turn end. A form
-// that it does not know is a failure. It skips the metadata entries, because their types change
-// between versions of Claude Code.
+// each line and for each entry that it uses: the request, the replies, the turn end and the new
+// messages from the user. A form that it does not know is a failure. It skips the metadata
+// entries, because their types change between versions of Claude Code.
 import { NOTE_END, NOTE_START, requestLine } from './prompt'
 
 export type ReplyState =
@@ -19,7 +19,7 @@ const SYNTHETIC = '<synthetic>'
 const REASON_LINE = 'a line of the transcript has an unknown form'
 const REASON_EARLY_END = 'a turn ended before the hand-over request'
 const REASON_REPLY = "the reply has a part that Bifrost doesn't know"
-const REASON_USER = 'a new message came in before the note was finished'
+const REASON_USER = 'a new message came in during the hand-over'
 const REASON_TWO_MARKERS = 'the reply has more than one note'
 const REASON_NO_MARKERS = "the reply doesn't have both note markers"
 const REASON_ORDER = 'the note markers are in the wrong order'
@@ -62,12 +62,32 @@ function userText(entry: Entry): string {
     .join('\n')
 }
 
+// True when a line of the user text is the request line. Spaces at the ends of the line are
+// allowed. A line with other text, for example a longer request ID, is not the request line.
+function holdsRequest(entry: Entry, wanted: string): boolean {
+  return userText(entry)
+    .split(/\r\n|\r|\n/)
+    .some(line => line.trim() === wanted)
+}
+
 // True for a user entry that is not a message from the user: a meta entry, or only tool results.
 function isAllowedUser(entry: Entry): boolean {
   if (entry.isMeta === true) return true
   const content = isObject(entry.message) ? entry.message.content : undefined
   if (!Array.isArray(content) || content.length === 0) return false
   return content.every(block => isObject(block) && block.type === 'tool_result')
+}
+
+// True for a message from the user (Review Focus 3): a user entry that isAllowedUser does not
+// allow, or a queued command. Claude Code writes a message that the user types during a turn as
+// a queued_command attachment, and gives it to Claude in that turn. The note of a background task
+// is also a queued command, with the command mode task-notification. It is not a message from the
+// user.
+function isNewMessage(entry: Entry): boolean {
+  if (entry.type === 'user') return !isAllowedUser(entry)
+  if (entry.type !== 'attachment' || !isObject(entry.attachment)) return false
+  const { commandMode, type } = entry.attachment
+  return type === 'queued_command' && commandMode !== 'task-notification'
 }
 
 // The texts of the text blocks of an assistant entry. null when the entry has an unknown form.
@@ -121,11 +141,16 @@ function finish(text: string, model: string | undefined, request: Entry): ReplyS
 // Read the reply to the request from the transcript lines after the baseline (readTail).
 // The request entry is the first user entry with the request line. Bifrost reads only the
 // entries after it, so a note from before the request never counts (Review Focus 2).
-// A new user message before the turn end fails at once (Review Focus 3).
+// A new message from the user fails at once (Review Focus 3). This also applies after the first
+// turn end. When no tool runs, a message that the user types waits in the queue, and it starts a
+// new turn after the turn end. The caller reads again until the session is idle, so that read
+// fails.
 // No request and no turn end, or a request and no turn end yet, gives pending.
 export function readReply(tail: string, requestId: string): ReplyState {
   const wanted = requestLine(requestId)
   let request: Entry | null = null
+  // The result at the first turn end.
+  let result: ReplyState | null = null
   const texts: string[] = []
   let model: string | undefined
   for (const line of tail.split('\n')) {
@@ -134,23 +159,26 @@ export function readReply(tail: string, requestId: string): ReplyState {
     if (entry === null) return failed(REASON_LINE)
     if (request === null) {
       if (isTurnEnd(entry)) return failed(REASON_EARLY_END)
-      if (entry.type === 'user' && userText(entry).includes(wanted)) request = entry
+      if (entry.type === 'user' && holdsRequest(entry, wanted)) request = entry
       continue
     }
-    if (isTurnEnd(entry)) return finish(texts.join('\n'), model, request)
-    if (entry.type === 'assistant') {
+    if (isNewMessage(entry)) return failed(REASON_USER)
+    // After the first turn end, only a new message counts.
+    if (result !== null) continue
+    if (isTurnEnd(entry)) {
+      result = finish(texts.join('\n'), model, request)
+      if (result.kind === 'failed') return result
+    } else if (entry.type === 'assistant') {
       // A sidechain entry is the work of a subagent, not the reply.
       if (entry.isSidechain === true) continue
       const blocks = replyTexts(entry)
       if (blocks === null) return failed(REASON_REPLY)
       texts.push(...blocks)
       model = modelOf(entry) ?? model
-    } else if (entry.type === 'user' && !isAllowedUser(entry)) {
-      return failed(REASON_USER)
     }
     // All other entries are metadata.
   }
-  return { kind: 'pending' }
+  return result ?? { kind: 'pending' }
 }
 
 const SECRETS: readonly RegExp[] = [

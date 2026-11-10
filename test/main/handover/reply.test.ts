@@ -34,6 +34,33 @@ function text(value: string): { type: string; text: string } {
 
 const TURN_END = line({ durationMs: 1200, subtype: 'turn_duration', type: 'system' })
 
+// A message that the user typed during the turn. Claude Code delivers it in the turn.
+function queued(commandMode?: string): string {
+  return line({
+    attachment: { commandMode, prompt: 'Wait, stop.', type: 'queued_command' },
+    type: 'attachment',
+  })
+}
+
+// The note of a background task. Claude Code also delivers it as a queued command.
+const TASK_NOTE = line({
+  attachment: {
+    commandMode: 'task-notification',
+    prompt: '<task-notification>done</task-notification>',
+    type: 'queued_command',
+  },
+  type: 'attachment',
+})
+
+// A message that the user typed.
+const TYPED = line({ message: { content: 'Wait, stop.', role: 'user' }, type: 'user' })
+
+// The reason of a failure.
+function reasonOf(tail: string): string {
+  const state = readReply(tail, ID)
+  return state.kind === 'failed' ? state.reason : `not failed: ${state.kind}`
+}
+
 // A reply with a note between the markers, in one text block.
 function noteReply(note: string, extra: Record<string, unknown> = {}): string {
   return assistant([text(`Here is the note.\n${NOTE_START}\n${note}\n${NOTE_END}`)], extra)
@@ -99,7 +126,9 @@ describe('readReply: a good reply', () => {
       line({ messageId: 'm1', type: 'file-history-snapshot' }) +
       request() +
       line({ type: 'progress' }) +
-      line({ attachment: { type: 'x' }, type: 'attachment' }) +
+      line({ attachment: { type: 'edited_text_file' }, type: 'attachment' }) +
+      TASK_NOTE +
+      line({ operation: 'enqueue', type: 'queue-operation' }) +
       line({ content: 'Compacted', subtype: 'compact_boundary', type: 'system' }) +
       // A sidechain entry is not part of this conversation. It is not checked and not used.
       assistant('not an array', { isSidechain: true }) +
@@ -130,9 +159,39 @@ describe('readReply: a good reply', () => {
     )
   })
 
-  test('entries after the turn end are not read', () => {
-    const tail = request() + noteReply('the note') + TURN_END + line({ type: 'user', x: 1 })
-    expect(readReply(tail, ID)).toEqual(expect.objectContaining({ kind: 'done' }))
+  test('entries after the turn end that are not a new message are skipped', () => {
+    const tail =
+      request() +
+      noteReply('the note') +
+      TURN_END +
+      line({ operation: 'enqueue', type: 'queue-operation' }) +
+      TASK_NOTE +
+      assistant('not checked') +
+      line({ isMeta: true, message: { content: 'meta' }, type: 'user' }) +
+      TURN_END
+    expect(readReply(tail, ID)).toEqual(expect.objectContaining({ kind: 'done', note: 'the note' }))
+  })
+})
+
+describe('readReply: the request line', () => {
+  test('the request is a whole line, so a longer ID does not match', () => {
+    const tail = request() + noteReply('the note') + TURN_END
+    expect(readReply(tail, 'ab12')).toEqual({ kind: 'failed', reason: reasonOf(TURN_END) })
+    const inLine = line({
+      message: { content: `See Bifrost hand-over request ${ID} for this.`, role: 'user' },
+      type: 'user',
+    })
+    expect(readReply(inLine + noteReply('the note'), ID)).toEqual({ kind: 'pending' })
+  })
+
+  test('the request line can be any line of the user text', () => {
+    const later = line({
+      message: { content: `Text before.\r\nBifrost hand-over request ${ID}\nMore.`, role: 'user' },
+      type: 'user',
+    })
+    expect(readReply(later + noteReply('the note') + TURN_END, ID)).toEqual(
+      expect.objectContaining({ kind: 'done', note: 'the note' }),
+    )
   })
 })
 
@@ -205,6 +264,31 @@ describe('readReply: a failure', () => {
       type: 'user',
     })
     expect(readReply(request() + mixed + noteReply('n') + TURN_END, ID).kind).toBe('failed')
+  })
+
+  test('a message that the user typed during the turn fails (Review Focus 3)', () => {
+    const typed = reasonOf(request() + TYPED)
+    expect(typed).toContain('a new message')
+    for (const mode of ['prompt', 'bash', undefined]) {
+      expect(reasonOf(request() + queued(mode)), String(mode)).toBe(typed)
+      const done = request() + noteReply('n') + queued(mode) + TURN_END
+      expect(reasonOf(done), String(mode)).toBe(typed)
+    }
+    // The note of a background task is not a message from the user.
+    expect(readReply(request() + TASK_NOTE + noteReply('n') + TURN_END, ID).kind).toBe('done')
+    // Before the request, a queued message does not count.
+    expect(readReply(queued('prompt') + request() + noteReply('n') + TURN_END, ID).kind).toBe(
+      'done',
+    )
+  })
+
+  test('a new message after the turn end fails (Review Focus 3)', () => {
+    const good = request() + noteReply('n') + TURN_END
+    const typed = reasonOf(request() + TYPED)
+    expect(reasonOf(good + TYPED)).toBe(typed)
+    expect(reasonOf(good + queued('prompt'))).toBe(typed)
+    // A new turn that the typed message starts.
+    expect(reasonOf(good + TYPED + assistant([text('OK.')]) + TURN_END)).toBe(typed)
   })
 
   test('no turn end gives pending', () => {

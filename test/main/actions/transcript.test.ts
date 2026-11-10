@@ -1,6 +1,6 @@
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   findTranscript,
@@ -157,6 +157,23 @@ describe('findTranscript', () => {
     const notJsonl = join(projects, `x${S}.jsonl`)
     await writeFile(notJsonl, USER)
     expect(await findTranscript(projects, { sessionId: S, transcriptPath: notJsonl })).toBe(file)
+  })
+
+  test('a transcriptPath outside the projects folder is not used', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'bifrost-outside-'))
+    try {
+      await writeFile(join(outside, `${S}.jsonl`), USER)
+      // The search finds this file first, because the folders are sorted.
+      const first = await transcript('-Users-x-a', USER)
+      const away = `${projects}/-Users-x-a/../../${basename(outside)}/${S}.jsonl`
+      expect(await findTranscript(projects, { sessionId: S, transcriptPath: away })).toBe(first)
+      // A path with ".." that stays inside the projects folder is used.
+      const own = await transcript('-Users-x-p', USER)
+      const inside = `${projects}/-Users-x-a/../-Users-x-p/${S}.jsonl`
+      expect(await findTranscript(projects, { sessionId: S, transcriptPath: inside })).toBe(own)
+    } finally {
+      await rm(outside, { force: true, recursive: true })
+    }
   })
 
   test('a folder with the transcript name is not a transcript', async () => {

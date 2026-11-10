@@ -5,7 +5,7 @@
 // Claude Code writes the transcript to <home>/.claude/projects/<project>/<session id>.jsonl.
 // This module only reads.
 import { open, readdir, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import type { SessionRow } from '../../shared/types'
 import { UUID_PATTERN } from '../../shared/uuid'
 
@@ -77,9 +77,22 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
+// The transcriptPath of the row as an absolute path, when it names the file of the ID inside
+// projectsDir. Else undefined. A path with ".." that goes out of projectsDir is not used.
+function ownTranscript(
+  projectsDir: string,
+  path: string | undefined,
+  fileName: string,
+): string | undefined {
+  if (path === undefined || !path.endsWith(`/${fileName}`)) return undefined
+  const full = resolve(path)
+  return full.startsWith(resolve(projectsDir) + sep) ? full : undefined
+}
+
 // The transcript of the conversation that the row shows now. The ID is currentId, else
 // sessionId, and it must be a UUID. The transcriptPath of the row comes first, when it names
-// the file of that ID. Else the first project folder with the file counts. No file gives null.
+// the file of that ID inside projectsDir. Else the first project folder with the file counts.
+// No file gives null.
 export async function findTranscript(
   projectsDir: string,
   row: Pick<SessionRow, 'sessionId' | 'currentId' | 'transcriptPath'>,
@@ -87,8 +100,8 @@ export async function findTranscript(
   const id = row.currentId ?? row.sessionId
   if (!UUID.test(id)) return null
   const fileName = `${id}.jsonl`
-  const own = row.transcriptPath
-  if (own?.endsWith(`/${fileName}`) && (await isFile(own))) return own
+  const own = ownTranscript(projectsDir, row.transcriptPath, fileName)
+  if (own !== undefined && (await isFile(own))) return own
   let projects: string[]
   try {
     projects = await readdir(projectsDir)
