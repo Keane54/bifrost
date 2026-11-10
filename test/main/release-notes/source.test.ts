@@ -55,7 +55,12 @@ describe('the constants', () => {
 })
 
 describe('createReleaseNotesSource', () => {
-  it('asks GitHub with no token, the two headers, no redirect and a timeout', async () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('asks GitHub with no token, the two headers, no redirect and a timeout of 10 s', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
     const { fetchSpy, source } = setup(async () => jsonResponse(ANSWER))
     const result = await source.list()
     expect(result.ok && result.releases.map(r => r.version)).toEqual(['0.5.0', '0.4.0'])
@@ -68,7 +73,9 @@ describe('createReleaseNotesSource', () => {
     })
     expect(init?.redirect).toBe('error')
     expect(init?.credentials).toBe('omit')
-    expect(init?.signal).toBeInstanceOf(AbortSignal)
+    expect(timeout).toHaveBeenCalledTimes(1)
+    expect(timeout).toHaveBeenCalledWith(10_000)
+    expect(init?.signal).toBe(timeout.mock.results[0]?.value)
     expect(JSON.stringify(init)).not.toMatch(/authorization|token/i)
   })
 
@@ -137,9 +144,9 @@ describe('createReleaseNotesSource', () => {
     expect(sent).toBeLessThan(2 * MAX_BODY_BYTES)
   })
 
-  it('gives the old good answer again after a later failure within 10 minutes', async () => {
+  it('gives the good answer within 10 minutes, and an error for a failure after that', async () => {
     let fail = false
-    const { advance, source } = setup(async () => {
+    const { advance, fetchSpy, source } = setup(async () => {
       if (fail) throw new Error('offline')
       return jsonResponse(ANSWER)
     })
@@ -147,6 +154,11 @@ describe('createReleaseNotesSource', () => {
     fail = true
     advance(CACHE_MS / 2)
     expect(await source.list()).toEqual(first)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    // After the 10 minutes, the source asks again. The failure gives the error state.
+    advance(CACHE_MS / 2)
+    expect(await source.list()).toEqual({ ok: false })
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 })
 
