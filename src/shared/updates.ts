@@ -1,14 +1,8 @@
 // Types and texts for the auto-updater.
 // Main and renderer both import this file. It has no Electron or Node import.
 
-export type UpdateCause =
-  | 'gh-missing'
-  | 'gh-logged-out'
-  | 'no-access'
-  | 'location'
-  | 'download'
-  | 'install'
-  | 'github'
+// The releases are in a public repo. So no cause needs a GitHub login.
+export type UpdateCause = 'location' | 'download' | 'install' | 'github'
 
 export type UpdateState =
   | { kind: 'idle' } // up to date, or never checked
@@ -16,7 +10,9 @@ export type UpdateState =
   | { kind: 'downloading'; version: string; percent: number }
   | { kind: 'ready'; version: string }
   | { kind: 'failed'; cause: UpdateCause; message: string; at: number }
-  | { kind: 'off' } // switch off and nothing ready
+  // The switch is off, and no check result came after that. The result of a manual check
+  // replaces it. A ready update stays ready when the switch goes off.
+  | { kind: 'off' }
 
 export interface UpdatesSnapshot {
   // False when this build cannot update (dev, test home, no app-update.yml).
@@ -44,20 +40,12 @@ export const UPDATE_TEXTS = {
   switchLabel: 'Check for updates automatically',
 }
 
-const SIGN_IN = 'Sign in with gh auth login to get updates.'
-
 // The detail text is already masked by the caller.
 export function causeText(cause: UpdateCause, detail: string): string {
   const quoted = detail ? ` The error was "${detail}".` : ''
   switch (cause) {
-    case 'gh-missing':
-      return `Install the GitHub CLI (gh) first. ${SIGN_IN}`
-    case 'gh-logged-out':
-      return SIGN_IN
     case 'location':
       return 'Move Bifrost to the Applications folder to get updates.'
-    case 'no-access':
-      return "Your GitHub account can't read the Bifrost releases."
     case 'download':
       return `Bifrost couldn't download the update.${quoted} It will try again.`
     case 'install':

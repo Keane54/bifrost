@@ -31,6 +31,8 @@ const DETAIL_MAX = 200
 // The download steps that get a log line.
 const LOG_STEP = 25
 const LOG_STEP_MAX = 75
+// The time that a restart click has to quit Bifrost. After it, the click counts as failed.
+export const RESTART_LIMIT_MS = 60_000
 
 export type UpdaterEvent =
   | 'checking-for-update'
@@ -90,7 +92,8 @@ export interface Updater {
   checkNow(): Promise<void>
   // Install the ready update and restart. Only when an update is ready.
   restart(): void
-  // The switch "Check for updates automatically" changed.
+  // The switch "Check for updates automatically" changed. Off also stops a check or a
+  // download that runs.
   setAuto(on: boolean): void
   snapshot(): UpdatesSnapshot
 }
@@ -134,12 +137,21 @@ function settled(state: UpdateState): UpdateState {
   return state.kind === 'checking' || state.kind === 'downloading' ? IDLE : state
 }
 
-// electron-updater gives the download promise in the check result. A failed download also
-// sends an error event. So the service catches the promise, or Node reports an unhandled
-// rejection.
-function quietDownload(result: unknown): void {
-  if (typeof result !== 'object' || result === null || !('downloadPromise' in result)) return
-  Promise.resolve(result.downloadPromise).catch(() => {})
+// A download that a check started. setAuto(false) cancels it.
+interface Cancellable {
+  cancel(): void
+}
+
+// electron-updater gives the download promise and its cancellation token in the check result.
+// A failed download also sends an error event. So the service catches the promise, or Node
+// reports an unhandled rejection. The function gives the token, or null.
+function takeDownload(result: unknown): Cancellable | null {
+  if (typeof result !== 'object' || result === null) return null
+  if ('downloadPromise' in result) Promise.resolve(result.downloadPromise).catch(() => {})
+  if (!('cancellationToken' in result)) return null
+  const token = result.cancellationToken
+  if (typeof token !== 'object' || token === null || !('cancel' in token)) return null
+  return typeof token.cancel === 'function' ? (token as Cancellable) : null
 }
 
 export function createUpdater(deps: UpdaterDeps): Updater {
@@ -155,10 +167,21 @@ export function createUpdater(deps: UpdaterDeps): Updater {
   let loggedStep = 0
   // True from the start of a check until the engine check ends.
   let busy = false
-  // True from a restart click until the quit, or until an error.
+  // True from a restart click until the quit, an error or the restart limit.
   let restarting = false
+  let restartTimer: TimeoutTimer | null = null
   let started = false
   let stopped = false
+  // True from a start with an install failure until the end of the first check. In that time,
+  // only a download or a ready update replaces the failure.
+  let holdInstallFailure = false
+  // True after the switch went off during a check or a download. The service then ignores the
+  // events of that run, until the next check starts.
+  let ignoreRun = false
+  // The download of the newest check. setAuto(false) cancels it.
+  let download: Cancellable | null = null
+  // The last error object that the service handled. Squirrel.Mac sends one error two times.
+  let lastError: object | null = null
   // The count of the errors that the service handled. A check uses it to see if the engine
   // sent an error event for its own failure.
   let errors = 0
@@ -185,27 +208,53 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     if (text !== null) line(text)
   }
 
+  // True while the install failure of the start must stay.
+  function holding(): boolean {
+    return holdInstallFailure && state.kind === 'failed' && state.cause === 'install'
+  }
+
+  // True when the service must ignore an engine event.
+  function ignored(): boolean {
+    return stopped || ignoreRun
+  }
+
+  function failedInstall(): UpdateState {
+    return { at: deps.now(), cause: 'install', kind: 'failed', message: causeText('install', '') }
+  }
+
   function fail(cause: UpdateCause, detail: string, result: PollResult): void {
     const masked = mask(detail)
     const text = `error ${cause}: ${masked}`
     deps.health.poll('updates', result)
-    // While an update is ready, a failed check does not hide the ready button.
-    if (state.kind === 'ready' && phase === 'check') {
+    // A failed check does not hide a ready update. It also does not hide the install failure of
+    // the start during the first check.
+    if (phase === 'check' && (state.kind === 'ready' || holding())) {
       line(text)
       return
     }
     change({ at: deps.now(), cause, kind: 'failed', message: causeText(cause, masked) }, text)
   }
 
+  function clearRestartTimer(): void {
+    if (restartTimer !== null) deps.clearTimeout(restartTimer)
+    restartTimer = null
+  }
+
   function onError(err: unknown): void {
-    if (stopped) return
+    if (ignored()) return
+    if (typeof err === 'object' && err !== null) {
+      if (err === lastError) return
+      lastError = err
+    }
     errors += 1
     restarting = false
+    clearRestartTimer()
+    download = null
     // Mask the full text before classifyError cuts it, so no part of a token stays.
     const text = mask(messageOf(err))
     const found = classifyError(text, phase, deps.online())
     if (found.kind === 'failed') {
-      fail(found.cause, found.detail, found.cause === 'no-access' ? 'no-data' : 'failed')
+      fail(found.cause, found.detail, 'failed')
       return
     }
     // No network is not a failure. The next check tries again.
@@ -230,22 +279,22 @@ export function createUpdater(deps: UpdaterDeps): Updater {
   }
 
   deps.engine.on('checking-for-update', () => {
-    if (stopped) return
+    if (ignored()) return
     phase = 'check'
-    if (state.kind === 'checking' || state.kind === 'ready') return
+    if (state.kind === 'checking' || state.kind === 'ready' || holding()) return
     before = settled(state)
     change(CHECKING, 'check')
   })
 
   deps.engine.on('update-not-available', () => {
-    if (stopped) return
+    if (ignored()) return
     lastCheckAt = deps.now()
     deps.health.poll('updates', 'ok')
-    change(state.kind === 'ready' ? state : IDLE, 'no update')
+    change(state.kind === 'ready' || holding() ? state : IDLE, 'no update')
   })
 
   deps.engine.on('update-available', info => {
-    if (stopped) return
+    if (ignored()) return
     const version = versionOf(info)
     pending = version
     phase = 'download'
@@ -259,7 +308,7 @@ export function createUpdater(deps: UpdaterDeps): Updater {
   })
 
   deps.engine.on('download-progress', progress => {
-    if (stopped || state.kind === 'ready') return
+    if (ignored() || state.kind === 'ready') return
     const percent = percentOf(progress)
     const step = Math.min(LOG_STEP_MAX, Math.floor(percent / LOG_STEP) * LOG_STEP)
     const logStep = step > loggedStep
@@ -270,6 +319,10 @@ export function createUpdater(deps: UpdaterDeps): Updater {
 
   deps.engine.on('update-downloaded', info => {
     if (stopped) return
+    // A download can end just before the switch cancels it. The update is then on the disk, and
+    // it installs at the quit. So the ready state shows also then.
+    ignoreRun = false
+    download = null
     const version = versionOf(info) || pending
     // The macOS install engine still checks the update after this event. Its error is a
     // download error, and it must clear the ready state.
@@ -285,29 +338,40 @@ export function createUpdater(deps: UpdaterDeps): Updater {
   // A check with no result event must not stay at checking, or no later check can start.
   function endCheck(): void {
     busy = false
+    holdInstallFailure = false
     if (!stopped && state.kind === 'checking') change(before, 'check ended with no result')
   }
 
   async function check(): Promise<void> {
-    if (stopped || busy || restarting) return
-    if (state.kind === 'checking' || state.kind === 'downloading') return
+    if (stopped) return
+    // The ready update installs at the click or at the quit. A check would download it again.
+    if (state.kind === 'ready') {
+      line('check skipped: update ready')
+      return
+    }
+    if (busy || restarting || state.kind === 'checking' || state.kind === 'downloading') return
     busy = true
+    ignoreRun = false
+    download = null
     phase = 'check'
     before = state
-    // While an update is ready, the ready button stays during the check.
-    if (state.kind === 'ready') line('check')
+    // During the first check, the install failure of the start stays.
+    if (holding()) line('check')
     else change(CHECKING, 'check')
     const handled = errors
     try {
       const writable = await deps.canWrite(dirname(deps.appPath)).catch(() => false)
-      if (stopped) return
+      if (stopped || ignoreRun) return
       if (locationProblem(deps.appPath, writable)) {
         // The user must move the app. This is not a failure of the check itself.
         fail('location', deps.appPath, 'no-data')
         return
       }
       deps.engine.setFeedURL({ owner: UPDATE_OWNER, provider: 'github', repo: UPDATE_REPO })
-      quietDownload(await deps.engine.checkForUpdates())
+      const token = takeDownload(await deps.engine.checkForUpdates())
+      // The switch went off during the check. So stop the download that the check started.
+      if (ignoreRun) token?.cancel()
+      else download = token
     } catch (error) {
       // electron-updater sends an error event before the promise rejects. This covers an engine
       // that does not.
@@ -337,8 +401,16 @@ export function createUpdater(deps: UpdaterDeps): Updater {
 
   // Record the attempt and the log line before the quit. The next start compares the versions.
   async function install(version: string): Promise<void> {
-    await deps.store.set({ attemptedVersion: version }).catch(() => {})
+    await deps.store.set({ attemptedFrom: deps.version, attemptedVersion: version }).catch(() => {})
     await deps.log.line(mask(`install ${version}`))
+    // When Bifrost does not quit in time, the click counts as a failed install. Then the user can
+    // try again.
+    restartTimer = deps.setTimeout(() => {
+      restartTimer = null
+      if (stopped || !restarting) return
+      restarting = false
+      change(failedInstall(), `install ${version}: no quit after ${RESTART_LIMIT_MS / 1000} s`)
+    }, RESTART_LIMIT_MS)
     try {
       deps.engine.quitAndInstall()
     } catch (error) {
@@ -366,8 +438,15 @@ export function createUpdater(deps: UpdaterDeps): Updater {
       }
       clearTimers()
       deps.health.stopped('updates')
+      holdInstallFailure = false
+      // Off stops a check or a download that runs. Its later events change nothing.
+      if (busy || state.kind === 'checking' || state.kind === 'downloading') {
+        ignoreRun = true
+        download?.cancel()
+        download = null
+      }
       // The switch clears the triangle. A ready update stays, and it installs at the quit.
-      if (state.kind === 'failed' || state.kind === 'idle') change(OFF, 'auto off')
+      if (state.kind !== 'ready' && state.kind !== 'off') change(OFF, 'auto off')
       else line('auto off')
     },
     snapshot,
@@ -376,19 +455,21 @@ export function createUpdater(deps: UpdaterDeps): Updater {
       started = true
       deps.engine.autoDownload = true
       deps.engine.autoInstallOnAppQuit = true
-      const { attemptedVersion } = deps.store.get()
+      const { attemptedFrom, attemptedVersion } = deps.store.get()
       const { autoUpdate } = deps.settings()
-      if (attemptedVersion !== null && attemptedVersion !== deps.version) {
-        const failed: UpdateState = {
-          at: deps.now(),
-          cause: 'install',
-          kind: 'failed',
-          message: causeText('install', ''),
-        }
-        change(failed, `error install: ${attemptedVersion} did not install`)
+      // Clear the record in each case, so each attempt gives at most one report.
+      if (attemptedFrom !== null || attemptedVersion !== null) {
+        void deps.store.set({ attemptedFrom: null, attemptedVersion: null })
+      }
+      // The install failed only when the version of the click still runs. Each other version
+      // came from a good install: at the click, at a quit, or from the DMG.
+      if (attemptedFrom !== null && attemptedFrom === deps.version) {
+        holdInstallFailure = true
+        change(
+          failedInstall(),
+          `error install: ${attemptedVersion ?? 'the update'} did not install`,
+        )
       } else {
-        // The app runs the version that it tried to install. So the install worked.
-        if (attemptedVersion !== null) void deps.store.set({ attemptedVersion: null })
         change(autoUpdate ? IDLE : OFF, null)
       }
       if (autoUpdate) schedule()
@@ -396,6 +477,7 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     stop() {
       stopped = true
       clearTimers()
+      clearRestartTimer()
     },
   }
 }

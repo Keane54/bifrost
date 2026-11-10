@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { causeText, EMPTY_UPDATES, UPDATE_TEXTS, type UpdateCause } from '../../src/shared/updates'
 
@@ -26,17 +28,16 @@ describe('EMPTY_UPDATES', () => {
 })
 
 describe('causeText', () => {
-  it('asks for a gh sign-in', () => {
-    expect(causeText('gh-logged-out', '')).toBe('Sign in with gh auth login to get updates.')
-    expect(causeText('gh-missing', '')).toBe(
-      'Install the GitHub CLI (gh) first. Sign in with gh auth login to get updates.',
-    )
-  })
-  it('names the other fixed causes', () => {
+  it('names the location cause and its fix', () => {
     expect(causeText('location', '')).toBe(
       'Move Bifrost to the Applications folder to get updates.',
     )
-    expect(causeText('no-access', '')).toBe("Your GitHub account can't read the Bifrost releases.")
+  })
+  it('has no gh login or access causes, because the releases are public', () => {
+    const source = readFileSync(join(__dirname, '../../src/shared/updates.ts'), 'utf8')
+    for (const gone of ['gh-missing', 'gh-logged-out', 'no-access', 'gh auth login']) {
+      expect(source).not.toContain(gone)
+    }
   })
   it('includes the detail for download, install and github', () => {
     for (const cause of ['download', 'install', 'github'] as UpdateCause[]) {

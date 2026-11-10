@@ -48,15 +48,16 @@ describe('classifyError', () => {
       expect(classifyError(new Error(m), 'download', true)).toEqual({ kind: 'offline' })
     }
   })
-  it('gives no-access for 401, 403 and 404 in the check phase', () => {
+  it('gives github for 401, 403 and 404 in the check phase, because the releases are public', () => {
     for (const code of [401, 403, 404]) {
-      expect(classifyError(new Error(`HttpError: ${code}\nbody`), 'check', true)).toMatchObject({
-        cause: 'no-access',
+      expect(classifyError(new Error(`HttpError: ${code}\nbody`), 'check', true)).toEqual({
+        cause: 'github',
+        detail: `HttpError: ${code}`,
         kind: 'failed',
       })
     }
   })
-  it('does not give no-access outside the check phase', () => {
+  it('gives the cause of the phase for a 404 outside the check phase', () => {
     expect(classifyError(new Error('HttpError: 404'), 'download', true)).toMatchObject({
       cause: 'download',
     })

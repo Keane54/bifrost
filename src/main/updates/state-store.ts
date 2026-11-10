@@ -1,14 +1,18 @@
 // The state of the updater that must stay across restarts, in userData/updates.json.
 // notifiedVersion is the last version that had its notification (sent or held back).
 // attemptedVersion is the version that "Restart to update" tried to install.
+// attemptedFrom is the version that ran at that click. The next start compares it with its own
+// version, then clears the record.
 import { readJsonFile, writeJsonAtomic } from '../store/json-file'
 
 export interface UpdateStateData {
   notifiedVersion: string | null
   attemptedVersion: string | null
+  attemptedFrom: string | null
 }
 
 export const EMPTY_UPDATE_STATE: UpdateStateData = {
+  attemptedFrom: null,
   attemptedVersion: null,
   notifiedVersion: null,
 }
@@ -29,6 +33,7 @@ function parse(data: unknown): UpdateStateData {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return EMPTY_UPDATE_STATE
   const record = data as Record<string, unknown>
   return {
+    attemptedFrom: stringOrNull(record.attemptedFrom),
     attemptedVersion: stringOrNull(record.attemptedVersion),
     notifiedVersion: stringOrNull(record.notifiedVersion),
   }

@@ -23,7 +23,6 @@ export type ErrorClass =
   | { kind: 'failed'; cause: UpdateCause; detail: string }
 
 const OFFLINE = /ENOTFOUND|ECONNRESET|ETIMEDOUT|ERR_INTERNET_DISCONNECTED/
-const NO_ACCESS = /\b(401|403|404)\b/
 const BAD_PACKAGE = /checksum|signature/i
 
 function messageOf(err: unknown): string {
@@ -40,8 +39,6 @@ export function classifyError(
   const message = messageOf(err)
   if (!online || OFFLINE.test(message)) return { kind: 'offline' }
   const detail = message.split('\n')[0].slice(0, DETAIL_MAX)
-  if (phase === 'check' && NO_ACCESS.test(message))
-    return { cause: 'no-access', detail, kind: 'failed' }
   if (BAD_PACKAGE.test(message) && phase !== 'check')
     return { cause: phase, detail, kind: 'failed' }
   return { cause: phase === 'check' ? 'github' : phase, detail, kind: 'failed' }

@@ -25,49 +25,57 @@ afterEach(async () => {
 describe('openUpdateStateStore', () => {
   it('gives the defaults when there is no file', async () => {
     const store = await openUpdateStateStore(file)
-    expect(store.get()).toEqual({ attemptedVersion: null, notifiedVersion: null })
-    expect(EMPTY_UPDATE_STATE).toEqual({ attemptedVersion: null, notifiedVersion: null })
+    expect(store.get()).toEqual({
+      attemptedFrom: null,
+      attemptedVersion: null,
+      notifiedVersion: null,
+    })
+    expect(EMPTY_UPDATE_STATE).toEqual({
+      attemptedFrom: null,
+      attemptedVersion: null,
+      notifiedVersion: null,
+    })
   })
 
   it('reads the values from the file', async () => {
-    await writeFile(file, JSON.stringify({ attemptedVersion: '1.2.0', notifiedVersion: '1.3.0' }))
+    const data = { attemptedFrom: '1.1.0', attemptedVersion: '1.2.0', notifiedVersion: '1.3.0' }
+    await writeFile(file, JSON.stringify(data))
     const store = await openUpdateStateStore(file)
-    expect(store.get()).toEqual({ attemptedVersion: '1.2.0', notifiedVersion: '1.3.0' })
+    expect(store.get()).toEqual(data)
   })
 
   it('writes the whole state with writeJsonAtomic, and a new store reads it', async () => {
     const store = await openUpdateStateStore(file)
     await store.set({ notifiedVersion: '1.1.0' })
-    expect(store.get()).toEqual({ attemptedVersion: null, notifiedVersion: '1.1.0' })
-    expect(writeJsonAtomic).toHaveBeenCalledWith(file, {
-      attemptedVersion: null,
-      notifiedVersion: '1.1.0',
-    })
-    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
-      attemptedVersion: null,
-      notifiedVersion: '1.1.0',
-    })
+    const saved = { attemptedFrom: null, attemptedVersion: null, notifiedVersion: '1.1.0' }
+    expect(store.get()).toEqual(saved)
+    expect(writeJsonAtomic).toHaveBeenCalledWith(file, saved)
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(saved)
     expect((await stat(file)).mode & 0o777).toBe(0o600)
     expect(await readdir(dir)).toEqual(['updates.json'])
     const again = await openUpdateStateStore(file)
-    expect(again.get()).toEqual({ attemptedVersion: null, notifiedVersion: '1.1.0' })
+    expect(again.get()).toEqual(saved)
   })
 
   it('runs two set calls in order and keeps both fields', async () => {
     const store = await openUpdateStateStore(file)
     await Promise.all([
       store.set({ notifiedVersion: '1.1.0' }),
-      store.set({ attemptedVersion: '1.1.0' }),
+      store.set({ attemptedFrom: '1.0.0', attemptedVersion: '1.1.0' }),
     ])
     const again = await openUpdateStateStore(file)
-    expect(again.get()).toEqual({ attemptedVersion: '1.1.0', notifiedVersion: '1.1.0' })
+    expect(again.get()).toEqual({
+      attemptedFrom: '1.0.0',
+      attemptedVersion: '1.1.0',
+      notifiedVersion: '1.1.0',
+    })
   })
 
   it('gives the defaults for a damaged file and does not throw', async () => {
     await writeFile(file, '{ not json')
     const logs: string[] = []
     const store = await openUpdateStateStore(file, m => logs.push(m))
-    expect(store.get()).toEqual({ attemptedVersion: null, notifiedVersion: null })
+    expect(store.get()).toEqual(EMPTY_UPDATE_STATE)
     expect(logs).toEqual([])
     // A later set writes a good file over the damaged file.
     await store.set({ attemptedVersion: '2.0.0' })
@@ -75,8 +83,12 @@ describe('openUpdateStateStore', () => {
   })
 
   it('gives null for each value that is not a string', async () => {
-    await writeFile(file, JSON.stringify({ attemptedVersion: 7, notifiedVersion: '1.1.0' }))
+    await writeFile(
+      file,
+      JSON.stringify({ attemptedFrom: false, attemptedVersion: 7, notifiedVersion: '1.1.0' }),
+    )
     expect((await openUpdateStateStore(file)).get()).toEqual({
+      attemptedFrom: null,
       attemptedVersion: null,
       notifiedVersion: '1.1.0',
     })

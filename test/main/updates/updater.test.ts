@@ -8,19 +8,33 @@ import {
 } from '../../../src/main/updates/state-store'
 import {
   createUpdater,
+  RESTART_LIMIT_MS,
   UPDATE_OWNER,
   UPDATE_REPO,
   type Updater,
   type UpdaterDeps,
   type UpdaterEngine,
 } from '../../../src/main/updates/updater'
-import { causeText, UPDATE_TEXTS, type UpdatesSnapshot } from '../../../src/shared/updates'
+import {
+  causeText,
+  UPDATE_TEXTS,
+  type UpdateState,
+  type UpdatesSnapshot,
+} from '../../../src/shared/updates'
 
 const NOW = Date.parse('2026-11-10T10:00:00Z')
 const APP = '/Applications/Bifrost.app'
 // Two token-like texts. The updater uses no token, but an error can quote one.
 const TOKEN = `gho_${'A1b2C3d4'.repeat(4)}`
 const PAT = `ghp_${'Z9'.repeat(15)}`
+// The record of a restart click on 1.0.0 that tried to install 1.1.0.
+const ATTEMPT = { attemptedFrom: '1.0.0', attemptedVersion: '1.1.0' }
+const INSTALL_FAILED: UpdateState = {
+  at: NOW,
+  cause: 'install',
+  kind: 'failed',
+  message: causeText('install', ''),
+}
 
 // The part of electron-updater that the service uses. The test sends the events.
 class FakeEngine extends EventEmitter implements UpdaterEngine {
@@ -37,12 +51,15 @@ class FakeEngine extends EventEmitter implements UpdaterEngine {
 }
 
 // The check finds a version and starts the download. The test ends the download.
-function finds(engine: FakeEngine, version: string): void {
+// It gives the cancellation token of the download.
+function finds(engine: FakeEngine, version: string): { cancel: ReturnType<typeof vi.fn> } {
+  const cancellationToken = { cancel: vi.fn() }
   engine.checkForUpdates.mockImplementation(async () => {
     engine.emit('checking-for-update')
     engine.emit('update-available', { version })
-    return { downloadPromise: new Promise(() => {}), isUpdateAvailable: true }
+    return { cancellationToken, downloadPromise: new Promise(() => {}), isUpdateAvailable: true }
   })
+  return cancellationToken
 }
 
 // The check fails as in electron-updater: first an error event, then a rejected promise.
@@ -72,6 +89,7 @@ interface Options {
   canWrite?: () => Promise<boolean>
   engine?: FakeEngine
   store?: MemoryStore
+  version?: string
 }
 
 function setup(options: Options = {}) {
@@ -108,7 +126,7 @@ function setup(options: Options = {}) {
     settings: () => ({ autoUpdate: env.autoUpdate, notifications: env.notifications }),
     showWindow,
     store,
-    version: '1.0.0',
+    version: options.version ?? '1.0.0',
   }
   const updater: Updater = createUpdater(deps)
   const state = () => updater.snapshot().state
@@ -133,7 +151,7 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 
-// Start, then bring the service to ready with the events of a download.
+// Bring the service to ready with the events of a download.
 async function toReady(t: ReturnType<typeof setup>, version = '1.1.0'): Promise<void> {
   finds(t.engine, version)
   await t.updater.checkNow()
@@ -156,27 +174,40 @@ describe('start', () => {
     expect(t.emitted).toEqual([
       { available: true, lastCheckAt: null, state: { kind: 'idle' }, version: '1.0.0' },
     ])
+    expect(t.store.set).not.toHaveBeenCalled()
   })
 
-  test('an attempted version that differs from the version gives failed with cause install', () => {
+  test('a record from the running version gives failed with cause install, at the next start only', () => {
+    const store = memoryStore(ATTEMPT)
+    const t = setup({ store })
+    t.updater.start()
+    expect(t.state()).toEqual(INSTALL_FAILED)
+    expect(t.lines).toEqual(['error install: 1.1.0 did not install'])
+    expect(t.store.set).toHaveBeenCalledWith({ attemptedFrom: null, attemptedVersion: null })
+    t.updater.stop()
+    const again = setup({ store })
+    again.updater.start()
+    expect(again.state()).toEqual({ kind: 'idle' })
+    expect(again.lines).toEqual([])
+  })
+
+  test.each([
+    ['N+2 installed at the quit after a failed N+1', '1.2.0'],
+    ['the attempted version installed', '1.1.0'],
+    ['a newer version installed from the DMG', '1.3.0'],
+  ])('no failure when %s, and the record is cleared', (_, version) => {
+    const t = setup({ store: memoryStore(ATTEMPT), version })
+    t.updater.start()
+    expect(t.state()).toEqual({ kind: 'idle' })
+    expect(t.store.get()).toMatchObject({ attemptedFrom: null, attemptedVersion: null })
+    expect(t.lines).toEqual([])
+  })
+
+  test('a record with no running version gives no failure, and is cleared', () => {
     const t = setup({ store: memoryStore({ attemptedVersion: '1.1.0' }) })
     t.updater.start()
-    expect(t.state()).toEqual({
-      at: NOW,
-      cause: 'install',
-      kind: 'failed',
-      message: causeText('install', ''),
-    })
-    expect(t.store.get().attemptedVersion).toBe('1.1.0')
-    expect(t.lines).toEqual(['error install: 1.1.0 did not install'])
-  })
-
-  test('an attempted version equal to the version is cleared, because the install worked', () => {
-    const t = setup({ store: memoryStore({ attemptedVersion: '1.0.0' }) })
-    t.updater.start()
-    expect(t.store.set).toHaveBeenCalledWith({ attemptedVersion: null })
-    expect(t.store.get().attemptedVersion).toBeNull()
     expect(t.state()).toEqual({ kind: 'idle' })
+    expect(t.store.get().attemptedVersion).toBeNull()
   })
 
   test('with autoUpdate on, the first check runs after CHECK_DELAY_MS, then each CHECK_INTERVAL_MS', async () => {
@@ -204,6 +235,53 @@ describe('start', () => {
     expect(t.state()).toEqual({ kind: 'off' })
     await vi.advanceTimersByTimeAsync(CHECK_DELAY_MS + 3 * CHECK_INTERVAL_MS)
     expect(t.engine.checkForUpdates).not.toHaveBeenCalled()
+  })
+})
+
+describe('the install failure during the first check', () => {
+  test('stays through checking and no update, and the check is in the log', async () => {
+    const t = setup({ store: memoryStore(ATTEMPT) })
+    t.updater.start()
+    await vi.advanceTimersByTimeAsync(CHECK_DELAY_MS)
+    await settle()
+    expect(t.engine.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(t.state()).toEqual(INSTALL_FAILED)
+    expect(t.emitted.some(s => s.state.kind === 'checking')).toBe(false)
+    expect(t.updater.snapshot().lastCheckAt).toBe(NOW + CHECK_DELAY_MS)
+    expect(t.lines).toEqual(['error install: 1.1.0 did not install', 'check', 'no update'])
+  })
+
+  test.each([
+    ['an offline error', false, 'getaddrinfo ENOTFOUND api.github.com', 'offline'],
+    ['a failed check', true, 'HttpError: 500 Internal Server Error', 'error github'],
+  ])('stays after %s', async (_, online, message, prefix) => {
+    const t = setup({ autoUpdate: false, store: memoryStore(ATTEMPT) })
+    t.updater.start()
+    t.net.online = online
+    failsWith(t.engine, new Error(message))
+    await t.updater.checkNow()
+    expect(t.state()).toEqual(INSTALL_FAILED)
+    expect(t.lines.at(-1)?.startsWith(prefix)).toBe(true)
+  })
+
+  test('goes when a download starts, and the update can get ready', async () => {
+    const t = setup({ autoUpdate: false, store: memoryStore(ATTEMPT) })
+    t.updater.start()
+    finds(t.engine, '1.1.0')
+    await t.updater.checkNow()
+    expect(t.state()).toEqual({ kind: 'downloading', percent: 0, version: '1.1.0' })
+    t.engine.emit('update-downloaded', { version: '1.1.0' })
+    expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
+  })
+
+  test('a later check replaces it as usual', async () => {
+    const t = setup({ autoUpdate: false, store: memoryStore(ATTEMPT) })
+    t.updater.start()
+    await t.updater.checkNow()
+    expect(t.state()).toEqual(INSTALL_FAILED)
+    await t.updater.checkNow()
+    expect(t.state()).toEqual({ kind: 'idle' })
+    expect(t.emitted.some(s => s.state.kind === 'checking')).toBe(true)
   })
 })
 
@@ -270,6 +348,25 @@ describe('a check', () => {
     expect(t.engine.setFeedURL).toHaveBeenCalledTimes(1)
     expect(t.engine.checkForUpdates).toHaveBeenCalledTimes(1)
     expect(t.state()).toEqual({ kind: 'downloading', percent: 40, version: '1.1.0' })
+  })
+
+  test('while an update is ready, scheduled and manual checks do nothing', async () => {
+    const t = setup()
+    t.updater.start()
+    await toReady(t)
+    const count = t.emitted.length
+    await vi.advanceTimersByTimeAsync(CHECK_DELAY_MS + CHECK_INTERVAL_MS)
+    await settle()
+    await t.updater.checkNow()
+    expect(t.engine.setFeedURL).toHaveBeenCalledTimes(1)
+    expect(t.engine.checkForUpdates).toHaveBeenCalledTimes(1)
+    expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
+    expect(t.emitted).toHaveLength(count)
+    expect(t.lines.slice(-3)).toEqual([
+      'check skipped: update ready',
+      'check skipped: update ready',
+      'check skipped: update ready',
+    ])
   })
 
   test.each([
@@ -343,6 +440,19 @@ describe('events', () => {
     expect(t.updater.snapshot().lastCheckAt).toBe(NOW + 60_000)
     expect(t.health.poll).toHaveBeenCalledWith('updates', 'ok')
   })
+
+  test('engine events for the same version keep the ready state', async () => {
+    const t = setup()
+    t.updater.start()
+    await toReady(t)
+    const count = t.emitted.length
+    t.engine.emit('checking-for-update')
+    t.engine.emit('update-available', { version: '1.1.0' })
+    t.engine.emit('download-progress', { percent: 50 })
+    t.engine.emit('update-downloaded', { version: '1.1.0' })
+    const later = t.emitted.slice(count).map(s => s.state)
+    expect(later).toEqual([{ kind: 'ready', version: '1.1.0' }])
+  })
 })
 
 describe('the notification', () => {
@@ -358,9 +468,7 @@ describe('the notification', () => {
     )
     expect(UPDATE_TEXTS.notifyTitle).toBe('Bifrost update ready')
     expect(t.store.get().notifiedVersion).toBe('1.1.0')
-    // The hourly check finds the same version again.
-    await vi.advanceTimersByTimeAsync(CHECK_DELAY_MS + CHECK_INTERVAL_MS)
-    await settle()
+    // The engine sends the same version again.
     t.engine.emit('update-downloaded', { version: '1.1.0' })
     expect(t.notify).toHaveBeenCalledTimes(1)
     // A new version gets its own notification.
@@ -418,7 +526,7 @@ describe('the notification', () => {
     const shownAt = t.showWindow.mock.invocationCallOrder[0] ?? 0
     const installAt = t.engine.quitAndInstall.mock.invocationCallOrder[0] ?? 0
     expect(shownAt).toBeLessThan(installAt)
-    expect(t.store.get().attemptedVersion).toBe('1.1.0')
+    expect(t.store.get()).toMatchObject(ATTEMPT)
   })
 })
 
@@ -485,14 +593,17 @@ describe('errors', () => {
     expect(t.lines).toEqual(['check', 'error github: HttpError: 500 Internal Server Error'])
   })
 
-  test('no access (404) gives failed with health no-data', async () => {
-    const t = setup()
-    t.updater.start()
-    failsWith(t.engine, new Error('HttpError: 404 Not Found'))
-    await t.updater.checkNow()
-    expect(t.state()).toMatchObject({ cause: 'no-access', kind: 'failed' })
-    expect(t.health.poll.mock.calls).toEqual([['updates', 'no-data']])
-  })
+  test.each([401, 403, 404])(
+    'a %i from GitHub gives cause github and health failed',
+    async code => {
+      const t = setup()
+      t.updater.start()
+      failsWith(t.engine, new Error(`HttpError: ${code} Not Found`))
+      await t.updater.checkNow()
+      expect(t.state()).toMatchObject({ cause: 'github', kind: 'failed' })
+      expect(t.health.poll.mock.calls).toEqual([['updates', 'failed']])
+    },
+  )
 
   test('a download error gives failed with cause download', async () => {
     const t = setup()
@@ -509,19 +620,18 @@ describe('errors', () => {
     expect(t.health.poll).toHaveBeenLastCalledWith('updates', 'failed')
   })
 
-  test('while ready, a later failed check keeps ready and only logs', async () => {
+  test('a failed engine check while ready keeps ready, logs, and counts as failed in health', async () => {
     const t = setup()
     t.updater.start()
     await toReady(t)
     const count = t.emitted.length
-    failsWith(t.engine, new Error('HttpError: 500 Internal Server Error'))
-    await t.updater.checkNow()
+    t.health.poll.mockClear()
+    t.engine.emit('checking-for-update')
+    t.engine.emit('error', new Error('HttpError: 500 Internal Server Error'))
     expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
     expect(t.emitted).toHaveLength(count)
-    expect(t.lines.slice(-2)).toEqual([
-      'check',
-      'error github: HttpError: 500 Internal Server Error',
-    ])
+    expect(t.health.poll.mock.calls).toEqual([['updates', 'failed']])
+    expect(t.lines.at(-1)).toBe('error github: HttpError: 500 Internal Server Error')
   })
 
   test('while ready, an error of the macOS install engine after the download gives failed', async () => {
@@ -532,6 +642,24 @@ describe('errors', () => {
     t.engine.emit('update-downloaded', { version: '1.1.0' })
     t.engine.emit('error', new Error('Code signature at URL did not pass validation'))
     expect(t.state()).toMatchObject({ cause: 'download', kind: 'failed' })
+  })
+
+  test('the same error object two times gives one result', async () => {
+    const t = setup()
+    t.updater.start()
+    await toReady(t)
+    const count = t.emitted.length
+    t.health.poll.mockClear()
+    // Squirrel.Mac sends its error, and the rejected download sends the same object again.
+    const error = new Error('Code signature at URL did not pass validation')
+    t.engine.emit('error', error)
+    t.engine.emit('error', error)
+    expect(t.health.poll).toHaveBeenCalledTimes(1)
+    expect(t.emitted).toHaveLength(count + 1)
+    expect(t.lines.filter(l => l.startsWith('error'))).toHaveLength(1)
+    // A new error object is a new result.
+    t.engine.emit('error', new Error('Code signature at URL did not pass validation'))
+    expect(t.health.poll).toHaveBeenCalledTimes(2)
   })
 
   test('the error event and the rejected check give one result, not two', async () => {
@@ -593,22 +721,19 @@ describe('restart', () => {
     expect(t.engine.quitAndInstall).not.toHaveBeenCalled()
   })
 
-  test('stores the attempted version, logs install, then quits and installs', async () => {
+  test('stores the running and the attempted version, logs install, then quits and installs', async () => {
     const t = setup()
     t.updater.start()
     await toReady(t)
     t.updater.restart()
     t.updater.restart()
     await settle()
-    expect(t.store.set).toHaveBeenCalledWith({ attemptedVersion: '1.1.0' })
+    expect(t.store.set).toHaveBeenCalledWith(ATTEMPT)
     expect(t.lines.at(-1)).toBe('install 1.1.0')
     expect(t.engine.quitAndInstall).toHaveBeenCalledTimes(1)
     const storedAt = t.store.set.mock.invocationCallOrder.at(-1) ?? 0
     const installAt = t.engine.quitAndInstall.mock.invocationCallOrder[0] ?? 0
     expect(storedAt).toBeLessThan(installAt)
-    // No check runs while Bifrost installs.
-    await t.updater.checkNow()
-    expect(t.engine.checkForUpdates).toHaveBeenCalledTimes(1)
   })
 
   test('an install error gives failed with cause install, and the user can try again', async () => {
@@ -621,6 +746,47 @@ describe('restart', () => {
     expect(t.state()).toMatchObject({ cause: 'install', kind: 'failed' })
     await t.updater.checkNow()
     expect(t.engine.checkForUpdates).toHaveBeenCalledTimes(2)
+  })
+
+  test('with no quit after 60 s, the guard clears, the log says so, and the state is failed', async () => {
+    // With the switch off, no timer check runs in the 60 s.
+    const t = setup({ autoUpdate: false })
+    t.updater.start()
+    await toReady(t)
+    t.updater.restart()
+    await settle()
+    expect(RESTART_LIMIT_MS).toBe(60_000)
+    await vi.advanceTimersByTimeAsync(RESTART_LIMIT_MS - 1)
+    expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
+    await vi.advanceTimersByTimeAsync(1)
+    expect(t.state()).toEqual({ ...INSTALL_FAILED, at: NOW + RESTART_LIMIT_MS })
+    expect(t.lines.at(-1)).toBe('install 1.1.0: no quit after 60 s')
+    // The guard is clear, so a check can run.
+    finds(t.engine, '1.1.0')
+    await t.updater.checkNow()
+    expect(t.engine.checkForUpdates).toHaveBeenCalledTimes(2)
+  })
+
+  test('an install error or stop ends the 60 s limit', async () => {
+    // With the switch off, no timer check runs in the 60 s.
+    const t = setup({ autoUpdate: false })
+    t.updater.start()
+    await toReady(t)
+    t.updater.restart()
+    await settle()
+    t.engine.emit('error', new Error('Could not install the update'))
+    const count = t.emitted.length
+    await vi.advanceTimersByTimeAsync(RESTART_LIMIT_MS)
+    expect(t.emitted).toHaveLength(count)
+    expect(t.lines.some(l => l.includes('no quit'))).toBe(false)
+    const other = setup({ autoUpdate: false })
+    other.updater.start()
+    await toReady(other)
+    other.updater.restart()
+    await settle()
+    other.updater.stop()
+    await vi.advanceTimersByTimeAsync(RESTART_LIMIT_MS)
+    expect(other.lines.some(l => l.includes('no quit'))).toBe(false)
   })
 })
 
@@ -655,6 +821,68 @@ describe('setAuto', () => {
     expect(t.engine.checkForUpdates).toHaveBeenCalledTimes(1)
   })
 
+  test('false during a download cancels it, with no failure, and the state is off', async () => {
+    const t = setup()
+    t.updater.start()
+    const token = finds(t.engine, '1.1.0')
+    await t.updater.checkNow()
+    t.engine.emit('download-progress', { percent: 30 })
+    t.health.poll.mockClear()
+    t.updater.setAuto(false)
+    expect(token.cancel).toHaveBeenCalledTimes(1)
+    expect(t.state()).toEqual({ kind: 'off' })
+    // Late events of the stopped download change nothing.
+    const count = t.emitted.length
+    t.engine.emit('download-progress', { percent: 40 })
+    t.engine.emit('error', new Error('sha512 checksum mismatch'))
+    expect(t.state()).toEqual({ kind: 'off' })
+    expect(t.emitted).toHaveLength(count)
+    expect(t.health.poll).not.toHaveBeenCalled()
+    // A manual check after that runs as usual.
+    await t.updater.checkNow()
+    expect(t.state()).toEqual({ kind: 'downloading', percent: 0, version: '1.1.0' })
+  })
+
+  test('false during the engine check cancels the download that the check starts', async () => {
+    const t = setup()
+    t.updater.start()
+    const token = { cancel: vi.fn() }
+    let finish: (result: unknown) => void = () => {}
+    t.engine.checkForUpdates.mockImplementation(() => {
+      t.engine.emit('checking-for-update')
+      return new Promise(r => {
+        finish = r
+      })
+    })
+    const running = t.updater.checkNow()
+    await settle()
+    t.updater.setAuto(false)
+    expect(t.state()).toEqual({ kind: 'off' })
+    t.engine.emit('update-available', { version: '1.1.0' })
+    finish({ cancellationToken: token, downloadPromise: new Promise(() => {}) })
+    await running
+    expect(token.cancel).toHaveBeenCalledTimes(1)
+    expect(t.state()).toEqual({ kind: 'off' })
+  })
+
+  test('false during the location test starts no engine check', async () => {
+    let answer: (ok: boolean) => void = () => {}
+    const t = setup({
+      canWrite: () =>
+        new Promise<boolean>(r => {
+          answer = r
+        }),
+    })
+    t.updater.start()
+    const running = t.updater.checkNow()
+    t.updater.setAuto(false)
+    answer(true)
+    await running
+    expect(t.engine.setFeedURL).not.toHaveBeenCalled()
+    expect(t.engine.checkForUpdates).not.toHaveBeenCalled()
+    expect(t.state()).toEqual({ kind: 'off' })
+  })
+
   test('true starts the timers and checks after CHECK_DELAY_MS', async () => {
     const t = setup({ autoUpdate: false })
     t.updater.start()
@@ -672,7 +900,7 @@ describe('setAuto', () => {
 })
 
 describe('checkNow', () => {
-  test('runs one check while autoUpdate is off', async () => {
+  test('runs one check while autoUpdate is off, and its result replaces off', async () => {
     const t = setup({ autoUpdate: false })
     t.updater.start()
     await t.updater.checkNow()
@@ -766,7 +994,7 @@ describe('token masking (focus 1)', () => {
     expect(t.lines.some(leaks)).toBe(false)
   })
 
-  test('a token in a download error, an offline error or a ready check error is masked', async () => {
+  test('a token in a download error, an offline error or a 404 error is masked', async () => {
     const t = setup()
     t.updater.start()
     finds(t.engine, '1.1.0')
@@ -776,8 +1004,7 @@ describe('token masking (focus 1)', () => {
     failsWith(t.engine, new Error(`offline ${PAT}`))
     await t.updater.checkNow()
     t.net.online = true
-    await toReady(t)
-    failsWith(t.engine, new Error(`HttpError: 500 ${TOKEN}`))
+    failsWith(t.engine, new Error(`HttpError: 404 ${TOKEN}`))
     await t.updater.checkNow()
     expect(t.lines.filter(l => l.startsWith('error') || l.startsWith('offline'))).toHaveLength(3)
     expect(t.emitted.some(s => leaks(JSON.stringify(s)))).toBe(false)
