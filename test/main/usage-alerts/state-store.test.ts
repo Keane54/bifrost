@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { writeJsonAtomic } from '../../../src/main/store/json-file'
 import { NO_PERIODS } from '../../../src/main/usage-alerts/rules'
 import {
+  MAX_KEPT_AHEAD_MS,
   openUsageAlertStore,
   parseNotified,
   usageAlertsFile,
@@ -16,8 +17,10 @@ vi.mock(import('../../../src/main/store/json-file'), async original => {
   return { ...real, writeJsonAtomic: vi.fn(real.writeJsonAtomic) }
 })
 
+const NOW = Date.parse('2026-11-10T12:00:00Z')
 const FIVE = Date.parse('2026-11-10T14:05:00Z')
 const SEVEN = Date.parse('2026-11-13T13:00:00Z')
+const DAY = 24 * 60 * 60_000
 
 let dir: string
 let file: string
@@ -38,22 +41,38 @@ describe('usageAlertsFile', () => {
 
 describe('parseNotified', () => {
   it('keeps each finite number and gives null for each other value', () => {
-    expect(parseNotified({ fiveHour: FIVE, sevenDay: SEVEN })).toEqual({
+    expect(parseNotified({ fiveHour: FIVE, sevenDay: SEVEN }, NOW)).toEqual({
       fiveHour: FIVE,
       sevenDay: SEVEN,
     })
-    expect(parseNotified({ fiveHour: '1', sevenDay: SEVEN, x: 1 })).toEqual({
+    expect(parseNotified({ fiveHour: '1', sevenDay: SEVEN, x: 1 }, NOW)).toEqual({
       fiveHour: null,
       sevenDay: SEVEN,
     })
-    expect(parseNotified({ fiveHour: null, sevenDay: Number.NaN })).toEqual(NO_PERIODS)
+    expect(parseNotified({ fiveHour: null, sevenDay: Number.NaN }, NOW)).toEqual(NO_PERIODS)
     for (const bad of [null, undefined, 7, 'x', [FIVE], {}]) {
-      expect(parseNotified(bad)).toEqual(NO_PERIODS)
+      expect(parseNotified(bad, NOW)).toEqual(NO_PERIODS)
     }
+  })
+
+  // A 7-day window resets within 7 days. A kept value far in the future is bad, and it would stop
+  // each notification of that limit until that time.
+  it('gives null for a kept value more than 8 days after now', () => {
+    expect(MAX_KEPT_AHEAD_MS).toBe(8 * DAY)
+    const data = { fiveHour: NOW + 8 * DAY + 1, sevenDay: NOW + 8 * DAY }
+    expect(parseNotified(data, NOW)).toEqual({ fiveHour: null, sevenDay: NOW + 8 * DAY })
+    // A kept value in the past is a period that ended. It stays.
+    expect(parseNotified({ fiveHour: NOW - DAY, sevenDay: null }, NOW).fiveHour).toBe(NOW - DAY)
   })
 })
 
 describe('openUsageAlertStore', () => {
+  it('gives null for a kept value more than 8 days after the time of the open', async () => {
+    await writeFile(file, JSON.stringify({ fiveHour: NOW + 30 * DAY, sevenDay: SEVEN }))
+    const store = await openUsageAlertStore(file, console.error, () => NOW)
+    expect(store.get()).toEqual({ fiveHour: null, sevenDay: SEVEN })
+  })
+
   it('gives no notified period when there is no file', async () => {
     const store = await openUsageAlertStore(file)
     expect(store.get()).toEqual({ fiveHour: null, sevenDay: null })

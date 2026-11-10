@@ -17,30 +17,41 @@ export function usageAlertsFile(userData: string): string {
   return join(userData, 'usage-alerts.json')
 }
 
-function timeOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
+// A 7-day window resets within 7 days. A kept value more than this time after now is bad. It would
+// stop each notification of its limit until that time.
+export const MAX_KEPT_AHEAD_MS = 8 * 24 * 60 * 60_000
+
+function timeOrNull(value: unknown, now: number): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return value > now + MAX_KEPT_AHEAD_MS ? null : value
 }
 
-// Each value that is not a finite number gives null ("no period notified").
-export function parseNotified(data: unknown): NotifiedPeriods {
+// Each value that is not a finite number, and each value more than 8 days after now, gives null
+// ("no period notified").
+export function parseNotified(data: unknown, now: number): NotifiedPeriods {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return NO_PERIODS
   const record = data as Record<string, unknown>
-  return { fiveHour: timeOrNull(record.fiveHour), sevenDay: timeOrNull(record.sevenDay) }
+  return {
+    fiveHour: timeOrNull(record.fiveHour, now),
+    sevenDay: timeOrNull(record.sevenDay, now),
+  }
 }
 
 // Open the state file.
-// A missing file or a file that is not valid JSON gives no notified period.
+// A missing file or a file that is not valid JSON gives no notified period. now gives the time
+// for the check of each kept value.
 // A file that cannot be read gives no notified period, and the store does not save. So it cannot
 // write over a file that it did not read.
 export async function openUsageAlertStore(
   file: string,
   log: (message: string, error: unknown) => void = console.error,
+  now: () => number = Date.now,
 ): Promise<UsageAlertStore> {
   let current: NotifiedPeriods = { ...NO_PERIODS }
   let canSave = true
   try {
     const read = await readJsonFile(file)
-    if (read.ok) current = parseNotified(read.data)
+    if (read.ok) current = parseNotified(read.data, now())
   } catch (error) {
     canSave = false
     log(`Bifrost cannot read ${file}. The usage notification uses an empty state.`, error)
