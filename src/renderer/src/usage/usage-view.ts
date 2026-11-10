@@ -59,12 +59,13 @@ export function usageView(
   const source = usageSource(snapshot, now, account)
   if (source?.kind === 'account') {
     const { fiveHour, sevenDay } = source.limits
+    const { fetchedAt } = source.account
     return {
       bars: [
         bar('5-hour limit', fiveHour, now, timeZone, NO_FIVE_HOUR),
         bar('7-day limit', sevenDay, now, timeZone),
       ],
-      source: `From your Anthropic account, updated ${formatAge(source.account.fetchedAt, now)} ago.`,
+      source: `From your Anthropic account, updated ${formatAge(fetchedAt, now)} ago.`,
     }
   }
   if (!source) {
