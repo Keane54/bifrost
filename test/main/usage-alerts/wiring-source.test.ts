@@ -51,11 +51,11 @@ describe('the usage notification wiring', () => {
 
   it('gives each account value and each session value to the monitor', () => {
     const text = flat(ipc)
-    expect(text).toMatch(
-      /emit: value => \{send\('usage:account-update', value\) usageAlerts\?\.account\(value\)\}/,
+    expect(text).toContain(
+      "emit: value => {send('usage:account-update', value) usageAlerts?.account(value)}",
     )
-    expect(text).toMatch(
-      /service\.onUsage\(usage => \{send\('usage:update', usage\) usageAlerts\?\.session\(usage\)\}\)/,
+    expect(text).toContain(
+      "service.onUsage(usage => {send('usage:update', usage) usageAlerts?.session(usage)})",
     )
   })
 
@@ -70,8 +70,8 @@ describe('the usage notification wiring', () => {
   it('has usage.onOpen in the API and the preload, and the page opens the Usage HUD', () => {
     expect(read('src/shared/api.ts')).toMatch(/onOpen\(cb: \(\) => void\): \(\) => void/)
     expect(read('src/preload/index.ts')).toContain("onOpen: cb => subscribe('usage:open', cb)")
-    expect(flat(read('src/renderer/src/actions/actions-context.tsx'))).toMatch(
-      /window\.bifrost\.usage\.onOpen\(\(\) => \{?dispatch\(\{panelId: 'usage-hud', type: 'open'\}\)/,
+    expect(flat(read('src/renderer/src/actions/actions-context.tsx'))).toContain(
+      "window.bifrost.usage.onOpen(() => dispatch({panelId: 'usage-hud', type: 'open'})",
     )
   })
 })

@@ -1,7 +1,7 @@
 // The smoke test of spec 15 (D23). It starts Bifrost with a fake claude and a test home. It checks
 // the setup dialog, the sample sessions, the animated background, the Parked tab, the open of the
-// Usage HUD from a usage notification and one chat window. It also checks that the real Claude files and ~/.bifrost did not change, and that the
-// fake claude got no unknown call.
+// Usage HUD from a usage notification and one chat window. It also checks that the real Claude
+// files and ~/.bifrost did not change, and that the fake claude got no unknown call.
 //
 // app.ts tells how to start the build in out/ or the packaged app.
 
