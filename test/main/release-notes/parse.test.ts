@@ -108,12 +108,14 @@ describe('splitBody', () => {
 })
 
 describe('shownSections', () => {
-  it('shows the four sections with their friendly names', () => {
+  it('shows the five sections with their friendly names, breaking changes first', () => {
     expect(SHOWN_SECTIONS).toEqual({
+      'BREAKING CHANGES': 'Changed',
       'Bug Fixes': 'Fixed',
       Features: 'New',
       'Performance Improvements': 'Faster',
       Reverts: 'Reverted',
+      '⚠ BREAKING CHANGES': 'Changed',
     })
     const item = { scope: null, text: 'x' }
     const all = [
@@ -132,7 +134,19 @@ describe('shownSections', () => {
       '⚠ BREAKING CHANGES',
       'Something else',
     ].map(title => ({ items: [item], title }))
-    expect(shownSections(all).map(s => s.title)).toEqual(['New', 'Fixed', 'Faster', 'Reverted'])
+    expect(shownSections(all).map(s => s.title)).toEqual([
+      'Changed',
+      'New',
+      'Fixed',
+      'Faster',
+      'Reverted',
+    ])
+  })
+
+  it('shows a BREAKING CHANGES section with no sign as Changed too', () => {
+    const item = { scope: null, text: 'x' }
+    const sections = ['Bug Fixes', 'BREAKING CHANGES'].map(title => ({ items: [item], title }))
+    expect(shownSections(sections).map(s => s.title)).toEqual(['Changed', 'Fixed'])
   })
 
   it('hides a shown section with no item', () => {
@@ -147,6 +161,34 @@ describe('parseReleaseBody', () => {
     expect(notes.sections.map(s => [s.title, s.items.length])).toEqual([
       ['New', 7],
       ['Fixed', 5],
+    ])
+  })
+
+  it('shows the breaking changes of a body as Changed, before New and Fixed', () => {
+    // The conventionalcommits preset writes a breaking change with no commit link.
+    const body = [
+      `## [1.0.0](${REPO}/compare/v0.5.0...v1.0.0) (2026-11-12)`,
+      '',
+      '### Features',
+      '',
+      `* **sessions:** add the new list ([1234567](${REPO}/c/1234567))`,
+      '',
+      '### ⚠ BREAKING CHANGES',
+      '',
+      '* **sessions:** Bifrost now needs Claude Code 2.2 or later.',
+      '',
+      '### Bug Fixes',
+      '',
+      `* keep the panel open ([2345678](${REPO}/c/2345678))`,
+      '',
+    ].join('\n')
+    expect(parseReleaseBody(body).sections).toEqual([
+      {
+        items: [{ scope: 'sessions', text: 'Bifrost now needs Claude Code 2.2 or later.' }],
+        title: 'Changed',
+      },
+      { items: [{ scope: 'sessions', text: 'add the new list' }], title: 'New' },
+      { items: [{ scope: null, text: 'keep the panel open' }], title: 'Fixed' },
     ])
   })
 

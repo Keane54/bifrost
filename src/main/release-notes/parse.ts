@@ -15,13 +15,20 @@ import { UPDATE_OWNER, UPDATE_REPO } from '../updates/updater'
 export const MAX_RELEASES = 10
 
 // The sections that the app shows, with their friendly names. The app hides each other section,
-// for example Documentation, Code Refactoring and Tests.
+// for example Documentation, Code Refactoring and Tests. The app shows the breaking changes as
+// "Changed" (user decision, 2026-11-10). The conventionalcommits preset puts a warning sign
+// before that title.
 export const SHOWN_SECTIONS: Readonly<Record<string, string>> = {
+  'BREAKING CHANGES': 'Changed',
   'Bug Fixes': 'Fixed',
   Features: 'New',
   'Performance Improvements': 'Faster',
   Reverts: 'Reverted',
+  '⚠ BREAKING CHANGES': 'Changed',
 }
+
+// The order of the shown sections. Changed is always first.
+const SHOWN_ORDER: readonly string[] = ['Changed', 'New', 'Fixed', 'Faster', 'Reverted']
 
 // Each release page starts with this text. The app opens only these pages.
 export const RELEASE_URL_PREFIX = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases/`
@@ -83,17 +90,19 @@ export function splitBody(body: string): BodyParts {
   return { sections, summary: summaryLines.join('\n').trim() }
 }
 
-// The sections that the app shows, in the order of the body, with their friendly names. A section
-// with no item does not show.
+// The sections that the app shows, with their friendly names, in the order of SHOWN_ORDER. Two
+// sections with the same friendly name become one section. A section with no item does not show.
 export function shownSections(sections: readonly ReleaseSection[]): ReleaseSection[] {
-  const shown: ReleaseSection[] = []
+  const byTitle = new Map<string, ReleaseSection>()
   for (const section of sections) {
     const title = Object.hasOwn(SHOWN_SECTIONS, section.title)
       ? SHOWN_SECTIONS[section.title]
       : undefined
-    if (title !== undefined && section.items.length > 0) shown.push({ ...section, title })
+    if (title === undefined || section.items.length === 0) continue
+    const items = [...(byTitle.get(title)?.items ?? []), ...section.items]
+    byTitle.set(title, { items, title })
   }
-  return shown
+  return SHOWN_ORDER.flatMap(title => byTitle.get(title) ?? [])
 }
 
 // The summary and the shown sections of a release body.
