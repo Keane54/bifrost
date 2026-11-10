@@ -180,6 +180,9 @@ export interface UsageSnapshot {
 export interface AccountUsage {
   fetchedAt: number
   limits: RateLimits
+  // True when extra usage (the pay-as-you-go spend above the plan) is on. The field is missing
+  // when the answer did not give a boolean for it.
+  extraUsage?: boolean
 }
 
 // One line of the Event log (spec 8.7). seq is the number of the log, not that of the mod.

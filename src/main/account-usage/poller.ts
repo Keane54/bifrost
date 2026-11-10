@@ -5,7 +5,7 @@
 // Claude Code refreshes the token itself.
 import type { AccountUsage } from '../../shared/types'
 import { type HealthEvents, NO_HEALTH, type PollResult } from '../performance/health-log'
-import { parseAccountUsage } from './parse'
+import { parseAccountAnswer } from './parse'
 
 // Hard-coded. The token goes only to this URL.
 export const ACCOUNT_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
@@ -120,10 +120,10 @@ export function createAccountUsagePoller(deps: PollerDeps): AccountUsagePoller {
     }
     try {
       if (text.length > MAX_BODY_BYTES) return null
-      const limits = parseAccountUsage(JSON.parse(text))
-      if (!limits) return null
+      const usage = parseAccountAnswer(JSON.parse(text), deps.now())
+      if (!usage) return null
       outcome.result = 'ok'
-      return { fetchedAt: deps.now(), limits }
+      return usage
     } catch {
       return null
     }

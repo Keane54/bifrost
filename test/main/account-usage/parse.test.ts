@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { parseAccountUsage } from '../../../src/main/account-usage/parse'
+import { parseAccountAnswer, parseAccountUsage } from '../../../src/main/account-usage/parse'
 
 const sample: unknown = JSON.parse(
   readFileSync(new URL('../../fixtures/oauth-usage-sample.json', import.meta.url), 'utf8'),
@@ -92,5 +92,52 @@ describe('parseAccountUsage', () => {
     expect(parseAccountUsage(data)).toEqual({
       sevenDay: { resetsAt: Date.parse('2026-11-09T00:00:00Z'), usedPercent: 8 },
     })
+  })
+})
+
+describe('parseAccountAnswer', () => {
+  const AT = Date.parse('2026-11-06T09:08:00Z')
+  const seven = { resets_at: '2026-11-09T00:00:00+00:00', utilization: 8 }
+  const sevenDay = { resetsAt: Date.parse('2026-11-09T00:00:00Z'), usedPercent: 8 }
+
+  test('the real answer gives the time, the windows and extra usage off', () => {
+    expect(parseAccountAnswer(sample, AT)).toEqual({
+      extraUsage: false,
+      fetchedAt: AT,
+      limits: parseAccountUsage(sample),
+    })
+  })
+
+  test('extra_usage.is_enabled true gives extraUsage true', () => {
+    const data = { extra_usage: { is_enabled: true, utilization: null }, seven_day: seven }
+    expect(parseAccountAnswer(data, AT)).toEqual({
+      extraUsage: true,
+      fetchedAt: AT,
+      limits: { sevenDay },
+    })
+  })
+
+  test('a missing or bad extra usage value leaves the field out', () => {
+    const bad: unknown[] = [
+      undefined,
+      null,
+      7,
+      'on',
+      [],
+      {},
+      { is_enabled: null },
+      { is_enabled: 'true' },
+      { is_enabled: 1 },
+    ]
+    for (const extra of bad) {
+      const usage = parseAccountAnswer({ extra_usage: extra, seven_day: seven }, AT)
+      expect(usage).toEqual({ fetchedAt: AT, limits: { sevenDay } })
+      expect(usage && 'extraUsage' in usage).toBe(false)
+    }
+  })
+
+  test('an answer with no good window gives null, also with extra usage on', () => {
+    expect(parseAccountAnswer({ extra_usage: { is_enabled: true } }, AT)).toBeNull()
+    expect(parseAccountAnswer(null, AT)).toBeNull()
   })
 })

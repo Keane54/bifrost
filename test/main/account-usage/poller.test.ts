@@ -66,6 +66,7 @@ describe('createAccountUsagePoller', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(poller.current()).toEqual({
+      extraUsage: false,
       fetchedAt: Date.now(),
       limits: { sevenDay: { resetsAt: SEVEN_DAY, usedPercent: 36 } },
     })
@@ -447,7 +448,8 @@ describe('createAccountUsagePoller', () => {
 
 describe('AccountUsage', () => {
   test('the type that goes to the renderer has no token field', () => {
-    expectTypeOf<keyof AccountUsage>().toEqualTypeOf<'fetchedAt' | 'limits'>()
+    expectTypeOf<keyof AccountUsage>().toEqualTypeOf<'extraUsage' | 'fetchedAt' | 'limits'>()
+    expectTypeOf<AccountUsage['extraUsage']>().toEqualTypeOf<boolean | undefined>()
     expectTypeOf<keyof AccountUsage['limits']>().toEqualTypeOf<'fiveHour' | 'sevenDay'>()
   })
 })
