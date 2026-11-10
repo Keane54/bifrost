@@ -14,13 +14,23 @@ test('execFile stops a program that ignores SIGTERM at the timeout', async () =>
   expect(result.timedOut).toBe(true)
 })
 
+// claude adds piped stdin to the prompt (spec 8). So each program gets an empty, closed stdin.
+// cat reads stdin until its end. With an open stdin, cat waits until the timeout.
+test('execFile gives the program an empty, closed stdin', async () => {
+  const result = await execFile('/bin/cat', [], { timeoutMs: 2000 })
+  expect(result.code).toBe(0)
+  expect(result.stdout).toBe('')
+  expect(result.timedOut).toBeUndefined()
+})
+
 // This test does not depend on time. A real program can get the SIGTERM before its shell sets the
 // trap, and under load that happened (the program then ends by the signal, with no code). So the
 // test gives execFile a fake Node execFile: it checks that execFile passes the kill signal and the
 // timeout of opts to Node, and that a program that the timeout stopped with code 7 gives code 7
-// and timedOut.
+// and timedOut. The fake child also shows that execFile closes the stdin at the start.
 test('execFile sends the kill signal of opts at the timeout and sets timedOut', async () => {
   const seen: unknown[] = []
+  let stdinEnds = 0
   vi.resetModules()
   vi.doMock('node:child_process', async importOriginal => ({
     ...(await importOriginal<typeof import('node:child_process')>()),
@@ -33,6 +43,7 @@ test('execFile sends the kill signal of opts at the timeout and sets timedOut', 
       seen.push(opts)
       // Node sets killed when it sent the kill signal at the timeout. The program exited with 7.
       done(Object.assign(new Error('Command failed'), { code: 7, killed: true }), '', '')
+      return { stdin: { end: () => stdinEnds++ } }
     },
   }))
   try {
@@ -43,6 +54,7 @@ test('execFile sends the kill signal of opts at the timeout and sets timedOut', 
     })
     expect(seen).toEqual([expect.objectContaining({ killSignal: 'SIGTERM', timeout: 200 })])
     expect(result).toEqual({ code: 7, stderr: '', stdout: '', timedOut: true })
+    expect(stdinEnds).toBe(1)
   } finally {
     vi.doUnmock('node:child_process')
     vi.resetModules()

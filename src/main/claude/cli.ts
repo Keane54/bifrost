@@ -31,9 +31,11 @@ const DEFAULT_TIMEOUT_MS = 10000
 // opts.killSignal SIGTERM lets the program stop its work cleanly. Use it only for a command
 // that a SIGKILL can leave half done. Node then waits until the program ends, so the caller
 // must also set its own limit.
+// The program gets an empty, closed stdin. claude adds piped stdin to the prompt (spec 8).
+// A program that reads stdin then gets the end of the input at once. It does not wait.
 export const execFile: ExecFn = (file, args, opts) =>
   new Promise(resolve => {
-    nodeExecFile(
+    const child = nodeExecFile(
       file,
       args,
       {
@@ -65,6 +67,7 @@ export const execFile: ExecFn = (file, args, opts) =>
         resolve(result)
       },
     )
+    child.stdin?.end()
   })
 
 // True when the file exists and the user can run it.
