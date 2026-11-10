@@ -15,7 +15,7 @@ export interface LiveValue {
   status: LiveStatus | null
   // null until the first claudeVersion() resolves.
   version: ClaudeVersion | null
-  // True when the claudeVersion() call failed. The version then stays null.
+  // True when the last claudeVersion() call failed. The version then keeps its last answer.
   versionFailed: boolean
   notice: LiveNotice
   // True for a problem, an old hook install or a version notice (D11).
@@ -58,15 +58,17 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
   const running = useRef(false)
   // The number of calls with the lock. A re-read drops its answer when a call starts during it.
   const lockedCalls = useRef(0)
-  // A copy of versionFailed for the re-read.
+  // Copies of version and versionFailed for the re-read.
+  const versionNow = useRef<ClaudeVersion | null>(null)
   const versionFailedNow = useRef(false)
   const mounted = useRef(true)
 
-  // Call claudeVersion(). A good answer sets the version and clears a failed check.
+  // Call claudeVersion(). An answer sets the version and clears a failed check.
   const readVersion = useCallback(async (): Promise<void> => {
     try {
       const next = await window.bifrost.claudeVersion()
       if (!mounted.current) return
+      versionNow.current = next
       versionFailedNow.current = false
       setVersion(next)
       setVersionFailed(false)
@@ -91,6 +93,7 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
         if (mounted.current && lockedCalls.current === calls) setStatus(next)
       },
       readVersion,
+      version: () => versionNow.current,
       versionFailed: () => versionFailedNow.current,
     }),
   )

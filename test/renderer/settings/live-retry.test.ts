@@ -94,6 +94,7 @@ function world(opts: WorldOptions) {
       state.versionFailed = false
       retry.warn(warning())
     },
+    version: () => state.version,
     versionFailed: () => state.versionFailed,
   })
   retry.readEnded()
@@ -278,6 +279,18 @@ describe('createLiveRetry', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('reads again after an answer with no version, and a good answer clears it', async () => {
+    // A timeout of claude --version gives an answer with no version. The call does not reject.
+    const missing: ClaudeVersion = { minimum: LIVE_MIN_CLAUDE_VERSION, ok: false, version: null }
+    const w = world({ status: ON, version: missing })
+    expect(w.warning()).toBe(true)
+    await vi.advanceTimersByTimeAsync(MINUTE)
+    expect(w.reads).toEqual({ status: 1, version: 1 })
+    expect(w.state).toMatchObject({ version: VERSION, versionFailed: false })
+    expect(w.warning()).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('does not read the version again when the version is good', async () => {
     const w = world({ status: NOT_RECEIVING })
     await vi.advanceTimersByTimeAsync(MINUTE)
@@ -307,6 +320,11 @@ describe('LiveProvider wiring', () => {
 
   it('uses the running ref as the busy test of the retry', () => {
     expect(CONTEXT).toContain('busy: () => running.current')
+  })
+
+  it('gives the newest version and the failed check to the retry', () => {
+    expect(CONTEXT).toContain('version: () => versionNow.current')
+    expect(CONTEXT).toContain('versionFailed: () => versionFailedNow.current')
   })
 
   it('gives the end of the mount read, a refresh and an action read to the retry', () => {

@@ -11,6 +11,9 @@
 //   counts from its end.
 // After the last step, the warning stays until a focus read, a Settings read or an action clears
 // it.
+// Each re-read also calls claudeVersion() again when the version is not good. A timeout of
+// claude --version does not reject. It gives an answer with no version and ok false.
+import type { ClaudeVersion } from '../../../shared/types'
 
 // The times of the re-reads from the start of a warning.
 export const RETRY_STEPS_MS: readonly number[] = [60_000, 120_000, 300_000, 600_000]
@@ -31,6 +34,8 @@ export interface LiveRetryDeps {
   busy(): boolean
   // Read the status again and set it. It never rejects.
   readStatus(): Promise<void>
+  // The answer of the last good claudeVersion() call, or null.
+  version(): ClaudeVersion | null
   // True when the last claudeVersion() call failed.
   versionFailed(): boolean
   // Call claudeVersion() again and set the result. It never rejects.
@@ -61,12 +66,13 @@ export function createLiveRetry(deps: LiveRetryDeps): LiveRetry {
   let reading = false
 
   const endedWithin = (ms: number): boolean => lastEnd !== null && clock.now() - lastEnd < ms
+  const versionBad = (): boolean => deps.versionFailed() || deps.version()?.ok !== true
 
   async function read(): Promise<void> {
     if (reading || deps.busy()) return
     reading = true
     try {
-      await Promise.all([deps.readStatus(), deps.versionFailed() ? deps.readVersion() : null])
+      await Promise.all([deps.readStatus(), versionBad() ? deps.readVersion() : null])
     } finally {
       reading = false
       lastEnd = clock.now()
