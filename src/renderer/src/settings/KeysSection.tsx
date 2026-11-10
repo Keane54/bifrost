@@ -1,15 +1,32 @@
 // Settings > Keys (spec 9.4): the list of all keys, with Change, Clear and Reset for each key.
-import { formatForDisplay, useHotkeyRecorder } from '@tanstack/react-hotkeys'
+import {
+  formatForDisplay,
+  type RecorderRejection,
+  useHotkeyRecorder,
+} from '@tanstack/react-hotkeys'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { resetSlotKey, setSlotKey } from '../../../shared/keys'
 import { useConfirm } from '../actions/ConfirmDialog'
 import { KEY_RECORDER_ATTR } from '../keys/focus-zone'
+import { toRawChord } from '../keys/raw-chord'
 import { cx } from '../lib/cx'
 import { ErrorLine } from '../lib/ErrorLine'
 import { checkRecorded, type KeyRow, keyGroups } from './key-editor'
 import { useRowSave } from './SettingRow'
 import { useSettings } from './settings-context'
+
+// The text for a key that the recorder refuses. The library gives a reason code, and a message
+// only when the validate callback gave one.
+const REJECTION_TEXT: Record<string, string> = {
+  'alt-graph': 'This key press types a character. Try another key.',
+  'missing-code': 'Bifrost cannot read this key. Try another key.',
+  whitespace: 'A space key cannot be a shortcut. Try another key.',
+}
+
+function rejectionText(reason: RecorderRejection): string | null {
+  return reason.message ?? REJECTION_TEXT[reason.reason] ?? null
+}
 
 const RESET_ALL_CONFIRM = {
   body: 'This puts every key back to its Bifrost default.',
@@ -68,9 +85,11 @@ export default function KeysSection({
       const result = checkRecorded(slotId, hotkey, current, labels)
       if (result.ok) change(slotId, setSlotKey(current, slotId, result.binding))
     },
-    onReject: reason => setRejection(reason.message),
+    onReject: reason => setRejection(rejectionText(reason)),
     platform: 'mac',
     recordBy: 'code',
+    // Tab and Shift+Tab are bindings of Bifrost. By default the library cancels at Tab.
+    recordTab: true,
     validate: hotkey => {
       const { activeId: slotId, custom: current, labels } = latest.current
       if (slotId === null) return false
@@ -131,7 +150,7 @@ export default function KeysSection({
             <span className='shrink-0 text-text-dim'>No key</span>
           ) : (
             <kbd className='shrink-0 font-mono'>
-              {formatForDisplay(binding, { platform: 'mac' })}
+              {formatForDisplay(toRawChord(binding) ?? { key: binding }, { platform: 'mac' })}
             </kbd>
           )}
           {/* A click on Change during the recording blurs the prompt first, and the blur
