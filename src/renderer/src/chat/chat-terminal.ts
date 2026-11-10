@@ -20,6 +20,7 @@ import {
   type ScreenRow,
   stepBlocks,
 } from './agent-view'
+import { keyOverride } from './key-rules'
 import { HISTORY_ATTR, hasHistory } from './scroll-history'
 import {
   BUMP_GAP_MS,
@@ -150,6 +151,15 @@ export class ChatTerminal {
     this.term.open(this.host)
     // The keys and the xterm.js replies go to the PTY.
     this.term.onData(data => this.input(data))
+    // Shift+Enter gives a new line in Claude Code, not a submit (spec 8.5). The text goes through
+    // the normal input, so the input rules still apply. xterm.js and the browser do not handle it.
+    this.term.attachCustomKeyEventHandler(event => {
+      const text = keyOverride(event)
+      if (text === null) return true
+      event.preventDefault()
+      if (text !== '') this.input(text)
+      return false
+    })
     // A write adds lines. A resize moves lines between the screen and the scrollback. A write can
     // also change to the alternate buffer. So each of these events can change the history.
     this.term.onWriteParsed(() => this.showHistory())
