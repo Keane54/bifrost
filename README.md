@@ -24,7 +24,7 @@
 
 Bifrost is a macOS desktop app for Claude Code. It shows all the Claude Code sessions on your Mac in one window, and it lets you control them.
 
-The interface uses ideas from the EVE Online client. Panels float inside one app window. You can move, resize, snap and stack the panels. You can save a layout with a name. Bifrost uses the mechanics of the EVE interface. It does not copy EVE art, icons, sounds or logos.
+Bifrost has a modular, flexible interface. Panels float inside one app window. You can move, resize, snap and stack the panels, plus save each layout with a name to load it again later.
 
 Built with [Electron](https://www.electronjs.org/), [React](https://react.dev/) and [TypeScript](https://www.typescriptlang.org/), with:
 
