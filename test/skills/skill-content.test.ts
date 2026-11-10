@@ -12,6 +12,10 @@ const AMERICAN = /\b(humaniz|organiz|recogniz|realiz|summariz|prioritiz)\w*/i
 // Claude Code puts the folder of the skill in place of this variable. The skill text holds it as is.
 // biome-ignore lint/suspicious/noTemplateCurlyInString: the test looks for the literal variable.
 const SKILL_DIR = '${CLAUDE_SKILL_DIR}'
+// Claude Code puts the folder of the plugin in place of this variable.
+// biome-ignore lint/suspicious/noTemplateCurlyInString: the test looks for the literal variable.
+const HUMANISE_RULES = '${CLAUDE_PLUGIN_ROOT}/skills/bifrost-humanise/rules.md'
+const PR_SKILLS = ['bifrost-review', 'bifrost-resolve-comments']
 
 const read = (path: string): string => readFileSync(join(ROOT, path), 'utf8')
 
@@ -79,5 +83,41 @@ describe('bifrost-humanise', () => {
 describe('bifrost-grill', () => {
   it('asks one question at a time', () => {
     expect(bodyOf('bifrost-grill').toLowerCase()).toContain('one question at a time')
+  })
+})
+
+describe.each(PR_SKILLS)('the PR skill %s', folder => {
+  it('is in the called-by-name group and takes a PR', () => {
+    const fields = fieldsOf(folder)
+    expect(fields.name).toBe(folder)
+    expect(skillGroup(fields)).toBe('called-by-name')
+    expect(fields['argument-hint']).toBe('[PR number or URL]')
+  })
+
+  it('reads the humanise rules for the text that a person reads', () => {
+    expect(bodyOf(folder)).toContain(HUMANISE_RULES)
+  })
+
+  it('uses British spelling in the body and the reference', () => {
+    expect(bodyOf(folder)).not.toMatch(AMERICAN)
+    expect(read(`skills/${folder}/reference.md`)).not.toMatch(AMERICAN)
+  })
+})
+
+describe('bifrost-review', () => {
+  it('leaves a pending review with a recommendation', () => {
+    const body = bodyOf('bifrost-review')
+    for (const text of ['pending review', 'Approve', 'Comment', 'Request changes']) {
+      expect(body).toContain(text)
+    }
+  })
+})
+
+describe('bifrost-resolve-comments', () => {
+  it('acts for trusted authors only and names the outcomes', () => {
+    const body = bodyOf('bifrost-resolve-comments')
+    for (const text of ['OWNER', 'MEMBER', 'COLLABORATOR', 'Fixed by', 'Needs you']) {
+      expect(body).toContain(text)
+    }
   })
 })
