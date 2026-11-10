@@ -80,10 +80,10 @@ Bifrost skills are a small Claude Code plugin. The plugin has five skills.
 
 Listed skills are in the skill list of Claude, so Claude can start them by itself. A skill that you call by name costs no context until you type its name.
 
-- Install the skills from the setup dialog or from Settings > Skills. The install shows each change first.
-- Start a skill when you type its name in a chat, for example `/bifrost-review`.
+- Install the skills from the setup dialog or from Settings > Skills. When you install the skills, Bifrost first shows each change.
+- To start a skill, type its name in a chat, for example `/bifrost-review`.
 - Bifrost updates the skill files at each start.
-- After an install or Turn on, a session that runs now gets the change after `/reload-plugins` or a restart.
+- After you install or turn on the skills, a session that runs now gets the change after `/reload-plugins` or a restart.
 - The Hand over button works without the skills.
 
 `bifrost-humanise` comes from `blader/humanizer`. `bifrost-grill` comes from `mattpocock/skills`. Both are MIT licensed.

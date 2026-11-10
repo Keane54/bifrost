@@ -35,7 +35,7 @@ test('the setup dialog offers the skills and Settings > Skills lists them', asyn
     await setup.getByRole('button', { exact: true, name: 'Skip' }).click()
     await expect(setup).toHaveAttribute('data-setup-dialog', 'skills')
     await expect(setup).toContainText('Bifrost skills give Claude tested steps')
-    await expect(setup.locator('[data-setup-action="skip-skills"]')).toBeVisible()
+    await expect(setup.locator('[data-setup-action="skip-skills"]')).toBeFocused()
     await expect(setup.locator('[data-setup-action="install-skills"]')).toBeVisible()
 
     // Step 2: Skip closes the dialog.

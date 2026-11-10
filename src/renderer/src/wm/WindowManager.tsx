@@ -622,7 +622,8 @@ export default function WindowManager(): React.JSX.Element {
                   Live details. */}
               <LiveProvider>
                 <SkillsProvider>
-                  {/* The send box and the New session dialog read and change the dialog history. */}
+                  {/* The send box and the New session dialog read and change the dialog
+                      history. */}
                   <HistoryProvider history={history} update={updateHistory}>
                     {/* The Performance panel reads and changes its Details row. */}
                     <PerformanceDetailsContext value={performanceDetails}>

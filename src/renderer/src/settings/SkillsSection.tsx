@@ -158,7 +158,7 @@ export default function SkillsSection({
                 <div className='flex items-baseline gap-2'>
                   <span className='font-medium text-text-strong select-text'>/{skill.name}</span>
                   <span
-                    className={cx('text-text-dim', skill.group === 'listed' && 'text-text')}
+                    className={cx(skill.group === 'listed' ? 'text-text' : 'text-text-dim')}
                     data-skill-group={skill.group}
                   >
                     {GROUP_LABELS[skill.group]}

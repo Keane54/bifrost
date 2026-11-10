@@ -62,6 +62,11 @@ describe('SetupDialog', () => {
     expect(SETUP).toContain('nextSetupPhase(')
   })
 
+  it('moves the focus to Skip in the skills step and to Done in the done view', () => {
+    expect(SETUP).toContain('skipSkillsRef.current?.focus()')
+    expect(SETUP).toContain('doneRef.current?.focus()')
+  })
+
   it('keeps setupOpen true for the skills step and the done view', () => {
     // setSetupOpen follows the open state only. A phase change never closes the dialog.
     expect(SETUP).toMatch(

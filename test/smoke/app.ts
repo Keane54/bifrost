@@ -1,9 +1,10 @@
 // The parts that the Playwright tests in test/smoke share: the start of Bifrost with a fake
 // claude and a test home, and the guard of the real files.
 //
-// Without BIFROST_SMOKE_APP, a test starts the build in out/ (the main field of package.json,
-// so the app path is the repository) with the Electron of the
-// repository. With BIFROST_SMOKE_APP=<path of Bifrost.app>, it starts that packaged app.
+// Without BIFROST_SMOKE_APP, a test starts the build in out/ with the Electron of the
+// repository. The start uses the main field of package.json, so the app path is the repository.
+// The app name and the version now come from package.json. With
+// BIFROST_SMOKE_APP=<path of Bifrost.app>, a test starts that packaged app.
 //
 // No test starts Bifrost under Rosetta. On an Apple Silicon Mac, macOS 26 then shows a notice
 // that Bifrost "includes a component that will not work with a future release of macOS"

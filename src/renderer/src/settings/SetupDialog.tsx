@@ -155,6 +155,14 @@ export default function SetupDialog(): React.JSX.Element {
   const view = setupView(mode, phase, status)
   const initialFocus = view === 'ask' ? skipRef : view === 'skills' ? skipSkillsRef : doneRef
 
+  // Base UI sets the initial focus only when the dialog opens. The skills step and the done view
+  // mount while the dialog is open, so this effect moves the focus to their button.
+  useEffect(() => {
+    if (!open) return
+    if (view === 'skills') skipSkillsRef.current?.focus()
+    else if (view === 'done') doneRef.current?.focus()
+  }, [open, view])
+
   return (
     <AlertDialog.Root
       // Esc and a click outside do nothing. Only Skip and Done close the dialog.
