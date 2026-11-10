@@ -19,6 +19,14 @@ import {
   UNKNOWN_LOG,
 } from './app.ts'
 
+// A font that a 2D canvas of the page got. chat is true for a canvas in a chat terminal. ok is
+// false when the canvas refused the font.
+interface CanvasFont {
+  chat: boolean
+  font: string
+  ok: boolean
+}
+
 test('Bifrost starts with a fake claude and shows the sample sessions', async () => {
   // Step 1: record the real files, and make the test home.
   const before = await realFiles()
@@ -204,10 +212,52 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     // Step 6: a double-click opens a chat window. Its attach runs the fake claude through
     // node-pty and spawn-helper. WebGL draws the terminal text, so the DOM has no text to read
     // (R7). The fake claude writes the attach line to a file in the test home.
+    // Before the open, the test records each font that a 2D canvas of the page gets, and if a
+    // canvas accepts it. The WebGL renderer draws each glyph on a 2D canvas in the chat terminal
+    // first. Chromium 156 (Electron 45) refuses a font value that starts with a space. The canvas
+    // then keeps the 10px sans-serif font, and the glyphs are small and far apart.
+    await page.evaluate(() => {
+      const proto = CanvasRenderingContext2D.prototype
+      const font = Object.getOwnPropertyDescriptor(proto, 'font')
+      const get = font?.get
+      const set = font?.set
+      const probe = document.createElement('canvas').getContext('2d')
+      if (!get || !set || !probe) throw new Error('The page has no canvas font property.')
+      const start = '1px bifrost-probe'
+      const fonts: CanvasFont[] = []
+      Object.assign(window, { canvasFonts: fonts })
+      Object.defineProperty(proto, 'font', {
+        configurable: true,
+        get,
+        set(this: CanvasRenderingContext2D, value: string) {
+          set.call(this, value)
+          // The probe keeps its start font when it refuses the value.
+          set.call(probe, start)
+          set.call(probe, value)
+          fonts.push({
+            chat: this.canvas.closest('[data-chat-terminal]') !== null,
+            font: value,
+            ok: get.call(probe) !== start,
+          })
+        },
+      })
+    })
     await row('smoke-alpha').dblclick()
     await expect
       .poll(() => readText(join(testHome, 'attach.log')), { timeout: 10_000 })
       .toContain('FAKE ATTACH 5a0e0001')
+    // The WebGL renderer adds its canvases to the terminal. The DOM renderer adds no canvas. So
+    // without WebGL, for example on a computer with no GPU, the test does not check the glyph
+    // fonts.
+    const chatFonts = (): Promise<CanvasFont[]> =>
+      page.evaluate(() =>
+        (window as unknown as { canvasFonts: CanvasFont[] }).canvasFonts.filter(f => f.chat),
+      )
+    if ((await page.locator('[data-chat-terminal] canvas').count()) > 0) {
+      await expect.poll(async () => (await chatFonts()).length).toBeGreaterThan(0)
+      const refused = new Set((await chatFonts()).filter(f => !f.ok).map(f => f.font))
+      expect([...refused]).toEqual([])
+    }
 
     // Step 7: quit the app.
     tracing = false
