@@ -25,7 +25,7 @@ test('a new log has no failures, no crashes and no start error', () => {
   const { log } = setup()
   expect(log.view(START)).toEqual({
     crashes: [],
-    failsInARow: { 'account-usage': 0, reviews: 0, 'service-status': 0, sessions: 0 },
+    failsInARow: { 'account-usage': 0, reviews: 0, 'service-status': 0, sessions: 0, updates: 0 },
     liveStartFailedAt: null,
     saveFailedAt: {},
   })
@@ -42,6 +42,7 @@ test('each failed poll adds 1 to the failures in a row of its part only', () => 
     reviews: 3,
     'service-status': 0,
     sessions: 1,
+    updates: 0,
   })
 })
 
@@ -88,6 +89,7 @@ test('while offline, a failed network poll counts as no data, a failed session p
     reviews: 1,
     'service-status': 0,
     sessions: 12,
+    updates: 0,
   })
   // A good poll while offline still sets the count to 0.
   log.poll('reviews', 'ok')
@@ -95,6 +97,25 @@ test('while offline, a failed network poll counts as no data, a failed session p
   online = true
   log.poll('service-status', 'failed')
   expect(log.view(START).failsInARow['service-status']).toBe(1)
+})
+
+test('the updates part starts at 0 failures in a row', () => {
+  const { log } = setup()
+  expect(log.view(START).failsInARow.updates).toBe(0)
+})
+
+test('while offline, a failed update check counts as no data', () => {
+  let online = false
+  const log = createHealthLog(
+    () => START,
+    () => online,
+  )
+  log.poll('updates', 'failed')
+  log.poll('updates', 'failed')
+  expect(log.view(START).failsInARow.updates).toBe(0)
+  online = true
+  log.poll('updates', 'failed')
+  expect(log.view(START).failsInARow.updates).toBe(1)
 })
 
 test('failures while offline give no reason at the reconnect', () => {
@@ -132,6 +153,7 @@ test('a stopped part has 0 failures in a row, the other parts keep their count',
     reviews: 0,
     'service-status': 0,
     sessions: 1,
+    updates: 0,
   })
 })
 
@@ -207,7 +229,7 @@ test('a change to a view does not change the log', () => {
   view.saveFailedAt['window-state'] = 1
   expect(log.view(START)).toEqual({
     crashes: [{ at: START, kind: 'window', reason: 'oom' }],
-    failsInARow: { 'account-usage': 0, reviews: 0, 'service-status': 0, sessions: 0 },
+    failsInARow: { 'account-usage': 0, reviews: 0, 'service-status': 0, sessions: 0, updates: 0 },
     liveStartFailedAt: null,
     saveFailedAt: {},
   })

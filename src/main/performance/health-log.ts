@@ -2,7 +2,7 @@
 // save results, crashes and Live details start errors here. The health checks read view().
 // The log keeps only counts and times, in memory.
 
-export type PollPart = 'sessions' | 'reviews' | 'account-usage' | 'service-status'
+export type PollPart = 'sessions' | 'reviews' | 'account-usage' | 'service-status' | 'updates'
 export type StorePart = 'settings' | 'ui-state' | 'registry' | 'window-state' | 'reviews-state'
 // 'no-data' is a poll that got no data for a known cause that is not a failure, for example
 // gh is logged out (P7).
@@ -64,8 +64,13 @@ export async function reportSave(
 }
 
 // The network poll parts. While the Mac is offline, a failure of these parts counts as no data
-// (design section 6, P7).
-const NETWORK_PARTS: ReadonlySet<PollPart> = new Set(['reviews', 'account-usage', 'service-status'])
+// (design section 6, P7). An update check is a network poll.
+const NETWORK_PARTS: ReadonlySet<PollPart> = new Set([
+  'reviews',
+  'account-usage',
+  'service-status',
+  'updates',
+])
 
 // now gives the time of each event, in milliseconds since the epoch. online gives the network
 // state at the time of each poll result. ipc.ts binds it to net.isOnline.
@@ -75,6 +80,7 @@ export function createHealthLog(now: () => number, online: () => boolean = () =>
     reviews: 0,
     'service-status': 0,
     sessions: 0,
+    updates: 0,
   }
   const saveFailedAt: Partial<Record<StorePart, number>> = {}
   let crashes: HealthLogView['crashes'] = []

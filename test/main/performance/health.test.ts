@@ -18,7 +18,7 @@ const fmt = (at: number) => `T${at / MIN}`
 function emptyLog(): HealthLogView {
   return {
     crashes: [],
-    failsInARow: { 'account-usage': 0, reviews: 0, 'service-status': 0, sessions: 0 },
+    failsInARow: { 'account-usage': 0, reviews: 0, 'service-status': 0, sessions: 0, updates: 0 },
     liveStartFailedAt: null,
     saveFailedAt: {},
   }
@@ -261,7 +261,7 @@ describe('crashes', () => {
 
 describe('polls', () => {
   const withFails = (
-    part: 'sessions' | 'reviews' | 'account-usage' | 'service-status',
+    part: 'sessions' | 'reviews' | 'account-usage' | 'service-status' | 'updates',
     n: number,
   ) => {
     const log = emptyLog()
@@ -291,13 +291,24 @@ describe('polls', () => {
       "check Claude's status",
     )
   })
+  test('the updates part has its own reason text', () => {
+    expect(reasons({ log: withFails('updates', 3) })).toEqual([
+      { level: 'warning', text: "Bifrost couldn't check for updates 3 times in a row." },
+    ])
+  })
   test('offline network polls give no reason, the session list still does', () => {
     const log = emptyLog()
-    log.failsInARow = { 'account-usage': 12, reviews: 12, 'service-status': 12, sessions: 5 }
+    log.failsInARow = {
+      'account-usage': 12,
+      reviews: 12,
+      'service-status': 12,
+      sessions: 5,
+      updates: 12,
+    }
     const out = reasons({ log, online: false })
     expect(out).toHaveLength(1)
     expect(out[0]?.text).toContain('check for sessions')
-    expect(reasons({ log, online: true })).toHaveLength(4)
+    expect(reasons({ log, online: true })).toHaveLength(5)
   })
 })
 

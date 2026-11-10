@@ -113,6 +113,7 @@ const POLL_NAMES: Record<PollPart, string> = {
   reviews: 'check GitHub for reviews',
   'service-status': "check Claude's status",
   sessions: 'check for sessions',
+  updates: 'check for updates',
 }
 
 const STORE_NAMES: Record<StorePart, string> = {
