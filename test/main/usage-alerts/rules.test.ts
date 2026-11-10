@@ -155,10 +155,12 @@ describe('alertText', () => {
   })
 
   test('no text has an em dash', () => {
+    // The code point, so the source file has no em dash.
+    const EM_DASH = String.fromCharCode(0x2014)
     for (const extra of [false, true]) {
       for (const alert of [fiveAlert, sevenAlert]) {
         const { body, title } = alertText(alert, extra, NOW, ZONE)
-        expect(`${title} ${body}`).not.toContain('—')
+        expect(`${title} ${body}`).not.toContain(EM_DASH)
       }
     }
   })
