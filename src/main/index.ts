@@ -32,6 +32,8 @@ const testHome = testHomeConfig(process.env, homedir())
 const badTestHome = refusedTestHome(process.env, homedir())
 if (testHome) {
   app.setPath('userData', testHome.userData)
+  // The updater log must not go to the real ~/Library/Logs in a check.
+  app.setAppLogsPath(join(testHome.home, 'logs'))
   console.log(`Bifrost uses the test home ${testHome.home}.`)
 }
 

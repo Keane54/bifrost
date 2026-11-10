@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -150,5 +150,12 @@ describe('test home', () => {
     expect(pluginEnv({ PATH: '/bin' }, { home: '/tmp/bh', userData: '/tmp/bh/user-data' })).toEqual(
       { CLAUDE_CONFIG_DIR: '/tmp/bh/.claude', HOME: '/tmp/bh', PATH: '/bin' },
     )
+  })
+
+  it('index.ts moves the logs folder into the test home', () => {
+    const source = readFileSync(join(__dirname, '../../src/main/index.ts'), 'utf8')
+    const block = source.slice(source.indexOf('if (testHome) {'))
+    const end = block.indexOf('\n}\n')
+    expect(block.slice(0, end)).toContain("app.setAppLogsPath(join(testHome.home, 'logs'))")
   })
 })
