@@ -1,6 +1,7 @@
 import { Button } from '@base-ui/react/button'
 import {
   Activity,
+  CircleArrowDown,
   Crosshair,
   Eye,
   Gauge,
@@ -13,8 +14,10 @@ import {
   ScrollText,
   Settings,
   SquarePlus,
+  TriangleAlert,
 } from 'lucide-react'
 import { memo, useId } from 'react'
+import { UPDATE_TEXTS } from '../../../shared/updates'
 import {
   actionLabel,
   buttonTip,
@@ -30,6 +33,7 @@ import { usePerformanceState } from '../performance/use-performance'
 import { useReviews } from '../reviews/use-reviews'
 import { useLive } from '../settings/live-context'
 import { useSettingsNav } from '../settings/settings-nav'
+import { useUpdateButton } from '../updates/use-updates'
 import { useWmControls, useWmState } from './context'
 import LayoutMenu from './LayoutMenu'
 import { type Frame, frameOf, panelKind, type WmState } from './state'
@@ -72,6 +76,10 @@ function SideButton(props: {
   size?: number
   dot?: string
   dotClass?: string
+  // A class for the icon, for example a colour.
+  iconClass?: string
+  // The tooltip gives the reason, but the button shows no dot.
+  dotHidden?: boolean
   onClick(): void
 }): React.JSX.Element {
   const Icon = props.icon
@@ -86,17 +94,19 @@ function SideButton(props: {
         onClick={props.onClick}
         type='button'
       >
-        <Icon aria-hidden={true} size={props.size ?? 16} />
+        <Icon aria-hidden={true} className={props.iconClass} size={props.size ?? 16} />
         {props.dot !== undefined && (
           <>
-            <span
-              aria-hidden={true}
-              className={cx(
-                'absolute top-1.5 right-1.5 size-1.5',
-                props.dotClass ?? 'bg-text-strong',
-              )}
-              data-side-warning={true}
-            />
+            {props.dotHidden !== true && (
+              <span
+                aria-hidden={true}
+                className={cx(
+                  'absolute top-1.5 right-1.5 size-1.5',
+                  props.dotClass ?? 'bg-text-strong',
+                )}
+                data-side-warning={true}
+              />
+            )}
             <span className='sr-only' id={dotId}>
               {props.dot}
             </span>
@@ -104,6 +114,37 @@ function SideButton(props: {
         )}
       </button>
     </Tip>
+  )
+}
+
+// The update button shows only for a ready update (a pulsing green dot) or a failed update
+// (an orange triangle). In every other state it does not show.
+function UpdateButton(): React.JSX.Element | null {
+  const update = useUpdateButton()
+  const settingsNav = useSettingsNav()
+  if (update === null) return null
+  if (update.kind === 'failed') {
+    return (
+      <SideButton
+        dot={UPDATE_TEXTS.failed}
+        dotHidden={true}
+        icon={TriangleAlert}
+        iconClass='text-ctx-mid'
+        label='Update Bifrost'
+        onClick={() => settingsNav.open('updates')}
+      />
+    )
+  }
+  return (
+    <SideButton
+      dot={UPDATE_TEXTS.ready(update.version)}
+      dotClass={cx('bg-ctx-low', 'animate-update-pulse', 'motion-reduce:animate-none')}
+      icon={CircleArrowDown}
+      label='Update Bifrost'
+      onClick={() => {
+        window.bifrost.updates.restart().catch(() => {})
+      }}
+    />
   )
 }
 
@@ -214,6 +255,7 @@ function SideBar(): React.JSX.Element {
           )
         })}
       </div>
+      <UpdateButton />
       <LayoutMenu className={BUTTON} />
       <SideButton
         dot={warning ? SETTINGS_ATTENTION : undefined}

@@ -143,6 +143,8 @@
   --radius-4xl: 0;
 
   --animate-box-flash: box-flash 1s ease-in-out infinite;
+  /* The dot of the update button pulses slowly. */
+  --animate-update-pulse: update-pulse 1.6s ease-in-out infinite;
   /* The rainbow of the Take control loader shifts slowly (spec 9.2). */
   --animate-loader-shift: loader-shift 12s ease-in-out infinite alternate;
 
@@ -152,6 +154,18 @@
     }
     to {
       background-position: 100% 50%;
+    }
+  }
+
+  @keyframes update-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      scale: 1;
+    }
+    50% {
+      opacity: 0.35;
+      scale: 0.8;
     }
   }
 

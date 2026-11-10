@@ -1,6 +1,6 @@
 // The app-wide Updates store.
 import { describe, expect, it, vi } from 'vitest'
-import { createUpdatesStore } from '../../../src/renderer/src/updates/use-updates'
+import { createUpdatesStore, updateButtonOf } from '../../../src/renderer/src/updates/use-updates'
 import { EMPTY_UPDATES, type UpdatesSnapshot } from '../../../src/shared/updates'
 
 const READY: UpdatesSnapshot = {
@@ -95,5 +95,59 @@ describe('createUpdatesStore', () => {
     expect(fake.off).not.toHaveBeenCalled()
     stopB()
     expect(fake.off).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('loaded flag', () => {
+  it('turns true after the first answer', async () => {
+    const fake = fakeApi()
+    const store = createUpdatesStore(fake.api)
+    store.subscribe(() => {})
+    expect(store.loaded()).toBe(false)
+    fake.answer(READY)
+    await tick()
+    expect(store.loaded()).toBe(true)
+  })
+
+  it('turns true after the first push', () => {
+    const fake = fakeApi()
+    const store = createUpdatesStore(fake.api)
+    store.subscribe(() => {})
+    fake.push(CHECKING)
+    expect(store.loaded()).toBe(true)
+  })
+
+  it('stays false when the first load fails', async () => {
+    const fake = fakeApi()
+    const store = createUpdatesStore(fake.api)
+    store.subscribe(() => {})
+    fake.fail(new Error('no'))
+    await tick()
+    expect(store.loaded()).toBe(false)
+  })
+})
+
+describe('updateButtonOf', () => {
+  it('gives the ready version', () => {
+    expect(updateButtonOf(READY)).toEqual({ kind: 'ready', version: '1.2.0' })
+  })
+
+  it('gives failed for a failed state', () => {
+    const failed: UpdatesSnapshot = {
+      ...READY,
+      state: { at: 1, cause: 'install', kind: 'failed', message: 'Text.' },
+    }
+    expect(updateButtonOf(failed)).toEqual({ kind: 'failed' })
+  })
+
+  it('gives null for the other states and for a build without updates', () => {
+    expect(updateButtonOf(EMPTY_UPDATES)).toBeNull()
+    expect(updateButtonOf({ ...READY, state: { kind: 'idle' } })).toBeNull()
+    expect(updateButtonOf(CHECKING)).toBeNull()
+    expect(
+      updateButtonOf({ ...READY, state: { kind: 'downloading', percent: 3, version: '1.2.0' } }),
+    ).toBeNull()
+    expect(updateButtonOf({ ...READY, state: { kind: 'off' } })).toBeNull()
+    expect(updateButtonOf({ ...READY, available: false })).toBeNull()
   })
 })

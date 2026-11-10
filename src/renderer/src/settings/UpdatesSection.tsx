@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { DIALOG_BUTTON } from '../actions/ConfirmDialog'
 import { ErrorLine } from '../lib/ErrorLine'
 import { errorMessage } from '../lib/error-message'
-import { useUpdates } from '../updates/use-updates'
+import { useUpdates, useUpdatesLoaded } from '../updates/use-updates'
 import { RowFilterContext } from './row-filter'
 import { CheckRow } from './rows'
 import { useSettings } from './settings-context'
@@ -25,6 +25,7 @@ export default function UpdatesSection({
 }): React.JSX.Element {
   const { settings, update } = useSettings()
   const snapshot = useUpdates()
+  const loaded = useUpdatesLoaded()
   const [error, setError] = useState<string | null>(null)
 
   const onAction = (id: UpdatesActionId): void => {
@@ -42,7 +43,7 @@ export default function UpdatesSection({
           label={UPDATES_ROWS.auto}
           save={value => update({ autoUpdate: value })}
         />
-        {only === null && (
+        {only === null && loaded && (
           <div className='border-b border-panel-edge px-3 py-2'>
             <p className='text-text select-text'>Version {snapshot.version}</p>
             <p
