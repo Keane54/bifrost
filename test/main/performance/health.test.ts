@@ -79,7 +79,7 @@ describe('RAM', () => {
     expect(ram(1025)).toEqual([
       {
         level: 'warning',
-        text: 'Bifrost is using 1,025 MB RAM without the chat terminals, above the 1 GB limit.',
+        text: 'Bifrost itself, without the chat terminals, is using 1,025 MB RAM, above the 1 GB limit.',
       },
     ])
   })
@@ -87,13 +87,13 @@ describe('RAM', () => {
     expect(ram(1536)).toEqual([
       {
         level: 'warning',
-        text: 'Bifrost is using 1,536 MB RAM without the chat terminals, above the 1 GB limit.',
+        text: 'Bifrost itself, without the chat terminals, is using 1,536 MB RAM, above the 1 GB limit.',
       },
     ])
     expect(ram(1537)).toEqual([
       {
         level: 'problem',
-        text: 'Bifrost is using 1,537 MB RAM without the chat terminals, above the 1.5 GB limit.',
+        text: 'Bifrost itself, without the chat terminals, is using 1,537 MB RAM, above the 1.5 GB limit.',
       },
     ])
   })
@@ -109,9 +109,10 @@ describe('RAM', () => {
       { level: 'warning', text: 'A chat terminal is using 612 MB RAM, above the 500 MB limit.' },
     ])
   })
+  // The OK text gives the total with the chat terminals, the same as the trend line.
   test('the OK text rounds before it picks MB or GB', () => {
-    expect(okText(sample(NOW, { bifrostRamNoTermMb: 1023.4 }), NOW)).toContain('1023 MB')
-    expect(okText(sample(NOW, { bifrostRamNoTermMb: 1023.6 }), NOW)).toContain('1.0 GB')
+    expect(okText(sample(NOW, { bifrostRamMb: 1023.4 }), NOW)).toContain('1023 MB')
+    expect(okText(sample(NOW, { bifrostRamMb: 1023.6 }), NOW)).toContain('1.0 GB')
   })
 })
 
@@ -331,16 +332,16 @@ describe('state and text', () => {
     expect(reasons()).toEqual([])
     expect(healthState([])).toBe('ok')
     expect(okText(undefined, NOW)).toBeNull()
-    expect(okText(sample(NOW, { bifrostCpuNoTerm: 2.4, bifrostRamNoTermMb: 712 }), NOW)).toBe(
+    expect(okText(sample(NOW, { bifrostCpuNoTerm: 2.4, bifrostRamMb: 712 }), NOW)).toBe(
       'Bifrost is using 712 MB RAM and 2% CPU.',
     )
-    expect(okText(sample(NOW, { bifrostCpuNoTerm: 0.4, bifrostRamNoTermMb: 1331 }), NOW)).toBe(
+    expect(okText(sample(NOW, { bifrostCpuNoTerm: 0.4, bifrostRamMb: 1331 }), NOW)).toBe(
       'Bifrost is using 1.3 GB RAM and 0% CPU.',
     )
   })
   test('the OK text needs a sample from the last 60 s', () => {
     expect(LIMITS.okSampleMaxAgeMs).toBe(60_000)
-    expect(okText(sample(NOW - 60_000), NOW)).toBe('Bifrost is using 400 MB RAM and 2% CPU.')
+    expect(okText(sample(NOW - 60_000), NOW)).toBe('Bifrost is using 500 MB RAM and 2% CPU.')
     expect(okText(sample(NOW - 60_001), NOW)).toBeNull()
   })
   test('problem reasons come before warning reasons', () => {

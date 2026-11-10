@@ -794,8 +794,7 @@ describe('createPerformanceMonitor', () => {
     await vi.advanceTimersByTimeAsync(0)
     await vi.advanceTimersByTimeAsync(TICK_MS)
     const before = t.monitor.current()
-    // The OK text leaves out the 40 MB of the chat terminal (user decision, 2026-11-10).
-    expect(before.okText).toBe('Bifrost is using 700 MB RAM and 12% CPU.')
+    expect(before.okText).toBe('Bifrost is using 740 MB RAM and 12% CPU.')
     t.world.psFails = true
     const main = t.world.metrics[0]
     if (main) main.ramMb += 100
@@ -815,7 +814,7 @@ describe('createPerformanceMonitor', () => {
     t.world.psFails = false
     await vi.advanceTimersByTimeAsync(TICK_MS)
     expect(t.monitor.current().bifrost?.trend).toHaveLength(2)
-    expect(t.monitor.current().okText).toBe('Bifrost is using 800 MB RAM and 12% CPU.')
+    expect(t.monitor.current().okText).toBe('Bifrost is using 840 MB RAM and 12% CPU.')
     t.monitor.stop()
   })
 
@@ -909,7 +908,7 @@ describe('createPerformanceMonitor', () => {
       { level: 'warning', text: "Bifrost couldn't check for sessions 3 times in a row." },
     ])
     expect(snap.bifrost?.delayMs).toBe(1500)
-    expect(snap.okText).toBe('Bifrost is using 600 MB RAM and 10% CPU.')
+    expect(snap.okText).toBe('Bifrost is using 1.1 GB RAM and 10% CPU.')
     t.monitor.stop()
   })
 
