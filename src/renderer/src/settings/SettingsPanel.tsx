@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DIALOG_BUTTON } from '../actions/ConfirmDialog'
 import { cx } from '../lib/cx'
 import { once } from '../lib/once'
+import { useUpdates } from '../updates/use-updates'
 import { useWmControls } from '../wm/context'
 import GeneralSection from './GeneralSection'
 import KeysSection from './KeysSection'
@@ -31,8 +32,9 @@ import {
 } from './search'
 import { useSettings } from './settings-context'
 import { type SettingsSection, useSettingsNav } from './settings-nav'
+import UpdatesSection from './UpdatesSection'
 
-const TABS: SettingsSection[] = ['general', 'slash', 'keys', 'reviews', 'live']
+const TABS: SettingsSection[] = ['general', 'slash', 'keys', 'reviews', 'live', 'updates']
 
 // The focus for Cmd+F: in Settings, nowhere (the page body), or in another place.
 function focusPlace(root: HTMLElement | null): 'settings' | 'none' | 'other' {
@@ -71,6 +73,7 @@ function Hit({ hit, readLive }: { hit: SearchHit; readLive: () => void }): React
       {hit.id === 'keys' && <KeysSection only={only} />}
       {hit.id === 'reviews' && <ReviewsSection only={only} />}
       {hit.id === 'live' && <LiveSection readStatus={readLive} />}
+      {hit.id === 'updates' && <UpdatesSection only={only} />}
     </section>
   )
 }
@@ -79,6 +82,7 @@ export default function SettingsPanel(): React.JSX.Element {
   const { section, setSection } = useSettingsNav()
   const { dispatch } = useWmControls()
   const { settings } = useSettings()
+  const updatesFailed = useUpdates().state.kind === 'failed'
   // The Live details tab shows the same dot as the side bar Settings button (D11).
   const { notice, refresh, status, version, versionFailed, warning } = useLive()
   // Live details reads its status one time for each view of Settings (review Minor 1). A search
@@ -239,7 +243,7 @@ export default function SettingsPanel(): React.JSX.Element {
                 type='button'
               >
                 {SECTION_TITLES[id]}
-                {id === 'live' && warning && (
+                {((id === 'live' && warning) || (id === 'updates' && updatesFailed)) && (
                   <span
                     aria-hidden={true}
                     className='ml-1 inline-block size-1.5 bg-text-strong align-middle'
@@ -260,6 +264,7 @@ export default function SettingsPanel(): React.JSX.Element {
           {hits === null && section === 'keys' && <KeysSection />}
           {hits === null && section === 'reviews' && <ReviewsSection />}
           {hits === null && section === 'live' && <LiveSection readStatus={readLive} />}
+          {hits === null && section === 'updates' && <UpdatesSection />}
           {hits !== null && (
             <section aria-label='Search results' data-search-results={true}>
               {hits.map(hit => (

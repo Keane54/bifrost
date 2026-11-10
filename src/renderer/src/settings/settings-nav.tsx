@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { useWmControls } from '../wm/context'
 
-export type SettingsSection = 'general' | 'slash' | 'keys' | 'reviews' | 'live'
+export type SettingsSection = 'general' | 'slash' | 'keys' | 'reviews' | 'live' | 'updates'
 
 export interface SettingsNav {
   section: SettingsSection

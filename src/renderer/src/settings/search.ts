@@ -6,6 +6,7 @@ import { GENERAL_ROWS } from './general-rows'
 import type { KeyRow } from './key-editor'
 import { REVIEWS_ROWS } from './reviews-rows'
 import type { SettingsSection } from './settings-nav'
+import { UPDATES_ROWS } from './updates-rows'
 
 // The titles of the sections, in the order of the tabs.
 export const SECTION_TITLES: Readonly<Record<SettingsSection, string>> = {
@@ -14,8 +15,16 @@ export const SECTION_TITLES: Readonly<Record<SettingsSection, string>> = {
   live: 'Live details',
   reviews: 'Reviews',
   slash: 'Slash commands',
+  updates: 'Updates',
 }
-const SECTION_ORDER: readonly SettingsSection[] = ['general', 'slash', 'keys', 'reviews', 'live']
+const SECTION_ORDER: readonly SettingsSection[] = [
+  'general',
+  'slash',
+  'keys',
+  'reviews',
+  'live',
+  'updates',
+]
 
 // The labels of the rows of Settings > General. GENERAL_ROWS is their one source.
 export const GENERAL_LABELS: readonly string[] = Object.values(GENERAL_ROWS)
@@ -162,6 +171,7 @@ export function settingsIndex(input: {
     live: [{ id: 'live', text: input.live.join(' ') }],
     reviews: Object.values(REVIEWS_ROWS).map(label => ({ id: label, text: label })),
     slash: input.slash.map(command => ({ id: command, text: command })),
+    updates: Object.values(UPDATES_ROWS).map(label => ({ id: label, text: label })),
   }
   return SECTION_ORDER.map(id => ({ id, rows: rows[id], title: SECTION_TITLES[id] }))
 }

@@ -19,6 +19,7 @@ import {
   settingsIndex,
   textMatches,
 } from '../../../src/renderer/src/settings/search'
+import { UPDATES_ROWS } from '../../../src/renderer/src/settings/updates-rows'
 
 const SETTINGS = join(__dirname, '../../../src/renderer/src/settings')
 
@@ -91,14 +92,15 @@ describe('the index of all sections', () => {
     slash: ['/compact', '/clear'],
   })
 
-  it('has the five sections in the order of the tabs, with their titles', () => {
-    expect(index.map(s => s.id)).toEqual(['general', 'slash', 'keys', 'reviews', 'live'])
+  it('has the six sections in the order of the tabs, with their titles', () => {
+    expect(index.map(s => s.id)).toEqual(['general', 'slash', 'keys', 'reviews', 'live', 'updates'])
     expect(index.map(s => s.title)).toEqual([
       'General',
       'Slash commands',
       'Keys',
       'Reviews',
       'Live details',
+      'Updates',
     ])
     expect(SECTION_TITLES.keys).toBe('Keys')
   })
@@ -114,6 +116,12 @@ describe('the index of all sections', () => {
     })
     expect(index[3].rows.map(r => r.id)).toEqual(Object.values(REVIEWS_ROWS))
     expect(index[4].rows).toEqual([{ id: 'live', text: 'Live details Off. Turn on Remove' }])
+    expect(index[5].rows).toEqual([{ id: UPDATES_ROWS.auto, text: UPDATES_ROWS.auto }])
+  })
+
+  it('finds the Updates switch with the word updates', () => {
+    const hits = searchSettings('updates', index)
+    expect(hits?.find(hit => hit.id === 'updates')?.whole).toBe(true)
   })
 
   it('finds Show team requests in Reviews with the word team', () => {
