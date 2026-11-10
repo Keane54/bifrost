@@ -327,6 +327,16 @@ describe('LiveProvider wiring', () => {
     expect(CONTEXT).toContain('versionFailed: () => versionFailedNow.current')
   })
 
+  it('drops a mount read or a re-read that ends after a call with the lock starts', () => {
+    const unlocked = between('const readUnlocked = useCallback(', '}, [])')
+    expect(unlocked).toContain('const calls = lockedCalls.current')
+    expect(unlocked).toContain('if (mounted.current && lockedCalls.current === calls) setStatus(')
+    const mount = between('// Load the status and the version one time at mount.', 'return () =>')
+    expect(mount).toContain('readUnlocked()')
+    expect(mount).not.toContain('loadStatus()')
+    expect(CONTEXT).toContain('readStatus: readUnlocked,')
+  })
+
   it('gives the end of the mount read, a refresh and an action read to the retry', () => {
     const mount = between('// Load the status and the version one time at mount.', 'return () =>')
     expect(mount).toContain('retry.readEnded()')

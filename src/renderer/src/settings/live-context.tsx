@@ -56,7 +56,8 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
   const [changed, setChanged] = useState(false)
   // The ref stops a second call before the next render shows busy.
   const running = useRef(false)
-  // The number of calls with the lock. A re-read drops its answer when a call starts during it.
+  // The number of calls with the lock. A read without the lock drops its answer when a call with
+  // the lock starts during it.
   const lockedCalls = useRef(0)
   // Copies of version and versionFailed for the re-read.
   const versionNow = useRef<ClaudeVersion | null>(null)
@@ -80,18 +81,20 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
     }
   }, [])
 
-  // The re-read while a warning shows. It does not lock, so the buttons do not show busy. An
-  // action or a refresh that starts during the read gives a newer status. Then the read drops its
-  // answer.
+  // Read the status without the lock: the mount read and the re-read while a warning shows. The
+  // buttons then do not show busy. An action or a refresh that starts during the read gives a
+  // newer status. Then the read drops its answer.
+  const readUnlocked = useCallback(async (): Promise<void> => {
+    const calls = lockedCalls.current
+    const next = await loadStatus()
+    if (mounted.current && lockedCalls.current === calls) setStatus(next)
+  }, [])
+
   const [retry] = useState(() =>
     createLiveRetry({
       busy: () => running.current,
       clock: PAGE_CLOCK,
-      async readStatus() {
-        const calls = lockedCalls.current
-        const next = await loadStatus()
-        if (mounted.current && lockedCalls.current === calls) setStatus(next)
-      },
+      readStatus: readUnlocked,
       readVersion,
       version: () => versionNow.current,
       versionFailed: () => versionFailedNow.current,
@@ -101,15 +104,12 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
   // Load the status and the version one time at mount.
   useEffect(() => {
     mounted.current = true
-    loadStatus().then(next => {
-      retry.readEnded()
-      if (mounted.current) setStatus(next)
-    })
+    void readUnlocked().then(() => retry.readEnded())
     void readVersion()
     return () => {
       mounted.current = false
     }
-  }, [readVersion, retry])
+  }, [readUnlocked, readVersion, retry])
 
   const warning = hasWarning(status, version, versionFailed)
 
