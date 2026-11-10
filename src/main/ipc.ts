@@ -1,5 +1,5 @@
 import { access, mkdir, rm, stat, statfs, writeFile } from 'node:fs/promises'
-import { cpus, homedir } from 'node:os'
+import { cpus, homedir, hostname } from 'node:os'
 import { join, resolve } from 'node:path'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 import {
@@ -74,6 +74,7 @@ import { createHealthLog, type HealthLog } from './performance/health-log'
 import { createPerformanceMonitor, type PerformanceMonitor } from './performance/monitor'
 import { checkChatOpen, REFUSED_NOT_CHAT } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
+import { openLink } from './pty/open-link'
 import { PageScope } from './pty/page-scope'
 import { PtyManager } from './pty/pty-manager'
 import { chatSessionOf, readSessionSize, SessionSizeWatcher } from './pty/session-size'
@@ -1007,6 +1008,18 @@ export function registerIpc(home: TestHome | null = null): void {
     const manager = await getManager()
     return manager ? manager.write(viewId, data) : false
   })
+  // A click on a link of a chat window opens the link outside Bifrost (main/pty/open-link.ts).
+  ipcMain.handle('pty:open-link', (e, uri: unknown) =>
+    fromPage(e, () =>
+      openLink(uri, {
+        hostname,
+        openExternal: url => shell.openExternal(url),
+        openPath: path => shell.openPath(path),
+        showItemInFolder: path => shell.showItemInFolder(path),
+        stat,
+      }),
+    ),
+  )
   ipcMain.handle('pty:resize', async (_e, viewId: unknown, cols: number, rows: number) => {
     if (!isChatView(viewId)) return
     ;(await getManager())?.resize(viewId, cols, rows)

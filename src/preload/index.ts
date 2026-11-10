@@ -75,6 +75,7 @@ const api: BifrostApi = {
     onExit: cb => subscribe('pty:exit', cb),
     onSize: cb => subscribe('pty:size', cb),
     open: (viewId, args, opts) => invoke('pty:open', viewId, args, opts),
+    openLink: uri => invoke('pty:open-link', uri),
     resize: (viewId, cols, rows) => invoke('pty:resize', viewId, cols, rows),
     sessionSize: sessionId => invoke('pty:session-size', sessionId),
     setBlocked: (viewId, blocked) => invoke('pty:set-blocked', viewId, blocked),

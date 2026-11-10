@@ -146,7 +146,13 @@ export class ChatTerminal {
     // the scroll bar has the Bifrost colours (spec 8.5).
     const style = getComputedStyle(document.documentElement)
     const theme = terminalTheme(name => style.getPropertyValue(name))
-    this.term = new Terminal(terminalOptions(font, theme))
+    // A click on a link opens it outside Bifrost (main/pty/open-link.ts).
+    const openLink = (uri: string): void => {
+      deps.pty
+        .openLink(uri)
+        .catch(err => console.warn(`Bifrost could not open the link: ${errorMessage(err)}`))
+    }
+    this.term = new Terminal(terminalOptions(font, theme, openLink))
     this.term.loadAddon(this.fit)
     this.term.open(this.host)
     // The keys and the xterm.js replies go to the PTY.

@@ -9,6 +9,7 @@ import {
 
 const CSS = readFileSync(join(__dirname, '../../../src/renderer/src/styles/app.css'), 'utf8')
 const FONT = { family: 'SF Mono', size: 13 }
+const NO_LINK = (): void => {}
 // The values of the tokens, as getComputedStyle gives them.
 const CLEAR = '#00000000'
 const SLIDER = '#ffffff66'
@@ -24,13 +25,13 @@ const VALUES: Record<string, string> = {
 describe('terminalOptions', () => {
   // User decision, 2026-11-06: the frame colour and its blur show through the chat terminal.
   it('gives a transparent background that the WebGL renderer also draws', () => {
-    const options = terminalOptions(FONT, { background: CLEAR })
+    const options = terminalOptions(FONT, { background: CLEAR }, NO_LINK)
     expect(options.allowTransparency).toBe(true)
     expect(options.theme).toEqual({ background: CLEAR })
   })
 
   it('keeps the font, the option-click selection and the scrollback', () => {
-    expect(terminalOptions(FONT, { background: CLEAR })).toMatchObject({
+    expect(terminalOptions(FONT, { background: CLEAR }, NO_LINK)).toMatchObject({
       fontFamily: '"SF Mono", ui-monospace, Menlo, monospace',
       fontSize: 13,
       macOptionClickForcesSelection: true,
@@ -43,6 +44,7 @@ describe('terminalOptions', () => {
     const theme = terminalOptions(
       FONT,
       terminalTheme(name => VALUES[name] ?? ''),
+      NO_LINK,
     ).theme
     expect(theme).toEqual({
       background: CLEAR,
@@ -50,6 +52,17 @@ describe('terminalOptions', () => {
       scrollbarSliderBackground: SLIDER,
       scrollbarSliderHoverBackground: SLIDER_HOVER,
     })
+  })
+  // User decision, 2026-11-10: a link in a chat window opens outside Bifrost, with no dialog of
+  // xterm.js. Web links and file links both work, so xterm.js must keep the non-http links.
+  it('sends each link to the open function, also a file link', () => {
+    const opened: string[] = []
+    const options = terminalOptions(FONT, { background: CLEAR }, uri => opened.push(uri))
+    expect(options.linkHandler?.allowNonHttpProtocols).toBe(true)
+    const range = { end: { x: 1, y: 1 }, start: { x: 1, y: 1 } }
+    options.linkHandler?.activate({} as MouseEvent, 'file:///tmp/a.ts', range)
+    options.linkHandler?.activate({} as MouseEvent, 'https://example.com/', range)
+    expect(opened).toEqual(['file:///tmp/a.ts', 'https://example.com/'])
   })
 })
 

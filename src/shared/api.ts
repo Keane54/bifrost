@@ -263,5 +263,8 @@ export interface BifrostApi {
     // Tell the main process that the chat window shows the agent view (true) or not (false).
     // While a chat window shows the agent view, input.send to that session rejects.
     setBlocked(viewId: string, blocked: boolean): Promise<void>
+    // Open a link of a chat window outside Bifrost: a web link in the default browser, a file
+    // link in its default app. The main process refuses other links (main/pty/open-link.ts).
+    openLink(uri: string): Promise<void>
   }
 }

@@ -28,11 +28,19 @@ export function terminalTheme(read: (name: string) => string): ITheme {
 // allowTransparency makes the WebGL renderer draw the glyphs on a transparent background. The DOM
 // renderer uses the theme background for its viewport. So both renderers show the frame colour,
 // also after a WebGL context loss.
-export function terminalOptions(font: TerminalFont, theme: ITheme): ITerminalOptions {
+// openLink gets each link that the user clicks (user decision, 2026-11-10). Without a link
+// handler, xterm.js asks "Do you want to navigate to ...?" and opens a window that Bifrost
+// refuses. allowNonHttpProtocols keeps the file links, which xterm.js drops by default.
+export function terminalOptions(
+  font: TerminalFont,
+  theme: ITheme,
+  openLink: (uri: string) => void,
+): ITerminalOptions {
   return {
     allowTransparency: true,
     fontFamily: cssFontFamily(font),
     fontSize: font.size,
+    linkHandler: { activate: (_event, uri) => openLink(uri), allowNonHttpProtocols: true },
     macOptionClickForcesSelection: true,
     scrollback: 5000,
     theme,
