@@ -73,7 +73,7 @@
   /* The strengths of the animated background (.background, spec 8.10). The background stays dark.
      --background-glow: the alpha of each icon colour at the centre of its field.
      --background-base: the alpha of the icon colours of the base layer under the fields.
-     --background-noise: the opacity of the fixed fine noise on top. It hides colour bands. */
+     --background-noise: the opacity of the fixed fine noise on top. It gives a light grain. */
   --background-glow: 15%;
   --background-base: 9%;
   --background-noise: 0.02;
@@ -231,15 +231,16 @@
        slowly.
      - Six colour fields, each larger than the window. They drift, scale and turn, and they
        overlap with plain alpha, so their colours merge.
-     - A fixed, very fine noise (::after). It hides the bands of 8-bit colour (dither).
+     - A fixed, very fine noise (::after). It gives a light grain.
      Each layer has its own cycle. The cycles have no small common factor, so the pattern does not
      repeat in a way that a person sees. The layers move mostly to the side and only a little up
      and down, so no field rises or sinks. Only transform and opacity change, so the compositor
      moves the layers. The soft edges come from the gradient stops, not from a blur.
      User decision, 2026-11-10: the base and each field is a canvas. Background.tsx draws each
-     canvas one time, at a part of the device pixels of its box, and CSS scales it up to the box.
-     So the GPU keeps seven small images, not large tiles. Background.tsx also holds the CSS
-     animations and sets their time 30 times each second. */
+     canvas at a part of the device pixels of its box, and CSS scales it up to the box. So the GPU
+     keeps seven small images, not large tiles. After a change of size, Background.tsx paints each
+     canvas again with a fine dither, so the gradients show no bands of 8-bit colour.
+     Background.tsx also holds the CSS animations and sets their time 30 times each second. */
   .background {
     position: fixed;
     inset: 0;
