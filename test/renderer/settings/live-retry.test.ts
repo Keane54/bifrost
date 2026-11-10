@@ -217,7 +217,7 @@ describe('LiveProvider wiring', () => {
     expect(CONTEXT).toMatch(/retry\.warn\(warning\)\s+return \(\) => retry\.warn\(false\)/)
   })
 
-  it('reads at the window focus, in the same way as the other focus listeners', () => {
+  it('reads again at a window focus', () => {
     expect(CONTEXT).toContain("window.addEventListener('focus', onFocus)")
     expect(CONTEXT).toContain("window.removeEventListener('focus', onFocus)")
   })
