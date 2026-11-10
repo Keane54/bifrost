@@ -13,11 +13,11 @@ import {
 
 const BADGE_LEFT = 180
 const BADGE_TOP = 180
-const BADGE_RADIUS = 56
+const BADGE_RADIUS = 50.4
 // The space between the ink of the word and each edge of the badge.
-const PADDING = 44
+const PADDING = 39.6
 // Pixels for each font unit. The word is 3 advances wide.
-const SCALE = 0.17
+const SCALE = 0.153
 const BADGE_COLOUR = [14, 14, 18]
 const TEXT_COLOUR = [255, 255, 255]
 
