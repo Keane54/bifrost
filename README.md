@@ -70,27 +70,7 @@ The side bar on the left edge has one button for each panel. It also holds the p
 
 ## Install
 
-1. Open the [latest release](https://github.com/TheKeyholdingCompany/bifrost/releases/latest).
-2. Download the file `Bifrost-<version>-arm64.dmg`.
-3. Open the DMG.
-4. Drag Bifrost into the Applications folder.
-
-The DMG has no Apple signature and no notarization. So macOS stops the first start of Bifrost. Do the steps that follow one time only.
-
-On macOS 15 or later:
-
-1. Open Bifrost. macOS shows a message.
-2. Close the message.
-3. In System Settings, open Privacy & Security.
-4. In the Security section, click Open Anyway.
-5. Enter your password if macOS asks for it.
-
-On macOS 14 or earlier:
-
-1. Open the Applications folder.
-2. Right-click Bifrost.
-3. Click Open.
-4. In the dialog, click Open.
+--pending--
 
 ## Development
 
