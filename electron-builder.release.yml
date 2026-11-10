@@ -12,11 +12,12 @@ mac:
   identity: The Keyholding Company Limited (2GUX23RPKA)
   hardenedRuntime: true
   notarize: true
-# electron-builder writes latest-mac.yml and app-update.yml from this block. semantic-release
-# uploads the files, because the scripts pass no --publish always. Local builds have no publish
-# block, so they have no app-update.yml and the updater does not start.
+# electron-builder writes latest-mac.yml and app-update.yml from this block. The dist:release
+# script passes --publish never, so electron-builder uploads nothing. semantic-release uploads the
+# files. Local builds have no publish block. So they have no app-update.yml, and the updater does
+# not start.
 publish:
   provider: github
-  owner: TheKeyholdingCompany
+  owner: Keane54
   repo: bifrost
   releaseType: release

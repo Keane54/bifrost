@@ -4,9 +4,14 @@
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
+import { feedSha512, namesRepo } from './release/feed.ts'
 
 const APP = 'dist/mac-arm64/Bifrost.app'
 const TEAM_ID = '2GUX23RPKA'
+// The repo of the releases. UPDATE_OWNER and UPDATE_REPO in src/main/updates/updater.ts have the
+// same values. A unit test compares them.
+const OWNER = 'Keane54'
+const REPO = 'bifrost'
 const DIST = 'dist'
 
 // Run a command and return its result. codesign and spctl write their result to stderr, so the
@@ -79,7 +84,7 @@ const appUpdatePath = `${APP}/Contents/Resources/app-update.yml`
 const appUpdate = existsSync(appUpdatePath) ? readFileSync(appUpdatePath, 'utf8') : ''
 check(
   'app-update.yml names the repository',
-  /^owner: TheKeyholdingCompany$/m.test(appUpdate) && /^repo: bifrost$/m.test(appUpdate),
+  namesRepo(appUpdate, OWNER, REPO),
   appUpdate || `${appUpdatePath} does not exist.`,
 )
 
@@ -93,15 +98,15 @@ check(
 
 // The feed lists each file with its url and its sha512 as base64. The sha512 must match the ZIP.
 const sha512 = zipExists ? createHash('sha512').update(readFileSync(zipPath)).digest('base64') : ''
-const feedLines = feed.split('\n').map(line => line.trim())
-const urlIndex = feedLines.findIndex(
-  line => line === `- url: ${zipName}` || line === `url: ${zipName}`,
-)
-const feedSha = urlIndex >= 0 ? feedLines[urlIndex + 1] : ''
+const feedSha = feedSha512(feed, zipName)
+const shaDetail = [
+  `Expected sha512: ${sha512 || '(no ZIP)'}`,
+  `Found sha512: ${feedSha ?? `(no files entry of ${zipName} with a sha512)`}`,
+].join('\n')
 check(
   'latest-mac.yml has the SHA-512 of the update ZIP',
-  zipExists && feedSha === `sha512: ${sha512}`,
-  `The files entry of ${zipName} is missing or has a different sha512.`,
+  zipExists && feedSha === sha512,
+  shaDetail,
 )
 
 if (failures.length > 0) {

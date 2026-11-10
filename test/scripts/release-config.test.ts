@@ -1,9 +1,16 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { UPDATE_OWNER, UPDATE_REPO } from '../../src/main/updates/updater'
 
 const ROOT = join(__dirname, '../..')
 const read = (file: string): string => readFileSync(join(ROOT, file), 'utf8')
+
+// The value of a "key: value" line of the publish block of the release config.
+function publishValue(key: string): string | undefined {
+  const block = read('electron-builder.release.yml').split(/^publish:$/m)[1] ?? ''
+  return new RegExp(`^\\s+${key}: (\\S+)$`, 'm').exec(block)?.[1]
+}
 
 const ASSET_PATHS = [
   'dist/Bifrost-arm64.dmg',
@@ -24,11 +31,21 @@ describe('the release build config', () => {
     expect(read('electron-builder.yml')).toMatch(/^publish: null$/m)
   })
 
-  it('sets the GitHub publish provider only in the release config', () => {
-    const text = read('electron-builder.release.yml')
-    expect(text).toMatch(/provider: github/)
-    expect(text).toMatch(/owner: TheKeyholdingCompany/)
-    expect(text).toMatch(/repo: bifrost/)
+  it('sets the GitHub publish provider in the release config, and not in the local config', () => {
+    expect(publishValue('provider')).toBe('github')
+    expect(read('electron-builder.yml')).not.toMatch(/provider:/)
+  })
+
+  it('publishes to the repo that the updater reads, so the two cannot differ', () => {
+    expect(publishValue('owner')).toBe(UPDATE_OWNER)
+    expect(publishValue('repo')).toBe(UPDATE_REPO)
+  })
+
+  it('makes verify:release expect the repo that the updater reads in app-update.yml', () => {
+    const script = read('scripts/verify-release.ts')
+    expect(script).toContain(`const OWNER = '${UPDATE_OWNER}'`)
+    expect(script).toContain(`const REPO = '${UPDATE_REPO}'`)
+    expect(script).toContain('namesRepo(appUpdate, OWNER, REPO)')
   })
 
   it('passes --publish never in the dist:release script', () => {
@@ -47,8 +64,9 @@ describe('the release build config', () => {
 
   it('uploads the same four files in the dry run', () => {
     const text = read('.github/workflows/release.yml')
-    const step = text.split('- name: Upload the dry run DMG')[1]
+    const step = text.split('- name: Upload the dry run files')[1]
     expect(step).toBeDefined()
+    expect(step).toMatch(/^\s+name: bifrost-dry-run$/m)
     const block = step.match(/path: \|\n((?:\s+\S.*\n)+?)\s+retention-days/)
     expect(block).not.toBeNull()
     const lines = (block?.[1] ?? '')

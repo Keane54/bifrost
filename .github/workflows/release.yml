@@ -8,8 +8,9 @@ on:
     inputs:
       mode:
         description: >-
-          release: publish the next version with a signed DMG. dry-run: build, sign and notarise
-          a DMG and keep it as a download, with no tag and no release.
+          release: publish the next version with a signed DMG and the update files. dry-run:
+          build, sign and notarise the DMG and the update files, and keep them as a download,
+          with no tag and no release.
         type: choice
         options:
           - release
@@ -107,7 +108,8 @@ jobs:
     environment: release
 
     # contents: write lets semantic-release push the tag, make the GitHub release and attach the
-    # DMG. The github plugin makes no comments and no labels (.releaserc.json).
+    # DMG and the update files. The github plugin makes no comments and no labels
+    # (.releaserc.json).
     permissions:
       contents: write
 
@@ -179,7 +181,7 @@ jobs:
 
       # The exec plugin sets the version in package.json, runs "pnpm dist:release" (signed and
       # notarised) and "pnpm verify:release". Only then does the github plugin publish the tag,
-      # the release and the DMG. No commit goes back to main.
+      # the release, the DMG and the update files. No commit goes back to main.
       - name: Release
         if: inputs.mode == 'release'
         run: pnpm exec semantic-release
@@ -201,11 +203,11 @@ jobs:
           pnpm dist:release
           pnpm verify:release
 
-      - name: Upload the dry run DMG
+      - name: Upload the dry run files
         if: inputs.mode == 'dry-run'
         uses: actions/upload-artifact@v7
         with:
-          name: bifrost-dry-run-dmg
+          name: bifrost-dry-run
           path: |
             dist/Bifrost-arm64.dmg
             dist/Bifrost-*-arm64-mac.zip
