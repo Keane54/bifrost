@@ -1,6 +1,7 @@
-import { access, mkdir, rm, stat, statfs, writeFile } from 'node:fs/promises'
+import { constants, existsSync } from 'node:fs'
+import { access, appendFile, mkdir, rename, rm, stat, statfs, writeFile } from 'node:fs/promises'
 import { cpus, homedir, hostname } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 import {
   app,
@@ -16,11 +17,13 @@ import {
   shell,
   type WebContents,
 } from 'electron'
+import electronUpdater from 'electron-updater'
 import { checkAliasRequest } from '../shared/alias'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
+import { EMPTY_UPDATES, type UpdatesSnapshot } from '../shared/updates'
 import { CHAT_VIEW } from '../shared/view-id'
 import { isWatchColour } from '../shared/watch'
 import { type AccountUsagePoller, createAccountUsagePoller } from './account-usage/poller'
@@ -100,6 +103,10 @@ import { createKeyRecording, resetOnPageEnd } from './settings/key-recording'
 import { openSettingsStore, type SettingsStore } from './store/settings-store'
 import { openUiStore } from './store/ui-store'
 import { findOnPath, pluginEnv, type TestHome } from './test-home'
+import { appBundlePath } from './updates/rules'
+import { openUpdateStateStore } from './updates/state-store'
+import { createUpdateLog, type UpdateLog } from './updates/update-log'
+import { createUpdater, type Updater } from './updates/updater'
 import type { ModeController } from './window/display-mode'
 import { isDisplayMode } from './window/window-state'
 
@@ -178,6 +185,10 @@ let perfMonitor: PerformanceMonitor | null = null
 // The main process delay. registerIpc enables its histogram. stopRegistry clears its timer and
 // disables it.
 let loopDelay: LoopDelay | null = null
+// The updater and its log (updater design). registerIpc makes them only in a release build, after
+// the settings store opens. stopRegistry stops the updater.
+let updater: Updater | null = null
+let updateLog: UpdateLog | null = null
 
 // A click on a review request notification while no page is loaded waits for the next page, as
 // pendingOpen does for a session. PendingOpen keeps one ID. The Reviews open needs no ID, so it
@@ -297,6 +308,9 @@ function runSettingsEffect(effect: SettingsEffect): void {
     case 'reviews-poll':
       reviewsWatcher?.reschedule()
       return
+    case 'updates':
+      updater?.setAuto(effect.on)
+      return
   }
 }
 
@@ -383,6 +397,80 @@ async function startReviews(
   // The app can quit before the state opens. Then do not start the watcher.
   if (!serviceStopped && settings.get().reviewsWatch) watcher.start()
   return watcher
+}
+
+// True when Bifrost can write to the folder. An error gives false.
+function canWriteFolder(folder: string): Promise<boolean> {
+  return access(folder, constants.W_OK).then(
+    () => true,
+    () => false,
+  )
+}
+
+// Send a new update state to the page. The updater sends from engine events and timers. So a
+// failed send must not throw, for example while the window closes.
+function sendUpdates(snapshot: UpdatesSnapshot): void {
+  try {
+    send('updates:update', snapshot)
+  } catch (err) {
+    console.error('Bifrost cannot send the update state to the window.', err)
+  }
+}
+
+// Make the updater and start it (updater design sections 4 and 5). Only a release build calls
+// this function. The updater starts after the settings store and its state file open. Its check
+// timers start only when "Check for updates automatically" is on.
+async function startUpdater(
+  settingsReady: Promise<SettingsStore>,
+  health: HealthLog,
+): Promise<void> {
+  const log = createUpdateLog(app.getPath('logs'), {
+    appendFile,
+    mkdir,
+    now: () => Date.now(),
+    rename,
+    stat,
+  })
+  const [store, settings] = await Promise.all([
+    openUpdateStateStore(join(app.getPath('userData'), 'updates.json')),
+    settingsReady,
+  ])
+  // The app can quit before the files open. Then make no updater.
+  if (serviceStopped) return
+  // electron-updater is CommonJS, so it has only a default import. The read of autoUpdater makes
+  // the Squirrel.Mac updater. So only this function reads it.
+  const { autoUpdater } = electronUpdater
+  // The updater writes its own log. electron-updater must not write to the console.
+  autoUpdater.logger = null
+  const service = createUpdater({
+    appPath: appBundlePath(app.getPath('exe')),
+    canWrite: canWriteFolder,
+    clearInterval,
+    clearTimeout,
+    emit: sendUpdates,
+    engine: autoUpdater,
+    focused: () =>
+      currentWindow !== null && !currentWindow.isDestroyed() && currentWindow.isFocused(),
+    health,
+    log,
+    notify: (title, body, onClick) =>
+      showNotification(
+        { body, label: 'update', sessionId: null, title },
+        () => onClick(),
+        logRefusedNotification,
+      ),
+    now: () => Date.now(),
+    online: () => net.isOnline(),
+    setInterval,
+    setTimeout,
+    settings: () => settings.get(),
+    showWindow: () => showWindowFn?.(),
+    store,
+    version: app.getVersion(),
+  })
+  updater = service
+  updateLog = log
+  service.start()
 }
 
 // The thermal state of macOS, or null when Electron cannot read it.
@@ -619,6 +707,18 @@ export function registerIpc(home: TestHome | null = null): void {
   const gh = createGh({ env: async () => childEnv(await loginEnv, { pty: false }), exec: execFile })
   const reviews = startReviews(paths.bifrostHome, gh, settings, health)
   startPerformance(home, paths.bifrostHome, gh, health)
+  // The updater runs only in a release build: packaged, with the real home, and with the
+  // app-update.yml file of the release config. So pnpm dev, a test home and a local build never
+  // check for updates.
+  if (
+    app.isPackaged &&
+    home === null &&
+    existsSync(join(process.resourcesPath, 'app-update.yml'))
+  ) {
+    startUpdater(settings, health).catch(err =>
+      console.error('Bifrost cannot start the updater.', err),
+    )
+  }
   ipcMain.handle('settings:get', e => fromPage(e, async () => (await settings).get()))
   // The key recorder starts or ends. A value that is not a boolean is refused.
   ipcMain.handle('settings:recording', (e, on: unknown) =>
@@ -691,6 +791,37 @@ export function registerIpc(home: TestHome | null = null): void {
   )
   ipcMain.handle('reviews:open-pr', (e, key: unknown) =>
     fromPage(e, async () => shell.openExternal(urlToOpen(await reviews, key))),
+  )
+  // The updater (updater design). With no updater, the snapshot has available false, and the other
+  // calls do nothing.
+  ipcMain.handle('updates:snapshot', e =>
+    fromPage(
+      e,
+      async () =>
+        updater?.snapshot() ?? { ...EMPTY_UPDATES, available: false, version: app.getVersion() },
+    ),
+  )
+  // The check continues after the reply. Its states come through updates:update.
+  ipcMain.handle('updates:check', e =>
+    fromPage(e, async () => {
+      void updater?.checkNow()
+    }),
+  )
+  ipcMain.handle('updates:restart', e =>
+    fromPage(e, async () => {
+      updater?.restart()
+    }),
+  )
+  ipcMain.handle('updates:show-log', e =>
+    fromPage(e, async () => {
+      const log = updateLog
+      if (log === null) return
+      // The log file does not exist before the first log line. Make it, so the open finds a file.
+      await mkdir(dirname(log.path), { recursive: true })
+      await appendFile(log.path, '')
+      const error = await shell.openPath(log.path)
+      if (error) console.error(`Bifrost cannot open the update log. ${error}`)
+    }),
   )
   ipcMain.handle('registry:set-alias', (e, sessionId: unknown, name: unknown) =>
     fromPage(e, async () => {
@@ -1113,8 +1244,8 @@ export function closeAllPtys(): void {
   endPage()
 }
 
-// Stop the registry service, the server of Live details, the pollers, the Performance monitor and
-// its delay histogram. Call it when the app quits.
+// Stop the registry service, the server of Live details, the pollers, the updater, the Performance
+// monitor and its delay histogram. Call it when the app quits.
 export function stopRegistry(): void {
   serviceStopped = true
   liveService?.stop()
@@ -1123,6 +1254,7 @@ export function stopRegistry(): void {
   serviceMonitor?.stop()
   accountUsage?.stop()
   reviewsWatcher?.stop()
+  updater?.stop()
   perfMonitor?.stop()
   loopDelay?.stop()
 }

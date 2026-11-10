@@ -1,4 +1,5 @@
 // Pure rules for the updater. This file has no Electron import.
+import { dirname } from 'node:path'
 import type { UpdateCause } from '../../shared/updates'
 
 export const CHECK_DELAY_MS = 10_000
@@ -49,4 +50,13 @@ export function locationProblem(appPath: string, canWrite: boolean): boolean {
   if (appPath.startsWith('/Volumes/')) return true
   if (appPath.includes('/AppTranslocation/')) return true
   return !canWrite
+}
+
+// The .app folder that holds the executable: the nearest folder above it with a name that ends in
+// .app. With no such folder, the result is the path itself.
+export function appBundlePath(exe: string): string {
+  for (let dir = dirname(exe); dir !== dirname(dir); dir = dirname(dir)) {
+    if (dir.endsWith('.app')) return dir
+  }
+  return exe
 }

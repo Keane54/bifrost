@@ -49,6 +49,9 @@ export interface Settings {
   interfaceScale: number
   // The colour fields of the background move slowly. false pauses them (spec 8.10).
   animatedBackground: boolean
+  // Check for updates automatically (updater design). The default is on. Off stops all checks and
+  // downloads. "Check for updates" still checks one time.
+  autoUpdate: boolean
   slashCommands: string[]
   // Watch GitHub for the review requests and the PRs of the user (Reviews). Off by default.
   reviewsWatch: boolean
@@ -110,6 +113,7 @@ export const MAX_REVIEWS_IGNORE = 50
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   accountUsage: false,
   animatedBackground: true,
+  autoUpdate: true,
   escalationMinutes: 10,
   interfaceScale: 100,
   keys: {},
@@ -193,6 +197,7 @@ type SimpleKey = Exclude<SettingKey, 'keys' | 'reviewsIgnore' | 'slashCommands' 
 const SIMPLE_CHECKS: Readonly<Record<SimpleKey, Check>> = {
   accountUsage: isBoolean,
   animatedBackground: isBoolean,
+  autoUpdate: isBoolean,
   escalationMinutes: onStep(0, MAX_ESCALATION_MINUTES),
   interfaceScale: onStep(INTERFACE_SCALE_MIN, INTERFACE_SCALE_MAX, INTERFACE_SCALE_STEP),
   labels: oneOf(['plain', 'space']),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  appBundlePath,
   CHECK_DELAY_MS,
   CHECK_INTERVAL_MS,
   classifyError,
@@ -103,5 +104,24 @@ describe('locationProblem', () => {
   it('is false for a normal install', () => {
     expect(locationProblem('/Applications/Bifrost.app', true)).toBe(false)
     expect(locationProblem('/Users/dev-user/Applications/Bifrost.app', true)).toBe(false)
+  })
+})
+
+describe('appBundlePath', () => {
+  it('gives the .app folder that holds the executable', () => {
+    expect(appBundlePath('/Applications/Bifrost.app/Contents/MacOS/Bifrost')).toBe(
+      '/Applications/Bifrost.app',
+    )
+    expect(appBundlePath('/Volumes/Bifrost/Bifrost.app/Contents/MacOS/Bifrost')).toBe(
+      '/Volumes/Bifrost/Bifrost.app',
+    )
+  })
+  it('gives the nearest .app folder above the executable', () => {
+    expect(appBundlePath('/Users/x/Apps.app/Bifrost.app/Contents/MacOS/Bifrost')).toBe(
+      '/Users/x/Apps.app/Bifrost.app',
+    )
+  })
+  it('gives the path itself when no folder ends in .app', () => {
+    expect(appBundlePath('/usr/local/bin/bifrost')).toBe('/usr/local/bin/bifrost')
   })
 })

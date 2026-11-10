@@ -133,6 +133,13 @@ const api: BifrostApi = {
     load: () => invoke('ui:load'),
     save: data => invoke('ui:save', data),
   },
+  updates: {
+    check: () => invoke('updates:check'),
+    onUpdate: cb => subscribe('updates:update', cb),
+    restart: () => invoke('updates:restart'),
+    showLog: () => invoke('updates:show-log'),
+    snapshot: () => invoke('updates:snapshot'),
+  },
   usage: {
     get: () => invoke('usage:get'),
     getAccount: () => invoke('usage:account-get'),

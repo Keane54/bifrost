@@ -22,6 +22,7 @@ import type {
   WatchColour,
   WorktreeCheck,
 } from './types'
+import type { UpdatesSnapshot } from './updates'
 
 // The type of window.bifrost. The preload script implements it.
 // When a call fails in the main process, it rejects with an Error.
@@ -187,6 +188,21 @@ export interface BifrostApi {
     // The frame rate of the panel, once a second while it shows and the window has focus. This
     // rejects for a value that is not a finite number from 0 to 1000.
     fps(value: number): Promise<void>
+  }
+  // The updater (updater design). It runs only in a release build. In pnpm dev, in a test home and
+  // in a local build, the snapshot has available false, and the other calls do nothing.
+  updates: {
+    // The newest snapshot.
+    snapshot(): Promise<UpdatesSnapshot>
+    // The main process sends each new snapshot. The returned function removes only this listener.
+    onUpdate(cb: (s: UpdatesSnapshot) => void): () => void
+    // Check one time, also when the switch is off. This resolves at once. The new state comes
+    // through onUpdate.
+    check(): Promise<void>
+    // Install the ready update and restart Bifrost. This does nothing when no update is ready.
+    restart(): Promise<void>
+    // Open the update log in its default app (Console).
+    showLog(): Promise<void>
   }
   // Live details (D11). Each action resolves with the new status. It rejects with the message
   // of its failure. A switch calls install when plugin is not-installed, else enable or disable.

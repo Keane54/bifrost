@@ -39,6 +39,17 @@ describe('settingsEffects', () => {
     expect(settingsEffects(prev, { ...prev, accountUsage: false })).toEqual([])
   })
 
+  test('settingsEffects gives an updates effect when Check for updates automatically changes', () => {
+    const prev = base()
+    expect(settingsEffects(prev, { ...prev, autoUpdate: false })).toEqual([
+      { kind: 'updates', on: false },
+    ])
+    expect(settingsEffects({ ...prev, autoUpdate: false }, prev)).toEqual([
+      { kind: 'updates', on: true },
+    ])
+    expect(settingsEffects(prev, { ...prev, autoUpdate: true })).toEqual([])
+  })
+
   test('the Reviews settings give the Reviews effects', () => {
     const prev = base()
     expect(settingsEffects(prev, { ...prev, reviewsWatch: true })).toEqual([

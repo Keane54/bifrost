@@ -38,6 +38,7 @@ describe('parseSettings', () => {
     expect(DEFAULT_SETTINGS).toEqual({
       accountUsage: false,
       animatedBackground: true,
+      autoUpdate: true,
       escalationMinutes: 10,
       interfaceScale: 100,
       keys: {},
@@ -101,6 +102,13 @@ describe('parseSettings', () => {
       parseSettings({ animatedBackground: value, version: 1 }).animatedBackground
     expect([true, false].map(animated)).toEqual([true, false])
     expect([undefined, null, 'false', 0, 1].map(animated)).toEqual([true, true, true, true, true])
+  })
+
+  // Updater design: the switch "Check for updates automatically" is on by default.
+  test('parseSettings keeps a boolean autoUpdate and gives true for a bad value', () => {
+    const auto = (value: unknown) => parseSettings({ autoUpdate: value, version: 1 }).autoUpdate
+    expect([true, false].map(auto)).toEqual([true, false])
+    expect([undefined, null, 'false', 0, 1].map(auto)).toEqual([true, true, true, true, true])
   })
 
   test('parseSettings keeps escalation 0', () => {
@@ -283,6 +291,8 @@ describe('applyPatch', () => {
     expect(reasonOf(current, { accountUsage: true })).toBe('ok')
     expect(reasonOf(current, { animatedBackground: 'no' })).toBe('refused: bad animatedBackground')
     expect(reasonOf(current, { animatedBackground: false })).toBe('ok')
+    expect(reasonOf(current, { autoUpdate: 'off' })).toBe('refused: bad autoUpdate')
+    expect(reasonOf(current, { autoUpdate: false })).toBe('ok')
     expect(reasonOf(current, { terminalApp: 'finder' })).toBe('refused: bad terminalApp')
     expect(reasonOf(current, { panelTransparency: 7 })).toBe('refused: bad panelTransparency')
     expect(reasonOf(current, { interfaceScale: 160 })).toBe('refused: bad interfaceScale')
