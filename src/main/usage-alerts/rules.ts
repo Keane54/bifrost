@@ -58,6 +58,26 @@ export function dueAlerts(
   return alerts
 }
 
+// Follow the reset time of each kept period. A value in the same period with a later reset time
+// raises the kept value to that reset time. So small steps of the reset time cannot add up to more
+// than 15 minutes and make a new period. The percent does not matter here.
+export function followPeriods(
+  limits: RateLimits,
+  notified: NotifiedPeriods,
+  now: number,
+): NotifiedPeriods {
+  const next = { ...notified }
+  for (const limit of LIMITS) {
+    const window = limits[limit]
+    const kept = notified[limit]
+    if (!window || kept === null) continue
+    const { resetsAt } = window
+    if (!Number.isFinite(resetsAt) || resetsAt <= now) continue
+    if (resetsAt > kept && !isNewPeriod(resetsAt, kept)) next[limit] = resetsAt
+  }
+  return next
+}
+
 // The notified periods after the alerts show.
 export function afterAlerts(notified: NotifiedPeriods, alerts: UsageAlert[]): NotifiedPeriods {
   const next = { ...notified }

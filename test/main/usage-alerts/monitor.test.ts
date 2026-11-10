@@ -123,6 +123,37 @@ describe('createUsageAlertMonitor', () => {
     expect(t.store.get().fiveHour).toBe(next)
   })
 
+  test('a reset time that moves later in small steps stays in the same period', async () => {
+    const t = setup()
+    await settle()
+    t.monitor.session(snap(fiveAt(92)))
+    await settle()
+    expect(t.shown).toHaveLength(1)
+    t.monitor.session(snap(fiveAt(93, FIVE_RESET + 10 * MIN)))
+    await settle()
+    expect(t.store.get().fiveHour).toBe(FIVE_RESET + 10 * MIN)
+    // 16 minutes after the first reset time, but 6 minutes after the kept value.
+    t.monitor.session(snap(fiveAt(94, FIVE_RESET + 16 * MIN)))
+    await settle()
+    expect(t.shown).toHaveLength(1)
+    expect(t.store.get().fiveHour).toBe(FIVE_RESET + 16 * MIN)
+    // The same value again writes nothing new.
+    const writes = t.writes.length
+    t.monitor.session(snap(fiveAt(95, FIVE_RESET + 16 * MIN)))
+    await settle()
+    expect(t.writes).toHaveLength(writes)
+  })
+
+  test('the kept period follows a later reset time also with the setting off', async () => {
+    const memory = memoryStore({ fiveHour: FIVE_RESET, sevenDay: null })
+    const t = setup({ enabled: false, store: memory.store })
+    await settle()
+    t.monitor.session(snap(fiveAt(93, FIVE_RESET + 10 * MIN)))
+    await settle()
+    expect(t.shown).toEqual([])
+    expect(memory.store.get().fiveHour).toBe(FIVE_RESET + 10 * MIN)
+  })
+
   test('two quick values during the read of the flag notify one time', async () => {
     let release: (on: boolean) => void = () => {}
     const t = setup({ flag: () => new Promise<boolean>(resolve => (release = resolve)) })

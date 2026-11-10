@@ -2,7 +2,7 @@
 // account usage emit or a change of the session usage. It has no timer of its own.
 import type { AccountUsage, UsageSnapshot } from '../../shared/types'
 import { usageSource } from '../../shared/usage'
-import { afterAlerts, alertText, dueAlerts } from './rules'
+import { afterAlerts, alertText, dueAlerts, followPeriods, type NotifiedPeriods } from './rules'
 import type { UsageAlertStore } from './state-store'
 
 export interface UsageAlertDeps {
@@ -28,6 +28,10 @@ export interface UsageAlertMonitor {
   session(value: UsageSnapshot | null): void
 }
 
+function samePeriods(a: NotifiedPeriods, b: NotifiedPeriods): boolean {
+  return a.fiveHour === b.fiveHour && a.sevenDay === b.sevenDay
+}
+
 export function createUsageAlertMonitor(deps: UsageAlertDeps): UsageAlertMonitor {
   let account: AccountUsage | null = null
   let session: UsageSnapshot | null = null
@@ -50,14 +54,18 @@ export function createUsageAlertMonitor(deps: UsageAlertDeps): UsageAlertMonitor
     const now = deps.now()
     // The same choice as the Usage HUD: fresh account values, else the session values.
     const source = usageSource(session, now, account)
+    if (!source) return
+    const kept = store.get()
+    // The kept periods follow a later reset time in the same period, also with the setting off.
+    const followed = followPeriods(source.limits, kept, now)
     // With the setting off, the period stays open. So a notification can show after the user
     // turns the setting on, at the next new value in the same period.
-    if (!source || !deps.enabled()) return
-    const due = dueAlerts(source.limits, store.get(), now)
-    if (due.length === 0) return
+    const due = deps.enabled() ? dueAlerts(source.limits, followed, now) : []
     // Keep the periods before the read of the flag. So a new value during the read does not
-    // notify again.
-    void store.set(afterAlerts(store.get(), due))
+    // notify again. Write only a changed value.
+    const next = afterAlerts(followed, due)
+    if (!samePeriods(next, kept)) void store.set(next)
+    if (due.length === 0) return
     const fresh = source.kind === 'account' ? source.account.extraUsage : undefined
     extraUsage(fresh)
       .then(on => {

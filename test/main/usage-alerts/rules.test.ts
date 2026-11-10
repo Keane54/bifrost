@@ -4,6 +4,7 @@ import {
   alertText,
   dueAlerts,
   extraUsageOfClaudeJson,
+  followPeriods,
   isNewPeriod,
   NO_PERIODS,
   SAME_PERIOD_MS,
@@ -98,6 +99,35 @@ describe('dueAlerts', () => {
     }
     const notified = { fiveHour: FIVE_RESET, sevenDay: null }
     expect(dueAlerts(limits, notified, NOW).map(a => a.limit)).toEqual(['sevenDay'])
+  })
+})
+
+describe('followPeriods', () => {
+  const kept = { fiveHour: FIVE_RESET, sevenDay: null }
+
+  test('a later reset time in the same period raises the kept value', () => {
+    expect(followPeriods(five(95, FIVE_RESET + 10 * MIN), kept, NOW)).toEqual({
+      fiveHour: FIVE_RESET + 10 * MIN,
+      sevenDay: null,
+    })
+    expect(followPeriods(five(95, FIVE_RESET + 15 * MIN), kept, NOW).fiveHour).toBe(
+      FIVE_RESET + 15 * MIN,
+    )
+    // The percent does not matter, because the reset time tells the period.
+    expect(followPeriods(five(40, FIVE_RESET + MIN), kept, NOW).fiveHour).toBe(FIVE_RESET + MIN)
+  })
+
+  test('other values keep the kept value', () => {
+    // An earlier or equal reset time, and a new period.
+    expect(followPeriods(five(95, FIVE_RESET - MIN), kept, NOW)).toEqual(kept)
+    expect(followPeriods(five(95, FIVE_RESET), kept, NOW)).toEqual(kept)
+    expect(followPeriods(five(95, FIVE_RESET + 15 * MIN + 1), kept, NOW)).toEqual(kept)
+    // No kept value, no window, and a window that is not usable.
+    expect(followPeriods(five(95), NO_PERIODS, NOW)).toEqual(NO_PERIODS)
+    expect(followPeriods({}, kept, NOW)).toEqual(kept)
+    expect(followPeriods(five(95, Number.NaN), kept, NOW)).toEqual(kept)
+    const past = { fiveHour: NOW - 2 * HOUR, sevenDay: null }
+    expect(followPeriods(five(95, NOW - HOUR), past, NOW)).toEqual(past)
   })
 })
 
