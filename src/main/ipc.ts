@@ -23,6 +23,7 @@ import { checkAliasRequest } from '../shared/alias'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
+import { SKILLS_MARKETPLACE, SKILLS_PLUGIN_ID, type SkillsStatus } from '../shared/skills'
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
 import { EMPTY_UPDATES, type UpdatesSnapshot } from '../shared/updates'
 import { CHAT_VIEW } from '../shared/view-id'
@@ -102,6 +103,8 @@ import { createServiceMonitor, type ServiceMonitor, serviceList } from './servic
 import { checkService, createFetchJson, SERVICES } from './service-status/statuspage'
 import { loginItemPatch, type SettingsEffect, settingsEffects } from './settings/effects'
 import { createKeyRecording, resetOnPageEnd } from './settings/key-recording'
+import { createSkillsControl } from './skills/skills-control'
+import { skillsSourceDir } from './skills/skills-folder'
 import { openSettingsStore, type SettingsStore } from './store/settings-store'
 import { openUiStore } from './store/ui-store'
 import { findOnPath, pluginEnv, type TestHome } from './test-home'
@@ -1141,6 +1144,17 @@ export function registerIpc(home: TestHome | null = null): void {
     },
   })
   liveControl = live
+  // The skills plugin. It uses the same claude run and the same serial runner as Live details.
+  const skills = createSkillsControl({
+    cli: async () => {
+      const runClaude = await pluginRun
+      return runClaude
+        ? createPluginCli(runClaude, { marketplace: SKILLS_MARKETPLACE, plugin: SKILLS_PLUGIN_ID })
+        : null
+    },
+    dir: join(paths.bifrostHome, 'skills'),
+    source: skillsSourceDir(app.getAppPath()),
+  })
   // Nothing else cleans the data of the old hooks. Remove it one time at start, before the live
   // control starts. keepOldScripts decides if bin/ stays.
   // A failure never stops the start.
@@ -1162,6 +1176,7 @@ export function registerIpc(home: TestHome | null = null): void {
       if (serviceStopped) return
       await cleanOldHookData()
       if (!serviceStopped) await live.start()
+      if (!serviceStopped) await skills.start()
     })
     .catch(err => console.warn('Live details: the start failed.', err))
   const liveAction = (channel: string, fn: () => Promise<LiveStatus>): void => {
@@ -1176,6 +1191,15 @@ export function registerIpc(home: TestHome | null = null): void {
   liveAction('live:enable', () => live.enable())
   liveAction('live:disable', () => live.disable())
   liveAction('live:uninstall', () => live.uninstall())
+  // The skills actions use the same serial runner as Live details.
+  const skillsAction = (channel: string, fn: () => Promise<SkillsStatus>): void => {
+    ipcMain.handle(channel, e => fromPage(e, () => serial.run(fn)))
+  }
+  ipcMain.handle('skills:status', e => fromPage(e, () => serial.afterFirst(() => skills.status())))
+  skillsAction('skills:install', () => skills.install())
+  skillsAction('skills:enable', () => skills.enable())
+  skillsAction('skills:disable', () => skills.disable())
+  skillsAction('skills:uninstall', () => skills.uninstall())
   // The renderer can open, write, resize and close only chat views.
   // Only the main process uses send views (D1).
   const isChatView = (viewId: unknown): viewId is string =>

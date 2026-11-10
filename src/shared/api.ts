@@ -2,6 +2,7 @@ import type { DirInfo, NewSessionSpec } from './new-session'
 import type { PerformanceSnapshot } from './performance'
 import type { ReviewsSnapshot } from './reviews'
 import type { Settings, SettingsPatch } from './settings'
+import type { SkillsStatus } from './skills'
 import type {
   AccountUsage,
   ClaudeVersion,
@@ -229,6 +230,20 @@ export interface BifrostApi {
     // hook install. When Bifrost cannot read the settings file, it does the other steps and then
     // rejects.
     uninstall(): Promise<LiveStatus>
+  }
+  // The Bifrost skills plugin (spec 5). Each action resolves with the new status. It rejects
+  // with the message of its failure. A switch calls install when plugin is not-installed, else
+  // enable or disable.
+  skills: {
+    status(): Promise<SkillsStatus>
+    // Copy the skills folder, add the marketplace, install the plugin and turn it on. This
+    // rejects before any change when a marketplace bifrost-skills is at another path.
+    install(): Promise<SkillsStatus>
+    // Copy the skills folder again and turn the plugin on. This rejects when it is not installed.
+    enable(): Promise<SkillsStatus>
+    disable(): Promise<SkillsStatus>
+    // Remove the plugin, the marketplace of Bifrost and the skills folder.
+    uninstall(): Promise<SkillsStatus>
   }
   // The settings of spec 12. The main process keeps them in settings.json in userData (D1).
   settings: {

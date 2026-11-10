@@ -10,6 +10,12 @@ export const PLUGIN_TIMEOUT_MS = 30_000
 export const PLUGIN_GRACE_MS = 10_000
 export const TIMEOUT_MESSAGE = "Claude Code didn't finish in 30 seconds."
 
+export interface PluginIds {
+  plugin: string
+  marketplace: string
+}
+export const LIVE_PLUGIN: PluginIds = { marketplace: MARKETPLACE_NAME, plugin: PLUGIN_ID }
+
 export interface PluginEntry {
   enabled: boolean
   folder?: string
@@ -90,7 +96,7 @@ function readList(result: ExecResult, name: string): Record<string, unknown>[] {
 // A SIGKILL can leave it half done, so it gets SIGTERM (see execFile in claude/cli.ts).
 const WRITE_OPTS = { killSignal: 'SIGTERM', timeoutMs: PLUGIN_TIMEOUT_MS } as const
 
-export function createPluginCli(run: RunClaude): PluginCli {
+export function createPluginCli(run: RunClaude, ids: PluginIds = LIVE_PLUGIN): PluginCli {
   // The output of a command that the timeout stopped is not complete. So Bifrost does not use it.
   const exec = async (args: string[]): Promise<ExecResult> => {
     const result = await run(args, { timeoutMs: PLUGIN_TIMEOUT_MS })
@@ -123,12 +129,12 @@ export function createPluginCli(run: RunClaude): PluginCli {
       }
       await command(['plugin', 'marketplace', 'add', dir, ...scope])
     },
-    disable: () => command(['plugin', 'disable', PLUGIN_ID, ...scope]),
-    enable: () => command(['plugin', 'enable', PLUGIN_ID, ...scope]),
-    install: () => command(['plugin', 'install', PLUGIN_ID, ...scope]),
+    disable: () => command(['plugin', 'disable', ids.plugin, ...scope]),
+    enable: () => command(['plugin', 'enable', ids.plugin, ...scope]),
+    install: () => command(['plugin', 'install', ids.plugin, ...scope]),
     async marketplace() {
       const list = readList(await exec(['plugin', 'marketplace', 'list', '--json']), 'marketplace')
-      const entry = list.find(item => item.name === MARKETPLACE_NAME)
+      const entry = list.find(item => item.name === ids.marketplace)
       if (!entry) return null
       const result: MarketplaceEntry = {
         source: typeof entry.source === 'string' ? entry.source : '',
@@ -138,7 +144,7 @@ export function createPluginCli(run: RunClaude): PluginCli {
     },
     async plugin() {
       const list = readList(await exec(['plugin', 'list', '--json']), 'plugin')
-      const entry = list.find(item => item.id === PLUGIN_ID)
+      const entry = list.find(item => item.id === ids.plugin)
       if (!entry) return null
       const result: PluginEntry = {
         enabled: entry.enabled === true,
@@ -150,7 +156,7 @@ export function createPluginCli(run: RunClaude): PluginCli {
       return result
     },
     removeMarketplace: () =>
-      command(['plugin', 'marketplace', 'remove', MARKETPLACE_NAME, ...scope]),
-    uninstall: () => command(['plugin', 'uninstall', PLUGIN_ID, ...scope]),
+      command(['plugin', 'marketplace', 'remove', ids.marketplace, ...scope]),
+    uninstall: () => command(['plugin', 'uninstall', ids.plugin, ...scope]),
   }
 }

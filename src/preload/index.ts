@@ -127,6 +127,13 @@ const api: BifrostApi = {
     recording: on => invoke('settings:recording', on),
     set: patch => invoke('settings:set', patch),
   },
+  skills: {
+    disable: () => invoke('skills:disable'),
+    enable: () => invoke('skills:enable'),
+    install: () => invoke('skills:install'),
+    status: () => invoke('skills:status'),
+    uninstall: () => invoke('skills:uninstall'),
+  },
   system: {
     info: () => invoke('system:info'),
   },

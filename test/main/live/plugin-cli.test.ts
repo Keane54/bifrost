@@ -185,3 +185,51 @@ describe('checkCliResult', () => {
     expect(() => checkCliResult(ok)).toThrow('Claude Code gave no result.')
   })
 })
+
+describe('the skills IDs', () => {
+  const ids = { marketplace: 'bifrost-skills', plugin: 'bifrost@bifrost-skills' }
+  function skillsFake(stdout = '') {
+    const calls: Call[] = []
+    const run: RunClaude = async (args, opts) => {
+      calls.push({ args, opts })
+      return { code: 0, stderr: '', stdout }
+    }
+    return { calls, cli: createPluginCli(run, ids) }
+  }
+  test('install runs the plugin install command with the skills plugin ID', async () => {
+    const { calls, cli } = skillsFake('{"outcome":"ok"}')
+    await cli.install()
+    expect(calls[0].args).toEqual([
+      'plugin',
+      'install',
+      'bifrost@bifrost-skills',
+      '--scope',
+      'user',
+      '--json',
+    ])
+  })
+  test('marketplace finds bifrost-skills and not bifrost-local', async () => {
+    const list =
+      '[{"name":"bifrost-local","source":"directory","path":"/a"},' +
+      '{"name":"bifrost-skills","source":"directory","path":"/b"}]'
+    expect(await skillsFake(list).cli.marketplace()).toEqual({ path: '/b', source: 'directory' })
+  })
+  test('plugin finds the skills plugin and not the Live details plugin', async () => {
+    const list =
+      '[{"id":"bifrost-live@bifrost-local","enabled":true},{"id":"bifrost@bifrost-skills"}]'
+    expect(await skillsFake(list).cli.plugin()).toEqual({ enabled: false, errors: [] })
+  })
+  test('removeMarketplace removes bifrost-skills', async () => {
+    const { calls, cli } = skillsFake('{"outcome":"ok"}')
+    await cli.removeMarketplace()
+    expect(calls[0].args).toEqual([
+      'plugin',
+      'marketplace',
+      'remove',
+      'bifrost-skills',
+      '--scope',
+      'user',
+      '--json',
+    ])
+  })
+})

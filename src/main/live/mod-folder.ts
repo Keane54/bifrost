@@ -43,7 +43,19 @@ export interface SyncOps {
 export async function syncWith(source: string, dest: string, ops: SyncOps): Promise<void> {
   if (await modFolderCurrent(source, dest)) return
   // Read all source files first. A missing file rejects before any change.
-  const contents = await Promise.all(MOD_FILES.map(file => readFile(join(source, file))))
+  const entries = await Promise.all(
+    MOD_FILES.map(async file => ({ bytes: await readFile(join(source, file)), file })),
+  )
+  await writeFolder(dest, entries, ops)
+}
+
+// Write the files to a temporary folder. Then swap it with dest.
+// A failure removes the temporary folder and leaves dest as it was.
+export async function writeFolder(
+  dest: string,
+  entries: readonly { file: string; bytes: Buffer }[],
+  ops: SyncOps,
+): Promise<void> {
   const id = randomUUID()
   const tmp = `${dest}.${id}.tmp`
   const old = `${dest}.${id}.old`
@@ -51,10 +63,10 @@ export async function syncWith(source: string, dest: string, ops: SyncOps): Prom
   try {
     await mkdir(dirname(dest), { mode: 0o700, recursive: true })
     await mkdir(tmp, { mode: 0o700 })
-    for (const [i, file] of MOD_FILES.entries()) {
+    for (const { bytes, file } of entries) {
       const target = join(tmp, file)
       await mkdir(dirname(target), { mode: 0o700, recursive: true })
-      await writeFile(target, contents[i], { mode: 0o600 })
+      await writeFile(target, bytes, { mode: 0o600 })
     }
     try {
       await ops.rename(dest, old)
@@ -71,7 +83,7 @@ export async function syncWith(source: string, dest: string, ops: SyncOps): Prom
         await ops.rename(old, dest)
       } catch {
         failure = new Error(
-          `${(e as Error).message} The old mod folder is at ${old}. Move it back to ${dest}.`,
+          `${(e as Error).message} The old folder is at ${old}. Move it back to ${dest}.`,
         )
       }
     }
