@@ -1,11 +1,14 @@
 // The state of Live details and the version of Claude Code for the renderer (spec 11, D11).
 // The setup dialog, Settings > Live details, Settings > General and the side bar read it.
+// While a warning shows, the provider reads the status again (live-retry.ts). So a short failure
+// at the first read does not keep the warning dot.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { BUSY_MESSAGE } from '../../../shared/live'
 import type { ClaudeVersion, LiveStatus } from '../../../shared/types'
 import { friendlyError } from '../actions/errors'
 import { errorMessage } from '../lib/error-message'
 import { hasWarning, type LiveNotice, liveNotice, unknownStatus } from './live-notice'
+import { createLiveRetry, type RetryClock } from './live-retry'
 
 export interface LiveValue {
   // null until the first live.status() resolves.
@@ -37,6 +40,14 @@ function loadStatus(): Promise<LiveStatus> {
   return window.bifrost.live.status().catch(err => unknownStatus(friendlyError(errorMessage(err))))
 }
 
+const PAGE_CLOCK: RetryClock = {
+  every(ms, fn) {
+    const id = window.setInterval(fn, ms)
+    return () => window.clearInterval(id)
+  },
+  now: () => Date.now(),
+}
+
 export function LiveProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [status, setStatus] = useState<LiveStatus | null>(null)
   const [version, setVersion] = useState<ClaudeVersion | null>(null)
@@ -45,7 +56,44 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
   const [changed, setChanged] = useState(false)
   // The ref stops a second call before the next render shows busy.
   const running = useRef(false)
+  // The number of calls with the lock. A re-read drops its answer when a call starts during it.
+  const lockedCalls = useRef(0)
+  // A copy of versionFailed for the re-read.
+  const versionFailedNow = useRef(false)
   const mounted = useRef(true)
+
+  // Call claudeVersion(). A good answer sets the version and clears a failed check.
+  const readVersion = useCallback(async (): Promise<void> => {
+    try {
+      const next = await window.bifrost.claudeVersion()
+      if (!mounted.current) return
+      versionFailedNow.current = false
+      setVersion(next)
+      setVersionFailed(false)
+    } catch (err) {
+      console.error('Bifrost cannot read the version of Claude Code.', err)
+      if (!mounted.current) return
+      versionFailedNow.current = true
+      setVersionFailed(true)
+    }
+  }, [])
+
+  // The re-read while a warning shows. It does not lock, so the buttons do not show busy. An
+  // action or a refresh that starts during the read gives a newer status. Then the read drops its
+  // answer.
+  const [retry] = useState(() =>
+    createLiveRetry({
+      busy: () => running.current,
+      clock: PAGE_CLOCK,
+      async readStatus() {
+        const calls = lockedCalls.current
+        const next = await loadStatus()
+        if (mounted.current && lockedCalls.current === calls) setStatus(next)
+      },
+      readVersion,
+      versionFailed: () => versionFailedNow.current,
+    }),
+  )
 
   // Load the status and the version one time at mount.
   useEffect(() => {
@@ -53,24 +101,33 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
     loadStatus().then(next => {
       if (mounted.current) setStatus(next)
     })
-    window.bifrost.claudeVersion().then(
-      next => {
-        if (mounted.current) setVersion(next)
-      },
-      err => {
-        console.error('Bifrost cannot read the version of Claude Code.', err)
-        if (mounted.current) setVersionFailed(true)
-      },
-    )
+    void readVersion()
     return () => {
       mounted.current = false
     }
-  }, [])
+  }, [readVersion])
+
+  const warning = hasWarning(status, version, versionFailed)
+
+  // Read again while a warning shows. The cleanup stops the timer.
+  useEffect(() => {
+    retry.warn(warning)
+    return () => retry.warn(false)
+  }, [retry, warning])
+
+  // A window focus can read again too. The window focus event follows the key window of macOS in
+  // Electron.
+  useEffect(() => {
+    const onFocus = (): void => retry.focus()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [retry])
 
   // Run one call with the lock. A call that comes while another call runs rejects.
   const locked = useCallback(async (fn: () => Promise<void>): Promise<void> => {
     if (running.current) throw new Error(BUSY_MESSAGE)
     running.current = true
+    lockedCalls.current += 1
     setBusy(true)
     try {
       await fn()
@@ -123,9 +180,9 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
       uninstall: action(() => window.bifrost.live.uninstall(), false),
       version,
       versionFailed,
-      warning: hasWarning(status, version, versionFailed),
+      warning,
     }),
-    [action, busy, changed, refresh, status, version, versionFailed],
+    [action, busy, changed, refresh, status, version, versionFailed, warning],
   )
 
   return <LiveContext value={value}>{children}</LiveContext>
