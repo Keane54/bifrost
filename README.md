@@ -80,24 +80,7 @@ The side bar on the left edge has one button for each panel. It also holds the p
 
 After the first install, you do not need to download a DMG again. Bifrost checks for new versions. When a new version is ready, a button shows above Layouts in the side bar. Click the button to restart Bifrost with the new version. Settings > Updates has the switch "Check for updates automatically", the "Check for updates" button and the "Show log" button.
 
-## Development
-
-You need Node.js 24 or later and pnpm 12. The `packageManager` field in `package.json` sets the pnpm version.
-
-```bash
-pnpm install     # Install the packages, get Electron and build node-pty for Electron
-pnpm dev         # Start Bifrost from the repository
-pnpm test        # Run the unit tests (Vitest)
-pnpm smoke       # Build Bifrost and run the smoke tests (Playwright)
-pnpm check       # Run the Biome lint and format checks
-pnpm typecheck   # Check the types
-pnpm dist        # Make the arm64 DMG in dist/
-```
-
-- `pnpm dev` uses your real home folder. So it shows your real sessions.
-- For the smoke tests, Bifrost starts with a fake `claude`, a fake `gh` and a test home. The tests do not use your real sessions or your GitHub account.
-- `pnpm check:write` corrects the format and the lint problems that Biome can correct.
-- Run `pnpm smoke` before you make a DMG.
+## Releases
 
 <details>
 <summary><b>Release flow</b></summary>
