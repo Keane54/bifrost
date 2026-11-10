@@ -4,7 +4,7 @@
 
 <div align="center">
 
-[![CI](https://github.com/TheKeyholdingCompany/bifrost/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/TheKeyholdingCompany/bifrost/actions/workflows/ci.yml) [![Release](https://github.com/TheKeyholdingCompany/bifrost/actions/workflows/release.yml/badge.svg)](https://github.com/TheKeyholdingCompany/bifrost/actions/workflows/release.yml)
+[![CI](https://github.com/Keane54/bifrost/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Keane54/bifrost/actions/workflows/ci.yml) [![Release](https://github.com/Keane54/bifrost/actions/workflows/release.yml/badge.svg)](https://github.com/Keane54/bifrost/actions/workflows/release.yml)
 
 [![Electron](https://shieldcn.dev/badge/Electron.svg?size=xs&logo=electron&logoColor=ffffff&color=47848f)](https://www.electronjs.org/)
 [![React](https://shieldcn.dev/badge/React.svg?size=xs&logo=react&logoColor=ffffff&color=087ea4)](https://react.dev/)
@@ -70,7 +70,7 @@ The side bar on the left edge has one button for each panel. It also holds the p
 
 ## Install
 
-1. Download [Bifrost for Apple silicon](https://github.com/TheKeyholdingCompany/bifrost/releases/latest/download/Bifrost-arm64.dmg) from the latest release. You must be signed in to GitHub with access to this repository. The [Releases page](https://github.com/TheKeyholdingCompany/bifrost/releases) has all versions and their release notes.
+1. Download [Bifrost for Apple silicon](https://github.com/Keane54/bifrost/releases/latest/download/Bifrost-arm64.dmg) from the latest release. You must be signed in to GitHub with access to this repository. The [Releases page](https://github.com/Keane54/bifrost/releases) has all versions and their release notes.
 2. Open the DMG.
 3. Drag Bifrost to the Applications folder.
 4. Open Bifrost from the Applications folder.

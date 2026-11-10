@@ -26,7 +26,7 @@ mac:
   notarize: false
 dmg:
   # The DMG name has no version. So the link
-  # https://github.com/TheKeyholdingCompany/bifrost/releases/latest/download/Bifrost-arm64.dmg
+  # https://github.com/Keane54/bifrost/releases/latest/download/Bifrost-arm64.dmg
   # (README, Install) always gets the DMG of the latest release.
   artifactName: ${productName}-arm64.${ext}
 npmRebuild: false
