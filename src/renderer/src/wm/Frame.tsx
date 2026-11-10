@@ -113,7 +113,7 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
       }}
     >
       <div
-        className={cx('flex shrink-0 touch-none select-none items-center gap-1 bg-title pr-3 pl-1')}
+        className={cx('flex shrink-0 touch-none items-center gap-1 bg-title pr-3 pl-1 select-none')}
         data-title-bar={true}
         onPointerDown={onTitleDown}
         style={{ height: TITLE_H }}
@@ -144,7 +144,7 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
           </div>
         ) : (
           <div className='flex min-w-0 flex-1 items-center'>
-            <div className='truncate px-2 text-text text-xs' data-panel-id={frame.active}>
+            <div className='truncate px-2 text-xs text-text' data-panel-id={frame.active}>
               <PanelTitle panelId={frame.active} />
             </div>
           </div>

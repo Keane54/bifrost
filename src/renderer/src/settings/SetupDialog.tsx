@@ -123,10 +123,10 @@ export default function SetupDialog(): React.JSX.Element {
               <AlertDialog.Description className='select-text'>
                 {LIVE_ABOUT}
               </AlertDialog.Description>
-              <p className='select-text text-text-strong' data-setup-state={notice.kind}>
+              <p className='text-text-strong select-text' data-setup-state={notice.kind}>
                 {introStateLine(notice)}
               </p>
-              <p className='select-text text-text-dim'>{INTRO_CHANGE_NOTE}</p>
+              <p className='text-text-dim select-text'>{INTRO_CHANGE_NOTE}</p>
               <div className='flex items-center gap-2'>
                 <span className='flex-1' />
                 <button
@@ -185,7 +185,7 @@ export default function SetupDialog(): React.JSX.Element {
                   </button>
                 </div>
               )}
-              <p className='select-text text-text-dim'>{WITHOUT_LIVE}</p>
+              <p className='text-text-dim select-text'>{WITHOUT_LIVE}</p>
               <ErrorLine message={error} onClose={() => setError(null)} />
               <div className='flex items-center gap-2'>
                 <span className='flex-1' />

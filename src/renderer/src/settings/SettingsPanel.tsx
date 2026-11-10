@@ -63,7 +63,7 @@ function Hit({ hit, readLive }: { hit: SearchHit; readLive: () => void }): React
   return (
     <section data-search-section={hit.id}>
       {/* The section heading is white, so it differs from a group heading of Keys. */}
-      <h3 className='border-panel-edge border-b bg-title px-3 py-1 font-medium text-text-strong text-xs'>
+      <h3 className='border-b border-panel-edge bg-title px-3 py-1 text-xs font-medium text-text-strong'>
         {hit.title}
       </h3>
       {hit.id === 'general' && <GeneralSection only={only} />}
@@ -187,7 +187,7 @@ export default function SettingsPanel(): React.JSX.Element {
     <SaveTrackerContext value={tracker}>
       {/* A click on a part with no control gives the focus to the panel. So Cmd+F works there. */}
       <div className='flex h-full min-h-0 flex-col outline-none' ref={root} tabIndex={-1}>
-        <div className='flex shrink-0 items-center gap-1.5 border-panel-edge border-b px-3 py-1.5'>
+        <div className='flex shrink-0 items-center gap-1.5 border-b border-panel-edge px-3 py-1.5'>
           <Search aria-hidden={true} className='shrink-0 text-text-dim' size={12} />
           <input
             aria-label='Search settings'
@@ -215,7 +215,7 @@ export default function SettingsPanel(): React.JSX.Element {
         {/* The stack tab style of the frame (spec 8.10): white text and a white underline.
             During a search no tab is active. A click on a tab ends the search. */}
         <div
-          className='flex h-[22px] shrink-0 items-stretch border-panel-edge border-b'
+          className='flex h-[22px] shrink-0 items-stretch border-b border-panel-edge'
           role='tablist'
         >
           {TABS.map(id => {
@@ -266,7 +266,7 @@ export default function SettingsPanel(): React.JSX.Element {
                 <Hit hit={hit} key={hit.id} readLive={readLive} />
               ))}
               {hits.length === 0 && (
-                <p className='px-3 py-2 text-text-dim text-xs' data-settings-no-match={true}>
+                <p className='px-3 py-2 text-xs text-text-dim' data-settings-no-match={true}>
                   {noMatchText(query)}
                 </p>
               )}
@@ -278,7 +278,7 @@ export default function SettingsPanel(): React.JSX.Element {
           {resultCountText(hits, query)}
         </p>
         <div
-          className='flex shrink-0 items-center justify-end border-panel-edge border-t px-3 py-1.5 text-xs'
+          className='flex shrink-0 items-center justify-end border-t border-panel-edge px-3 py-1.5 text-xs'
           data-settings-footer={true}
         >
           <button

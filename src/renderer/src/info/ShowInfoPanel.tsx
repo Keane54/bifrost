@@ -55,7 +55,7 @@ function Value({
   if (item.label === 'PR' && pr?.kind === 'pr') {
     return (
       <button
-        className='min-w-0 cursor-pointer break-all text-left text-text-strong underline'
+        className='min-w-0 cursor-pointer text-left break-all text-text-strong underline'
         onClick={() => {
           window.bifrost.info
             .openPr(sessionId)
@@ -68,7 +68,7 @@ function Value({
     )
   }
   return (
-    <span className={cx('min-w-0 select-text break-all', item.mono && 'font-mono')}>
+    <span className={cx('min-w-0 break-all select-text', item.mono && 'font-mono')}>
       {item.value}
       {item.label === 'Session ID' && (
         <Tip label='Copy session ID'>

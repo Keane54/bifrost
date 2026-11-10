@@ -4,3 +4,5 @@ allowBuilds:
   node-pty: true
   electron-winstaller: false
   lefthook: true
+patchedDependencies:
+  '@xterm/addon-webgl@0.19.0': patches/@xterm__addon-webgl@0.19.0.patch

@@ -77,13 +77,13 @@ function Headline({ snapshot }: { snapshot: Snapshot }): React.JSX.Element {
   // says OK without data (design section 5.1).
   if (snapshot.state === 'ok' && snapshot.okText === null) {
     return (
-      <div className='border-panel-edge border-b p-2 text-text-dim' data-perf-headline='checking'>
+      <div className='border-b border-panel-edge p-2 text-text-dim' data-perf-headline='checking'>
         Checking Bifrost…
       </div>
     )
   }
   return (
-    <div className='border-panel-edge border-b p-2' data-perf-headline={snapshot.state}>
+    <div className='border-b border-panel-edge p-2' data-perf-headline={snapshot.state}>
       <div
         className={cx('inline-flex items-center gap-1.5 font-semibold', STATE_TEXT[snapshot.state])}
       >
@@ -118,7 +118,7 @@ function DetailsRow({ open, onToggle }: { open: boolean; onToggle(): void }): Re
       aria-expanded={open}
       className={cx(
         'flex w-full items-center gap-1.5 px-2 py-[5px] text-left text-text-dim hover:bg-hover hover:text-text active:bg-accent/12',
-        open && 'border-panel-edge border-b',
+        open && 'border-b border-panel-edge',
       )}
       data-perf-details={true}
       onClick={onToggle}
@@ -141,7 +141,7 @@ function Section(props: {
   children: React.ReactNode
 }): React.JSX.Element {
   return (
-    <section className='border-panel-edge border-b px-2 py-1.5 last:border-b-0'>
+    <section className='border-b border-panel-edge px-2 py-1.5 last:border-b-0'>
       <h3 className='mb-1 flex gap-2 text-[11px] text-text-dim'>
         {props.title}
         {props.right !== undefined && (
@@ -215,7 +215,7 @@ function SessionsSection({ sessions }: { sessions: Snapshot['sessions'] }): Reac
                 {stop.enabled && (
                   <button
                     aria-label={`Stop ${name}`}
-                    className='border border-panel-edge bg-black/35 px-1.5 text-text leading-4 hover:text-text-strong active:bg-accent/12'
+                    className='border border-panel-edge bg-black/35 px-1.5 leading-4 text-text hover:text-text-strong active:bg-accent/12'
                     data-perf-stop={session.sessionId}
                     onClick={() => run('stop', session.sessionId)}
                     type='button'
@@ -328,7 +328,7 @@ export default function PerformancePanel(): React.JSX.Element {
   const snapshot = usePerformance()
   const details = usePerformanceDetails()
   return (
-    <div className='text-text text-xs' data-performance={snapshot.state}>
+    <div className='text-xs text-text' data-performance={snapshot.state}>
       <Headline snapshot={snapshot} />
       <DetailsRow onToggle={() => details.setOpen(!details.open)} open={details.open} />
       {details.open && (

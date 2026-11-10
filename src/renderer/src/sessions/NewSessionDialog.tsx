@@ -252,7 +252,7 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
             </label>
             <label
               className={cx(
-                'flex items-center gap-2 text-text text-xs',
+                'flex items-center gap-2 text-xs text-text',
                 (!worktree.enabled || busy) && 'opacity-40',
               )}
               title={worktree.reason ?? undefined}
@@ -266,12 +266,12 @@ function Form({ onClose }: { onClose(): void }): React.JSX.Element {
               Use a worktree
             </label>
             {busy && (
-              <p className='text-text-dim text-xs' data-new-session-starting={true}>
+              <p className='text-xs text-text-dim' data-new-session-starting={true}>
                 {STARTING}
               </p>
             )}
             {reason !== null && (
-              <p className='text-text text-xs' data-new-session-reason={true}>
+              <p className='text-xs text-text' data-new-session-reason={true}>
                 {reason}
               </p>
             )}

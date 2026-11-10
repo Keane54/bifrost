@@ -2,6 +2,7 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "noEmit": true,
+    "noImplicitAny": true,
     "types": ["node"]
   },
   "exclude": ["scripts/m0/**", "scripts/m3/**", "scripts/m4/**"],

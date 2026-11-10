@@ -28,14 +28,14 @@ export function SettingRow({
 }): React.JSX.Element | null {
   if (!useRowShown(label)) return null
   return (
-    <div className='border-panel-edge border-b' data-setting-row={label}>
+    <div className='border-b border-panel-edge' data-setting-row={label}>
       <div className='flex min-h-7 items-center justify-between gap-3 px-3'>
-        <span className='shrink-0 text-text text-xs'>{label}</span>
-        <div className={cx('flex min-w-0 items-center justify-end gap-2 text-text text-xs')}>
+        <span className='shrink-0 text-xs text-text'>{label}</span>
+        <div className={cx('flex min-w-0 items-center justify-end gap-2 text-xs text-text')}>
           {children}
         </div>
       </div>
-      {hint !== undefined && <p className='px-3 pb-1 text-text-dim text-xs'>{hint}</p>}
+      {hint !== undefined && <p className='px-3 pb-1 text-xs text-text-dim'>{hint}</p>}
       <ErrorLine message={error ?? null} onClose={onCloseError} />
     </div>
   )

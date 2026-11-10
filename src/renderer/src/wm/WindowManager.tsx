@@ -644,7 +644,7 @@ export default function WindowManager(): React.JSX.Element {
                                     a resize, no part of the area allows a selection. */}
                                 <div
                                   className={cx(
-                                    'relative isolate min-w-0 flex-1 select-none overflow-hidden',
+                                    'relative isolate min-w-0 flex-1 overflow-hidden select-none',
                                     dragging && '**:select-none',
                                   )}
                                   data-panel-area={true}
@@ -691,7 +691,7 @@ export default function WindowManager(): React.JSX.Element {
                                       covers the title bar. */}
                                   {dropBar && dropFrame && (
                                     <div
-                                      className='pointer-events-none absolute bg-text-strong/10 outline-2 outline-text-strong/30 -outline-offset-2'
+                                      className='pointer-events-none absolute bg-text-strong/10 outline-2 -outline-offset-2 outline-text-strong/30'
                                       data-drop-target={dropFrame.id}
                                       style={{
                                         height: dropBar.h,

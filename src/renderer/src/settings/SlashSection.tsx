@@ -79,7 +79,7 @@ export default function SlashSection({
   return (
     <div className='flex flex-col'>
       {only === null && (
-        <p className='px-3 py-2 text-text-dim text-xs'>
+        <p className='px-3 py-2 text-xs text-text-dim'>
           These commands show in the Slash commands menu of a session. Put the ones you use most at
           the top.
         </p>
@@ -88,7 +88,7 @@ export default function SlashSection({
         {list.map((command, index) =>
           only !== null && !only.has(command) ? null : (
             <li
-              className='flex min-h-7 items-center gap-1 border-panel-edge border-b px-3 text-text text-xs'
+              className='flex min-h-7 items-center gap-1 border-b border-panel-edge px-3 text-xs text-text'
               data-slash-item={command}
               key={command}
             >
@@ -114,7 +114,7 @@ export default function SlashSection({
           ),
         )}
         {only === null && list.length === 0 && (
-          <li className='px-3 py-1 text-text-dim text-xs'>No commands yet.</li>
+          <li className='px-3 py-1 text-xs text-text-dim'>No commands yet.</li>
         )}
       </ul>
       {only === null && (
@@ -134,7 +134,7 @@ export default function SlashSection({
             value={text}
           />
           <button
-            className='h-5 shrink-0 border border-panel-edge px-2 text-text text-xs hover:bg-hover active:bg-accent/12 disabled:opacity-40'
+            className='h-5 shrink-0 border border-panel-edge px-2 text-xs text-text hover:bg-hover active:bg-accent/12 disabled:opacity-40'
             disabled={list.length >= MAX_SLASH_COMMANDS}
             onClick={() => void add()}
             type='button'
@@ -143,7 +143,7 @@ export default function SlashSection({
           </button>
         </div>
       )}
-      {reason !== null && <p className='px-3 pb-2 text-text-dim text-xs'>{reason}</p>}
+      {reason !== null && <p className='px-3 pb-2 text-xs text-text-dim'>{reason}</p>}
       <ErrorLine message={row.error} onClose={row.closeError} />
     </div>
   )

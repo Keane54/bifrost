@@ -108,7 +108,7 @@ export default function RenameDialog({
         >
           <Dialog.Title className='font-semibold text-text-strong'>{title}</Dialog.Title>
           <form className='flex flex-col gap-2' onSubmit={onSubmit}>
-            <label className='text-text-dim text-xs' htmlFor={`rename-name-${sessionId}`}>
+            <label className='text-xs text-text-dim' htmlFor={`rename-name-${sessionId}`}>
               {NAME_FIELD_LABEL}
             </label>
             <input
@@ -143,15 +143,15 @@ export default function RenameDialog({
               </div>
             )}
             {controls !== null && controls.claudeBoxReason !== null && (
-              <p className='text-text-dim text-xs'>{controls.claudeBoxReason}</p>
+              <p className='text-xs text-text-dim'>{controls.claudeBoxReason}</p>
             )}
             {row !== undefined && claudeBoxLostNote(row, alsoClaude) !== null && (
-              <p className='text-text-dim text-xs' data-rename-lost-note={true}>
+              <p className='text-xs text-text-dim' data-rename-lost-note={true}>
                 {claudeBoxLostNote(row, alsoClaude)}
               </p>
             )}
             {reason !== null && (
-              <p className='text-text text-xs' data-rename-reason={true}>
+              <p className='text-xs text-text' data-rename-reason={true}>
                 {reason}
               </p>
             )}

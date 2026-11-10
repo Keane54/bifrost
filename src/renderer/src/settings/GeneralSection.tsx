@@ -164,7 +164,7 @@ function GeneralRows({ only }: { only: ReadonlySet<string> | null }): React.JSX.
     <div className='flex min-h-full flex-col'>
       {only === null && versionText !== null && (
         <p
-          className='select-text border-panel-edge border-b px-3 py-2 text-text text-xs'
+          className='border-b border-panel-edge px-3 py-2 text-xs text-text select-text'
           data-settings-version-notice={true}
         >
           {versionText}
@@ -339,7 +339,7 @@ function GeneralRows({ only }: { only: ReadonlySet<string> | null }): React.JSX.
       {/* Show the setup dialog again (spec 11.1). */}
       <IntroRow />
       {only === null && (
-        <p className='mt-auto px-3 py-2 text-text-dim text-xs' data-settings-version={true}>
+        <p className='mt-auto px-3 py-2 text-xs text-text-dim' data-settings-version={true}>
           {info === null ? 'Bifrost' : `Bifrost ${info.version}`}
         </p>
       )}

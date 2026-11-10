@@ -57,11 +57,11 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
   const percent = formatPercent(row.contextPercent)
   const band = shownContextBand(row.contextPercent)
   return (
-    <div className='flex min-w-0 select-text flex-col gap-2 p-3 text-xs'>
+    <div className='flex min-w-0 flex-col gap-2 p-3 text-xs select-text'>
       {/* 1. The icon, the name, the state and the priority. */}
       <div className='flex min-w-0 items-center gap-2'>
         <SessionIcon row={row} size={22} />
-        <span className='min-w-0 truncate font-semibold text-[13px]' title={aliasTip(row)}>
+        <span className='min-w-0 truncate text-[13px] font-semibold' title={aliasTip(row)}>
           {row.name}
         </span>
         <span className={cx('shrink-0', TONE_TEXT[stateTone(row)])}>{stateLabel(row.state)}</span>

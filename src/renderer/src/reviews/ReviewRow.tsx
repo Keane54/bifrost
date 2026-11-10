@@ -56,7 +56,7 @@ function Shell({
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger
-        className='relative flex flex-col gap-0.5 border-panel-edge border-t px-1.5 py-1 text-xs first:border-t-0'
+        className='relative flex flex-col gap-0.5 border-t border-panel-edge px-1.5 py-1 text-xs first:border-t-0'
         data-review-row={prKey}
         onClick={e => {
           if (e.metaKey) onAct(() => window.bifrost.reviews.openPr(prKey))

@@ -87,12 +87,12 @@ export default function LiveSection({ readStatus }: { readStatus: () => void }):
 
   return (
     <div className='flex flex-col text-xs'>
-      <div className='border-panel-edge border-b px-3 py-2'>
-        <p className='select-text text-text-strong' data-live-state={notice.kind}>
+      <div className='border-b border-panel-edge px-3 py-2'>
+        <p className='text-text-strong select-text' data-live-state={notice.kind}>
           {liveStateLine(notice)}
         </p>
         {notice.kind === 'not-installed' && (
-          <p className='mt-1 select-text text-text-dim'>{WITHOUT_LIVE}</p>
+          <p className='mt-1 text-text-dim select-text'>{WITHOUT_LIVE}</p>
         )}
         {stepsOf ? (
           <div className='mt-2 text-text'>

@@ -72,10 +72,10 @@ export default function EventLogPanel(): React.JSX.Element {
 
   return (
     <div className='flex h-full min-w-0 flex-col text-xs' data-event-log={true}>
-      <div className='flex shrink-0 items-center gap-3 border-panel-edge border-b px-2 py-1.5'>
+      <div className='flex shrink-0 items-center gap-3 border-b border-panel-edge px-2 py-1.5'>
         <select
           aria-label='Session'
-          className='min-w-0 max-w-[60%] truncate border border-panel-edge bg-transparent px-1 py-0.5 text-text'
+          className='max-w-[60%] min-w-0 truncate border border-panel-edge bg-transparent px-1 py-0.5 text-text'
           onChange={e => {
             setSession(e.target.value)
             setScrollTop(0)

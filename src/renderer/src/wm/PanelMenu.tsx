@@ -81,7 +81,7 @@ export default function PanelMenu({
   return createPortal(
     <div
       aria-label='Panel menu'
-      className='fixed z-10 flex w-52 select-none flex-col gap-3 border border-panel-edge bg-title p-3 text-text text-xs'
+      className='fixed z-10 flex w-52 flex-col gap-3 border border-panel-edge bg-title p-3 text-xs text-text select-none'
       ref={ref}
       role='dialog'
       style={{
