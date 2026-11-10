@@ -32,10 +32,16 @@ export function createUsageAlertMonitor(deps: UsageAlertDeps): UsageAlertMonitor
   let account: AccountUsage | null = null
   let session: UsageSnapshot | null = null
   let store: UsageAlertStore | null = null
+  // The last flag that the account values gave. A null value or a value with no flag does not
+  // clear it. So stale account values, for example after a 429 or a network error, keep a known
+  // "on" flag.
+  let lastAccountFlag: boolean | undefined
 
-  // The flag of fresh account values, else the flag of the file. A failed read counts as off.
-  function extraUsage(known: boolean | undefined): Promise<boolean> {
-    if (known !== undefined) return Promise.resolve(known)
+  // The flag of fresh account values when they give one. Else a known "on" flag of older account
+  // values, or the flag of the file. A failed read of the file counts as off.
+  function extraUsage(fresh: boolean | undefined): Promise<boolean> {
+    if (fresh !== undefined) return Promise.resolve(fresh)
+    if (lastAccountFlag === true) return Promise.resolve(true)
     return deps.readExtraUsage().catch(() => false)
   }
 
@@ -52,8 +58,8 @@ export function createUsageAlertMonitor(deps: UsageAlertDeps): UsageAlertMonitor
     // Keep the periods before the read of the flag. So a new value during the read does not
     // notify again.
     void store.set(afterAlerts(store.get(), due))
-    const known = source.kind === 'account' ? source.account.extraUsage : undefined
-    extraUsage(known)
+    const fresh = source.kind === 'account' ? source.account.extraUsage : undefined
+    extraUsage(fresh)
       .then(on => {
         for (const alert of due) deps.notify(alertText(alert, on, now, deps.timeZone))
       })
@@ -71,6 +77,7 @@ export function createUsageAlertMonitor(deps: UsageAlertDeps): UsageAlertMonitor
   return {
     account(value) {
       account = value
+      if (value?.extraUsage !== undefined) lastAccountFlag = value.extraUsage
       check()
     },
     session(value) {

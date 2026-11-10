@@ -265,6 +265,55 @@ describe('createUsageAlertMonitor', () => {
     expect(u.shown.map(s => s.title)).toEqual([WARNING])
   })
 
+  // A known "on" flag stays in memory. So stale account values after a 429 or a network error do
+  // not lose the warning.
+  test('fresh account values with the flag on give the warning', async () => {
+    const t = setup()
+    await settle()
+    t.monitor.account(account(fiveAt(92), { extraUsage: true }))
+    await settle()
+    expect(t.shown.map(s => s.title)).toEqual([WARNING])
+  })
+
+  test('a known on flag of stale account values gives the warning without the file', async () => {
+    const t = setup({ flag: async () => false })
+    await settle()
+    t.monitor.account(account(fiveAt(50), { extraUsage: true }))
+    await settle()
+    // The account values are now 20 minutes old, so the session values count.
+    t.setNow(NOW + 20 * MIN)
+    t.monitor.session(snap(fiveAt(92)))
+    await settle()
+    expect(t.shown.map(s => s.title)).toEqual([WARNING])
+  })
+
+  test('a null value and a value with no flag keep the known flag', async () => {
+    const t = setup({ flag: async () => false })
+    await settle()
+    t.monitor.account(account(fiveAt(50), { extraUsage: true }))
+    t.monitor.account(null)
+    t.monitor.session(snap(fiveAt(92)))
+    await settle()
+    expect(t.shown.map(s => s.title)).toEqual([WARNING])
+    const u = setup({ flag: async () => false })
+    await settle()
+    u.monitor.account(account(fiveAt(50), { extraUsage: true }))
+    u.monitor.account(account(fiveAt(92)))
+    await settle()
+    expect(u.shown.map(s => s.title)).toEqual([WARNING])
+  })
+
+  test('a fresh off flag wins over an older on flag and over the file', async () => {
+    const t = setup({ flag: async () => true })
+    await settle()
+    t.monitor.account(account(fiveAt(50), { extraUsage: true }))
+    t.setNow(NOW + 5 * MIN)
+    t.monitor.account(account(fiveAt(92), { extraUsage: false, fetchedAt: NOW + 5 * MIN }))
+    await settle()
+    expect(t.shown).toEqual([OFF_TEXT])
+    expect(t.readExtraUsage).not.toHaveBeenCalled()
+  })
+
   test('a failed read of the flag counts as off', async () => {
     const t = setup({ flag: async () => Promise.reject(new Error('no file')) })
     await settle()
