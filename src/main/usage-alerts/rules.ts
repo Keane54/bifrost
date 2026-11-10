@@ -38,8 +38,9 @@ export function isNewPeriod(resetsAt: number, kept: number | null): boolean {
   return kept === null || resetsAt > kept + SAME_PERIOD_MS
 }
 
-// The limits that must notify now: the value is 90% or more, the reset time is in the future, and
-// the period did not notify yet. The 5-hour limit comes first.
+// The limits that must notify now: the rounded value is 90% or more, the reset time is in the
+// future, and the period did not notify yet. The rounded value agrees with the HUD colour. The
+// 5-hour limit comes first.
 export function dueAlerts(
   limits: RateLimits,
   notified: NotifiedPeriods,
@@ -51,7 +52,7 @@ export function dueAlerts(
     if (!window) continue
     const { resetsAt, usedPercent } = window
     if (!Number.isFinite(resetsAt) || resetsAt <= now) continue
-    if (!(usedPercent >= HIGH_PERCENT)) continue
+    if (!(Math.round(usedPercent) >= HIGH_PERCENT)) continue
     if (!isNewPeriod(resetsAt, notified[limit])) continue
     alerts.push({ limit, resetsAt, usedPercent })
   }

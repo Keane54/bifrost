@@ -51,8 +51,15 @@ describe('dueAlerts', () => {
     expect(dueAlerts(five(100), NO_PERIODS, NOW)).toHaveLength(1)
   })
 
+  // The rule uses the rounded percent, as the HUD colour does. So the two agree.
+  test('a rounded value of 90% notifies, and the raw value stays in the alert', () => {
+    expect(dueAlerts(five(89.5), NO_PERIODS, NOW)).toEqual([
+      { limit: 'fiveHour', resetsAt: FIVE_RESET, usedPercent: 89.5 },
+    ])
+  })
+
   test('a limit below 90% does not notify', () => {
-    expect(dueAlerts(five(89.9), NO_PERIODS, NOW)).toEqual([])
+    expect(dueAlerts(five(89.4), NO_PERIODS, NOW)).toEqual([])
     expect(dueAlerts(five(0), NO_PERIODS, NOW)).toEqual([])
     expect(dueAlerts({}, NO_PERIODS, NOW)).toEqual([])
   })
