@@ -131,8 +131,11 @@ export function createSkillsControl(deps: SkillsControlDeps): SkillsControl {
     // A failure goes to console.warn. The start never rejects.
     async start() {
       try {
-        const entry = await (await needCli()).plugin()
-        if (entry !== null) await syncSkillsFolder(source, dir)
+        const cli = await needCli()
+        // A marketplace of another program is not ours. Write nothing and do not warn.
+        const market = await cli.marketplace()
+        if (market !== null && (market.path === undefined || !samePath(market.path, dir))) return
+        if ((await cli.plugin()) !== null) await syncSkillsFolder(source, dir)
       } catch (err) {
         console.warn('Bifrost skills: the start failed.', messageOf(err))
       }

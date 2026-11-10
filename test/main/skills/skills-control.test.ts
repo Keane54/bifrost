@@ -235,6 +235,16 @@ describe('start', () => {
     expect(await skillsFolderCurrent(source, dir)).toBe(true)
     expect(writes()).toEqual([])
   })
+  test('writes nothing and does not warn for a foreign marketplace with a plugin', async () => {
+    const { control, writes } = setup({
+      marketplace: { path: '/other', source: 'directory' },
+      plugin: on,
+    })
+    await control.start()
+    expect(writes()).toEqual([])
+    expect(existsSync(dir)).toBe(false)
+    expect(console.warn).not.toHaveBeenCalled()
+  })
   test('writes nothing when the plugin is not installed', async () => {
     const { control } = setup()
     await control.start()
