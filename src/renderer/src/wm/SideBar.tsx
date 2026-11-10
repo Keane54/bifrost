@@ -130,7 +130,7 @@ function GlobalButton(props: { action: GlobalActionId; icon: LucideIcon }): Reac
     <Tip label={buttonTip(props.action, state, ctx.labels)} side='right'>
       <Button
         aria-label={actionLabel(props.action, ctx.labels)}
-        className='flex h-8 w-8 shrink-0 items-center justify-center text-text-dim text-xs hover:bg-panel hover:text-text not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
+        className='flex h-8 w-8 shrink-0 items-center justify-center text-xs text-text-dim hover:bg-panel hover:text-text not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
         data-global-action={props.action}
         disabled={!state.enabled}
         focusableWhenDisabled={true}
@@ -159,7 +159,7 @@ function SideBar(): React.JSX.Element {
   return (
     <nav
       aria-label='Side bar'
-      className='flex w-10 shrink-0 select-none flex-col items-center gap-1 border-panel-edge border-r bg-title py-2'
+      className='flex w-10 shrink-0 flex-col items-center gap-1 border-r border-panel-edge bg-title py-2 select-none'
     >
       <SideButton
         icon={List}

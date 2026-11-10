@@ -38,7 +38,7 @@ describe('PerformancePanel source', () => {
     const button = PANEL.slice(start, PANEL.indexOf('</button>', at))
     expect(start).toBeGreaterThan(-1)
     expect(button).toMatch(/aria-expanded=\{open\}/)
-    expect(button).toMatch(/open && 'border-panel-edge border-b'/)
+    expect(button).toMatch(/open && 'border-b border-panel-edge'/)
     // The base class of the row has no bottom border.
     const base = button.match(/className=\{cx\(\s*'([^']*)'/)?.[1]
     expect(base).toBeDefined()

@@ -21,10 +21,10 @@ export function ErrorLine({
   if (message === null) return null
   return (
     <div
-      className='flex shrink-0 items-start gap-1 border-panel-edge border-t px-2 text-text text-xs'
+      className='flex shrink-0 items-start gap-1 border-t border-panel-edge px-2 text-xs text-text'
       data-error-line={true}
     >
-      <p className='wrap-break-word min-w-0 flex-1'>{message}</p>
+      <p className='min-w-0 flex-1 wrap-break-word'>{message}</p>
       {onClose !== undefined && (
         <Tip label='Close'>
           <button aria-label='Close' className={CLOSE} onClick={onClose} type='button'>
@@ -42,7 +42,7 @@ export function NoticeLine({ message }: { message: string | null }): React.JSX.E
   if (message === null) return null
   return (
     <p
-      className='wrap-break-word shrink-0 border-panel-edge border-t px-2 text-text-dim text-xs'
+      className='shrink-0 border-t border-panel-edge px-2 text-xs wrap-break-word text-text-dim'
       data-notice-line={true}
     >
       {message}

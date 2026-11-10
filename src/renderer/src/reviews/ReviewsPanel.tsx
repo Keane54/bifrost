@@ -27,7 +27,7 @@ export function hotTab(s: ReviewsSnapshot, tab: ReviewsTab): boolean {
 }
 
 function Notice({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <p className='px-3 py-2 text-text-dim text-xs'>{children}</p>
+  return <p className='px-3 py-2 text-xs text-text-dim'>{children}</p>
 }
 
 export default function ReviewsPanel(): React.JSX.Element {
@@ -54,11 +54,11 @@ export default function ReviewsPanel(): React.JSX.Element {
   if (kind === 'off') {
     body = (
       <div className='flex flex-col items-start gap-2 px-3 py-2'>
-        <p className='text-text-dim text-xs'>
+        <p className='text-xs text-text-dim'>
           Reviews is off. Turn on Watch GitHub in Settings to see your pull requests.
         </p>
         <button
-          className='border border-panel-edge bg-black/35 px-1.5 text-text text-xs leading-4 hover:text-text-strong active:bg-accent/12'
+          className='border border-panel-edge bg-black/35 px-1.5 text-xs leading-4 text-text hover:text-text-strong active:bg-accent/12'
           onClick={() => settingsNav.open('reviews')}
           type='button'
         >
@@ -88,7 +88,7 @@ export default function ReviewsPanel(): React.JSX.Element {
     <div className='flex h-full min-h-0 flex-col'>
       {showTabs && (
         <div
-          className='flex h-[22px] shrink-0 items-stretch border-panel-edge border-b'
+          className='flex h-[22px] shrink-0 items-stretch border-b border-panel-edge'
           role='tablist'
         >
           {TABS.map(t => (
@@ -129,7 +129,7 @@ export default function ReviewsPanel(): React.JSX.Element {
           </div>
         </div>
       )}
-      <div className='min-h-0 flex-1 select-none overflow-auto'>{body}</div>
+      <div className='min-h-0 flex-1 overflow-auto select-none'>{body}</div>
       {availability === 'error' && snapshot.message !== null && (
         <ErrorLine message={snapshot.message} />
       )}

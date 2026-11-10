@@ -119,10 +119,10 @@ function IgnoreRow(): React.JSX.Element | null {
 
   if (!shown) return null
   return (
-    <div className='border-panel-edge border-b' data-setting-row={REVIEWS_ROWS.ignore}>
+    <div className='border-b border-panel-edge' data-setting-row={REVIEWS_ROWS.ignore}>
       <div className='flex min-h-7 items-center justify-between gap-3 px-3'>
-        <span className='shrink-0 text-text text-xs'>{REVIEWS_ROWS.ignore}</span>
-        <div className='flex min-w-0 items-center justify-end gap-2 text-text text-xs'>
+        <span className='shrink-0 text-xs text-text'>{REVIEWS_ROWS.ignore}</span>
+        <div className='flex min-w-0 items-center justify-end gap-2 text-xs text-text'>
           <input
             aria-label='New repository to ignore'
             className={cx(ROW_FIELD, 'w-44')}
@@ -138,7 +138,7 @@ function IgnoreRow(): React.JSX.Element | null {
             value={text}
           />
           <button
-            className='h-5 shrink-0 border border-panel-edge px-2 text-text text-xs hover:bg-hover active:bg-accent/12 disabled:opacity-40'
+            className='h-5 shrink-0 border border-panel-edge px-2 text-xs text-text hover:bg-hover active:bg-accent/12 disabled:opacity-40'
             disabled={list.length >= MAX_REVIEWS_IGNORE}
             onClick={() => void add()}
             type='button'
@@ -147,11 +147,11 @@ function IgnoreRow(): React.JSX.Element | null {
           </button>
         </div>
       </div>
-      {reason !== null && <p className='px-3 pb-1 text-text-dim text-xs'>{reason}</p>}
+      {reason !== null && <p className='px-3 pb-1 text-xs text-text-dim'>{reason}</p>}
       <ul className='flex flex-col' data-reviews-ignore-list={true}>
         {list.map((entry, index) => (
           <li
-            className='flex min-h-7 items-center gap-1 border-panel-edge border-t px-3 text-text text-xs'
+            className='flex min-h-7 items-center gap-1 border-t border-panel-edge px-3 text-xs text-text'
             data-reviews-ignore-item={entry}
             key={entry}
           >

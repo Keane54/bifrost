@@ -117,7 +117,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }): Re
             <AlertDialog.Title className='font-semibold text-text-strong'>
               {text?.title}
             </AlertDialog.Title>
-            <AlertDialog.Description className='select-text whitespace-pre-line'>
+            <AlertDialog.Description className='whitespace-pre-line select-text'>
               {text?.body}
             </AlertDialog.Description>
             <div className='flex items-center gap-2'>

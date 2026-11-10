@@ -47,7 +47,7 @@ function LayoutPopover(props: {
   return (
     <div
       aria-label='Layouts'
-      className='absolute bottom-0 left-full z-10 ml-2 flex w-64 select-text flex-col gap-2 border border-panel-edge bg-title p-3 text-text text-xs'
+      className='absolute bottom-0 left-full z-10 ml-2 flex w-64 flex-col gap-2 border border-panel-edge bg-title p-3 text-xs text-text select-text'
       ref={ref}
       role='dialog'
     >

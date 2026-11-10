@@ -117,11 +117,11 @@ export default function KeysSection({
     const recording = isRecording && activeId === slot.id
     return (
       <li
-        className='flex flex-col border-panel-edge border-b'
+        className='flex flex-col border-b border-panel-edge'
         data-key-slot={slot.id}
         key={slot.id}
       >
-        <div className='flex min-h-7 items-center gap-2 px-3 text-text text-xs'>
+        <div className='flex min-h-7 items-center gap-2 px-3 text-xs text-text'>
           {/* A narrow frame cuts the name. The title shows the full name. */}
           <span className='min-w-0 flex-1 truncate' data-key-name={true} title={label}>
             {label}
@@ -161,7 +161,7 @@ export default function KeysSection({
         {recording && (
           <div className='px-3 pb-1'>
             <button
-              className='max-w-full border border-text-strong/30 px-1.5 py-0.5 text-left text-text-strong text-xs outline-none'
+              className='max-w-full border border-text-strong/30 px-1.5 py-0.5 text-left text-xs text-text-strong outline-none'
               {...{ [KEY_RECORDER_ATTR]: true }}
               onBlur={() => recorder.cancelRecording()}
               ref={promptRef}
@@ -172,7 +172,7 @@ export default function KeysSection({
           </div>
         )}
         {recording && rejection !== null && (
-          <p className='px-3 pb-1 text-text-dim text-xs'>{rejection}</p>
+          <p className='px-3 pb-1 text-xs text-text-dim'>{rejection}</p>
         )}
         {errorId === slot.id && !errorShownAtTop && (
           <ErrorLine message={save.error} onClose={save.closeError} />
@@ -185,7 +185,7 @@ export default function KeysSection({
     <div className='flex flex-col'>
       {only === null && (
         <div className='flex items-start gap-3 px-3 py-2'>
-          <p className='min-w-0 flex-1 text-text-dim text-xs'>
+          <p className='min-w-0 flex-1 text-xs text-text-dim'>
             You can't record Esc or a plain Backspace, because the recorder uses them. Reset brings
             back the default key.
           </p>
@@ -197,7 +197,7 @@ export default function KeysSection({
       {errorShownAtTop && <ErrorLine message={save.error} onClose={save.closeError} />}
       {groups.map(group => (
         <section data-key-group={group.group} key={group.group}>
-          <h3 className={cx('border-panel-edge border-y bg-title px-3 py-1 text-text-dim text-xs')}>
+          <h3 className={cx('border-y border-panel-edge bg-title px-3 py-1 text-xs text-text-dim')}>
             {group.title}
           </h3>
           <ul className='flex flex-col'>{group.rows.map(renderRow)}</ul>

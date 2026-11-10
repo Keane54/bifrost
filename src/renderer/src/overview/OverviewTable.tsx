@@ -165,7 +165,7 @@ export default function OverviewTable({
   return (
     <ContextMenu.Root onOpenChange={setMenuOpen} open={menuOpen && menuRow !== undefined}>
       <ContextMenu.Trigger
-        className='min-h-0 flex-1 select-none overflow-auto'
+        className='min-h-0 flex-1 overflow-auto select-none'
         data-overview-rows={panelId}
         data-rows-area={true}
         onContextMenu={e => {
@@ -192,7 +192,7 @@ export default function OverviewTable({
                     className={cx(
                       STICKY,
                       'text-left font-normal',
-                      dropTarget === id && 'outline-1 outline-text-strong -outline-offset-1',
+                      dropTarget === id && 'outline-1 -outline-offset-1 outline-text-strong',
                     )}
                     data-column-id={id}
                     key={header.id}
@@ -212,7 +212,7 @@ export default function OverviewTable({
                   >
                     <button
                       aria-label={COLUMN_LABELS[id] || 'Kind'}
-                      className='flex h-[18px] w-full items-center gap-1 overflow-hidden whitespace-nowrap px-1 text-[11px] text-text-dim hover:text-text active:bg-accent/12'
+                      className='flex h-[18px] w-full items-center gap-1 overflow-hidden px-1 text-[11px] whitespace-nowrap text-text-dim hover:text-text active:bg-accent/12'
                       draggable={id !== 'kind'}
                       onClick={() => update({ column: id, tabId: tab.id, type: 'sortBy' })}
                       onDragEnd={endDrag}
@@ -338,7 +338,7 @@ export default function OverviewTable({
           </tbody>
         </table>
         {viewed.length === 0 && (
-          <p className='px-2 py-0.5 text-text-dim text-xs'>
+          <p className='px-2 py-0.5 text-xs text-text-dim'>
             {rows.length === 0 ? 'No sessions.' : 'No sessions match the filters of this tab.'}
           </p>
         )}

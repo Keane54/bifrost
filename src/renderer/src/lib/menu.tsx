@@ -29,7 +29,7 @@ export function Tip({
       <Tooltip.Trigger render={children} />
       <Tooltip.Portal>
         <Tooltip.Positioner className='pointer-events-none z-50' side={side} sideOffset={6}>
-          <Tooltip.Popup className='whitespace-pre-line border border-panel-edge bg-title px-2 py-1 text-text text-xs'>
+          <Tooltip.Popup className='border border-panel-edge bg-title px-2 py-1 text-xs whitespace-pre-line text-text'>
             {label}
           </Tooltip.Popup>
         </Tooltip.Positioner>

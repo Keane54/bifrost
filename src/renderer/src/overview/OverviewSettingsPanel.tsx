@@ -241,7 +241,7 @@ function ColumnList({
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className='py-1'>
-      <h3 className='px-2 pb-0.5 font-normal text-[11px] text-text-dim'>{title}</h3>
+      <h3 className='px-2 pb-0.5 text-[11px] font-normal text-text-dim'>{title}</h3>
       <ul>{children}</ul>
     </section>
   )
@@ -412,7 +412,7 @@ export default function OverviewSettingsPanel({ panelId }: { panelId: string }):
 
   if (!open) {
     return (
-      <p className='p-3 text-text-dim text-xs' data-overview-settings={overviewId}>
+      <p className='p-3 text-xs text-text-dim' data-overview-settings={overviewId}>
         This Overview is closed.
       </p>
     )
@@ -420,7 +420,7 @@ export default function OverviewSettingsPanel({ panelId }: { panelId: string }):
 
   return (
     <div
-      className='flex min-h-full select-none flex-col text-text text-xs'
+      className='flex min-h-full flex-col text-xs text-text select-none'
       data-overview-settings={overviewId}
     >
       <div className='flex items-center gap-2 px-2 pt-2 pb-1'>
@@ -435,7 +435,7 @@ export default function OverviewSettingsPanel({ panelId }: { panelId: string }):
         color={tab.color}
         onChoose={color => update({ color, tabId: tab.id, type: 'setTabColour' })}
       />
-      <div className='flex border-panel-edge border-b px-1' role='tablist'>
+      <div className='flex border-b border-panel-edge px-1' role='tablist'>
         {PAGES.map(p => (
           <button
             aria-selected={p.id === page}
@@ -461,7 +461,7 @@ export default function OverviewSettingsPanel({ panelId }: { panelId: string }):
           <FilterList edit={edit} tab={tab} />
         )}
       </div>
-      <div className='flex justify-end border-panel-edge border-t p-2'>
+      <div className='flex justify-end border-t border-panel-edge p-2'>
         <Tip label={isDefault ? REASON_DEFAULT_TAB : null}>
           <Button
             className='border border-panel-edge px-2 py-0.5 text-text hover:bg-hover not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'

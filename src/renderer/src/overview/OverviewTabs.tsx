@@ -163,7 +163,7 @@ function TabItem(props: {
         ) : (
           <button
             aria-selected={active}
-            className='whitespace-nowrap px-2 font-medium text-xs active:bg-accent/12'
+            className='px-2 text-xs font-medium whitespace-nowrap active:bg-accent/12'
             onClick={() => update({ tabId: tab.id, type: 'activate' })}
             role='tab'
             type='button'
@@ -265,7 +265,7 @@ export default function OverviewTabs({
   return (
     <div className='flex h-[22px] shrink-0 items-stretch pr-1'>
       <div
-        className='flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none]'
+        className='flex min-w-0 flex-1 [scrollbar-width:none] items-stretch overflow-x-auto'
         role='tablist'
       >
         {config.tabs.map(tab => (
