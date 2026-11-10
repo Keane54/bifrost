@@ -39,12 +39,17 @@ export const MAX_BODY_BYTES = 1_000_000
 const TOO_LARGE = 'The answer of the status page is too large.'
 
 // Read the text of a body with the cap. A content-length over the cap stops before the read. A
-// body that gets past the cap stops the read at once.
-async function cappedText(res: Response, max: number): Promise<string> {
+// body that gets past the cap stops the read at once. Each stop rejects with the tooLarge text.
+// The release notes source uses it too.
+export async function cappedText(
+  res: Response,
+  max: number,
+  tooLarge: string = TOO_LARGE,
+): Promise<string> {
   const length = Number(res.headers.get('content-length'))
   if (Number.isFinite(length) && length > max) {
     await res.body?.cancel().catch(() => {})
-    throw new Error(TOO_LARGE)
+    throw new Error(tooLarge)
   }
   if (res.body === null) return ''
   const reader = res.body.getReader()
@@ -56,7 +61,7 @@ async function cappedText(res: Response, max: number): Promise<string> {
     size += value.byteLength
     if (size > max) {
       await reader.cancel().catch(() => {})
-      throw new Error(TOO_LARGE)
+      throw new Error(tooLarge)
     }
     chunks.push(value)
   }

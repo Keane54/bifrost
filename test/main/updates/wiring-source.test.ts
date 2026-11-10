@@ -54,7 +54,10 @@ const RELEASE_BUILD =
 describe('the updater wiring in ipc.ts', () => {
   it('makes the updater only in a release build, with the real home and app-update.yml', () => {
     const text = flat(source)
-    expect(text).toContain(`if (${RELEASE_BUILD}) { startUpdater(settings, health)`)
+    // What's new uses the same value (release notes wiring test).
+    expect(text).toContain(`const releaseBuild = ${RELEASE_BUILD}`)
+    expect(text.match(/\breleaseBuild =/g)).toHaveLength(1)
+    expect(text).toContain('if (releaseBuild) { startUpdater(settings, health)')
     // startUpdater has its declaration and this one call. createUpdater has one call, in it.
     expect(text.match(/\bstartUpdater\(/g)).toHaveLength(2)
     expect(text.match(/\bcreateUpdater\(/g)).toHaveLength(1)
