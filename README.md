@@ -45,6 +45,7 @@ Built with [Electron](https://www.electronjs.org/), [React](https://react.dev/) 
 - A yellow box or a red box flashes on a session that needs you. A macOS notification and a sound are optional.
 - Live details is an optional mod for Claude Code. It sends live events and usage data to Bifrost. Then Bifrost shows the model, the cost and the context use of each session. Bifrost asks about Live details at the first start.
 - When the 5-hour limit or the 7-day limit gets to 90%, Bifrost shows a macOS notification. Each limit gives one notification in each reset period. When extra usage is on, the notification warns you that Claude Code can spend real money after 100%. A click on the notification opens the Usage HUD.
+- Bifrost skills are five built-in Claude Code skills. They give Claude tested steps for common jobs. Bifrost asks about them at the first start, after Live details. See the Skills section.
 - Bifrost updates itself. It checks GitHub for a new version and downloads it. When the update is ready, a button shows above Layouts in the side bar.
 - Bifrost shows the release notes from GitHub. After an update, the "What's new" dialog shows the changes since your last version. The "Release notes" button in Settings > Updates shows the last 10 releases.
 
@@ -63,7 +64,29 @@ The side bar on the left edge has one button for each panel. It also holds the p
 | Usage HUD | The use of the 5-hour limit and the 7-day limit. |
 | Service status | The status of Claude, GitHub and Sentry. |
 | Reviews | The GitHub pull requests that need you, in two tabs: To review and My PRs. In this version, the panel only shows the pull requests. |
-| Settings | The tabs General, Slash commands, Keys, Reviews, Live details and Updates. |
+| Settings | The tabs General, Slash commands, Keys, Reviews, Live details, Skills and Updates. |
+
+## Skills
+
+Bifrost skills are a small Claude Code plugin. The plugin has five skills.
+
+| Skill | Group | Job |
+| --- | --- | --- |
+| `bifrost-review` | Called by name | Review a PR. |
+| `bifrost-resolve-comments` | Called by name | Resolve the comments on a PR. |
+| `bifrost-humanise` | Listed | Make a text sound like a person wrote it. |
+| `bifrost-grill` | Listed | Ask hard questions about a plan. |
+| `bifrost-hand-over` | Called by name | Hand over a session to a new session. |
+
+Listed skills are in the skill list of Claude, so Claude can start them by itself. A skill that you call by name costs no context until you type its name.
+
+- Install the skills from the setup dialog or from Settings > Skills. The install shows each change first.
+- Start a skill when you type its name in a chat, for example `/bifrost-review`.
+- Bifrost updates the skill files at each start.
+- After an install or Turn on, a session that runs now gets the change after `/reload-plugins` or a restart.
+- The Hand over button works without the skills.
+
+`bifrost-humanise` comes from `blader/humanizer`. `bifrost-grill` comes from `mattpocock/skills`. Both are MIT licensed.
 
 ## Requirements
 

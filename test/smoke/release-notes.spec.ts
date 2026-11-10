@@ -10,7 +10,7 @@ import { copyFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, UNKNOWN_LOG } from './app.ts'
+import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 const FIXTURE = join(import.meta.dirname, 'fixtures', 'github-releases.json')
 
@@ -41,10 +41,7 @@ test('Settings > Updates opens the release notes of the fake GitHub answer', asy
     )
     expect(stubbed).toBe(true)
 
-    const setup = page.locator('[data-setup-dialog]')
-    await expect(setup).toContainText('Set up Bifrost', { timeout: 15_000 })
-    await setup.getByRole('button', { exact: true, name: 'Skip' }).click()
-    await expect(setup).toBeHidden()
+    await skipSetup(page)
 
     // What's new never opens by itself in a test run.
     await expect(page.getByRole('button', { exact: true, name: 'Settings' })).toBeVisible()

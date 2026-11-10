@@ -252,6 +252,8 @@ describe('the introduction again', () => {
     expect(setupView('first', 'ask', status({ plugin: 'not-installed' }))).toBe('ask')
     expect(setupView('first', 'ask', status({ plugin: 'enabled' }))).toBe('ask')
     expect(setupView('first', 'done', status())).toBe('done')
+    expect(setupView('first', 'skills', status())).toBe('skills')
+    expect(setupView('again', 'skills', status({ plugin: 'enabled' }))).toBe('skills')
   })
 
   it('again, an installed plugin gives its state and Done, not an install', () => {

@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions } from './app.ts'
+import { launchOptions, skipSetup } from './app.ts'
 
 const SLASH = 'This runs as a slash command.'
 const SHOTS = process.env.BIFROST_SHOT_DIR
@@ -18,10 +18,7 @@ test('the Selected Item panel shows a status icon only when a text exists', asyn
   try {
     app = await _electron.launch(await launchOptions(testHome))
     const page = await app.firstWindow()
-    const setup = page.locator('[data-setup-dialog]')
-    await expect(setup).toContainText('Set up Bifrost', { timeout: 15_000 })
-    await setup.getByRole('button', { exact: true, name: 'Skip' }).click()
-    await expect(setup).toBeHidden()
+    await skipSetup(page)
 
     const alpha = page
       .locator('[data-overview-id]')

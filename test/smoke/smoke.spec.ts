@@ -16,6 +16,7 @@ import {
   readText,
   realFiles,
   SESSION_ROOT,
+  skipSetup,
   UNKNOWN_LOG,
 } from './app.ts'
 
@@ -48,10 +49,7 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     const page = await app.firstWindow()
 
     // Step 3: the fake claude lists no Bifrost plugin, so the setup dialog shows.
-    const setup = page.locator('[data-setup-dialog]')
-    await expect(setup).toContainText('Set up Bifrost', { timeout: 15_000 })
-    await setup.getByRole('button', { exact: true, name: 'Skip' }).click()
-    await expect(setup).toBeHidden()
+    await skipSetup(page)
 
     // Step 4: the All tab shows the two active sessions, but not the parked session.
     const overview = page.locator('[data-overview-id]').first()

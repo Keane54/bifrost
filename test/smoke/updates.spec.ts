@@ -7,7 +7,7 @@ import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, UNKNOWN_LOG } from './app.ts'
+import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 const REAL_UPDATER_LOG = join(homedir(), 'Library', 'Logs', 'Bifrost', 'updater.log')
 
@@ -33,10 +33,7 @@ test('a test run shows the Updates section in the not available form', async () 
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
 
-    const setup = page.locator('[data-setup-dialog]')
-    await expect(setup).toContainText('Set up Bifrost', { timeout: 15_000 })
-    await setup.getByRole('button', { exact: true, name: 'Skip' }).click()
-    await expect(setup).toBeHidden()
+    await skipSetup(page)
 
     // The side bar has no update button.
     await expect(page.getByRole('button', { exact: true, name: 'Settings' })).toBeVisible()

@@ -204,18 +204,19 @@ export function setupChosen(status: LiveStatus | null): boolean {
 // Settings > General (spec 11.1).
 export type SetupMode = 'first' | 'again'
 
-// ask: the choice. installed: the state of an installed plugin and Done. done: the install worked.
-export type SetupView = 'ask' | 'installed' | 'done'
+// ask: the choice. installed: the state of an installed plugin and Done. skills: the skills step.
+// done: an install worked.
+export type SetupView = 'ask' | 'installed' | 'skills' | 'done'
 
 // The view of the setup dialog. At the first start, the dialog keeps its choice until Skip or
 // Done, also when the status changes. When it opens again, it does not offer an install that
 // already happened. An installed plugin, on or off, then gives its state and Done.
 export function setupView(
   mode: SetupMode,
-  phase: 'ask' | 'done',
+  phase: 'ask' | 'skills' | 'done',
   status: LiveStatus | null,
 ): SetupView {
-  if (phase === 'done') return 'done'
+  if (phase !== 'ask') return phase
   return mode === 'again' && setupChosen(status) ? 'installed' : 'ask'
 }
 

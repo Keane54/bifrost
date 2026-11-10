@@ -21,7 +21,7 @@ import {
   type Page,
   test,
 } from '@playwright/test'
-import { launchOptions, readText, realFiles, UNKNOWN_LOG } from './app.ts'
+import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 // The width of the narrow Settings frame of the M5a check.
 const NARROW_W = 360
@@ -86,10 +86,7 @@ test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their la
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
 
-    const setup = page.locator('[data-setup-dialog]')
-    await expect(setup).toContainText('Set up Bifrost', { timeout: 15_000 })
-    await setup.getByRole('button', { exact: true, name: 'Skip' }).click()
-    await expect(setup).toBeHidden()
+    await skipSetup(page)
 
     // M5a carry-over 1. A click on a row focuses the rows. R opens the Rename dialog of the
     // selected owned session. Esc closes it, and the rows get the focus again.

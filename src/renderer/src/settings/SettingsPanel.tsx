@@ -16,6 +16,7 @@ import { useLive } from './live-context'
 import { claudeVersionLine, LIVE_ACTION_LABELS, liveActions, liveStateLine } from './live-notice'
 import ReviewsSection from './ReviewsSection'
 import { ROW_FIELD } from './SettingRow'
+import SkillsSection from './SkillsSection'
 import SlashSection from './SlashSection'
 import { SaveTrackerContext } from './save-context'
 import { SaveTracker } from './save-tracker'
@@ -32,9 +33,11 @@ import {
 } from './search'
 import { useSettings } from './settings-context'
 import { type SettingsSection, useSettingsNav } from './settings-nav'
+import { useSkills } from './skills-context'
+import { skillsActions, skillsStateLine } from './skills-notice'
 import UpdatesSection from './UpdatesSection'
 
-const TABS: SettingsSection[] = ['general', 'slash', 'keys', 'reviews', 'live', 'updates']
+const TABS: SettingsSection[] = ['general', 'slash', 'keys', 'reviews', 'live', 'skills', 'updates']
 
 // The focus for Cmd+F: in Settings, nowhere (the page body), or in another place.
 function focusPlace(root: HTMLElement | null): 'settings' | 'none' | 'other' {
@@ -60,7 +63,15 @@ function onlyOf(hit: SearchHit): ReadonlySet<string> | null {
   return hit.whole ? null : new Set(hit.rows)
 }
 
-function Hit({ hit, readLive }: { hit: SearchHit; readLive: () => void }): React.JSX.Element {
+function Hit({
+  hit,
+  readLive,
+  readSkills,
+}: {
+  hit: SearchHit
+  readLive: () => void
+  readSkills: () => void
+}): React.JSX.Element {
   const only = useMemo(() => onlyOf(hit), [hit])
   return (
     <section data-search-section={hit.id}>
@@ -73,6 +84,7 @@ function Hit({ hit, readLive }: { hit: SearchHit; readLive: () => void }): React
       {hit.id === 'keys' && <KeysSection only={only} />}
       {hit.id === 'reviews' && <ReviewsSection only={only} />}
       {hit.id === 'live' && <LiveSection readStatus={readLive} />}
+      {hit.id === 'skills' && <SkillsSection readStatus={readSkills} />}
       {hit.id === 'updates' && <UpdatesSection only={only} />}
     </section>
   )
@@ -90,6 +102,13 @@ export default function SettingsPanel(): React.JSX.Element {
   const [readLive] = useState(() =>
     once(() => {
       void refresh()
+    }),
+  )
+  // The skills read their status one time for each view too.
+  const skills = useSkills()
+  const [readSkills] = useState(() =>
+    once(() => {
+      void skills.refresh()
     }),
   )
   const [tracker] = useState(() => new SaveTracker())
@@ -111,6 +130,13 @@ export default function SettingsPanel(): React.JSX.Element {
           ...liveActions(status).map(id => LIVE_ACTION_LABELS[id]),
           claudeVersionLine(version, versionFailed) ?? 'Claude Code',
         ],
+        skills: [
+          SECTION_TITLES.skills,
+          'plugin',
+          skillsStateLine(skills.notice),
+          ...skillsActions(skills.status).map(id => LIVE_ACTION_LABELS[id]),
+          ...(skills.status?.skills.map(skill => skill.name) ?? []),
+        ],
         slash: settings.slashCommands,
       }),
     [
@@ -118,6 +144,8 @@ export default function SettingsPanel(): React.JSX.Element {
       settings.keys,
       settings.labels,
       settings.slashCommands,
+      skills.notice,
+      skills.status,
       status,
       version,
       versionFailed,
@@ -264,11 +292,12 @@ export default function SettingsPanel(): React.JSX.Element {
           {hits === null && section === 'keys' && <KeysSection />}
           {hits === null && section === 'reviews' && <ReviewsSection />}
           {hits === null && section === 'live' && <LiveSection readStatus={readLive} />}
+          {hits === null && section === 'skills' && <SkillsSection readStatus={readSkills} />}
           {hits === null && section === 'updates' && <UpdatesSection />}
           {hits !== null && (
             <section aria-label='Search results' data-search-results={true}>
               {hits.map(hit => (
-                <Hit hit={hit} key={hit.id} readLive={readLive} />
+                <Hit hit={hit} key={hit.id} readLive={readLive} readSkills={readSkills} />
               ))}
               {hits.length === 0 && (
                 <p className='px-3 py-2 text-xs text-text-dim' data-settings-no-match={true}>

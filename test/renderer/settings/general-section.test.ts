@@ -31,7 +31,7 @@ describe('Settings > General', () => {
   })
 
   it('the search of Settings finds the Animated background row', () => {
-    const sections = settingsIndex({ keys: [], live: [], slash: [] })
+    const sections = settingsIndex({ keys: [], live: [], skills: [], slash: [] })
     for (const query of ['animated', 'background', 'Animated background']) {
       const hits = searchSettings(query, sections)
       expect(hits?.find(hit => hit.id === 'general')?.rows, query).toContain('Animated background')

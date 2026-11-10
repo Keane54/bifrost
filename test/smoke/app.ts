@@ -1,7 +1,8 @@
 // The parts that the Playwright tests in test/smoke share: the start of Bifrost with a fake
 // claude and a test home, and the guard of the real files.
 //
-// Without BIFROST_SMOKE_APP, a test starts the build in out/ with the Electron of the
+// Without BIFROST_SMOKE_APP, a test starts the build in out/ (the main field of package.json,
+// so the app path is the repository) with the Electron of the
 // repository. With BIFROST_SMOKE_APP=<path of Bifrost.app>, it starts that packaged app.
 //
 // No test starts Bifrost under Rosetta. On an Apple Silicon Mac, macOS 26 then shows a notice
@@ -13,7 +14,7 @@ import type { Dirent } from 'node:fs'
 import { mkdir, readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { _electron } from '@playwright/test'
+import { type _electron, expect, type Page } from '@playwright/test'
 
 type LaunchOptions = NonNullable<Parameters<typeof _electron.launch>[0]>
 
@@ -153,8 +154,19 @@ export async function launchOptions(testHome: string): Promise<LaunchOptions> {
   const base = { cwd: ROOT, env: launchEnv(testHome) }
   const appPath = process.env.BIFROST_SMOKE_APP
   if (appPath === undefined || appPath === '') {
-    return { ...base, args: ['out/main/index.js', userData] }
+    return { ...base, args: ['.', userData] }
   }
   const bin = join(appPath, 'Contents', 'MacOS', 'Bifrost')
   return { ...base, args: [userData], executablePath: bin }
+}
+
+// Pass the setup dialog with Skip in the Live step and in the skills step.
+export async function skipSetup(page: Page): Promise<void> {
+  const setup = page.locator('[data-setup-dialog]')
+  await expect(setup).toContainText('Set up Bifrost', { timeout: 15_000 })
+  await expect(setup).toHaveAttribute('data-setup-dialog', 'ask')
+  await setup.getByRole('button', { exact: true, name: 'Skip' }).click()
+  await expect(setup).toHaveAttribute('data-setup-dialog', 'skills')
+  await setup.getByRole('button', { exact: true, name: 'Skip' }).click()
+  await expect(setup).toBeHidden()
 }

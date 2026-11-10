@@ -27,6 +27,7 @@ import { LiveProvider } from '../settings/live-context'
 import SetupDialog from '../settings/SetupDialog'
 import { useSettings } from '../settings/settings-context'
 import { SettingsNavProvider } from '../settings/settings-nav'
+import { SkillsProvider } from '../settings/skills-context'
 import {
   LayoutMenuContext,
   type LayoutMenuState,
@@ -620,102 +621,104 @@ export default function WindowManager(): React.JSX.Element {
               {/* The side bar, the setup dialog and the Settings panel read the state of
                   Live details. */}
               <LiveProvider>
-                {/* The send box and the New session dialog read and change the dialog history. */}
-                <HistoryProvider history={history} update={updateHistory}>
-                  {/* The Performance panel reads and changes its Details row. */}
-                  <PerformanceDetailsContext value={performanceDetails}>
-                    {/* One confirmation dialog for Stop, Delete and Take control. */}
-                    <ConfirmProvider>
-                      {/* The chat terminals follow the open chat panels in the frames. */}
-                      <ChatsProvider>
-                        {/* The actions read the frames, the history, the confirmation and the
+                <SkillsProvider>
+                  {/* The send box and the New session dialog read and change the dialog history. */}
+                  <HistoryProvider history={history} update={updateHistory}>
+                    {/* The Performance panel reads and changes its Details row. */}
+                    <PerformanceDetailsContext value={performanceDetails}>
+                      {/* One confirmation dialog for Stop, Delete and Take control. */}
+                      <ConfirmProvider>
+                        {/* The chat terminals follow the open chat panels in the frames. */}
+                        <ChatsProvider>
+                          {/* The actions read the frames, the history, the confirmation and the
                             chat terminals. So the provider is inside these four. */}
-                        <ActionsProvider>
-                          <div className='flex h-full w-full'>
-                            <SideBar />
-                            {/* The Overview panels, the frame titles and the frame menus read
+                          <ActionsProvider>
+                            <div className='flex h-full w-full'>
+                              <SideBar />
+                              {/* The Overview panels, the frame titles and the frame menus read
                                 the configs. */}
-                            <OverviewsProvider dispatch={dispatchOverviews} state={overviews}>
-                              {/* The keys of spec 9.4 read the frames, the Overview configs, the
+                              <OverviewsProvider dispatch={dispatchOverviews} state={overviews}>
+                                {/* The keys of spec 9.4 read the frames, the Overview configs, the
                                   rows and the actions. */}
-                              <KeysProvider>
-                                {/* The area keeps the z-order of its frames inside it. So a
+                                <KeysProvider>
+                                  {/* The area keeps the z-order of its frames inside it. So a
                                     popover can be above them. A text selection cannot start on
                                     the empty area. The panel content allows it. During a drag or
                                     a resize, no part of the area allows a selection. */}
-                                <div
-                                  className={cx(
-                                    'relative isolate min-w-0 flex-1 overflow-hidden select-none',
-                                    dragging && '**:select-none',
-                                  )}
-                                  data-panel-area={true}
-                                  ref={areaRef}
-                                >
-                                  {order.map(frame => (
-                                    <Frame
-                                      blur={blurred.has(frame.id)}
-                                      dispatch={dispatch}
-                                      frame={
-                                        live?.frameId === frame.id
-                                          ? { ...frame, rect: live.rect }
-                                          : frame
-                                      }
-                                      key={frame.id}
-                                      onDrag={beginDrag}
-                                      top={frame.id === topId}
-                                      z={shown.indexOf(frame)}
-                                    />
-                                  ))}
-                                  {/* The arrow marks of the snap that a release applies (spec
+                                  <div
+                                    className={cx(
+                                      'relative isolate min-w-0 flex-1 overflow-hidden select-none',
+                                      dragging && '**:select-none',
+                                    )}
+                                    data-panel-area={true}
+                                    ref={areaRef}
+                                  >
+                                    {order.map(frame => (
+                                      <Frame
+                                        blur={blurred.has(frame.id)}
+                                        dispatch={dispatch}
+                                        frame={
+                                          live?.frameId === frame.id
+                                            ? { ...frame, rect: live.rect }
+                                            : frame
+                                        }
+                                        key={frame.id}
+                                        onDrag={beginDrag}
+                                        top={frame.id === topId}
+                                        z={shown.indexOf(frame)}
+                                      />
+                                    ))}
+                                    {/* The arrow marks of the snap that a release applies (spec
                                       8.1). The x mark has a left or right arrow, and the y mark
                                       has an up or down arrow. So the direction is a unique key. */}
-                                  {marks.map(m => {
-                                    const Arrow = MARK_ARROWS[m.dir]
-                                    return (
-                                      <Arrow
-                                        aria-hidden={true}
-                                        className='pointer-events-none absolute text-snap'
-                                        data-snap-mark={m.dir}
-                                        key={m.dir}
-                                        size={MARK_SIZE}
-                                        strokeWidth={3}
+                                    {marks.map(m => {
+                                      const Arrow = MARK_ARROWS[m.dir]
+                                      return (
+                                        <Arrow
+                                          aria-hidden={true}
+                                          className='pointer-events-none absolute text-snap'
+                                          data-snap-mark={m.dir}
+                                          key={m.dir}
+                                          size={MARK_SIZE}
+                                          strokeWidth={3}
+                                          style={{
+                                            left: markStart(m.x, bounds.w),
+                                            top: markStart(m.y, bounds.h),
+                                            zIndex: overlayZ,
+                                          }}
+                                        />
+                                      )
+                                    })}
+                                    {/* The title bar where a drop stacks the dragged frame. The
+                                      outline is above all frames, because the dragged frame
+                                      covers the title bar. */}
+                                    {dropBar && dropFrame && (
+                                      <div
+                                        className='pointer-events-none absolute bg-text-strong/10 outline-2 -outline-offset-2 outline-text-strong/30'
+                                        data-drop-target={dropFrame.id}
                                         style={{
-                                          left: markStart(m.x, bounds.w),
-                                          top: markStart(m.y, bounds.h),
+                                          height: dropBar.h,
+                                          left: dropBar.x,
+                                          top: dropBar.y,
+                                          width: dropBar.w,
                                           zIndex: overlayZ,
                                         }}
                                       />
-                                    )
-                                  })}
-                                  {/* The title bar where a drop stacks the dragged frame. The
-                                      outline is above all frames, because the dragged frame
-                                      covers the title bar. */}
-                                  {dropBar && dropFrame && (
-                                    <div
-                                      className='pointer-events-none absolute bg-text-strong/10 outline-2 -outline-offset-2 outline-text-strong/30'
-                                      data-drop-target={dropFrame.id}
-                                      style={{
-                                        height: dropBar.h,
-                                        left: dropBar.x,
-                                        top: dropBar.y,
-                                        width: dropBar.w,
-                                        zIndex: overlayZ,
-                                      }}
-                                    />
-                                  )}
-                                </div>
-                              </KeysProvider>
-                            </OverviewsProvider>
-                          </div>
-                        </ActionsProvider>
-                      </ChatsProvider>
-                    </ConfirmProvider>
-                  </PerformanceDetailsContext>
-                </HistoryProvider>
-                {/* The setup dialog at the first start (spec 11.1). */}
-                <SetupDialog />
-                {/* What's new after an update, and the release notes of Settings > Updates. */}
-                <ReleaseNotesDialog />
+                                    )}
+                                  </div>
+                                </KeysProvider>
+                              </OverviewsProvider>
+                            </div>
+                          </ActionsProvider>
+                        </ChatsProvider>
+                      </ConfirmProvider>
+                    </PerformanceDetailsContext>
+                  </HistoryProvider>
+                  {/* The setup dialog at the first start (spec 11.1). */}
+                  <SetupDialog />
+                  {/* What's new after an update, and the release notes of Settings > Updates. */}
+                  <ReleaseNotesDialog />
+                </SkillsProvider>
               </LiveProvider>
             </SettingsNavProvider>
           </LayoutMenuContext>
