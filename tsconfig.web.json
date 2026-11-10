@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "composite": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "noImplicitAny": true
   },
   "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
   "include": [

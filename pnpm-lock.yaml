@@ -109,9 +109,6 @@ importers:
 
   .:
     dependencies:
-      '@electron-toolkit/preload':
-        specifier: 3.0.2
-        version: 3.0.2(electron@44.10.2(supports-color@7.2.0))
       '@electron-toolkit/utils':
         specifier: 4.0.0
         version: 4.0.0(electron@44.10.2(supports-color@7.2.0))
@@ -504,11 +501,6 @@ packages:
   '@electron-internal/extract-zip@1.0.8':
     resolution: {integrity: sha512-8iajeLFbzNwM0m3AsQZSZgYREWglAImyGvvFSWU34FgMW8sHlzdwj9QKvv9dgN7jMP591EFUF/sLOC3Jl9YIjQ==}
     engines: {node: '>=22.12.0'}
-
-  '@electron-toolkit/preload@3.0.2':
-    resolution: {integrity: sha512-TWWPToXd8qPRfSXwzf5KVhpXMfONaUuRAZJHsKthKgZR/+LqX1dZVSSClQ8OTAEduvLGdecljCsoT2jSshfoUg==}
-    peerDependencies:
-      electron: '>=13.0.0'
 
   '@electron-toolkit/tsconfig@2.0.0':
     resolution: {integrity: sha512-AdPsP770WhW7b260h13SHMdmjEEHJL6xFtgi3jwgdsSQbJOkJLeNnnpZW9qxTPCvmRI6vmdzWz5K3gibFS6SNg==}
@@ -3823,10 +3815,6 @@ snapshots:
   '@conventional-changelog/template@1.4.1': {}
 
   '@electron-internal/extract-zip@1.0.8': {}
-
-  '@electron-toolkit/preload@3.0.2(electron@44.10.2(supports-color@7.2.0))':
-    dependencies:
-      electron: 44.10.2(supports-color@7.2.0)
 
   '@electron-toolkit/tsconfig@2.0.0(@types/node@24.19.2)':
     dependencies:
