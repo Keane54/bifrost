@@ -36,6 +36,8 @@ test('the Performance panel shows a headline and opens and closes the details', 
       { timeout: 20_000 },
     )
     await expect(panel.locator('[data-perf-headline]')).toContainText(/OK|Warning|Problem/)
+    // A clean run has no past event to clear, so the panel shows no Clear button.
+    await expect(panel.locator('[data-perf-clear]')).toHaveCount(0)
 
     // Step 3: the Details row starts closed. A click opens the Bifrost section with its rows.
     const details = panel.locator('[data-perf-details]')
