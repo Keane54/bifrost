@@ -57,6 +57,7 @@ import {
   toSnapshot,
   type UiStore,
 } from './layout'
+import { blurredFrames } from './overlap'
 import SideBar from './SideBar'
 import {
   DEFAULT_SIZES,
@@ -600,6 +601,9 @@ export default function WindowManager(): React.JSX.Element {
     [shown],
   )
   const topId = topFrame(state)?.id
+  // The frames that overlap a lower frame. Only they have the backdrop blur (user decision,
+  // 2026-11-10). During a drag, the live rect of the dragged frame counts.
+  const blurred = useMemo(() => blurredFrames(shown, live), [shown, live])
   // The marks and the drop outline are above all frames.
   const overlayZ = shown.length
   const dropFrame = dropTarget ? shown.find(f => f.id === dropTarget) : undefined
@@ -648,6 +652,7 @@ export default function WindowManager(): React.JSX.Element {
                                 >
                                   {order.map(frame => (
                                     <Frame
+                                      blur={blurred.has(frame.id)}
                                       dispatch={dispatch}
                                       frame={
                                         live?.frameId === frame.id

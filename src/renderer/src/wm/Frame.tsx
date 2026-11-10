@@ -15,6 +15,9 @@ export interface FrameProps {
   // The place of the frame in the z-order. A higher value is on top.
   z: number
   top: boolean
+  // True while the frame overlaps a lower frame that shows (overlap.ts). Only then does the frame
+  // blur what is behind it.
+  blur: boolean
   dispatch: Dispatch<WmAction>
   onDrag(e: React.PointerEvent<HTMLElement>, frameId: string, mode: DragMode): void
 }
@@ -57,7 +60,7 @@ function LockGlyph(): React.JSX.Element {
   )
 }
 
-function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.Element {
+function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React.JSX.Element {
   const { id, rect } = frame
   const menuButton = useRef<HTMLButtonElement>(null)
   const [menu, setMenu] = useState<Anchor | null>(null)
@@ -84,14 +87,16 @@ function FrameView({ frame, z, top, dispatch, onDrag }: FrameProps): React.JSX.E
   }
 
   // Only the background is translucent (bg-panel and --panel-alpha). Text and content stay solid.
-  // Each frame has the same very light blur (--blur-panel), so the background shows through softly.
+  // A frame over a lower frame has a very light blur (--blur-panel), so the lower frame shows
+  // through softly. A frame over the background only has no blur (user decision, 2026-11-10).
   // The top edge is a 1 px cyan line. The top frame shows the full line, other frames a dim line.
   // The top frame is less transparent and has a cyan glow above its top edge only. The background,
   // the border and the glow change in 250 ms, so that a focus change does not look abrupt.
   return (
     <div
       className={cx(
-        'absolute flex-col overflow-hidden border backdrop-blur-panel transition-[background-color,border-color,box-shadow] duration-250 ease-out',
+        'absolute flex-col overflow-hidden border transition-[background-color,border-color,box-shadow] duration-250 ease-out',
+        blur && 'backdrop-blur-panel',
         frame.minimised ? 'hidden' : 'flex',
         top
           ? 'border-text-strong/30 border-t-accent bg-panel-focus shadow-[0_-6px_12px_-6px_var(--color-accent-glow)]'

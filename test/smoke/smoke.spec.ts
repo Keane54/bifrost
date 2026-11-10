@@ -54,7 +54,8 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     await expect(row('smoke-gamma')).toHaveCount(0)
 
     // Step 4b: the animated background (spec 8.10) is behind the frames and moves. Each layer is a
-    // canvas with a size. With reduced motion, it stays still. Each frame has the same light blur.
+    // canvas with a size. With reduced motion, it stays still. The frames of the default layout do
+    // not overlap, so they have no blur (user decision, 2026-11-10).
     const layer = page.locator('.background')
     const fields = page.locator('.background canvas.background-field')
     await expect(fields).toHaveCount(6)
@@ -67,7 +68,9 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     )
     expect(sizes).toHaveLength(7)
     for (const size of sizes) expect(size).toBeGreaterThan(1)
-    await expect(page.locator('[data-frame-id]').first()).toHaveCSS('backdrop-filter', 'blur(8px)')
+    for (const frame of await page.locator('[data-frame-id]').all()) {
+      await expect(frame).toHaveCSS('backdrop-filter', 'none')
+    }
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await expect(layer).toHaveClass('background background-still')
     await expect(fields.first()).toHaveCSS('animation-name', 'none')
@@ -149,6 +152,10 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     const settingsFrame = page.locator('[data-frame-id]', {
       has: page.locator('[data-settings-section]'),
     })
+    // The Settings frame opens over the Overview, so it has the light blur. The Overview frame is
+    // the lowest frame, so it has no blur.
+    await expect(settingsFrame).toHaveCSS('backdrop-filter', 'blur(8px)')
+    await expect(page.locator('[data-frame-id]').first()).toHaveCSS('backdrop-filter', 'none')
     const animatedCheck = settingsFrame.getByRole('checkbox', { name: 'Animated background' })
     await animatedCheck.click()
     await expect(layer).toHaveClass('background background-paused')

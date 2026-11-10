@@ -235,12 +235,16 @@ describe('theme', () => {
     expect(bad).toEqual([])
   })
 
-  // User decision, 2026-11-06: each frame very slightly blurs the animated background behind it. A chat
-  // window and the other panels use the same light blur.
-  it('gives each frame one light backdrop blur of 6 to 8 px', () => {
-    expect(source('wm/Frame.tsx').match(/backdrop-blur-[\w[\]-]+/g)).toEqual([
-      'backdrop-blur-panel',
-    ])
+  // User decision, 2026-11-06: a frame very slightly blurs what is behind it. A chat window and
+  // the other panels use the same light blur. User decision, 2026-11-10: a frame has the blur only
+  // while it overlaps a lower frame that shows. A frame over the background only has no blur.
+  it('gives a frame one light backdrop blur of 6 to 8 px, only over a lower frame', () => {
+    const frame = source('wm/Frame.tsx')
+    expect(frame.match(/backdrop-blur-[\w[\]-]+/g)).toEqual(['backdrop-blur-panel'])
+    expect(frame).toContain("blur && 'backdrop-blur-panel'")
+    const manager = source('wm/WindowManager.tsx')
+    expect(manager).toContain('blurredFrames(')
+    expect(manager).toContain('blur={blurred.has(frame.id)}')
     const blur = Number(CSS.match(/--blur-panel:\s*([\d.]+)px;/)?.[1])
     expect(blur).toBeGreaterThanOrEqual(6)
     expect(blur).toBeLessThanOrEqual(8)
