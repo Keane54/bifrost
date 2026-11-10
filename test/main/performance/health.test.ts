@@ -76,10 +76,24 @@ describe('RAM', () => {
     reasons({ samples: [sample(NOW, { bifrostRamMb: mb + 300, bifrostRamNoTermMb: mb })] })
   test('1024 MB gives no reason, above 1 GB is one warning', () => {
     expect(ram(1024)).toEqual([])
+    expect(ram(1229)).toEqual([
+      {
+        level: 'warning',
+        text: "Bifrost's own processes are using 1.2 GB RAM, above the 1 GB limit.",
+      },
+    ])
+  })
+  test('a value that one decimal gives as the limit shows two decimals, rounded up', () => {
     expect(ram(1025)).toEqual([
       {
         level: 'warning',
-        text: 'Bifrost itself, without the chat terminals, is using 1,025 MB RAM, above the 1 GB limit.',
+        text: "Bifrost's own processes are using 1.01 GB RAM, above the 1 GB limit.",
+      },
+    ])
+    expect(ram(1537)).toEqual([
+      {
+        level: 'problem',
+        text: "Bifrost's own processes are using 1.51 GB RAM, above the 1.5 GB limit.",
       },
     ])
   })
@@ -87,13 +101,13 @@ describe('RAM', () => {
     expect(ram(1536)).toEqual([
       {
         level: 'warning',
-        text: 'Bifrost itself, without the chat terminals, is using 1,536 MB RAM, above the 1 GB limit.',
+        text: "Bifrost's own processes are using 1.5 GB RAM, above the 1 GB limit.",
       },
     ])
-    expect(ram(1537)).toEqual([
+    expect(ram(1843.2)).toEqual([
       {
         level: 'problem',
-        text: 'Bifrost itself, without the chat terminals, is using 1,537 MB RAM, above the 1.5 GB limit.',
+        text: "Bifrost's own processes are using 1.8 GB RAM, above the 1.5 GB limit.",
       },
     ])
   })

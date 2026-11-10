@@ -99,6 +99,15 @@ function limitGb(mb: number): string {
   return `${mb / 1024} GB`
 }
 
+// A RAM value above a limit, in GB with one decimal, for example "1.8 GB". If one decimal gives the
+// value of the limit, for example "1.0 GB" above the 1 GB limit, the text has two decimals,
+// rounded up, so the value always shows above the limit: "1.01 GB".
+function overLimitGb(mb: number, limitMb: number): string {
+  const gb = mb / 1024
+  if (Number(gb.toFixed(1)) > limitMb / 1024) return `${gb.toFixed(1)} GB`
+  return `${(Math.ceil(gb * 100) / 100).toFixed(2)} GB`
+}
+
 const POLL_NAMES: Record<PollPart, string> = {
   'account-usage': 'check your account usage',
   reviews: 'check GitHub for reviews',
@@ -128,11 +137,14 @@ export function healthReasons(
   if (samples.length > 0) {
     const latest = samples.reduce((a, s) => (s.at >= a.at ? s : a))
     const mb = latest.bifrostRamNoTermMb
-    const without = `Bifrost itself, without the chat terminals, is using ${ramMbText(mb)} RAM`
+    // "Own processes" leaves out the chat terminals, which are separate claude attach processes
+    // (user decision, 2026-11-10).
+    const over = (limit: number) =>
+      `Bifrost's own processes are using ${overLimitGb(mb, limit)} RAM, above the ${limitGb(limit)} limit.`
     if (mb > LIMITS.ramProblemMb) {
-      add('problem', `${without}, above the ${limitGb(LIMITS.ramProblemMb)} limit.`)
+      add('problem', over(LIMITS.ramProblemMb))
     } else if (mb > LIMITS.ramWarnMb) {
-      add('warning', `${without}, above the ${limitGb(LIMITS.ramWarnMb)} limit.`)
+      add('warning', over(LIMITS.ramWarnMb))
     }
     const term = latest.largestTerminalRamMb
     if (term > LIMITS.terminalRamWarnMb) {
