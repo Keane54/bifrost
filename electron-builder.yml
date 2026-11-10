@@ -6,6 +6,7 @@ directories:
 files:
   - out/**
   - resources/**
+  - '!resources/icon-dev.png'
   - '!resources/live-mod/tests/**'
   - '!resources/live-mod/tsconfig.json'
   - '!resources/live-mod/.claude-plugin/types/**'

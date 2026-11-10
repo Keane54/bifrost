@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { drawDevIcon } from '../../scripts/icon/dev-badge'
 import { drawIcon, encodePng, type IconPalette, readPalette } from '../../scripts/icon/draw'
 
 const CSS = readFileSync(join(__dirname, '../../src/renderer/src/styles/app.css'), 'utf8')
@@ -176,6 +177,44 @@ describe('the icon script', { timeout: 30_000 }, () => {
         expect(white).toBe(false)
       }
     }
+  })
+
+  it('drawDevIcon differs from drawIcon only in the top-left badge', () => {
+    const palette = readPalette(CSS)
+    const plain = drawIcon(SIZE, palette)
+    const dev = drawDevIcon(SIZE, palette)
+    expect(dev.length).toBe(plain.length)
+    let changed = 0
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        const i = (y * SIZE + x) * 4
+        if (plain.subarray(i, i + 4).some((v, k) => v !== dev[i + k])) {
+          changed++
+          // Each changed pixel is in the top-left part of the icon.
+          expect(x).toBeLessThan(SIZE * 0.6)
+          expect(y).toBeLessThan(SIZE * 0.4)
+        }
+      }
+    }
+    expect(changed).toBeGreaterThan(500)
+    // The badge has dark pixels and white pixels of the text.
+    const at = reader(dev, SIZE)
+    expect(at(SIZE * 0.2, SIZE * 0.2).slice(0, 3)).toEqual([14, 14, 18])
+    const lit = Array.from({ length: SIZE * SIZE }, (_, p) => p).some(
+      p =>
+        dev[p * 4] > 250 && dev[p * 4 + 1] > 250 && dev[p * 4 + 2] > 250 && p % SIZE < SIZE * 0.6,
+    )
+    expect(lit).toBe(true)
+  })
+
+  it('resources/icon-dev.png is a 512 pixel PNG that differs from icon.png', () => {
+    const dev = readFileSync(join(__dirname, '../../resources/icon-dev.png'))
+    const plain = readFileSync(join(__dirname, '../../resources/icon.png'))
+    expect(dev.subarray(12, 16).toString('latin1')).toBe('IHDR')
+    expect(dev.readUInt32BE(16)).toBe(512)
+    expect(dev.readUInt32BE(20)).toBe(512)
+    expect(dev.equals(plain)).toBe(false)
+    expect(statSync(join(__dirname, '../../resources/icon-dev.png')).size).toBeGreaterThan(1000)
   })
 
   it('the glyph module names the font, the weight, the version and the licence', () => {
