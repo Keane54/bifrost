@@ -75,8 +75,8 @@
      --background-base: the alpha of the icon colours of the base layer under the fields.
      --background-noise: the opacity of the fixed fine noise on top. It gives a light grain. */
   --background-glow: 15%;
-  --background-base: 9%;
-  --background-noise: 0.02;
+  --background-base: 10%;
+  --background-noise: 0.0075;
 
   /* The colours of the priorities 1 to 5. */
   --color-prio-1: #d4730a;
