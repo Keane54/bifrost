@@ -137,9 +137,5 @@ flowchart TB
 
 The [`docs`](docs) folder has the other documents:
 
-- [Design](docs/specs/2026-11-04-bifrost-design.md): the full design of Bifrost.
-- [Reviews design](docs/specs/2026-11-09-bifrost-reviews-design.md): the design of the Reviews panel.
-- [Reviews plans](docs/plans): the plan of Reviews part 1, and the notes for parts 2 and 3, which are not built yet.
-- [Build decisions](docs/specs/build-decisions.md): the decisions that the build of each milestone made.
 - [Electron, Tauri or GPUI](docs/electron-or-tauri.md): why Bifrost stays on Electron.
 - [Slack app](docs/slack/README.md): the Slack app for a later milestone.

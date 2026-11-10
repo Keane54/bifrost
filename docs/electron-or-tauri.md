@@ -103,11 +103,6 @@ But it is a much bigger job than Tauri:
 | PTY | Pseudo-terminal, the link between a terminal program such as `claude attach` and the terminal view. |
 | Spike | A short, limited build that tests the risks of a change before anyone commits to it. |
 
-## Related
-
-- [Bifrost design spec](specs/2026-11-04-bifrost-design.md)
-- The Tauri spike code: branch `tauri-spike`
-
 ## Sources
 
 - [Tauri: Linux graphics issues (official docs)](https://v2.tauri.app/develop/debug/linux-graphics/)
