@@ -8,7 +8,8 @@ import { hasWarning } from '../../../src/renderer/src/settings/live-notice'
 import {
   createLiveRetry,
   FOCUS_GAP_MS,
-  RETRY_EVERY_MS,
+  RECENT_READ_MS,
+  RETRY_STEPS_MS,
   type RetryClock,
 } from '../../../src/renderer/src/settings/live-retry'
 import { LIVE_MIN_CLAUDE_VERSION } from '../../../src/shared/live'
@@ -19,14 +20,17 @@ const CONTEXT = readFileSync(
   'utf8',
 )
 
-// The fake timers of Vitest replace setInterval and Date.now.
+// The fake timers of Vitest replace setTimeout and Date.now.
 const CLOCK: RetryClock = {
-  every(ms, fn) {
-    const id = setInterval(fn, ms)
-    return () => clearInterval(id)
+  after(ms, fn) {
+    const id = setTimeout(fn, ms)
+    return () => clearTimeout(id)
   },
   now: () => Date.now(),
 }
+
+const SECOND = 1000
+const MINUTE = 60 * SECOND
 
 const ON: LiveStatus = {
   claudeVersion: '2.1.318',
@@ -49,20 +53,25 @@ interface WorldOptions {
   versionFailed?: boolean
   // The number of version re-reads that fail before one works.
   versionFails?: number
-  // A status re-read waits for this promise when it is set.
-  statusGate?: Promise<void>
 }
 
-// A fake LiveProvider. The warning follows the state after each read, like the effect of the
-// provider.
+// A fake LiveProvider. The first read (the mount read) ends at the start. The warning follows the
+// state after each read, like the effect of the provider.
 function world(opts: WorldOptions) {
+  const t0 = Date.now()
   const state = {
     busy: false,
+    // A status re-read waits for this promise when it is set.
+    hold: null as Promise<void> | null,
+    // The status that the next re-read gives, or null for the first status.
+    next: opts.next ?? null,
     status: opts.status,
     version: opts.version === undefined ? VERSION : opts.version,
     versionFailed: opts.versionFailed ?? false,
   }
   const reads = { status: 0, version: 0 }
+  // The time of each status re-read from the start, in seconds.
+  const at: number[] = []
   let versionFails = opts.versionFails ?? 0
   const warning = (): boolean => hasWarning(state.status, state.version, state.versionFailed)
   const retry = createLiveRetry({
@@ -70,8 +79,9 @@ function world(opts: WorldOptions) {
     clock: CLOCK,
     async readStatus() {
       reads.status += 1
-      if (opts.statusGate) await opts.statusGate
-      state.status = opts.next ?? opts.status
+      at.push((Date.now() - t0) / SECOND)
+      if (state.hold) await state.hold
+      state.status = state.next ?? opts.status
       retry.warn(warning())
     },
     async readVersion() {
@@ -86,8 +96,25 @@ function world(opts: WorldOptions) {
     },
     versionFailed: () => state.versionFailed,
   })
+  retry.readEnded()
   retry.warn(warning())
-  return { reads, retry, state, warning }
+  return { at, reads, retry, state, warning }
+}
+
+// A promise and the function that resolves it.
+function gate(): { open: () => void; promise: Promise<void> } {
+  let open = (): void => {}
+  const promise = new Promise<void>(resolve => {
+    open = resolve
+  })
+  return { open, promise }
+}
+
+// Move the fake time on by ms, and then give a window focus.
+async function focusAfter(w: ReturnType<typeof world>, ms: number): Promise<void> {
+  await vi.advanceTimersByTimeAsync(ms)
+  w.retry.focus()
+  await vi.advanceTimersByTimeAsync(0)
 }
 
 beforeEach(() => {
@@ -98,86 +125,142 @@ afterEach(() => {
 })
 
 describe('createLiveRetry', () => {
-  it('reads again after 60 s, and a good status clears the warning and the timer', async () => {
+  it('has the steps of the back-off and the two gaps', () => {
+    expect(RETRY_STEPS_MS).toEqual([MINUTE, 2 * MINUTE, 5 * MINUTE, 10 * MINUTE])
+    expect(FOCUS_GAP_MS).toBe(5 * MINUTE)
+    expect(RECENT_READ_MS).toBe(30 * SECOND)
+  })
+
+  it('reads again after 1 minute, and a good status clears the warning and the timer', async () => {
     const w = world({ next: ON, status: NOT_RECEIVING })
     expect(w.warning()).toBe(true)
-    await vi.advanceTimersByTimeAsync(RETRY_EVERY_MS - 1)
+    await vi.advanceTimersByTimeAsync(MINUTE - 1)
     expect(w.reads.status).toBe(0)
     await vi.advanceTimersByTimeAsync(1)
     expect(w.reads.status).toBe(1)
     expect(w.warning()).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
-    await vi.advanceTimersByTimeAsync(10 * RETRY_EVERY_MS)
+    await vi.advanceTimersByTimeAsync(30 * MINUTE)
     expect(w.reads.status).toBe(1)
   })
 
-  it('reads again each 60 s while the warning stays', async () => {
+  it('reads at 1, 2, 5 and 10 minutes while the warning stays, and then stops', async () => {
     const w = world({ status: NOT_RECEIVING })
-    await vi.advanceTimersByTimeAsync(3 * RETRY_EVERY_MS)
-    expect(w.reads.status).toBe(3)
+    await vi.advanceTimersByTimeAsync(10 * MINUTE)
+    expect(w.at).toEqual([60, 120, 300, 600])
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(60 * MINUTE)
+    expect(w.at).toEqual([60, 120, 300, 600])
     expect(w.warning()).toBe(true)
+  })
+
+  it('starts the steps again only at a new warning', async () => {
+    const w = world({ status: NOT_RECEIVING })
+    await vi.advanceTimersByTimeAsync(2 * MINUTE)
+    // The warning stays. The steps go on from the first warning.
+    w.retry.warn(true)
+    await vi.advanceTimersByTimeAsync(3 * MINUTE)
+    expect(w.at).toEqual([60, 120, 300])
+    // The warning goes away and comes back at 5 minutes. The steps start again.
+    w.retry.warn(false)
+    expect(vi.getTimerCount()).toBe(0)
+    w.retry.warn(true)
+    await vi.advanceTimersByTimeAsync(2 * MINUTE)
+    expect(w.at).toEqual([60, 120, 300, 360, 420])
   })
 
   it('has no timer and reads nothing while there is no warning', async () => {
     const w = world({ status: ON })
     expect(w.warning()).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
-    await vi.advanceTimersByTimeAsync(10 * RETRY_EVERY_MS)
-    w.retry.focus()
-    await vi.advanceTimersByTimeAsync(0)
+    await focusAfter(w, 30 * MINUTE)
     expect(w.reads).toEqual({ status: 0, version: 0 })
   })
 
-  it('reads at a focus only when the last read is 10 s old or older', async () => {
+  it('skips a step when a read ended less than 30 s before it', async () => {
     const w = world({ status: NOT_RECEIVING })
-    // The read that gave the warning counts as the last read.
-    await vi.advanceTimersByTimeAsync(FOCUS_GAP_MS - 1)
-    w.retry.focus()
-    await vi.advanceTimersByTimeAsync(0)
+    // A Settings read ends at 40 s. It counts as the step at 1 minute.
+    await vi.advanceTimersByTimeAsync(40 * SECOND)
+    w.retry.readEnded()
+    await vi.advanceTimersByTimeAsync(20 * SECOND)
     expect(w.reads.status).toBe(0)
-    await vi.advanceTimersByTimeAsync(1)
-    w.retry.focus()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(w.reads.status).toBe(1)
-    // A second focus soon after that read does not read again.
-    await vi.advanceTimersByTimeAsync(FOCUS_GAP_MS - 1)
-    w.retry.focus()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(w.reads.status).toBe(1)
+    // A read that ended 30 s before the step does not count as the step.
+    await vi.advanceTimersByTimeAsync(30 * SECOND)
+    w.retry.readEnded()
+    await vi.advanceTimersByTimeAsync(30 * SECOND)
+    expect(w.at).toEqual([120])
   })
 
-  it('does not read at a focus within 10 s of a timer read', async () => {
+  it('reads at a focus only when the last read ended 5 minutes or more ago', async () => {
     const w = world({ status: NOT_RECEIVING })
-    await vi.advanceTimersByTimeAsync(RETRY_EVERY_MS)
-    expect(w.reads.status).toBe(1)
-    await vi.advanceTimersByTimeAsync(FOCUS_GAP_MS - 1)
-    w.retry.focus()
+    // The last step reads at 10 minutes.
+    await vi.advanceTimersByTimeAsync(10 * MINUTE)
+    await focusAfter(w, FOCUS_GAP_MS - 1)
+    expect(w.reads.status).toBe(4)
+    await focusAfter(w, 1)
+    expect(w.reads.status).toBe(5)
+    await focusAfter(w, 0)
+    expect(w.reads.status).toBe(5)
+    // A Settings read or an action read counts too.
+    await vi.advanceTimersByTimeAsync(FOCUS_GAP_MS)
+    w.retry.readEnded()
+    await focusAfter(w, FOCUS_GAP_MS - 1)
+    expect(w.reads.status).toBe(5)
+  })
+
+  it('counts a read from its end, not from its start', async () => {
+    const w = world({ status: NOT_RECEIVING })
+    await vi.advanceTimersByTimeAsync(15 * MINUTE)
+    const slow = gate()
+    w.state.hold = slow.promise
+    await focusAfter(w, 0)
+    expect(w.reads.status).toBe(5)
+    // The read takes 2 minutes.
+    await vi.advanceTimersByTimeAsync(2 * MINUTE)
+    w.state.hold = null
+    slow.open()
     await vi.advanceTimersByTimeAsync(0)
-    expect(w.reads.status).toBe(1)
+    await focusAfter(w, FOCUS_GAP_MS - 1)
+    expect(w.reads.status).toBe(5)
+    await focusAfter(w, 1)
+    expect(w.reads.status).toBe(6)
+  })
+
+  it('keeps the warning after the last step until a focus read clears it', async () => {
+    const w = world({ status: NOT_RECEIVING })
+    await vi.advanceTimersByTimeAsync(10 * MINUTE)
+    // The problem ends after the last step. No timer reads it.
+    w.state.next = ON
+    await vi.advanceTimersByTimeAsync(20 * MINUTE)
+    expect(w.reads.status).toBe(4)
+    expect(w.warning()).toBe(true)
+    await focusAfter(w, 0)
+    expect(w.reads.status).toBe(5)
+    expect(w.warning()).toBe(false)
   })
 
   it('does not read while an action runs', async () => {
     const w = world({ status: NOT_RECEIVING })
     w.state.busy = true
-    await vi.advanceTimersByTimeAsync(RETRY_EVERY_MS + FOCUS_GAP_MS)
-    w.retry.focus()
-    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(MINUTE)
     expect(w.reads.status).toBe(0)
     w.state.busy = false
-    await vi.advanceTimersByTimeAsync(RETRY_EVERY_MS - FOCUS_GAP_MS)
-    expect(w.reads.status).toBe(1)
+    await vi.advanceTimersByTimeAsync(MINUTE)
+    expect(w.at).toEqual([120])
+    // A focus while an action runs does not read either.
+    await vi.advanceTimersByTimeAsync(8 * MINUTE)
+    w.state.busy = true
+    await focusAfter(w, FOCUS_GAP_MS)
+    expect(w.reads.status).toBe(3)
   })
 
   it('does not start a second read while a read runs', async () => {
-    let open = (): void => {}
-    const statusGate = new Promise<void>(resolve => {
-      open = resolve
-    })
-    const w = world({ next: ON, status: NOT_RECEIVING, statusGate })
-    await vi.advanceTimersByTimeAsync(3 * RETRY_EVERY_MS)
-    w.retry.focus()
+    const slow = gate()
+    const w = world({ next: ON, status: NOT_RECEIVING })
+    w.state.hold = slow.promise
+    await vi.advanceTimersByTimeAsync(10 * MINUTE)
     expect(w.reads.status).toBe(1)
-    open()
+    slow.open()
     await vi.advanceTimersByTimeAsync(0)
     expect(w.warning()).toBe(false)
   })
@@ -185,31 +268,31 @@ describe('createLiveRetry', () => {
   it('reads a failed version again until it works, and then clears the warning', async () => {
     const w = world({ status: ON, version: null, versionFailed: true, versionFails: 1 })
     expect(w.warning()).toBe(true)
-    await vi.advanceTimersByTimeAsync(RETRY_EVERY_MS)
+    await vi.advanceTimersByTimeAsync(MINUTE)
     expect(w.reads).toEqual({ status: 1, version: 1 })
     expect(w.state.versionFailed).toBe(true)
-    await vi.advanceTimersByTimeAsync(RETRY_EVERY_MS)
+    await vi.advanceTimersByTimeAsync(MINUTE)
     expect(w.reads).toEqual({ status: 2, version: 2 })
     expect(w.state).toMatchObject({ version: VERSION, versionFailed: false })
     expect(w.warning()).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('does not read the version again when the version check did not fail', async () => {
+  it('does not read the version again when the version is good', async () => {
     const w = world({ status: NOT_RECEIVING })
-    await vi.advanceTimersByTimeAsync(RETRY_EVERY_MS)
+    await vi.advanceTimersByTimeAsync(MINUTE)
     expect(w.reads).toEqual({ status: 1, version: 0 })
   })
-
-  it('starts the timer again for a new warning', async () => {
-    const w = world({ status: ON })
-    w.retry.warn(true)
-    w.retry.warn(true)
-    expect(vi.getTimerCount()).toBe(1)
-    w.retry.warn(false)
-    expect(vi.getTimerCount()).toBe(0)
-  })
 })
+
+// The text of the provider from the start text up to the first end text after it.
+function between(from: string, to: string): string {
+  const start = CONTEXT.indexOf(from)
+  expect(start, from).toBeGreaterThan(-1)
+  const end = CONTEXT.indexOf(to, start)
+  expect(end, to).toBeGreaterThan(start)
+  return CONTEXT.slice(start, end)
+}
 
 // The repository has no DOM test. So these checks read the source text of the provider.
 describe('LiveProvider wiring', () => {
@@ -224,5 +307,12 @@ describe('LiveProvider wiring', () => {
 
   it('uses the running ref as the busy test of the retry', () => {
     expect(CONTEXT).toContain('busy: () => running.current')
+  })
+
+  it('gives the end of the mount read, a refresh and an action read to the retry', () => {
+    const mount = between('// Load the status and the version one time at mount.', 'return () =>')
+    expect(mount).toContain('retry.readEnded()')
+    const locked = between('const locked = useCallback(', 'const refresh =')
+    expect(locked).toMatch(/finally \{[^}]*retry\.readEnded\(\)/)
   })
 })

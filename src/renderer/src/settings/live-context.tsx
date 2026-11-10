@@ -1,7 +1,7 @@
 // The state of Live details and the version of Claude Code for the renderer (spec 11, D11).
 // The setup dialog, Settings > Live details, Settings > General and the side bar read it.
-// While a warning shows, the provider reads the status again (live-retry.ts). So a short failure
-// at the first read does not keep the warning dot.
+// While a warning shows, the provider reads the status again on a back-off (live-retry.ts). So a
+// short failure at the first read does not keep the warning dot.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { BUSY_MESSAGE } from '../../../shared/live'
 import type { ClaudeVersion, LiveStatus } from '../../../shared/types'
@@ -41,9 +41,9 @@ function loadStatus(): Promise<LiveStatus> {
 }
 
 const PAGE_CLOCK: RetryClock = {
-  every(ms, fn) {
-    const id = window.setInterval(fn, ms)
-    return () => window.clearInterval(id)
+  after(ms, fn) {
+    const id = window.setTimeout(fn, ms)
+    return () => window.clearTimeout(id)
   },
   now: () => Date.now(),
 }
@@ -99,24 +99,25 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
   useEffect(() => {
     mounted.current = true
     loadStatus().then(next => {
+      retry.readEnded()
       if (mounted.current) setStatus(next)
     })
     void readVersion()
     return () => {
       mounted.current = false
     }
-  }, [readVersion])
+  }, [readVersion, retry])
 
   const warning = hasWarning(status, version, versionFailed)
 
-  // Read again while a warning shows. The cleanup stops the timer.
+  // Read again on the back-off while a warning shows. The cleanup stops the timer.
   useEffect(() => {
     retry.warn(warning)
     return () => retry.warn(false)
   }, [retry, warning])
 
-  // A window focus can read again too. The window focus event follows the key window of macOS in
-  // Electron.
+  // A window focus can read again too, when the last read ended 5 minutes or more ago. The window
+  // focus event follows the key window of macOS in Electron.
   useEffect(() => {
     const onFocus = (): void => retry.focus()
     window.addEventListener('focus', onFocus)
@@ -124,18 +125,24 @@ export function LiveProvider({ children }: { children: React.ReactNode }): React
   }, [retry])
 
   // Run one call with the lock. A call that comes while another call runs rejects.
-  const locked = useCallback(async (fn: () => Promise<void>): Promise<void> => {
-    if (running.current) throw new Error(BUSY_MESSAGE)
-    running.current = true
-    lockedCalls.current += 1
-    setBusy(true)
-    try {
-      await fn()
-    } finally {
-      running.current = false
-      if (mounted.current) setBusy(false)
-    }
-  }, [])
+  // Each call with the lock ends with a status read: a refresh, or the status of an action. So
+  // its end is the end of a read for the back-off.
+  const locked = useCallback(
+    async (fn: () => Promise<void>): Promise<void> => {
+      if (running.current) throw new Error(BUSY_MESSAGE)
+      running.current = true
+      lockedCalls.current += 1
+      setBusy(true)
+      try {
+        await fn()
+      } finally {
+        running.current = false
+        retry.readEnded()
+        if (mounted.current) setBusy(false)
+      }
+    },
+    [retry],
+  )
 
   const refresh = useCallback(async (): Promise<void> => {
     // A refresh during an action does nothing. The action sets the status when it ends.
