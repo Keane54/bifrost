@@ -9,6 +9,7 @@ import {
   globalActionState,
   type MenuEntry,
   rowMenu,
+  SELECTED_ITEM_ACTIONS,
 } from '../../../src/renderer/src/actions/action-model'
 import * as R from '../../../src/renderer/src/actions/reasons'
 import type { SessionRow } from '../../../src/shared/types'
@@ -49,6 +50,7 @@ describe('action model', () => {
       'Open',
       'Send message...',
       'Run slash command',
+      'Compact',
       'Interrupt',
       '-',
       'Set priority',
@@ -427,6 +429,100 @@ describe('action model', () => {
     expect(buttonTip('open', actionStateFor('open', parked, ctx()), 'space')).toBe(
       `Warp to\n${R.REASON_PARKED}`,
     )
+  })
+
+  // User decision (2026-11-10): Compact sends /compact with one click.
+  describe('Compact', () => {
+    const idle = (over: Partial<SessionRow> = {}) =>
+      row({ sessionId: 'c', shortId: 'abcd1234', state: 'idle', ...over })
+
+    it('has the plain label Compact and the space label Compress cargo, for owned rows only', () => {
+      expect([ACTIONS.compact.plain, ACTIONS.compact.space]).toEqual(['Compact', 'Compress cargo'])
+      expect(ACTIONS.compact.for).toEqual(['owned'])
+    })
+
+    it('is enabled for an owned row that is idle, has finished or has an error', () => {
+      const rows = [
+        idle(),
+        idle({ box: 'yellow', state: 'needs-you' }),
+        idle({ box: 'red', boxReason: 'escalated', state: 'needs-you' }),
+        idle({ box: 'red', boxReason: 'error', state: 'error' }),
+      ]
+      for (const r of rows) {
+        expect(actionStateFor('compact', r, ctx())).toEqual({ enabled: true, reason: null })
+      }
+    })
+
+    it('gives the reason of the row class for an external row and a parked row', () => {
+      expect(actionStateFor('compact', external, ctx()).reason).toBe(R.REASON_EXTERNAL)
+      expect(actionStateFor('compact', parked, ctx()).reason).toBe(R.REASON_PARKED)
+    })
+
+    it('is blocked by a prompt box and by a red box with no reason', () => {
+      for (const red of [redBox({ boxReason: 'prompt' }), redBox()]) {
+        expect(actionStateFor('compact', red, ctx()).reason).toBe(R.REASON_RED_BOX)
+      }
+    })
+
+    it('needs the short ID', () => {
+      expect(actionStateFor('compact', idle({ shortId: undefined }), ctx()).reason).toBe(
+        R.REASON_WAIT_ID,
+      )
+    })
+
+    it('is disabled while the session is working, with the reason in the tooltip', () => {
+      const state = actionStateFor('compact', idle({ state: 'working' }), ctx())
+      expect(state).toEqual({ enabled: false, reason: 'Wait until the session is idle.' })
+      expect(R.REASON_WAIT_IDLE).toBe('Wait until the session is idle.')
+      expect(buttonTip('compact', state, 'plain')).toBe('Compact\nWait until the session is idle.')
+      expect(buttonTip('compact', state, 'space')).toBe(
+        'Compress cargo\nWait until the session is idle.',
+      )
+    })
+
+    it('checks the row class, the red box and the short ID before the working state', () => {
+      const working = row({ sessionId: 'w', state: 'working' })
+      expect(actionStateFor('compact', { ...working, kind: 'external' }, ctx()).reason).toBe(
+        R.REASON_EXTERNAL,
+      )
+      expect(actionStateFor('compact', working, ctx()).reason).toBe(R.REASON_WAIT_ID)
+    })
+
+    it('another action that runs on the session does not block it', () => {
+      expect(actionStateFor('compact', idle(), ctx({ running: true })).enabled).toBe(true)
+    })
+
+    it('is a plain menu entry after Run slash command, with no three full stops', () => {
+      const menu = rowMenu(owned, ctx())
+      expect(find(menu, 'compact')).toMatchObject({ label: 'Compact', type: 'item' })
+      const ids = menu.map(e => (e.type === 'separator' ? '-' : e.action))
+      expect(ids.indexOf('compact')).toBe(ids.indexOf('run-slash') + 1)
+      expect(find(rowMenu(owned, ctx({ labels: 'space' })), 'compact')).toMatchObject({
+        label: 'Compress cargo',
+      })
+    })
+
+    it('the menu entry shows for each row class, disabled with the reason where it does not apply', () => {
+      expect(find(rowMenu(external, ctx()), 'compact')).toMatchObject({
+        state: { enabled: false, reason: R.REASON_EXTERNAL },
+      })
+      expect(find(rowMenu(parked, ctx()), 'compact')).toMatchObject({
+        state: { enabled: false, reason: R.REASON_PARKED },
+      })
+    })
+
+    it('is a Selected Item button after Run slash command', () => {
+      expect(SELECTED_ITEM_ACTIONS).toEqual([
+        'open',
+        'send-message',
+        'run-slash',
+        'compact',
+        'interrupt',
+        'show-info',
+        'open-in-terminal',
+        'stop',
+      ])
+    })
   })
 
   // Bug 4: the colour items use the same check mark rule as Set priority.

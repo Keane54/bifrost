@@ -76,6 +76,9 @@ function call(c: ApiCall, confirm: ConfirmText | null, after: After): RunPlan {
   return { after, call: c, confirm, kind: 'call' }
 }
 
+// The text of Compact. It has no argument (user decision, 2026-11-10).
+export const COMPACT_COMMAND = '/compact'
+
 // A slash command from the submenu. The string "/" alone means "Other...".
 function slashCommand(arg: MenuArg | undefined): string | null {
   return typeof arg === 'string' && arg.startsWith('/') && arg !== '/' ? arg : null
@@ -100,6 +103,9 @@ export function planRun(
       const command = slashCommand(arg)
       return command === null ? { kind: 'focus-send', text: '/' } : { kind: 'send', text: command }
     }
+    // Compact sends its command as Run slash command does. It asks for no confirmation.
+    case 'compact':
+      return { kind: 'send', text: COMPACT_COMMAND }
     case 'rename':
       return { kind: 'rename' }
     case 'show-info':

@@ -472,7 +472,7 @@ Mouse:
 The panel shows these items, from top to bottom:
 
 1. The name, the state and the priority. A row with no priority shows no priority.
-2. A row of icon buttons: Open, Send message, Run slash command, Interrupt, Show Info, Open in terminal and Stop session.
+2. A row of icon buttons: Open, Send message, Run slash command, Compact, Interrupt, Show Info, Open in terminal and Stop session. The Compact button has the `Shrink` icon of lucide (user decision, 2026-11-10).
 3. The project, the branch, the model and the cost. The Model row shows the model name, then the context bar, then the context percent with the word "context", for example `Opus 5.5  [bar]  28% context`. The bar takes the free width. The model name keeps its width and is cut off only when the row is too narrow. With no percent, the bar is empty and the text is `-`. The cost has its own row.
 4. The send box.
 
@@ -493,7 +493,7 @@ Send box rules:
 - Bifrost never sends CR to an empty prompt.
 - One attach PTY serves each session.
 - A hidden attach opens at the current size of the session (the M3 method). An attach sets the size of the session for all clients (M3 finding). If Bifrost cannot read the size, it sends nothing.
-- If the session has a red box of a prompt (a permission prompt or a question), Bifrost blocks Send message and Run slash command. Typed text can answer a prompt by accident. An escalated yellow box and an error box do not block, because no prompt shows.
+- If the session has a red box of a prompt (a permission prompt or a question), Bifrost blocks Send message, Run slash command and Compact. Typed text can answer a prompt by accident. An escalated yellow box and an error box do not block, because no prompt shows.
 - Interrupt sends Esc. It does not wait for quiet output, because a working session is never quiet: through a hidden attach, Bifrost sends Esc 300 ms after the first output of the attach.
 - After an Esc, Bifrost waits at least 200 ms before the next write to that session. So the session never gets an Esc and a paste in one chunk.
 - The block message is "Answer the prompt in the chat window first."
@@ -663,6 +663,7 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Open | Warp to | Owned | Focus or open the chat window. |
 | Send message | Hail | Owned | Type the text into the session. |
 | Run slash command | Activate module | Owned | Type `/<command>` into the session. |
+| Compact | Compress cargo | Owned | Type `/compact` into the session, through the same path as Run slash command (user decision, 2026-11-10). |
 | Interrupt | Full stop | Owned | Send Esc to the session. |
 | Rename | Set callsign | All | Set the local name of the session in Bifrost. Optional: type `/rename <name>` into an owned session. |
 | Set priority | Set threat level | All | Bifrost data only. |
@@ -678,6 +679,17 @@ The Watchlist is like the fleet watchlist in EVE. It holds the sessions that you
 | Delete session | Self-destruct | Owned, parked | `claude rm <id>`. Bifrost always asks for confirmation. |
 | Add to watchlist | Track | All | Bifrost data only (section 8.12). |
 | Remove from watchlist | Stop tracking | Watched sessions | Bifrost data only (section 8.12). |
+
+Compact rules (user decision, 2026-11-10):
+
+- Compact is available only for an owned session. For an external session or a parked session, Compact is disabled and shows the reason of the row class.
+- One click sends `/compact` with no argument. Bifrost asks for no confirmation.
+- Compact sends the text through the send of Run slash command. Before the write, the main process checks the row, the short ID and the red box again. `/compact` also goes into the list of recent slash commands.
+- A red box of a prompt blocks Compact, as it blocks Run slash command (section 8.4).
+- Compact needs the short ID.
+- Compact is disabled while the session works on a reply. Bifrost uses the state Working of the row (section 7). The tooltip gives the reason "Wait until the session is idle." A yellow box, an escalated box and an error box do not block Compact. The renderer makes this check. The main process gets only the text, so it does not make this check.
+- Bifrost checks the rules in this order: the row class, the red box, the short ID, then the state Working.
+- Compact has no key (section 9.4).
 
 Rename sets a local name. Bifrost keeps the local name for the row ID (section 6.1) in the registry store, in the field `aliases`. A store without the field is valid. Bifrost never sends the local name to Claude Code. The rules:
 
@@ -708,7 +720,7 @@ The ID of each command (section 6.1). The renderer sends the row ID only. The ma
 | Resume and Resume all of an owned row | The resume ID: the original session ID of the job, which starts with its short ID. Bifrost keeps it from an active entry whose ID starts with the short ID, or from the stopped job in `--all`. Else it is the row ID or the current ID, the first one that starts with the short ID. When none does, it is the ID of the stopped job in `--all`. A later `--all` ID that does not start with the short ID never replaces one that does. A resume by another ID starts a second job (section 4). When Bifrost does not know the resume ID yet, Resume refuses and asks you to try again in 30 seconds. A row with no known short ID has no job, so it uses its current ID. |
 | Resume of a parked external row | The current ID. |
 | Take control | The current ID: the conversation after any `/clear`. The transcript check uses it too. If a `/clear` changes the current ID during the checks, Bifrost stops before the signal. |
-| Stop, Delete, Open in terminal, chat window attach, Send message, Run slash command, Interrupt | The short ID. A `/clear` does not change it. |
+| Stop, Delete, Open in terminal, chat window attach, Send message, Run slash command, Compact, Interrupt | The short ID. A `/clear` does not change it. |
 | Take control signal, terminal app, session size | The PID. |
 | Copy session ID | The resume ID of a background row, or the current ID of an interactive row. While Bifrost does not know the resume ID, it copies nothing and asks you to try again in 30 seconds. |
 | Priority, local name, watchlist, Open project, PR, worktree check | The row ID. |
@@ -800,6 +812,8 @@ Shortcuts that work at all times:
 
 Bifrost binds no default key for Borderless. Select Borderless in the View menu or in Settings.
 
+Compact has no key and no key slot (user decision, 2026-11-10). Use the Selected Item button or the right-click menu.
+
 Close the focused panel and Toggle Fullscreen are shortcuts of the app menu. A menu shortcut needs Cmd. Settings > Keys refuses a menu shortcut without Cmd.
 
 Single keys. These work only when focus is not in a chat window or a text box:
@@ -857,6 +871,7 @@ The menu shows plain labels below. With space labels, the menu uses the space la
 Open
 Send message...
 Run slash command    >   favourites, recent commands, Other...
+Compact
 Interrupt
 -----------------------
 Set priority         >   1, 2, 3, 4, 5, None

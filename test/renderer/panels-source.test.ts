@@ -67,6 +67,33 @@ describe('ActionsProvider send source', () => {
   })
 })
 
+// User decision (2026-11-10): the Compact action has a Selected Item button and a row menu entry.
+describe('Compact button and menu entry source', () => {
+  const read = (path: string) =>
+    readFileSync(join(__dirname, '../../src/renderer/src', path), 'utf8')
+  const BUTTON = read('actions/ActionButton.tsx')
+
+  it('gives the Compact button the Shrink icon of lucide', () => {
+    expect(BUTTON).toMatch(/import \{[^}]*\bShrink\b[^}]*\} from 'lucide-react'/)
+    expect(BUTTON).toContain('compact: Shrink,')
+  })
+
+  it('makes a button for each Selected Item action, Compact too', () => {
+    expect(PANEL).toContain('{SELECTED_ITEM_ACTIONS.map(id => (')
+    expect(PANEL).toContain('<ActionButton action={id} key={id} sessionId={row.sessionId} />')
+  })
+
+  it('builds the row menu of the Overview and the Watchlist from rowMenu', () => {
+    for (const path of ['overview/OverviewTable.tsx', 'watch/WatchlistPanel.tsx']) {
+      expect(read(path)).toMatch(/entries=\{rowMenu\(menuRow, contextFor\(menuRow\.sessionId\)\)\}/)
+    }
+  })
+
+  it('sends the text of a send plan through the send of Run slash command', () => {
+    expect(ACTIONS).toContain("case 'send':\n          send(sessionId, plan.text).catch(fail)")
+  })
+})
+
 describe('ActionsProvider Take control source (spec 6.1, 9.2)', () => {
   it('keys the loader and the chat window by the row ID, which a /clear does not change', () => {
     expect(ACTIONS).toContain('const sessionId = row.sessionId')

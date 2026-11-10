@@ -94,7 +94,7 @@ export function renameText(
   return { ok: true, text: `/rename ${n}` }
 }
 
-// A red box of a prompt blocks Send message, Run slash command and Rename (spec 8.4).
+// A red box of a prompt blocks Send message, Run slash command, Compact and Rename (spec 8.4).
 // Typed text can answer the prompt by accident. An old yellow box and an error box do not block.
 // A red box with no known cause blocks, because it can be a prompt.
 export function promptBlocks(row: Pick<SessionRow, 'box' | 'boxReason'>): boolean {

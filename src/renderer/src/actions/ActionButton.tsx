@@ -11,6 +11,7 @@ import {
   type LucideIcon,
   MessageSquare,
   Power,
+  Shrink,
   Slash,
   SquareTerminal,
 } from 'lucide-react'
@@ -31,6 +32,7 @@ import { useActions } from './actions-context'
 
 // The icons of the Selected Item buttons. Another action shows a plain circle.
 const ICONS: Partial<Record<ActionId, LucideIcon>> = {
+  compact: Shrink,
   interrupt: Hand,
   open: AppWindow,
   'open-in-terminal': SquareTerminal,

@@ -33,6 +33,7 @@ import {
   REASON_TAKE_PROMPT,
   REASON_TERMINAL_UNKNOWN,
   REASON_WAIT_ID,
+  REASON_WAIT_IDLE,
   REASON_WATCHED,
 } from './reasons'
 
@@ -41,6 +42,7 @@ export type ActionId =
   | 'open'
   | 'send-message'
   | 'run-slash'
+  | 'compact'
   | 'interrupt'
   | 'rename'
   | 'set-priority'
@@ -84,6 +86,7 @@ const def = (
 
 export const ACTIONS: Record<ActionId, ActionDef> = {
   'close-window': def('close-window', 'Close window', 'Disengage', 'all'),
+  compact: def('compact', 'Compact', 'Compress cargo', ['owned']),
   'copy-id': def('copy-id', 'Copy session ID', 'Copy transponder ID', 'all'),
   delete: def('delete', 'Delete session', 'Self-destruct', ['owned', 'parked']),
   interrupt: def('interrupt', 'Interrupt', 'Full stop', ['owned']),
@@ -126,10 +129,11 @@ export interface ActionState {
 const off = (reason: string): ActionState => ({ enabled: false, reason })
 
 const RUNNING_BLOCKED: ReadonlySet<ActionId> = new Set(['stop', 'delete', 'resume', 'take-control'])
-const RED_BOX_BLOCKED: ReadonlySet<ActionId> = new Set(['send-message', 'run-slash'])
+const RED_BOX_BLOCKED: ReadonlySet<ActionId> = new Set(['send-message', 'run-slash', 'compact'])
 const NEEDS_SHORT_ID: ReadonlySet<ActionId> = new Set([
   'send-message',
   'run-slash',
+  'compact',
   'interrupt',
   'stop',
 ])
@@ -161,6 +165,8 @@ export function actionStateFor(
   if (RED_BOX_BLOCKED.has(id) && promptBlocks(row)) return off(REASON_RED_BOX)
   if (NEEDS_SHORT_ID.has(id) && !row.shortId) return off(REASON_WAIT_ID)
   if (id === 'open-in-terminal' && cls === 'owned' && !row.shortId) return off(REASON_WAIT_ID)
+  // The working state means that Claude is in the middle of a reply (user decision, 2026-11-10).
+  if (id === 'compact' && row.state === 'working') return off(REASON_WAIT_IDLE)
   if (id === 'take-control') {
     if (row.state === 'working') return off(REASON_TAKE_BUSY)
     if (row.box === 'red') return off(REASON_TAKE_PROMPT)
@@ -218,6 +224,7 @@ export const SELECTED_ITEM_ACTIONS: ActionId[] = [
   'open',
   'send-message',
   'run-slash',
+  'compact',
   'interrupt',
   'show-info',
   'open-in-terminal',
@@ -305,6 +312,7 @@ export function rowMenu(row: SessionRow, ctx: ActionContext): MenuEntry[] {
     entry('open'),
     entry('send-message'),
     entry('run-slash'),
+    entry('compact'),
     entry('interrupt'),
     sep,
     entry('set-priority'),

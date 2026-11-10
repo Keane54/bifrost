@@ -72,6 +72,24 @@ describe('planRun', () => {
     }
   })
 
+  // User decision (2026-11-10): one click sends /compact, with no confirmation.
+  it('Compact sends exactly /compact, with no argument and no confirmation', () => {
+    const plan = { kind: 'send', text: '/compact' }
+    expect(planRun('compact', owned, ctx())).toEqual(plan)
+    expect(planRun('compact', owned, ctx({ slashFavourites: [] }))).toEqual(plan)
+    // An argument from a menu does not change the text.
+    for (const arg of ['/clear', '/', null, 3] as const) {
+      expect(planRun('compact', owned, ctx(), arg)).toEqual(plan)
+    }
+  })
+
+  it('Compact sends nothing while the session works, with a prompt box or for another class', () => {
+    const red = row({ box: 'red', sessionId: 'r', shortId: 'abcd1234', state: 'needs-you' })
+    for (const r of [working, red, external, parked, undefined]) {
+      expect(planRun('compact', r, ctx())).toEqual({ kind: 'none' })
+    }
+  })
+
   it('Send message focuses the send box with empty text', () => {
     expect(planRun('send-message', owned, ctx())).toEqual({ kind: 'focus-send', text: '' })
   })
