@@ -57,6 +57,7 @@
     "check:write": "biome check --write",
     "dev": "electron-vite dev",
     "dist": "electron-vite build && electron-builder --mac --arm64",
+    "dist:release": "electron-vite build && electron-builder --mac --arm64 --config electron-builder.release.yml",
     "format": "biome format",
     "format:write": "biome format --write",
     "icon": "node scripts/make-icon.ts",
@@ -71,7 +72,8 @@
     "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web && pnpm run typecheck:scripts",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
-    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false"
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "verify:release": "node scripts/verify-release.ts"
   },
   "type": "module",
   "version": "0.1.0"

@@ -46,7 +46,8 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "pnpm pkg set version=${nextRelease.version} && pnpm dist"
+        "verifyReleaseCmd": "echo ${nextRelease.version} > .release-version",
+        "prepareCmd": "pnpm pkg set version=${nextRelease.version} && pnpm dist:release && pnpm verify:release"
       }
     ],
     [

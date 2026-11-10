@@ -1,10 +1,20 @@
 name: Release
 
+# A person starts a release by hand (user decision, 2026-11-10): Actions > Release > Run workflow
+# on main, or "gh workflow run release.yml". So one release can hold many commits, and the slow
+# signed build runs only when a new DMG is wanted. CI still runs on each push.
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: >-
+          release: publish the next version with a signed DMG. dry-run: build, sign and notarise
+          a DMG and keep it as a download, with no tag and no release.
+        type: choice
+        options:
+          - release
+          - dry-run
+        default: release
 
 concurrency:
   group: release
@@ -14,18 +24,90 @@ permissions:
   contents: read
 
 jobs:
-  release:
-    name: Publish Release
-    # Release only after a CI run for a push to main that passed. A PR run never releases.
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push'
-    # The job builds the DMG, so it needs macOS.
+  check:
+    name: Check the next version
+    # Only main can release. The "release" environment also allows only main.
+    if: github.ref == 'refs/heads/main'
+    # This job is cheap. When no commit needs a release, the run stops here and no macOS runner
+    # starts.
+    runs-on: ubuntu-latest
+
+    # contents: write: semantic-release checks that it can push a tag, also in a dry run.
+    # actions: read: the job reads the CI result of the commit.
+    permissions:
+      contents: write
+      actions: read
+
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      version: ${{ steps.next.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Record the commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # A release must come from a commit that passed CI.
+      - name: Check that CI passed for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          result=$(gh run list --workflow ci.yml --commit "$SHA" --event push --limit 1 \
+            --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
+          if [ "$result" != "completed success" ]; then
+            echo "::error::CI has not passed for $SHA (result: ${result:-no run}). Wait for CI, or fix main first."
+            exit 1
+          fi
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      # The scripts do not run. This job needs only semantic-release and its plugins, not the
+      # Electron binary or the native modules.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # The exec plugin writes the next version to .release-version (.releaserc.json). With no
+      # releasable commit, the file does not exist and the version stays empty.
+      - name: Find the next version
+        id: next
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -f .release-version
+          pnpm exec semantic-release --dry-run
+          if [ -f .release-version ]; then
+            echo "version=$(cat .release-version)" >> "$GITHUB_OUTPUT"
+            echo "The next version is $(cat .release-version)."
+          else
+            echo "No commit since the last release needs a new version."
+          fi
+
+  build:
+    name: Build, sign and notarise
+    needs: check
+    # A release needs a next version. A dry run always builds.
+    if: needs.check.outputs.version != '' || inputs.mode == 'dry-run'
     runs-on: macos-latest
+    # The signing secrets live only in this environment. It allows only main.
+    environment: release
 
     # contents: write lets semantic-release push the tag, make the GitHub release and attach the
-    # DMG. The github plugin makes no comments and no labels (.releaserc.json), so the job needs
-    # no issues or pull-requests permission.
+    # DMG. The github plugin makes no comments and no labels (.releaserc.json).
     permissions:
       contents: write
 
@@ -37,38 +119,71 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # If main gained commits while CI ran, skip. The CI run of the newer commit starts a new
-      # release, and that release includes all the commits.
+      # The check job read the CI result of one commit. Build only that commit.
       - name: Check main has not moved on
-        id: guard
         env:
-          CI_SHA: ${{ github.event.workflow_run.head_sha }}
+          CHECKED_SHA: ${{ needs.check.outputs.sha }}
         run: |
-          if [ "$(git rev-parse HEAD)" != "$CI_SHA" ]; then
-            echo "main is ahead of the commit that CI checked. This run makes no release."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          if [ "$(git rev-parse HEAD)" != "$CHECKED_SHA" ]; then
+            echo "::error::main moved on after the check. Start the workflow again."
+            exit 1
           fi
 
       - name: Install pnpm
-        if: steps.guard.outputs.skip != 'true'
         uses: pnpm/action-setup@v6.1.0
 
       - name: Setup Node.js
-        if: steps.guard.outputs.skip != 'true'
         uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "pnpm"
 
       - name: Install dependencies
-        if: steps.guard.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
-      # The exec plugin sets the package.json version to the release version and runs pnpm dist
-      # (.releaserc.json). It makes no commit. The github plugin then attaches the DMG.
-      # GITHUB_TOKEN is enough: no workflow starts on a release or on a tag.
-      - name: Run semantic-release
-        if: steps.guard.outputs.skip != 'true'
+      # notarytool reads the App Store Connect key from a file. The runner deletes RUNNER_TEMP
+      # at the end of the job.
+      - name: Write the notarisation key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$key"
+          chmod 600 "$key"
+          echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
+
+      # The exec plugin sets the version in package.json, runs "pnpm dist:release" (signed and
+      # notarised) and "pnpm verify:release". Only then does the github plugin publish the tag,
+      # the release and the DMG. No commit goes back to main.
+      - name: Release
+        if: inputs.mode == 'release'
         run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+      # A dry run uses the next version, or the last version when no release is due.
+      - name: Dry run build
+        if: inputs.mode == 'dry-run'
+        env:
+          NEXT_VERSION: ${{ needs.check.outputs.version }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          version="${NEXT_VERSION:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
+          pnpm pkg set version="$version"
+          pnpm dist:release
+          pnpm verify:release
+
+      - name: Upload the dry run DMG
+        if: inputs.mode == 'dry-run'
+        uses: actions/upload-artifact@v7
+        with:
+          name: bifrost-dry-run-dmg
+          path: dist/Bifrost-*-arm64.dmg
+          retention-days: 7

@@ -1,0 +1,14 @@
+# The build of the Release workflow (README, Release flow). It is electron-builder.yml plus the
+# Developer ID signature, the hardened runtime and the notarisation. Local builds use
+# electron-builder.yml, so they need no certificate.
+#
+# The workflow gives the secrets of the "release" environment as environment variables:
+# - CSC_LINK (the .p12 as base64) and CSC_KEY_PASSWORD: the certificate. electron-builder puts it
+#   in a temporary keychain.
+# - APPLE_API_KEY (the path of the .p8 file), APPLE_API_KEY_ID and APPLE_API_ISSUER: the App Store
+#   Connect key for notarytool. electron-builder staples the ticket to the app.
+extends: ./electron-builder.yml
+mac:
+  identity: The Keyholding Company Limited (2GUX23RPKA)
+  hardenedRuntime: true
+  notarize: true

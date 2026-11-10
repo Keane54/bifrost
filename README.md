@@ -117,19 +117,26 @@ The commit type sets the next version:
 ```mermaid
 %%{init: {'flowchart': {'nodeSpacing': 60, 'rankSpacing': 70}}}%%
 flowchart TB
-    PR[Pull request] -->|merge| Main[Push to main]
-    Main --> CI[CI workflow: checks on Ubuntu, smoke tests on macOS]
-    CI -->|on success| Release[Release workflow on macOS: semantic-release]
-    Release -->|next version from the commits| Build[pnpm dist: DMG with the new version]
-    Build --> Tag[Tag vX.Y.Z]
-    Tag --> GitHub[GitHub release with the DMG attached]
+    Main[Push to main] --> CI[CI workflow: checks on Ubuntu, smoke tests on macOS]
+    Person[A person starts the Release workflow] --> Check[Check job on Ubuntu: CI result and next version]
+    Check -->|no release due| Stop[Stop, no macOS runner]
+    Check -->|next version| Build[Build job on macOS: signed and notarised DMG]
+    Build --> Verify[pnpm verify:release]
+    Verify --> GitHub[Tag vX.Y.Z and GitHub release with the DMG]
 ```
 
-1. A push to `main` starts the CI workflow. CI runs Biome, the type checks and the unit tests on Ubuntu. It runs the smoke tests on macOS.
-2. When CI passes, the Release workflow starts on macOS. If `main` has a newer commit, this run stops. The CI run of the newer commit then starts the release.
-3. semantic-release reads the commits since the last tag and calculates the next version. If no commit needs a release, it stops.
-4. The exec plugin sets the version in `package.json` and runs `pnpm dist`. This change stays on the runner. No commit goes back to `main`.
-5. semantic-release pushes the tag `v<version>` and makes the GitHub release with the release notes. Then it attaches the DMG to the release.
+CI runs on each push to `main` and on each pull request. A release runs only when a person starts it, so one release can hold many commits.
+
+1. Start the release: open **Actions > Release > Run workflow** on `main`, or run `gh workflow run release.yml`. Select the mode `release` or `dry-run`.
+2. The check job runs on Ubuntu. It stops if CI has not passed for the last commit on `main`. Then semantic-release reads the commits since the last tag and calculates the next version. If no commit needs a release, the run stops here.
+3. The build job runs on macOS in the `release` environment. This environment holds the signing secrets, and only `main` can use it.
+4. semantic-release sets the version in `package.json` and runs `pnpm dist:release`. This build uses `electron-builder.release.yml`: the Developer ID signature, the hardened runtime and the notarisation. The change to `package.json` stays on the runner.
+5. `pnpm verify:release` checks the signature, the hardened runtime and the stapled notarisation ticket. A failed check stops the release.
+6. semantic-release pushes the tag `v<version>` and makes the GitHub release with the release notes and the DMG.
+
+The `dry-run` mode does steps 2 to 5 and keeps the DMG as a workflow download for 7 days. It makes no tag and no release.
+
+`pnpm dist` makes a local DMG with no Developer ID signature and no notarisation.
 
 </details>
 

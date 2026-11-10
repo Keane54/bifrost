@@ -31,3 +31,6 @@ resources/live-mod/tsconfig.json
 # Specs and plans stay local: they are working documents, not part of the repo.
 docs/specs/
 docs/plans/
+
+# The next version from the dry run of semantic-release (Release workflow).
+.release-version
