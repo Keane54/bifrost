@@ -42,6 +42,9 @@ jobs:
       - name: Run Biome CI
         run: pnpm exec biome ci
 
+      - name: Check the Bifrost skills
+        run: pnpm check:skills
+
       - name: Check types
         run: pnpm typecheck
 

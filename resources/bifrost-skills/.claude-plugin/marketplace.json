@@ -1,0 +1,5 @@
+{
+  "name": "bifrost-skills",
+  "owner": { "name": "Bifrost" },
+  "plugins": [{ "name": "bifrost", "source": "./" }]
+}

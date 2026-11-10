@@ -54,6 +54,7 @@
     "build": "pnpm run typecheck && electron-vite build",
     "build:unpack": "pnpm run build && electron-builder --dir",
     "check": "biome check",
+    "check:skills": "node scripts/check-skills.ts",
     "check:write": "biome check --write",
     "dev": "electron-vite dev",
     "dist": "electron-vite build && electron-builder --mac --arm64",

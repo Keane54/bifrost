@@ -27,6 +27,7 @@
       "tsconfig*.json",
       "package.json",
       "resources/live-mod/**/*",
+      "resources/bifrost-skills/.claude-plugin/*.json",
       "!**/live-mod/.claude-plugin/types/**/*",
       "!**/out/**/*",
       "!**/dist/**/*",
