@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   formatClock,
   formatClockMs,
+  formatClockOrDay,
   formatDayClock,
   formatDuration,
   sameDay,
-} from '../../../src/renderer/src/lib/time'
+} from '../../src/shared/time'
 
 describe('time formats', () => {
   it('formatClock gives HH:MM with a 24-hour clock', () => {
@@ -29,6 +30,16 @@ describe('time formats', () => {
 
   it('formatDayClock gives Ddd HH:MM', () => {
     expect(formatDayClock(Date.UTC(2026, 10, 5, 14, 3), 'UTC')).toBe('Thu 14:03')
+  })
+
+  it('formatClockOrDay gives HH:MM on the day of now, else Ddd HH:MM', () => {
+    const now = Date.UTC(2026, 10, 5, 12, 0)
+    expect(formatClockOrDay(Date.UTC(2026, 10, 5, 14, 5), now, 'UTC')).toBe('14:05')
+    expect(formatClockOrDay(Date.UTC(2026, 10, 5, 0, 0), now, 'UTC')).toBe('00:00')
+    expect(formatClockOrDay(Date.UTC(2026, 10, 6, 13, 0), now, 'UTC')).toBe('Fri 13:00')
+    expect(formatClockOrDay(Date.UTC(2026, 10, 4, 23, 59), now, 'UTC')).toBe('Wed 23:59')
+    // 23:30 UTC on 5 Nov is 08:30 on 6 Nov in Tokyo, and now is 21:00 on 5 Nov there.
+    expect(formatClockOrDay(Date.UTC(2026, 10, 5, 23, 30), now, 'Asia/Tokyo')).toBe('Fri 08:30')
   })
 
   it('formatClockMs gives HH:MM:SS.mmm', () => {

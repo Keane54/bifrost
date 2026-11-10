@@ -1,13 +1,8 @@
 // The texts and numbers of the Usage HUD (spec 8.8). Pure functions, no React.
+import { formatClockOrDay, formatDuration } from '../../../shared/time'
 import type { AccountUsage, RateWindow, UsageSnapshot } from '../../../shared/types'
-import { formatClock, formatDayClock, formatDuration, sameDay } from '../lib/time'
+import { HIGH_PERCENT, usageSource } from '../../../shared/usage'
 import { formatAge } from '../overview/format'
-
-// From this percent, the bar uses the usage-high colour.
-export const HIGH_PERCENT = 90
-
-// Account values older than this fall back to the session values.
-export const ACCOUNT_MAX_AGE_MS = 15 * 60_000
 
 export interface UsageBar {
   label: '5-hour limit' | '7-day limit'
@@ -21,14 +16,9 @@ const NO_DATA = 'No data'
 const NO_WINDOW = 'No data for this limit yet.'
 const NO_FIVE_HOUR = 'No 5-hour limit right now.'
 
-// HH:MM on the day of now, else Ddd HH:MM.
-function clockText(ms: number, now: number, timeZone?: string): string {
-  return sameDay(ms, now, timeZone) ? formatClock(ms, timeZone) : formatDayClock(ms, timeZone)
-}
-
 // "45 min (12:45)", "2 h 05 min (14:05)", "1 d 1 h (Fri 13:00)".
 export function formatReset(resetsAt: number, now: number, timeZone?: string): string {
-  return `${formatDuration(resetsAt - now)} (${clockText(resetsAt, now, timeZone)})`
+  return `${formatDuration(resetsAt - now)} (${formatClockOrDay(resetsAt, now, timeZone)})`
 }
 
 function bar(
@@ -44,7 +34,7 @@ function bar(
   // as Show Info (final wave item 8).
   if (window.resetsAt <= now) {
     return {
-      detail: `Reset at ${clockText(window.resetsAt, now, timeZone)}.`,
+      detail: `Reset at ${formatClockOrDay(window.resetsAt, now, timeZone)}.`,
       high: false,
       label,
       percent: null,
@@ -58,24 +48,26 @@ function bar(
 }
 
 // The bars come from the account values when they are 15 minutes old or less (spec 8.8). Else
-// they come from the usage lines of the sessions.
+// they come from the usage lines of the sessions. usageSource makes this choice, and the usage
+// notification uses the same function.
 export function usageView(
   snapshot: UsageSnapshot | null,
   now: number,
   timeZone?: string,
   account: AccountUsage | null = null,
 ): { bars: [UsageBar, UsageBar]; source: string } {
-  if (account && now - account.fetchedAt <= ACCOUNT_MAX_AGE_MS) {
-    const { fiveHour, sevenDay } = account.limits
+  const source = usageSource(snapshot, now, account)
+  if (source?.kind === 'account') {
+    const { fiveHour, sevenDay } = source.limits
     return {
       bars: [
         bar('5-hour limit', fiveHour, now, timeZone, NO_FIVE_HOUR),
         bar('7-day limit', sevenDay, now, timeZone),
       ],
-      source: `From your Anthropic account, updated ${formatAge(account.fetchedAt, now)} ago.`,
+      source: `From your Anthropic account, updated ${formatAge(source.account.fetchedAt, now)} ago.`,
     }
   }
-  if (!snapshot) {
+  if (!source) {
     return {
       bars: [
         { detail: NO_DATA, high: false, label: '5-hour limit', percent: null },
@@ -86,9 +78,9 @@ export function usageView(
   }
   return {
     bars: [
-      bar('5-hour limit', snapshot.limits.fiveHour, now, timeZone),
-      bar('7-day limit', snapshot.limits.sevenDay, now, timeZone),
+      bar('5-hour limit', source.limits.fiveHour, now, timeZone),
+      bar('7-day limit', source.limits.sevenDay, now, timeZone),
     ],
-    source: `From ${snapshot.name}, ${formatAge(snapshot.updatedAt, now)} ago.`,
+    source: `From ${source.snapshot.name}, ${formatAge(source.snapshot.updatedAt, now)} ago.`,
   }
 }

@@ -1,4 +1,4 @@
-// Time texts for the panels. All use a 24-hour clock and no comma.
+// Time texts for the panels and the notifications. All use a 24-hour clock and no comma.
 // A time zone argument is for tests. Without it, the zone of the computer applies.
 
 interface Parts {
@@ -67,6 +67,11 @@ export function formatClock(ms: number, timeZone?: string): string {
 export function formatDayClock(ms: number, timeZone?: string): string {
   const p = timeParts(ms, timeZone)
   return `${p.weekday} ${p.hour}:${p.minute}`
+}
+
+// HH:MM on the day of now, else Ddd HH:MM. The Usage HUD and the usage notification use it.
+export function formatClockOrDay(ms: number, now: number, timeZone?: string): string {
+  return sameDay(ms, now, timeZone) ? formatClock(ms, timeZone) : formatDayClock(ms, timeZone)
 }
 
 // 09:07:03.045

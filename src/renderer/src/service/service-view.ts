@@ -1,6 +1,7 @@
 // The texts of the Service status panel.
+
+import { formatClock, formatDayClock, formatDuration, sameDay } from '../../../shared/time'
 import type { Incident, ServiceLevel } from '../../../shared/types'
-import { formatClock, formatDayClock, formatDuration, sameDay } from '../lib/time'
 
 const LEVEL_TEXT: Record<ServiceLevel, string> = {
   critical: 'Critical outage',

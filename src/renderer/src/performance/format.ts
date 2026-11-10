@@ -1,6 +1,6 @@
 // The texts and the trend line points of the Performance panel (design section 5.2).
 import type { PerformanceSnapshot } from '../../../shared/performance'
-import { formatClock } from '../lib/time'
+import { formatClock } from '../../../shared/time'
 
 const MB_PER_GB = 1024
 const NET_STEP = 1000

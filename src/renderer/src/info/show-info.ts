@@ -1,10 +1,10 @@
 // The values of the Show Info panel (spec 8.6). The module is pure.
 
 import { continueIdOf, currentIdOf } from '../../../shared/session-ids'
+import { formatClock, formatDuration, sameDay, timeParts } from '../../../shared/time'
 import type { PrInfo, RateWindow, SessionRow } from '../../../shared/types'
 import { worktreeOf } from '../../../shared/worktree'
 import { friendlyError } from '../actions/errors'
-import { formatClock, formatDuration, sameDay, timeParts } from '../lib/time'
 import { formatCost, formatPercent } from '../overview/format'
 
 export { formatDuration }

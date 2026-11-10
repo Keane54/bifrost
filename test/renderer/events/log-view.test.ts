@@ -8,8 +8,8 @@ import {
   sessionOptions,
   visibleRange,
 } from '../../../src/renderer/src/events/log-view'
-import { formatClock } from '../../../src/renderer/src/lib/time'
 import { EVENT_LOG_MAX } from '../../../src/shared/event-log'
+import { formatClock } from '../../../src/shared/time'
 import type { LogEntry, SessionRow } from '../../../src/shared/types'
 
 const e = (seq: number, sessionId = 's1', o: Partial<LogEntry> = {}): LogEntry => ({

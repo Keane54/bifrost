@@ -4,7 +4,7 @@ import type { LogEntry, SessionRow } from '../../../shared/types'
 
 // The time of a log row: HH:MM:SS.mmm (one time module). It has its own name, because
 // formatClock of lib/time gives HH:MM.
-export { formatClockMs as formatLogTime } from '../lib/time'
+export { formatClockMs as formatLogTime } from '../../../shared/time'
 
 // The height of a row, in px.
 export const ROW_HEIGHT = 18
