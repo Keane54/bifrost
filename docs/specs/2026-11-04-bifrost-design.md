@@ -525,7 +525,7 @@ Size rule (user decision, 2026-11-04; M3 builds it):
 - Only the chat window that has focus sends a resize to the session.
 - A chat window with a different size from the session zooms the terminal to fit. The layout stays correct.
 - A resize in a terminal app, for example Warp, also sets the size. Bifrost then zooms its chat window to that size.
-- M3 test (2026-11-05): yes. Bifrost reads the size from the TTY of the session process (`ps -o tty=`, then `stty -f /dev/<tty> size`) within 80 ms of a resize. A new attach also sets the session size. See `docs/m3-findings.md`.
+- M3 test (2026-11-05): yes. Bifrost reads the size from the TTY of the session process (`ps -o tty=`, then `stty -f /dev/<tty> size`) within 80 ms of a resize. A new attach also sets the session size.
 
 ### 8.6 Show Info
 
@@ -589,7 +589,7 @@ Dialog rules:
 - After `claude --bg`, Bifrost waits for the entry in `claude agents --json`. Exit code 0 is not proof of a start.
 - If `claude --bg` gives the trust error, the dialog shows the error. It tells the user to run `claude` in that directory one time and accept the trust prompt.
 - After the entry appears, Bifrost opens the chat window of the new session.
-- M4 test (2026-11-05): `--worktree <name>` works in a trusted repository. See `docs/m4-findings.md`.
+- M4 test (2026-11-05): `--worktree <name>` works in a trusted repository.
 
 ### 8.10 Theme
 
@@ -1155,12 +1155,12 @@ With a test home, `system.info()` gives `testHome: true`, and the page has the h
 | M2 - Window manager | Panels, drag, resize, snap, stacks, position memory, layouts, display modes. | All panel functions in section 8.1 work. |
 | M3 - Core panels | Overview (with the visual layout of section 8.3), Selected Item, right-click menu, chat windows. | You can select, open and use sessions. |
 | M4 - Actions | Send box, slash commands, stop, delete, new session, Take control, parked sessions, Resume all. | All actions in section 9.1 work. |
-| Live - Live details | The Live details mod, the socket server, the live registry rules, and Install, Turn on, Turn off and Remove. | Part A and Part B of the check with real test sessions pass (`docs/live-findings.md`). Part A: yellow, red and stopped-turn rows, the heartbeat, a closed Bifrost, and the poll-only yellow box. Part B: Install, Turn on, Turn off and Remove, and `settings.json` has no change. |
+| Live - Live details | The Live details mod, the socket server, the live registry rules, and Install, Turn on, Turn off and Remove. | Part A and Part B of the check with real test sessions pass. Part A: yellow, red and stopped-turn rows, the heartbeat, a closed Bifrost, and the poll-only yellow box. Part B: Install, Turn on, Turn off and Remove, and `settings.json` has no change. |
 | M5 - Finish | Keys, label toggle, alerts, Show Info, Event log, Usage HUD, Service status, theme, DMG. | You install the DMG on your Mac and use Bifrost. |
 
 ## 17. Questions for M0
 
-The answers are in `docs/m0-findings.md`.
+The M0 test answered these questions. Section 19 gives the decisions.
 
 1. Does `claude attach` show correctly in xterm.js through node-pty? Check the colours, the mouse and the resize.
 2. Does the statusline show in an attached session?
@@ -1191,7 +1191,7 @@ The user confirmed these points in the review on 2026-11-04:
 
 ## 19. Decisions at the M0 gate
 
-The user approved these changes on 2026-11-04. The M0 findings are in `docs/m0-findings.md`.
+The user approved these changes on 2026-11-04.
 
 1. Part A, 2026-11-04: Bifrost has three display modes: Window, Borderless and Fullscreen (section 8.1).
 2. Part B, 2026-11-04: The Overview uses the visual layout of the EVE Overview (section 8.3).
@@ -1235,7 +1235,7 @@ The user gave these directions after using the M2 build:
 
 ## 22. Decisions in M4 (2026-11-05)
 
-The user made decisions 1 to 3. The controller made the others during M4. The M4 ledger and `docs/m4-findings.md` give the reasons.
+The user made decisions 1 to 3. The controller made the others during M4. `docs/specs/build-decisions.md` has the M4 decisions with their reasons.
 
 1. A session that Bifrost starts gets the flag that turns its statusline off only when the Bifrost statusline wrapper is not installed. With the wrapper, the `quiet` file hides the statusline in chat windows, and Bifrost still gets the status data (section 6.3).
    Section 23 changes this item (D13). Bifrost now passes the flag for every new session.
@@ -1257,7 +1257,7 @@ The user made decisions 1 to 3. The controller made the others during M4. The M4
 
 ## 23. Decisions on 2026-11-05 (Live details)
 
-The user decided to replace the global hooks and the statusLine wrapper with a Claude Code mod. The poll of `claude agents --json` stays the base. The plan is `docs/plans/2026-11-05-bifrost-live-mod.md`.
+The user decided to replace the global hooks and the statusLine wrapper with a Claude Code mod. The poll of `claude agents --json` stays the base. `docs/specs/build-decisions.md` has the decisions of this work with their reasons.
 
 1. D1: The plugin is `bifrost-live`, the marketplace is `bifrost-local`, and the scope is `user`. Bifrost refuses a `bifrost-local` marketplace that has another path.
 2. D2: The source of the mod is `resources/live-mod/`. Bifrost copies four files to `~/.bifrost/mod` and adds that folder as the marketplace. At each start, Bifrost copies the files again when they differ.
@@ -1290,7 +1290,7 @@ The user decided to replace the global hooks and the statusLine wrapper with a C
 
 ## 24. Decisions in M5a (2026-11-06)
 
-The controller made these decisions in M5a. The M5a ledger, `docs/m5-findings.md` and the final review give the reasons.
+The controller made these decisions in M5a. `docs/specs/build-decisions.md` has the M5a decisions with their reasons.
 
 1. A focus in a chat window selects its session. The session shortcuts act on the selected session (section 9.3). A hold-key Open on a row opens the chat window of the row. The focus in that window then selects the row.
 2. A hold-key click uses the hold key that is down at the push of the mouse button. A release of the key before the mouse button does not act on the selected row (section 9.4).
@@ -1310,7 +1310,7 @@ The controller made these decisions in M5a. The M5a ledger, `docs/m5-findings.md
 
 ## 25. Decisions in M5b (2026-11-06)
 
-The controller made these decisions in M5b. The M5b rulings, `docs/m5-findings.md` and the final review give the reasons.
+The controller made these decisions in M5b. `docs/specs/build-decisions.md` has the M5b decisions with their reasons.
 
 1. R4: The high bar of the Usage HUD uses amber `#d4730a` (`usage-high`). The Service status colours are greens, teals, blues and amber `#d4730a`. They have no yellow, red or grey. Each one is at least 0.10 from the box red and the box yellow in OKLab. This replaces the colours of D21 and D30 (section 8.11). The user changed the purple and pink part on 2026-11-06: the rule of no purple and no pink covers only the Overview. The watch colours also have no purple, but they may have pink (section 8.10). The M5b panels keep their colours for now.
 2. R6: The app bundle has no `node-pty/build` folder. So each chip loads its own node-pty prebuild (section 14.1).

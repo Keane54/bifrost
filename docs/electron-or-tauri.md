@@ -106,7 +106,6 @@ But it is a much bigger job than Tauri:
 ## Related
 
 - [Bifrost design spec](specs/2026-11-04-bifrost-design.md)
-- [Plans](plans/)
 - The Tauri spike code: branch `tauri-spike`
 
 ## Sources
