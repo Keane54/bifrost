@@ -1,7 +1,7 @@
 // The layout checks of the M5b final fix wave. Each check needs the running app, because the
 // browser layout and the focus rules of Base UI decide the result:
 // - M5a carry-over 1: Esc in the Rename dialog gives the focus back to the Overview rows.
-// - Bug B2: the Usage HUD shows all its lines at its default size.
+// - The Usage HUD shows all its lines at its default size.
 // - M5a carry-over 2: in a narrow Settings frame, a key row that records keeps its name visible,
 //   and its Clear and Reset buttons stay in the frame.
 // - Esc toggles Settings (spec 9.4). A dialog and the key recorder keep their own Esc.
@@ -112,7 +112,7 @@ test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their la
     })
     await expect(settingsFrame).toHaveCount(0)
 
-    // Bug B2. The last line of the Usage HUD is inside the frame at the default size.
+    // The last line of the Usage HUD is inside the frame at the default size.
     await page.getByRole('button', { exact: true, name: 'Usage HUD' }).click()
     const hud = page.locator('[data-usage-hud]')
     await expect(hud).toBeVisible()

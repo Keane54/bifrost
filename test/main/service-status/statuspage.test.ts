@@ -202,7 +202,7 @@ describe('checkService', () => {
   })
 })
 
-describe('createFetchJson (final review parked T5: a cap on the body size)', () => {
+describe('createFetchJson (a cap on the body size)', () => {
   const URL = 'https://status.claude.com/api/v2/status.json'
   const answer = (body: BodyInit | null, init?: ResponseInit): FetchFn => {
     return async () => new Response(body, init)

@@ -60,7 +60,7 @@ describe('wm state', () => {
     expect(run([open('usage-hud')]).frames[0]?.rect).toMatchObject({ h: 180, w: 360 })
   })
 
-  it('the Usage HUD default height holds its content with a margin (bug B2)', () => {
+  it('the Usage HUD default height holds its content with a margin', () => {
     // The Task 9 check measured 146 px of content. The frame has the title bar and a 1 px border
     // at the top and at the bottom. The margin is at least 4 px.
     const CONTENT_H = 146

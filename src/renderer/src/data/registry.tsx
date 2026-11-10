@@ -5,7 +5,7 @@ import { INITIAL_REGISTRY, type RegistryState, withFirstRows, withUpdate } from 
 export interface RegistryValue {
   rows: SessionRow[]
   error: string | null
-  // True after the first rows come: the answer of registry.rows() or an update (bug B1).
+  // True after the first rows come: the answer of registry.rows() or an update.
   loaded: boolean
   selectedId: string | null
   select(id: string | null): void
@@ -21,7 +21,7 @@ export function RegistryProvider({ children }: { children: React.ReactNode }): R
   useEffect(() => {
     let active = true
     // One call at mount. Its answer also sets loaded, because the main process sends no update
-    // when the rows do not change (bug B1).
+    // when the rows do not change.
     window.bifrost.registry
       .rows()
       .then(r => active && setState(s => withFirstRows(s, r)))

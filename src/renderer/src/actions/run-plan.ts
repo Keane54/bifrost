@@ -59,7 +59,7 @@ export function focusRequestUsable(
 
 // The next step of an Open from a click on a notification (spec 10). A new window can get the
 // click before it has the rows. Then the Open waits for the row. When the registry has loaded
-// (the first rows() answer or an update, bug B1) and the row is not there, the Open stops
+// (the first rows() answer or an update) and the row is not there, the Open stops
 // (final review Minor 6).
 export function notifiedOpenStep(
   sessionId: string,
