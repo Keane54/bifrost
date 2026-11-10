@@ -99,26 +99,6 @@ pnpm dist        # Make the arm64 DMG in dist/
 - `pnpm check:write` corrects the format and the lint problems that Biome can correct.
 - Run `pnpm smoke` before you make a DMG.
 
-## Commits
-
-- Write each commit message in the [Conventional Commits](https://www.conventionalcommits.org/) format, for example `fix(chat): show a scroll bar in chat windows`.
-- Keep each line of the commit body at 100 characters or less.
-- Write the PR title in the same format. The PR Title workflow checks it.
-- Write the docs, the code comments and the commit bodies in ASD-STE100 Simplified Technical English. See [CLAUDE.md](CLAUDE.md).
-
-`pnpm install` installs two git hooks with [lefthook](https://lefthook.dev/):
-
-- `pre-commit`: Biome checks and corrects the staged files.
-- `commit-msg`: commitlint checks the commit message.
-
-The commit type sets the next version:
-
-| Commit | Next version |
-| --- | --- |
-| `feat` | Minor, for example 0.1.0 to 0.2.0. |
-| `fix`, `perf`, `revert`, `docs`, `style`, `chore`, `refactor`, `test`, `build` or `ci` | Patch, for example 0.1.0 to 0.1.1. |
-| A breaking change (`feat!:` or a `BREAKING CHANGE:` footer) | Minor while the version is below 1.0.0. The change to 1.0.0 is a manual step. |
-
 <details>
 <summary><b>Release flow</b></summary>
 
