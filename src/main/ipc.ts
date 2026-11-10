@@ -1167,7 +1167,11 @@ export function registerIpc(home: TestHome | null = null): void {
   const liveAction = (channel: string, fn: () => Promise<LiveStatus>): void => {
     ipcMain.handle(channel, e => fromPage(e, () => serial.run(fn)))
   }
-  ipcMain.handle('live:status', e => fromPage(e, () => live.status()))
+  // The status read waits for the start, but it does not take the lock. Else a read before the
+  // start ends can give listening false for a plugin that is on, and the side bar shows a false
+  // warning. The start always ends. It returns at once when the app quits first, and each claude
+  // call in it has a time limit.
+  ipcMain.handle('live:status', e => fromPage(e, () => serial.afterFirst(() => live.status())))
   liveAction('live:install', () => live.install())
   liveAction('live:enable', () => live.enable())
   liveAction('live:disable', () => live.disable())

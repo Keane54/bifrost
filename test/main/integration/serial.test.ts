@@ -91,6 +91,58 @@ test('of two calls that wait for runFirst, the first runs and the second rejects
   await expect(one).resolves.toBe('one')
 })
 
+test('afterFirst with no runFirst runs at once', async () => {
+  const runner = createSerialRunner()
+  await expect(runner.afterFirst(async () => 'read')).resolves.toBe('read')
+})
+
+test('afterFirst waits for runFirst, and then runs', async () => {
+  const runner = createSerialRunner()
+  const first = gate<void>()
+  const order: string[] = []
+  const starting = runner.runFirst(async () => {
+    await first.promise
+    order.push('first')
+  })
+  const read = runner.afterFirst(async () => {
+    order.push('read')
+    return 'read'
+  })
+  await new Promise(resolve => setTimeout(resolve, 10))
+  expect(order).toEqual([])
+  first.open()
+  await expect(read).resolves.toBe('read')
+  await starting
+  expect(order).toEqual(['first', 'read'])
+})
+
+test('afterFirst runs after a failed runFirst', async () => {
+  const runner = createSerialRunner()
+  const first = gate<void>()
+  const starting = runner.runFirst(async () => {
+    await first.promise
+    throw new Error('start failed')
+  })
+  const read = runner.afterFirst(async () => 'read')
+  first.open()
+  await expect(starting).rejects.toThrow('start failed')
+  await expect(read).resolves.toBe('read')
+})
+
+test('afterFirst takes no lock: it runs during a run, and a run runs during it', async () => {
+  const runner = createSerialRunner()
+  const action = gate<string>()
+  const reading = gate<string>()
+  const one = runner.run(() => action.promise)
+  await expect(runner.afterFirst(async () => 'read')).resolves.toBe('read')
+  action.open('one')
+  await expect(one).resolves.toBe('one')
+  const read = runner.afterFirst(() => reading.promise)
+  await expect(runner.run(async () => 'two')).resolves.toBe('two')
+  reading.open('read')
+  await expect(read).resolves.toBe('read')
+})
+
 test('the busy message is the text that the renderer shows', () => {
   expect(BUSY_MESSAGE).toBe('Another change is still running. Try again in a moment.')
 })

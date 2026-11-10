@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { compareVersions } from '../../../src/main/claude/version'
+import { createSerialRunner } from '../../../src/main/integration/serial'
 import {
   createLiveControl,
   type LiveControlDeps,
@@ -647,5 +648,51 @@ describe('status', () => {
       plugin: 'unknown',
       versionOk: false,
     })
+  })
+})
+
+// ipc.ts runs the start first in its serial runner, after the service loads. A status read that
+// does not wait for that start can give listening false for a plugin that is on. The side bar
+// then shows a false warning dot until Settings opens.
+describe('a status read during the start', () => {
+  // modDir is set before each test, so make the entry in the test.
+  const enabled = (): PluginEntry => ({ enabled: true, errors: [], folder: modDir })
+
+  test('a read that starts before the start ends gets the state after the start', async () => {
+    let load = (): void => {}
+    const service = new Promise<void>(resolve => {
+      load = resolve
+    })
+    const serial = createSerialRunner()
+    const { control } = setup({ plugin: enabled() })
+    const started = serial.runFirst(async () => {
+      await service
+      await control.start()
+    })
+    const read = serial.afterFirst(() => control.status())
+    load()
+    await started
+    expect(await read).toMatchObject({ listening: true, plugin: 'enabled' })
+  })
+
+  test('a read still answers when the app quits before the start runs', async () => {
+    let load = (): void => {}
+    const service = new Promise<void>(resolve => {
+      load = resolve
+    })
+    const serial = createSerialRunner()
+    const { calls, control } = setup({ plugin: enabled() })
+    let stopped = false
+    void serial.runFirst(async () => {
+      await service
+      if (stopped) return
+      await control.start()
+    })
+    const read = serial.afterFirst(() => control.status())
+    // The app quits while the service loads.
+    stopped = true
+    load()
+    await expect(read).resolves.toMatchObject({ listening: false, plugin: 'enabled' })
+    expect(calls).not.toContain('server.start')
   })
 })

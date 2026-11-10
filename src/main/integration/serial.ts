@@ -7,13 +7,17 @@ export interface SerialRunner {
   // Run fn now with the lock. Each call of run that comes before fn ends waits for fn, also
   // when fn fails. Then that call runs with the usual rule.
   runFirst(fn: () => Promise<void>): Promise<void>
+  // Run fn after the call of runFirst ends, also when that call fails. fn does not take the lock.
+  // So it never rejects with the busy message, and it never stops a call of run.
+  afterFirst<T>(fn: () => Promise<T>): Promise<T>
 }
 
 // Run one integration action at a time.
 // Two actions at the same time could both change the settings file of the user.
 // They could also get the same backup name. So a call that comes during a call rejects.
 // The start of Live details goes through runFirst. An action that comes during the start waits
-// for it and does not reject.
+// for it and does not reject. The status read goes through afterFirst. So it gives the state
+// after the start, and an action and the status read never stop each other.
 export function createSerialRunner(): SerialRunner {
   let busy = false
   // The call of runFirst. It never rejects.
@@ -28,6 +32,10 @@ export function createSerialRunner(): SerialRunner {
     }
   }
   return {
+    async afterFirst<T>(fn: () => Promise<T>): Promise<T> {
+      await first
+      return fn()
+    },
     async run<T>(fn: () => Promise<T>): Promise<T> {
       await first
       return lock(fn)
