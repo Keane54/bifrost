@@ -46,6 +46,7 @@ Built with [Electron](https://www.electronjs.org/), [React](https://react.dev/) 
 - Live details is an optional mod for Claude Code. It sends live events and usage data to Bifrost. Then Bifrost shows the model, the cost and the context use of each session. Bifrost asks about Live details at the first start.
 - When the 5-hour limit or the 7-day limit gets to 90%, Bifrost shows a macOS notification. Each limit gives one notification in each reset period. When extra usage is on, the notification warns you that Claude Code can spend real money after 100%. A click on the notification opens the Usage HUD.
 - Bifrost updates itself. It checks GitHub for a new version and downloads it. When the update is ready, a button shows above Layouts in the side bar.
+- Bifrost shows the release notes from GitHub. After an update, the "What's new" dialog shows the changes since your last version. The "Release notes" button in Settings > Updates shows the last 10 releases.
 
 ## Panels
 
@@ -78,7 +79,7 @@ The side bar on the left edge has one button for each panel. It also holds the p
 4. Open Bifrost from the Applications folder.
 5. At the first start, Bifrost shows the "Set up Bifrost" dialog. Follow its steps, or select Skip.
 
-After the first install, you do not need to download a DMG again. Bifrost checks for new versions. When a new version is ready, a button shows above Layouts in the side bar. Click the button to restart Bifrost with the new version. Settings > Updates has the switch "Check for updates automatically", the "Check for updates" button and the "Show log" button.
+After the first install, you do not need to download a DMG again. Bifrost checks for new versions. When a new version is ready, a button shows above Layouts in the side bar. Click the button to restart Bifrost with the new version. After the restart, the "What's new" dialog opens one time and shows the changes of the new version. Settings > Updates has the switch "Check for updates automatically", the "Check for updates" button, the "Show log" button and the "Release notes" button.
 
 ## Documentation
 
