@@ -16,6 +16,10 @@ files:
 asarUnpack:
   - resources/**
   - '**/node_modules/node-pty/**'
+# Keep only the English locale folders (.lproj) of Electron. The app text is English. electron-builder
+# also keeps each folder whose name starts with "en_", for example en_GB.lproj.
+electronLanguages:
+  - en
 mac:
   target:
     - target: dmg
