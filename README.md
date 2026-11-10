@@ -80,39 +80,6 @@ The side bar on the left edge has one button for each panel. It also holds the p
 
 After the first install, you do not need to download a DMG again. Bifrost checks for new versions. When a new version is ready, a button shows above Layouts in the side bar. Click the button to restart Bifrost with the new version. Settings > Updates has the switch "Check for updates automatically", the "Check for updates" button and the "Show log" button.
 
-## Releases
-
-<details>
-<summary><b>Release flow</b></summary>
-
-```mermaid
-%%{init: {'flowchart': {'nodeSpacing': 60, 'rankSpacing': 70}}}%%
-flowchart TB
-    Main[Push to main] --> CI[CI workflow: checks on Ubuntu, smoke tests on macOS]
-    Person[A person starts the Release workflow] --> Check[Check job on Ubuntu: CI result and next version]
-    Check -->|no release due| Stop[Stop, no macOS runner]
-    Check -->|next version| Build[Build job on macOS: signed and notarised DMG]
-    Build --> Verify[pnpm verify:release]
-    Verify --> GitHub[Tag vX.Y.Z and GitHub release with the DMG and the update files]
-```
-
-CI runs on each push to `main` and on each pull request. A release runs only when a person starts it, so one release can hold many commits.
-
-1. Start the release: open **Actions > Release > Run workflow** on `main`, or run `gh workflow run release.yml`. Select the mode `release` or `dry-run`.
-2. The check job runs on Ubuntu. It stops if CI has not passed for the last commit on `main`. Then semantic-release reads the commits since the last tag and calculates the next version. If no commit needs a release, the run stops here.
-3. The build job runs on macOS in the `release` environment. This environment holds the signing secrets, and only `main` can use it.
-4. semantic-release sets the version in `package.json` and runs `pnpm dist:release`. This build uses `electron-builder.release.yml`: the Developer ID signature, the hardened runtime and the notarisation. The change to `package.json` stays on the runner.
-5. `pnpm verify:release` checks the signature, the hardened runtime and the stapled notarisation ticket. It also checks the update files: the ZIP, `app-update.yml` in the app and `latest-mac.yml`. A failed check stops the release.
-6. semantic-release pushes the tag `v<version>` and makes the GitHub release with the release notes and four assets: the DMG, the ZIP, the ZIP blockmap and `latest-mac.yml`.
-
-The updater of each installed Bifrost reads `latest-mac.yml` of the latest release. A release without `latest-mac.yml` stops the updates of all users.
-
-The `dry-run` mode does steps 2 to 5. It keeps the four assets (the DMG, the ZIP, the ZIP blockmap and `latest-mac.yml`) as a workflow download for 7 days. It makes no tag and no release.
-
-`pnpm dist` makes a local DMG with no Developer ID signature and no notarisation.
-
-</details>
-
 ## Documentation
 
 The [`docs`](docs) folder has the other documents:
