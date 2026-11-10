@@ -1,5 +1,5 @@
 // The content rules of the Bifrost skill files in resources/bifrost-skills.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readPluginSnapshot } from '../../scripts/skills/snapshot'
@@ -16,6 +16,28 @@ const SKILL_DIR = '${CLAUDE_SKILL_DIR}'
 // biome-ignore lint/suspicious/noTemplateCurlyInString: the test looks for the literal variable.
 const HUMANISE_RULES = '${CLAUDE_PLUGIN_ROOT}/skills/bifrost-humanise/rules.md'
 const PR_SKILLS = ['bifrost-review', 'bifrost-resolve-comments']
+const SKILLS = [
+  'bifrost-grill',
+  'bifrost-hand-over',
+  'bifrost-humanise',
+  'bifrost-resolve-comments',
+  'bifrost-review',
+]
+// The nine parts of a hand-over note, in order (spec 7.5).
+const NOTE_PARTS = [
+  'Goal and scope',
+  'User rules',
+  'Decisions',
+  'State',
+  'Done',
+  'Next steps',
+  'Open questions',
+  'Traps',
+  'References',
+]
+const HAND_OVER_RULES = 'skills/bifrost-hand-over/hand-over-rules.md'
+// The start of a variable. Bifrost puts the rules file in a prompt as it is, so the file has none.
+const VARIABLE_START = '${'
 
 const read = (path: string): string => readFileSync(join(ROOT, path), 'utf8')
 
@@ -33,6 +55,21 @@ function bodyLines(text: string): string[] {
 }
 
 const bodyOf = (folder: string): string => bodyLines(read(`skills/${folder}/SKILL.md`)).join('\n')
+
+describe('the skills of the Bifrost plugin', () => {
+  it('are exactly the five skill folders', () => {
+    const folders = readdirSync(join(ROOT, 'skills'), { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name)
+      .sort()
+    expect(folders).toEqual(SKILLS)
+  })
+
+  // All five skills run inline (spec 6).
+  it.each(SKILLS)('run inline: %s has no context field', folder => {
+    expect(fieldsOf(folder)).not.toHaveProperty('context')
+  })
+})
 
 describe('the files of the Bifrost plugin', () => {
   const files = readPluginSnapshot(ROOT).files
@@ -128,5 +165,45 @@ describe('bifrost-resolve-comments', () => {
 
   it('stops on a working tree with uncommitted changes', () => {
     expect(bodyOf('bifrost-resolve-comments')).toContain('If `git status --porcelain` prints')
+  })
+})
+
+describe('bifrost-hand-over', () => {
+  const rules = (): string => read(HAND_OVER_RULES)
+
+  it('is in the called-by-name group and takes a path', () => {
+    const fields = fieldsOf('bifrost-hand-over')
+    expect(fields.name).toBe('bifrost-hand-over')
+    expect(skillGroup(fields)).toBe('called-by-name')
+    expect(fields['argument-hint']).toBe('[path]')
+  })
+
+  // The Hand over button puts the rules file in its prompt as it is (spec 8).
+  it('has a rules file with no frontmatter and no variable', () => {
+    expect(rules().startsWith('---')).toBe(false)
+    expect(rules()).not.toContain(VARIABLE_START)
+  })
+
+  it('names the nine parts of the note as headings, in order', () => {
+    const at = NOTE_PARTS.map(part => rules().indexOf(`## ${part}`))
+    expect(at).not.toContain(-1)
+    expect(at).toEqual([...at].sort((a, b) => a - b))
+  })
+
+  it('keeps secrets out of the note', () => {
+    expect(rules()).toContain('secret')
+  })
+
+  it('reads the rules file and saves the note, but does not repeat the rules', () => {
+    const body = bodyOf('bifrost-hand-over')
+    expect(body).toContain(`${SKILL_DIR}/hand-over-rules.md`)
+    expect(body).toContain('~/.bifrost/handovers/')
+    expect(body).not.toContain('Open questions')
+    expect(body).not.toContain('Traps')
+  })
+
+  it('uses British spelling in the body and the rules', () => {
+    expect(bodyOf('bifrost-hand-over')).not.toMatch(AMERICAN)
+    expect(rules()).not.toMatch(AMERICAN)
   })
 })
