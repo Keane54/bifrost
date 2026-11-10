@@ -206,5 +206,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bifrost-dry-run-dmg
-          path: dist/Bifrost-arm64.dmg
+          path: |
+            dist/Bifrost-arm64.dmg
+            dist/Bifrost-*-arm64-mac.zip
+            dist/Bifrost-*-arm64-mac.zip.blockmap
+            dist/latest-mac.yml
           retention-days: 7

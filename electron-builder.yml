@@ -19,6 +19,9 @@ mac:
   target:
     - target: dmg
       arch: arm64
+    # Squirrel.Mac installs an update from the ZIP.
+    - target: zip
+      arch: arm64
   category: public.app-category.developer-tools
   identity: '-'
   hardenedRuntime: false

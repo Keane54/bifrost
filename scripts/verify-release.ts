@@ -2,10 +2,12 @@
 // The Release workflow runs it after "pnpm dist:release" and before it publishes anything.
 // A failed check stops the release. The script needs macOS.
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
 
 const APP = 'dist/mac-arm64/Bifrost.app'
 const TEAM_ID = '2GUX23RPKA'
+const DIST = 'dist'
 
 // Run a command and return its result. codesign and spctl write their result to stderr, so the
 // text holds stdout and stderr.
@@ -64,6 +66,43 @@ if (gatekeeper.text.includes('override=security disabled')) {
     gatekeeper.text,
   )
 }
+
+// Step 5: the update files exist and agree. The updater reads app-update.yml in the app and
+// latest-mac.yml in the release.
+const version = JSON.parse(readFileSync('package.json', 'utf8')).version as string
+const zipName = `Bifrost-${version}-arm64-mac.zip`
+const zipPath = `${DIST}/${zipName}`
+const zipExists = existsSync(zipPath)
+check('the update ZIP exists', zipExists, `${zipPath} does not exist.`)
+
+const appUpdatePath = `${APP}/Contents/Resources/app-update.yml`
+const appUpdate = existsSync(appUpdatePath) ? readFileSync(appUpdatePath, 'utf8') : ''
+check(
+  'app-update.yml names the repository',
+  /^owner: TheKeyholdingCompany$/m.test(appUpdate) && /^repo: bifrost$/m.test(appUpdate),
+  appUpdate || `${appUpdatePath} does not exist.`,
+)
+
+const feedPath = `${DIST}/latest-mac.yml`
+const feed = existsSync(feedPath) ? readFileSync(feedPath, 'utf8') : ''
+check(
+  'latest-mac.yml has the version',
+  new RegExp(`^version: ${version.replace(/\./g, '\\.')}$`, 'm').test(feed),
+  feed || `${feedPath} does not exist.`,
+)
+
+// The feed lists each file with its url and its sha512 as base64. The sha512 must match the ZIP.
+const sha512 = zipExists ? createHash('sha512').update(readFileSync(zipPath)).digest('base64') : ''
+const feedLines = feed.split('\n').map(line => line.trim())
+const urlIndex = feedLines.findIndex(
+  line => line === `- url: ${zipName}` || line === `url: ${zipName}`,
+)
+const feedSha = urlIndex >= 0 ? feedLines[urlIndex + 1] : ''
+check(
+  'latest-mac.yml has the SHA-512 of the update ZIP',
+  zipExists && feedSha === `sha512: ${sha512}`,
+  `The files entry of ${zipName} is missing or has a different sha512.`,
+)
 
 if (failures.length > 0) {
   console.error(`${failures.length} check(s) failed. The release stops.`)

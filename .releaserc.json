@@ -57,6 +57,16 @@
           {
             "path": "dist/Bifrost-arm64.dmg",
             "label": "Bifrost ${nextRelease.version} for Apple silicon (DMG)"
+          },
+          {
+            "path": "dist/Bifrost-*-arm64-mac.zip",
+            "label": "Bifrost ${nextRelease.version} for Apple silicon (update ZIP)"
+          },
+          {
+            "path": "dist/Bifrost-*-arm64-mac.zip.blockmap"
+          },
+          {
+            "path": "dist/latest-mac.yml"
           }
         ],
         "successComment": false,
