@@ -10,9 +10,11 @@ import { RowFilterContext } from './row-filter'
 import { CheckRow } from './rows'
 import { useSettings } from './settings-context'
 import {
+  lastCheckedLine,
   UPDATES_ACTION_LABELS,
   UPDATES_ROWS,
   type UpdatesActionId,
+  updatesActionDisabled,
   updatesActions,
   updatesStateLine,
 } from './updates-rows'
@@ -54,7 +56,7 @@ export default function UpdatesSection({
             </p>
             {snapshot.lastCheckAt !== null && (
               <p className='mt-1 text-text-dim select-text'>
-                Last checked {new Date(snapshot.lastCheckAt).toLocaleTimeString()}
+                {lastCheckedLine(snapshot.lastCheckAt, Date.now())}
               </p>
             )}
             {updatesActions(snapshot).length > 0 && (
@@ -63,7 +65,7 @@ export default function UpdatesSection({
                   <button
                     className={DIALOG_BUTTON}
                     data-updates-action={id}
-                    disabled={id === 'check' && snapshot.state.kind === 'checking'}
+                    disabled={updatesActionDisabled(snapshot, id)}
                     key={id}
                     onClick={() => onAction(id)}
                     type='button'

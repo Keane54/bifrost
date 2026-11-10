@@ -1,6 +1,6 @@
 // The app-wide state of the updater. One store holds the newest snapshot from the main process,
-// so the app has one subscription. Settings reads the whole snapshot. The side bar reads only
-// the state of its button.
+// so the app has one subscription. Settings > Updates reads the whole snapshot. The Settings
+// panel reads only the failed flag, and the side bar reads only the state of its button.
 import { useMemo, useSyncExternalStore } from 'react'
 import type { BifrostApi } from '../../../shared/api'
 import { EMPTY_UPDATES, type UpdatesSnapshot } from '../../../shared/updates'
@@ -71,7 +71,7 @@ const store = createUpdatesStore({
   snapshot: () => window.bifrost.updates.snapshot(),
 })
 
-// The newest snapshot, for Settings.
+// The newest snapshot, for Settings > Updates.
 export function useUpdates(): UpdatesSnapshot {
   return useSyncExternalStore(store.subscribe, store.get)
 }
@@ -79,6 +79,12 @@ export function useUpdates(): UpdatesSnapshot {
 // The loaded flag, for Settings.
 export function useUpdatesLoaded(): boolean {
   return useSyncExternalStore(store.subscribe, store.loaded)
+}
+
+// True when the update failed, for the warning square of the Settings tab. React compares a
+// boolean by value, so the panel does not draw again for a download percent.
+export function useUpdatesFailed(): boolean {
+  return useSyncExternalStore(store.subscribe, () => store.get().state.kind === 'failed')
 }
 
 export type UpdateButtonState = { kind: 'ready'; version: string } | { kind: 'failed' } | null

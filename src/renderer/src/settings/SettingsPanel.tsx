@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DIALOG_BUTTON } from '../actions/ConfirmDialog'
 import { cx } from '../lib/cx'
 import { once } from '../lib/once'
-import { useUpdates } from '../updates/use-updates'
+import { useUpdatesFailed } from '../updates/use-updates'
 import { useWmControls } from '../wm/context'
 import GeneralSection from './GeneralSection'
 import KeysSection from './KeysSection'
@@ -82,7 +82,7 @@ export default function SettingsPanel(): React.JSX.Element {
   const { section, setSection } = useSettingsNav()
   const { dispatch } = useWmControls()
   const { settings } = useSettings()
-  const updatesFailed = useUpdates().state.kind === 'failed'
+  const updatesFailed = useUpdatesFailed()
   // The Live details tab shows the same dot as the side bar Settings button (D11).
   const { notice, refresh, status, version, versionFailed, warning } = useLive()
   // Live details reads its status one time for each view of Settings (review Minor 1). A search
