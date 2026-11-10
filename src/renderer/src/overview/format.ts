@@ -18,11 +18,14 @@ export function projectLabel(cwd: string): string {
   return parts.slice(-2).join('/')
 }
 
-// A cost above 0 and below one cent gives <$0.01, so a small cost does not show as $0.00.
+// The cost from Claude Code is a simulated cost: the token counts times the public API prices. So
+// the text starts with the mark "≈", as the statusline of the user does (user decision,
+// 2026-11-10). A cost above 0 and below one cent gives <$0.01 with no mark. The "<" already shows
+// that the value is not exact, and a small cost does not show as ≈$0.00.
 export function formatCost(usd?: number): string {
   if (typeof usd !== 'number' || !Number.isFinite(usd)) return ''
   if (usd > 0 && usd < 0.01) return '<$0.01'
-  return `$${usd.toFixed(2)}`
+  return `≈$${usd.toFixed(2)}`
 }
 
 export function formatPercent(p?: number): string {

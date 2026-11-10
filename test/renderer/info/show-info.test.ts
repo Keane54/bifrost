@@ -131,7 +131,7 @@ describe('infoSections', () => {
     expect(item(sections, 'Model', 'Permission mode')).toBe('plan')
     expect(item(sections, 'Time', 'Started')).toBe('09:07')
     expect(item(sections, 'Time', 'Duration')).toBe('2 h 53 min')
-    expect(item(sections, 'Cost and context', 'Cost')).toBe('$1.23')
+    expect(item(sections, 'Cost and context', 'Cost')).toBe('≈$1.23')
     expect(item(sections, 'Cost and context', 'Context window')).toBe('200k tokens')
     expect(item(sections, 'Cost and context', 'Context use')).toBe('42%')
     expect(item(sections, 'Limits and version', '5-hour limit')).toBe('62%, resets 14:03')

@@ -41,7 +41,7 @@ describe('overview table state', () => {
     expect(state.columnVisibility.project).toBe(false)
     expect(Object.keys(state.columnVisibility).sort()).toEqual([...COLUMN_IDS].sort())
     expect(state.columnSizing.name).toBe(200)
-    expect(state.columnSizing.cost).toBe(60)
+    expect(state.columnSizing.cost).toBe(68)
     expect(Object.keys(state.columnSizing).sort()).toEqual([...COLUMN_IDS].sort())
   })
 

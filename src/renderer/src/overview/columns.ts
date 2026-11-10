@@ -42,12 +42,13 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
 }
 
 // Geist Mono is 0.6 em wide: 7.2 px a character at 12 px. A width holds the normal content of its
-// column (a name of 24 characters, a project of two path parts) and its header.
+// column (a name of 24 characters, a project of two path parts) and its header. The Cost width
+// holds a cost of three digits with the mark, for example ≈$123.45.
 export const DEFAULT_WIDTHS: Record<ColumnId, number> = {
   activity: 112,
   branch: 130,
   context: 84,
-  cost: 60,
+  cost: 68,
   kind: 28,
   model: 90,
   name: 184,
