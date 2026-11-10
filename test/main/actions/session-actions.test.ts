@@ -5,6 +5,7 @@ import {
   DELETE_END_WAIT_MS,
   END_POLL_MS,
   END_WAIT_MS,
+  handOverArgs,
   NO_STATUSLINE_SETTINGS,
   newSessionArgs,
   RESUME_SETTLE_MS,
@@ -308,6 +309,77 @@ describe('newSessionArgs', () => {
     expect(newSessionArgs(newSpec({ name: 'n1', prompt: 'update the docs' })).at(-1)).toBe(
       'update the docs',
     )
+  })
+})
+
+describe('handOverArgs', () => {
+  const opts = {
+    model: 'claude-opus-5-5',
+    name: 'fix login (2)',
+    permissionMode: null,
+    prompt: 'Go',
+  }
+
+  test('handOverArgs gives the model, the name and the prompt last', () => {
+    expect(handOverArgs(opts)).toEqual([
+      '--bg',
+      ...SETTINGS,
+      '--model',
+      'claude-opus-5-5',
+      '--name',
+      'fix login (2)',
+      'Go',
+    ])
+  })
+
+  test('a permission mode in the list gives the flag', () => {
+    expect(handOverArgs({ ...opts, model: 'opus[1m]', permissionMode: 'plan' })).toEqual([
+      '--bg',
+      ...SETTINGS,
+      '--model',
+      'opus[1m]',
+      '--permission-mode',
+      'plan',
+      '--name',
+      'fix login (2)',
+      'Go',
+    ])
+  })
+
+  test('a permission mode outside the list gives no flag', () => {
+    for (const permissionMode of ['default', 'bypassPermissions', '', '--x', null]) {
+      expect(handOverArgs({ ...opts, permissionMode }), String(permissionMode)).not.toContain(
+        '--permission-mode',
+      )
+    }
+  })
+
+  test('a bad model is refused', () => {
+    for (const model of ['', '-p', '--model', 'a b', 'a\nb', 'opus;x', 'x'.repeat(101)]) {
+      expect(() => handOverArgs({ ...opts, model }), model).toThrow('refused: unknown model')
+    }
+    expect(handOverArgs({ ...opts, model: 'x'.repeat(100) })).toContain('x'.repeat(100))
+  })
+
+  test('a bad name is refused', () => {
+    for (const name of ['', '  ', 'x'.repeat(65), 'a\nb', 'a\rb', '-x', ' -x']) {
+      expect(() => handOverArgs({ ...opts, name }), name).toThrow('refused: bad name')
+    }
+    expect(handOverArgs({ ...opts, name: 'x'.repeat(64) })).toContain('x'.repeat(64))
+  })
+
+  test('the prompt rules of newSessionArgs apply', () => {
+    expect(() => handOverArgs({ ...opts, prompt: 'update' })).toThrow(REASON_PROMPT_IS_COMMAND)
+    expect(() => handOverArgs({ ...opts, prompt: ' -p x' })).toThrow(
+      'The first prompt cannot start with "-".',
+    )
+  })
+
+  test('a hand-over never adds a plugin folder, a worktree or a resume', () => {
+    const args = handOverArgs({ ...opts, permissionMode: 'acceptEdits' })
+    for (const flag of ['--plugin-dir', '--worktree', '--resume']) {
+      expect(args).not.toContain(flag)
+    }
   })
 })
 

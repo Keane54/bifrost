@@ -6,6 +6,7 @@ import {
   checkNewSessionSpec,
   type DirInfo,
   isClaudeCommand,
+  MAX_NAME,
   type NewSessionSpec,
   PERMISSION_MODES,
   REASON_DIR_MISSING,
@@ -191,6 +192,47 @@ export function newSessionArgs(spec: NewSessionSpec): string[] {
   args.push('--name', spec.name)
   if (spec.prompt !== '') args.push(spec.prompt)
   return args
+}
+
+// A model name from the transcript, for example "opus" or "claude-opus-5-5[1m]".
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._[\]-]{0,99}$/
+
+// The arguments of "claude --bg" for the new session of a hand-over (spec 8, step 5).
+// The model and the mode come from the transcript of the old session. So the model must have the
+// form of a model name, and only a mode in the list gives the flag. The default mode and
+// bypassPermissions give no flag. The name and the prompt get the checks of newSessionArgs.
+// The new session uses the folder of the old session. So it gets no --worktree, and no
+// --plugin-dir or --resume.
+export function handOverArgs(opts: {
+  name: string
+  model: string
+  permissionMode: string | null
+  prompt: string
+}): string[] {
+  if (!MODEL_NAME.test(opts.model)) throw new Error('refused: unknown model')
+  const name = opts.name
+  const badName =
+    name.trim() === '' ||
+    name.length > MAX_NAME ||
+    /[\r\n]/.test(name) ||
+    name.trimStart().startsWith('-')
+  if (badName) throw new Error('refused: bad name')
+  if (opts.prompt.trimStart().startsWith('-')) throw new Error(REASON_PROMPT_FLAG)
+  if (isClaudeCommand(opts.prompt)) throw new Error(REASON_PROMPT_IS_COMMAND)
+  const mode = opts.permissionMode
+  const modeArgs =
+    mode !== null && PERMISSION_MODES.includes(mode) ? ['--permission-mode', mode] : []
+  return [
+    '--bg',
+    '--settings',
+    NO_STATUSLINE_SETTINGS,
+    '--model',
+    opts.model,
+    ...modeArgs,
+    '--name',
+    name,
+    opts.prompt,
+  ]
 }
 
 function messageOf(error: unknown): string {
