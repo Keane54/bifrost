@@ -226,14 +226,19 @@
   /* The animated background (spec 8.10; user decision, 2026-11-06): one layer behind all frames and the
      side bar. It shows a mix of the app icon colours over the whole window at all times, with no
      black gaps. Three parts paint in this order:
-     - The base layer (::before): a large linear gradient of the icon colours. It drifts slowly.
+     - The base layer (.background-base): a large linear gradient of the icon colours. It drifts
+       slowly.
      - Six colour fields, each larger than the window. They drift, scale and turn, and they
        overlap with plain alpha, so their colours merge.
      - A fixed, very fine noise (::after). It hides the bands of 8-bit colour (dither).
-     Each layer has its own cycle. The cycles are primes, so the pattern does not repeat in a way
-     that a person sees. The layers move mostly to the side and only a little up and down, so no
-     field rises or sinks. Only transform and opacity change, so the compositor runs the motion.
-     The soft edges come from the gradient stops, not from a blur. */
+     Each layer has its own cycle. The cycles have no small common factor, so the pattern does not
+     repeat in a way that a person sees. The layers move mostly to the side and only a little up
+     and down, so no field rises or sinks. Only transform and opacity change, so the compositor
+     moves the layers. The soft edges come from the gradient stops, not from a blur.
+     User decision, 2026-11-10: the base and each field is a canvas. Background.tsx draws each
+     canvas one time, at a part of the device pixels of its box, and CSS scales it up to the box.
+     So the GPU keeps seven small images, not large tiles. Background.tsx also holds the CSS
+     animations and sets their time 30 times each second. */
   .background {
     position: fixed;
     inset: 0;
@@ -244,24 +249,18 @@
   }
 
   /* The base layer: two times the window in each direction, centred, so its motion never shows
-     an edge. It goes from green through blue and violet to red. Yellow and orange come only from
-     the fields, because a dark yellow or orange looks brown. */
-  .background::before {
-    content: "";
+     an edge. The canvas comes after the fields in the page, so the nth-child rules of the fields
+     count only fields. z-index -1 puts it under the fields. Background.tsx draws the stops of
+     background-paint.ts at the alpha --base-alpha. This rule uses the token, so Tailwind keeps it. */
+  .background-base {
+    --base-alpha: var(--background-base);
     position: absolute;
+    z-index: -1;
     left: -50%;
     top: -50%;
     width: 200%;
     height: 200%;
     will-change: transform;
-    background-image: linear-gradient(
-      120deg,
-      color-mix(in oklab, var(--color-icon-4) var(--background-base), transparent),
-      color-mix(in oklab, var(--color-icon-5) var(--background-base), transparent),
-      color-mix(in oklab, var(--color-icon-6) var(--background-base), transparent),
-      color-mix(in oklab, var(--color-icon-1) var(--background-base), transparent),
-      color-mix(in oklab, var(--color-icon-6) var(--background-base), transparent)
-    );
     animation: background-base-drift 41s ease-in-out infinite alternate;
   }
 
@@ -277,23 +276,16 @@
     background-size: 256px 256px;
   }
 
-  /* Each field has a weight from 0 to 1. Its glow is the strength token times its weight. The
-     warm colours have a lower weight, because a dark yellow or orange looks brown. The fade goes
-     out from the centre on an eased curve and is almost zero before the edge, so the edge shows
-     no line and no fringe of colour. */
+  /* Each field has a weight from 0 to 1. Its glow is the strength token (--field-glow) times its
+     weight. The warm colours have a lower weight, because a dark yellow or orange looks brown.
+     Background.tsx draws the field as an ellipse that touches the four sides of the canvas. The
+     fade goes out from the centre on the eased steps of background-paint.ts. It is almost zero
+     before the edge, so the edge shows no line and no fringe of colour. This rule uses the glow
+     token, so Tailwind keeps it. */
   .background-field {
-    --field-glow: calc(var(--background-glow) * var(--field-weight));
+    --field-glow: var(--background-glow);
     position: absolute;
     will-change: transform;
-    background-image: radial-gradient(
-      closest-side,
-      color-mix(in oklab, var(--field-colour) var(--field-glow), transparent),
-      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.7), transparent) 20%,
-      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.38), transparent) 40%,
-      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.14), transparent) 60%,
-      color-mix(in oklab, var(--field-colour) calc(var(--field-glow) * 0.03), transparent) 80%,
-      transparent 100%
-    );
   }
 
   .background-field:nth-child(1) {
@@ -489,26 +481,28 @@
     }
   }
 
-  /* The stop rules. They have the same specificity as the layer rules and come after them, so
-     they win over them. The layer rules set the animation shorthand, and the shorthand sets the
-     play state to running. So the pause rule must also come after them.
+  /* The stop rules. They have the same or a higher specificity than the layer rules and come
+     after them, so they win over them. The layer rules set the animation shorthand, and the
+     shorthand sets the play state to running. So the pause rule must also come after them.
      Paused: the window does not have the focus, the page is hidden, or the Animated background
      setting went off. The layers stop where they are and continue from there, with no jump.
      Still: reduced motion, or the setting is off at the start. The layers stay at their still
-     position, the first step of each cycle. */
+     position, the first step of each cycle.
+     While the motion is on, Background.tsx holds the animations and sets their time. The rules
+     keep the same result before the script runs and while the motion is off. */
   .background-paused .background-field,
-  .background-paused::before {
+  .background-paused .background-base {
     animation-play-state: paused;
   }
 
   .background-still .background-field,
-  .background-still::before {
+  .background-still .background-base {
     animation: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
     .background .background-field,
-    .background::before {
+    .background .background-base {
       animation: none;
     }
   }

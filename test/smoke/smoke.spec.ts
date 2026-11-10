@@ -53,13 +53,23 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     await expect(row('smoke-beta')).toBeVisible()
     await expect(row('smoke-gamma')).toHaveCount(0)
 
-    // Step 4b: the animated background (spec 8.10) is behind the frames and moves. With reduced
-    // motion, it stays still. Each frame has the same light blur.
-    const fields = page.locator('.background .background-field')
+    // Step 4b: the animated background (spec 8.10) is behind the frames and moves. Each layer is a
+    // canvas with a size. With reduced motion, it stays still. Each frame has the same light blur.
+    const layer = page.locator('.background')
+    const fields = page.locator('.background canvas.background-field')
     await expect(fields).toHaveCount(6)
+    await expect(page.locator('.background canvas.background-base')).toHaveCount(1)
     await expect(fields.first()).toHaveCSS('animation-name', 'background-drift-1')
+    const sizes = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLCanvasElement>('.background canvas')].map(c =>
+        Math.min(c.width, c.height),
+      ),
+    )
+    expect(sizes).toHaveLength(7)
+    for (const size of sizes) expect(size).toBeGreaterThan(1)
     await expect(page.locator('[data-frame-id]').first()).toHaveCSS('backdrop-filter', 'blur(8px)')
     await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expect(layer).toHaveClass('background background-still')
     await expect(fields.first()).toHaveCSS('animation-name', 'none')
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     await expect(fields.first()).toHaveCSS('animation-name', 'background-drift-1')
@@ -67,7 +77,6 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     // Step 4c: the fields pause where they are while the window does not have the focus, and
     // when the setting goes off. The real focus of the test window depends on the other apps of
     // the Mac. So the test sets the focus answer of the page, and then sends the event.
-    const layer = page.locator('.background')
     const field = fields.first()
     const setFocus = (focus: boolean): Promise<void> =>
       page.evaluate(value => {
@@ -75,20 +84,67 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
         window.dispatchEvent(new Event(value ? 'focus' : 'blur'))
       }, focus)
     const transform = (): Promise<string> => field.evaluate(el => getComputedStyle(el).transform)
+    // The times of the background animations, read each 2 ms for the given time. The view holds
+    // the animations (paused) and sets their time from one clock 30 times each second (user
+    // decision, 2026-11-10). So the times are equal, and they change about 30 times each second,
+    // not at each refresh of the display.
+    const clock = (ms: number) =>
+      page.evaluate(
+        span =>
+          new Promise<{ count: number; changes: number; oneClock: boolean; states: string[] }>(
+            resolve => {
+              const anims = document.querySelector('.background')?.getAnimations({ subtree: true })
+              const all = anims ?? []
+              const states = new Set<string>()
+              let oneClock = true
+              let last: number | null = null
+              let changes = 0
+              const start = performance.now()
+              const read = (): void => {
+                const times = new Set(all.map(a => Number(a.currentTime)))
+                for (const a of all) states.add(a.playState)
+                if (times.size !== 1) oneClock = false
+                const time = Math.min(...times)
+                if (last !== null && time !== last) changes += 1
+                last = time
+                if (performance.now() - start < span) setTimeout(read, 2)
+                else resolve({ changes, count: all.length, oneClock, states: [...states] })
+              }
+              read()
+            },
+          ),
+        ms,
+      )
+    const animationTime = (): Promise<number> =>
+      page.evaluate(() =>
+        Number(
+          document.querySelector('.background')?.getAnimations({ subtree: true })[0]?.currentTime,
+        ),
+      )
     await setFocus(true)
     await expect(layer).toHaveClass('background')
     await expect(field).toHaveCSS('animation-play-state', 'running')
+    const steps = await clock(1000)
+    expect(steps.count).toBe(7)
+    expect(steps.states).toEqual(['paused'])
+    expect(steps.oneClock).toBe(true)
+    expect(steps.changes).toBeGreaterThanOrEqual(10)
+    expect(steps.changes).toBeLessThanOrEqual(40)
     await setFocus(false)
     await expect(layer).toHaveClass('background background-paused')
     await expect(field).toHaveCSS('animation-play-state', 'paused')
     await expect(field).toHaveCSS('animation-name', 'background-drift-1')
     // No jump to the still position, and no motion during the pause.
     const pausedAt = await transform()
+    const pausedTime = await animationTime()
     expect(pausedAt).not.toBe('none')
-    await page.waitForTimeout(500)
+    expect((await clock(500)).changes).toBe(0)
     expect(await transform()).toBe(pausedAt)
     await setFocus(true)
     await expect(field).toHaveCSS('animation-play-state', 'running')
+    // The motion continues from the paused time, with no jump.
+    await expect.poll(animationTime).toBeGreaterThan(pausedTime)
+    expect((await animationTime()) - pausedTime).toBeLessThan(2000)
     await page.getByRole('button', { exact: true, name: 'Settings' }).click()
     const settingsFrame = page.locator('[data-frame-id]', {
       has: page.locator('[data-settings-section]'),

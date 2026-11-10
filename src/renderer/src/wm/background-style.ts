@@ -15,12 +15,21 @@ export interface MotionInput {
   ran: boolean
   // The window has the focus, and the page is visible.
   active: boolean
+  // The system asks for reduced motion (prefers-reduced-motion: reduce).
+  reduced: boolean
 }
 
 // The fields move only with the setting on and an active window. An inactive window pauses them.
 // A setting that goes off after the fields moved also pauses them, so they do not jump. A setting
-// that is off from the start keeps them at the still position.
-export function backgroundMotion({ animated, ran, active }: MotionInput): BackgroundMotion {
+// that is off from the start keeps them at the still position. With reduced motion, the fields
+// stay at the still position in each case.
+export function backgroundMotion({
+  animated,
+  ran,
+  active,
+  reduced,
+}: MotionInput): BackgroundMotion {
+  if (reduced) return 'still'
   if (animated) return active ? 'moving' : 'paused'
   return ran ? 'paused' : 'still'
 }
@@ -34,8 +43,8 @@ export function windowActive(page: {
   return page.hasFocus() && page.visibilityState === 'visible'
 }
 
-// The class of the background layer for each motion. With reduced motion, app.css keeps the
-// fields at the still position for each class.
+// The class of the background layer for each motion. With reduced motion, app.css also keeps the
+// fields at the still position for each class, also before the view reads the media query.
 export function backgroundClass(motion: BackgroundMotion): string {
   return cx(
     'background',

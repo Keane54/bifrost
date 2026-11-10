@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { BASE_ANGLE, BASE_COLOURS, FIELD_FADE } from '../../src/renderer/src/wm/background-paint'
 import {
   BACKGROUND_FIELDS,
   backgroundClass,
@@ -11,11 +12,12 @@ import { WATCH_COLOURS } from '../../src/shared/watch'
 import { contrast, hex, luminance, mix, rgb } from '../helpers/colour'
 
 // The repository has no DOM test. So the checks of the animated background read the source text
-// of app.css, as the checks of the Take control loader do.
+// of app.css and of the view, as the checks of the Take control loader do.
 const SRC = join(__dirname, '../../src/renderer/src')
 const CSS = readFileSync(join(SRC, 'styles/app.css'), 'utf8')
 const APP = readFileSync(join(SRC, 'App.tsx'), 'utf8')
 const VIEW = readFileSync(join(SRC, 'wm/Background.tsx'), 'utf8')
+const PAINT = readFileSync(join(SRC, 'wm/background-paint.ts'), 'utf8')
 const WATCH = readFileSync(join(SRC, 'watch/watch-colours.ts'), 'utf8')
 
 // The text between the brace that opens at or after the index and the brace that closes it.
@@ -111,18 +113,8 @@ interface Field extends Layer {
 }
 
 // The alpha steps of the gradient of a field: the place from the centre (0) to the edge (1), and
-// the part of the glow.
-function fadeSteps(): [number, number][] {
-  const image = value(block(CSS, '.background-field {'), 'background-image')
-  const result: [number, number][] = [[0, 1]]
-  for (const m of image.matchAll(/var\(--field-glow\) \* ([\d.]+)\), transparent\) (\d+)%/g)) {
-    result.push([Number(m[2]) / 100, Number(m[1])])
-  }
-  result.push([1, 0])
-  return result
-}
-
-const FADE = fadeSteps()
+// the part of the glow. The view draws each field canvas with these steps.
+const FADE = FIELD_FADE
 
 function fadeAt(r: number): number {
   for (let i = 1; i < FADE.length; i++) {
@@ -162,33 +154,20 @@ function fields(css: string): Field[] {
 }
 
 const FIELDS = fields(CSS)
-const BASE_RULE = block(CSS, '.background::before {')
+const BASE_RULE = block(CSS, '.background-base {')
 const NOISE_RULE = block(CSS, '.background::after {')
 
-// The colour stops of the base gradient: the icon tokens, each at the base strength.
-function baseStops(): string[] {
-  const image = value(BASE_RULE, 'background-image')
-  return [
-    ...image.matchAll(
-      /color-mix\(in oklab, var\(--color-(icon-\d)\) var\(--background-base\), transparent\)/g,
-    ),
-  ].map(m => m[1])
-}
+// The CSS of the page outside the @theme block. Tailwind keeps a theme token only when a rule
+// outside the block uses it.
+const RULES = CSS.slice(CSS.indexOf('@layer base'))
 
-// The angle of the base gradient in degrees.
-function baseAngle(): number {
-  const match = value(BASE_RULE, 'background-image').match(/^linear-gradient\(\s*(\d+)deg,/)
-  if (!match) throw new Error('The base is not a linear gradient with an angle')
-  return Number(match[1])
-}
-
-// The base layer: one large linear gradient of the icon colours. The browser mixes the stops in
-// premultiplied sRGB. The stops have the same alpha, so the colour is a straight mix.
+// The base layer: one large linear gradient of the icon colours. The canvas mixes the stops in
+// sRGB. The stops have the same alpha, so the colour is a straight mix.
 function baseLayer(): Layer {
   const { cycle, name } = animationOf(BASE_RULE)
-  const stops = baseStops().map(name => rgb(token(name)))
+  const stops = BASE_COLOURS.map(name => rgb(token(name)))
   const strength = themeNumber('background-base')
-  const turn = (baseAngle() * Math.PI) / 180
+  const turn = (BASE_ANGLE * Math.PI) / 180
   return {
     cycle,
     height: percent(BASE_RULE, 'height'),
@@ -379,14 +358,24 @@ describe('the background layer', () => {
     expect(token('bg')).toBe('#0a0a0a')
   })
 
-  it('has five or six colour fields, and the view renders each one', () => {
+  it('has five or six colour fields, and the view renders each one as a canvas', () => {
     expect(BACKGROUND_FIELDS).toBeGreaterThanOrEqual(5)
     expect(BACKGROUND_FIELDS).toBeLessThanOrEqual(6)
     expect(FIELDS.map(f => f.index)).toEqual(
       Array.from({ length: BACKGROUND_FIELDS }, (_, i) => i + 1),
     )
     expect(VIEW).toContain('length: BACKGROUND_FIELDS')
-    expect(VIEW).toContain("className='background-field'")
+    expect(VIEW).toContain("<canvas className='background-field'")
+  })
+
+  // User decision, 2026-11-10: the base comes after the fields in the page, so the nth-child
+  // rules of the fields count only fields. z-index -1 puts it under the fields.
+  it('renders the base as one canvas after the fields, under them', () => {
+    expect(VIEW.match(/<canvas className='background-base'/g)).toHaveLength(1)
+    expect(VIEW.indexOf("className='background-base'")).toBeGreaterThan(
+      VIEW.indexOf("className='background-field'"),
+    )
+    expect(value(BASE_RULE, 'z-index')).toBe('-1')
   })
 
   it('gives each field its own icon colour, at a part of the strength of one token', () => {
@@ -400,14 +389,17 @@ describe('the background layer', () => {
       expect(field.weight, field.name).toBeGreaterThan(0)
       expect(field.weight, field.name).toBeLessThanOrEqual(1)
     }
+    // The view draws each field from its colour, its weight and the glow token. The rule keeps a
+    // use of the glow token, so Tailwind keeps the token.
     const rule = block(CSS, '.background-field {')
-    expect(value(rule, '--field-glow')).toBe('calc(var(--background-glow) * var(--field-weight))')
-    expect(value(rule, 'background-image')).toContain(
-      'color-mix(in oklab, var(--field-colour) var(--field-glow), transparent)',
-    )
+    expect(value(rule, '--field-glow')).toBe('var(--background-glow)')
+    for (const name of ["'--field-colour'", "'--field-weight'", "'--field-glow'"]) {
+      expect(VIEW).toContain(name)
+    }
     // No colour value outside the tokens.
     const all = [block(CSS, '.background {'), rule, BASE_RULE, ...FIELDS.map(f => f.rule)]
     expect(all.join('\n')).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i)
+    expect(`${VIEW}\n${PAINT}`).not.toMatch(/#[0-9a-f]{3,8}\b/i)
   })
 
   // User decision, 2026-11-06: no gaps between the fields. So each field is larger than the window.
@@ -418,9 +410,11 @@ describe('the background layer', () => {
         expect(size, field.name).toBeLessThanOrEqual(160)
       }
     }
-    const image = value(block(CSS, '.background-field {'), 'background-image')
-    expect(image).toMatch(/^radial-gradient\(\s*closest-side,/)
-    expect(image).toMatch(/transparent 100%\s*\)$/)
+    // The canvas paints the gradient. The rule has no image of its own.
+    const names = declarations(block(CSS, '.background-field {')).map(([name]) => name)
+    expect(names).not.toContain('background-image')
+    // The radial gradient touches the four sides of the canvas (closest-side in CSS).
+    expect(VIEW).toContain('createRadialGradient(0, 0, 0, 0, 0, 1)')
     expect(FADE.length).toBeGreaterThanOrEqual(6)
     for (let i = 1; i < FADE.length; i++) {
       expect(FADE[i][0]).toBeGreaterThan(FADE[i - 1][0])
@@ -433,7 +427,6 @@ describe('the background layer', () => {
 
   // A full-window layer of the icon colours under the fields. So no point is black.
   it('has a base layer: a large linear gradient of the icon colours, under the fields', () => {
-    expect(value(BASE_RULE, 'content')).toBe('""')
     expect(value(BASE_RULE, 'position')).toBe('absolute')
     expect(value(BASE_RULE, 'will-change')).toBe('transform')
     // The layer is centred on the window and much larger, so its motion never shows an edge.
@@ -441,12 +434,24 @@ describe('the background layer', () => {
     expect(BASE.height).toBeGreaterThanOrEqual(180)
     expect(BASE.left).toBe(-(BASE.width - 100) / 2)
     expect(BASE.top).toBe(-(BASE.height - 100) / 2)
-    const stops = baseStops()
-    expect(stops.length).toBeGreaterThanOrEqual(4)
-    expect(value(BASE_RULE, 'background-image').match(/color-mix\(/g)).toHaveLength(stops.length)
+    expect(BASE_COLOURS.length).toBeGreaterThanOrEqual(4)
+    // The canvas has no image of its own. The view draws the stops of background-paint.ts at the
+    // base strength. The rule keeps a use of the strength token, so Tailwind keeps the token.
+    expect(declarations(BASE_RULE).map(([name]) => name)).not.toContain('background-image')
+    expect(value(BASE_RULE, '--base-alpha')).toBe('var(--background-base)')
+    expect(VIEW).toContain("'--base-alpha'")
+    expect(VIEW).toContain('BASE_COLOURS')
+    expect(VIEW).toContain('gradientLine(BASE_ANGLE')
     const strength = themeNumber('background-base')
     expect(strength).toBeGreaterThan(0)
     expect(strength).toBeLessThanOrEqual(0.15)
+  })
+
+  // Tailwind removes a theme token that no rule uses. The view reads these tokens at run time.
+  it('keeps a use of each token that the canvases read', () => {
+    for (const name of BASE_COLOURS) expect(RULES).toContain(`var(--color-${name})`)
+    expect(RULES).toContain('var(--background-glow)')
+    expect(RULES).toContain('var(--background-base)')
   })
 
   // User decision, 2026-11-06: some colour banding. A fixed, very fine noise on top hides the steps of
@@ -556,7 +561,7 @@ describe('the motion of the background', () => {
     }
   })
 
-  it('uses the compositor only: will-change transform and no blur or blend', () => {
+  it('uses the compositor for the motion: will-change transform and no blur or blend', () => {
     expect(value(block(CSS, '.background-field {'), 'will-change')).toBe('transform')
     const rules = [
       block(CSS, '.background-field {'),
@@ -578,35 +583,61 @@ describe('the motion of the background', () => {
   it('stops the motion of each layer with reduced motion and with the setting off from the start', () => {
     const last = Math.max(
       CSS.lastIndexOf('.background-field:nth-child('),
-      CSS.indexOf('.background::before {'),
+      CSS.indexOf('.background-base {'),
     )
     const reduced = CSS.indexOf('@media (prefers-reduced-motion: reduce)', last)
     expect(reduced).toBeGreaterThan(last)
     expect(blockAt(CSS, reduced)).toMatch(
-      /^\s*\.background \.background-field,\s*\.background::before\s*\{\s*animation:\s*none;\s*\}\s*$/,
+      /^\s*\.background \.background-field,\s*\.background \.background-base\s*\{\s*animation:\s*none;\s*\}\s*$/,
     )
     const still = CSS.indexOf('.background-still .background-field,', last)
     expect(still).toBeGreaterThan(last)
-    expect(CSS.slice(still, CSS.indexOf('{', still))).toMatch(/,\s*\.background-still::before\s*$/)
+    expect(CSS.slice(still, CSS.indexOf('{', still))).toMatch(
+      /,\s*\.background-still \.background-base\s*$/,
+    )
     expect(declarations(blockAt(CSS, still))).toEqual([['animation', 'none']])
   })
 
   it('pauses each layer where it is, with no jump', () => {
     const last = Math.max(
       CSS.lastIndexOf('.background-field:nth-child('),
-      CSS.indexOf('.background::before {'),
+      CSS.indexOf('.background-base {'),
     )
     const paused = CSS.indexOf('.background-paused .background-field,', last)
     expect(paused).toBeGreaterThan(last)
     expect(CSS.slice(paused, CSS.indexOf('{', paused))).toMatch(
-      /,\s*\.background-paused::before\s*$/,
+      /,\s*\.background-paused \.background-base\s*$/,
     )
     expect(declarations(blockAt(CSS, paused))).toEqual([['animation-play-state', 'paused']])
+  })
+
+  // User decision, 2026-11-10: the motion moves 30 times each second. The view holds the CSS
+  // animations and sets their time from one clock at each step. So the compositor makes a new
+  // frame only at each step, not at each refresh of the display.
+  it('steps the CSS animations from one clock, only while the motion is on', () => {
+    expect(VIEW).toContain('getAnimations({ subtree: true })')
+    expect(VIEW).toContain('.pause()')
+    expect(VIEW).toContain('.currentTime = ')
+    expect(VIEW).toContain('motionTime(')
+    expect(VIEW).toMatch(/setInterval\([^)]*MOTION_STEP_MS\)/)
+    // The cleanup stops the timer. So no timer runs while the motion is paused, still or gone.
+    expect(VIEW).toContain('clearInterval(')
+    expect(VIEW).toContain("motion !== 'moving'")
+  })
+
+  // User decision, 2026-11-10: each canvas has a part of the device pixels of its box. A resize
+  // or a change of the display scale draws the canvases again.
+  it('draws each canvas again when its size in device pixels changes', () => {
+    expect(VIEW).toContain('new ResizeObserver(')
+    expect(VIEW).toContain("box: 'device-pixel-content-box'")
+    expect(VIEW).toContain('devicePixelContentBoxSize')
+    expect(VIEW).toContain('canvasSize(')
+    expect(VIEW).toContain('.disconnect()')
   })
 })
 
 describe('the state of the motion', () => {
-  const ON = { active: true, animated: true, ran: true }
+  const ON = { active: true, animated: true, ran: true, reduced: false }
 
   it('moves only with the setting on and an active window', () => {
     expect(backgroundMotion(ON)).toBe('moving')
@@ -622,12 +653,24 @@ describe('the state of the motion', () => {
 
   it('pauses in place when the setting goes off after the fields moved', () => {
     expect(backgroundMotion({ ...ON, animated: false })).toBe('paused')
-    expect(backgroundMotion({ active: false, animated: false, ran: true })).toBe('paused')
+    expect(backgroundMotion({ ...ON, active: false, animated: false })).toBe('paused')
   })
 
   it('keeps the still position when the setting is off from the start', () => {
-    expect(backgroundMotion({ active: true, animated: false, ran: false })).toBe('still')
-    expect(backgroundMotion({ active: false, animated: false, ran: false })).toBe('still')
+    expect(backgroundMotion({ ...ON, animated: false, ran: false })).toBe('still')
+    expect(backgroundMotion({ ...ON, active: false, animated: false, ran: false })).toBe('still')
+  })
+
+  // With reduced motion, the layers stay at their still position in each state. So the view runs
+  // no step timer.
+  it('keeps the still position with reduced motion', () => {
+    for (const active of [true, false]) {
+      for (const animated of [true, false]) {
+        for (const ran of [true, false]) {
+          expect(backgroundMotion({ active, animated, ran, reduced: true })).toBe('still')
+        }
+      }
+    }
   })
 
   it('makes the window active only with the focus and a visible page', () => {
@@ -652,7 +695,9 @@ describe('the Animated background setting', () => {
   // and a setting that is off at the start gives the still position.
   it('reads the setting after the settings load, and follows the focus and the page', () => {
     expect(VIEW).toContain('ready && settings.animatedBackground')
-    expect(VIEW).toContain('backgroundClass(backgroundMotion(')
+    expect(VIEW).toContain('backgroundMotion({')
+    expect(VIEW).toContain('backgroundClass(motion)')
+    expect(VIEW).toContain("'(prefers-reduced-motion: reduce)'")
     expect(VIEW).toContain('windowActive(document)')
     for (const event of ["window.addEventListener('focus'", "window.addEventListener('blur'"]) {
       expect(VIEW).toContain(event)
