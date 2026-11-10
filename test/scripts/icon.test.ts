@@ -225,4 +225,12 @@ describe('the icon script', { timeout: 30_000 }, () => {
     expect(source).toMatch(/SIL Open Font License 1\.1/)
     expect(source).toMatch(/Geist Project Authors/)
   })
+
+  it('the dev glyph module names the font, the weight, the version and the licence', () => {
+    const source = readFileSync(join(__dirname, '../../scripts/icon/glyph-dev.ts'), 'utf8')
+    expect(source).toMatch(/Geist Mono/)
+    expect(source).toMatch(/weight 600/)
+    expect(source).toMatch(/5\.3\.0/)
+    expect(source).toMatch(/SIL Open Font License 1\.1/)
+  })
 })

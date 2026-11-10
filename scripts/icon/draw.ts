@@ -1,7 +1,7 @@
 // This module draws the Bifrost app icon. It uses the colours of app.css and no library.
 // The icon is a rainbow gradient inside the rounded square.
 import { crc32, deflateSync } from 'node:zlib'
-import { GEIST_MONO_B, type Glyph } from './glyph-b.ts'
+import { GEIST_MONO_B, type Glyph, type GlyphPoint } from './glyph-b.ts'
 
 type Rgb = [number, number, number]
 
@@ -149,6 +149,47 @@ interface Mark {
 const CURVE_STEPS = 8
 const MARK_HEIGHT = 0.75 // The height of the letter as a share of the height of the quadrant.
 
+// Cut one outline into a closed polygon of short lines. The map function puts each font point
+// in pixel units.
+export function flattenContour(
+  contour: GlyphPoint[],
+  map: (x: number, y: number) => [number, number],
+): [number, number][] {
+  // Rotate the contour so that it starts on a point on the curve.
+  const start = contour.findIndex(p => p[2] === 1)
+  const pts = [...contour.slice(start), ...contour.slice(0, start)]
+  const out: [number, number][] = []
+  let current = pts[0]
+  out.push(map(current[0], current[1]))
+  let i = 1
+  while (i <= pts.length) {
+    const next = pts[i % pts.length]
+    if (next[2] === 1) {
+      out.push(map(next[0], next[1]))
+      current = next
+      i++
+      continue
+    }
+    // A control point. The end is the next point, or the middle to the next control point.
+    const after = pts[(i + 1) % pts.length]
+    const end: [number, number, number] =
+      after[2] === 1 ? after : [(next[0] + after[0]) / 2, (next[1] + after[1]) / 2, 1]
+    for (let k = 1; k <= CURVE_STEPS; k++) {
+      const t = k / CURVE_STEPS
+      const u = 1 - t
+      out.push(
+        map(
+          u * u * current[0] + 2 * u * t * next[0] + t * t * end[0],
+          u * u * current[1] + 2 * u * t * next[1] + t * t * end[1],
+        ),
+      )
+    }
+    current = end
+    i += after[2] === 1 ? 2 : 1
+  }
+  return out
+}
+
 // Place the letter in the bottom-right quadrant of the rounded square. From left to right, it is
 // in the centre of the quadrant. The space below it is the same as the space to its right, so it
 // sits off the corner by an equal distance from the right edge and the bottom edge.
@@ -166,41 +207,7 @@ function buildMark(size: number, glyph: Glyph): Mark {
     cx + (x - (xMin + xMax) / 2) * scale,
     cy - (y - (yMin + yMax) / 2) * scale,
   ]
-  const polygons = glyph.contours.map(contour => {
-    // Rotate the contour so that it starts on a point on the curve.
-    const start = contour.findIndex(p => p[2] === 1)
-    const pts = [...contour.slice(start), ...contour.slice(0, start)]
-    const out: [number, number][] = []
-    let current = pts[0]
-    out.push(map(current[0], current[1]))
-    let i = 1
-    while (i <= pts.length) {
-      const next = pts[i % pts.length]
-      if (next[2] === 1) {
-        out.push(map(next[0], next[1]))
-        current = next
-        i++
-        continue
-      }
-      // A control point. The end is the next point, or the middle to the next control point.
-      const after = pts[(i + 1) % pts.length]
-      const end: [number, number, number] =
-        after[2] === 1 ? after : [(next[0] + after[0]) / 2, (next[1] + after[1]) / 2, 1]
-      for (let k = 1; k <= CURVE_STEPS; k++) {
-        const t = k / CURVE_STEPS
-        const u = 1 - t
-        out.push(
-          map(
-            u * u * current[0] + 2 * u * t * next[0] + t * t * end[0],
-            u * u * current[1] + 2 * u * t * next[1] + t * t * end[1],
-          ),
-        )
-      }
-      current = end
-      i += after[2] === 1 ? 2 : 1
-    }
-    return out
-  })
+  const polygons = glyph.contours.map(contour => flattenContour(contour, map))
   const all = polygons.flat()
   return {
     box: [
@@ -217,8 +224,13 @@ function buildMark(size: number, glyph: Glyph): Mark {
 function inMark(x: number, y: number, mark: Mark): boolean {
   const [left, top, right, bottom] = mark.box
   if (x < left || x > right || y < top || y > bottom) return false
+  return inPolygons(x, y, mark.polygons)
+}
+
+// True when the point is inside the polygons. The test uses the non-zero winding rule.
+export function inPolygons(x: number, y: number, polygons: [number, number][][]): boolean {
   let winding = 0
-  for (const poly of mark.polygons) {
+  for (const poly of polygons) {
     for (let i = 0; i < poly.length; i++) {
       const [x1, y1] = poly[i]
       const [x2, y2] = poly[(i + 1) % poly.length]

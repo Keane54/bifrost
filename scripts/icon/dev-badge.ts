@@ -1,84 +1,57 @@
 // This module draws the "dev" badge on the top-left corner of the Bifrost icon. The dev app uses
-// the result as its Dock icon. The three letters are shapes of lines and rings. So the script
-// needs no font and no library. All values are in pixels of an icon of 1024 pixels. They scale
-// with the image size.
-import { drawIcon, type IconPalette } from './draw.ts'
-import type { Glyph } from './glyph-b.ts'
-import { GEIST_MONO_B } from './glyph-b.ts'
+// the result as its Dock icon. The word is set in the font Geist Mono with the outlines of
+// glyph-dev.ts and the advance width of the font. All values are in pixels of an icon of 1024
+// pixels. They scale with the image size.
+import { drawIcon, flattenContour, type IconPalette, inPolygons } from './draw.ts'
+import { GEIST_MONO_B, type Glyph } from './glyph-b.ts'
+import {
+  GEIST_MONO_ADVANCE,
+  GEIST_MONO_ASCENDER,
+  GEIST_MONO_DESCENDER,
+  GEIST_MONO_DEV,
+} from './glyph-dev.ts'
 
-const BADGE = { height: 190, left: 180, radius: 60, top: 180, width: 380 }
-const STROKE = 18
-const HALF = STROKE / 2
-const LETTER = 84 // The width and the x-height of a letter.
-const GAP = 20
-const ASCENDER = 205
-const X_TOP = 240
-const BASE = X_TOP + LETTER
+const BADGE_LEFT = 180
+const BADGE_TOP = 180
+const BADGE_RADIUS = 56
+// The space between the ink of the word and each edge of the badge.
+const PADDING = 44
+// Pixels for each font unit. The word is 3 advances wide.
+const SCALE = 0.17
 const BADGE_COLOUR = [14, 14, 18]
 const TEXT_COLOUR = [255, 255, 255]
 
-// The first letter starts here. The text is in the middle of the badge.
-const TEXT_LEFT = BADGE.left + (BADGE.width - (3 * LETTER + 2 * GAP)) / 2
+// The ink of the word in font units: from the left of the d to the right of the v, and from the
+// bottom of the e to the top of the d.
+const INK_LEFT = GEIST_MONO_DEV[0].bbox[0]
+const INK_RIGHT = 2 * GEIST_MONO_ADVANCE + GEIST_MONO_DEV[2].bbox[2]
+const INK_WIDTH = (INK_RIGHT - INK_LEFT) * SCALE
+const INK_HEIGHT = (GEIST_MONO_ASCENDER - GEIST_MONO_DESCENDER) * SCALE
+const BADGE_WIDTH = INK_WIDTH + 2 * PADDING
+const BADGE_HEIGHT = INK_HEIGHT + 2 * PADDING
+
+// The word as polygons in pixel units. The ink is in the middle of the badge.
+const WORD = GEIST_MONO_DEV.flatMap((letter, index) =>
+  letter.contours.map(contour =>
+    flattenContour(contour, (x, y) => [
+      BADGE_LEFT + PADDING + (x + index * GEIST_MONO_ADVANCE - INK_LEFT) * SCALE,
+      BADGE_TOP + PADDING + (GEIST_MONO_ASCENDER - y) * SCALE,
+    ]),
+  ),
+)
 
 function inBadge(x: number, y: number): boolean {
-  const cx = BADGE.left + BADGE.width / 2
-  const cy = BADGE.top + BADGE.height / 2
-  const dx = Math.abs(x - cx) - (BADGE.width / 2 - BADGE.radius)
-  const dy = Math.abs(y - cy) - (BADGE.height / 2 - BADGE.radius)
+  const cx = BADGE_LEFT + BADGE_WIDTH / 2
+  const cy = BADGE_TOP + BADGE_HEIGHT / 2
+  const dx = Math.abs(x - cx) - (BADGE_WIDTH / 2 - BADGE_RADIUS)
+  const dy = Math.abs(y - cy) - (BADGE_HEIGHT / 2 - BADGE_RADIUS)
   return (
-    Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) <= BADGE.radius
+    Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) <= BADGE_RADIUS
   )
 }
 
-function segmentDistance(
-  x: number,
-  y: number,
-  [x1, y1, x2, y2]: [number, number, number, number],
-): number {
-  const lx = x2 - x1
-  const ly = y2 - y1
-  const t = Math.min(1, Math.max(0, ((x - x1) * lx + (y - y1) * ly) / (lx * lx + ly * ly)))
-  return Math.hypot(x - (x1 + t * lx), y - (y1 + t * ly))
-}
-
-// True when the point is on the bowl of the letter d or e that starts at x position left.
-function onRing(x: number, y: number, left: number): boolean {
-  const cx = left + LETTER / 2
-  const cy = X_TOP + LETTER / 2
-  return Math.abs(Math.hypot(x - cx, y - cy) - (LETTER / 2 - HALF)) <= HALF
-}
-
-function inD(x: number, y: number, left: number): boolean {
-  const stem = left + LETTER - HALF
-  return onRing(x, y, left) || (Math.abs(x - stem) <= HALF && y >= ASCENDER && y <= BASE)
-}
-
-function inE(x: number, y: number, left: number): boolean {
-  const cx = left + LETTER / 2
-  const cy = X_TOP + LETTER / 2
-  if (Math.abs(y - cy) <= HALF && Math.abs(x - cx) <= LETTER / 2 - HALF) return true
-  // The opening of the e is on the right, below the bar.
-  const opening = x > cx && y > cy + HALF && y < cy + 28
-  return onRing(x, y, left) && !opening
-}
-
-function inV(x: number, y: number, left: number): boolean {
-  const mid = left + LETTER / 2
-  return (
-    segmentDistance(x, y, [left + HALF, X_TOP + HALF, mid, BASE - HALF]) <= HALF ||
-    segmentDistance(x, y, [left + LETTER - HALF, X_TOP + HALF, mid, BASE - HALF]) <= HALF
-  )
-}
-
-function inText(x: number, y: number): boolean {
-  return (
-    inD(x, y, TEXT_LEFT) ||
-    inE(x, y, TEXT_LEFT + LETTER + GAP) ||
-    inV(x, y, TEXT_LEFT + 2 * (LETTER + GAP))
-  )
-}
-
-// The Bifrost icon with the dev badge. The badge covers the part of the icon in its box.
+// The Bifrost icon with the dev badge. The badge covers the part of the icon in its box. The
+// anti-alias uses 4 x 4 samples for each pixel, as drawIcon does.
 export function drawDevIcon(
   size: number,
   palette: IconPalette,
@@ -87,10 +60,10 @@ export function drawDevIcon(
   const out = drawIcon(size, palette, glyph)
   const unit = 1024 / size
   const n = 4
-  const from = Math.floor((BADGE.left - 2) / unit)
-  const to = Math.ceil((BADGE.left + BADGE.width + 2) / unit)
-  const top = Math.floor((BADGE.top - 2) / unit)
-  const bottom = Math.ceil((BADGE.top + BADGE.height + 2) / unit)
+  const from = Math.floor((BADGE_LEFT - 2) / unit)
+  const to = Math.ceil((BADGE_LEFT + BADGE_WIDTH + 2) / unit)
+  const top = Math.floor((BADGE_TOP - 2) / unit)
+  const bottom = Math.ceil((BADGE_TOP + BADGE_HEIGHT + 2) / unit)
   for (let py = top; py < bottom; py++) {
     for (let px = from; px < to; px++) {
       let badge = 0
@@ -101,7 +74,7 @@ export function drawDevIcon(
           const y = (py + (sy + 0.5) / n) * unit
           if (!inBadge(x, y)) continue
           badge++
-          if (inText(x, y)) text++
+          if (inPolygons(x, y, WORD)) text++
         }
       }
       if (badge === 0) continue
