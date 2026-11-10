@@ -64,13 +64,17 @@ The side bar on the left edge has one button for each panel. It also holds the p
 
 ## Requirements
 
-- A Mac with Apple silicon. The DMG has arm64 code only.
+- A Mac with Apple silicon and macOS 13 or later. The DMG has arm64 code only.
 - The Claude Code CLI (`claude`). Bifrost finds it through the PATH of your login shell. For Live details, you need Claude Code 2.1.290 or later.
 - The GitHub CLI (`gh`) for the Reviews panel. Log in with `gh auth login`.
 
 ## Install
 
---pending--
+1. Download [Bifrost for Apple silicon](https://github.com/TheKeyholdingCompany/bifrost/releases/latest/download/Bifrost-arm64.dmg) from the latest release. You must be signed in to GitHub with access to this repository. The [Releases page](https://github.com/TheKeyholdingCompany/bifrost/releases) has all versions and their release notes.
+2. Open the DMG.
+3. Drag Bifrost to the Applications folder.
+4. Open Bifrost from the Applications folder.
+5. At the first start, Bifrost shows the "Set up Bifrost" dialog. Follow its steps, or select Skip.
 
 ## Development
 
