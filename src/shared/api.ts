@@ -77,6 +77,8 @@ export interface BifrostApi {
     // The Usage HUD opened. The main process polls, when the setting is on, but at most one time
     // in 60 seconds.
     hudOpened(): Promise<void>
+    // A click on a usage notification.
+    onOpen(cb: () => void): () => void
   }
   // The Event log (spec 8.7): the newest live state events, kept in memory in the main process.
   events: {

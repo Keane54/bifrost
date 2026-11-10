@@ -146,6 +146,7 @@ const api: BifrostApi = {
     getAccount: () => invoke('usage:account-get'),
     hudOpened: () => invoke('usage:hud-opened'),
     onAccountUpdate: cb => subscribe('usage:account-update', cb),
+    onOpen: cb => subscribe('usage:open', cb),
     onUpdate: cb => subscribe('usage:update', cb),
   },
   wm: {

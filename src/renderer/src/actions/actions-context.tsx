@@ -476,6 +476,12 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     [dispatch],
   )
 
+  // A click on a usage notification opens the Usage HUD.
+  useEffect(
+    () => window.bifrost.usage.onOpen(() => dispatch({ panelId: 'usage-hud', type: 'open' })),
+    [dispatch],
+  )
+
   // New rows or the first load of the registry can end the wait.
   // biome-ignore lint/correctness/useExhaustiveDependencies: each change of the rows can end the wait.
   useEffect(() => openNotified(), [loaded, rows, openNotified])

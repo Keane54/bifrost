@@ -1,6 +1,6 @@
 // The smoke test of spec 15 (D23). It starts Bifrost with a fake claude and a test home. It checks
-// the setup dialog, the sample sessions, the animated background, the Parked tab and one chat
-// window. It also checks that the real Claude files and ~/.bifrost did not change, and that the
+// the setup dialog, the sample sessions, the animated background, the Parked tab, the open of the
+// Usage HUD from a usage notification and one chat window. It also checks that the real Claude files and ~/.bifrost did not change, and that the
 // fake claude got no unknown call.
 //
 // app.ts tells how to start the build in out/ or the packaged app.
@@ -208,6 +208,19 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     await overview.getByRole('tab', { exact: true, name: 'All' }).click()
     await expect(row('smoke-alpha')).toBeVisible()
     await expect(row('smoke-gamma')).toHaveCount(0)
+
+    // Step 5b: a click on a usage notification sends usage:open to the page. The page then opens
+    // the Usage HUD. A test cannot click a macOS notification, so the main process sends the
+    // event here.
+    const hud = page.locator('[data-usage-hud]')
+    await expect(hud).toHaveCount(0)
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.webContents.send('usage:open')
+    })
+    await expect(hud).toBeVisible()
+    const hudFrame = page.locator('[data-frame-id]', { has: hud })
+    await hudFrame.getByRole('button', { exact: true, name: 'Close' }).first().click()
+    await expect(hud).toHaveCount(0)
 
     // Step 6: a double-click opens a chat window. Its attach runs the fake claude through
     // node-pty and spawn-helper. WebGL draws the terminal text, so the DOM has no text to read

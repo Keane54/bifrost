@@ -109,6 +109,9 @@ import { appBundlePath } from './updates/rules'
 import { openUpdateStateStore } from './updates/state-store'
 import { createUpdateLog, type UpdateLog } from './updates/update-log'
 import { createUpdater, type Updater } from './updates/updater'
+import { claudeJsonFile, readExtraUsageFlag } from './usage-alerts/claude-json'
+import { createUsageAlertMonitor, type UsageAlertMonitor } from './usage-alerts/monitor'
+import { openUsageAlertStore, usageAlertsFile } from './usage-alerts/state-store'
 import type { ModeController } from './window/display-mode'
 import { isDisplayMode } from './window/window-state'
 
@@ -197,6 +200,13 @@ let updateLog: UpdateLog | null = null
 // keeps this fixed one.
 const pendingReviewsOpen = new PendingOpen()
 const REVIEWS_OPEN = 'reviews'
+
+// The usage notification (spec 8.8). registerIpc makes it. It gets each new account value and
+// each new session value. A click that comes while no page is loaded waits for the next page, as
+// for the Reviews open.
+let usageAlerts: UsageAlertMonitor | null = null
+const pendingUsageOpen = new PendingOpen()
+const USAGE_OPEN = 'usage'
 
 const fetchJson = createFetchJson((url, init) => net.fetch(url, init))
 
@@ -370,6 +380,41 @@ function notifyReviewRequest(notice: RequestNotice): void {
     },
     logRefusedNotification,
   )
+}
+
+// The usage notification (spec 8.8). The monitor shows it only when the setting is on. Unlike a
+// box, it also shows when the window has focus (user decision, 2026-11-10). A click shows the
+// window and opens the Usage HUD.
+function notifyUsageLimit(text: { title: string; body: string }): void {
+  showNotification(
+    { ...text, label: 'usage limit', sessionId: null },
+    () => {
+      showWindowFn?.()
+      // With no loaded page, the open waits for the did-finish-load of the next page.
+      if (pendingUsageOpen.click(USAGE_OPEN) !== null) send('usage:open')
+    },
+    logRefusedNotification,
+  )
+}
+
+// Make the monitor of the usage notification. It checks nothing until its state file and the
+// settings store open. The state file is in the data folder. ~/.claude.json is in the same home
+// folder as ~/.claude, so a test home uses its own file.
+function startUsageAlerts(
+  home: TestHome | null,
+  settingsReady: Promise<SettingsStore>,
+): UsageAlertMonitor {
+  const store = Promise.all([
+    openUsageAlertStore(usageAlertsFile(app.getPath('userData'))),
+    settingsReady,
+  ]).then(([opened]) => opened)
+  return createUsageAlertMonitor({
+    enabled: () => getSettings().notifications,
+    notify: notifyUsageLimit,
+    now: () => Date.now(),
+    readExtraUsage: () => readExtraUsageFlag(claudeJsonFile(home?.home ?? homedir())),
+    store,
+  })
 }
 
 // Open the Reviews state and make the watcher. Then start it when Watch GitHub is on. After this,
@@ -623,7 +668,10 @@ async function startService(
     send('registry:update', rows, error)
     alerts.update(rows)
   })
-  service.onUsage(usage => send('usage:update', usage))
+  service.onUsage(usage => {
+    send('usage:update', usage)
+    usageAlerts?.session(usage)
+  })
   service.onEvents(events => eventBatcher.push(eventLog.append(events)))
   liveRegistry = registry
   liveService = service
@@ -665,7 +713,10 @@ export function registerIpc(home: TestHome | null = null): void {
     })
     serviceMonitor.start()
     accountUsage = createAccountUsagePoller({
-      emit: value => send('usage:account-update', value),
+      emit: value => {
+        send('usage:account-update', value)
+        usageAlerts?.account(value)
+      },
       fetch: (url, init) => net.fetch(url, init),
       health,
       now: () => Date.now(),
@@ -725,6 +776,7 @@ export function registerIpc(home: TestHome | null = null): void {
   const paths = defaultPaths(home?.home ?? homedir())
   // The settings store opens one time. Each user gets the same store.
   const settings = openSettings(join(app.getPath('userData'), 'settings.json'), health)
+  usageAlerts = startUsageAlerts(home, settings)
   const service = startService(run, settings, health)
   // gh gets the login-shell env. In a test home, that is the env of the process, so the PATH of
   // the smoke test decides which gh runs.
@@ -1247,6 +1299,7 @@ export function attachWindow(win: BrowserWindow): void {
     const sessionId = pendingOpen.load()
     if (sessionId !== null) send('alerts:open', sessionId)
     if (pendingReviewsOpen.load() !== null) send('reviews:open')
+    if (pendingUsageOpen.load() !== null) send('usage:open')
   })
 }
 
@@ -1261,6 +1314,7 @@ function endPage(): void {
 function unloadPendingOpens(): void {
   pendingOpen.unload()
   pendingReviewsOpen.unload()
+  pendingUsageOpen.unload()
 }
 
 // Close all PTYs. Call it when the app quits.
