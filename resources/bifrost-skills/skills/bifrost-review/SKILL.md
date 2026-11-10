@@ -49,10 +49,13 @@ that you read.
 
 Get the login of the user and the commit of their last submitted review on this PR (reference:
 "The last review of the user"). A review in the state `PENDING` is not submitted, so it does not
-count.
+count. A review that holds only replies to threads does not count either, because it is not a
+review of the code.
 
 - No submitted review: this is a first review. Review the full PR.
 - A submitted review: this is a re-review.
+  - Before you start, tell the user which review is the baseline: its commit, state, time and
+    link. Then the user can see which changes the re-review covers.
   - Review the changes from the commit of that review to the head commit (reference: "Changes
     since the last review"). If the comparison is `diverged` or `behind`, or GitHub cannot find the
     old commit, the author rewrote the history. Then review the full PR, and tell the user why.
@@ -122,7 +125,8 @@ Then give each finding one kind:
 - **Minor:** a real problem with a small effect. It does not need to block the PR.
 
 In a re-review, an earlier comment that the author did not fix counts again with its first kind,
-unless the author's answer shows that no change is necessary.
+unless the author's answer shows that no change is necessary. It goes in the summary with a link to
+its thread. Never make a new line comment for it, because its thread exists already.
 
 ## 6. The recommendation
 
@@ -130,17 +134,19 @@ unless the author's answer shows that no change is necessary.
 |---|---|---|
 | None | Approve | Nothing. Write no summary and no comments. |
 | Minor only | Approve | A short summary that lists the minor points. No line comments. |
-| A bug or an error | Request changes | A short summary and a line comment for each finding. |
-| Unclear intent, no bug or error | Comment | A short summary and a line comment for each finding. |
+| A bug or an error | Request changes | A summary and a line comment for each new finding. |
+| Unclear intent, no bug or error | Comment | A summary and a line comment for each new finding. |
 
 Minor points always go in the summary, never in line comments. They never block the approval.
+Earlier comments that are still open also go in the summary only, as step 5 says.
 
 ## 7. Write the review
 
 The summary is the body of the review:
 
 - A few sentences at most. Say what blocks the PR, or that nothing does.
-- In a re-review, say which earlier comments are fixed and which are still open. Link the open ones.
+- In a re-review, say which earlier comments are fixed and which are still open. Link the thread of
+  each open one.
 - No greeting, no praise, no recap of the PR, no sign-off.
 
 Each line comment:
@@ -197,9 +203,9 @@ Do this only after the user confirms.
    - If the pending review is on another commit than the head commit that you reviewed, ask the
      user before you add the comments. The line numbers can point to other code.
 
-If GitHub refuses a comment because its line is not in the diff, move that point into the summary,
-show the change to the user, and try again. If another call fails, stop and show the error. Never
-post the review in another way.
+If GitHub refuses a comment because its line is not in the diff, move that point into the summary
+and show the changed review to the user. Ask the user again before the new attempt. If another call
+fails, stop and show the error. Never post the review in another way.
 
 ## 10. Finish
 

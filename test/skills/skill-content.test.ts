@@ -111,6 +111,11 @@ describe('bifrost-review', () => {
       expect(body).toContain(text)
     }
   })
+
+  it('skips the reviews that hold only thread replies when it finds the re-review baseline', () => {
+    expect(read('skills/bifrost-review/reference.md')).toContain('.replyTo != null')
+    expect(bodyOf('bifrost-review')).toContain('tell the user which review is the baseline')
+  })
 })
 
 describe('bifrost-resolve-comments', () => {
@@ -119,5 +124,9 @@ describe('bifrost-resolve-comments', () => {
     for (const text of ['OWNER', 'MEMBER', 'COLLABORATOR', 'Fixed by', 'Needs you']) {
       expect(body).toContain(text)
     }
+  })
+
+  it('stops on a working tree with uncommitted changes', () => {
+    expect(bodyOf('bifrost-resolve-comments')).toContain('If `git status --porcelain` prints')
   })
 })

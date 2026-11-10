@@ -67,13 +67,39 @@ gh api -H 'Accept: application/vnd.github.raw+json' \
 
 ## The last review of the user
 
+GitHub stores each reply to a thread as a review in the state `COMMENTED`, with an empty body and
+only reply comments. Such a review is not a review of the code, so the filter skips it. Else a
+reply would move the baseline and hide changes that the user never reviewed.
+
 ```sh
-gh api --paginate repos/OWNER/REPO/pulls/NUMBER/reviews \
-  --jq '.[] | select(.user.login == "LOGIN" and .state != "PENDING") | .commit_id' | tail -n 1
+gh api graphql --paginate -f owner=OWNER -f repo=REPO -F number=NUMBER -f login=LOGIN \
+  --jq '.data.repository.pullRequest.reviews.nodes[]
+    | select(.state != "PENDING")
+    | select((.state == "COMMENTED" and .body == "" and (.comments.nodes | length) > 0
+        and all(.comments.nodes[]; .replyTo != null)) | not)
+    | "\(.commit.oid) \(.state) \(.submittedAt) \(.url)"' -f query='
+query($owner: String!, $repo: String!, $number: Int!, $login: String!, $endCursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      reviews(author: $login, first: 50, after: $endCursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          state
+          body
+          submittedAt
+          url
+          commit { oid }
+          comments(first: 100) { nodes { replyTo { id } } }
+        }
+      }
+    }
+  }
+}' | tail -n 1
 ```
 
-GitHub lists the reviews in time order, so the last line is the newest review. No output means
-that this is a first review. Else the output is LAST_SHA.
+GitHub lists the reviews in time order, so the last line is the newest review that counts. No
+output means that this is a first review. Else the line gives the commit (LAST_SHA), the state,
+the time and the link of that review.
 
 ## Changes since the last review
 

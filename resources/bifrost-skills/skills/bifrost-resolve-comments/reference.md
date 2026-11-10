@@ -28,17 +28,18 @@ With no argument, leave out NUMBER_OR_URL. `gh` then uses the PR of the current 
 git branch --show-current
 git rev-parse --abbrev-ref '@{upstream}'
 git remote get-url origin
+git status --porcelain
 git fetch origin HEAD_BRANCH
 git merge-base --is-ancestor HEAD_SHA HEAD && echo 'contains the PR head'
-git status --porcelain
 ```
 
 - The current branch is the head branch when its name is HEAD_BRANCH or its upstream is
   `origin/HEAD_BRANCH`.
 - `origin` must name the head repository.
+- `git status --porcelain` must print nothing. If it prints anything, stop and ask the user to
+  commit those changes or put them aside first.
 - No output from the `merge-base` line means that the local branch is behind GitHub. After the user
   agrees, merge with `git merge --no-edit FETCH_HEAD`. Never rebase.
-- `git status --porcelain` lists the changes that were there before you. Leave them alone.
 
 ## Read the comments
 
@@ -108,6 +109,26 @@ query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 
 Copilot shows as `{"__typename": "Bot", "login": "copilot-pull-request-reviewer"}`. Find Copilot by
 these two values, not by its `authorAssociation`, which can be `NONE` or `CONTRIBUTOR`.
+
+## The pending review of the user
+
+Run this check again just before you ask to push and post, because the user can start a pending
+review while you work.
+
+```sh
+gh api graphql -f owner=OWNER -f repo=REPO -F number=NUMBER -f query='
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      reviews(states: [PENDING], first: 10) {
+        nodes { id viewerDidAuthor body url }
+      }
+    }
+  }
+}'
+```
+
+A node with `"viewerDidAuthor": true` is a pending review of the user. Show its link to the user.
 
 ## Push
 

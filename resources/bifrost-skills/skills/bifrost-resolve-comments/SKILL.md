@@ -41,9 +41,12 @@ Read the PR and the login of the user (reference: "The PR"). Stop and tell the u
 
 Then check the local branch (reference: "Check the local branch"):
 
-- If it does not contain the head commit of the PR, it is behind GitHub. Ask the user before you
-  merge the remote branch into it. Never rebase.
-- If the working tree has changes that you did not make, leave them alone. Never commit them.
+- If `git status --porcelain` prints anything, the working tree has changes that are not
+  committed. Stop, and ask the user to commit them or put them aside first. Do not go on with a
+  changed working tree: a commit by path takes the whole file, so the user's own changes could go
+  into your commits, and the merges and checks would run on them.
+- If the branch does not contain the head commit of the PR, it is behind GitHub. Ask the user before
+  you merge the remote branch into it. Never rebase.
 
 ## 2. Read the comments
 
@@ -144,6 +147,11 @@ Show the user one summary:
 - the result of each check;
 - the Needs you items, which you will ask about next.
 
+Before you ask, check whether the user has a pending review on this PR (reference: "The pending
+review of the user"). A reply to a thread can go into that pending review, and then nobody else can
+see it. If there is one, show it in the summary, and ask the user what to do. They can submit or
+delete it in GitHub first, and then you go on. Never submit or delete it yourself.
+
 Ask the user to confirm the push and the replies. The user can change a reply or an outcome. Make
 the changes, show the new version, and ask again. If there is nothing to push, ask the user to
 confirm the replies.
@@ -173,8 +181,8 @@ resolve"):
 
 Resolve a thread only after its reply is posted. The reply must come back with the state
 `SUBMITTED`. The state `PENDING` means that the reply went into a pending review of the user, and
-nobody else can see it. Then stop, tell the user, and resolve nothing. If a reply fails, do not
-resolve its thread.
+nobody else can see it. This can happen when the user starts a pending review after the check in
+step 7. Then stop, tell the user, and resolve nothing. If a reply fails, do not resolve its thread.
 
 ## 9. Needs you
 
