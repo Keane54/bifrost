@@ -125,7 +125,7 @@ export function createPluginCli(run: RunClaude, ids: PluginIds = LIVE_PLUGIN): P
   return {
     async addMarketplace(dir) {
       if (!isAbsolute(dir) || /[\r\n]/.test(dir)) {
-        throw new Error('The mod folder path must be absolute and have no line break')
+        throw new Error('The plugin folder path must be absolute and have no line break')
       }
       await command(['plugin', 'marketplace', 'add', dir, ...scope])
     },

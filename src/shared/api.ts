@@ -232,8 +232,8 @@ export interface BifrostApi {
     uninstall(): Promise<LiveStatus>
   }
   // The Bifrost skills plugin (spec 5). Each action resolves with the new status. It rejects
-  // with the message of its failure. A switch calls install when plugin is not-installed, else
-  // enable or disable.
+  // with the message of its failure. A switch calls install when the plugin is not-installed,
+  // else enable or disable.
   skills: {
     status(): Promise<SkillsStatus>
     // Copy the skills folder, add the marketplace, install the plugin and turn it on. This

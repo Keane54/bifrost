@@ -48,6 +48,19 @@ export function createSkillsControl(deps: SkillsControlDeps): SkillsControl {
     return cli
   }
 
+  // Refuse a marketplace of another program. Bifrost acts only when the marketplace is missing
+  // or its path is the skills folder. Else it changes nothing.
+  async function ownMarket(cli: PluginCli): Promise<MarketplaceEntry | null> {
+    const market = await cli.marketplace()
+    if (market !== null && (market.path === undefined || !samePath(market.path, dir))) {
+      throw new Error(
+        'A marketplace with the name bifrost-skills already exists at ' +
+          `${market.path ?? market.source}. Bifrost did not change it.`,
+      )
+    }
+    return market
+  }
+
   async function readPlugin(): Promise<{
     state: LivePluginState
     entry: PluginEntry | null
@@ -88,11 +101,13 @@ export function createSkillsControl(deps: SkillsControlDeps): SkillsControl {
   return {
     async disable() {
       const cli = await needCli()
+      await ownMarket(cli)
       if ((await cli.plugin()) !== null) await cli.disable()
       return status()
     },
     async enable() {
       const cli = await needCli()
+      await ownMarket(cli)
       if ((await cli.plugin()) === null) throw new Error('Bifrost skills are not installed.')
       await syncSkillsFolder(source, dir)
       await cli.enable()
@@ -100,14 +115,7 @@ export function createSkillsControl(deps: SkillsControlDeps): SkillsControl {
     },
     async install() {
       const cli = await needCli()
-      // Refuse a marketplace of another program before any change.
-      const market = await cli.marketplace()
-      if (market !== null && (market.path === undefined || !samePath(market.path, dir))) {
-        throw new Error(
-          'A marketplace with the name bifrost-skills already exists at ' +
-            `${market.path ?? market.source}. Bifrost did not change it.`,
-        )
-      }
+      const market = await ownMarket(cli)
       await syncSkillsFolder(source, dir)
       if (market === null) await cli.addMarketplace(dir)
       let entry = await cli.plugin()
@@ -132,13 +140,9 @@ export function createSkillsControl(deps: SkillsControlDeps): SkillsControl {
     status,
     async uninstall() {
       const cli = await needCli()
+      const market = await ownMarket(cli)
       if ((await cli.plugin()) !== null) await cli.uninstall()
-      // Remove only the marketplace that Bifrost added.
-      // Never remove a marketplace with another path.
-      const market = await cli.marketplace()
-      if (market?.path !== undefined && samePath(market.path, dir)) {
-        await cli.removeMarketplace()
-      }
+      if (market !== null) await cli.removeMarketplace()
       await removeSkillsFolder(dir)
       return status()
     },

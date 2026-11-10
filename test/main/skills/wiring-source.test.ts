@@ -32,6 +32,9 @@ describe('the skills wiring in ipc.ts', () => {
     for (const name of ['install', 'enable', 'disable', 'uninstall']) {
       expect(text).toContain(`skillsAction('skills:${name}', () => skills.${name}())`)
     }
-    expect(text).toContain('ipcMain.handle(channel, e => fromPage(e, () => serial.run(fn)))')
+    expect(text).toContain(
+      'const skillsAction = (channel: string, fn: () => Promise<SkillsStatus>): void => { ' +
+        'ipcMain.handle(channel, e => fromPage(e, () => serial.run(fn))) }',
+    )
   })
 })

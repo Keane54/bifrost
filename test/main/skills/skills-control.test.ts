@@ -37,6 +37,8 @@ interface World {
   marketplace: MarketplaceEntry | null
   pluginError?: string
   noCli?: boolean
+  // install() leaves the plugin off.
+  installOff?: boolean
 }
 
 function setup(over: Partial<World> = {}) {
@@ -58,7 +60,7 @@ function setup(over: Partial<World> = {}) {
     },
     async install() {
       calls.push('install')
-      w.plugin = { enabled: true, errors: [], folder: dir }
+      w.plugin = { enabled: !w.installOff, errors: [], folder: dir }
     },
     async marketplace() {
       calls.push('marketplace')
@@ -195,17 +197,22 @@ describe('uninstall', () => {
     expect(existsSync(dir)).toBe(false)
     expect(status.plugin).toBe('not-installed')
   })
-  test('keeps a marketplace at another path and its folder (Review Focus 5)', async () => {
+  test('refuses a marketplace at another path, and keeps it and its folder (Review Focus 5)', async () => {
     const other = join(root, 'other')
     put(other, 'keep.txt', 'mine')
-    const { control, writes } = setup({ marketplace: { path: other, source: 'directory' } })
-    await control.uninstall()
+    await syncSkillsFolder(source, dir)
+    const { control, writes } = setup({
+      marketplace: { path: other, source: 'directory' },
+      plugin: on,
+    })
+    await expect(control.uninstall()).rejects.toThrow(`already exists at ${other}. Bifrost did`)
     expect(writes()).toEqual([])
     expect(existsSync(join(other, 'keep.txt'))).toBe(true)
+    expect(await skillsFolderCurrent(source, dir)).toBe(true)
   })
-  test('keeps a marketplace with no path', async () => {
-    const { control, writes } = setup({ marketplace: { source: 'github:x/y' } })
-    await control.uninstall()
+  test('refuses a marketplace with no path', async () => {
+    const { control, writes } = setup({ marketplace: { source: 'github:x/y' }, plugin: on })
+    await expect(control.uninstall()).rejects.toThrow('already exists at github:x/y.')
     expect(writes()).toEqual([])
   })
   test('runs no uninstall when the plugin is not installed', async () => {
@@ -282,5 +289,54 @@ describe('status', () => {
     expect(status.skills).toEqual([])
     expect(status.error).toMatch(/^boom /)
     expect(status.error).toMatch(/skills/)
+  })
+})
+
+describe('a foreign marketplace bifrost-skills', () => {
+  const foreign = { path: '/other', source: 'directory' }
+  test.each(['enable', 'disable'] as const)('%s refuses and makes no change', async name => {
+    const { control, writes } = setup({ marketplace: foreign, plugin: on })
+    await expect(control[name]()).rejects.toThrow(
+      'A marketplace with the name bifrost-skills already exists at /other. ' +
+        'Bifrost did not change it.',
+    )
+    expect(writes()).toEqual([])
+    expect(existsSync(dir)).toBe(false)
+  })
+})
+
+describe('more install and status rules', () => {
+  test('an install that leaves the plugin off reads it again and turns it on', async () => {
+    const { control, writes } = setup({ installOff: true })
+    const status = await control.install()
+    expect(writes()).toEqual(['addMarketplace /d', 'install', 'enable'])
+    expect(status.plugin).toBe('enabled')
+  })
+  test('the folder is synced before the marketplace is added', async () => {
+    const { calls, control } = setup()
+    const cli = await (async () => {
+      let seen: boolean | undefined
+      return { get: () => seen, set: (v: boolean) => (seen = v) }
+    })()
+    const original = calls.push.bind(calls)
+    calls.push = (...items: string[]) => {
+      if (items[0]?.startsWith('addMarketplace')) {
+        cli.set(existsSync(join(dir, '.claude-plugin', 'plugin.json')))
+      }
+      return original(...items)
+    }
+    await control.install()
+    expect(cli.get()).toBe(true)
+  })
+  test('folderCurrent is false when the plugin reads another folder', async () => {
+    await syncSkillsFolder(source, dir)
+    const status = await setup({
+      plugin: { enabled: true, errors: [], folder: join(root, 'other') },
+    }).control.status()
+    expect(status.folderCurrent).toBe(false)
+    const same = await setup({
+      plugin: { enabled: true, errors: [], folder: dir },
+    }).control.status()
+    expect(same.folderCurrent).toBe(true)
   })
 })
