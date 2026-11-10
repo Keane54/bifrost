@@ -122,7 +122,7 @@ export default function GeneralSection({
 // The rows of Settings > General, below the filter provider of GeneralSection.
 function GeneralRows({ only }: { only: ReadonlySet<string> | null }): React.JSX.Element {
   const { settings, update } = useSettings()
-  // The general warning for the version of Claude Code (spec 11.5, ruling C5). A failed check
+  // The general warning for the version of Claude Code (spec 11.5). A failed check
   // warns too.
   const { version, versionFailed } = useLive()
   const versionText = claudeVersionNotice(version, versionFailed)

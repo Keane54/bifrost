@@ -137,9 +137,5 @@ flowchart TB
 
 The [`docs`](docs) folder has the other documents:
 
-- [Design](docs/specs/2026-11-04-bifrost-design.md): the full design of Bifrost.
-- [Reviews design](docs/specs/2026-11-09-bifrost-reviews-design.md): the design of the Reviews panel.
-- [Plans](docs/plans): the implementation plan of each milestone.
-- Findings of each milestone: [M0](docs/m0-findings.md), [M1](docs/m1-findings.md), [M2](docs/m2-findings.md), [M3](docs/m3-findings.md), [M4](docs/m4-findings.md), [M5](docs/m5-findings.md) and [Live details](docs/live-findings.md).
 - [Electron, Tauri or GPUI](docs/electron-or-tauri.md): why Bifrost stays on Electron.
 - [Slack app](docs/slack/README.md): the Slack app for a later milestone.

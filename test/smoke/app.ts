@@ -19,7 +19,7 @@ type LaunchOptions = NonNullable<Parameters<typeof _electron.launch>[0]>
 
 const ROOT = join(import.meta.dirname, '..', '..')
 const FAKE_DIR = join(import.meta.dirname, 'fake-claude')
-// R14: the SHA values come from the real home, and the app gets the real home as HOME.
+// The SHA values come from the real home, and the app gets the real home as HOME.
 // BIFROST_TEST_HOME is the test home.
 const REAL_HOME = homedir()
 const CLAUDE_FILES = [

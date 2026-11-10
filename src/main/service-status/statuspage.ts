@@ -64,7 +64,7 @@ async function cappedText(res: Response, max: number): Promise<string> {
 }
 
 // The fetchJson of the monitor. It asks for JSON, stops after FETCH_TIMEOUT_MS, and reads at most
-// MAX_BODY_BYTES of the body (final review parked T5). A bad answer rejects, and checkService then
+// MAX_BODY_BYTES of the body. A bad answer rejects, and checkService then
 // gives unknown.
 export function createFetchJson(fetch: FetchFn): FetchJson {
   return async url => {

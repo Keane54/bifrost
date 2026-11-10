@@ -12,7 +12,7 @@ import { row } from '../overview/fixtures'
 const a = row({ sessionId: 'A' })
 const b = row({ sessionId: 'B' })
 
-describe('registry state (bug B1)', () => {
+describe('registry state', () => {
   it('is not loaded before the first rows come', () => {
     expect(INITIAL_REGISTRY.loaded).toBe(false)
     expect(INITIAL_REGISTRY.rows).toEqual([])

@@ -194,7 +194,7 @@ describe('createServiceMonitor', () => {
   })
 })
 
-describe('serviceList (final review parked T5)', () => {
+describe('serviceList', () => {
   it('a test home has no monitor, so each service shows No data with the reason', () => {
     expect(TEST_HOME_SERVICE).toBe("Bifrost doesn't check status pages in a test home.")
     const list = serviceList(null)

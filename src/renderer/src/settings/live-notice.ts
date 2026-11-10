@@ -117,7 +117,7 @@ export function claudeVersionLine(version: ClaudeVersion | null, failed: boolean
   return version.version === null ? null : `Claude Code ${version.version}`
 }
 
-// The warning for a version of Claude Code below the minimum of Live details (ruling C5).
+// The warning for a version of Claude Code below the minimum of Live details.
 // With no version, versionNotice already says that Bifrost can't find Claude Code.
 export function liveVersionNote(status: LiveStatus | null): string | null {
   if (status === null || status.versionOk || status.claudeVersion === null) return null

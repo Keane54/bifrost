@@ -135,7 +135,7 @@ const sizeWatcher = new SessionSizeWatcher({
 // The main process sets liveService and liveRegistry when the store loads.
 let liveService: RegistryService | null = null
 let liveRegistry: SessionRegistry | null = null
-// registerIpc opens the settings store one time (ruling C6). It is null until the store opens.
+// registerIpc opens the settings store one time. It is null until the store opens.
 let settingsStore: SettingsStore | null = null
 // index.ts gives the function that builds the app menu again.
 let menuRebuild: (() => void) | null = null
@@ -327,13 +327,13 @@ async function openSettings(file: string, health: HealthLog): Promise<SettingsSt
   settingsStore = store
   if (store.get().accountUsage) accountUsage?.start()
   applyZoom()
-  // Build the menu again with the keys of the file (ruling C6). Before this, it has the default
+  // Build the menu again with the keys of the file. Before this, it has the default
   // keys.
   menuRebuild?.()
   return store
 }
 
-// Show a refused notification one time in the Event log, as a plain line (R12).
+// Show a refused notification one time in the Event log, as a plain line.
 function logRefusedNotification(): void {
   const line = eventLog.notice(NOTIFICATION_REFUSED, Date.now())
   if (line) eventBatcher.push([line])
@@ -491,7 +491,7 @@ async function startService(
     ...SERVICE_TIMING,
     activeMs: current.pollSeconds * 1000,
   })
-  // The monitor reads the settings from the store at each update (ruling C6).
+  // The monitor reads the settings from the store at each update.
   const alerts = createAlertMonitor({
     focused: () => currentWindow?.isFocused() ?? false,
     notify: n =>
@@ -610,7 +610,7 @@ export function registerIpc(home: TestHome | null = null): void {
     return m
   })
   const paths = defaultPaths(home?.home ?? homedir())
-  // The settings store opens one time. Each user gets the same store (ruling C6).
+  // The settings store opens one time. Each user gets the same store.
   const settings = openSettings(join(app.getPath('userData'), 'settings.json'), health)
   const service = startService(run, settings, health)
   // gh gets the login-shell env. In a test home, that is the env of the process, so the PATH of

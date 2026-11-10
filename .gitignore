@@ -27,3 +27,7 @@ resources/live-mod/tsconfig.json
 # Other
 .DS_Store
 *.log*
+
+# Specs and plans stay local: they are working documents, not part of the repo.
+docs/specs/
+docs/plans/

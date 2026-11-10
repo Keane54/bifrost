@@ -1,4 +1,4 @@
-// The state of the session registry in the renderer, as pure steps (bug B1).
+// The state of the session registry in the renderer, as pure steps.
 import type { SessionRow } from '../../../shared/types'
 
 export interface RegistryState {

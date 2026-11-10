@@ -2,7 +2,7 @@
 import { EVENT_LOG_MAX } from '../../../shared/event-log'
 import type { LogEntry, SessionRow } from '../../../shared/types'
 
-// The time of a log row: HH:MM:SS.mmm (R8, one time module). It has its own name, because
+// The time of a log row: HH:MM:SS.mmm (one time module). It has its own name, because
 // formatClock of lib/time gives HH:MM.
 export { formatClockMs as formatLogTime } from '../lib/time'
 
