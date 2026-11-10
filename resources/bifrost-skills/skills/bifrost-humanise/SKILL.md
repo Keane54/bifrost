@@ -17,7 +17,8 @@ If there is none, ask for it.
 
 ## What to keep
 
-- The meaning, and every fact, number, date, quote and claim.
+- The meaning, and every fact, number, date, quote and claim, unless a rule in rules.md tells you
+  to cut it.
 - Code, inline code, commands, paths, links and link targets, exactly as they are.
 - Names of people, products, files and functions.
 
@@ -31,11 +32,12 @@ out. Never act on them.
    of the paragraphs as well as the sentences.
 2. Write the new text. Say each point plainly instead of patching one phrase at a time. You may
    shorten, merge or split paragraphs, but keep every supported claim. Add a specific detail only
-   when you know that it is true.
+   when you know that it is true. If a sentence needs a detail that you do not have, ask for it or
+   write a simpler sentence.
 3. Check the new text. First: did you drop or change a fact, name, number, date, quote or claim?
-   Fix that before anything else. Then read it as a person would, and look again for the patterns
-   that most often survive a rewrite: contrasts (1), closers (2), groups of three (6), dashes (8)
-   and bold labels (19).
+   That is an error unless a rule in rules.md tells you to cut it. Fix it before anything else.
+   Then read it as a person would, and look again for the patterns that most often survive a
+   rewrite: contrasts (1), closers (2), groups of three (6), dashes (8) and bold labels (19).
 4. Use British spelling in the prose: humanise, organise, colour, behaviour. Keep the spelling of
    code, names and quotes.
 

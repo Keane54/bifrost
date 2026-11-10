@@ -115,8 +115,9 @@ with the action. Do not ban the word: one sentence can still start with it.
 
 Never use the long dash (the em dash) or the en dash as punctuation, and never a double hyphen in
 their place. Use a full stop, a comma, a colon or brackets, or rewrite the sentence. A dash lets the
-writer skip the choice of how two clauses relate, so a model uses it everywhere. Leave hyphens in
-code, commands, paths, URLs and compound words alone.
+writer skip the choice of how two clauses relate, so a model uses it everywhere. Do not swap each
+long dash for a spaced hyphen (" - "). Restructure the sentence instead. Leave hyphens in code,
+commands, paths, URLs and compound words alone.
 
 - Before: "The new policy -- announced without warning -- affects thousands of workers."
 - After: "The new policy, announced without warning, affects thousands of workers."
@@ -205,7 +206,7 @@ breathtaking, "a rich set of", "a diverse array of", "commitment to".
 The text reads like an advert. State what the thing is and what it does.
 
 - Before: "The new CLI offers a seamless, powerful way to manage your config."
-- After: "The new CLI reads and writes your config."
+- After: "The new CLI manages your config."
 
 ### 17. Borrowed authority
 
@@ -216,7 +217,8 @@ A vague authority stands in for the reason. When you know the real source and wh
 it. Otherwise give the reason itself, or cut the claim.
 
 - Before: "Best practice is to avoid global state here."
-- After: "Global state here lets two tabs overwrite each other's filters."
+- After (when you know the reason): "Global state here lets two tabs overwrite each other's
+  filters."
 
 ### 18. Avoiding is, are and has
 
@@ -280,7 +282,7 @@ The text admits that it has no source, then fills the gap with a guess. Say what
 what you did not check, or cut the sentence. Never present a guess as a finding.
 
 - Before: "This likely causes a memory leak in production."
-- After: "The listener is added on each mount and never removed."
+- After (after you read the code): "The listener is added on each mount and never removed."
 
 ### 23. A heading repeated in the first sentence
 
@@ -304,7 +306,7 @@ says what the code does now, not its history. Keep a caveat that changes what th
 
 A model writes for a reader who shares no context. A reply in a PR thread has a reader who already
 knows the background. Act on this pattern when you can see the conversation, or when the text is
-clearly a reply.
+clearly a reply. If you cannot tell, ask or leave the text alone.
 
 Watch for: a short reply that restates the problem, walks through the diagnosis and lays out the
 evidence before it reaches the decision; proof that a plan will work; background that the other
@@ -312,7 +314,7 @@ person wrote; the answer in the last line.
 
 Lead with the decision. Keep only the reasoning that would change whether the reader agrees:
 usually one fact that they lack, and any link that they need to act. The full diagnosis belongs in
-the ticket or the follow-up PR.
+the ticket or the follow-up PR. A reviewer who raises a topic is not asking for the full write-up.
 
 - Before: "Yeah, you're right, this works around the issue rather than fixing it. The real fix is in
   `MergeService`: when we move a child under a new parent, it should update `pipeline_id` along
