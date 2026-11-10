@@ -1,6 +1,6 @@
 // The texts and numbers of the Usage HUD (spec 8.8). Pure functions, no React.
 import { formatClockOrDay, formatDuration } from '../../../shared/time'
-import type { AccountUsage, RateWindow, UsageSnapshot } from '../../../shared/types'
+import type { AccountUsage, RateLimits, RateWindow, UsageSnapshot } from '../../../shared/types'
 import { HIGH_PERCENT, usageSource } from '../../../shared/usage'
 import { formatAge } from '../overview/format'
 
@@ -50,22 +50,30 @@ function bar(
 // The bars come from the account values when they are 15 minutes old or less (spec 8.8). Else
 // they come from the usage lines of the sessions. usageSource makes this choice, and the usage
 // notification uses the same function.
+// A source with a 7-day window and no 5-hour window gives the 7-day bar only. A plan can have no
+// 5-hour window (user decision, 2026-11-10). A source with no window gives both bars.
+function barsOf(
+  limits: RateLimits,
+  now: number,
+  timeZone: string | undefined,
+  noFiveHour: string,
+): UsageBar[] {
+  const seven = bar('7-day limit', limits.sevenDay, now, timeZone)
+  if (!limits.fiveHour && limits.sevenDay) return [seven]
+  return [bar('5-hour limit', limits.fiveHour, now, timeZone, noFiveHour), seven]
+}
+
 export function usageView(
   snapshot: UsageSnapshot | null,
   now: number,
   timeZone?: string,
   account: AccountUsage | null = null,
-): { bars: [UsageBar, UsageBar]; source: string } {
+): { bars: UsageBar[]; source: string } {
   const source = usageSource(snapshot, now, account)
   if (source?.kind === 'account') {
-    const { fiveHour, sevenDay } = source.limits
-    const { fetchedAt } = source.account
     return {
-      bars: [
-        bar('5-hour limit', fiveHour, now, timeZone, NO_FIVE_HOUR),
-        bar('7-day limit', sevenDay, now, timeZone),
-      ],
-      source: `From your Anthropic account, updated ${formatAge(fetchedAt, now)} ago.`,
+      bars: barsOf(source.limits, now, timeZone, NO_FIVE_HOUR),
+      source: `From your Anthropic account, updated ${formatAge(source.account.fetchedAt, now)} ago.`,
     }
   }
   if (!source) {
@@ -78,10 +86,7 @@ export function usageView(
     }
   }
   return {
-    bars: [
-      bar('5-hour limit', source.limits.fiveHour, now, timeZone),
-      bar('7-day limit', source.limits.sevenDay, now, timeZone),
-    ],
+    bars: barsOf(source.limits, now, timeZone, NO_WINDOW),
     source: `From ${source.snapshot.name}, ${formatAge(source.snapshot.updatedAt, now)} ago.`,
   }
 }

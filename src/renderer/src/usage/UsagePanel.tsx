@@ -1,5 +1,5 @@
 // The Usage HUD panel (spec 8.8): the 5-hour and the 7-day limit, each with the use and the
-// reset time.
+// reset time. A plan with no 5-hour window shows the 7-day limit only.
 import { useEffect, useRef, useState } from 'react'
 import type { AccountUsage, UsageSnapshot } from '../../../shared/types'
 import { cx } from '../lib/cx'
@@ -92,8 +92,9 @@ export default function UsagePanel(): React.JSX.Element {
   const view = usageView(snapshot, now, undefined, account)
   return (
     <div className='flex h-full flex-col gap-3 p-3 text-text' data-usage-hud={true} ref={root}>
-      <Bar bar={view.bars[0]} />
-      <Bar bar={view.bars[1]} />
+      {view.bars.map(bar => (
+        <Bar bar={bar} key={bar.label} />
+      ))}
       <div className='mt-auto text-[11px] text-text-dim'>{view.source}</div>
     </div>
   )

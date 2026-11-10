@@ -35,10 +35,11 @@ describe('usageView', () => {
 
   test('usageView shows the 7-day bar of a plan with no 5-hour window', () => {
     const v = usageView(snap({ sevenDay: { resetsAt: NOW + 3 * DAY, usedPercent: 10 } }), NOW, ZONE)
-    expect(v.bars[0]).toMatchObject({ detail: 'No data for this limit yet.', percent: null })
-    expect(v.bars[1]).toMatchObject({
+    expect(v.bars).toHaveLength(1)
+    expect(v.bars[0]).toMatchObject({
       detail: 'Resets in 3 d 0 h (Sun 12:00)',
       high: false,
+      label: '7-day limit',
       percent: 10,
     })
   })
@@ -56,7 +57,7 @@ describe('usageView', () => {
     expect(at.bars[0]).toMatchObject({ detail: 'Reset at 12:00.', percent: null })
     // A reset on another day shows the day.
     const old = usageView(snap({ sevenDay: { resetsAt: NOW - DAY, usedPercent: 40 } }), NOW, ZONE)
-    expect(old.bars[1]).toMatchObject({ detail: 'Reset at Wed 12:00.', percent: null })
+    expect(old.bars[0]).toMatchObject({ detail: 'Reset at Wed 12:00.', percent: null })
   })
 
   test('a usedPercent that is not a finite number shows -, not 0%', () => {
@@ -115,7 +116,7 @@ describe('usageView with account values', () => {
 
   test('fresh account values win over the session values', () => {
     const v = usageView(session, NOW, ZONE, account(3 * MIN, sevenOnly))
-    expect(v.bars[1]).toMatchObject({
+    expect(v.bars[0]).toMatchObject({
       detail: 'Resets in 3 d 0 h (Sun 12:00)',
       high: false,
       percent: 36,
@@ -123,15 +124,38 @@ describe('usageView with account values', () => {
     expect(v.source).toBe('From your Anthropic account, updated 3 min ago.')
   })
 
-  test('a plan with no 5-hour window shows a dash and the reason', () => {
+  test('a plan with no 5-hour window shows only the 7-day bar', () => {
     const v = usageView(session, NOW, ZONE, account(0, sevenOnly))
-    expect(v.bars[0]).toEqual({
-      detail: 'No 5-hour limit right now.',
-      high: false,
-      label: '5-hour limit',
-      percent: null,
-    })
+    expect(v.bars).toHaveLength(1)
+    expect(v.bars[0]).toMatchObject({ label: '7-day limit', percent: 36 })
     expect(v.source).toBe('From your Anthropic account, updated 0 s ago.')
+  })
+
+  test('account values with no window keep both bars with the reasons', () => {
+    const v = usageView(null, NOW, ZONE, account(0, {}))
+    expect(v.bars).toEqual([
+      { detail: 'No 5-hour limit right now.', high: false, label: '5-hour limit', percent: null },
+      { detail: 'No data for this limit yet.', high: false, label: '7-day limit', percent: null },
+    ])
+  })
+
+  test('a session with no window keeps both bars with the reasons', () => {
+    const v = usageView(snap({}), NOW, ZONE)
+    expect(v.bars.map(b => [b.label, b.detail])).toEqual([
+      ['5-hour limit', 'No data for this limit yet.'],
+      ['7-day limit', 'No data for this limit yet.'],
+    ])
+  })
+
+  test('the 5-hour bar comes back when the window comes back', () => {
+    const without = usageView(snap(sevenOnly), NOW, ZONE)
+    expect(without.bars.map(b => b.label)).toEqual(['7-day limit'])
+    const again = usageView(
+      snap({ ...sevenOnly, fiveHour: { resetsAt: NOW + HOUR, usedPercent: 20 } }),
+      NOW,
+      ZONE,
+    )
+    expect(again.bars.map(b => b.label)).toEqual(['5-hour limit', '7-day limit'])
   })
 
   test('the bar rules stay the same: high at 90 percent', () => {
