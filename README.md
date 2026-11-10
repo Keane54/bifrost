@@ -44,6 +44,7 @@ Built with [Electron](https://www.electronjs.org/), [React](https://react.dev/) 
 - A session that a terminal app owns, for example Warp, shows its status only. With the Take control action, you can move the session to the background service of Claude Code.
 - A yellow box or a red box flashes on a session that needs you. A macOS notification and a sound are optional.
 - Live details is an optional mod for Claude Code. It sends live events and usage data to Bifrost. Then Bifrost shows the model, the cost and the context use of each session. Bifrost asks about Live details at the first start.
+- Bifrost updates itself. It checks GitHub for a new version and downloads it. When the update is ready, a button shows above Layouts in the side bar.
 
 ## Panels
 
@@ -60,7 +61,7 @@ The side bar on the left edge has one button for each panel. It also holds the p
 | Usage HUD | The use of the 5-hour limit and the 7-day limit. |
 | Service status | The status of Claude, GitHub and Sentry. |
 | Reviews | The GitHub pull requests that need you, in two tabs: To review and My PRs. In this version, the panel only shows the pull requests. |
-| Settings | The tabs General, Slash commands, Keys, Reviews and Live details. |
+| Settings | The tabs General, Slash commands, Keys, Reviews, Live details and Updates. |
 
 ## Requirements
 
@@ -70,11 +71,13 @@ The side bar on the left edge has one button for each panel. It also holds the p
 
 ## Install
 
-1. Download [Bifrost for Apple silicon](https://github.com/Keane54/bifrost/releases/latest/download/Bifrost-arm64.dmg) from the latest release. You must be signed in to GitHub with access to this repository. The [Releases page](https://github.com/Keane54/bifrost/releases) has all versions and their release notes.
+1. Download [Bifrost for Apple silicon](https://github.com/Keane54/bifrost/releases/latest/download/Bifrost-arm64.dmg) from the latest release. The [Releases page](https://github.com/Keane54/bifrost/releases) has all versions and their release notes.
 2. Open the DMG.
-3. Drag Bifrost to the Applications folder.
+3. Drag Bifrost to the Applications folder. Keep Bifrost in this folder. Bifrost can update itself only from the Applications folder.
 4. Open Bifrost from the Applications folder.
 5. At the first start, Bifrost shows the "Set up Bifrost" dialog. Follow its steps, or select Skip.
+
+After the first install, you do not need to download a DMG again. Bifrost checks for new versions. When a new version is ready, a button shows above Layouts in the side bar. Click the button to restart Bifrost with the new version. Settings > Updates has the switch "Check for updates automatically", the "Check for updates" button and the "Show log" button.
 
 ## Development
 
@@ -126,7 +129,7 @@ flowchart TB
     Check -->|no release due| Stop[Stop, no macOS runner]
     Check -->|next version| Build[Build job on macOS: signed and notarised DMG]
     Build --> Verify[pnpm verify:release]
-    Verify --> GitHub[Tag vX.Y.Z and GitHub release with the DMG]
+    Verify --> GitHub[Tag vX.Y.Z and GitHub release with the DMG and the update files]
 ```
 
 CI runs on each push to `main` and on each pull request. A release runs only when a person starts it, so one release can hold many commits.
@@ -135,10 +138,12 @@ CI runs on each push to `main` and on each pull request. A release runs only whe
 2. The check job runs on Ubuntu. It stops if CI has not passed for the last commit on `main`. Then semantic-release reads the commits since the last tag and calculates the next version. If no commit needs a release, the run stops here.
 3. The build job runs on macOS in the `release` environment. This environment holds the signing secrets, and only `main` can use it.
 4. semantic-release sets the version in `package.json` and runs `pnpm dist:release`. This build uses `electron-builder.release.yml`: the Developer ID signature, the hardened runtime and the notarisation. The change to `package.json` stays on the runner.
-5. `pnpm verify:release` checks the signature, the hardened runtime and the stapled notarisation ticket. A failed check stops the release.
-6. semantic-release pushes the tag `v<version>` and makes the GitHub release with the release notes and the DMG.
+5. `pnpm verify:release` checks the signature, the hardened runtime and the stapled notarisation ticket. It also checks the update files: the ZIP, `app-update.yml` in the app and `latest-mac.yml`. A failed check stops the release.
+6. semantic-release pushes the tag `v<version>` and makes the GitHub release with the release notes and four assets: the DMG, the ZIP, the ZIP blockmap and `latest-mac.yml`.
 
-The `dry-run` mode does steps 2 to 5 and keeps the DMG as a workflow download for 7 days. It makes no tag and no release.
+The updater of each installed Bifrost reads `latest-mac.yml` of the latest release. A release without `latest-mac.yml` stops the updates of all users.
+
+The `dry-run` mode does steps 2 to 5. It keeps the four assets (the DMG, the ZIP, the ZIP blockmap and `latest-mac.yml`) as a workflow download for 7 days. It makes no tag and no release.
 
 `pnpm dist` makes a local DMG with no Developer ID signature and no notarisation.
 
