@@ -23,6 +23,14 @@
       }
     ],
     [
+      "@semantic-release/exec",
+      {
+        "verifyReleaseCmd": "echo ${nextRelease.version} > .release-version",
+        "generateNotesCmd": "node scripts/release/summary.ts",
+        "prepareCmd": "pnpm pkg set version=${nextRelease.version} && pnpm dist:release && pnpm verify:release"
+      }
+    ],
+    [
       "@semantic-release/release-notes-generator",
       {
         "preset": "conventionalcommits",
@@ -41,13 +49,6 @@
             { "type": "ci", "section": "Continuous Integration", "hidden": false }
           ]
         }
-      }
-    ],
-    [
-      "@semantic-release/exec",
-      {
-        "verifyReleaseCmd": "echo ${nextRelease.version} > .release-version",
-        "prepareCmd": "pnpm pkg set version=${nextRelease.version} && pnpm dist:release && pnpm verify:release"
       }
     ],
     [
