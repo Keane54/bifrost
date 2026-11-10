@@ -8,8 +8,12 @@ export interface Sample {
   at: number
   // All Bifrost processes, chat terminals included.
   bifrostRamMb: number
-  // The same, without the chat terminals.
+  // The same, without the chat terminals. The RAM limits and the OK text use this value (user
+  // decision, 2026-11-10): each chat window starts its own claude attach process, so the chat
+  // terminals grow with the number of chats.
   bifrostRamNoTermMb: number
+  // The RAM of the largest chat terminal, or 0 with no chat terminal.
+  largestTerminalRamMb: number
   bifrostCpuNoTerm: number
 }
 
@@ -30,6 +34,8 @@ export const LIMITS = {
   pollFailWarn: 3,
   ramProblemMb: 1536,
   ramWarnMb: 1024,
+  // One chat terminal above this RAM is a warning. It points to a problem in that one session.
+  terminalRamWarnMb: 500,
   // The trend needs samples for the full 60 minutes, so one RAM step cannot give a reason.
   trendMinSpanMs: 60 * 60_000,
   windowMs: HEALTH_WINDOW_MS,
@@ -121,16 +127,18 @@ export function healthReasons(
   // RAM of the newest sample.
   if (samples.length > 0) {
     const latest = samples.reduce((a, s) => (s.at >= a.at ? s : a))
-    const mb = latest.bifrostRamMb
+    const mb = latest.bifrostRamNoTermMb
+    const without = `Bifrost is using ${ramMbText(mb)} RAM without the chat terminals`
     if (mb > LIMITS.ramProblemMb) {
-      add(
-        'problem',
-        `Bifrost is using ${ramMbText(mb)} RAM, above the ${limitGb(LIMITS.ramProblemMb)} limit.`,
-      )
+      add('problem', `${without}, above the ${limitGb(LIMITS.ramProblemMb)} limit.`)
     } else if (mb > LIMITS.ramWarnMb) {
+      add('warning', `${without}, above the ${limitGb(LIMITS.ramWarnMb)} limit.`)
+    }
+    const term = latest.largestTerminalRamMb
+    if (term > LIMITS.terminalRamWarnMb) {
       add(
         'warning',
-        `Bifrost is using ${ramMbText(mb)} RAM, above the ${limitGb(LIMITS.ramWarnMb)} limit.`,
+        `A chat terminal is using ${ramMbText(term)} RAM, above the ${LIMITS.terminalRamWarnMb} MB limit.`,
       )
     }
   }
@@ -221,5 +229,5 @@ export function healthState(reasons: Reason[]): HealthState {
 export function okText(sample: Sample | undefined, now: number): string | null {
   if (!sample || now - sample.at > LIMITS.okSampleMaxAgeMs) return null
   const cpu = `${Math.round(sample.bifrostCpuNoTerm)}%`
-  return `Bifrost is using ${ramText(sample.bifrostRamMb)} RAM and ${cpu} CPU.`
+  return `Bifrost is using ${ramText(sample.bifrostRamNoTermMb)} RAM and ${cpu} CPU.`
 }

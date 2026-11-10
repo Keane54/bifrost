@@ -29,6 +29,8 @@ export interface Use {
 export interface BifrostUse extends Use {
   groups: ProcGroup[]
   terminals: Use
+  // The RAM of the largest chat terminal, or 0 with no chat terminal.
+  largestTerminalRamMb: number
 }
 
 export type Sessions = NonNullable<PerformanceSnapshot['sessions']>
@@ -68,6 +70,7 @@ export function bifrostUse(metrics: readonly AppMetric[], terminals: readonly Us
   return {
     cpu: shown.reduce((a, g) => a + g.cpu, 0),
     groups: shown,
+    largestTerminalRamMb: terminals.reduce((a, t) => Math.max(a, t.ramMb), 0),
     ramMb: shown.reduce((a, g) => a + g.ramMb, 0),
     terminals: { cpu: term.cpu, ramMb: term.ramMb },
   }

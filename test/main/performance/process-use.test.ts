@@ -67,7 +67,12 @@ describe('bifrostUse', () => {
       { count: 2, cpu: 4, name: 'Chat terminals', ramMb: 60 },
       { count: 2, cpu: 2, name: 'Other helpers', ramMb: 100 },
     ])
-    expect(use).toMatchObject({ cpu: 17, ramMb: 810, terminals: { cpu: 4, ramMb: 60 } })
+    expect(use).toMatchObject({
+      cpu: 17,
+      largestTerminalRamMb: 40,
+      ramMb: 810,
+      terminals: { cpu: 4, ramMb: 60 },
+    })
   })
 
   // The panel finds the chat terminal group by the shared name.
@@ -97,7 +102,12 @@ describe('bifrostUse', () => {
       ['GPU', 0],
       ['Chat terminals', 0],
     ])
-    expect(use).toMatchObject({ cpu: 3, ramMb: 200, terminals: { cpu: 0, ramMb: 0 } })
+    expect(use).toMatchObject({
+      cpu: 3,
+      largestTerminalRamMb: 0,
+      ramMb: 200,
+      terminals: { cpu: 0, ramMb: 0 },
+    })
   })
 })
 

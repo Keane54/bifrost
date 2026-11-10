@@ -794,7 +794,8 @@ describe('createPerformanceMonitor', () => {
     await vi.advanceTimersByTimeAsync(0)
     await vi.advanceTimersByTimeAsync(TICK_MS)
     const before = t.monitor.current()
-    expect(before.okText).toBe('Bifrost is using 740 MB RAM and 12% CPU.')
+    // The OK text leaves out the 40 MB of the chat terminal (user decision, 2026-11-10).
+    expect(before.okText).toBe('Bifrost is using 700 MB RAM and 12% CPU.')
     t.world.psFails = true
     const main = t.world.metrics[0]
     if (main) main.ramMb += 100
@@ -814,7 +815,7 @@ describe('createPerformanceMonitor', () => {
     t.world.psFails = false
     await vi.advanceTimersByTimeAsync(TICK_MS)
     expect(t.monitor.current().bifrost?.trend).toHaveLength(2)
-    expect(t.monitor.current().okText).toBe('Bifrost is using 840 MB RAM and 12% CPU.')
+    expect(t.monitor.current().okText).toBe('Bifrost is using 800 MB RAM and 12% CPU.')
     t.monitor.stop()
   })
 
@@ -893,8 +894,9 @@ describe('createPerformanceMonitor', () => {
       'GPU',
       'Chat terminals',
     ])
-    // The RAM check uses the total with the chat terminals.
-    t.world.procs = [{ cpu: 0, pid: 200, ppid: 100, rssMb: 500 }]
+    // The RAM limits leave out the chat terminals, but one large chat terminal is a warning (user
+    // decision, 2026-11-10).
+    t.world.procs = [{ cpu: 0, pid: 200, ppid: 100, rssMb: 520 }]
     t.world.ptys = [{ pid: 200, viewId: chat(uuid(1)) }]
     for (let i = 0; i < 3; i++) t.health.poll('sessions', 'failed')
     t.world.delay = 1500
@@ -903,11 +905,11 @@ describe('createPerformanceMonitor', () => {
     expect(snap.state).toBe('problem')
     expect(snap.reasons).toEqual([
       { level: 'problem', text: "Bifrost's main process was slow to respond (up to 1500 ms)." },
-      { level: 'warning', text: 'Bifrost is using 1,100 MB RAM, above the 1 GB limit.' },
+      { level: 'warning', text: 'A chat terminal is using 520 MB RAM, above the 500 MB limit.' },
       { level: 'warning', text: "Bifrost couldn't check for sessions 3 times in a row." },
     ])
     expect(snap.bifrost?.delayMs).toBe(1500)
-    expect(snap.okText).toBe('Bifrost is using 1.1 GB RAM and 10% CPU.')
+    expect(snap.okText).toBe('Bifrost is using 600 MB RAM and 10% CPU.')
     t.monitor.stop()
   })
 

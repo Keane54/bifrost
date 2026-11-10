@@ -25,7 +25,14 @@ function emptyLog(): HealthLogView {
 }
 
 function sample(at: number, over: Partial<Sample> = {}): Sample {
-  return { at, bifrostCpuNoTerm: 2, bifrostRamMb: 500, bifrostRamNoTermMb: 400, ...over }
+  return {
+    at,
+    bifrostCpuNoTerm: 2,
+    bifrostRamMb: 500,
+    bifrostRamNoTermMb: 400,
+    largestTerminalRamMb: 0,
+    ...over,
+  }
 }
 
 function input(over: Partial<HealthInput> = {}): HealthInput {
@@ -45,12 +52,13 @@ function reasons(over: Partial<HealthInput> = {}) {
   return healthReasons(input(over), fmt)
 }
 
-// A ramp of samples every minute, from `from` minutes ago, with a given rise in MB per hour.
-function ramp(perHour: number, spanMin: number): Sample[] {
+// A ramp of samples every minute, from `from` minutes ago, with a given rise in MB per hour. The
+// ramp starts at `base` MB.
+function ramp(perHour: number, spanMin: number, base = 400): Sample[] {
   const out: Sample[] = []
   for (let m = spanMin; m >= 0; m--) {
     const at = NOW - m * MIN
-    out.push(sample(at, { bifrostRamNoTermMb: 400 + (perHour / 60) * (spanMin - m) }))
+    out.push(sample(at, { bifrostRamNoTermMb: base + (perHour / 60) * (spanMin - m) }))
   }
   return out
 }
@@ -61,25 +69,49 @@ describe('limits', () => {
   })
 })
 
+// User decision, 2026-11-10: the RAM limits count Bifrost without the chat terminals. Each chat
+// window starts its own claude attach process, so the terminals grow with the number of chats.
 describe('RAM', () => {
-  const ram = (mb: number) => reasons({ samples: [sample(NOW, { bifrostRamMb: mb })] })
+  const ram = (mb: number) =>
+    reasons({ samples: [sample(NOW, { bifrostRamMb: mb + 300, bifrostRamNoTermMb: mb })] })
   test('1024 MB gives no reason, above 1 GB is one warning', () => {
     expect(ram(1024)).toEqual([])
     expect(ram(1025)).toEqual([
-      { level: 'warning', text: 'Bifrost is using 1,025 MB RAM, above the 1 GB limit.' },
+      {
+        level: 'warning',
+        text: 'Bifrost is using 1,025 MB RAM without the chat terminals, above the 1 GB limit.',
+      },
     ])
   })
   test('at 1.5 GB it is a warning, above it one problem that replaces the warning', () => {
     expect(ram(1536)).toEqual([
-      { level: 'warning', text: 'Bifrost is using 1,536 MB RAM, above the 1 GB limit.' },
+      {
+        level: 'warning',
+        text: 'Bifrost is using 1,536 MB RAM without the chat terminals, above the 1 GB limit.',
+      },
     ])
     expect(ram(1537)).toEqual([
-      { level: 'problem', text: 'Bifrost is using 1,537 MB RAM, above the 1.5 GB limit.' },
+      {
+        level: 'problem',
+        text: 'Bifrost is using 1,537 MB RAM without the chat terminals, above the 1.5 GB limit.',
+      },
+    ])
+  })
+  test('the chat terminals do not count toward the limits', () => {
+    const many = sample(NOW, { bifrostRamMb: 2400, bifrostRamNoTermMb: 600 })
+    expect(reasons({ samples: [many] })).toEqual([])
+  })
+  test('one chat terminal above 500 MB is one warning', () => {
+    const term = (mb: number) => reasons({ samples: [sample(NOW, { largestTerminalRamMb: mb })] })
+    expect(LIMITS.terminalRamWarnMb).toBe(500)
+    expect(term(500)).toEqual([])
+    expect(term(612.4)).toEqual([
+      { level: 'warning', text: 'A chat terminal is using 612 MB RAM, above the 500 MB limit.' },
     ])
   })
   test('the OK text rounds before it picks MB or GB', () => {
-    expect(okText(sample(NOW, { bifrostRamMb: 1023.4 }), NOW)).toContain('1023 MB')
-    expect(okText(sample(NOW, { bifrostRamMb: 1023.6 }), NOW)).toContain('1.0 GB')
+    expect(okText(sample(NOW, { bifrostRamNoTermMb: 1023.4 }), NOW)).toContain('1023 MB')
+    expect(okText(sample(NOW, { bifrostRamNoTermMb: 1023.6 }), NOW)).toContain('1.0 GB')
   })
 })
 
@@ -91,10 +123,11 @@ describe('growth', () => {
     ])
   })
   test('799 MB an hour is one warning, 801 is one problem', () => {
-    expect(reasons({ samples: ramp(799, 60) })).toEqual([
+    // The ramps start low, so their last sample stays below the 1 GB RAM limit.
+    expect(reasons({ samples: ramp(799, 60, 100) })).toEqual([
       { level: 'warning', text: "Bifrost's memory is growing by about 799 MB an hour." },
     ])
-    expect(reasons({ samples: ramp(801, 60) })).toEqual([
+    expect(reasons({ samples: ramp(801, 60, 100) })).toEqual([
       { level: 'problem', text: "Bifrost's memory is growing by about 801 MB an hour." },
     ])
   })
@@ -298,23 +331,27 @@ describe('state and text', () => {
     expect(reasons()).toEqual([])
     expect(healthState([])).toBe('ok')
     expect(okText(undefined, NOW)).toBeNull()
-    expect(okText(sample(NOW, { bifrostCpuNoTerm: 2.4, bifrostRamMb: 712 }), NOW)).toBe(
+    expect(okText(sample(NOW, { bifrostCpuNoTerm: 2.4, bifrostRamNoTermMb: 712 }), NOW)).toBe(
       'Bifrost is using 712 MB RAM and 2% CPU.',
     )
-    expect(okText(sample(NOW, { bifrostCpuNoTerm: 0.4, bifrostRamMb: 1331 }), NOW)).toBe(
+    expect(okText(sample(NOW, { bifrostCpuNoTerm: 0.4, bifrostRamNoTermMb: 1331 }), NOW)).toBe(
       'Bifrost is using 1.3 GB RAM and 0% CPU.',
     )
   })
   test('the OK text needs a sample from the last 60 s', () => {
     expect(LIMITS.okSampleMaxAgeMs).toBe(60_000)
-    expect(okText(sample(NOW - 60_000), NOW)).toBe('Bifrost is using 500 MB RAM and 2% CPU.')
+    expect(okText(sample(NOW - 60_000), NOW)).toBe('Bifrost is using 400 MB RAM and 2% CPU.')
     expect(okText(sample(NOW - 60_001), NOW)).toBeNull()
   })
   test('problem reasons come before warning reasons', () => {
     const log = emptyLog()
     log.liveStartFailedAt = NOW
     log.crashes = [{ at: NOW - MIN, kind: 'gpu', reason: 'x' }]
-    const out = reasons({ fpsLow10s: true, log, samples: [sample(NOW, { bifrostRamMb: 1100 })] })
+    const out = reasons({
+      fpsLow10s: true,
+      log,
+      samples: [sample(NOW, { bifrostRamNoTermMb: 1100 })],
+    })
     expect(out.map(r => r.level)).toEqual(['problem', 'warning', 'warning', 'warning'])
     expect(healthState(out)).toBe('problem')
     expect(healthState(out.filter(r => r.level === 'warning'))).toBe('warning')

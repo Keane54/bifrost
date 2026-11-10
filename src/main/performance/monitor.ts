@@ -386,6 +386,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       bifrostCpuNoTerm: use.cpu - use.terminals.cpu,
       bifrostRamMb: use.ramMb,
       bifrostRamNoTermMb: use.ramMb - use.terminals.ramMb,
+      largestTerminalRamMb: use.largestTerminalRamMb,
     })
     st.trend.push({ at: now, cpu: use.cpu, ramMb: use.ramMb })
     // Remove a sample only when the next sample is also at the start of the history or before it.
