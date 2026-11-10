@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
     "composite": true,
-    "jsx": "react-jsx",
-    "paths": {
-      "@renderer/*": ["src/renderer/src/*"]
-    }
+    "jsx": "react-jsx"
   },
   "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
   "include": [
