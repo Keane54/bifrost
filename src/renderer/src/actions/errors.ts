@@ -106,6 +106,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: unknown model': "Bifrost doesn't know that model.",
   'refused: unknown permission mode': "Bifrost doesn't know that permission mode.",
   'refused: unknown pull request': "That pull request isn't in the list any more.",
+  'refused: unknown release': "That release isn't in the list of release notes.",
   'refused: unknown service': "Bifrost doesn't know that service.",
   'refused: unknown session': REASON_GONE,
 }

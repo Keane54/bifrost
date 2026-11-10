@@ -1,5 +1,6 @@
 // The section of the Settings panel, and a way to open the panel at a section.
-// It also asks the setup dialog to show the introduction again (spec 11.1).
+// It also asks the setup dialog to show the introduction again (spec 11.1), and asks the release
+// notes view to open (Settings > Updates).
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import { useWmControls } from '../wm/context'
 
@@ -14,6 +15,10 @@ export interface SettingsNav {
   introRequest: number
   // Ask the setup dialog to show the introduction again.
   showIntro(): void
+  // The number of the last request to show the release notes. 0 means no request.
+  releaseNotesRequest: number
+  // Ask the release notes view to open with the last releases.
+  showReleaseNotes(): void
 }
 
 const SettingsNavContext = createContext<SettingsNav | null>(null)
@@ -27,6 +32,7 @@ export function SettingsNavProvider({
   const { dispatch } = useWmControls()
   const [section, setSection] = useState<SettingsSection>('general')
   const [introRequest, setIntroRequest] = useState(0)
+  const [releaseNotesRequest, setReleaseNotesRequest] = useState(0)
   const open = useCallback(
     (next?: SettingsSection) => {
       if (next !== undefined) setSection(next)
@@ -35,9 +41,18 @@ export function SettingsNavProvider({
     [dispatch],
   )
   const showIntro = useCallback(() => setIntroRequest(n => n + 1), [])
+  const showReleaseNotes = useCallback(() => setReleaseNotesRequest(n => n + 1), [])
   const value = useMemo(
-    () => ({ introRequest, open, section, setSection, showIntro }),
-    [introRequest, open, section, showIntro],
+    () => ({
+      introRequest,
+      open,
+      releaseNotesRequest,
+      section,
+      setSection,
+      showIntro,
+      showReleaseNotes,
+    }),
+    [introRequest, open, releaseNotesRequest, section, showIntro, showReleaseNotes],
   )
   return <SettingsNavContext value={value}>{children}</SettingsNavContext>
 }

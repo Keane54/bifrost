@@ -1,0 +1,42 @@
+[
+  {
+    "body": "A draft.\n\n### Features\n\n* a draft feature ([aaaaaaa](https://github.com/Keane54/bifrost/commit/aaaaaaa))\n",
+    "draft": true,
+    "html_url": "https://github.com/Keane54/bifrost/releases/tag/v0.6.0",
+    "prerelease": false,
+    "published_at": "2026-11-13T10:00:00Z",
+    "tag_name": "v0.6.0"
+  },
+  {
+    "body": "### Features\n\n* a beta feature ([bbbbbbb](https://github.com/Keane54/bifrost/commit/bbbbbbb))\n",
+    "draft": false,
+    "html_url": "https://github.com/Keane54/bifrost/releases/tag/v0.5.1-beta.1",
+    "prerelease": true,
+    "published_at": "2026-11-12T10:00:00Z",
+    "tag_name": "v0.5.1-beta.1"
+  },
+  {
+    "body": "Bifrost now shows **What's new** after an update. <b>Tags</b> show as text.\n\n## [0.5.0](https://github.com/Keane54/bifrost/compare/v0.4.0...v0.5.0) (2026-11-11)\n\n### Features\n\n* **settings:** add a `Release notes` button ([1234567](https://github.com/Keane54/bifrost/commit/1234567))\n* show the notes of each release ([2345678](https://github.com/Keane54/bifrost/commit/2345678))\n\n### Performance Improvements\n\n* **chat:** draw the terminal faster ([3456789](https://github.com/Keane54/bifrost/commit/3456789))\n\n### Tests\n\n* **smoke:** add the release notes check ([4567890](https://github.com/Keane54/bifrost/commit/4567890))\n",
+    "draft": false,
+    "html_url": "https://github.com/Keane54/bifrost/releases/tag/v0.5.0",
+    "prerelease": false,
+    "published_at": "2026-11-11T09:00:00Z",
+    "tag_name": "v0.5.0"
+  },
+  {
+    "body": "## [0.4.0](https://github.com/Keane54/bifrost/compare/v0.3.0...v0.4.0) (2026-11-10)\n\n### Features\n\n* **overview:** show the approximate mark on the session cost ([2e20aca](https://github.com/Keane54/bifrost/commit/2e20aca6b08862d14d9665b718c5dcf4b48ff975))\n* **performance:** add a Clear button and write health.log ([6551831](https://github.com/Keane54/bifrost/commit/655183133cfb0e90452d016741f628c18a6ca2f7))\n* **performance:** add clear, health log lines and the clearable flag ([56be489](https://github.com/Keane54/bifrost/commit/56be489a3b5d4444564ddedcbf83b75b5b781db8))\n* **usage:** add the monitor and the state file of the usage notification ([8f553e4](https://github.com/Keane54/bifrost/commit/8f553e419bf48f9f6043766c1f0dfcd859e4fc3c))\n* **usage:** add the rules of the usage notification ([2d182b9](https://github.com/Keane54/bifrost/commit/2d182b9ea811fe6824b5344bdfc50ab0b8b9dda3))\n* **usage:** read the extra usage flag of the account answer ([d2eaf48](https://github.com/Keane54/bifrost/commit/d2eaf48aadbd8a292726c2b98f97ea9ab7c220c1))\n* **usage:** show a notification when a usage limit gets to 90% ([8954064](https://github.com/Keane54/bifrost/commit/89540644c324fa5286a4890020cac50eda7b881c))\n\n### Bug Fixes\n\n* **performance:** run the health model once and keep log lines single ([c7b93ce](https://github.com/Keane54/bifrost/commit/c7b93ce14c09c43c0b08de1112060fa887a144a9))\n* **usage:** compare the rounded percent with the threshold ([d1be278](https://github.com/Keane54/bifrost/commit/d1be278bb6f6062e726e333468b2ff79648111e5))\n* **usage:** follow a later reset time in the same period ([0a8c8ee](https://github.com/Keane54/bifrost/commit/0a8c8eed8e535fecdda3ec250028e17f3160a39a))\n* **usage:** ignore a kept reset time far in the future ([aa1895b](https://github.com/Keane54/bifrost/commit/aa1895bbc508715a8047a26b12c8e77ef2f45851))\n* **usage:** keep a known extra usage flag of the account values ([1630d8d](https://github.com/Keane54/bifrost/commit/1630d8d5235afe24643e99b7d764c358821d1f40))\n\n### Documentation\n\n* **readme:** add the usage notification ([8154fe3](https://github.com/Keane54/bifrost/commit/8154fe37b95b624f00a55d14bf65c091ae61bd19))\n\n### Code Refactoring\n\n* **log:** share the rotating log of the updater ([cb9d518](https://github.com/Keane54/bifrost/commit/cb9d51875df27912aba2ea3a6bcbe8509122f6e3))\n* **usage:** share the source choice and the time helpers ([0e166ce](https://github.com/Keane54/bifrost/commit/0e166ce6c98196852e759e8c5995e9d8c5476a63))\n\n### Tests\n\n* **smoke:** check that a clean run shows no Clear button ([a4c7750](https://github.com/Keane54/bifrost/commit/a4c77506ae23f2520f09da32ef72711de74590f8))\n* **usage:** keep the changed test lines at 100 characters or less ([b0923a3](https://github.com/Keane54/bifrost/commit/b0923a39a0747374ceaaf8e38f41ae2acadfe2ca))\n* **usage:** make the em dash check without the character in the source ([16bc800](https://github.com/Keane54/bifrost/commit/16bc80051c2acf7d6565b709a5bb8f6a4a32c76f))\n",
+    "draft": false,
+    "html_url": "https://github.com/Keane54/bifrost/releases/tag/v0.4.0",
+    "prerelease": false,
+    "published_at": "2026-11-10T18:10:26Z",
+    "tag_name": "v0.4.0"
+  },
+  {
+    "body": "## [0.3.1](https://github.com/Keane54/bifrost/compare/v0.3.0...v0.3.1) (2026-11-09)\n\n### Documentation\n\n* **readme:** fix a link ([5678901](https://github.com/Keane54/bifrost/commit/5678901))\n",
+    "draft": false,
+    "html_url": "https://github.com/Keane54/bifrost/releases/tag/v0.3.1",
+    "prerelease": false,
+    "published_at": "2026-11-09T08:00:00Z",
+    "tag_name": "v0.3.1"
+  }
+]
