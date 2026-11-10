@@ -188,6 +188,10 @@ export interface BifrostApi {
     // The frame rate of the panel, once a second while it shows and the window has focus. This
     // rejects for a value that is not a finite number from 0 to 1000.
     fps(value: number): Promise<void>
+    // Clear the past events from the headline: crashes, failed saves, a failed start of Live
+    // details and failures in a row of the polls. The live measurements stay. The main process
+    // then sends a new snapshot. The health.log file does not change.
+    clear(): Promise<void>
   }
   // The updater (updater design). It runs only in a release build. In pnpm dev, in a test home and
   // in a local build, the snapshot has available false, and the other calls do nothing.

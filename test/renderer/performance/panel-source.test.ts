@@ -14,6 +14,17 @@ const SIDE_BAR = read('wm/SideBar.tsx')
 const WM = read('wm/WindowManager.tsx')
 
 describe('PerformancePanel source', () => {
+  it('shows a Clear button under the reasons only while snapshot.clearable is true', () => {
+    expect(PANEL).toMatch(/snapshot\.clearable && \(\s*<button/)
+    expect(PANEL).toMatch(/data-perf-clear=\{true\}[\s\S]*?>\s*Clear\s*<\/button>/)
+    // The button comes after the list of reasons.
+    expect(PANEL.indexOf('data-perf-reasons')).toBeLessThan(PANEL.indexOf('data-perf-clear'))
+  })
+
+  it('calls performance.clear on a click and catches a rejection', () => {
+    expect(PANEL).toMatch(/window\.bifrost\.performance\s*\.clear\(\)\s*\.catch\(/)
+  })
+
   it('shows each reason as its own item with a 6 px gap (user decision, 2026-11-09)', () => {
     expect(PANEL).toMatch(/className='[^']*\bgap-1\.5\b[^']*'\s+data-perf-reasons/)
   })

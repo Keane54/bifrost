@@ -72,6 +72,14 @@ const KEY_VALUES = 'grid grid-cols-[130px_1fr] gap-y-0.5'
 const orDash = <T,>(value: T | null, text: (v: T) => string): string =>
   value === null ? '-' : text(value)
 
+// Ask the main process to clear the past events. A failed call changes nothing in the panel, so
+// the rejection only goes to the console.
+function clearPast(): void {
+  window.bifrost.performance.clear().catch(error => {
+    console.error('Bifrost cannot clear the performance events.', error)
+  })
+}
+
 function Headline({ snapshot }: { snapshot: Snapshot }): React.JSX.Element {
   // The Checking state shows with no sample, or with a sample older than 60 s. The headline never
   // says OK without data (design section 5.1).
@@ -105,6 +113,16 @@ function Headline({ snapshot }: { snapshot: Snapshot }): React.JSX.Element {
             </li>
           ))}
         </ul>
+      )}
+      {snapshot.clearable && (
+        <button
+          className='mt-2 ml-0.5 h-5 border border-panel-edge px-2 text-xs text-text hover:bg-hover hover:text-text-strong active:bg-accent/12'
+          data-perf-clear={true}
+          onClick={clearPast}
+          type='button'
+        >
+          Clear
+        </button>
       )}
     </div>
   )

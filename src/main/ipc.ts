@@ -66,6 +66,7 @@ import { createLiveControl, type LiveControl } from './live/live-control'
 import { createLiveServer } from './live/live-server'
 import { modSourceDir } from './live/mod-folder'
 import { createPluginCli } from './live/plugin-cli'
+import { createRotatingLog } from './log/rotating-log'
 import {
   checkFps,
   checkView,
@@ -547,6 +548,13 @@ function startPerformance(
   ipcMain.handle('performance:fps', (e, value: unknown) =>
     fromPage(e, async () => monitor.fps(checkFps(value))),
   )
+  // Clear the past events, then send a new snapshot at once. The live measurements stay.
+  ipcMain.handle('performance:clear', e =>
+    fromPage(e, async () => {
+      health.clear()
+      monitor.refresh()
+    }),
+  )
 }
 
 // Load the store and start the registry service.
@@ -634,9 +642,18 @@ export function registerIpc(home: TestHome | null = null): void {
   registered = true
   testHome = home
   // While the Mac is offline, a failed network poll counts as no data (design section 6).
+  // The health log also writes health.log in the logs folder. Clear does not touch that file.
+  const healthFile = createRotatingLog(app.getPath('logs'), 'health.log', {
+    appendFile,
+    mkdir,
+    now: () => Date.now(),
+    rename,
+    stat,
+  })
   const health = createHealthLog(
     () => Date.now(),
     () => net.isOnline(),
+    line => void healthFile.line(line),
   )
   healthLog = health
   if (home === null) {

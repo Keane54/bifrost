@@ -64,6 +64,7 @@ const api: BifrostApi = {
     uninstall: () => invoke('live:uninstall'),
   },
   performance: {
+    clear: () => invoke('performance:clear'),
     fps: value => invoke('performance:fps', value),
     onUpdate: cb => subscribe('performance:update', cb),
     snapshot: () => invoke('performance:snapshot'),
