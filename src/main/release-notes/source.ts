@@ -8,8 +8,10 @@ import { cappedText, type FetchFn } from '../service-status/statuspage'
 import { UPDATE_OWNER, UPDATE_REPO } from '../updates/updater'
 import { MAX_RELEASES, parseReleases, RELEASE_URL_PREFIX } from './parse'
 
-export const RELEASES_API = `https://api.github.com/repos/${UPDATE_OWNER}/${UPDATE_REPO}/releases?per_page=${MAX_RELEASES}`
-export const RELEASES_PAGE = `https://github.com/${UPDATE_OWNER}/${UPDATE_REPO}/releases`
+const REPO_PATH = `${UPDATE_OWNER}/${UPDATE_REPO}`
+const API_BASE = 'https://api.github.com/repos'
+export const RELEASES_API = `${API_BASE}/${REPO_PATH}/releases?per_page=${MAX_RELEASES}`
+export const RELEASES_PAGE = `https://github.com/${REPO_PATH}/releases`
 export const FETCH_TIMEOUT_MS = 10_000
 // Bifrost reads at most this many bytes of one answer. Ten release bodies have a few tens of kB.
 export const MAX_BODY_BYTES = 2_000_000

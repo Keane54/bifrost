@@ -24,10 +24,8 @@ export function releaseSummary(value: string | undefined): SummaryResult {
   }
   const count = [...summary].length
   if (count > SUMMARY_MAX) {
-    return {
-      message: `The release summary has ${count} characters. The limit is ${SUMMARY_MAX}. Write a shorter summary.`,
-      ok: false,
-    }
+    const limit = `The limit is ${SUMMARY_MAX}. Write a shorter summary.`
+    return { message: `The release summary has ${count} characters. ${limit}`, ok: false }
   }
   return { ok: true, text: `${summary}\n\n` }
 }

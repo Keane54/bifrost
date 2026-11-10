@@ -55,9 +55,10 @@ export interface Version {
 }
 
 const NUMBER = '(0|[1-9]\\d*)'
-const VERSION = new RegExp(
-  `^v?${NUMBER}\\.${NUMBER}\\.${NUMBER}(?:-([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?(?:\\+[0-9A-Za-z.-]+)?$`,
-)
+// The pre-release part, for example "-beta.2", and the build part, for example "+abc".
+const PRE = '(?:-([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?'
+const BUILD = '(?:\\+[0-9A-Za-z.-]+)?'
+const VERSION = new RegExp(`^v?${NUMBER}\\.${NUMBER}\\.${NUMBER}${PRE}${BUILD}$`)
 
 // The parts of a semver version, with or without a "v". A text that is not a version gives null.
 export function parseVersion(text: string): Version | null {

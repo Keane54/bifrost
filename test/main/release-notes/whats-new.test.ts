@@ -31,7 +31,7 @@ describe('createWhatsNew', () => {
     expect(store.get()).toEqual({ lastSeenVersion: '0.5.0' })
   })
 
-  it("stores the version before it opens What's new, so a failed load cannot open it again", async () => {
+  it('stores the version first, so a failed load cannot open it again', async () => {
     const { store, whatsNew } = setup('0.4.0', true)
     const start = await whatsNew.take()
     expect(start).toEqual({ since: '0.4.0', version: '0.5.0' })
@@ -49,7 +49,7 @@ describe('createWhatsNew', () => {
     expect(store.set).not.toHaveBeenCalled()
   })
 
-  it('gives the start only to the first call, so a reload of the page does not open it again', async () => {
+  it('gives the start only to the first call, so a page reload cannot open it again', async () => {
     const { openStore, whatsNew } = setup('0.4.0', true)
     const [first, second] = await Promise.all([whatsNew.take(), whatsNew.take()])
     expect(first).toEqual({ since: '0.4.0', version: '0.5.0' })

@@ -35,7 +35,8 @@ describe('the release notes wiring in ipc.ts', () => {
 
   it('reads GitHub with net.fetch, and a file of the test home in a test home', () => {
     expect(flat(ipc)).toContain(
-      "fetch: home ? fileFetch(join(home.home, 'github-releases.json')) : (url, init) => net.fetch(url, init)",
+      "fetch: home ? fileFetch(join(home.home, 'github-releases.json')) : " +
+        '(url, init) => net.fetch(url, init)',
     )
   })
 
@@ -51,11 +52,13 @@ describe('the release notes wiring in ipc.ts', () => {
       "ipcMain.handle('release-notes:list', e => fromPage(e, () => releaseNotes.list()))",
     )
     expect(text).toContain(
-      "ipcMain.handle('release-notes:whats-new', e => fromPage(e, async () => (await whatsNew?.take()) ?? null)",
+      "ipcMain.handle('release-notes:whats-new', e => " +
+        'fromPage(e, async () => (await whatsNew?.take()) ?? null)',
     )
     // The page sends a version or null. The main process finds the URL.
     expect(text).toContain(
-      "ipcMain.handle('release-notes:open', (e, version: unknown) => fromPage(e, async () => shell.openExternal(releaseNotes.urlOf(version)))",
+      "ipcMain.handle('release-notes:open', (e, version: unknown) => " +
+        'fromPage(e, async () => shell.openExternal(releaseNotes.urlOf(version)))',
     )
   })
 

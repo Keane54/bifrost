@@ -15,22 +15,30 @@ const V040 = JSON.parse(
   readFileSync(join(__dirname, '../../fixtures/releases/v0.4.0.json'), 'utf8'),
 ) as Record<string, unknown> & { body: string }
 
-const SUMMARY =
-  'Bifrost now warns you before you reach a usage limit, and the Performance panel has a Clear button.'
+const SUMMARY = [
+  'Bifrost now warns you before you reach a usage limit,',
+  'and the Performance panel has a Clear button.',
+].join(' ')
 
-const WITH_SUMMARY = `${SUMMARY}
+const REPO = 'https://github.com/Keane54/bifrost'
+const SHA = '89540644c324fa5286'
 
-## [0.5.0](https://github.com/Keane54/bifrost/compare/v0.4.0...v0.5.0) (2026-11-12)
-
-### Features
-
-* **usage:** show a notification when a usage limit gets to 90% ([8954064](https://github.com/Keane54/bifrost/commit/89540644c324fa5286a4890020cac50eda7b881c))
-* add the What's new view ([1234567](https://github.com/Keane54/bifrost/commit/1234567aaaa))
-
-### Chores
-
-* **deps:** update electron ([abcdef0](https://github.com/Keane54/bifrost/commit/abcdef0))
-`
+// A body as semantic-release writes it with a summary: the summary, a blank line, then the notes.
+const WITH_SUMMARY = [
+  SUMMARY,
+  '',
+  `## [0.5.0](${REPO}/compare/v0.4.0...v0.5.0) (2026-11-12)`,
+  '',
+  '### Features',
+  '',
+  `* **usage:** show a notification when a usage limit gets to 90% ([8954064](${REPO}/c/${SHA}))`,
+  `* add the What's new view ([1234567](${REPO}/commit/1234567aaaa))`,
+  '',
+  '### Chores',
+  '',
+  `* **deps:** update electron ([abcdef0](${REPO}/commit/abcdef0))`,
+  '',
+].join('\n')
 
 describe('splitBody', () => {
   it('reads each section and item of the real v0.4.0 body', () => {
@@ -78,7 +86,7 @@ describe('splitBody', () => {
   it('drops the closes part after the commit link, and keeps an item with no link', () => {
     const body = [
       '### Bug Fixes',
-      '* **chat:** keep the scroll ([abc1234](https://x/commit/abc1234)), closes [#12](https://x/12)',
+      '* **chat:** keep the scroll ([abc1234](https://x/c/abc1234)), closes [#12](https://x/12)',
       '- a line with a dash and no link',
     ].join('\n')
     expect(splitBody(body).sections[0]?.items).toEqual([
