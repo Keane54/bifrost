@@ -62,6 +62,9 @@ test('a test run shows the Updates section in the not available form', async () 
     expect(await realFiles()).toEqual(before)
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
     expect(await mtimeOf(join(testHome, 'logs', 'updater.log'))).toBe('missing')
+    // The installed Bifrost of the user can write the real updater.log during the run, for
+    // example at its hourly check. Then this guard fails with no fault in the test app. Run the
+    // test again.
     expect(await mtimeOf(REAL_UPDATER_LOG)).toBe(logBefore)
   } catch (err) {
     await test.info().attach('app-output.txt', {
