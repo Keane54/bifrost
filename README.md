@@ -44,6 +44,7 @@ Built with [Electron](https://www.electronjs.org/), [React](https://react.dev/) 
 - A session that a terminal app owns, for example Warp, shows its status only. With the Take control action, you can move the session to the background service of Claude Code.
 - A yellow box or a red box flashes on a session that needs you. A macOS notification and a sound are optional.
 - Live details is an optional mod for Claude Code. It sends live events and usage data to Bifrost. Then Bifrost shows the model, the cost and the context use of each session. Bifrost asks about Live details at the first start.
+- When the 5-hour limit or the 7-day limit gets to 90%, Bifrost shows a macOS notification. Each limit gives one notification in each reset period. When extra usage is on, the notification warns you that Claude Code can spend real money after 100%. A click on the notification opens the Usage HUD.
 - Bifrost updates itself. It checks GitHub for a new version and downloads it. When the update is ready, a button shows above Layouts in the side bar.
 
 ## Panels
