@@ -1,10 +1,6 @@
 {
   "dependencies": {
     "@electron-toolkit/utils": "4.0.0",
-    "@fontsource/geist-mono": "5.3.0",
-    "@xterm/addon-fit": "0.11.0",
-    "@xterm/addon-webgl": "0.19.0",
-    "@xterm/xterm": "6.0.0",
     "electron-updater": "6.8.11",
     "node-pty": "1.1.0"
   },
@@ -15,6 +11,7 @@
     "@commitlint/cli": "21.2.4",
     "@commitlint/config-conventional": "21.2.4",
     "@electron-toolkit/tsconfig": "2.0.0",
+    "@fontsource/geist-mono": "5.3.0",
     "@playwright/test": "1.65.0",
     "@semantic-release/commit-analyzer": "13.0.1",
     "@semantic-release/exec": "7.1.0",
@@ -27,6 +24,9 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.3.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-webgl": "0.19.0",
+    "@xterm/xterm": "6.0.0",
     "conventional-changelog-conventionalcommits": "9.3.1",
     "electron": "45.2.3",
     "electron-builder": "26.18.0",

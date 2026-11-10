@@ -115,18 +115,6 @@ importers:
       '@electron-toolkit/utils':
         specifier: 4.0.0
         version: 4.0.0(electron@45.2.3(supports-color@7.2.0))
-      '@fontsource/geist-mono':
-        specifier: 5.3.0
-        version: 5.3.0
-      '@xterm/addon-fit':
-        specifier: 0.11.0
-        version: 0.11.0
-      '@xterm/addon-webgl':
-        specifier: 0.19.0
-        version: 0.19.0(patch_hash=aee3e3d6ae5ee7af3274c4cf9b4b5dacd364d55a4a6c2478978a3adeba891a2e)
-      '@xterm/xterm':
-        specifier: 6.0.0
-        version: 6.0.0
       electron-updater:
         specifier: 6.8.11
         version: 6.8.11(supports-color@7.2.0)
@@ -149,6 +137,9 @@ importers:
       '@electron-toolkit/tsconfig':
         specifier: 2.0.0
         version: 2.0.0(@types/node@24.19.2)
+      '@fontsource/geist-mono':
+        specifier: 5.3.0
+        version: 5.3.0
       '@playwright/test':
         specifier: 1.65.0
         version: 1.65.0
@@ -185,6 +176,15 @@ importers:
       '@vitejs/plugin-react':
         specifier: 6.3.0
         version: 6.3.0(vite@8.3.7(@types/node@24.19.2)(jiti@2.7.0))
+      '@xterm/addon-fit':
+        specifier: 0.11.0
+        version: 0.11.0
+      '@xterm/addon-webgl':
+        specifier: 0.19.0
+        version: 0.19.0(patch_hash=aee3e3d6ae5ee7af3274c4cf9b4b5dacd364d55a4a6c2478978a3adeba891a2e)
+      '@xterm/xterm':
+        specifier: 6.0.0
+        version: 6.0.0
       conventional-changelog-conventionalcommits:
         specifier: 9.3.1
         version: 9.3.1

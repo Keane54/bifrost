@@ -6,6 +6,7 @@ directories:
 files:
   - out/**
   - resources/**
+  - '!resources/icon-dev.png'
   - '!resources/live-mod/tests/**'
   - '!resources/live-mod/tsconfig.json'
   - '!resources/live-mod/.claude-plugin/types/**'
@@ -15,6 +16,10 @@ files:
 asarUnpack:
   - resources/**
   - '**/node_modules/node-pty/**'
+# Keep only the English locale folders (.lproj) of Electron. The app text is English. electron-builder
+# also keeps each folder whose name starts with "en_", for example en_GB.lproj.
+electronLanguages:
+  - en
 mac:
   target:
     - target: dmg
@@ -32,5 +37,10 @@ dmg:
   # https://github.com/Keane54/bifrost/releases/latest/download/Bifrost-arm64.dmg
   # (README, Install) always gets the DMG of the latest release.
   artifactName: ${productName}-arm64.${ext}
+  # bzip2 compression. It is the smallest format that electron-builder 26 accepts. ULMO (lzma) is
+  # smaller, but the schema of electron-builder 26 refuses it. macOS 10.4 and later open UDBZ.
+  # The ZIP keeps the default Deflate level. "compression: maximum" made the ZIP only 0.2 MB
+  # smaller, and pnpm dist then took 3 times longer.
+  format: UDBZ
 npmRebuild: false
 publish: null

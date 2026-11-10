@@ -1,11 +1,18 @@
 name: Release
 
 # A person starts a release by hand (user decision, 2026-11-10): Actions > Release > Run workflow
-# on main, or "gh workflow run release.yml". So one release can hold many commits, and the slow
-# signed build runs only when a new DMG is wanted. CI still runs on each push.
+# on main, or "gh workflow run release.yml -f summary='<text>'". So one release can hold many
+# commits, and the slow signed build runs only when a new DMG is wanted. CI still runs on each
+# push.
 on:
   workflow_dispatch:
     inputs:
+      # The summary is required in each mode (user decision, 2026-11-10). It goes at the top of the
+      # release notes (scripts/release/summary.ts). The app shows it in What's new.
+      summary:
+        description: A short summary for the release notes
+        type: string
+        required: true
       mode:
         description: >-
           release: publish the next version with a signed DMG and the update files. dry-run:
@@ -44,6 +51,37 @@ jobs:
       version: ${{ steps.next.outputs.version }}
 
     steps:
+      # GitHub accepts a required summary of only spaces. So this step checks the summary before
+      # each other step. scripts/release/summary.ts checks the same rules again in semantic-release.
+      # The summary comes only through the env, so the shell never runs it as code.
+      - name: Check the release summary
+        env:
+          RELEASE_SUMMARY: ${{ inputs.summary }}
+          # Count characters, not bytes.
+          LC_ALL: C.UTF-8
+        run: |
+          limit=600
+          summary="$RELEASE_SUMMARY"
+          # Remove the white space at the start and at the end.
+          summary="${summary#"${summary%%[![:space:]]*}"}"
+          summary="${summary%"${summary##*[![:space:]]}"}"
+          if [ -z "$summary" ]; then
+            echo "::error::The release summary is empty. Type a short summary of the release."
+            exit 1
+          fi
+          if [ "${#summary}" -gt "$limit" ]; then
+            echo "::error::The release summary has ${#summary} characters. The limit is $limit."
+            exit 1
+          fi
+          # The release notes use "#" for their headings. So no line can start with "#", also
+          # after spaces. A line break goes before the summary, so the check finds the first line.
+          heading=$'\n''[[:blank:]]*#'
+          if [[ $'\n'"$summary" =~ $heading ]]; then
+            echo '::error::A line of the release summary starts with "#". Remove the "#".'
+            exit 1
+          fi
+          echo "The release summary has ${#summary} characters."
+
       - name: Checkout code
         uses: actions/checkout@v7.0.1
         with:
@@ -83,11 +121,13 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       # The exec plugin writes the next version to .release-version (.releaserc.json). With no
-      # releasable commit, the file does not exist and the version stays empty.
+      # releasable commit, the file does not exist and the version stays empty. The dry run also
+      # makes the release notes, so it runs the summary script.
       - name: Find the next version
         id: next
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SUMMARY: ${{ inputs.summary }}
         run: |
           rm -f .release-version
           pnpm exec semantic-release --dry-run
@@ -189,6 +229,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          RELEASE_SUMMARY: ${{ inputs.summary }}
 
       # A dry run uses the next version, or the last version when no release is due.
       - name: Dry run build

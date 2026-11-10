@@ -89,6 +89,9 @@ import { SessionRegistry } from './registry/registry'
 import { RegistryService, SERVICE_TIMING, type ServiceDeps } from './registry/service'
 import { openStore } from './registry/store-file'
 import { readProcessTable } from './registry/terminal-app'
+import { createReleaseNotesSource, fileFetch } from './release-notes/source'
+import { openReleaseNotesStore, releaseNotesFile } from './release-notes/state-store'
+import { createWhatsNew } from './release-notes/whats-new'
 import { createGh, type Gh } from './reviews/gh'
 import { openReviewsStateStore, reviewsStateFile } from './reviews/state-store'
 import {
@@ -786,18 +789,42 @@ export function registerIpc(home: TestHome | null = null): void {
   const gh = createGh({ env: async () => childEnv(await loginEnv, { pty: false }), exec: execFile })
   const reviews = startReviews(paths.bifrostHome, gh, settings, health)
   startPerformance(home, paths.bifrostHome, gh, health)
-  // The updater runs only in a release build: packaged, with the real home, and with the
-  // app-update.yml file of the release config. So pnpm dev, a test home and a local build never
-  // check for updates.
-  if (
-    app.isPackaged &&
-    home === null &&
-    existsSync(join(process.resourcesPath, 'app-update.yml'))
-  ) {
+  // A release build is packaged, has the real home, and has the app-update.yml file of the release
+  // config. Only a release build runs the updater and opens What's new by itself. So pnpm dev, a
+  // test home and a local build never check for updates and never open What's new by themselves.
+  const releaseBuild =
+    app.isPackaged && home === null && existsSync(join(process.resourcesPath, 'app-update.yml'))
+  if (releaseBuild) {
     startUpdater(settings, health).catch(err =>
       console.error('Bifrost cannot start the updater.', err),
     )
   }
+  // The release notes (What's new and Settings > Updates > Release notes). The source reads GitHub
+  // only when a view opens. A test home reads the file github-releases.json of the test home, so a
+  // test never calls GitHub.
+  const releaseNotes = createReleaseNotesSource({
+    fetch: home
+      ? fileFetch(join(home.home, 'github-releases.json'))
+      : (url, init) => net.fetch(url, init),
+    log: line => console.error(line),
+    now: () => Date.now(),
+  })
+  const whatsNew = releaseBuild
+    ? createWhatsNew({
+        openStore: () => openReleaseNotesStore(releaseNotesFile(app.getPath('userData'))),
+        setupDone: async () => (await settings).get().setupDone,
+        version: app.getVersion(),
+      })
+    : null
+  ipcMain.handle('release-notes:list', e => fromPage(e, () => releaseNotes.list()))
+  // The page asks one time after it loads. Only the first call can open What's new.
+  ipcMain.handle('release-notes:whats-new', e =>
+    fromPage(e, async () => (await whatsNew?.take()) ?? null),
+  )
+  // The page sends a version or null. The main process finds the URL, so the page never gives one.
+  ipcMain.handle('release-notes:open', (e, version: unknown) =>
+    fromPage(e, async () => shell.openExternal(releaseNotes.urlOf(version))),
+  )
   ipcMain.handle('settings:get', e => fromPage(e, async () => (await settings).get()))
   // The key recorder starts or ends. A value that is not a boolean is refused.
   ipcMain.handle('settings:recording', (e, on: unknown) =>

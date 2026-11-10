@@ -20,6 +20,7 @@ import {
   PerformanceDetailsContext,
   usePerformanceReport,
 } from '../performance/use-performance'
+import ReleaseNotesDialog from '../release-notes/ReleaseNotesDialog'
 import type { History } from '../sessions/history'
 import { HistoryProvider } from '../sessions/history-context'
 import { LiveProvider } from '../settings/live-context'
@@ -713,6 +714,8 @@ export default function WindowManager(): React.JSX.Element {
                 </HistoryProvider>
                 {/* The setup dialog at the first start (spec 11.1). */}
                 <SetupDialog />
+                {/* What's new after an update, and the release notes of Settings > Updates. */}
+                <ReleaseNotesDialog />
               </LiveProvider>
             </SettingsNavProvider>
           </LayoutMenuContext>

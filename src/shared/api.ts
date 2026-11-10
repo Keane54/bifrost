@@ -1,5 +1,6 @@
 import type { DirInfo, NewSessionSpec } from './new-session'
 import type { PerformanceSnapshot } from './performance'
+import type { ReleaseNotesResult, WhatsNewStart } from './release-notes'
 import type { ReviewsSnapshot } from './reviews'
 import type { Settings, SettingsPatch } from './settings'
 import type { SkillsStatus } from './skills'
@@ -195,6 +196,19 @@ export interface BifrostApi {
     // details and failures in a row of the polls. The live measurements stay. The main process
     // then sends a new snapshot. The health.log file does not change.
     clear(): Promise<void>
+  }
+  // The release notes of the GitHub releases. The main process reads GitHub only when a view opens,
+  // and keeps a good answer 10 minutes. The page gets the parsed text, never the raw body.
+  releaseNotes: {
+    // The last 10 releases, newest first, or ok false when GitHub gave no good answer. This never
+    // rejects for a bad answer.
+    list(): Promise<ReleaseNotesResult>
+    // Ask one time after the page loads. The answer is the What's new view to open, or null. Only
+    // a release build can give a view, and only to the first call of the process.
+    whatsNew(): Promise<WhatsNewStart | null>
+    // Open a GitHub page in the browser: the page of the release with this version, or the
+    // Releases page for null. This rejects for a version that the last list did not give.
+    open(version: string | null): Promise<void>
   }
   // The updater (updater design). It runs only in a release build. In pnpm dev, in a test home and
   // in a local build, the snapshot has available false, and the other calls do nothing.

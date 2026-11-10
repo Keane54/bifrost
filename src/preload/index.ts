@@ -95,6 +95,11 @@ const api: BifrostApi = {
       remove: sessionId => invoke('registry:watch-remove', sessionId),
     },
   },
+  releaseNotes: {
+    list: () => invoke('release-notes:list'),
+    open: version => invoke('release-notes:open', version),
+    whatsNew: () => invoke('release-notes:whats-new'),
+  },
   reviews: {
     endPause: key => invoke('reviews:end-pause', key),
     onOpen: cb => subscribe('reviews:open', cb),

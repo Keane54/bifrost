@@ -1,9 +1,11 @@
 // This script draws the Bifrost icon from the colours of app.css and writes the icon files.
+// It also draws resources/icon-dev.png: the same icon with a "dev" badge. Only a dev start uses it.
 // Run it with: node scripts/make-icon.ts
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { drawDevIcon } from './icon/dev-badge.ts'
 import { drawIcon, encodePng, readPalette } from './icon/draw.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -24,6 +26,10 @@ try {
   }
   writeFileSync(join(ROOT, 'build/icon.png'), png(1024))
   writeFileSync(join(ROOT, 'resources/icon.png'), png(512))
+  writeFileSync(
+    join(ROOT, 'resources/icon-dev.png'),
+    encodePng(512, 512, drawDevIcon(512, palette)),
+  )
   execFileSync('iconutil', ['-c', 'icns', iconset, '-o', join(ROOT, 'build/icon.icns')])
 } finally {
   rmSync(iconset, { force: true, recursive: true })

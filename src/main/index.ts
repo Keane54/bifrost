@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { electronApp, is } from '@electron-toolkit/utils'
 import { app, BrowserWindow, Menu, screen, systemPreferences } from 'electron'
 import icon from '../../resources/icon.png?asset'
+import devIcon from '../../resources/icon-dev.png?asset'
 import { effectiveKeys } from '../shared/keys'
 import {
   attachWindow,
@@ -215,8 +216,8 @@ function startApp(): void {
   // Electron fires this event when it is ready to create windows.
   app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.keyholding.bifrost')
-    // A dev start shows the Bifrost icon in the Dock, not the Electron icon.
-    const dockIcon = devDockIcon(process.platform, app.isPackaged, icon)
+    // A dev start shows the Bifrost icon with a "dev" badge in the Dock, not the Electron icon.
+    const dockIcon = devDockIcon(process.platform, app.isPackaged, devIcon)
     if (dockIcon) app.dock?.setIcon(dockIcon)
 
     // A change of a menu key in the settings builds the menu again.
