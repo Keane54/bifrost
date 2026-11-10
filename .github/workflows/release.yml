@@ -206,5 +206,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: bifrost-dry-run-dmg
-          path: dist/Bifrost-*-arm64.dmg
+          path: dist/Bifrost-arm64.dmg
           retention-days: 7

@@ -55,7 +55,7 @@
       {
         "assets": [
           {
-            "path": "dist/Bifrost-*-arm64.dmg",
+            "path": "dist/Bifrost-arm64.dmg",
             "label": "Bifrost ${nextRelease.version} for Apple silicon (DMG)"
           }
         ],
