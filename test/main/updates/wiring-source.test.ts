@@ -100,6 +100,20 @@ describe('the updater wiring in ipc.ts', () => {
     )
   })
 
+  it('gives the staged signal from the update-downloaded event of the Electron autoUpdater', () => {
+    // Squirrel.Mac sends this event when it has staged the update. electron-updater listens to
+    // the same object and adds its listener first, when startUpdater reads its autoUpdater.
+    expect(source).toMatch(/import \{[^}]*\bautoUpdater as nativeUpdater\b[^}]*\} from 'electron'/)
+    expect(source.match(/\bnativeUpdater\b/g)).toHaveLength(2)
+    const body = flat(functionBody('startUpdater'))
+    const read = body.indexOf('const { autoUpdater } = electronUpdater')
+    const staged = body.indexOf(
+      "onStaged: listener => { nativeUpdater.on('update-downloaded', () => listener()) }",
+    )
+    expect(read).toBeGreaterThan(-1)
+    expect(staged).toBeGreaterThan(read)
+  })
+
   it('checks the folder with W_OK, and an error gives false', () => {
     const body = flat(functionBody('canWriteFolder'))
     expect(body).toContain('access(folder, constants.W_OK).then(() => true, () => false,)')

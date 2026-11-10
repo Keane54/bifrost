@@ -103,6 +103,8 @@ function setup(options: Options = {}) {
   const notify = vi.fn()
   const showWindow = vi.fn()
   const canWrite = vi.fn(options.canWrite ?? (async () => true))
+  // The listeners of the staged signal. Squirrel.Mac sends it when the update is ready to install.
+  const staged: Array<() => void> = []
   const deps: UpdaterDeps = {
     appPath: options.appPath ?? APP,
     canWrite,
@@ -121,6 +123,9 @@ function setup(options: Options = {}) {
     notify,
     now: () => Date.now(),
     online: () => net.online,
+    onStaged: listener => {
+      staged.push(listener)
+    },
     setInterval: (fn, ms) => setInterval(fn, ms),
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     settings: () => ({ autoUpdate: env.autoUpdate, notifications: env.notifications }),
@@ -140,6 +145,10 @@ function setup(options: Options = {}) {
     net,
     notify,
     showWindow,
+    // Send the staged signal of Squirrel.Mac.
+    stage: () => {
+      for (const listener of staged) listener()
+    },
     state,
     store,
     updater,
@@ -151,11 +160,12 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 
-// Bring the service to ready with the events of a download.
+// Bring the service to ready with the events of a download and the staged signal.
 async function toReady(t: ReturnType<typeof setup>, version = '1.1.0'): Promise<void> {
   finds(t.engine, version)
   await t.updater.checkNow()
   t.engine.emit('update-downloaded', { version })
+  t.stage()
 }
 
 beforeEach(() => {
@@ -271,6 +281,7 @@ describe('the install failure during the first check', () => {
     await t.updater.checkNow()
     expect(t.state()).toEqual({ kind: 'downloading', percent: 0, version: '1.1.0' })
     t.engine.emit('update-downloaded', { version: '1.1.0' })
+    t.stage()
     expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
   })
 
@@ -430,12 +441,13 @@ describe('events', () => {
     expect(t.state()).toEqual({ kind: 'downloading', percent: 99, version: '1.1.0' })
   })
 
-  test('update-downloaded gives ready, the last check time and health ok', () => {
+  test('update-downloaded and the staged signal give ready, the last check time and health ok', () => {
     const t = setup()
     t.updater.start()
     t.engine.emit('update-available', { version: '1.1.0' })
-    vi.setSystemTime(NOW + 60_000)
     t.engine.emit('update-downloaded', { version: '1.1.0' })
+    vi.setSystemTime(NOW + 60_000)
+    t.stage()
     expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
     expect(t.updater.snapshot().lastCheckAt).toBe(NOW + 60_000)
     expect(t.health.poll).toHaveBeenCalledWith('updates', 'ok')
@@ -474,6 +486,7 @@ describe('the notification', () => {
     // A new version gets its own notification.
     t.engine.emit('update-available', { version: '1.2.0' })
     t.engine.emit('update-downloaded', { version: '1.2.0' })
+    t.stage()
     expect(t.notify).toHaveBeenCalledTimes(2)
     expect(t.store.get().notifiedVersion).toBe('1.2.0')
   })
@@ -634,10 +647,10 @@ describe('errors', () => {
     expect(t.lines.at(-1)).toBe('error github: HttpError: 500 Internal Server Error')
   })
 
-  test('while ready, an error of the macOS install engine after the download gives failed', async () => {
+  test('an error of the macOS install engine after the download gives failed', async () => {
     const t = setup()
     t.updater.start()
-    // The last check found no update, so the step is check. The ready event changes it.
+    // The last check found no update, so the step is check. The download event changes it.
     await t.updater.checkNow()
     t.engine.emit('update-downloaded', { version: '1.1.0' })
     t.engine.emit('error', new Error('Code signature at URL did not pass validation'))
@@ -708,6 +721,103 @@ describe('errors', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     await settle()
     expect(t.state()).toMatchObject({ cause: 'download', kind: 'failed' })
+  })
+})
+
+describe('the staging of Squirrel.Mac (no restart with no click)', () => {
+  // electron-updater sends update-downloaded before Squirrel.Mac has the update. A
+  // quitAndInstall in that time adds a listener that restarts the app later with no click.
+  test('update-downloaded alone keeps downloading at 100%, with no ready, notification or install', async () => {
+    const t = setup({ autoUpdate: false })
+    t.updater.start()
+    finds(t.engine, '1.1.0')
+    await t.updater.checkNow()
+    t.engine.emit('download-progress', { percent: 97 })
+    t.health.poll.mockClear()
+    t.engine.emit('update-downloaded', { version: '1.1.0' })
+    expect(t.state()).toEqual({ kind: 'downloading', percent: 100, version: '1.1.0' })
+    expect(t.lines.at(-1)).toBe('downloaded 1.1.0')
+    expect(t.notify).not.toHaveBeenCalled()
+    expect(t.health.poll).not.toHaveBeenCalled()
+    expect(t.updater.snapshot().lastCheckAt).toBeNull()
+    // A click in this time does nothing.
+    t.updater.restart()
+    await settle()
+    expect(t.engine.quitAndInstall).not.toHaveBeenCalled()
+    expect(t.store.set).not.toHaveBeenCalled()
+    // The staged signal gives ready and the notification, but no install.
+    t.stage()
+    expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
+    expect(t.notify).toHaveBeenCalledTimes(1)
+    expect(t.health.poll.mock.calls).toEqual([['updates', 'ok']])
+    expect(t.updater.snapshot().lastCheckAt).toBe(NOW)
+    await vi.advanceTimersByTimeAsync(RESTART_LIMIT_MS)
+    expect(t.engine.quitAndInstall).not.toHaveBeenCalled()
+    // Only a click after the staging installs.
+    t.updater.restart()
+    await settle()
+    expect(t.engine.quitAndInstall).toHaveBeenCalledTimes(1)
+  })
+
+  test('a staged signal that comes first waits for update-downloaded', () => {
+    const t = setup()
+    t.updater.start()
+    t.engine.emit('update-available', { version: '1.1.0' })
+    t.stage()
+    expect(t.state()).toEqual({ kind: 'downloading', percent: 0, version: '1.1.0' })
+    t.engine.emit('update-downloaded', { version: '1.1.0' })
+    expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
+  })
+
+  test('a Squirrel.Mac error before the staging gives failed, and a late staged signal changes nothing', async () => {
+    const t = setup()
+    t.updater.start()
+    finds(t.engine, '1.1.0')
+    await t.updater.checkNow()
+    t.engine.emit('update-downloaded', { version: '1.1.0' })
+    t.engine.emit('error', new Error('Code signature at URL did not pass validation'))
+    expect(t.state()).toMatchObject({ cause: 'download', kind: 'failed' })
+    t.stage()
+    expect(t.state()).toMatchObject({ cause: 'download', kind: 'failed' })
+    t.updater.restart()
+    await settle()
+    expect(t.engine.quitAndInstall).not.toHaveBeenCalled()
+    expect(t.notify).not.toHaveBeenCalled()
+  })
+
+  test('each new download needs its own staging', async () => {
+    const t = setup()
+    t.updater.start()
+    await toReady(t, '1.1.0')
+    t.engine.emit('update-available', { version: '1.2.0' })
+    t.engine.emit('update-downloaded', { version: '1.2.0' })
+    expect(t.state()).toEqual({ kind: 'downloading', percent: 100, version: '1.2.0' })
+    t.stage()
+    expect(t.state()).toEqual({ kind: 'ready', version: '1.2.0' })
+  })
+
+  test('the switch off during the staging gives off, then ready, because the update installs at the quit', async () => {
+    const t = setup()
+    t.updater.start()
+    finds(t.engine, '1.1.0')
+    await t.updater.checkNow()
+    t.engine.emit('update-downloaded', { version: '1.1.0' })
+    t.updater.setAuto(false)
+    expect(t.state()).toEqual({ kind: 'off' })
+    t.stage()
+    expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
+  })
+
+  test('stop ignores the staged signal', async () => {
+    const t = setup()
+    t.updater.start()
+    finds(t.engine, '1.1.0')
+    await t.updater.checkNow()
+    t.engine.emit('update-downloaded', { version: '1.1.0' })
+    t.updater.stop()
+    const count = t.emitted.length
+    t.stage()
+    expect(t.emitted).toHaveLength(count)
   })
 })
 
@@ -813,6 +923,7 @@ describe('setAuto', () => {
     await vi.advanceTimersByTimeAsync(CHECK_DELAY_MS)
     await settle()
     t.engine.emit('update-downloaded', { version: '1.1.0' })
+    t.stage()
     t.updater.setAuto(false)
     expect(t.state()).toEqual({ kind: 'ready', version: '1.1.0' })
     expect(t.engine.autoInstallOnAppQuit).toBe(true)
@@ -930,6 +1041,7 @@ describe('the log and the snapshots', () => {
     await t.updater.checkNow()
     for (const percent of [10, 30, 55, 80, 100]) t.engine.emit('download-progress', { percent })
     t.engine.emit('update-downloaded', { version: '1.1.0' })
+    t.stage()
     t.updater.restart()
     await settle()
     expect(t.lines).toEqual([
@@ -938,6 +1050,7 @@ describe('the log and the snapshots', () => {
       'download 25%',
       'download 50%',
       'download 75%',
+      'downloaded 1.1.0',
       'ready 1.1.0',
       'install 1.1.0',
     ])

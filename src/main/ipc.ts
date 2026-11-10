@@ -11,6 +11,7 @@ import {
   type IpcMainInvokeEvent,
   ipcMain,
   nativeImage,
+  autoUpdater as nativeUpdater,
   net,
   type OpenDialogOptions,
   powerMonitor,
@@ -461,6 +462,12 @@ async function startUpdater(
       ),
     now: () => Date.now(),
     online: () => net.isOnline(),
+    // Squirrel.Mac sends update-downloaded on the autoUpdater of Electron when it has staged the
+    // update. electron-updater added its own listener first, when this function read its
+    // autoUpdater. So electron-updater knows the staged update before the service does.
+    onStaged: listener => {
+      nativeUpdater.on('update-downloaded', () => listener())
+    },
     setInterval,
     setTimeout,
     settings: () => settings.get(),

@@ -1,7 +1,8 @@
 // The updater service (updater design sections 4 and 5). It checks the GitHub releases for a new
-// version. electron-updater then downloads the version, and the service installs it when the
-// user clicks. The service keeps the update state, writes the update log, reports each check to
-// the health log, and sends each new snapshot to the page.
+// version. electron-updater then downloads the version, and Squirrel.Mac (the macOS install
+// engine) stages it. The service installs it when the user clicks. The service keeps the update
+// state, writes the update log, reports each check to the health log, and sends each new
+// snapshot to the page.
 // This file has no Electron import. ipc.ts gives it the real autoUpdater and the other deps.
 import { dirname } from 'node:path'
 import {
@@ -75,6 +76,10 @@ export interface UpdaterDeps {
   // True when the Bifrost window has the focus.
   focused(): boolean
   notify(title: string, body: string, onClick: () => void): void
+  // Squirrel.Mac calls the listener when it has staged a downloaded update. The service shows
+  // the ready state only after this signal. ipc.ts gives the update-downloaded event of the
+  // autoUpdater of Electron.
+  onStaged(listener: () => void): void
   showWindow(): void
   log: UpdateLog
   health: Pick<HealthEvents, 'poll' | 'stopped'>
@@ -90,7 +95,8 @@ export interface Updater {
   // Check one time, also when autoUpdate is off. No second check starts during a check or a
   // download.
   checkNow(): Promise<void>
-  // Install the ready update and restart. Only when an update is ready.
+  // Install the ready update and restart. Only when an update is ready, so only after the
+  // staging.
   restart(): void
   // The switch "Check for updates automatically" changed. Off also stops a check or a
   // download that runs.
@@ -163,6 +169,11 @@ export function createUpdater(deps: UpdaterDeps): Updater {
   let phase: Phase = 'check'
   // The version of the newest update-available event.
   let pending = ''
+  // The version that electron-updater downloaded, until the update gets ready. Null at other
+  // times.
+  let downloaded: string | null = null
+  // True after Squirrel.Mac staged the newest download. A new download sets it to false.
+  let staged = false
   // The highest download step in the log for the current download.
   let loggedStep = 0
   // True from the start of a check until the engine check ends.
@@ -250,6 +261,8 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     restarting = false
     clearRestartTimer()
     download = null
+    // An error ends the download. A later staged signal must not make it ready.
+    downloaded = null
     // Mask the full text before classifyError cuts it, so no part of a token stays.
     const text = mask(messageOf(err))
     const found = classifyError(text, phase, deps.online())
@@ -262,6 +275,18 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     const note = `offline: ${firstLine(text)}`
     if (state.kind === 'checking' || state.kind === 'downloading') change(before, note)
     else line(note)
+  }
+
+  // The download and the staging are both done. electron-updater knows the staged update before
+  // the service does. So its quitAndInstall installs at once, and it adds no listener that
+  // restarts the app later with no click.
+  function toReady(version: string): void {
+    downloaded = null
+    ignoreRun = false
+    lastCheckAt = deps.now()
+    deps.health.poll('updates', 'ok')
+    change({ kind: 'ready', version }, `ready ${version}`)
+    notifyOnce(version)
   }
 
   // One notification for each version. A notification that the rules hold back is not sent
@@ -304,6 +329,9 @@ export function createUpdater(deps: UpdaterDeps): Updater {
       line(`found ${version}`)
       return
     }
+    // A new download needs a new staging.
+    staged = false
+    downloaded = null
     change({ kind: 'downloading', percent: 0, version }, `found ${version}`)
   })
 
@@ -324,13 +352,22 @@ export function createUpdater(deps: UpdaterDeps): Updater {
     ignoreRun = false
     download = null
     const version = versionOf(info) || pending
-    // The macOS install engine still checks the update after this event. Its error is a
-    // download error, and it must clear the ready state.
+    // Squirrel.Mac stages the update after this event. Its error is a download error.
     phase = 'download'
-    lastCheckAt = deps.now()
-    deps.health.poll('updates', 'ok')
-    change({ kind: 'ready', version }, `ready ${version}`)
-    notifyOnce(version)
+    if (staged) {
+      toReady(version)
+      return
+    }
+    downloaded = version
+    if (state.kind === 'downloading' && state.percent !== 100) {
+      change({ kind: 'downloading', percent: 100, version }, `downloaded ${version}`)
+    } else line(`downloaded ${version}`)
+  })
+
+  deps.onStaged(() => {
+    if (stopped) return
+    staged = true
+    if (downloaded !== null) toReady(downloaded)
   })
 
   deps.engine.on('error', onError)
