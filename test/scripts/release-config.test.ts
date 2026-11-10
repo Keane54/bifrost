@@ -183,6 +183,18 @@ describe('the release build config', () => {
       expect(result.out).toContain('The limit is 600.')
     })
 
+    it('fails for a summary with a line that starts with "#", also after spaces', () => {
+      for (const value of ['# Big news', 'First line.\n## Second', 'One.\n \t### x', '#tag']) {
+        const result = check(value)
+        expect(result.status, value).toBe(1)
+        expect(result.out).toContain('::error::A line of the release summary starts with "#".')
+      }
+    })
+
+    it('passes a "#" that is not at the start of a line', () => {
+      expect(check('Fix #12 and the C# sample.').status).toBe(0)
+    })
+
     it('does not run the summary as code', () => {
       const result = check('$(echo injected) `echo injected` ; echo injected')
       expect(result.status).toBe(0)

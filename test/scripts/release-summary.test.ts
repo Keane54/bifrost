@@ -7,6 +7,9 @@ import { releaseSummary, SUMMARY_MAX } from '../../scripts/release/summary'
 
 const SCRIPT = join(__dirname, '../../scripts/release/summary.ts')
 const EMPTY = 'The release summary is empty. Type a short summary of the release.'
+const HEADING =
+  'A line of the release summary starts with "#". Remove the "#", because the release notes ' +
+  'use "#" for their headings.'
 
 // Run the script with node, with RELEASE_SUMMARY set to the value, or not set for undefined.
 function runScript(value: string | undefined): { status: number | null; out: string; err: string } {
@@ -41,6 +44,19 @@ describe('releaseSummary', () => {
     expect(releaseSummary(text)).toEqual({ ok: true, text: `${text}\n\n` })
   })
 
+  it('refuses a summary with a line that starts with "#", also after spaces', () => {
+    for (const value of ['# Big news', 'First line.\n## Second', 'First line.\n   ### x', '#tag']) {
+      expect(releaseSummary(value), value).toEqual({ message: HEADING, ok: false })
+    }
+  })
+
+  it('accepts a "#" that is not at the start of a line', () => {
+    expect(releaseSummary('Fix #12 and the C# sample.')).toEqual({
+      ok: true,
+      text: 'Fix #12 and the C# sample.\n\n',
+    })
+  })
+
   it('refuses a summary of more than 600 characters with a clear message', () => {
     expect(releaseSummary('a'.repeat(SUMMARY_MAX + 1))).toEqual({
       message: 'The release summary has 601 characters. The limit is 600. Write a shorter summary.',
@@ -65,6 +81,13 @@ describe('the summary script', () => {
       expect(result.out).toBe('')
       expect(result.err).toContain(EMPTY)
     }
+  })
+
+  it('fails with the message for a summary with a line that starts with "#"', () => {
+    const result = runScript('Line one.\n## Line two')
+    expect(result.status).toBe(1)
+    expect(result.out).toBe('')
+    expect(result.err).toContain(HEADING)
   })
 
   it('fails with the message for a summary that is too long', () => {

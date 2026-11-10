@@ -73,6 +73,13 @@ jobs:
             echo "::error::The release summary has ${#summary} characters. The limit is $limit."
             exit 1
           fi
+          # The release notes use "#" for their headings. So no line can start with "#", also
+          # after spaces. A line break goes before the summary, so the check finds the first line.
+          heading=$'\n''[[:blank:]]*#'
+          if [[ $'\n'"$summary" =~ $heading ]]; then
+            echo '::error::A line of the release summary starts with "#". Remove the "#".'
+            exit 1
+          fi
           echo "The release summary has ${#summary} characters."
 
       - name: Checkout code

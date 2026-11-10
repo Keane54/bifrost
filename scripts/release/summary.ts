@@ -11,9 +11,14 @@ export const SUMMARY_MAX = 600
 
 export type SummaryResult = { ok: true; text: string } | { ok: false; message: string }
 
+// The release notes use "#" for their headings. GitHub shows a summary line that starts with "#"
+// as a heading, and the app reads the summary only up to the first heading. So a summary line
+// must not start with "#", also after spaces.
+const HEADING_LINE = /^\s*#/m
+
 // The text to print for the value of RELEASE_SUMMARY: the trimmed summary and a blank line. An
-// empty summary and a summary that is too long give an error message. The count of characters
-// uses code points, so each emoji counts one time.
+// empty summary, a summary that is too long, and a summary with a line that starts with "#" give
+// an error message. The count of characters uses code points, so each emoji counts one time.
 export function releaseSummary(value: string | undefined): SummaryResult {
   const summary = (value ?? '').trim()
   if (summary === '') {
@@ -26,6 +31,14 @@ export function releaseSummary(value: string | undefined): SummaryResult {
   if (count > SUMMARY_MAX) {
     const limit = `The limit is ${SUMMARY_MAX}. Write a shorter summary.`
     return { message: `The release summary has ${count} characters. ${limit}`, ok: false }
+  }
+  if (HEADING_LINE.test(summary)) {
+    return {
+      message:
+        'A line of the release summary starts with "#". Remove the "#", because the release ' +
+        'notes use "#" for their headings.',
+      ok: false,
+    }
   }
   return { ok: true, text: `${summary}\n\n` }
 }
