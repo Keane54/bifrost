@@ -146,8 +146,12 @@ export function infoSections(
       title: 'Cost and context',
     },
     {
+      // A plan can have no 5-hour window (user decision, 2026-11-10). Then the row is hidden, the
+      // same as in the Usage HUD. A session with no limits yet shows both rows.
       items: [
-        { label: '5-hour limit', value: limitText(row.rateLimits?.fiveHour, now, timeZone) },
+        ...(row.rateLimits?.sevenDay && !row.rateLimits.fiveHour
+          ? []
+          : [{ label: '5-hour limit', value: limitText(row.rateLimits?.fiveHour, now, timeZone) }]),
         { label: '7-day limit', value: limitText(row.rateLimits?.sevenDay, now, timeZone) },
         { label: 'Claude Code version', value: dash(row.claudeVersion) },
       ],

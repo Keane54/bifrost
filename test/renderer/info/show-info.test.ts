@@ -181,14 +181,21 @@ describe('infoSections', () => {
     expect(item(infoSections(r, NOW, null, UTC), 'Time', 'Duration')).toBe('-')
   })
 
-  it('infoSections shows one window when the plan has one', () => {
+  it('infoSections hides the 5-hour row when the plan has only a 7-day window', () => {
     const r = row({
       rateLimits: { sevenDay: { resetsAt: Date.UTC(2026, 10, 5, 13, 0), usedPercent: 5 } },
       sessionId: 'x',
     })
     const sections = infoSections(r, NOW, null, UTC)
-    expect(item(sections, 'Limits and version', '5-hour limit')).toBe('-')
+    const limits = sections.find(s => s.title === 'Limits and version')
+    expect(limits?.items.map(i => i.label)).toEqual(['7-day limit', 'Claude Code version'])
     expect(item(sections, 'Limits and version', '7-day limit')).toBe('5%, resets 13:00')
+  })
+
+  it('infoSections keeps both limit rows when the session has no limits yet', () => {
+    const sections = infoSections(row({ sessionId: 'x' }), NOW, null, UTC)
+    expect(item(sections, 'Limits and version', '5-hour limit')).toBe('-')
+    expect(item(sections, 'Limits and version', '7-day limit')).toBe('-')
   })
 
   it('a limit whose reset time passed shows - and the reset time, as the Usage HUD (item 8)', () => {
