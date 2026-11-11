@@ -10,7 +10,8 @@ export const REPO_KEY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za-z
 
 // The owner/repo part of a PR key, in lower case. GitHub ignores case in these names.
 export function repoOf(key: string): string {
-  return key.slice(0, key.lastIndexOf('#')).toLowerCase()
+  const hash = key.lastIndexOf('#')
+  return (hash === -1 ? key : key.slice(0, hash)).toLowerCase()
 }
 
 export function prKey(owner: string, repo: string, number: number): string {

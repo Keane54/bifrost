@@ -4,6 +4,7 @@ import {
   emptyPrState,
   MAX_DRAFTS,
   MAX_POSTED,
+  MAX_QUEUE,
   MAX_VOICE_PAIRS,
   parseState,
   type ReviewsState,
@@ -66,7 +67,7 @@ describe('parseState', () => {
         { at: 5, key: 'acme/..#2', kind: 'review' },
       ],
     })
-    expect(state.queue).toEqual([{ at: 3, key: KEY, kind: 'review' }])
+    expect(state.queue).toEqual([{ at: 2, key: KEY, kind: 'review' }])
   })
 
   it('a file from R1 parses with an empty queue, no round and a null setUpAt', () => {
@@ -91,10 +92,57 @@ describe('parseState', () => {
       ...emptyPrState(),
       request: { name: 'n', sessionId: 's', shortId: 'XYZ' },
       review: { name: 'n', sessionId: 's', shortId: 'abcd1234' },
+      round: {
+        at: 1,
+        headSha: null,
+        phase: 'running',
+        sessionId: null,
+        shortId: 'ABCD1234',
+        startedAt: 2,
+        stoppedByUser: false,
+      },
     }
     const state = parseState(JSON.parse(JSON.stringify(data)))
     expect(state.prs[KEY]?.request).toEqual({ name: 'n', sessionId: 's' })
     expect(state.prs[KEY]?.review?.shortId).toBe('abcd1234')
+    expect(state.prs[KEY]?.round?.shortId).toBeNull()
+  })
+
+  it('gives the empty value for a bad round phase, mark value, repos key, actedAt and setUpAt', () => {
+    const data = JSON.parse(JSON.stringify(valid()))
+    data.prs[KEY] = {
+      ...emptyPrState(),
+      actedAt: 'x',
+      recommendation: { at: 1, headSha: 'a', reviewId: null, value: 'merge', why: 'w' },
+      round: {
+        at: 1,
+        headSha: null,
+        phase: 'dancing',
+        sessionId: null,
+        shortId: null,
+        startedAt: 2,
+      },
+    }
+    data.repos = { 'acme/.': { trustNotifiedAt: 1 }, 'acme/app': { trustNotifiedAt: 'x' } }
+    data.setUpAt = 'soon'
+    const state = parseState(data)
+    expect(state.prs[KEY]?.round).toBeNull()
+    expect(state.prs[KEY]?.recommendation).toBeNull()
+    expect(state.prs[KEY]?.actedAt).toBeNull()
+    expect(state.setUpAt).toBeNull()
+    expect(state.repos).toEqual({ 'acme/app': { trustNotifiedAt: null } })
+  })
+
+  it('caps the queue at MAX_QUEUE and keeps the oldest entries', () => {
+    const queue = Array.from({ length: MAX_QUEUE + 5 }, (_, i) => ({
+      at: i,
+      key: `acme/app#${i + 1}`,
+      kind: 'review',
+    }))
+    const state = parseState({ ...valid(), queue: [...queue].reverse() })
+    expect(state.queue).toHaveLength(MAX_QUEUE)
+    expect(state.queue[0]?.at).toBe(0)
+    expect(state.queue[MAX_QUEUE - 1]?.at).toBe(MAX_QUEUE - 1)
   })
 
   it('keeps a valid state', () => {

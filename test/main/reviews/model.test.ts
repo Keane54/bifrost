@@ -442,6 +442,7 @@ describe('toReviewState', () => {
   it('repoOf gives a lower-case key', () => {
     expect(repoOf('Acme/Api#7')).toBe('acme/api')
     expect(repoOf('acme/api#7')).toBe('acme/api')
+    expect(repoOf('Acme/Api')).toBe('acme/api')
   })
 
   it('toReviewState: a team request is null when teamRequests is off', () => {

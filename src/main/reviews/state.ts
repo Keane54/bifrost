@@ -133,7 +133,8 @@ export function emptyPrState(): PrState {
   }
 }
 
-// The caps keep the newest entries. The oldest go first.
+// The caps keep the newest entries. The oldest go first. The queue is the exception: it keeps
+// the oldest entries, because the oldest entry runs first.
 export const MAX_POSTED = 2000
 export const MAX_DRAFTS = 2000
 export const MAX_VOICE_PAIRS = 1000
@@ -193,22 +194,26 @@ function parseMark(value: unknown): RecommendationMark | null {
   }
 }
 
-// Keep the valid entries. One entry for each key and kind, the first wins. Sort by time and keep
-// the newest, up to the cap.
+// Keep the valid entries. Sort by time. For one key and kind, the entry with the earliest time
+// wins. Keep the oldest entries, up to the cap.
 function parseQueue(value: unknown): QueueEntry[] {
   if (!Array.isArray(value)) return []
-  const seen = new Set<string>()
-  const list: QueueEntry[] = []
+  const valid: QueueEntry[] = []
   for (const entry of value) {
     if (!isObject(entry) || !keyOk(entry.key) || entry.kind !== 'review' || !isNumber(entry.at)) {
       continue
     }
+    valid.push({ at: entry.at, key: entry.key, kind: entry.kind })
+  }
+  valid.sort((a, b) => a.at - b.at)
+  const seen = new Set<string>()
+  const list: QueueEntry[] = []
+  for (const entry of valid) {
     const id = `${entry.kind}:${entry.key}`
     if (seen.has(id)) continue
     seen.add(id)
-    list.push({ at: entry.at, key: entry.key, kind: entry.kind })
+    list.push(entry)
   }
-  list.sort((a, b) => a.at - b.at)
   return list.length > MAX_QUEUE ? list.slice(0, MAX_QUEUE) : list
 }
 
