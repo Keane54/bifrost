@@ -485,6 +485,24 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
+  it('cpu is a share of all cores of the Mac', async () => {
+    const t = setup()
+    t.world.cpus = Array.from({ length: 10 }, () => cpuInfo(0, 0))
+    t.world.procs = [{ cpu: 5, pid: 300, ppid: 1, rssMb: 100 }]
+    t.world.rows = [sessionRow(uuid(1), 'alpha', 300)]
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    // 18.75 s of CPU time in 15 s is 125% of one core and 12.5% of 10 cores.
+    t.world.procs = [{ cpu: 23.75, pid: 300, ppid: 1, rssMb: 100 }]
+    await vi.advanceTimersByTimeAsync(TICK_MS)
+    const snap = t.monitor.current()
+    expect(snap.sessions?.top[0]?.cpu).toBeCloseTo(12.5)
+    expect(snap.sessions?.cpu).toBeCloseTo(12.5)
+    // The Electron metrics of 12% of one core give 1.2% of 10 cores.
+    expect(snap.bifrost?.cpu).toBeCloseTo(1.2)
+    t.monitor.stop()
+  })
+
   it('the three heaviest sessions and the rest', async () => {
     const t = setup()
     const sizes = [10, 50, 30, 40, 20]
