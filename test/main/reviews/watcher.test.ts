@@ -3,7 +3,7 @@ import type { ExecResult } from '../../../src/main/claude/cli'
 import type { HealthEvents } from '../../../src/main/performance/health-log'
 import type { Gh } from '../../../src/main/reviews/gh'
 import { pollArgs } from '../../../src/main/reviews/query'
-import { EMPTY_STATE, type ReviewsState } from '../../../src/main/reviews/state'
+import { EMPTY_STATE, emptyPrState, type ReviewsState } from '../../../src/main/reviews/state'
 import type { ReviewsStateStore } from '../../../src/main/reviews/state-store'
 import {
   checkPrKey,
@@ -17,6 +17,7 @@ import {
   requestNotice,
   requestNotices,
   urlToOpen,
+  type WatcherDeps,
   whileOn,
 } from '../../../src/main/reviews/watcher'
 import {
@@ -158,6 +159,7 @@ function setup(
     state?: Partial<ReviewsState>
     settings?: { reviewsIgnore?: string[]; reviewsPollMinutes?: number }
     health?: Pick<HealthEvents, 'poll' | 'stopped'>
+    reviews?: WatcherDeps['reviews']
   } = {},
 ) {
   const replies = [...(opts.replies ?? [answer([])])]
@@ -185,6 +187,7 @@ function setup(
     log: m => logs.push(m),
     notify: notice => notified.push(notice),
     now: () => Date.now(),
+    ...(opts.reviews === undefined ? {} : { reviews: opts.reviews }),
     settings: () => settings,
     store,
   })
@@ -1266,5 +1269,82 @@ describe('requestNotices', () => {
 
   test('no request gives no notification', () => {
     expect(requestNotices([])).toEqual([])
+  })
+})
+
+describe('the review runner in the watcher', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-09T10:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  test('the snapshot shows the session state, the session ID and the trust list of the runner', async () => {
+    const reviews = {
+      afterPoll: vi.fn(),
+      session: (key: string) => (key === K101 ? ('reviewing' as const) : null),
+      sessionOf: (key: string) => (key === K101 ? 'sess-1' : null),
+      trust: () => [{ repo: 'acme/web', waiting: 2 }],
+    }
+    const t = setup({ replies: [answer([{ number: 101 }])], reviews })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(row(t.watcher, K101)).toMatchObject({ sessionId: 'sess-1', state: 'reviewing' })
+    expect(t.watcher.current().trust).toEqual([{ repo: 'acme/web', waiting: 2 }])
+    expect(t.watcher.toReviewPr(K101)?.key).toBe(K101)
+    expect(t.watcher.toReviewPr(K102)).toBeNull()
+    expect(t.watcher.viewer()).toBe(VIEWER)
+    t.watcher.stop()
+    expect(t.watcher.viewer()).toBeNull()
+  })
+
+  test('a re-request clears the recommendation and the error', async () => {
+    const before = Date.now() - 60 * MIN
+    const mark = {
+      at: before,
+      headSha: 'a'.repeat(40),
+      reviewId: null,
+      value: 'approve' as const,
+      why: 'ok',
+    }
+    const t = setup({
+      replies: [answer([{ asked: '2026-11-09T09:59:00Z', number: 103 }])],
+      state: {
+        prs: { [K103]: { ...emptyPrState(), lastError: 'old', recommendation: mark } },
+        requests: { [K103]: { baseline: false, firstSeen: before } },
+        turnedOnAt: before,
+      },
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.store.get().prs[K103]?.recommendation).toBeNull()
+    expect(t.store.get().prs[K103]?.lastError).toBeNull()
+    t.watcher.stop()
+  })
+
+  test('afterPoll runs after each good poll, also a partial one, and not after a failed poll', async () => {
+    const afterPoll = vi.fn()
+    const reviews = { afterPoll, session: () => null, sessionOf: () => null, trust: () => [] }
+    const t = setup({
+      replies: [
+        answer([{ number: 101 }]),
+        partial([{ number: 101 }], ['boom']),
+        LOGGED_OUT,
+        TIMED_OUT,
+      ],
+      reviews,
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(afterPoll).toHaveBeenCalledTimes(1)
+    expect(afterPoll.mock.calls[0]?.[0]).toMatchObject({ viewer: VIEWER })
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(afterPoll).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(afterPoll).toHaveBeenCalledTimes(2)
+    t.watcher.stop()
   })
 })

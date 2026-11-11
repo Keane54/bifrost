@@ -33,6 +33,7 @@ import electronUpdater from 'electron-updater'
 import { checkAliasRequest } from '../shared/alias'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
+import { REPO_KEY } from '../shared/reviews'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
 import { SKILLS_MARKETPLACE, SKILLS_PLUGIN_ID, type SkillsStatus } from '../shared/skills'
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
@@ -108,12 +109,18 @@ import { createReleaseNotesSource, fileFetch } from './release-notes/source'
 import { openReleaseNotesStore, releaseNotesFile } from './release-notes/state-store'
 import { createWhatsNew } from './release-notes/whats-new'
 import { createGh, type Gh } from './reviews/gh'
+import { createRepoGit } from './reviews/repo-git'
+import { createRepoStore, remoteBase } from './reviews/repo-store'
+import { createReviewSessions } from './reviews/review-session'
+import { createReviewRunner, REFUSED_UNKNOWN_REPO, type ReviewRunner } from './reviews/rounds'
 import { openReviewsStateStore, reviewsStateFile } from './reviews/state-store'
+import { createTrustWindow, TRUST_VIEW, type TrustWindow, trustedDirs } from './reviews/trust'
 import {
   checkPrKey,
   createReviewsWatcher,
   type RequestNotice,
   type ReviewsWatcher,
+  toReviewKey,
   urlToOpen,
   whileOn,
 } from './reviews/watcher'
@@ -205,6 +212,14 @@ let accountUsage: AccountUsagePoller | null = null
 // The Reviews watcher (Reviews design). registerIpc makes it after the Reviews state opens. It also
 // runs in a test home (R1-4). It polls only while Watch GitHub is on.
 let reviewsWatcher: ReviewsWatcher | null = null
+// The review runner and the trust terminal. startReviews makes them. They start and stop with the
+// watcher. stopRegistry stops them.
+let reviewRunner: ReviewRunner | null = null
+let trustWindow: TrustWindow | null = null
+// The most bytes of text that the page may write to the trust terminal in one call.
+const MAX_TRUST_WRITE = 64 * 1024
+const REFUSED_BAD_TERMINAL = 'refused: bad terminal value'
+const TRUST_OPEN_FAILED = 'Bifrost could not open the terminal. Please try again.'
 // The Performance monitor (Performance design). registerIpc starts it. It samples on a timer, also
 // in a test home, and sends a snapshot after each tick. stopRegistry stops it.
 let perfMonitor: PerformanceMonitor | null = null
@@ -252,6 +267,11 @@ function fromPage<T>(e: IpcMainInvokeEvent, fn: () => Promise<T>): Promise<T> {
     return Promise.reject(new Error('refused: not the Bifrost page'))
   }
   return fn()
+}
+
+// True for an integer column or row count that the trust terminal accepts.
+function isTerminalSize(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 2 && value <= 500
 }
 
 // The mode controller of the current window. index.ts sets it.
@@ -331,8 +351,14 @@ function runSettingsEffect(effect: SettingsEffect): void {
       else accountUsage?.stop()
       return
     case 'reviews':
-      if (effect.on) reviewsWatcher?.start()
-      else reviewsWatcher?.stop()
+      if (effect.on) {
+        reviewRunner?.start()
+        reviewsWatcher?.start()
+      } else {
+        reviewRunner?.stop()
+        reviewsWatcher?.stop()
+        trustWindow?.close()
+      }
       return
     case 'reviews-view':
       // A change of Show team requests or of the ignore list needs no gh call.
@@ -438,19 +464,35 @@ function startUsageAlerts(
   })
 }
 
-// Open the Reviews state and make the watcher. Then start it when Watch GitHub is on. After this,
-// the reviews effect starts and stops it. The state goes to bifrostHome, so a test home uses its
-// own state (R1-4). The watcher and the Performance monitor use the same gh runner (P11).
+// What startReviews needs besides the state: the runner of the review rounds works with the
+// registry service, claude and the PTYs.
+interface ReviewsParts {
+  home: TestHome | null
+  skillsDir: string
+  loginEnv: Promise<Record<string, string>>
+  run: Promise<RunClaude | null>
+  service: Promise<RegistryService>
+  pty(): Promise<PtyManager | null>
+}
+
+// Open the Reviews state and make the watcher, the runner and the trust terminal. Then start them
+// when Watch GitHub is on. After this, the reviews effect starts and stops them. The state goes to
+// bifrostHome, so a test home uses its own state (R1-4). The watcher and the Performance monitor
+// use the same gh runner (P11). The runner and the watcher need each other, so each reads the
+// other when it is called, not when it is made.
 async function startReviews(
   bifrostHome: string,
   gh: Gh,
   settingsReady: Promise<SettingsStore>,
   health: HealthLog,
+  parts: ReviewsParts,
 ): Promise<ReviewsWatcher> {
-  const [store, settings] = await Promise.all([
+  const [store, settings, service] = await Promise.all([
     openReviewsStateStore(reviewsStateFile(bifrostHome), console.error, health),
     settingsReady,
+    parts.service,
   ])
+  const { home } = parts
   const watcher = createReviewsWatcher({
     emit: snapshot => send('reviews:update', snapshot),
     gh,
@@ -458,12 +500,77 @@ async function startReviews(
     log: message => console.error(message),
     notify: notifyReviewRequest,
     now: () => Date.now(),
+    reviews: {
+      afterPoll: poll => reviewRunner?.afterPoll(poll),
+      session: key => reviewRunner?.session(key) ?? null,
+      sessionOf: key => reviewRunner?.sessionOf(key) ?? null,
+      trust: () => reviewRunner?.trust() ?? [],
+    },
     settings: () => settings.get(),
     store,
   })
   reviewsWatcher = watcher
+  const claudeJson = claudeJsonFile(home?.home ?? homedir())
+  const repoGit = createRepoGit({
+    env: async () => ({
+      ...childEnv(await parts.loginEnv, { pty: false }),
+      ...(home === null ? {} : { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }),
+    }),
+    exec: execFile,
+  })
+  const repos = createRepoStore({
+    bifrostHome,
+    git: repoGit,
+    remoteBase: remoteBase(home?.home ?? null),
+  })
+  const sessions = createReviewSessions({
+    expectPrSession: name => service.expectPrSession(name),
+    forget: id => service.forget(id),
+    log: message => console.error(message),
+    markStarted: id => service.markStarted(id),
+    releasePrSession: name => service.releasePrSession(name),
+    run: () => parts.run,
+    waitForRow: (match, timeoutMs) => service.waitForRow(match, timeoutMs),
+  })
+  const runner = createReviewRunner({
+    bifrostHome,
+    changed: () => watcher.rebuild(),
+    claudeJson,
+    gh,
+    log: message => console.error(message),
+    notify: notifyReviewRequest,
+    now: () => Date.now(),
+    repos,
+    requestPoll: () => watcher.requestPoll(),
+    rows: () => service.rows(),
+    sessions,
+    settings: () => settings.get(),
+    skillsDir: parts.skillsDir,
+    store,
+    testHome: home !== null,
+    toReviewPr: key => watcher.toReviewPr(key),
+    viewer: () => watcher.viewer(),
+  })
+  reviewRunner = runner
+  service.onUpdate(rows => runner.onRows(rows))
+  trustWindow = createTrustWindow({
+    isTrusted: async dir => (await trustedDirs(claudeJson, [dir])).has(dir),
+    onEnd: end => {
+      try {
+        send('reviews:trust-end', end)
+        runner.trustChanged()
+        watcher.rebuild()
+      } catch {
+        console.error('Bifrost could not finish the trust step.')
+      }
+    },
+    pty: parts.pty,
+  })
   // The app can quit before the state opens. Then do not start the watcher.
-  if (!serviceStopped && settings.get().reviewsWatch) watcher.start()
+  if (!serviceStopped && settings.get().reviewsWatch) {
+    runner.start()
+    watcher.start()
+  }
   return watcher
 }
 
@@ -777,6 +884,7 @@ export function registerIpc(home: TestHome | null = null): void {
       input.data(viewId)
       // Only the main process uses the hidden send views. Their output stays here.
       if (CHAT_VIEW.test(viewId)) send('pty:data', viewId, chunk)
+      if (viewId === TRUST_VIEW) send('reviews:trust-data', chunk)
       // A full redraw follows a resize by any client (M0 question 1). So read the size.
       // A sequence split over two chunks is missed. The next redraw or the open recovers it.
       if (chunk.includes(FULL_REDRAW)) sizeWatcher.poke(viewId)
@@ -790,6 +898,7 @@ export function registerIpc(home: TestHome | null = null): void {
       sizeWatcher.forget(viewId)
       input.ended(viewId)
       if (CHAT_VIEW.test(viewId)) send('pty:exit', viewId, exitCode, signal)
+      if (viewId === TRUST_VIEW) trustWindow?.exited()
     })
     liveManager = m
     return m
@@ -802,7 +911,14 @@ export function registerIpc(home: TestHome | null = null): void {
   // gh gets the login-shell env. In a test home, that is the env of the process, so the PATH of
   // the smoke test decides which gh runs.
   const gh = createGh({ env: async () => childEnv(await loginEnv, { pty: false }), exec: execFile })
-  const reviews = startReviews(paths.bifrostHome, gh, settings, health)
+  const reviews = startReviews(paths.bifrostHome, gh, settings, health, {
+    home,
+    loginEnv,
+    pty: getManager,
+    run,
+    service,
+    skillsDir: skillsSourceDir(app.getAppPath()),
+  })
   startPerformance(home, paths.bifrostHome, gh, health)
   // A release build is packaged, has the real home, and has the app-update.yml file of the release
   // config. Only a release build runs the updater and opens What's new by itself. So pnpm dev, a
@@ -912,6 +1028,76 @@ export function registerIpc(home: TestHome | null = null): void {
   )
   ipcMain.handle('reviews:open-pr', (e, key: unknown) =>
     fromPage(e, async () => shell.openExternal(urlToOpen(await reviews, key))),
+  )
+  // The review rounds. The page sends a PR key of a To review row, a repository key of the trust
+  // list, terminal text and sizes, or nothing. It never sends a path, a URL or a command.
+  ipcMain.handle('reviews:review', (e, key: unknown) =>
+    fromPage(e, async () => {
+      const k = toReviewKey(whileOn(await reviews), checkPrKey(key))
+      await reviewRunner?.review(k)
+    }),
+  )
+  ipcMain.handle('reviews:cancel', (e, key: unknown) =>
+    fromPage(e, async () => {
+      const k = toReviewKey(whileOn(await reviews), checkPrKey(key))
+      await reviewRunner?.cancel(k)
+    }),
+  )
+  ipcMain.handle('reviews:stop-session', (e, key: unknown) =>
+    fromPage(e, async () => {
+      const k = toReviewKey(whileOn(await reviews), checkPrKey(key))
+      await reviewRunner?.stopSession(k)
+    }),
+  )
+  ipcMain.handle('reviews:trust-open', (e, repo: unknown) =>
+    fromPage(e, async () => {
+      whileOn(await reviews)
+      const runner = reviewRunner
+      if (typeof repo !== 'string' || !REPO_KEY.test(repo) || runner === null) {
+        throw new Error(REFUSED_UNKNOWN_REPO)
+      }
+      const cwd = runner.clonePathOf(repo)
+      if (!runner.trust().some(need => need.repo === repo) || cwd === null) {
+        throw new Error(REFUSED_UNKNOWN_REPO)
+      }
+      try {
+        await trustWindow?.open(repo, cwd)
+      } catch (error) {
+        console.error('Bifrost cannot open the trust terminal.', error)
+        throw new Error(TRUST_OPEN_FAILED)
+      }
+      // The open ends with no terminal when claude is not on the PATH.
+      if (trustWindow?.current() !== repo) throw new Error(TRUST_OPEN_FAILED)
+    }),
+  )
+  ipcMain.handle('reviews:trust-write', (e, data: unknown) =>
+    fromPage(e, async () => {
+      whileOn(await reviews)
+      if (typeof data !== 'string' || Buffer.byteLength(data) > MAX_TRUST_WRITE) {
+        throw new Error(REFUSED_BAD_TERMINAL)
+      }
+      trustWindow?.write(data)
+    }),
+  )
+  ipcMain.handle('reviews:trust-resize', (e, cols: unknown, rows: unknown) =>
+    fromPage(e, async () => {
+      whileOn(await reviews)
+      if (!isTerminalSize(cols) || !isTerminalSize(rows)) throw new Error(REFUSED_BAD_TERMINAL)
+      trustWindow?.resize(cols, rows)
+    }),
+  )
+  ipcMain.handle('reviews:trust-close', e =>
+    fromPage(e, async () => {
+      whileOn(await reviews)
+      trustWindow?.close()
+    }),
+  )
+  // Delete the clones also while Watch GitHub is off.
+  ipcMain.handle('reviews:remove-clones', e =>
+    fromPage(e, async () => {
+      await reviews
+      await reviewRunner?.removeClones()
+    }),
   )
   // The updater (updater design). With no updater, the snapshot has available false, and the other
   // calls do nothing.
@@ -1422,6 +1608,8 @@ export function stopRegistry(): void {
   liveControl?.stop()
   serviceMonitor?.stop()
   accountUsage?.stop()
+  reviewRunner?.stop()
+  trustWindow?.close()
   reviewsWatcher?.stop()
   updater?.stop()
   perfMonitor?.stop()

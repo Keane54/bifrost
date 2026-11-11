@@ -182,6 +182,28 @@ export interface BifrostApi {
     openPr(key: string): Promise<void>
     // A click on a notification of a new review request.
     onOpen(cb: () => void): () => void
+    // Start a review of a To review PR. This rejects for a key that is not a To review row.
+    review(key: string): Promise<void>
+    // Take a PR out of the queue, or stop its round. This rejects as review does.
+    cancel(key: string): Promise<void>
+    // Stop the review session of a PR. This rejects as review does.
+    stopSession(key: string): Promise<void>
+    // Open the trust terminal for a repository in the trust list of the snapshot. This rejects
+    // for any other value, and when the terminal cannot start.
+    trust(repo: string): Promise<void>
+    // Terminal text for the trust terminal, 64 KiB or less.
+    trustWrite(data: string): Promise<void>
+    // The size of the trust terminal, from 2 to 500 for each value.
+    trustResize(cols: number, rows: number): Promise<void>
+    // Close the trust terminal.
+    trustClose(): Promise<void>
+    // The output of the trust terminal. The returned function removes only this listener.
+    onTrustData(cb: (chunk: string) => void): () => void
+    // The trust terminal ended. trusted is true when Claude Code now trusts the repository.
+    onTrustEnd(cb: (end: { repo: string; trusted: boolean }) => void): () => void
+    // Delete the clones, worktrees and input folders of Bifrost. This also works while Watch
+    // GitHub is off.
+    removeClones(): Promise<void>
   }
   // The Performance panel (Performance design). The main process samples Bifrost, the Claude
   // sessions and the Mac every 15 s, and every 2 s while the panel shows.

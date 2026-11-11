@@ -50,6 +50,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: bad session ID': "That session ID isn't valid.",
   'refused: bad settings': "Bifrost couldn't read those settings.",
   'refused: bad slashCommands': "That list of slash commands isn't valid.",
+  'refused: bad terminal value': "Bifrost couldn't read that terminal input.",
   'refused: bad watch colour': "That isn't a colour for the watchlist.",
   'refused: bad watch move': "Bifrost couldn't move that session in the watchlist.",
   'refused: claude rm kept the worktree':

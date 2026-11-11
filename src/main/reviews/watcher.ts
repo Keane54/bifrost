@@ -16,8 +16,9 @@ import { MAX_NOTIFICATIONS } from '../alerts/alert-monitor'
 import { type HealthEvents, NO_HEALTH } from '../performance/health-log'
 import { type Gh, type GhFailure, ghFailure } from './gh'
 import { baselineOf, buildSnapshot } from './model'
-import type { PollData, RateLimit } from './pr-data'
+import type { PollData, PrData, RateLimit } from './pr-data'
 import { parsePoll, pollArgs } from './query'
+import type { ReviewRunner } from './rounds'
 import type { ReviewsState } from './state'
 import type { ReviewsStateStore } from './state-store'
 
@@ -31,7 +32,7 @@ export const REFUSED_REVIEWS_OFF = 'refused: reviews are off'
 // Bifrost opens only a PR URL that starts with this text.
 const GITHUB_URL = 'https://github.com/'
 
-// In R1, no PR has a session (R1-7). R2 and R3 get these values from the sessions.
+// The fixing state is for R3. R2 has no fixing session.
 const R1_CLAUDE: { claude: ClaudeState; fixing: number; error: string | null; sessionId: null } = {
   claude: 'waiting',
   error: null,
@@ -65,6 +66,8 @@ export interface WatcherDeps {
   log(m: string): void
   // The health log gets the result of each poll and the stop (P5, P7). The default does nothing.
   health?: Pick<HealthEvents, 'poll' | 'stopped'>
+  // The review runner. Without it, no PR has a session.
+  reviews?: Pick<ReviewRunner, 'session' | 'sessionOf' | 'trust' | 'afterPoll'>
 }
 
 export interface ReviewsWatcher {
@@ -91,6 +94,10 @@ export interface ReviewsWatcher {
   // The GraphQL rate limit of the last good poll, or null (P11). It is null before the first good
   // poll, after a good poll with no rate limit, and after stop.
   rateLimit(): RateLimit | null
+  // The To review PR with this key from the last poll, or null.
+  toReviewPr(key: string): PrData | null
+  // The login of the user from the last poll, or null before the first good poll and after stop.
+  viewer(): string | null
 }
 
 type Outcome = { ok: true; data: PollData } | { ok: false; failure: GhFailure }
@@ -118,6 +125,8 @@ function nextState(
   const first = s.turnedOnAt === null
   const requests: ReviewsState['requests'] = {}
   const arrived = new Set<string>()
+  // The PR states that a re-request changes: the mark and the error go.
+  const prs: ReviewsState['prs'] = { ...s.prs }
   let edited = false
   for (const pr of poll.toReview) {
     const { key } = pr
@@ -132,6 +141,10 @@ function nextState(
     } else if (pr.requestedAt > known.firstSeen && pr.requestedUsers.includes(poll.viewer)) {
       requests[key] = { baseline: false, firstSeen: seen }
       arrived.add(key)
+      const old = s.prs[key]
+      if (old !== undefined && (old.recommendation !== null || old.lastError !== null)) {
+        prs[key] = { ...old, lastError: null, recommendation: null }
+      }
     } else {
       requests[key] = known
     }
@@ -148,10 +161,11 @@ function nextState(
   }
   const gone = Object.keys(s.requests).some(key => !Object.hasOwn(requests, key))
   const ended = Object.keys(pauses).length !== Object.keys(s.pauses).length
-  const changed = first || edited || gone || ended
+  const cleared = Object.keys(prs).some(key => prs[key] !== s.prs[key])
+  const changed = first || edited || gone || ended || cleared
   const state: ReviewsState = first
     ? { ...s, baseline: baselineOf(poll).items, pauses, requests, turnedOnAt: now }
-    : { ...s, pauses, requests }
+    : { ...s, pauses, prs, requests }
   return { arrived, changed, state }
 }
 
@@ -202,11 +216,11 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       now: deps.now(),
       poll: lastPoll,
       pollStartedAt,
-      session: () => null,
-      sessionOf: () => null,
+      session: key => deps.reviews?.session(key) ?? null,
+      sessionOf: key => deps.reviews?.sessionOf(key) ?? null,
       settings: deps.settings(),
       state: unsaved ?? deps.store.get(),
-      trust: [],
+      trust: deps.reviews?.trust() ?? [],
     })
     return { ...built, polledAt, ...failed }
   }
@@ -316,6 +330,12 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
     set(build())
     const rows = snapshot.toReview.filter(row => row.state === 'new' && arrived.has(row.key))
     for (const notice of requestNotices(rows)) deps.notify(notice)
+    // The runner starts its work at once. A throw of it must not fail the poll.
+    try {
+      deps.reviews?.afterPoll(data)
+    } catch (error) {
+      deps.log(`The review runner failed after a poll. ${error}`)
+    }
   }
 
   // Change the state for a pause or the end of a pause. A state that the store could not save
@@ -425,11 +445,13 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       health.stopped('reviews')
       if (snapshot !== EMPTY_REVIEWS) set(EMPTY_REVIEWS)
     },
+    toReviewPr: key => lastPoll?.toReview.find(p => p.key === key) ?? null,
     urlOf(key) {
       if (lastPoll === null) return null
       const pr = [...lastPoll.toReview, ...lastPoll.mine].find(p => p.key === key)
       return pr?.url.startsWith(GITHUB_URL) ? pr.url : null
     },
+    viewer: () => lastPoll?.viewer ?? null,
   }
 }
 
@@ -437,6 +459,16 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
 export function checkPrKey(value: unknown): string {
   if (typeof value !== 'string' || !PR_KEY.test(value)) throw new Error(REFUSED_UNKNOWN_PR)
   return value
+}
+
+// The PR key that the page sent, when it is a To review row of the current snapshot. Else refuse
+// with REFUSED_UNKNOWN_PR.
+export function toReviewKey(watcher: ReviewsWatcher, value: unknown): string {
+  const key = checkPrKey(value)
+  if (!watcher.current().toReview.some(row => row.key === key)) {
+    throw new Error(REFUSED_UNKNOWN_PR)
+  }
+  return key
 }
 
 // The watcher while Watch GitHub is on. Else refuse with REFUSED_REVIEWS_OFF.
