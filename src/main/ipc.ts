@@ -137,7 +137,7 @@ import { findOnPath, pluginEnv, type TestHome } from './test-home'
 import { openUpdateLog } from './updates/open-log'
 import { appBundlePath } from './updates/rules'
 import { openUpdateStateStore } from './updates/state-store'
-import { createUpdateLog, type UpdateLog } from './updates/update-log'
+import { createUpdateLog, type UpdateLog, updateLogPath } from './updates/update-log'
 import { createUpdater, type Updater } from './updates/updater'
 import { claudeJsonFile, readExtraUsageFlag } from './usage-alerts/claude-json'
 import { createUsageAlertMonitor, type UsageAlertMonitor } from './usage-alerts/monitor'
@@ -1158,13 +1158,19 @@ export function registerIpc(home: TestHome | null = null): void {
   )
   ipcMain.handle('updates:show-log', e =>
     fromPage(e, async () => {
-      await openUpdateLog(updateLog?.path ?? null, {
+      await openUpdateLog(updateLogPath(app.getPath('logs')), {
         ensureFile: async path => {
           await mkdir(dirname(path), { recursive: true })
           await appendFile(path, '')
         },
+        exists: path =>
+          access(path).then(
+            () => true,
+            () => false,
+          ),
         openPath: path => shell.openPath(path),
         showItemInFolder: path => shell.showItemInFolder(path),
+        updaterRuns: updateLog !== null,
       })
     }),
   )
