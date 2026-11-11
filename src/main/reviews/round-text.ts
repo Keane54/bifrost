@@ -13,7 +13,8 @@ export const REASON_STOPPED = 'You stopped the review. Nothing was posted.'
 export const REASON_TIMEOUT =
   'The review took more than 30 minutes, so Bifrost stopped it. Nothing was posted.'
 export const REASON_OTHER_COMMIT =
-  'You have a draft review on an older commit of this pull request. Submit or delete it on GitHub, then try again.'
+  'You have a draft review on an older commit of this pull request. ' +
+  'Submit or delete it on GitHub, then try again.'
 export const REASON_NOT_PENDING =
   "GitHub didn't keep the review as a draft. Check the pull request on GitHub now."
 export const REASON_CLOSED_WHILE_POSTING =
@@ -26,7 +27,8 @@ export const reasonPostFailed = (message: string): string =>
   `GitHub didn't accept the draft review: ${message} Nothing was posted.`
 
 export const reasonPartlyAdded = (added: number, total: number, message: string): string =>
-  `GitHub stopped after ${added} of ${total} comments: ${message} Check your draft review on GitHub.`
+  `GitHub stopped after ${added} of ${total} comments: ${message} ` +
+  'Check your draft review on GitHub.'
 
 interface NoticePr {
   repo: string

@@ -11,9 +11,28 @@ import {
 import { draftNotice, reviewedNotice, trustNotice } from '../../../src/main/reviews/round-text'
 import { RECOMMENDATION_TEXT } from '../../../src/shared/reviews'
 
-// biome-ignore lint/suspicious/noExplicitAny: fixtures are untyped JSON
-const load = (name: string): any =>
+const load = (name: string): unknown =>
   JSON.parse(readFileSync(new URL(`../../fixtures/reviews/${name}.json`, import.meta.url), 'utf8'))
+
+interface PrFx {
+  [k: string]: unknown
+  pending: { nodes: { [k: string]: unknown }[] }
+  reviews: { nodes: { [k: string]: unknown }[] }
+  state?: string
+}
+interface Fx {
+  data: { repository: { pullRequest: PrFx } }
+  errors?: unknown
+}
+interface Threads {
+  data: {
+    repository: {
+      pullRequest: { reviewThreads: { pageInfo: { endCursor: string; hasNextPage: boolean } } }
+    }
+  }
+}
+const loadFx = (name: string): Fx => structuredClone(load(name)) as Fx
+const loadPages = (): Fx[] => (load('context-rereview') as { pages: Fx[] }).pages
 
 const ok = (body: unknown): ExecResult => ({ code: 0, stderr: '', stdout: JSON.stringify(body) })
 
@@ -77,7 +96,7 @@ describe('fetchReviewContext', () => {
       truncated: false,
     })
 
-    const re = load('context-rereview')
+    const re = { pages: loadPages() }
     const { gh: gh2, calls } = fakeGh((_op, v) =>
       ok(v.after === 'CUR1' ? re.pages[1] : re.pages[0]),
     )
@@ -104,8 +123,8 @@ describe('fetchReviewContext', () => {
   })
 
   it('pages the reviews and stops at MAX_PAGES with truncated', async () => {
-    const re = load('context-rereview')
-    const endless = re.pages[0]
+    const _re = { pages: loadPages() }
+    const endless = loadPages()[0]
     const { gh, calls } = fakeGh(op =>
       op === 'ReviewThreads' ? ok(load('threads-1')) : ok(endless),
     )
@@ -119,7 +138,7 @@ describe('fetchReviewContext', () => {
   })
 
   it('keeps only the threads that the viewer started', async () => {
-    const re = load('context-rereview')
+    const re = { pages: loadPages() }
     const { gh } = fakeGh((op, v) => {
       if (op === 'ReviewThreads') return ok(load('threads-1'))
       return ok(v.after === 'CUR1' ? re.pages[1] : re.pages[0])
@@ -144,8 +163,8 @@ describe('fetchReviewContext', () => {
   })
 
   it('sets truncated when the thread list is cut', async () => {
-    const re = load('context-rereview')
-    const threads = load('threads-1')
+    const re = { pages: loadPages() }
+    const threads = structuredClone(load('threads-1')) as Threads
     threads.data.repository.pullRequest.reviewThreads.pageInfo = {
       endCursor: 'T',
       hasNextPage: true,
@@ -169,6 +188,73 @@ describe('fetchReviewContext', () => {
     expect(args.join(' ')).toContain('-f login=me')
     expect(queryOf(args)).not.toContain('acme')
     expect(queryOf(args)).not.toContain('api')
+  })
+
+  it('gives pending null when the draft has no id', async () => {
+    const fx = loadFx('context-first')
+    fx.data.repository.pullRequest.pending.nodes = [
+      { body: 'x', commit: null, id: '', viewerDidAuthor: true },
+    ]
+    const { gh } = fakeGh(() => ok(fx))
+    const r = await fetchReviewContext(gh, PR, 'me')
+    expect(r.ok && r.context.pending).toBeNull()
+  })
+
+  it('fails with the first error message, also when data is present', async () => {
+    const fx = loadFx('context-first')
+    fx.errors = [{ message: 'Partial failure' }]
+    const { gh } = fakeGh(() => ok(fx))
+    expect(await fetchReviewContext(gh, PR, 'me')).toEqual({
+      message: 'Partial failure',
+      ok: false,
+    })
+  })
+
+  it('skips a review with an unknown state', async () => {
+    const fx = loadFx('context-first')
+    fx.data.repository.pullRequest.reviews.nodes = [
+      { body: 'x', comments: { nodes: [] }, state: 'WEIRD', submittedAt: '2026-11-01T10:00:00Z' },
+      {
+        body: 'y',
+        comments: { nodes: [] },
+        state: 'APPROVED',
+        submittedAt: '2026-11-02T10:00:00Z',
+      },
+    ]
+    const { gh } = fakeGh(op => (op === 'ReviewThreads' ? ok(load('threads-1')) : ok(fx)))
+    const r = await fetchReviewContext(gh, PR, 'me')
+    expect(r.ok && r.context.reviews.map(x => x.state)).toEqual(['APPROVED'])
+  })
+
+  it('fails when the PR state is missing or unknown', async () => {
+    for (const state of [undefined, 'WEIRD']) {
+      const fx = loadFx('context-first')
+      fx.data.repository.pullRequest.state = state
+      const { gh } = fakeGh(() => ok(fx))
+      const r = await fetchReviewContext(gh, PR, 'me')
+      expect(r.ok).toBe(false)
+    }
+  })
+
+  it('reads only the review page from page 2 on', async () => {
+    const pages = loadPages()
+    const { gh, calls } = fakeGh((_op, v) => ok(v.after === 'CUR1' ? pages[1] : pages[0]))
+    await fetchReviewContext(gh, PR, 'me')
+    const ctx = calls.filter(c => queryOf(c).includes('query ReviewContext'))
+    expect(ctx[0]?.join(' ')).toContain('-F head=true')
+    expect(ctx[1]?.join(' ')).toContain('-F head=false')
+  })
+
+  it('reads no threads when only a pending review of the viewer exists', async () => {
+    const fx = loadFx('context-first')
+    const pr = fx.data.repository.pullRequest
+    pr.pending.nodes = [{ body: 'd', commit: null, id: 'PRR_1', viewerDidAuthor: true }]
+    pr.reviews.nodes = [{ body: 'd', comments: { nodes: [] }, state: 'PENDING', submittedAt: null }]
+    const { gh, calls } = fakeGh(() => ok(fx))
+    const r = await fetchReviewContext(gh, PR, 'me')
+    expect(r.ok && r.context.pending?.id).toBe('PRR_1')
+    expect(r.ok && r.context.threads).toEqual([])
+    expect(calls.some(c => queryOf(c).includes('query ReviewThreads'))).toBe(false)
   })
 
   it('uses ghFailure for a failed call', async () => {
@@ -216,8 +302,9 @@ describe('lastSubmittedReview', () => {
 describe('the notices', () => {
   it('use RECOMMENDATION_TEXT', () => {
     const pr = { number: 7, repo: 'api' }
+    const text = RECOMMENDATION_TEXT['request-changes']
     expect(draftNotice(pr, 'request-changes')).toEqual({
-      body: `Your draft review is ready. Claude suggests: ${RECOMMENDATION_TEXT['request-changes']}.`,
+      body: `Your draft review is ready. Claude suggests: ${text}.`,
       title: 'api #7',
     })
     expect(reviewedNotice(pr).body).toBe(
