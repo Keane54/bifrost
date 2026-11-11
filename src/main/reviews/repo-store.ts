@@ -2,6 +2,8 @@
 // one worktree for each reviewed PR and one input folder for each PR, all below reposRoot.
 // Bifrost owns these folders, so it can reset, clean and delete them. Each delete first checks
 // that the path is inside reposRoot, also after each link resolves.
+// Each git command names its git folder with --git-dir. So when the .git folder of a clone is
+// missing, git fails. It never searches the parent folders and acts on another repository.
 
 import { existsSync } from 'node:fs'
 import { chmod, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
@@ -20,6 +22,9 @@ const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 // The end of the name of the temporary folder of a clone. A repository name cannot hold "~", so
 // this folder is never the clone of another repository.
 const TEMP_SUFFIX = '~cloning'
+// removeAll first moves each folder of the root to a name with this end, then deletes it.
+// An owner name cannot hold "~" either.
+const DELETE_SUFFIX = '~deleting'
 
 // The start of the remote URL. In a test home, the remotes are bare repositories on the disk.
 export function remoteBase(testHome: string | null): string {
@@ -52,7 +57,8 @@ export interface RepoStore {
   ): Promise<void>
   // Make a new worktree of the PR, detached at head. Give its path.
   prepareWorktree(clone: string, number: number, head: string): Promise<string>
-  // Count the changes in the worktree, then reset and clean it.
+  // Count the changes in the worktree, then reset and clean it. The reset and the clean also run
+  // when the count fails. Then the count error throws.
   checkAndClean(clone: string, number: number, head: string): Promise<{ changed: number }>
   // Delete the input folder of the PR and make a new, empty one. Give its path.
   resetIo(clone: string, number: number): Promise<string>
@@ -72,6 +78,7 @@ const failed = (result: ExecResult): boolean => result.code !== 0 || result.time
 
 // The first line of stderr, for the error text.
 function reason(result: ExecResult): string {
+  if (result.overflow) return 'git gave too much output.'
   if (result.timedOut) return 'git took too long.'
   const line = result.stderr
     .split('\n')
@@ -124,17 +131,22 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
     await rm(path, { force: true, recursive: true })
   }
 
-  // Run git in the clone. A failure throws the prefix and the first line of stderr.
-  async function run(
+  // Run git on the clone, with its .git folder named. A missing .git folder makes git fail.
+  function gitIn(clone: string, args: string[], timeoutMs?: number): Promise<ExecResult> {
+    return deps.git.run([`--git-dir=${join(clone, '.git')}`, ...args], {
+      cwd: clone,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    })
+  }
+
+  // Run git on the clone. A failure throws the prefix and the first line of stderr.
+  async function mustIn(
     clone: string,
     args: string[],
     prefix: string,
     timeoutMs?: number,
   ): Promise<string> {
-    const result = await deps.git.run(args, {
-      cwd: clone,
-      ...(timeoutMs === undefined ? {} : { timeoutMs }),
-    })
+    const result = await gitIn(clone, args, timeoutMs)
     if (failed(result)) throw new Error(`${prefix}${reason(result)}`)
     return result.stdout
   }
@@ -149,7 +161,18 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
     const url = `${deps.remoteBase}${owner.toLowerCase()}/${repo.toLowerCase()}.git`
     try {
       const result = await deps.git.run(
-        ['clone', '--quiet', '--no-checkout', '--filter=blob:none', '--', url, temp],
+        // --origin keeps the remote name origin when the git config of the user names another.
+        [
+          'clone',
+          '--quiet',
+          '--no-checkout',
+          '--filter=blob:none',
+          '--origin',
+          'origin',
+          '--',
+          url,
+          temp,
+        ],
         { cwd: folder, timeoutMs: CLONE_TIMEOUT_MS },
       )
       if (failed(result)) {
@@ -166,14 +189,14 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
   }
 
   async function isBranchName(clone: string, name: string): Promise<boolean> {
-    const result = await deps.git.run(['check-ref-format', '--branch', name], { cwd: clone })
+    const result = await gitIn(clone, ['check-ref-format', '--branch', name])
     // --branch expands a name like @{-1}. So the output must be the same name.
     return !failed(result) && result.stdout.trim() === name
   }
 
   async function commitOf(clone: string, ref: string): Promise<string> {
     const args = ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]
-    const sha = (await run(clone, args, PREPARE_FAILED)).trim()
+    const sha = (await mustIn(clone, args, PREPARE_FAILED)).trim()
     checkCommit(sha)
     return sha
   }
@@ -199,7 +222,7 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
   async function dropWorktree(clone: string, path: string): Promise<void> {
     await checkOwned(path)
     if (isClone(clone)) {
-      await deps.git.run(['worktree', 'remove', '--force', '--force', path], { cwd: clone })
+      await gitIn(clone, ['worktree', 'remove', '--force', '--force', path])
     }
     await remove(path)
   }
@@ -212,20 +235,26 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
       await checkOwned(path)
       // The session can change the .git file of its worktree. So each command names the admin
       // folder and the worktree, and git never reads that file.
-      const on = [`--git-dir=${admin}`, `--work-tree=${path}`]
-      const status = await run(
-        clone,
-        [...on, 'status', '--porcelain', '--untracked-files=all', '--ignored'],
-        PREPARE_FAILED,
-      )
-      const changed = status.split('\n').filter(line => line !== '').length
-      await run(clone, [...on, 'reset', '--hard', '--quiet', head], PREPARE_FAILED)
-      await run(clone, [...on, 'clean', '-ffdx', '--quiet'], PREPARE_FAILED)
-      const gitFile = join(path, '.git')
-      await remove(gitFile)
-      // The flag wx makes a new file. It does not follow a link.
-      await writeFile(gitFile, `gitdir: ${admin}\n`, { flag: 'wx', mode: 0o644 })
-      return { changed }
+      const onWorktree = (args: string[]): Promise<ExecResult> =>
+        deps.git.run([`--git-dir=${admin}`, `--work-tree=${path}`, ...args], { cwd: clone })
+      const status = await onWorktree([
+        'status',
+        '--porcelain',
+        '--untracked-files=all',
+        '--ignored',
+      ])
+      // A failed count does not stop the reset and the clean.
+      const reset = await onWorktree(['reset', '--hard', '--quiet', head])
+      const clean = await onWorktree(['clean', '-ffdx', '--quiet'])
+      if (existsSync(path)) {
+        const gitFile = join(path, '.git')
+        await remove(gitFile)
+        // The flag wx makes a new file. It does not follow a link.
+        await writeFile(gitFile, `gitdir: ${admin}\n`, { flag: 'wx', mode: 0o644 })
+      }
+      const failure = [reset, clean, status].find(failed)
+      if (failure !== undefined) throw new Error(`${PREPARE_FAILED}${reason(failure)}`)
+      return { changed: status.stdout.split('\n').filter(line => line !== '').length }
     },
 
     cloneOf(owner, repo) {
@@ -255,7 +284,7 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
       }
       const prRef = `refs/bifrost/pr/${number}`
       const baseRefLocal = `refs/bifrost/base/${number}`
-      await run(
+      await mustIn(
         clone,
         [
           'fetch',
@@ -270,19 +299,19 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
       )
       const head = await commitOf(clone, prRef)
       const base = await commitOf(clone, baseRefLocal)
-      const mergeBase = (await run(clone, ['merge-base', head, base], PREPARE_FAILED)).trim()
+      const mergeBase = (await mustIn(clone, ['merge-base', head, base], PREPARE_FAILED)).trim()
       checkCommit(mergeBase)
       return { base, head, mergeBase }
     },
 
     async hasCommit(clone, sha) {
       if (!OBJECT_ID.test(sha)) return false
-      return !failed(await deps.git.run(['cat-file', '-e', `${sha}^{commit}`], { cwd: clone }))
+      return !failed(await gitIn(clone, ['cat-file', '-e', `${sha}^{commit}`]))
     },
 
     async isAncestor(clone, a, b) {
       if (!OBJECT_ID.test(a) || !OBJECT_ID.test(b)) return false
-      return !failed(await deps.git.run(['merge-base', '--is-ancestor', a, b], { cwd: clone }))
+      return !failed(await gitIn(clone, ['merge-base', '--is-ancestor', a, b]))
     },
 
     async prepareWorktree(clone, number, head) {
@@ -290,10 +319,10 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
       const path = worktreePath(clone, number)
       await checkOwned(path)
       await dropWorktree(clone, path)
-      await run(clone, ['worktree', 'prune'], PREPARE_FAILED)
+      await mustIn(clone, ['worktree', 'prune'], PREPARE_FAILED)
       await mkdir(dirname(path), { mode: 0o700, recursive: true })
       // The checkout downloads the files of the head, so it gets the long timeout.
-      await run(
+      await mustIn(
         clone,
         ['worktree', 'add', '--quiet', '--detach', '--force', path, head],
         PREPARE_FAILED,
@@ -303,7 +332,7 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
       // name makes git choose another name, and then the commands of checkAndClean fail.
       if (!(await linksBack(clone, number))) {
         await dropWorktree(clone, path)
-        await deps.git.run(['worktree', 'prune'], { cwd: clone })
+        await gitIn(clone, ['worktree', 'prune'])
         throw new Error(`${PREPARE_FAILED}git didn't link the worktree to its admin folder.`)
       }
       await chmod(path, 0o700)
@@ -320,7 +349,20 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
         throw error
       }
-      for (const name of names) await remove(join(root, name))
+      // A delete that stops half way can leave a .git folder that looks like a clone. So each
+      // folder moves to a new name first, and cloneOf no longer finds its clones.
+      // First delete each folder that an earlier removeAll left, so that its name is free.
+      for (const name of names.filter(entry => entry.endsWith(DELETE_SUFFIX))) {
+        await remove(join(root, name))
+      }
+      for (const name of names.filter(entry => !entry.endsWith(DELETE_SUFFIX))) {
+        const from = join(root, name)
+        const to = join(root, `${name}${DELETE_SUFFIX}`)
+        await checkOwned(from)
+        await checkOwned(to)
+        await rename(from, to)
+        await remove(to)
+      }
     },
 
     async removeWorktree(clone, number) {
@@ -329,9 +371,7 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
       await checkOwned(path)
       await checkOwned(io)
       await dropWorktree(clone, path)
-      const pruned = isClone(clone)
-        ? await deps.git.run(['worktree', 'prune'], { cwd: clone })
-        : null
+      const pruned = isClone(clone) ? await gitIn(clone, ['worktree', 'prune']) : null
       await remove(io)
       if (pruned !== null && failed(pruned)) throw new Error(`${PREPARE_FAILED}${reason(pruned)}`)
     },
@@ -351,7 +391,7 @@ export function createRepoStore(deps: RepoStoreDeps): RepoStore {
       const range = mode === 'merge-base' ? [`${from}...${to}`] : [from, to]
       // The fixed prefixes keep the a/ and b/ paths when the git config of the user changes
       // them (diff.noprefix).
-      await run(
+      await mustIn(
         clone,
         [
           'diff',

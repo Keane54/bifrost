@@ -5,7 +5,16 @@ import { join } from 'node:path'
 import { childEnv } from '../child-env'
 
 // timedOut is true only when the timeout stopped the program.
-export type ExecResult = { code: number; stdout: string; stderr: string; timedOut?: boolean }
+// overflow is true only when Node stopped the program at the maxBuffer limit.
+export type ExecResult = {
+  code: number
+  stdout: string
+  stderr: string
+  timedOut?: boolean
+  overflow?: boolean
+}
+// The Node error code when stdout or stderr is longer than maxBuffer.
+const MAXBUFFER_CODE = 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
 // The signal that stops a program at the timeout.
 export type KillSignal = 'SIGKILL' | 'SIGTERM'
 export type ExecFn = (
@@ -61,9 +70,11 @@ export const execFile: ExecFn = (file, args, opts) =>
           resolve(result)
           return
         }
-        // No exit code: the program did not start, or a signal ended it.
+        // No exit code: the program did not start, a signal ended it, or Node stopped it at
+        // the maxBuffer limit.
         const result: ExecResult = { code: 1, stderr: stderr || error.message, stdout }
-        if (killed) result.timedOut = true
+        if (code === MAXBUFFER_CODE) result.overflow = true
+        else if (killed) result.timedOut = true
         resolve(result)
       },
     )

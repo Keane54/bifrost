@@ -3,6 +3,7 @@
 
 import { existsSync } from 'node:fs'
 import {
+  chmod,
   lstat,
   mkdir,
   mkdtemp,
@@ -24,6 +25,7 @@ import {
   GIT_CONFIG,
   GIT_MAX_BUFFER,
   GIT_TIMEOUT_MS,
+  type RepoGit,
 } from '../../../src/main/reviews/repo-git'
 import {
   adminPath,
@@ -48,7 +50,7 @@ const GIT_RUN_TEST =
 
 let base: string
 let env: Record<string, string>
-let commits: { base: string; first: string; head: string }
+let commits: { base: string; first: string; head: string; link: string }
 
 async function git(args: string[], cwd = base): Promise<string> {
   const result = await execFile('git', args, { cwd, env, timeoutMs: 30_000 })
@@ -69,7 +71,9 @@ async function snapshot(dir: string): Promise<Record<string, string>> {
 
 type Call = { args: string[]; timeoutMs: number | undefined }
 
-async function makeStore(opts: { home?: string; remote?: string } = {}): Promise<{
+async function makeStore(
+  opts: { env?: Record<string, string>; home?: string; remote?: string } = {},
+): Promise<{
   calls: Call[]
   home: string
   store: RepoStore
@@ -82,13 +86,18 @@ async function makeStore(opts: { home?: string; remote?: string } = {}): Promise
   }
   const store = createRepoStore({
     bifrostHome: home,
-    git: createRepoGit({ env: async () => env, exec }),
+    git: createRepoGit({ env: async () => opts.env ?? env, exec }),
     remoteBase: opts.remote ?? remoteBase(base),
   })
   return { calls, home, store }
 }
 
-const clonesIn = (calls: Call[]): Call[] => calls.filter(call => call.args[0] === 'clone')
+// The git command of a call, after the options that name the git folder and the worktree.
+const commandOf = (call: Call): string | undefined =>
+  call.args.find(arg => !arg.startsWith('--git-dir=') && !arg.startsWith('--work-tree='))
+const callsOf = (calls: Call[], command: string): Call[] =>
+  calls.filter(call => commandOf(call) === command)
+const clonesIn = (calls: Call[]): Call[] => callsOf(calls, 'clone')
 
 beforeAll(async () => {
   base = await mkdtemp(join(tmpdir(), 'bifrost-repo-store-'))
@@ -123,17 +132,26 @@ beforeAll(async () => {
   await git(['add', '.'], work)
   await git(['commit', '-q', '-m', 'pr'], work)
   const head = await git(['rev-parse', 'HEAD'], work)
+  // PR 8 adds a symbolic link to a file outside the repository.
+  await writeFile(join(base, 'secret.txt'), 'secret')
+  await git(['switch', '-q', '-c', 'pr8'], work)
+  await symlink(join(base, 'secret.txt'), join(work, 'src/escape.ts'))
+  await git(['add', '.'], work)
+  await git(['commit', '-q', '-m', 'link'], work)
+  const link = await git(['rev-parse', 'HEAD'], work)
   // main moves on after the start of the PR.
   await git(['switch', '-q', 'main'], work)
   await writeFile(join(work, 'README.md'), 'hello\nmain moved\n')
   await git(['commit', '-q', '-am', 'main'], work)
   const main = await git(['rev-parse', 'HEAD'], work)
-  commits = { base: main, first, head }
+  commits = { base: main, first, head, link }
   for (const name of ['acme/api', 'globex/web']) {
     const bare = join(base, 'git-remotes', `${name}.git`)
     await git(['clone', '-q', '--bare', work, bare])
     await git(['update-ref', 'refs/pull/7/head', head], bare)
+    await git(['update-ref', 'refs/pull/8/head', link], bare)
     await git(['update-ref', '-d', 'refs/heads/pr'], bare)
+    await git(['update-ref', '-d', 'refs/heads/pr8'], bare)
   }
 })
 
@@ -163,6 +181,10 @@ describe('createRepoGit', () => {
       'credential.helper=!gh auth git-credential',
       '-c',
       'advice.detachedHead=false',
+      '-c',
+      'core.symlinks=false',
+      '-c',
+      'submodule.recurse=false',
     ])
     expect(GIT_TIMEOUT_MS).toBe(120_000)
     expect(CLONE_TIMEOUT_MS).toBe(900_000)
@@ -188,6 +210,41 @@ describe('createRepoGit', () => {
       env: expect.objectContaining({ GIT_TERMINAL_PROMPT: '0' }),
       maxBuffer: GIT_MAX_BUFFER,
       timeoutMs: 5,
+    })
+  })
+
+  it('removes each GIT_ variable of the env, but keeps the git config of a test home', async () => {
+    const exec = vi.fn<ExecFn>(async () => ({ code: 0, stderr: '', stdout: '' }))
+    const repoGit = createRepoGit({
+      env: async () => ({
+        GIT_ASKPASS: '/x/askpass',
+        GIT_COMMON_DIR: '/x/common',
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_KEY_0: 'core.hooksPath',
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_CONFIG_PARAMETERS: "'core.hookspath'='/x'",
+        GIT_CONFIG_VALUE_0: '/x/hooks',
+        GIT_DIR: '/x/.git',
+        GIT_INDEX_FILE: '/x/index',
+        GIT_OBJECT_DIRECTORY: '/x/objects',
+        GIT_TRACE: '1',
+        GIT_TRACE2_EVENT: '/x/trace',
+        GIT_WORK_TREE: '/x',
+        HOME: '/h',
+        PATH: '/bin',
+      }),
+      exec,
+    })
+    await repoGit.run(['status'])
+    expect(exec.mock.calls[0]?.[2]?.env).toEqual({
+      GCM_INTERACTIVE: 'never',
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_LFS_SKIP_SMUDGE: '1',
+      GIT_TERMINAL_PROMPT: '0',
+      HOME: '/h',
+      PATH: '/bin',
     })
   })
 })
@@ -283,7 +340,11 @@ describe('createRepoStore', { timeout: 30_000 }, () => {
     })
     expect(await git(['rev-parse', 'refs/bifrost/pr/7'], clone)).toBe(commits.head)
     expect(await git(['rev-parse', 'refs/bifrost/base/7'], clone)).toBe(commits.base)
-    const fetches = (): Call[] => calls.filter(call => call.args[0] === 'fetch')
+    const fetches = (): Call[] => callsOf(calls, 'fetch')
+    // Each command on the clone names its .git folder.
+    for (const call of calls.filter(call => commandOf(call) !== 'clone')) {
+      expect(call.args[0]).toBe(`--git-dir=${join(clone, '.git')}`)
+    }
     expect(fetches()).toHaveLength(1)
     expect(fetches()[0]?.args).toEqual(
       expect.arrayContaining([
@@ -486,5 +547,129 @@ describe('createRepoStore', { timeout: 30_000 }, () => {
     const empty = await makeStore()
     await empty.store.removeAll()
     expect(existsSync(reposRoot(empty.home))).toBe(false)
+  })
+
+  it('a clone folder with no .git never lets git act on an outer repository', async () => {
+    const outer = await mkdtemp(join(base, 'outer-'))
+    await git(['init', '-q', '-b', 'main', outer])
+    await writeFile(join(outer, 'a.txt'), 'a\n')
+    await git(['add', '.'], outer)
+    await git(['commit', '-q', '-m', 'one'], outer)
+    const one = await git(['rev-parse', 'HEAD'], outer)
+    await writeFile(join(outer, 'a.txt'), 'b\n')
+    await git(['commit', '-q', '-am', 'two'], outer)
+    const two = await git(['rev-parse', 'HEAD'], outer)
+    const home = join(outer, 'home')
+    await mkdir(home)
+    const { store } = await makeStore({ home })
+    const clone = clonePath(home, 'acme', 'api')
+    // resetIo makes the clone folder, but not its .git folder.
+    const io = await store.resetIo(clone, 7)
+    expect(existsSync(join(clone, '.git'))).toBe(false)
+    const before = await snapshot(join(outer, '.git'))
+
+    await expect(store.fetchPr(clone, 7, 'main')).rejects.toThrow(FETCH_FAILED)
+    expect(await store.hasCommit(clone, two)).toBe(false)
+    expect(await store.isAncestor(clone, one, two)).toBe(false)
+    await expect(store.writeDiff(clone, one, two, join(io, 'full.diff'), 'direct')).rejects.toThrow(
+      PREPARE_FAILED,
+    )
+    await expect(store.prepareWorktree(clone, 7, two)).rejects.toThrow(PREPARE_FAILED)
+    await expect(store.checkAndClean(clone, 7, two)).rejects.toThrow(PREPARE_FAILED)
+    await store.removeWorktree(clone, 7)
+
+    expect(await snapshot(join(outer, '.git'))).toEqual(before)
+    expect(await git(['worktree', 'list', '--porcelain'], outer)).not.toContain('.bifrost')
+  })
+
+  it('checks out a symbolic link of the PR as a plain file', async () => {
+    const { store } = await makeStore()
+    const clone = await store.ensureClone('acme', 'api')
+    const pr = await store.fetchPr(clone, 8, 'main')
+    expect(pr.head).toBe(commits.link)
+    const path = await store.prepareWorktree(clone, 8, pr.head)
+    const file = join(path, 'src/escape.ts')
+    const secret = join(base, 'secret.txt')
+    const isPlain = async (): Promise<void> => {
+      const info = await lstat(file)
+      expect(info.isSymbolicLink()).toBe(false)
+      expect(info.isFile()).toBe(true)
+      expect(await readFile(file, 'utf8')).toBe(secret)
+    }
+    await isPlain()
+    expect(await store.checkAndClean(clone, 8, pr.head)).toEqual({ changed: 0 })
+    await isPlain()
+    // The session writes the file. The clean gives the plain file back.
+    await writeFile(file, 'changed\n')
+    expect(await store.checkAndClean(clone, 8, pr.head)).toEqual({ changed: 1 })
+    await isPlain()
+    expect(await readFile(secret, 'utf8')).toBe('secret')
+  })
+
+  it('cleans the worktree also when the count of changes fails', async () => {
+    const home = await mkdtemp(join(base, 'home-'))
+    const real = createRepoGit({ env: async () => env, exec: execFile })
+    // The status command gives more output than the buffer holds.
+    const overflow = {
+      code: 1,
+      overflow: true,
+      stderr: 'stdout maxBuffer length exceeded',
+      stdout: '',
+    }
+    const repoGit: RepoGit = {
+      run: (args, opts) =>
+        args.includes('status') ? Promise.resolve(overflow) : real.run(args, opts),
+    }
+    const store = createRepoStore({ bifrostHome: home, git: repoGit, remoteBase: remoteBase(base) })
+    const clone = await store.ensureClone('acme', 'api')
+    const pr = await store.fetchPr(clone, 7, 'main')
+    const path = await store.prepareWorktree(clone, 7, pr.head)
+    await writeFile(join(path, 'stray.txt'), 'stray')
+    await writeFile(join(path, 'src/limit.ts'), 'changed\n')
+    await writeFile(join(path, '.git'), `gitdir: ${base}\n`)
+    await expect(store.checkAndClean(clone, 7, pr.head)).rejects.toThrow(
+      `${PREPARE_FAILED}git gave too much output.`,
+    )
+    expect(existsSync(join(path, 'stray.txt'))).toBe(false)
+    expect(await readFile(join(path, 'src/limit.ts'), 'utf8')).toContain('line12 = 1200')
+    expect(await readFile(join(path, '.git'), 'utf8')).toBe(`gitdir: ${adminPath(clone, 7)}\n`)
+  })
+
+  it('removeAll moves each folder away first, so a delete that stops leaves no clone', async () => {
+    const { home, store } = await makeStore()
+    const clone = await store.ensureClone('acme', 'api')
+    const root = reposRoot(home)
+    // rm cannot empty a folder with no write permission, so the delete stops half way.
+    const locked = join(clone, '.bifrost-io', '7', 'locked')
+    const moved = join(root, 'acme~deleting', 'api', '.bifrost-io', '7', 'locked')
+    await mkdir(locked, { recursive: true })
+    await writeFile(join(locked, 'x'), 'x')
+    await chmod(locked, 0o500)
+    try {
+      await expect(store.removeAll()).rejects.toThrow()
+      expect(existsSync(clone)).toBe(false)
+      expect(store.cloneOf('acme', 'api')).toBeNull()
+    } finally {
+      for (const dir of [locked, moved]) await chmod(dir, 0o700).catch(() => undefined)
+    }
+    expect(await readdir(root)).toEqual(['acme~deleting'])
+    // The next removeAll also deletes the folder that the earlier one left.
+    await store.ensureClone('acme', 'api')
+    await store.removeAll()
+    expect(await readdir(root)).toEqual([])
+  })
+
+  it('clones with the remote name origin when the user config names another', async () => {
+    const config = join(base, 'user.gitconfig')
+    await writeFile(config, '[clone]\n\tdefaultRemoteName = upstream\n[diff]\n\tnoprefix = true\n')
+    const { store } = await makeStore({ env: { ...env, GIT_CONFIG_GLOBAL: config } })
+    const clone = await store.ensureClone('acme', 'api')
+    const pr = await store.fetchPr(clone, 7, 'main')
+    expect(pr.head).toBe(commits.head)
+    const io = await store.resetIo(clone, 7)
+    await store.writeDiff(clone, pr.base, pr.head, join(io, 'full.diff'), 'merge-base')
+    expect(await readFile(join(io, 'full.diff'), 'utf8')).toContain(
+      'diff --git a/src/limit.ts b/src/limit.ts',
+    )
   })
 })

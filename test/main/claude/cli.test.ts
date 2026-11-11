@@ -112,6 +112,17 @@ test('execFile stops at the maxBuffer limit and names the limit', async () => {
   const result = await execFile('/bin/sh', ['-c', 'printf "%064d" 0'], { maxBuffer: 16 })
   expect(result.code).toBe(1)
   expect(result.stderr).toContain('maxBuffer')
+  // The limit is not the timeout.
+  expect(result.overflow).toBe(true)
+  expect(result.timedOut).toBeUndefined()
+})
+
+test('execFile sets overflow also when the program writes to stderr', async () => {
+  const result = await execFile('/bin/sh', ['-c', 'echo note >&2; printf "%064d" 0'], {
+    maxBuffer: 16,
+  })
+  expect(result.overflow).toBe(true)
+  expect(result.timedOut).toBeUndefined()
 })
 
 test('execFile keeps the Node default limit without maxBuffer', async () => {
