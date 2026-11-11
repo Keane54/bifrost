@@ -6,6 +6,7 @@ export const REVIEWS_ROWS = {
   maxSessions: 'Maximum PR sessions',
   pauseTime: 'Pause time',
   pollInterval: 'GitHub poll interval',
+  removeClones: 'Remove all clones',
   requestModel: 'Model for request sessions',
   reviewModel: 'Model for review sessions',
   teamRequests: 'Show team requests',

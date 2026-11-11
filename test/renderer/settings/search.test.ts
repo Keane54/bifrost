@@ -146,6 +146,11 @@ describe('the index of all sections', () => {
     const hits = searchSettings('team', index)
     expect(hits?.find(hit => hit.id === 'reviews')?.rows).toContain('Show team requests')
   })
+
+  it('finds Remove all clones in Reviews with the word clones', () => {
+    const hits = searchSettings('clones', index)
+    expect(hits?.find(hit => hit.id === 'reviews')?.rows).toContain('Remove all clones')
+  })
 })
 
 describe('searchSettings', () => {

@@ -15,6 +15,7 @@ describe('Settings > Reviews', () => {
       maxSessions: 'Maximum PR sessions',
       pauseTime: 'Pause time',
       pollInterval: 'GitHub poll interval',
+      removeClones: 'Remove all clones',
       requestModel: 'Model for request sessions',
       reviewModel: 'Model for review sessions',
       teamRequests: 'Show team requests',
@@ -44,17 +45,49 @@ describe('Settings > Reviews', () => {
     expect(SECTION).toContain('!settings.reviewsWatch')
   })
 
-  it('shows the later-version hint on each row that has no effect in R1', () => {
-    for (const row of ['autoFix', 'maxSessions', 'requestModel', 'reviewModel']) {
-      const at = SECTION.indexOf(`label={REVIEWS_ROWS.${row}}`)
-      expect(at, row).toBeGreaterThan(-1)
-      // The hint is a prop of the same element: it comes before the next element.
-      const start = SECTION.lastIndexOf('<', at)
-      const end = SECTION.indexOf('/>', at)
-      expect(SECTION.slice(start, end), row).toContain('hint={LATER}')
+  // The hint of a row is a prop of the same element: it comes before the end of the element.
+  function rowElement(row: string): string {
+    const at = SECTION.indexOf(`label={REVIEWS_ROWS.${row}}`)
+    expect(at, row).toBeGreaterThan(-1)
+    return SECTION.slice(SECTION.lastIndexOf('<', at), SECTION.indexOf('/>', at))
+  }
+
+  it('shows the later-version hint only on the two R3 rows', () => {
+    for (const row of ['autoFix', 'requestModel'])
+      expect(rowElement(row), row).toContain('hint={LATER}')
+    for (const row of ['maxSessions', 'reviewModel']) {
+      expect(rowElement(row), row).not.toContain('hint=')
     }
     expect(SECTION).toContain("const LATER = 'Comes in a later version.'")
     expect(SECTION).toMatch(/<SettingRow[\s\S]*?hint=\{props\.hint\}[\s\S]*?label=\{props\.label\}/)
+  })
+
+  it('has the Remove all clones row with its hint and a Remove button', () => {
+    expect(SECTION).toContain(
+      `hint="Deletes Bifrost's own copies of your repositories. Your own checkouts aren't touched."`,
+    )
+    expect(SECTION).toContain('useRowSave(REVIEWS_ROWS.removeClones)')
+    expect(SECTION).toContain('<RemoveClonesRow')
+  })
+
+  it('asks with useConfirm before it calls removeClones, and shows a refusal as the row error', () => {
+    const ask = SECTION.indexOf('await confirm(REMOVE_CLONES_CONFIRM)')
+    const call = SECTION.indexOf('window.bifrost.reviews.removeClones()')
+    expect(ask).toBeGreaterThan(-1)
+    expect(call).toBeGreaterThan(ask)
+    expect(SECTION).toContain('row.save(() => window.bifrost.reviews.removeClones())')
+    expect(SECTION).toContain("title: 'Remove all clones?'")
+    expect(SECTION).toContain("confirm: 'Remove',")
+    expect(SECTION).toContain(
+      'Bifrost will delete its copies of your repositories, the review sessions that use them and any queued reviews. Your own checkouts and your draft reviews on GitHub stay as they are. While Watch GitHub is on, Bifrost copies the repositories of your open pull requests again.',
+    )
+  })
+
+  it('has the new body in the Watch GitHub confirm', () => {
+    expect(SECTION).toContain(
+      'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It makes its own copy of each of their repositories, and asks you to trust each copy once. When you click Review, Claude reviews the pull request and Bifrost saves a draft review on GitHub that only you can see. Nothing is ever submitted for you.',
+    )
+    expect(SECTION).not.toContain('It only reads for now')
   })
 
   it('has the ignore field, the Add button and the Remove button', () => {

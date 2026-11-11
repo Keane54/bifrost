@@ -18,16 +18,23 @@ import { useSettings } from './settings-context'
 
 // Each turn-on of Watch GitHub asks first.
 const WATCH_CONFIRM: ConfirmText = {
-  body: 'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It only reads for now. Later versions can start Claude sessions that reply on your PRs and draft reviews, and only when you turn those on.',
+  body: 'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It makes its own copy of each of their repositories, and asks you to trust each copy once. When you click Review, Claude reviews the pull request and Bifrost saves a draft review on GitHub that only you can see. Nothing is ever submitted for you.',
   confirm: 'Turn on',
   title: 'Watch GitHub?',
+}
+
+// Remove all clones asks first.
+const REMOVE_CLONES_CONFIRM: ConfirmText = {
+  body: 'Bifrost will delete its copies of your repositories, the review sessions that use them and any queued reviews. Your own checkouts and your draft reviews on GitHub stay as they are. While Watch GitHub is on, Bifrost copies the repositories of your open pull requests again.',
+  confirm: 'Remove',
+  title: 'Remove all clones?',
 }
 
 // The minutes that Pause time and the poll interval offer. They match the settings checks.
 const PAUSE_CHOICES = [15, 30, 60, 120, 240, 480] as const
 const POLL_CHOICES = [1, 2, 5, 10] as const
 
-// The hint of a row that saves but has no effect in R1.
+// The hint of a row that saves but has no effect yet.
 const LATER = 'Comes in a later version.'
 
 const MODEL_OPTIONS = modelOptions()
@@ -69,6 +76,31 @@ function ModelRow(props: {
           </option>
         ))}
       </select>
+    </SettingRow>
+  )
+}
+
+// The row that deletes the clones of Bifrost. It asks first. A refusal shows as the row error.
+function RemoveClonesRow(): React.JSX.Element {
+  const confirm = useConfirm()
+  const row = useRowSave(REVIEWS_ROWS.removeClones)
+  return (
+    <SettingRow
+      error={row.error}
+      hint="Deletes Bifrost's own copies of your repositories. Your own checkouts aren't touched."
+      label={REVIEWS_ROWS.removeClones}
+      onCloseError={row.closeError}
+    >
+      <button
+        className='h-5 shrink-0 border border-panel-edge px-2 text-xs text-text hover:bg-hover active:bg-accent/12 disabled:opacity-40'
+        onClick={async () => {
+          if (!(await confirm(REMOVE_CLONES_CONFIRM))) return
+          await row.save(() => window.bifrost.reviews.removeClones())
+        }}
+        type='button'
+      >
+        Remove
+      </button>
     </SettingRow>
   )
 }
@@ -201,8 +233,8 @@ function ReviewsRows(): React.JSX.Element {
           await update({ reviewsWatch: value })
         }}
       />
-      {/* These settings save, but they have no effect in R1: automatic comments, the maximum
-          PR sessions and the two models. */}
+      {/* These settings save, but they have no effect yet: automatic comments and the model for
+          request sessions. */}
       <CheckRow
         checked={settings.reviewsAutoFix}
         hint={LATER}
@@ -215,7 +247,6 @@ function ReviewsRows(): React.JSX.Element {
         save={value => update({ reviewsTeamRequests: value })}
       />
       <NumberRow
-        hint={LATER}
         label={REVIEWS_ROWS.maxSessions}
         max={10}
         min={1}
@@ -244,12 +275,12 @@ function ReviewsRows(): React.JSX.Element {
         value={settings.reviewsRequestModel}
       />
       <ModelRow
-        hint={LATER}
         label={REVIEWS_ROWS.reviewModel}
         save={value => update({ reviewsReviewModel: value as ModelChoice })}
         value={settings.reviewsReviewModel}
       />
       <IgnoreRow />
+      <RemoveClonesRow />
     </div>
   )
 }
