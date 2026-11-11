@@ -8,6 +8,7 @@ import {
   REASON_NO_TERMINAL,
   REASON_ONLY_EXTERNAL,
   REASON_PARKED,
+  REASON_PR_RESUME,
   REASON_RESUME_ALL_RUNS,
   REASON_TERMINAL_UNKNOWN,
   REASON_WAIT_ID,
@@ -31,6 +32,7 @@ const SETTING_TEXT = "That setting isn't valid."
 export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'claude not found':
     "Bifrost can't find Claude Code. Check that the claude command works in a terminal.",
+  'refused: a review session cannot be resumed': REASON_PR_RESUME,
   'refused: an action on this session runs':
     'Another action is still running on this session. Try again in a moment.',
   'refused: another session uses this folder':

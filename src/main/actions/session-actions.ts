@@ -86,6 +86,8 @@ const REFUSED_STOP = 'refused: only an owned session that runs'
 export const REFUSED_DELETE_EXTERNAL = 'refused: Bifrost does not delete an external session'
 export const REFUSED_FOLDER_IN_USE = 'refused: another session uses this folder'
 const REFUSED_NOT_PARKED = 'refused: the session is not parked'
+// A review session of a PR ran one round. Its next round is a new session.
+export const REFUSED_PR_RESUME = 'refused: a review session cannot be resumed'
 const REFUSED_NOT_EXTERNAL = 'refused: only an external session'
 const REFUSED_WORKING = 'refused: the session is working'
 const REFUSED_PROMPT = 'refused: the session has an open prompt'
@@ -516,6 +518,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   // The woken job keeps its short ID, so its entry goes to the same row ID (spec 6.1).
   const startResume = async (run: RunClaude, row: SessionRow): Promise<void> => {
     if (row.state !== 'parked') throw new Error(REFUSED_NOT_PARKED)
+    if (row.prSession) throw new Error(REFUSED_PR_RESUME)
     checkSessionId(resumeIdOf(row))
     await checkProjectDir(row.cwd)
     await startRun(run, resumeArgs(row), row.cwd, 'claude --bg --resume')

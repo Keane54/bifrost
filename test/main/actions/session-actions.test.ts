@@ -8,6 +8,7 @@ import {
   handOverArgs,
   NO_STATUSLINE_SETTINGS,
   newSessionArgs,
+  REFUSED_PR_RESUME,
   RESUME_SETTLE_MS,
   RM_GRACE_MS,
   RM_TIMEOUT_MS,
@@ -1410,6 +1411,13 @@ describe('resume', () => {
       f.rows = [r]
       await expect(actions.resume(S)).rejects.toThrow('refused: the session is not parked')
     }
+    expect(f.ops('run')).toEqual([])
+  })
+
+  test('resume refuses a review session of a PR', async () => {
+    f.rows = [parked({ prSession: true })]
+    await expect(actions.resume(S)).rejects.toThrow(REFUSED_PR_RESUME)
+    expect(REFUSED_PR_RESUME).toBe('refused: a review session cannot be resumed')
     expect(f.ops('run')).toEqual([])
   })
 

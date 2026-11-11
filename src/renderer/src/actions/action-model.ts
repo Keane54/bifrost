@@ -27,6 +27,7 @@ import {
   REASON_ONLY_EXTERNAL,
   REASON_ONLY_PARKED,
   REASON_PARKED,
+  REASON_PR_RESUME,
   REASON_PR_SESSION,
   REASON_RED_BOX,
   REASON_RESUME_ALL_RUNS,
@@ -183,6 +184,7 @@ export function actionStateFor(
     return off(cls === 'external' ? REASON_EXTERNAL : REASON_PARKED)
   }
   if (id === 'hand-over' && row.prSession) return off(REASON_PR_SESSION)
+  if (id === 'resume' && row.prSession) return off(REASON_PR_RESUME)
   if (id === 'close-window' && !ctx.chatOpen) return off(REASON_NO_WINDOW)
   if (id === 'open-project') {
     if (!row.cwd.startsWith('/')) return off(REASON_NO_CWD)

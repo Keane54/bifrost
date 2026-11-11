@@ -13,6 +13,7 @@ import {
   rowMenu,
   SELECTED_ITEM_ACTIONS,
 } from '../../../src/renderer/src/actions/action-model'
+import { friendlyError } from '../../../src/renderer/src/actions/errors'
 import * as R from '../../../src/renderer/src/actions/reasons'
 import type { SessionRow } from '../../../src/shared/types'
 import { row } from '../overview/fixtures'
@@ -628,5 +629,17 @@ describe('action model', () => {
     const add = find(rowMenu(owned, ctx()), 'watch-add')
     if (add?.type !== 'submenu') throw new Error('not a submenu')
     expect(checkedKey(add.items)).toBeUndefined()
+  })
+})
+
+describe('Resume of a review session', () => {
+  it('is disabled for a review session of a PR, with a reason', () => {
+    const parkedPr = row({ prSession: true, sessionId: 'p', state: 'parked' })
+    expect(actionStateFor('resume', parkedPr, ctx())).toEqual({
+      enabled: false,
+      reason: R.REASON_PR_RESUME,
+    })
+    expect(actionStateFor('resume', parked, ctx()).enabled).toBe(true)
+    expect(friendlyError('refused: a review session cannot be resumed')).toBe(R.REASON_PR_RESUME)
   })
 })
