@@ -265,6 +265,39 @@ describe('writeRoundFiles', () => {
     ])
   })
 
+  it('a rewritten history gives the full diff and the earlier threads and summaries', async () => {
+    const notAncestor = (repos: RepoStore): RepoStore =>
+      ({
+        ...repos,
+        hasCommit: async () => true,
+        isAncestor: async () => false,
+      }) as unknown as RepoStore
+    const notKnown = (repos: RepoStore): RepoStore =>
+      ({ ...repos, hasCommit: async () => false }) as unknown as RepoStore
+    const cases: [string | null, (repos: RepoStore) => RepoStore][] = [
+      ['c'.repeat(40), notAncestor],
+      ['c'.repeat(40), notKnown],
+      [null, withGit],
+    ]
+    for (const [commit, git] of cases) {
+      const { repos, modes } = fakeRepos()
+      const ctx = context({
+        reviews: [review({ body: 'First pass.', commit, state: 'CHANGES_REQUESTED' })],
+        threads: [thread],
+      })
+      const out = await writeRoundFiles({ repos: git(repos), skillsDir }, args(ctx))
+      expect(out.ok).toBe(true)
+      if (!out.ok) return
+      expect(out.input.review).toMatchObject({ kind: 'first', note: 'rewritten', since: null })
+      expect(modes).toEqual(['merge-base'])
+      expect(out.input.files.sinceDiff).toBeNull()
+      expect(out.input.earlier.threads).toEqual([thread])
+      expect(out.input.earlier.summaries).toEqual([
+        { body: 'First pass.', state: 'CHANGES_REQUESTED', url: review().url },
+      ])
+    }
+  })
+
   it('a last commit equal to the head or null makes a first review with no git check', async () => {
     for (const commit of ['h'.repeat(40), null]) {
       const calls: string[] = []

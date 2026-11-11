@@ -14,6 +14,8 @@ export const MAX_COMMENTS = 50
 export const MAX_COMMENT_BODY = 10_000
 export const MAX_SUMMARY = 20_000
 export const MAX_WHY = 300
+// GitHub refuses a review body that is longer than this.
+export const MAX_REVIEW_BODY = 65_536
 
 export type Side = 'LEFT' | 'RIGHT'
 
@@ -83,6 +85,9 @@ const COMMENT_KEYS = ['path', 'line', 'side', 'startLine', 'startSide', 'body']
 const COMMENT_NEEDS = ['path', 'line', 'side', 'body']
 const SIDES: readonly string[] = ['LEFT', 'RIGHT']
 const UNKNOWN_FIELD = 'an unknown field'
+// A control character, or a character that changes the direction of the text (Bidi_Control:
+// U+061C, U+200E, U+200F, U+202A to U+202E and U+2066 to U+2069).
+const CONTROL = /[\p{Cc}\p{Bidi_Control}]/u
 
 type Parsed = { ok: true; result: ReviewResult } | { ok: false; reason: string }
 type Checked<T> = { ok: true; value: T } | { ok: false; reason: string }
@@ -180,8 +185,13 @@ export function parseReviewResult(
     return fail('the recommendation field is not approve, comment or request-changes')
   }
   if (typeof why !== 'string') return fail('the why field is not text')
-  if (blank(why)) return fail('the why field is empty')
-  if (why.length > MAX_WHY) return fail(`the why field is longer than ${count(MAX_WHY)} characters`)
+  // The row of the PR shows why on one line.
+  const oneLine = why.replace(/\s+/g, ' ').trim()
+  if (oneLine === '') return fail('the why field is empty')
+  if (CONTROL.test(oneLine)) return fail('the why field has a control character')
+  if (oneLine.length > MAX_WHY) {
+    return fail(`the why field is longer than ${count(MAX_WHY)} characters`)
+  }
   if (typeof summary !== 'string') return fail('the summary field is not text')
   if (summary.length > MAX_SUMMARY) {
     return fail(`the summary field is longer than ${count(MAX_SUMMARY)} characters`)
@@ -204,18 +214,33 @@ export function parseReviewResult(
   if (value !== 'approve' && cleanSummary === '' && checked.length === 0) {
     return fail(`a ${RECOMMENDATION_TEXT[value]} recommendation has no text`)
   }
-  return {
-    ok: true,
-    result: {
-      comments: checked,
-      headSha: expect.headSha,
-      pr: expect.pr,
-      recommendation: value,
-      summary: cleanSummary,
-      version: RESULT_VERSION,
-      why,
-    },
+  const result: ReviewResult = {
+    comments: checked,
+    headSha: expect.headSha,
+    pr: expect.pr,
+    recommendation: value,
+    summary: cleanSummary,
+    version: RESULT_VERSION,
+    why: oneLine,
   }
+  if (placeComments(result, expect.files).summary.length > MAX_REVIEW_BODY) {
+    return fail(
+      `the summary with the moved comments is longer than ${count(MAX_REVIEW_BODY)} characters`,
+    )
+  }
+  return { ok: true, result }
+}
+
+// A code span for a path, which the author of the PR chose. The fence is one backtick longer
+// than the longest run of backticks in the path, so the path cannot end the span. A line break
+// becomes a space.
+function codeSpan(text: string): string {
+  const flat = text.replace(/\r\n|\r|\n/g, ' ')
+  let longest = 0
+  for (const run of flat.match(/`+/g) ?? []) longest = Math.max(longest, run.length)
+  const fence = '`'.repeat(longest + 1)
+  const pad = flat.startsWith('`') || flat.endsWith('`') ? ' ' : ''
+  return `${fence}${pad}${flat}${pad}${fence}`
 }
 
 // GitHub refuses the whole review when one comment is on a line outside the diff. So a comment
@@ -229,7 +254,7 @@ export function placeComments(
   const parts = blank(result.summary) ? [] : [result.summary]
   for (const c of result.comments) {
     if (lineInDiff(files, c.path, c.side, c.line, c.startLine, c.startSide)) kept.push(c)
-    else parts.push(`\`${c.path}\` line ${c.line}: ${c.body}`)
+    else parts.push(`${codeSpan(c.path)} line ${c.line}: ${c.body}`)
   }
   return {
     comments: kept,

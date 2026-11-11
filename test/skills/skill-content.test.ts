@@ -295,6 +295,23 @@ describe('the Bifrost mode of bifrost-review', () => {
     }
   })
 
+  it('bifrost-mode.md gives the note sentence, the line rules and the escapes', () => {
+    // The text can wrap at any space.
+    const text = mode().replace(/\s+/g, ' ')
+    for (const phrase of [
+      'When the review has other text, add one sentence that says why. Else write no summary.',
+      'no linked issues and no commit messages',
+      'A context line counts on both sides',
+      'a `-` line counts on the base side only',
+      'a `+` line counts on the head side only',
+      'one sentence on one line',
+      'a tab as `\\t`',
+      'With `review.note` `rewritten`, also check the earlier threads and summaries',
+    ]) {
+      expect(text).toContain(phrase)
+    }
+  })
+
   // Bifrost copies the file into the input folder, and the session reads it as it is.
   it('bifrost-mode.md has no frontmatter, no variable and British spelling', () => {
     expect(mode().startsWith('---')).toBe(false)

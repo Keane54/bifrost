@@ -33,15 +33,19 @@ The fields of the input file:
 - `review.lastReview`: the last submitted review of the user, with its commit, state, time and
   link. `null` when there is none.
 - `changedFiles`: the path of each file in the full diff.
-- `earlier.threads`: in a re-review, the threads that the user started. Each thread has its path,
-  its line, `isResolved`, `isOutdated`, its link and its comments. Each comment has its author.
-- `earlier.summaries`: in a re-review, the summary of each earlier review of the user, with its
-  state and its link.
+- `earlier.threads`: in a re-review and with `review.note` `rewritten`, the threads that the user
+  started. Each thread has its path, its line, `isResolved`, `isOutdated`, its link and its
+  comments. Each comment has its author. Else an empty list.
+- `earlier.summaries`: in a re-review and with `review.note` `rewritten`, the summary of each
+  earlier review of the user, with its state and its link. Else an empty list.
 - `files.fullDiff`: the path of the full diff of the PR, from the merge base to the head commit.
 - `files.sinceDiff`: in a re-review, the path of the diff from `review.since` to the head commit.
   Else `null`.
 - `files.result`: the path of the result file that you write.
 - `files.rules`: the path of the humanise rules.
+
+The input file has no linked issues and no commit messages. Do not look for them, for example in
+`.git`.
 
 ## The files of the PR
 
@@ -58,7 +62,10 @@ When `review.kind` is `first`, review `files.fullDiff`.
 - `review.note` `unchanged`: the head commit is the commit of the last review of the user.
 - `review.note` `rewritten`: the author rewrote the history after the last review of the user, or
   Bifrost cannot find the commit of that review.
-- With either note, review the full diff, and say why in one sentence of the summary.
+- With either note, review the full diff. When the review has other text, add one sentence that
+  says why. Else write no summary.
+- With `review.note` `rewritten`, also check the earlier threads and summaries, as steps 3 to 5
+  below say.
 
 When `review.kind` is `re-review`:
 
@@ -87,6 +94,9 @@ When `review.kind` is `re-review`:
 - Side `LEFT` is for a deleted line. Its number is the line number in the base version. Count it
   from the hunk header: in `@@ -10,4 +12,5 @@`, the first line of the hunk is line 10 of the base
   version and line 12 of the head version.
+- Count the lines of a hunk from the numbers in its header. A context line counts on both sides, a
+  `-` line counts on the base side only, and a `+` line counts on the head side only. A context
+  line starts with a space.
 - Put a problem outside the hunks in the summary, with its path and line.
 
 ## The result file
@@ -122,8 +132,8 @@ Bifrost checks the file. If one rule fails, Bifrost refuses the whole file and p
 - `headSha`: the value of `pr.headSha`, exactly.
 - `recommendation`: `approve`, `comment` or `request-changes`. These are Approve, Comment and
   Request changes in section 6 of `SKILL.md`.
-- `why`: one sentence that gives the reason for the recommendation, from 1 to 300 characters.
-  Bifrost shows it on the row of the PR.
+- `why`: one sentence on one line that gives the reason for the recommendation, from 1 to 300
+  characters. Bifrost shows it on the row of the PR.
 - `summary`: the body of the review (section 7 of `SKILL.md`), 20,000 characters at most. Write
   `""` when the review has no summary.
 - `comments`: the line comments, 50 at most. Write `[]` when there are none.
@@ -139,7 +149,8 @@ Bifrost checks the file. If one rule fails, Bifrost refuses the whole file and p
 - `comment` and `request-changes` need text: a summary, one or more comments, or both.
 - A text with only white space counts as empty.
 - Use no other field, in the object or in a comment.
-- Inside a string, write a line break as `\n`, and put `\` before each `"` and each `\`.
+- Inside a string, write a line break as `\n` and a tab as `\t`, and put `\` before each `"` and
+  each `\`.
 
 ## The end
 

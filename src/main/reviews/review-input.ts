@@ -147,17 +147,19 @@ async function build(
   await chmod(rules, 0o600)
 
   const files = parseDiff(await readFile(fullDiff, 'utf8'))
-  const rereview = kind.kind === 're-review'
+  // A rewritten history gets the full diff, but the session must still check the earlier
+  // threads and summaries.
+  const withEarlier = kind.kind === 're-review' || kind.note === 'rewritten'
   const input: ReviewInput = {
     changedFiles: files.map(f => f.path),
     earlier: {
-      summaries: rereview
+      summaries: withEarlier
         ? context.reviews
             .filter(r => isRealReview(r) && r.body.trim() !== '')
             .slice(-MAX_EARLIER_SUMMARIES)
             .map(r => ({ body: cutText(r.body, MAX_EARLIER_TEXT), state: r.state, url: r.url }))
         : [],
-      threads: rereview
+      threads: withEarlier
         ? context.threads.slice(0, MAX_EARLIER_THREADS).map(t => ({
             ...t,
             comments: t.comments.map(c => ({ ...c, body: cutText(c.body, MAX_EARLIER_TEXT) })),

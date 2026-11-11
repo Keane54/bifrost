@@ -1,13 +1,15 @@
-import { readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { lstatSync, readFileSync } from 'node:fs'
+import { appendFile, lstat, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { parseDiff } from '../../../src/main/reviews/diff-lines'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { type DiffFile, parseDiff } from '../../../src/main/reviews/diff-lines'
 import {
   MAX_COMMENT_BODY,
   MAX_COMMENTS,
   MAX_RESULT_BYTES,
+  MAX_REVIEW_BODY,
   MAX_SUMMARY,
   MAX_WHY,
   parseReviewResult,
@@ -16,6 +18,21 @@ import {
   type ReviewResult,
   readResultFile,
 } from '../../../src/main/reviews/result-file'
+
+// lstat is the real lstat, but a test can change the file right after it, as a session could.
+vi.mock('node:fs/promises', async importOriginal => {
+  const real = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...real, lstat: vi.fn(real.lstat) }
+})
+
+// Give the real lstat answer of the file, then run change on the file.
+function changeAfterLstat(change: (file: string) => Promise<void>): void {
+  vi.mocked(lstat).mockImplementationOnce((async (file: string) => {
+    const info = lstatSync(file)
+    await change(file)
+    return info
+  }) as typeof lstat)
+}
 
 const sample = readFileSync(new URL('../../fixtures/reviews/sample.diff', import.meta.url), 'utf8')
 const files = parseDiff(sample)
@@ -55,7 +72,7 @@ describe('the limits', () => {
       50,
       10_000,
     ])
-    expect([MAX_SUMMARY, MAX_WHY]).toEqual([20_000, 300])
+    expect([MAX_SUMMARY, MAX_WHY, MAX_REVIEW_BODY]).toEqual([20_000, 300, 65_536])
   })
 })
 
@@ -228,6 +245,36 @@ describe('parseReviewResult', () => {
     )
   })
 
+  it('puts why on one line and refuses a control character in it', () => {
+    const out = parse(valid({ why: '  The limit\n\tcheck  is\r\noff by one. ' }))
+    expect(out.ok && out.result.why).toBe('The limit check is off by one.')
+    // The limit applies after the white space changes.
+    expect(reason(valid({ why: `a  ${'x'.repeat(MAX_WHY - 2)}\n\n  ` }))).toBe('ok')
+    for (const char of ['\u0000', '\u0007', '\u001b', '\u007f', '\u0085', '\u009b']) {
+      expect(reason(valid({ why: `Off${char}by one.` }))).toBe(
+        'the why field has a control character',
+      )
+    }
+    for (const char of ['\u202a', '\u202b', '\u202c', '\u202d', '\u202e', '\u2066', '\u2069']) {
+      expect(reason(valid({ why: `Off${char}by one.` }))).toBe(
+        'the why field has a control character',
+      )
+    }
+  })
+
+  it('refuses a result whose summary with the moved comments is over MAX_REVIEW_BODY', () => {
+    const body = 'x'.repeat(MAX_COMMENT_BODY)
+    // Line 20 is outside the hunks, so each of these comments moves into the summary.
+    const outside = (n: number) => Array.from({ length: n }, () => comment({ body, line: 20 }))
+    expect(reason(valid({ comments: outside(6) }))).toBe('ok')
+    expect(reason(valid({ comments: outside(7) }))).toBe(
+      'the summary with the moved comments is longer than 65,536 characters',
+    )
+    // Comments that stay on their lines do not count.
+    const inside = Array.from({ length: MAX_COMMENTS }, () => comment({ body }))
+    expect(reason(valid({ comments: inside, summary: 'x'.repeat(MAX_SUMMARY) }))).toBe('ok')
+  })
+
   it('refuses more than MAX_COMMENTS comments and a body over the limit', () => {
     const many = Array.from({ length: MAX_COMMENTS }, () => comment())
     expect(reason(valid({ comments: many }))).toBe('ok')
@@ -272,6 +319,12 @@ describe('parseReviewResult', () => {
       JSON.stringify(valid({ comments: [comment({ startLine: 11, startSide: SECRET })] })),
       JSON.stringify(valid({ comments: [comment({ body: long(MAX_COMMENT_BODY) })] })),
       JSON.stringify(valid({ recommendation: 'approve', summary: SECRET })),
+      JSON.stringify(valid({ why: `${SECRET}\u202e` })),
+      JSON.stringify(
+        valid({
+          comments: Array.from({ length: 7 }, () => comment({ body: long(9900), line: 20 })),
+        }),
+      ),
     ]
     for (const text of bad) {
       const out = parseReviewResult(text, expected)
@@ -318,6 +371,37 @@ describe('readResultFile', () => {
     await writeFile(big, 'x'.repeat(MAX_RESULT_BYTES + 1))
     expect(await readResultFile(big)).toEqual({ ok: false, reason: 'too large' })
   })
+
+  it('refuses a file that becomes a link after the lstat', async () => {
+    const target = join(base, 'swap-target.json')
+    await writeFile(target, '{}')
+    const file = join(base, 'swap-link.json')
+    await writeFile(file, '{}')
+    changeAfterLstat(async path => {
+      await rm(path)
+      await symlink(target, path)
+    })
+    expect(await readResultFile(file)).toEqual({ ok: false, reason: 'not a regular file' })
+  })
+
+  it('refuses a file that becomes a pipe after the lstat, and does not wait on it', async () => {
+    const file = join(base, 'swap-pipe.json')
+    await writeFile(file, '{}')
+    changeAfterLstat(async path => {
+      await rm(path)
+      execFileSync('mkfifo', [path])
+    })
+    expect(await readResultFile(file)).toEqual({ ok: false, reason: 'not a regular file' })
+  })
+
+  it('refuses a file that grows over the limit after the lstat', async () => {
+    const file = join(base, 'swap-grow.json')
+    await writeFile(file, '{}')
+    changeAfterLstat(async path => {
+      await appendFile(path, 'x'.repeat(MAX_RESULT_BYTES))
+    })
+    expect(await readResultFile(file)).toEqual({ ok: false, reason: 'too large' })
+  })
 })
 
 describe('placeComments', () => {
@@ -361,6 +445,22 @@ describe('placeComments', () => {
       moved: 1,
       summary: '`src/limit.ts` line 20: Outside.',
     })
+  })
+
+  it('fences a moved path that holds backticks or line breaks', () => {
+    const hunks = [{ leftEnd: 1, leftStart: 1, rightEnd: 1, rightStart: 1 }]
+    const paths = ['a`b``c.ts', '`x', 'p\nq\r\nr.ts']
+    const odd: DiffFile[] = paths.map(path => ({ binary: false, hunks, path }))
+    const moved = paths.map((path, i) => ({
+      body: `B${i + 1}`,
+      line: 5,
+      path,
+      side: 'RIGHT' as const,
+    }))
+    const out = placeComments(result({ comments: moved, summary: 'S' }), odd)
+    expect(out.summary).toBe(
+      'S\n\n```a`b``c.ts``` line 5: B1\n\n`` `x `` line 5: B2\n\n`p q r.ts` line 5: B3',
+    )
   })
 
   it('keeps the summary as it is when no comment moves', () => {
