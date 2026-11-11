@@ -54,7 +54,7 @@ const CONTEXT_QUERY = `query ReviewContext(
       body @include(if: $head)
       url @include(if: $head)
       state @include(if: $head)
-      author { login } @include(if: $head)
+      author @include(if: $head) { login }
       baseRefName @include(if: $head)
       baseRefOid @include(if: $head)
       headRefName @include(if: $head)
