@@ -1,0 +1,31 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "author": { "login": "dana" },
+        "baseRefName": "main",
+        "baseRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "body": "This adds a retry policy to the client.",
+        "headRefName": "feat/retry",
+        "headRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "pending": {
+          "nodes": [
+            {
+              "body": "Someone else draft",
+              "commit": { "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+              "id": "PRR_other",
+              "viewerDidAuthor": false
+            }
+          ]
+        },
+        "reviews": {
+          "nodes": [],
+          "pageInfo": { "endCursor": null, "hasNextPage": false }
+        },
+        "state": "OPEN",
+        "title": "Add the retry policy",
+        "url": "https://github.com/acme/api/pull/7"
+      }
+    }
+  }
+}

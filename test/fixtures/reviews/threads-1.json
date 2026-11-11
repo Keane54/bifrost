@@ -1,0 +1,48 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "login": "Me" },
+                    "body": "Add a test here.",
+                    "url": "https://github.com/acme/api/pull/7#discussion_r1"
+                  },
+                  {
+                    "author": { "login": "dana" },
+                    "body": "Done.",
+                    "url": "https://github.com/acme/api/pull/7#discussion_r2"
+                  }
+                ]
+              },
+              "isOutdated": false,
+              "isResolved": false,
+              "line": 42,
+              "path": "src/client.ts"
+            },
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "login": "erin" },
+                    "body": "Nit.",
+                    "url": "https://github.com/acme/api/pull/7#discussion_r3"
+                  }
+                ]
+              },
+              "isOutdated": true,
+              "isResolved": true,
+              "line": null,
+              "path": "src/other.ts"
+            }
+          ],
+          "pageInfo": { "endCursor": null, "hasNextPage": false }
+        }
+      }
+    }
+  }
+}

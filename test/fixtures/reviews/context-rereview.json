@@ -1,0 +1,83 @@
+{
+  "pages": [
+    {
+      "data": {
+        "repository": {
+          "pullRequest": {
+            "author": { "login": "dana" },
+            "baseRefName": "main",
+            "baseRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "body": "This adds a retry policy to the client.",
+            "headRefName": "feat/retry",
+            "headRefOid": "cccccccccccccccccccccccccccccccccccccccc",
+            "pending": {
+              "nodes": [
+                {
+                  "body": "My draft",
+                  "commit": { "oid": "cccccccccccccccccccccccccccccccccccccccc" },
+                  "id": "PRR_mine",
+                  "viewerDidAuthor": true
+                }
+              ]
+            },
+            "reviews": {
+              "nodes": [
+                {
+                  "body": "Looks good.",
+                  "comments": { "nodes": [] },
+                  "commit": { "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+                  "state": "APPROVED",
+                  "submittedAt": "2026-11-01T10:00:00Z",
+                  "url": "https://github.com/acme/api/pull/7#pullrequestreview-1"
+                },
+                {
+                  "body": "",
+                  "comments": { "nodes": [{ "replyTo": { "id": "C1" } }] },
+                  "commit": { "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+                  "state": "COMMENTED",
+                  "submittedAt": "2026-11-03T10:00:00Z",
+                  "url": "https://github.com/acme/api/pull/7#pullrequestreview-2"
+                }
+              ],
+              "pageInfo": { "endCursor": "CUR1", "hasNextPage": true }
+            },
+            "state": "OPEN",
+            "title": "Add the retry policy",
+            "url": "https://github.com/acme/api/pull/7"
+          }
+        }
+      }
+    },
+    {
+      "data": {
+        "repository": {
+          "pullRequest": {
+            "author": { "login": "dana" },
+            "baseRefName": "main",
+            "baseRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "body": "This adds a retry policy to the client.",
+            "headRefName": "feat/retry",
+            "headRefOid": "cccccccccccccccccccccccccccccccccccccccc",
+            "pending": { "nodes": [] },
+            "reviews": {
+              "nodes": [
+                {
+                  "body": "Please add a test.",
+                  "comments": { "nodes": [{ "replyTo": null }] },
+                  "commit": { "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+                  "state": "CHANGES_REQUESTED",
+                  "submittedAt": "2026-11-05T10:00:00Z",
+                  "url": "https://github.com/acme/api/pull/7#pullrequestreview-3"
+                }
+              ],
+              "pageInfo": { "endCursor": null, "hasNextPage": false }
+            },
+            "state": "OPEN",
+            "title": "Add the retry policy",
+            "url": "https://github.com/acme/api/pull/7"
+          }
+        }
+      }
+    }
+  ]
+}

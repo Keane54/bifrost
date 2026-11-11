@@ -127,3 +127,5 @@ export const REASON_GH_LOGGED_OUT =
 export const REASON_GH_TIMEOUT = "GitHub didn't answer in time. Bifrost will try again."
 // gh failed and gave no error text, or the run of gh threw.
 export const REASON_GH_FAILED = "GitHub CLI (gh) couldn't read GitHub."
+// Node stopped gh because the answer was longer than the buffer.
+export const REASON_GH_OVERFLOW = 'GitHub gave more data than Bifrost can read.'

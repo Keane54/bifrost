@@ -4,6 +4,7 @@ import {
   REASON_GH_FAILED,
   REASON_GH_LOGGED_OUT,
   REASON_GH_MISSING,
+  REASON_GH_OVERFLOW,
   REASON_GH_TIMEOUT,
 } from '../../shared/reviews'
 import type { ExecFn, ExecResult } from '../claude/cli'
@@ -43,6 +44,7 @@ export type GhFailure = { availability: 'no-gh' | 'logged-out' | 'error'; messag
 export function ghFailure(result: ExecResult): GhFailure | null {
   if (result.code === 0 && !result.timedOut) return null
   if (result.timedOut) return { availability: 'error', message: REASON_GH_TIMEOUT }
+  if (result.overflow) return { availability: 'error', message: REASON_GH_OVERFLOW }
   if (result.stderr.includes('ENOENT')) {
     return { availability: 'no-gh', message: REASON_GH_MISSING }
   }

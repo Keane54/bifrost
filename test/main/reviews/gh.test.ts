@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ExecFn, ExecResult } from '../../../src/main/claude/cli'
 import { createGh, GH_MAX_BUFFER, GH_TIMEOUT_MS, ghFailure } from '../../../src/main/reviews/gh'
-import { REASON_GH_TIMEOUT } from '../../../src/shared/reviews'
+import { REASON_GH_OVERFLOW, REASON_GH_TIMEOUT } from '../../../src/shared/reviews'
 
 const res = (extra: Partial<ExecResult>): ExecResult => ({
   code: 1,
@@ -75,5 +75,12 @@ describe('ghFailure', () => {
     const f = ghFailure(res({ stderr: `${'a'.repeat(300)}\nsecond` }))
     expect(f?.availability).toBe('error')
     expect(f?.message).toBe('a'.repeat(200))
+  })
+})
+
+describe('ghFailure overflow', () => {
+  it('gives its own reason when Node stopped gh at the buffer limit', () => {
+    const f = ghFailure(res({ overflow: true, stderr: 'stdout maxBuffer length exceeded' }))
+    expect(f).toEqual({ availability: 'error', message: REASON_GH_OVERFLOW })
   })
 })
