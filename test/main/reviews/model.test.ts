@@ -365,32 +365,36 @@ describe('toReviewState', () => {
     ...over,
   })
 
-  it('toReviewState: precedence session > draft-ready > reviewed > failed > paused > approved-by-others > team > waiting > new', () => {
-    const full = pr({
-      requestedUsers: [VIEWER],
-      reviewDecision: 'APPROVED',
-      viewerPendingReviewId: 'rv',
-    })
-    const base = ctx({ known: { baseline: true }, pauseEndsAt: 2000 })
-    expect(toReviewState(full, VIEWER, { ...base, session: 'reviewing' })).toBe('reviewing')
-    expect(toReviewState(full, VIEWER, { ...base, session: 'queued' })).toBe('queued')
-    expect(toReviewState(full, VIEWER, { ...base, session: 'trust-needed' })).toBe('trust-needed')
-    expect(toReviewState(full, VIEWER, base)).toBe('draft-ready')
-    const noDraft = { ...full, viewerPendingReviewId: null }
-    expect(toReviewState(noDraft, VIEWER, { ...base, outcome: 'drafted' })).toBe('draft-ready')
-    expect(toReviewState(noDraft, VIEWER, { ...base, outcome: 'reviewed' })).toBe('reviewed')
-    expect(toReviewState(noDraft, VIEWER, { ...base, outcome: 'failed' })).toBe('failed')
-    expect(toReviewState(noDraft, VIEWER, base)).toBe('paused')
-    expect(toReviewState(noDraft, VIEWER, { ...base, pauseEndsAt: 1000 })).toBe(
-      'approved-by-others',
-    )
-    const team = pr({ requestedTeams: ['core'], reviewDecision: 'APPROVED' })
-    expect(toReviewState(team, VIEWER, ctx())).toBe('approved-by-others')
-    expect(toReviewState({ ...team, reviewDecision: null }, VIEWER, ctx())).toBe('team')
-    expect(toReviewState(direct, VIEWER, ctx({ known: { baseline: true } }))).toBe('waiting')
-    expect(toReviewState(direct, VIEWER, ctx({ known: { baseline: false } }))).toBe('new')
-    expect(toReviewState(direct, VIEWER, ctx())).toBe('new')
-  })
+  it(
+    'toReviewState: precedence session > draft-ready > reviewed > failed > ' +
+      'paused > approved-by-others > team > waiting > new',
+    () => {
+      const full = pr({
+        requestedUsers: [VIEWER],
+        reviewDecision: 'APPROVED',
+        viewerPendingReviewId: 'rv',
+      })
+      const base = ctx({ known: { baseline: true }, pauseEndsAt: 2000 })
+      expect(toReviewState(full, VIEWER, { ...base, session: 'reviewing' })).toBe('reviewing')
+      expect(toReviewState(full, VIEWER, { ...base, session: 'queued' })).toBe('queued')
+      expect(toReviewState(full, VIEWER, { ...base, session: 'trust-needed' })).toBe('trust-needed')
+      expect(toReviewState(full, VIEWER, base)).toBe('draft-ready')
+      const noDraft = { ...full, viewerPendingReviewId: null }
+      expect(toReviewState(noDraft, VIEWER, { ...base, outcome: 'drafted' })).toBe('draft-ready')
+      expect(toReviewState(noDraft, VIEWER, { ...base, outcome: 'reviewed' })).toBe('reviewed')
+      expect(toReviewState(noDraft, VIEWER, { ...base, outcome: 'failed' })).toBe('failed')
+      expect(toReviewState(noDraft, VIEWER, base)).toBe('paused')
+      expect(toReviewState(noDraft, VIEWER, { ...base, pauseEndsAt: 1000 })).toBe(
+        'approved-by-others',
+      )
+      const team = pr({ requestedTeams: ['core'], reviewDecision: 'APPROVED' })
+      expect(toReviewState(team, VIEWER, ctx())).toBe('approved-by-others')
+      expect(toReviewState({ ...team, reviewDecision: null }, VIEWER, ctx())).toBe('team')
+      expect(toReviewState(direct, VIEWER, ctx({ known: { baseline: true } }))).toBe('waiting')
+      expect(toReviewState(direct, VIEWER, ctx({ known: { baseline: false } }))).toBe('new')
+      expect(toReviewState(direct, VIEWER, ctx())).toBe('new')
+    },
+  )
 
   it('an acted request is waiting, not new, and does not flash', () => {
     expect(toReviewState(direct, VIEWER, ctx({ acted: true }))).toBe('waiting')
@@ -656,6 +660,57 @@ describe('buildSnapshot recommendation', () => {
       why: null,
     })
     expect(snap.trust).toEqual([{ repo: 'acme/app', waiting: 1 }])
+  })
+})
+
+describe('buildSnapshot stale recommendation', () => {
+  it('shows a mark only for the current pending review or a draft the poll does not show', () => {
+    const mark = (reviewId: string | null, at = 100) => ({
+      at,
+      headSha: 'abc',
+      reviewId,
+      value: 'comment' as const,
+      why: 'Small risk.',
+    })
+    const mk = (n: number, pending: string | null) =>
+      pr({
+        key: `acme/app#${n}`,
+        number: n,
+        requestedUsers: [VIEWER],
+        viewerPendingReviewId: pending,
+      })
+    const poll: PollData = {
+      errors: [],
+      mine: [],
+      mineHasMore: false,
+      rateLimit: null,
+      toReview: [mk(1, 'r1'), mk(2, 'r-user'), mk(3, 'r-user'), mk(4, null), mk(5, 'r-user')],
+      toReviewHasMore: false,
+      viewer: VIEWER,
+    }
+    const state = structuredClone(EMPTY_STATE)
+    // 1: the mark of the pending review. 2: an old mark of another review. 3: an old mark with
+    // no review. 4: a new draft that the poll does not show yet. 5: a failed round on top of
+    // the draft of Bifrost.
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('r1') }
+    state.prs['acme/app#2'] = { ...emptyPrState(), recommendation: mark('r1') }
+    state.prs['acme/app#3'] = { ...emptyPrState(), recommendation: mark(null) }
+    state.prs['acme/app#4'] = { ...emptyPrState(), recommendation: mark('r9', 500) }
+    state.prs['acme/app#5'] = {
+      ...emptyPrState(),
+      lastError: 'The review failed.',
+      recommendation: mark('r-user'),
+    }
+    const input = snapshotInput(poll, state)
+    input.pollStartedAt = 400
+    const rows = Object.fromEntries(buildSnapshot(input).toReview.map(r => [r.key, r]))
+    const shown = { recommendation: 'comment', state: 'draft-ready', why: 'Small risk.' }
+    const hidden = { recommendation: null, state: 'draft-ready', why: null }
+    expect(rows['acme/app#1']).toMatchObject(shown)
+    expect(rows['acme/app#2']).toMatchObject(hidden)
+    expect(rows['acme/app#3']).toMatchObject(hidden)
+    expect(rows['acme/app#4']).toMatchObject(shown)
+    expect(rows['acme/app#5']).toMatchObject(shown)
   })
 })
 

@@ -4,6 +4,7 @@ import { NO_CLAUDE, NO_STATUSLINE_SETTINGS } from '../../../src/main/actions/ses
 import type { ExecResult, RunClaude } from '../../../src/main/claude/cli'
 import {
   createReviewSessions,
+  REVIEW_SETTINGS,
   REVIEW_TOOLS,
   reviewPrompt,
   reviewSessionArgs,
@@ -50,13 +51,22 @@ describe('review session args', () => {
       '--plugin-dir',
       '/skills',
       '--settings',
-      NO_STATUSLINE_SETTINGS,
+      REVIEW_SETTINGS,
       '--model',
       'haiku',
       '--name',
       'api-7-review',
       '/bifrost-review bifrost-input=/io/input.json',
     ])
+  })
+
+  test('the settings hide the statusline and turn off all hooks', () => {
+    expect(JSON.parse(REVIEW_SETTINGS)).toEqual({
+      ...JSON.parse(NO_STATUSLINE_SETTINGS),
+      disableAllHooks: true,
+    })
+    const a = args()
+    expect(a[a.indexOf('--settings') + 1]).toBe(REVIEW_SETTINGS)
   })
 
   test('no variadic flag comes right before the prompt', () => {
@@ -169,13 +179,16 @@ describe('createReviewSessions', () => {
     expect(calls).toEqual([])
   })
 
-  test('the name is marked before the start, and a timeout keeps the mark and the name', async () => {
-    const { calls, events, sessions } = setup([STARTED], { timeout: true })
-    const out = await sessions.start(START)
-    expect(out).toMatchObject({ name: 'api-7-review', ok: false, trust: false })
-    expect(events).toEqual(['expect api-7-review', 'wait'])
-    expect(calls).toHaveLength(1)
-  })
+  test(
+    'the name is marked before the start, and a ' + 'timeout keeps the mark and the name',
+    async () => {
+      const { calls, events, sessions } = setup([STARTED], { timeout: true })
+      const out = await sessions.start(START)
+      expect(out).toMatchObject({ name: 'api-7-review', ok: false, trust: false })
+      expect(events).toEqual(['expect api-7-review', 'wait'])
+      expect(calls).toHaveLength(1)
+    },
+  )
 
   test('start waits for the owned row', async () => {
     const { calls, events, sessions } = setup([STARTED])

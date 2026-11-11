@@ -20,6 +20,24 @@ export const REASON_NOT_PENDING =
   "GitHub didn't keep the review as a draft. Check the pull request on GitHub now."
 export const REASON_CLOSED_WHILE_POSTING =
   'Bifrost closed while it saved the draft review. Check the pull request on GitHub.'
+// A review session must never ask. Bifrost stops a session that shows a prompt.
+export const REASON_BLOCKED =
+  'The review session stopped to ask for something, so Bifrost stopped it. Nothing was posted.'
+// A new round on the draft review of Bifrost would add each comment a second time.
+export const REASON_OWN_DRAFT =
+  'Your draft review from Bifrost is still on GitHub for this commit. ' +
+  'Submit or delete it there, then try again. Nothing was posted.'
+
+// The fixed texts for an error of Node, git or claude in a round. The log gets the error. The
+// row never shows the error, because it can hold a path.
+export const REASON_PREPARE_FAILED =
+  "Bifrost couldn't get this pull request ready for a review. Nothing was posted. Try again."
+export const REASON_START_FAILED =
+  "Bifrost couldn't start the review session. Nothing was posted. Try again."
+// GitHub can have saved the draft review before the error. So this text does not say that
+// nothing was posted.
+export const REASON_END_FAILED =
+  "Bifrost couldn't finish the review. Check the pull request on GitHub."
 
 // Bifrost made no call for these three texts.
 export const REASON_DRAFT_TOO_LONG =

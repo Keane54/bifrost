@@ -582,7 +582,7 @@ async function startReviews(
     onEnd: end => {
       try {
         send('reviews:trust-end', end)
-        runner.trustChanged()
+        runner.trustChanged(end.repo)
         watcher.rebuild()
       } catch {
         console.error('Bifrost could not finish the trust step.')
@@ -1116,10 +1116,14 @@ export function registerIpc(home: TestHome | null = null): void {
       trustWindow?.resize(cols, rows)
     }),
   )
+  // A closed trust panel ends the trust step. The repository then gets one start, also when the
+  // trust read says no.
   ipcMain.handle('reviews:trust-close', e =>
     fromPage(e, async () => {
       whileOn(await reviews)
+      const repo = trustWindow?.current() ?? null
       trustWindow?.close()
+      if (repo !== null) reviewRunner?.trustChanged(repo)
     }),
   )
   // Delete the clones also while Watch GitHub is off.

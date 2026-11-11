@@ -54,6 +54,15 @@ describe('the review wiring in ipc.ts', () => {
     expect(code).not.toMatch(/\.settled\(/)
   })
 
+  test('the end of the trust step and a closed trust panel each allow one start', () => {
+    expect(code).toMatch(/onEnd: end => \{[\s\S]*?runner\.trustChanged\(end\.repo\)/)
+    const close = handler('reviews:trust-close')
+    const current = close.indexOf('trustWindow?.current()')
+    expect(current).toBeGreaterThan(-1)
+    expect(close.indexOf('trustWindow?.close()')).toBeGreaterThan(current)
+    expect(close).toMatch(/reviewRunner\?\.trustChanged\(repo\)/)
+  })
+
   test('stopRegistry stops the runner and closes the trust window', () => {
     const stop = code.slice(code.indexOf('export function stopRegistry'))
     expect(stop).toMatch(/reviewRunner\?\.stop\(\)/)

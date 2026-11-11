@@ -100,7 +100,9 @@ export type MenuItemId =
   | 'Pause'
   | 'End pause now'
 
-const NO_REVIEW_ITEM: readonly string[] = ['reviewing', 'queued', 'trust-needed']
+// A draft-ready row has no Review. A new round on the draft review of Bifrost would add each
+// comment and the summary a second time.
+const NO_REVIEW_ITEM: readonly string[] = ['reviewing', 'queued', 'trust-needed', 'draft-ready']
 
 // The menu items of a To review row, in order.
 export function menuItems(row: ToReviewRow): MenuItemId[] {

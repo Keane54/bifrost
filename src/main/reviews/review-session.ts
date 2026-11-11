@@ -18,6 +18,14 @@ import type { RunClaude } from '../claude/cli'
 // The tools of a review session. It can read, search and write its result file.
 export const REVIEW_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep', 'Write', 'Skill']
 
+// The --settings value of a review session: no statusline, and no hooks at all. A PR head can hold
+// a .claude folder with hooks, so the session runs no hook (defense in depth). This also stops the
+// hooks that --settings itself gives. One argument, and no shell reads it.
+export const REVIEW_SETTINGS = JSON.stringify({
+  ...JSON.parse(NO_STATUSLINE_SETTINGS),
+  disableAllHooks: true,
+})
+
 // A test home starts each PR session name with this text.
 export const TEST_PREFIX = 'bifrost-test-'
 
@@ -66,7 +74,7 @@ export function reviewSessionArgs(o: {
     '--plugin-dir',
     o.pluginDir,
     '--settings',
-    NO_STATUSLINE_SETTINGS,
+    REVIEW_SETTINGS,
   ]
   if (o.model !== '') args.push('--model', o.model)
   args.push('--name', o.name, o.prompt)

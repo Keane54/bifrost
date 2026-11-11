@@ -115,7 +115,8 @@ test('a review round trusts the clone, runs the session and posts one pending re
     await expect(settingsFrame).toHaveCount(0)
 
     // Step 3: the set-up clones acme/api, and the strip asks for trust before any click. Review
-    // then puts the PR in the queue, and the row shows Trust needed.
+    // then allows one start. The fake claude refuses it for trust, so the PR goes back to the
+    // queue and the row shows Trust needed.
     await page.getByRole('button', { exact: true, name: 'Reviews' }).click()
     const strip = page.locator('[data-trust-strip]')
     await expect(strip).toContainText('acme/api', { timeout: 30_000 })
@@ -148,14 +149,19 @@ test('a review round trusts the clone, runs the session and posts one pending re
     expect(post.comments[0]).toMatchObject({ line: 12, path: 'src/limit.ts', side: 'RIGHT' })
     expect(await readText(join(testHome, 'gh-writes.log'))).toBe(`${REVIEW_CREATE}\n`)
 
-    // Step 7: one review session started, with the flags of a read-only test session.
+    // Step 7: two review session starts: the refused start of step 3 and the start after the
+    // trust. Each has the flags of a read-only test session, and the prompt is the last
+    // argument with the input file.
     const starts = (await readText(join(testHome, 'review-args.log'))).trimEnd().split('\n')
-    expect(starts).toHaveLength(1)
-    const args = starts[0] ?? ''
-    expect(args).toContain('--restricted')
-    expect(args).toContain('--tools Read Glob Grep Write Skill')
-    expect(args).toContain('--model haiku')
-    expect(args).toMatch(/--name bifrost-test-\S+/)
+    expect(starts).toHaveLength(2)
+    for (const args of starts) {
+      expect(args).toContain('--restricted')
+      expect(args).toContain('--tools Read Glob Grep Write Skill')
+      expect(args).toContain('"disableAllHooks":true')
+      expect(args).toContain('--model haiku')
+      expect(args).toMatch(/--name bifrost-test-\S+/)
+      expect(args).toMatch(/ \/bifrost-review bifrost-input=\/\S+\/input\.json$/)
+    }
 
     // Step 8: quit the app. The fakes got no unknown call, and the real files did not change.
     await app.close()

@@ -195,12 +195,13 @@ describe('menuItems', () => {
       'Open session',
       'Stop session',
     ])
+    // A draft-ready row has no Review: a new round would add each comment a second time.
     expect(menuItems(to({ sessionId: S, state: 'draft-ready' }))).toEqual([
       'Open on GitHub',
       'Open session',
-      'Review',
       'Stop session',
     ])
+    expect(menuItems(to({ state: 'draft-ready' }))).toEqual(['Open on GitHub'])
     expect(menuItems(to({ sessionId: S, state: 'failed' }))).toEqual([
       'Open on GitHub',
       'Open session',

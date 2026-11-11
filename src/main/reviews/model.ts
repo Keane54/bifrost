@@ -12,7 +12,7 @@ import {
 import { sortMine, sortToReview } from '../../shared/reviews-order'
 import type { Settings } from '../../shared/settings'
 import type { Author, PollData, PrComment, PrData, PrReview } from './pr-data'
-import { emptyPrState, type PrState, type ReviewsState } from './state'
+import { emptyPrState, type PrState, type RecommendationMark, type ReviewsState } from './state'
 
 // The pure rules of the Reviews panel. No I/O. The watcher calls these functions.
 
@@ -248,6 +248,21 @@ export function isTruncated(pr: PrData): boolean {
   return pr.truncatedThreads || pr.truncatedReviews || pr.truncatedComments || pr.truncatedChecks
 }
 
+// The mark of a To review row. Only a draft-ready or a reviewed row shows it, and only while the
+// mark belongs to the pending review of the user, or while the poll does not show the new draft
+// yet. An older mark is stale.
+function shownMark(
+  rowState: ToReviewState,
+  pr: PrData,
+  prState: PrState | undefined,
+  outcome: RequestContext['outcome'],
+): RecommendationMark | null {
+  if (rowState !== 'draft-ready' && rowState !== 'reviewed') return null
+  const mark = prState?.recommendation ?? null
+  if (mark === null) return null
+  return outcome === 'drafted' || mark.reviewId === pr.viewerPendingReviewId ? mark : null
+}
+
 export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
   const { poll, state, now, settings } = input
   const baseline = new Set(state.baseline)
@@ -257,18 +272,18 @@ export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
     const pauseEndsAt = state.pauses[pr.key] ?? null
     const known = state.requests[pr.key]
     const prState = state.prs[pr.key]
+    const outcome = outcomeOf(prState, pr.headSha, input.pollStartedAt)
     const rowState = toReviewState(pr, poll.viewer, {
       acted: prState?.actedAt != null && known !== undefined && prState.actedAt >= known.firstSeen,
       known,
       now,
-      outcome: outcomeOf(prState, pr.headSha, input.pollStartedAt),
+      outcome,
       pauseEndsAt,
       session: input.session(pr.key),
       teamRequests: settings.reviewsTeamRequests,
     })
     if (rowState === null) continue
-    const mark =
-      rowState === 'draft-ready' || rowState === 'reviewed' ? prState?.recommendation : null
+    const mark = shownMark(rowState, pr, prState, outcome)
     toReview.push({
       additions: pr.additions,
       author: pr.author,
