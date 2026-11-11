@@ -153,6 +153,10 @@ describe('friendly errors', () => {
     )
   })
 
+  it('gives the exact text of a bad repository name', () => {
+    expect(friendlyError('refused: bad repository name')).toBe("That repository name isn't valid.")
+  })
+
   // The error line wraps to more lines (Task 15). So a text can have two sentences.
   it('has short texts with no refusal code and no em dash', () => {
     for (const text of Object.values(FRIENDLY_ERRORS)) {

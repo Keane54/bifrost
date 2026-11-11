@@ -45,6 +45,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: bad new session data': "Some of the New session values aren't valid.",
   'refused: bad priority': "That priority isn't valid.",
   'refused: bad process ID': "The process ID of this session isn't valid.",
+  'refused: bad repository name': "That repository name isn't valid.",
   'refused: bad reviewsIgnore': "That list of repositories to ignore isn't valid.",
   'refused: bad session ID': "That session ID isn't valid.",
   'refused: bad settings': "Bifrost couldn't read those settings.",
