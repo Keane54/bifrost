@@ -14,18 +14,24 @@ export function claudeJsonFile(home: string): string {
   return join(home, '.claude.json')
 }
 
-// True only when the file has oauthAccount.hasExtraUsageEnabled true. A missing file, a file that
-// is not a regular file, a file above 20 MB and a file that is not valid JSON give false. The
-// function never rejects. An error goes nowhere, because its text can hold a part of the file.
-export async function readExtraUsageFlag(file: string): Promise<boolean> {
+// The parsed content of the file, or null. A missing file, a file that is not a regular file, a
+// file above 20 MB and a file that is not valid JSON give null. The function never rejects and
+// never logs. An error goes nowhere, because its text can hold a part of the file.
+export async function readClaudeJson(file: string): Promise<unknown | null> {
   try {
     const info = await stat(file)
-    if (!info.isFile() || info.size > MAX_CLAUDE_JSON_BYTES) return false
+    if (!info.isFile() || info.size > MAX_CLAUDE_JSON_BYTES) return null
     const bytes = await readFile(file)
     // The file can get larger after the stat.
-    if (bytes.length > MAX_CLAUDE_JSON_BYTES) return false
-    return extraUsageOfClaudeJson(JSON.parse(bytes.toString('utf8')))
+    if (bytes.length > MAX_CLAUDE_JSON_BYTES) return null
+    return JSON.parse(bytes.toString('utf8'))
   } catch {
-    return false
+    return null
   }
+}
+
+// True only when the file has oauthAccount.hasExtraUsageEnabled true. Any read problem gives false.
+export async function readExtraUsageFlag(file: string): Promise<boolean> {
+  const data = await readClaudeJson(file)
+  return data === null ? false : extraUsageOfClaudeJson(data)
 }
