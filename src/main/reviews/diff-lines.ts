@@ -114,21 +114,23 @@ export function parseDiff(text: string): DiffFile[] {
   return files
 }
 
-// True when the line, and the start line if any, are in one hunk of the file on that side.
+// True when the line, and the start line if any, are in one hunk of the file. The start line
+// is on startSide, and that side is the side of the line by default. GitHub refuses a range
+// that does not start before its end line, so this refuses it too.
 export function lineInDiff(
   files: readonly DiffFile[],
   path: string,
   side: 'LEFT' | 'RIGHT',
   line: number,
   startLine?: number,
+  startSide: 'LEFT' | 'RIGHT' = side,
 ): boolean {
   const file = files.find(f => f.path === path)
   if (!file) return false
-  const lo = startLine === undefined ? line : Math.min(startLine, line)
-  const hi = startLine === undefined ? line : Math.max(startLine, line)
-  return file.hunks.some(h => {
-    const start = side === 'LEFT' ? h.leftStart : h.rightStart
-    const end = side === 'LEFT' ? h.leftEnd : h.rightEnd
-    return lo >= start && hi <= end
-  })
+  if (startLine !== undefined && startLine >= line) return false
+  const within = (h: Hunk, s: 'LEFT' | 'RIGHT', n: number): boolean =>
+    s === 'LEFT' ? n >= h.leftStart && n <= h.leftEnd : n >= h.rightStart && n <= h.rightEnd
+  return file.hunks.some(
+    h => within(h, side, line) && (startLine === undefined || within(h, startSide, startLine)),
+  )
 }

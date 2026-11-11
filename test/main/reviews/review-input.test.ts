@@ -1,12 +1,16 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { FetchedPr, RepoStore } from '../../../src/main/reviews/repo-store'
 import {
+  CUT_MARKER,
   INPUT_VERSION,
   MAX_DIFF_BYTES,
+  MAX_EARLIER_SUMMARIES,
+  MAX_EARLIER_THREADS,
   MAX_PR_BODY,
+  REASON_INPUT_FAILED,
   reviewKind,
   writeRoundFiles,
 } from '../../../src/main/reviews/review-input'
@@ -69,13 +73,26 @@ function fakeRepos(opts: FakeOpts = {}): { repos: RepoStore; modes: string[] } {
       await writeFile(
         file,
         mode === 'merge-base' ? (opts.full ?? SMALL_DIFF) : (opts.since ?? SINCE_DIFF),
-        {
-          mode: 0o644,
-        },
       )
+      // git diff --output makes a file with mode 0644.
+      await chmod(file, 0o644)
     },
   } as unknown as RepoStore
   return { modes, repos }
+}
+
+function withGit(repos: RepoStore, calls: string[] = []): RepoStore {
+  return {
+    ...repos,
+    hasCommit: async () => {
+      calls.push('hasCommit')
+      return true
+    },
+    isAncestor: async () => {
+      calls.push('isAncestor')
+      return true
+    },
+  } as unknown as RepoStore
 }
 
 const fetched: FetchedPr = { base: 'b'.repeat(40), head: 'h'.repeat(40), mergeBase: 'm'.repeat(40) }
@@ -219,7 +236,7 @@ describe('writeRoundFiles', () => {
     )
     expect(out.ok).toBe(true)
     if (!out.ok) return
-    expect(out.input.pr.body.length).toBe(MAX_PR_BODY)
+    expect(out.input.pr.body).toBe(`${'y'.repeat(MAX_PR_BODY)}${CUT_MARKER}`)
   })
 
   it('a re-review input holds the earlier threads and summaries', async () => {
@@ -233,6 +250,8 @@ describe('writeRoundFiles', () => {
       reviews: [
         review({ body: 'First pass.', state: 'CHANGES_REQUESTED' }),
         review({ body: '', state: 'COMMENTED', url: 'u2' }),
+        review({ body: 'Draft.', state: 'PENDING', url: 'u3' }),
+        review({ body: 'A reply.', replyOnly: true, url: 'u4' }),
       ],
       threads: [thread],
     })
@@ -244,5 +263,87 @@ describe('writeRoundFiles', () => {
     expect(out.input.earlier.summaries).toEqual([
       { body: 'First pass.', state: 'CHANGES_REQUESTED', url: review().url },
     ])
+  })
+
+  it('a last commit equal to the head or null makes a first review with no git check', async () => {
+    for (const commit of ['h'.repeat(40), null]) {
+      const calls: string[] = []
+      const { repos } = fakeRepos()
+      const ctx = context({ reviews: [review({ commit })], threads: [thread] })
+      const out = await writeRoundFiles({ repos: withGit(repos, calls), skillsDir }, args(ctx))
+      expect(out.ok).toBe(true)
+      if (!out.ok) return
+      expect(calls).toEqual([])
+      expect(out.input.review.kind).toBe('first')
+      expect(out.input.review.note).toBe(commit === null ? 'rewritten' : 'unchanged')
+      expect(out.input.files.sinceDiff).toBeNull()
+    }
+  })
+
+  it('keeps a null submittedAt as null', async () => {
+    const { repos } = fakeRepos()
+    const ctx = context({ reviews: [review({ submittedAt: null })] })
+    const out = await writeRoundFiles({ repos: withGit(repos), skillsDir }, args(ctx))
+    expect(out.ok).toBe(true)
+    if (!out.ok) return
+    expect(out.input.review.lastReview?.submittedAt).toBeNull()
+    expect(out.input.review.lastReview?.commit).toBe('c'.repeat(40))
+  })
+
+  it('returns a fixed reason when a step throws', async () => {
+    const { repos } = fakeRepos()
+    const boom = {
+      ...repos,
+      writeDiff: async () => {
+        throw new Error('/secret/path failed')
+      },
+    } as unknown as RepoStore
+    const out = await writeRoundFiles({ repos: boom, skillsDir }, args(context()))
+    expect(out).toEqual({ message: REASON_INPUT_FAILED, ok: false })
+    const noSkills = await writeRoundFiles(
+      { repos, skillsDir: join(base, 'missing') },
+      args(context()),
+    )
+    expect(noSkills).toEqual({ message: REASON_INPUT_FAILED, ok: false })
+  })
+
+  it('a since diff over MAX_DIFF_BYTES fails with REASON_TOO_LARGE', async () => {
+    const { repos } = fakeRepos({ since: 'x'.repeat(MAX_DIFF_BYTES + 1) })
+    const out = await writeRoundFiles(
+      { repos: withGit(repos), skillsDir },
+      args(context({ reviews: [review()] })),
+    )
+    expect(out).toEqual({ message: REASON_TOO_LARGE, ok: false })
+  })
+
+  it('caps the count of earlier threads and summaries', async () => {
+    const { repos } = fakeRepos()
+    const ctx = context({
+      reviews: Array.from({ length: MAX_EARLIER_SUMMARIES + 5 }, (_, i) =>
+        review({ body: `b${i}`, submittedAt: 1000 + i }),
+      ),
+      threads: Array.from({ length: MAX_EARLIER_THREADS + 5 }, () => thread),
+    })
+    const out = await writeRoundFiles({ repos: withGit(repos), skillsDir }, args(ctx))
+    expect(out.ok).toBe(true)
+    if (!out.ok) return
+    expect(out.input.earlier.threads).toHaveLength(MAX_EARLIER_THREADS)
+    expect(out.input.earlier.summaries).toHaveLength(MAX_EARLIER_SUMMARIES)
+    expect(out.input.earlier.summaries.at(-1)?.body.startsWith('b')).toBe(true)
+  })
+
+  it('cuts a long earlier text and does not split a surrogate pair', async () => {
+    const { repos } = fakeRepos()
+    const long = '\u{1F600}'.repeat(10_000)
+    const body = `${'a'.repeat(MAX_PR_BODY - 1)}\u{1F600}tail`
+    const ctx = context({ body, reviews: [review({ body: long })] })
+    const out = await writeRoundFiles({ repos: withGit(repos), skillsDir }, args(ctx))
+    expect(out.ok).toBe(true)
+    if (!out.ok) return
+    expect(out.input.pr.body).toBe(`${'a'.repeat(MAX_PR_BODY - 1)}${CUT_MARKER}`)
+    const summary = out.input.earlier.summaries[0]?.body ?? ''
+    expect(summary.endsWith(CUT_MARKER)).toBe(true)
+    expect(summary.length).toBeLessThan(long.length)
+    expect(JSON.parse(JSON.stringify(summary))).toBe(summary)
   })
 })

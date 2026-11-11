@@ -283,11 +283,14 @@ export async function fetchReviewContext(
   }
 }
 
+// A submitted review that is not a reply-only review.
+export const isRealReview = (r: ViewerReview): boolean => r.state !== 'PENDING' && !r.replyOnly
+
 // The newest submitted review that is not a reply-only review.
 export function lastSubmittedReview(reviews: readonly ViewerReview[]): ViewerReview | null {
   let best: ViewerReview | null = null
   for (const r of reviews) {
-    if (r.state === 'PENDING' || r.replyOnly) continue
+    if (!isRealReview(r)) continue
     if (best === null || (r.submittedAt ?? -1) >= (best.submittedAt ?? -1)) best = r
   }
   return best

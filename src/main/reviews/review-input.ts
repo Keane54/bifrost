@@ -7,6 +7,7 @@ import { prKey } from '../../shared/reviews'
 import { type DiffFile, parseDiff } from './diff-lines'
 import type { FetchedPr, RepoStore } from './repo-store'
 import {
+  isRealReview,
   lastSubmittedReview,
   type ReviewContext,
   type ViewerReview,
@@ -17,6 +18,22 @@ import { REASON_TOO_LARGE } from './round-text'
 export const INPUT_VERSION = 1
 export const MAX_DIFF_BYTES = 3 * 1024 * 1024
 export const MAX_PR_BODY = 20_000
+// Limits of the earlier threads and summaries, so that a long history stays small.
+export const MAX_EARLIER_THREADS = 100
+export const MAX_EARLIER_SUMMARIES = 20
+export const MAX_EARLIER_TEXT = 4_000
+export const CUT_MARKER = '\n[Bifrost cut this text.]'
+export const REASON_INPUT_FAILED =
+  "Bifrost couldn't write the files for the review session. Try again."
+
+// Cut a text to max characters. Keep a surrogate pair whole. Add a marker when it is cut.
+export function cutText(text: string, max: number): string {
+  if (text.length <= max) return text
+  let end = max
+  const code = text.charCodeAt(end - 1)
+  if (code >= 0xd800 && code <= 0xdbff) end -= 1
+  return `${text.slice(0, end)}${CUT_MARKER}`
+}
 
 export interface ReviewInput {
   version: 1
@@ -37,7 +54,12 @@ export interface ReviewInput {
     kind: 'first' | 're-review'
     since: string | null
     note: 'unchanged' | 'rewritten' | null
-    lastReview: { commit: string | null; state: string; submittedAt: string; url: string } | null
+    lastReview: {
+      commit: string | null
+      state: string
+      submittedAt: string | null
+      url: string
+    } | null
   }
   changedFiles: string[]
   earlier: { threads: ViewerThread[]; summaries: { state: string; body: string; url: string }[] }
@@ -73,6 +95,24 @@ export async function writeRoundFiles(
     fetched: FetchedPr
   },
 ): Promise<Done | Failed> {
+  // A failed step gives a fixed reason. The reason has no path and no error text.
+  try {
+    return await build(deps, args)
+  } catch {
+    return { message: REASON_INPUT_FAILED, ok: false }
+  }
+}
+
+async function build(
+  deps: { repos: RepoStore; skillsDir: string },
+  args: {
+    clone: string
+    number: number
+    context: ReviewContext
+    viewer: string
+    fetched: FetchedPr
+  },
+): Promise<Done | Failed> {
   const { repos, skillsDir } = deps
   const { clone, number, context, viewer, fetched } = args
   const last = lastSubmittedReview(context.reviews)
@@ -94,6 +134,9 @@ export async function writeRoundFiles(
     sinceDiff = join(io, 'since.diff')
     await repos.writeDiff(clone, kind.since, fetched.head, sinceDiff, 'direct')
     await chmod(sinceDiff, 0o600)
+    if ((await stat(sinceDiff)).size > MAX_DIFF_BYTES) {
+      return { message: REASON_TOO_LARGE, ok: false }
+    }
   }
 
   const mode = join(io, 'mode.md')
@@ -110,17 +153,23 @@ export async function writeRoundFiles(
     earlier: {
       summaries: rereview
         ? context.reviews
-            .filter(r => r.state !== 'PENDING' && !r.replyOnly && r.body.trim() !== '')
-            .map(r => ({ body: r.body, state: r.state, url: r.url }))
+            .filter(r => isRealReview(r) && r.body.trim() !== '')
+            .slice(-MAX_EARLIER_SUMMARIES)
+            .map(r => ({ body: cutText(r.body, MAX_EARLIER_TEXT), state: r.state, url: r.url }))
         : [],
-      threads: rereview ? context.threads : [],
+      threads: rereview
+        ? context.threads.slice(0, MAX_EARLIER_THREADS).map(t => ({
+            ...t,
+            comments: t.comments.map(c => ({ ...c, body: cutText(c.body, MAX_EARLIER_TEXT) })),
+          }))
+        : [],
     },
     files: { fullDiff, mode, result: join(io, 'result.json'), rules, sinceDiff },
     pr: {
       author: context.author,
       baseRef: context.baseRef,
       baseSha: fetched.base,
-      body: context.body.slice(0, MAX_PR_BODY),
+      body: cutText(context.body, MAX_PR_BODY),
       headRef: context.headRef,
       headSha: fetched.head,
       key: prKey(context.owner, context.repo, context.number),
@@ -134,7 +183,8 @@ export async function writeRoundFiles(
         ? {
             commit: last.commit,
             state: last.state,
-            submittedAt: new Date(last.submittedAt ?? 0).toISOString(),
+            submittedAt:
+              last.submittedAt === null ? null : new Date(last.submittedAt).toISOString(),
             url: last.url,
           }
         : null,
