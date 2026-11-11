@@ -130,7 +130,7 @@ export default function ReviewsPanel(): React.JSX.Element {
           </div>
         </div>
       )}
-      <TrustStrip needs={snapshot.trust} onAct={onAct} />
+      <TrustStrip needs={snapshot.trust} />
       <div className='min-h-0 flex-1 overflow-auto select-none'>{body}</div>
       {availability === 'error' && snapshot.message !== null && (
         <ErrorLine message={snapshot.message} />

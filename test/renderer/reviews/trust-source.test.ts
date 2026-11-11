@@ -19,7 +19,7 @@ describe('waitingText', () => {
 
 describe('TrustStrip source', () => {
   it('calls reviews.trust and opens the trust panel', () => {
-    expect(STRIP).toContain('reviews.trust(')
+    expect(STRIP).not.toContain('reviews.trust(')
     expect(STRIP).toMatch(
       /panelId: 'trust'[\s\S]{0,40}type: 'open'|type: 'open'[\s\S]{0,40}'trust'/,
     )
@@ -41,9 +41,7 @@ describe('TrustStrip source', () => {
 
 describe('TrustPanel source', () => {
   it('subscribes to the data and the end and closes the trust window', () => {
-    expect(TRUST_PANEL).toContain('onTrustData(')
-    expect(TRUST_PANEL).toContain('onTrustEnd(')
-    expect(TRUST_PANEL).toContain('trustClose()')
+    expect(TRUST_PANEL).toContain('startTrustSession(')
     expect(TRUST_PANEL).toContain('trustWrite(')
     expect(TRUST_PANEL).toContain('trustResize(')
   })
@@ -59,7 +57,7 @@ describe('TrustPanel source', () => {
     )
     expect(TRUST_PANEL).toContain('Claude Code closed before the folder was trusted.')
     expect(TRUST_PANEL).toContain('Try again')
-    expect(TRUST_PANEL).toContain('reviews.trust(')
+    expect(TRUST_PANEL).toContain('setAttempt(')
   })
 
   it('closes the panel on a trusted end', () => {

@@ -11,14 +11,8 @@ import { ErrorLine } from '../lib/ErrorLine'
 import { errorMessage } from '../lib/error-message'
 import { useSettings } from '../settings/settings-context'
 import { useWmControls } from '../wm/context'
-import { useTrustRepo } from './trust-repo'
-
-const MIN_SIDE = 2
-const MAX_SIDE = 500
-
-function clampSide(n: number): number {
-  return Math.min(MAX_SIDE, Math.max(MIN_SIDE, Math.floor(n)))
-}
+import { setTrustRepo, useTrustRepo } from './trust-repo'
+import { clampSide, startTrustSession } from './trust-session'
 
 export default function TrustPanel(): React.JSX.Element {
   const { dispatch } = useWmControls()
@@ -28,49 +22,63 @@ export default function TrustPanel(): React.JSX.Element {
   const termRef = useRef<Terminal | null>(null)
   const [closedEarly, setClosedEarly] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Each retry runs the session effect again.
+  const [attempt, setAttempt] = useState(0)
   const font = settings.terminalFont ?? DEFAULT_SETTINGS.terminalFont
   // The first terminal reads the font here. A font change applies below, so the prompt stays.
   const fontRef = useRef(font)
 
+  // The store holds the repository only while the panel is open.
+  useEffect(() => () => setTrustRepo(null), [])
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt only restarts the session
   useEffect(() => {
     const el = host.current
-    if (el === null) return
+    if (el === null || repo === null) return
     const style = getComputedStyle(document.documentElement)
     const theme = terminalTheme(name => style.getPropertyValue(name))
-    // The trust prompt has no link that Bifrost opens.
+    // The trust prompt has no link that Bifrost opens. A new terminal starts with a clean screen.
     const term = new Terminal(terminalOptions(fontRef.current, theme, () => {}))
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(el)
     termRef.current = term
     const api = window.bifrost.reviews
-    const report = (job: Promise<void>): void => {
-      job.catch((err: unknown) => console.warn(`Bifrost trust: ${errorMessage(err)}`))
+    const fail = (err: unknown): void => {
+      setError(friendlyError(errorMessage(err)))
+      setClosedEarly(true)
     }
-    const sendSize = (): void => {
+    const size = (): { cols: number; rows: number } => {
       fit.fit()
-      report(api.trustResize(clampSide(term.cols), clampSide(term.rows)))
+      return { cols: clampSide(term.cols), rows: clampSide(term.rows) }
     }
-    const offData = api.onTrustData(chunk => term.write(chunk))
-    const offEnd = api.onTrustEnd(end => {
-      if (end.repo !== repo) return
-      if (end.trusted) dispatch({ panelId: 'trust', type: 'close' })
-      else setClosedEarly(true)
+    const close = startTrustSession({
+      api,
+      getSize: size,
+      onData: chunk => term.write(chunk),
+      onEnd: trusted => {
+        if (trusted) dispatch({ panelId: 'trust', type: 'close' })
+        else setClosedEarly(true)
+      },
+      onError: fail,
+      repo,
     })
-    const input = term.onData(data => report(api.trustWrite(data)))
-    const observer = new ResizeObserver(() => sendSize())
+    const input = term.onData(data => {
+      api.trustWrite(data).catch(fail)
+    })
+    const observer = new ResizeObserver(() => {
+      const { cols, rows } = size()
+      api.trustResize(cols, rows).catch(() => {})
+    })
     observer.observe(el)
-    sendSize()
     return () => {
       observer.disconnect()
       input.dispose()
-      offData()
-      offEnd()
+      close()
       termRef.current = null
       term.dispose()
-      report(api.trustClose())
     }
-  }, [dispatch, repo])
+  }, [dispatch, repo, attempt])
 
   useEffect(() => {
     fontRef.current = font
@@ -81,13 +89,17 @@ export default function TrustPanel(): React.JSX.Element {
   }, [font])
 
   const retry = (): void => {
-    if (repo === null) return
     setClosedEarly(false)
     setError(null)
-    window.bifrost.reviews.trust(repo).catch((err: unknown) => {
-      setClosedEarly(true)
-      setError(friendlyError(errorMessage(err)))
-    })
+    setAttempt(n => n + 1)
+  }
+
+  if (repo === null) {
+    return (
+      <p className='px-3 py-2 text-xs text-text-dim'>
+        Pick a repository with the Trust button in the Reviews panel.
+      </p>
+    )
   }
 
   return (

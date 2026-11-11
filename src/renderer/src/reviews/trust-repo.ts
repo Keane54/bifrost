@@ -1,4 +1,5 @@
-// The repository of the trust terminal. A store outside React, so the strip and the panel share it.
+// The repository of the trust terminal. A store outside React, so the strip and the panel share
+// it. The panel resets it to null when it closes.
 import { useSyncExternalStore } from 'react'
 
 let current: string | null = null

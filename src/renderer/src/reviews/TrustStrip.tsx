@@ -9,27 +9,14 @@ import { waitingText } from './trust-text'
 const TRUST_TIP =
   "Opens Claude Code in Bifrost's copy of this repository, so you can accept the trust prompt."
 
-export function TrustStrip({
-  needs,
-  onAct,
-}: {
-  needs: readonly TrustNeed[]
-  onAct(job: () => Promise<void>): void
-}): React.JSX.Element | null {
+export function TrustStrip({ needs }: { needs: readonly TrustNeed[] }): React.JSX.Element | null {
   const { dispatch } = useWmControls()
   if (needs.length === 0) return null
 
+  // The panel opens the session. The strip only sets the repository and shows the panel.
   const start = (repo: string): void => {
-    onAct(async () => {
-      setTrustRepo(repo)
-      dispatch({ panelId: 'trust', type: 'open' })
-      try {
-        await window.bifrost.reviews.trust(repo)
-      } catch (err) {
-        dispatch({ panelId: 'trust', type: 'close' })
-        throw err
-      }
-    })
+    setTrustRepo(repo)
+    dispatch({ panelId: 'trust', type: 'open' })
   }
 
   return (
