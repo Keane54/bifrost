@@ -563,6 +563,12 @@ describe('action model', () => {
       )
     })
 
+    it('is disabled for a review session of a PR, with a reason', () => {
+      const state = actionStateFor('hand-over', idle({ prSession: true }), ctx())
+      expect(state).toEqual({ enabled: false, reason: R.REASON_PR_SESSION })
+      expect(actionStateFor('hand-over', idle(), ctx()).enabled).toBe(true)
+    })
+
     it('is blocked while another action runs on the session', () => {
       expect(actionStateFor('hand-over', idle(), ctx({ running: true })).reason).toBe(
         R.REASON_RUNNING,

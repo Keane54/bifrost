@@ -3,6 +3,9 @@ import {
   ageText,
   claudeText,
   laterCopilotText,
+  menuItems,
+  rightText,
+  rowTip,
   sizeText,
   statusText,
   toReviewText,
@@ -116,5 +119,100 @@ describe('row text', () => {
   it('laterCopilotText', () => {
     expect(laterCopilotText(0)).toBeNull()
     expect(laterCopilotText(3)).toBe('Copilot: 3 more')
+  })
+})
+
+describe('rightText', () => {
+  it('adds the recommendation to a draft or a reviewed row', () => {
+    expect(rightText(to({ recommendation: 'request-changes', state: 'draft-ready' }), NOW)).toBe(
+      'Draft ready · Request changes',
+    )
+    expect(rightText(to({ recommendation: 'approve', state: 'reviewed' }), NOW)).toBe(
+      'Looks good · Approve',
+    )
+  })
+
+  it('adds nothing without a recommendation or in another state', () => {
+    expect(rightText(to({ state: 'draft-ready' }), NOW)).toBe('Draft ready')
+    expect(rightText(to({ recommendation: 'comment', state: 'failed' }), NOW)).toBe('Review failed')
+  })
+})
+
+describe('rowTip', () => {
+  it('explains a draft', () => {
+    expect(
+      rowTip(to({ recommendation: 'comment', state: 'draft-ready', why: 'Small risk.' })),
+    ).toBe('Claude suggests: Comment. Small risk. Check the draft on GitHub, then submit it.')
+  })
+
+  it('explains a reviewed row', () => {
+    expect(rowTip(to({ state: 'reviewed', why: 'Clean.' }))).toBe(
+      'Claude suggests: Approve. Clean. Nothing was posted.',
+    )
+  })
+
+  it('gives the error of a failed row as it is', () => {
+    expect(
+      rowTip(to({ error: 'Bifrost cannot tell if the draft was saved.', state: 'failed' })),
+    ).toBe('Bifrost cannot tell if the draft was saved.')
+  })
+
+  it('gives the texts of the waiting states', () => {
+    expect(rowTip(to({ state: 'trust-needed' }))).toBe(
+      'Bifrost needs you to trust this repository first. Click Trust at the top of the panel.',
+    )
+    expect(rowTip(to({ state: 'queued' }))).toBe('Waiting for a free review slot.')
+    expect(rowTip(to({ state: 'reviewing' }))).toBe('Claude is reviewing this pull request.')
+  })
+
+  it('gives null for the other states', () => {
+    for (const state of ['new', 'waiting', 'paused', 'team', 'approved-by-others'] as const) {
+      expect(rowTip(to({ state }))).toBeNull()
+    }
+  })
+})
+
+describe('menuItems', () => {
+  const S = 's1'
+  it('lists the items of each state in order', () => {
+    expect(menuItems(to({ state: 'new' }))).toEqual(['Open on GitHub', 'Review', 'Pause'])
+    expect(menuItems(to({ state: 'paused' }))).toEqual([
+      'Open on GitHub',
+      'Review',
+      'End pause now',
+    ])
+    expect(menuItems(to({ state: 'waiting' }))).toEqual(['Open on GitHub', 'Review'])
+    expect(menuItems(to({ state: 'team' }))).toEqual(['Open on GitHub', 'Review'])
+    expect(menuItems(to({ state: 'approved-by-others' }))).toEqual(['Open on GitHub', 'Review'])
+    expect(menuItems(to({ state: 'queued' }))).toEqual(['Open on GitHub', 'Cancel review'])
+    expect(menuItems(to({ state: 'trust-needed' }))).toEqual(['Open on GitHub', 'Cancel review'])
+    expect(menuItems(to({ state: 'reviewing' }))).toEqual(['Open on GitHub'])
+  })
+
+  it('adds the session items only for a row with a session', () => {
+    expect(menuItems(to({ sessionId: S, state: 'reviewing' }))).toEqual([
+      'Open on GitHub',
+      'Open session',
+      'Stop session',
+    ])
+    expect(menuItems(to({ sessionId: S, state: 'draft-ready' }))).toEqual([
+      'Open on GitHub',
+      'Open session',
+      'Review',
+      'Stop session',
+    ])
+    expect(menuItems(to({ sessionId: S, state: 'failed' }))).toEqual([
+      'Open on GitHub',
+      'Open session',
+      'Review',
+      'Stop session',
+    ])
+    expect(menuItems(to({ state: 'reviewed' }))).toEqual(['Open on GitHub', 'Review'])
+    expect(menuItems(to({ sessionId: S, state: 'queued' }))).toEqual([
+      'Open on GitHub',
+      'Open session',
+      'Cancel review',
+      'Stop session',
+    ])
   })
 })

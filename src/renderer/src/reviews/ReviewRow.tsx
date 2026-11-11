@@ -10,9 +10,12 @@ import {
   ageText,
   claudeText,
   laterCopilotText,
+  type MenuItemId,
+  menuItems,
+  rightText,
+  rowTip,
   sizeText,
   statusText,
-  toReviewText,
   truncatedText,
 } from './row-text'
 
@@ -141,32 +144,69 @@ function RowButton({
   )
 }
 
-const HAS_REVIEW_BUTTON: readonly string[] = ['new', 'waiting', 'approved-by-others', 'team']
+const HAS_REVIEW_BUTTON: readonly string[] = [
+  'new',
+  'waiting',
+  'approved-by-others',
+  'team',
+  'reviewed',
+  'failed',
+]
+
+// The colour of the right text of a To review row.
+function textColour(state: ToReviewRow['state']): string | undefined {
+  if (state === 'failed') return 'text-box-red'
+  if (state === 'draft-ready' || state === 'reviewed') return 'text-svc-ok'
+  return undefined
+}
+
+// The action of one menu item of a To review row.
+function selectItem(
+  id: MenuItemId,
+  row: ToReviewRow,
+  onAct: OnAct,
+  run: (action: 'open', sessionId: string) => void,
+): void {
+  const api = window.bifrost.reviews
+  let job: (() => Promise<void>) | null = null
+  switch (id) {
+    case 'Cancel review':
+      job = () => api.cancel(row.key)
+      break
+    case 'End pause now':
+      job = () => api.endPause(row.key)
+      break
+    case 'Open on GitHub':
+      job = () => api.openPr(row.key)
+      break
+    case 'Open session':
+      if (row.sessionId !== null) run('open', row.sessionId)
+      break
+    case 'Pause':
+      job = () => api.pause(row.key)
+      break
+    case 'Review':
+      job = () => api.review(row.key)
+      break
+    case 'Stop session':
+      job = () => api.stopSession(row.key)
+      break
+  }
+  if (job !== null) onAct(job)
+}
 
 export function ToReviewItem({
   now,
   onAct,
   row,
 }: Common & { now: number; row: ToReviewRow }): React.JSX.Element {
-  const text = toReviewText(row, now)
+  const { run } = useActions()
+  const text = rightText(row, now)
   const menu = (
     <>
-      <MenuItem
-        label='Open on GitHub'
-        onSelect={() => onAct(() => window.bifrost.reviews.openPr(row.key))}
-      />
-      {row.state === 'new' && (
-        <MenuItem
-          label='Pause'
-          onSelect={() => onAct(() => window.bifrost.reviews.pause(row.key))}
-        />
-      )}
-      {row.state === 'paused' && (
-        <MenuItem
-          label='End pause now'
-          onSelect={() => onAct(() => window.bifrost.reviews.endPause(row.key))}
-        />
-      )}
+      {menuItems(row).map(id => (
+        <MenuItem key={id} label={id} onSelect={() => selectItem(id, row, onAct, run)} />
+      ))}
     </>
   )
   return (
@@ -190,14 +230,15 @@ export function ToReviewItem({
         <span className='shrink-0'>{ageText(now - row.requestedAt)}</span>
         <span className='ml-auto flex shrink-0 items-center gap-1.5 text-text'>
           {text !== '' && (
-            <span className={row.state === 'draft-ready' ? 'text-svc-ok' : undefined}>{text}</span>
+            <Tip label={rowTip(row)}>
+              <span className={cx(textColour(row.state))}>{text}</span>
+            </Tip>
           )}
           {HAS_REVIEW_BUTTON.includes(row.state) && (
             <RowButton
-              disabled={true}
-              label='Review'
+              label={row.state === 'failed' ? 'Try again' : 'Review'}
+              onClick={() => onAct(() => window.bifrost.reviews.review(row.key))}
               strong={row.state === 'new'}
-              tip='Coming soon'
             />
           )}
           {row.state === 'new' && (

@@ -55,4 +55,34 @@ describe('Reviews panel source', () => {
   it('opens Settings from the off state', () => {
     expect(PANEL).toContain('useSettingsNav')
   })
+
+  it('starts a review with the Review button and has no Coming soon tip', () => {
+    expect(ROW).toMatch(/(reviews|api)\.review\(row\.key\)/)
+    expect(ROW).not.toContain('Coming soon')
+    expect(ROW).toContain('Try again')
+  })
+
+  it('renders the items of menuItems', () => {
+    expect(ROW).toContain('menuItems(row)')
+    for (const label of [
+      'Open on GitHub',
+      'Open session',
+      'Review',
+      'Cancel review',
+      'Stop session',
+      'Pause',
+      'End pause now',
+    ]) {
+      expect(ROW).toContain(`'${label}'`)
+    }
+    expect(ROW).toMatch(/api\.cancel\(row\.key\)/)
+    expect(ROW).toMatch(/api\.stopSession\(row\.key\)/)
+    expect(ROW).toMatch(/run\('open', row\.sessionId\)/)
+  })
+
+  it('colours the failed and the draft texts and tips the right text', () => {
+    expect(ROW).toContain('text-box-red')
+    expect(ROW).toMatch(/draft-ready[\s\S]{0,80}reviewed[\s\S]{0,80}text-svc-ok|text-svc-ok/)
+    expect(ROW).toMatch(/<Tip label=\{rowTip\(row\)\}>/)
+  })
 })
