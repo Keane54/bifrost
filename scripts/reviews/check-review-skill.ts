@@ -69,6 +69,9 @@ const MODEL = 'haiku'
 const POLL_MS = 2_000
 const TURN_LIMIT_MS = 5 * 60_000
 const CLAUDE_TIMEOUT_MS = 60_000
+// After claude stop, the script waits this long at most for the end of the process.
+const STOP_WAIT_MS = 15_000
+const STOP_POLL_MS = 1_000
 const PR_NUMBER = 1
 
 // The files of the PR. The head commit adds sumFirst. Its loop runs one time too many: with
@@ -216,8 +219,10 @@ function claude(args: string[], cwd: string): Promise<ExecResult> {
   return execFile('/usr/bin/env', [...env, ...shell, ...args], { timeoutMs: CLAUDE_TIMEOUT_MS })
 }
 
+// The list with --all also holds the stopped sessions, so the check of the leftover sessions and
+// the find of the session also see a session that stopped.
 async function agents() {
-  const result = await claude(['agents', '--json'], sandboxRoot)
+  const result = await claude(['agents', '--json', '--all'], sandboxRoot)
   if (result.code !== 0) fail(claudeFailure(result, 'claude agents'))
   const list = parseAgents(result.stdout)
   if (list.error !== undefined) fail(`claude agents: ${list.error}`)
@@ -235,8 +240,20 @@ async function removeSession(shortId: string | null, name: string): Promise<void
   if (!matches[0]?.name.startsWith(PREFIX)) fail('refused: that session is not a test session')
   if (id === undefined || !SHORT_ID.test(id)) fail('the session has no valid short ID')
   await claude(['stop', id], sandboxRoot)
+  await waitForStop(id)
   const removed = await claude(['rm', id], sandboxRoot)
   if (removed.code !== 0) fail(claudeFailure(removed, 'claude rm'))
+}
+
+// Wait until the process of the session ends after claude stop: the entry has no pid, or the
+// entry is gone. The wait has a limit. Then claude rm runs in any case.
+async function waitForStop(id: string): Promise<void> {
+  const limit = Date.now() + STOP_WAIT_MS
+  while (Date.now() < limit) {
+    const entry = (await agents()).find(e => e.id === id)
+    if (entry?.pid === undefined) return
+    await sleep(STOP_POLL_MS)
+  }
 }
 
 const samePath = (a: string, b: string): boolean =>

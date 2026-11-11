@@ -129,30 +129,33 @@ describe('parseState', () => {
     expect(state.prs[KEY]?.round?.shortId).toBeNull()
   })
 
-  it('gives the empty value for a bad round phase, mark value, repos key, actedAt and setUpAt', () => {
-    const data = JSON.parse(JSON.stringify(valid()))
-    data.prs[KEY] = {
-      ...emptyPrState(),
-      actedAt: 'x',
-      recommendation: { at: 1, headSha: 'a', reviewId: null, value: 'merge', why: 'w' },
-      round: {
-        at: 1,
-        headSha: null,
-        phase: 'dancing',
-        sessionId: null,
-        shortId: null,
-        startedAt: 2,
-      },
-    }
-    data.repos = { 'acme/.': { trustNotifiedAt: 1 }, 'acme/app': { trustNotifiedAt: 'x' } }
-    data.setUpAt = 'soon'
-    const state = parseState(data)
-    expect(state.prs[KEY]?.round).toBeNull()
-    expect(state.prs[KEY]?.recommendation).toBeNull()
-    expect(state.prs[KEY]?.actedAt).toBeNull()
-    expect(state.setUpAt).toBeNull()
-    expect(state.repos).toEqual({ 'acme/app': { trustNotifiedAt: null } })
-  })
+  it(
+    'gives the empty value for a bad round phase, mark ' + 'value, repos key, actedAt and setUpAt',
+    () => {
+      const data = JSON.parse(JSON.stringify(valid()))
+      data.prs[KEY] = {
+        ...emptyPrState(),
+        actedAt: 'x',
+        recommendation: { at: 1, headSha: 'a', reviewId: null, value: 'merge', why: 'w' },
+        round: {
+          at: 1,
+          headSha: null,
+          phase: 'dancing',
+          sessionId: null,
+          shortId: null,
+          startedAt: 2,
+        },
+      }
+      data.repos = { 'acme/.': { trustNotifiedAt: 1 }, 'acme/app': { trustNotifiedAt: 'x' } }
+      data.setUpAt = 'soon'
+      const state = parseState(data)
+      expect(state.prs[KEY]?.round).toBeNull()
+      expect(state.prs[KEY]?.recommendation).toBeNull()
+      expect(state.prs[KEY]?.actedAt).toBeNull()
+      expect(state.setUpAt).toBeNull()
+      expect(state.repos).toEqual({ 'acme/app': { trustNotifiedAt: null } })
+    },
+  )
 
   it('caps the queue at MAX_QUEUE and keeps the oldest entries', () => {
     const queue = Array.from({ length: MAX_QUEUE + 5 }, (_, i) => ({

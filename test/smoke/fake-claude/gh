@@ -15,26 +15,67 @@
 # review-post.json. Each fixture gets the content of smoke-head in place of @HEAD@.
 #
 # Each write call goes to gh-writes.log in the test home, in both modes. A write call is an api
-# call with a method that is not GET, a GraphQL mutation, or a pr call that is not pr view.
+# call with a method that is not GET, an api call with a field or an input and no method (gh sends
+# it as POST), a GraphQL mutation (the word mutation in a query field, in any case), or a pr call
+# that is not pr view. The Poll and ReviewContext queries of Bifrost send their fields as POST
+# too. Only their exact forms are reads.
 
 dir=$(cd "$(dirname "$0")" && pwd)
 home=${BIFROST_TEST_HOME:-}
 
+# True for the exact form of the Poll query or of the ReviewContext query: the query field, then
+# only the known fields of ReviewContext.
+is_read_query() {
+  [ "$#" -ge 4 ] && [ "$1 $2 $3" = 'api graphql -f' ] || return 1
+  case "$4" in
+    'query=query Poll {'*)
+      [ "$#" -eq 4 ]
+      return
+      ;;
+    'query=query ReviewContext('*) ;;
+    *) return 1 ;;
+  esac
+  shift 4
+  while [ "$#" -ge 2 ]; do
+    case "$1 $2" in
+      '-f owner='* | '-f repo='* | '-F number='* | '-f login='* | '-F head='* | '-f after='*) ;;
+      *) return 1 ;;
+    esac
+    shift 2
+  done
+  [ "$#" -eq 0 ]
+}
+
 write=no
+method=no
+fields=no
 prev=''
 for arg in "$@"; do
   case "$prev" in
     --method | -X)
+      method=yes
       [ "$arg" = GET ] || write=yes
       ;;
   esac
   case "$arg" in
-    --method=GET | -XGET) ;;
-    --method=* | -X?*) write=yes ;;
-    query=mutation*) write=yes ;;
+    --method=GET | -XGET) method=yes ;;
+    --method=* | -X?*)
+      method=yes
+      write=yes
+      ;;
+    -f | -F | --field | --raw-field | --input | -f?* | -F?* | --field=* | --raw-field=* | --input=*)
+      fields=yes
+      ;;
+  esac
+  lower=$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]')
+  case "$lower" in
+    query=*mutation*) write=yes ;;
   esac
   prev=$arg
 done
+if [ "${1:-}" = api ] && [ "$fields" = yes ] && [ "$method" = no ] && ! is_read_query "$@"; then
+  write=yes
+fi
 if [ "${1:-}" = pr ] && [ "${2:-}" != view ]; then
   write=yes
 fi

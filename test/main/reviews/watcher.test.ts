@@ -1282,24 +1282,27 @@ describe('the review runner in the watcher', () => {
     vi.useRealTimers()
   })
 
-  test('the snapshot shows the session state, the session ID and the trust list of the runner', async () => {
-    const reviews = {
-      afterPoll: vi.fn(),
-      session: (key: string) => (key === K101 ? ('reviewing' as const) : null),
-      sessionOf: (key: string) => (key === K101 ? 'sess-1' : null),
-      trust: () => [{ repo: 'acme/web', waiting: 2 }],
-    }
-    const t = setup({ replies: [answer([{ number: 101 }])], reviews })
-    t.watcher.start()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(row(t.watcher, K101)).toMatchObject({ sessionId: 'sess-1', state: 'reviewing' })
-    expect(t.watcher.current().trust).toEqual([{ repo: 'acme/web', waiting: 2 }])
-    expect(t.watcher.toReviewPr(K101)?.key).toBe(K101)
-    expect(t.watcher.toReviewPr(K102)).toBeNull()
-    expect(t.watcher.viewer()).toBe(VIEWER)
-    t.watcher.stop()
-    expect(t.watcher.viewer()).toBeNull()
-  })
+  test(
+    'the snapshot shows the session state, the session ' + 'ID and the trust list of the runner',
+    async () => {
+      const reviews = {
+        afterPoll: vi.fn(),
+        session: (key: string) => (key === K101 ? ('reviewing' as const) : null),
+        sessionOf: (key: string) => (key === K101 ? 'sess-1' : null),
+        trust: () => [{ repo: 'acme/web', waiting: 2 }],
+      }
+      const t = setup({ replies: [answer([{ number: 101 }])], reviews })
+      t.watcher.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(row(t.watcher, K101)).toMatchObject({ sessionId: 'sess-1', state: 'reviewing' })
+      expect(t.watcher.current().trust).toEqual([{ repo: 'acme/web', waiting: 2 }])
+      expect(t.watcher.toReviewPr(K101)?.key).toBe(K101)
+      expect(t.watcher.toReviewPr(K102)).toBeNull()
+      expect(t.watcher.viewer()).toBe(VIEWER)
+      t.watcher.stop()
+      expect(t.watcher.viewer()).toBeNull()
+    },
+  )
 
   test('a re-request clears the recommendation and the error', async () => {
     const before = Date.now() - 60 * MIN
@@ -1325,29 +1328,32 @@ describe('the review runner in the watcher', () => {
     t.watcher.stop()
   })
 
-  test('afterPoll runs after each good poll, also a partial one, and not after a failed poll', async () => {
-    const afterPoll = vi.fn()
-    const reviews = { afterPoll, session: () => null, sessionOf: () => null, trust: () => [] }
-    const t = setup({
-      replies: [
-        answer([{ number: 101 }]),
-        partial([{ number: 101 }], ['boom']),
-        LOGGED_OUT,
-        TIMED_OUT,
-      ],
-      reviews,
-    })
-    t.watcher.start()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(afterPoll).toHaveBeenCalledTimes(1)
-    expect(afterPoll.mock.calls[0]?.[0]).toMatchObject({ viewer: VIEWER })
-    await vi.advanceTimersByTimeAsync(2 * MIN)
-    expect(afterPoll).toHaveBeenCalledTimes(2)
-    await vi.advanceTimersByTimeAsync(2 * MIN)
-    await vi.advanceTimersByTimeAsync(2 * MIN)
-    expect(afterPoll).toHaveBeenCalledTimes(2)
-    t.watcher.stop()
-  })
+  test(
+    'afterPoll runs after each good poll, also a partial ' + 'one, and not after a failed poll',
+    async () => {
+      const afterPoll = vi.fn()
+      const reviews = { afterPoll, session: () => null, sessionOf: () => null, trust: () => [] }
+      const t = setup({
+        replies: [
+          answer([{ number: 101 }]),
+          partial([{ number: 101 }], ['boom']),
+          LOGGED_OUT,
+          TIMED_OUT,
+        ],
+        reviews,
+      })
+      t.watcher.start()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(afterPoll).toHaveBeenCalledTimes(1)
+      expect(afterPoll.mock.calls[0]?.[0]).toMatchObject({ viewer: VIEWER })
+      await vi.advanceTimersByTimeAsync(2 * MIN)
+      expect(afterPoll).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(2 * MIN)
+      await vi.advanceTimersByTimeAsync(2 * MIN)
+      expect(afterPoll).toHaveBeenCalledTimes(2)
+      t.watcher.stop()
+    },
+  )
 
   test('a re-request leaves the state of another PR as it was', async () => {
     const before = Date.now() - 60 * MIN
