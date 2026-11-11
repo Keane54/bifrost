@@ -69,13 +69,19 @@ export function rowTip(row: ToReviewRow): string | null {
   switch (row.state) {
     case 'draft-ready':
       if (row.recommendation === null) return null
-      return `Claude suggests: ${RECOMMENDATION_TEXT[row.recommendation]}.${why} Check the draft on GitHub, then submit it.`
+      return (
+        `Claude suggests: ${RECOMMENDATION_TEXT[row.recommendation]}.${why} ` +
+        'Check the draft on GitHub, then submit it.'
+      )
     case 'reviewed':
       return `Claude suggests: Approve.${why} Nothing was posted.`
     case 'failed':
       return row.error
     case 'trust-needed':
-      return 'Bifrost needs you to trust this repository first. Click Trust at the top of the panel.'
+      return (
+        'Bifrost needs you to trust this repository first. ' +
+        'Click Trust at the top of the panel.'
+      )
     case 'queued':
       return 'Waiting for a free review slot.'
     case 'reviewing':

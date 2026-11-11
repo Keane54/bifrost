@@ -16,8 +16,8 @@ export const REASON_KIND_COLUMN = 'The kind column always stays first and on.'
 export const REASON_DEFAULT_TAB = 'This tab already has the default columns and filter.'
 export const REASON_WAIT_LIST = 'Waiting for the session list.'
 export const REASON_WAIT_ID = 'Waiting for the session ID.'
-// Compact is disabled while the session works on a reply (user decision, 2026-11-10).
 export const REASON_PR_SESSION = 'A review session has no hand-over.'
+// Compact is disabled while the session works on a reply (user decision, 2026-11-10).
 export const REASON_WAIT_IDLE = 'Wait until the session is idle.'
 
 export const REASON_RED_BOX = RED_BOX_BLOCK

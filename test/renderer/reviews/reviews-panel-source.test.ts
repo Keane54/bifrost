@@ -82,7 +82,8 @@ describe('Reviews panel source', () => {
 
   it('colours the failed and the draft texts and tips the right text', () => {
     expect(ROW).toContain('text-box-red')
-    expect(ROW).toMatch(/draft-ready[\s\S]{0,80}reviewed[\s\S]{0,80}text-svc-ok|text-svc-ok/)
+    expect(ROW).toMatch(/state === 'draft-ready' \|\| state === 'reviewed'\) return 'text-svc-ok'/)
+    expect(ROW).toMatch(/state === 'failed'\) return 'text-box-red'/)
     expect(ROW).toMatch(/<Tip label=\{rowTip\(row\)\}>/)
   })
 })
