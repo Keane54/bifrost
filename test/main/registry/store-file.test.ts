@@ -469,3 +469,11 @@ test('saveStore then loadStore keeps the current IDs and the short IDs', async (
   await saveStore(file, store)
   expect(await loadStore(file)).toEqual(store)
 })
+
+test('the PR sessions survive a save and a load, and an empty list adds no key', async () => {
+  const file = join(dir, 'registry.json')
+  const base = await loadStore(file)
+  expect(base.prSessions).toBeUndefined()
+  await saveStore(file, { ...base, prSessions: ['s1', 's2'] })
+  expect((await loadStore(file)).prSessions).toEqual(['s1', 's2'])
+})

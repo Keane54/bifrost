@@ -21,6 +21,7 @@ import {
   onParked,
   onStatus,
   onTick,
+  withoutYellow,
 } from './state-machine'
 import type { TerminalApp } from './terminal-app'
 
@@ -37,6 +38,8 @@ export interface RegistryStore {
   // The sessions that ran in the last run. Resume all uses them.
   lastActive: string[]
   names: Record<string, string>
+  // The row IDs of the review sessions for PRs. They get no yellow box.
+  prSessions?: string[]
   started: string[]
   priorities: Record<string, Priority>
   // The watched sessions. The array order is the order of the watchlist.
@@ -184,6 +187,8 @@ export class SessionRegistry {
   private escalationMs: number
   private readonly names: Map<string, string>
   private readonly started: Set<string>
+  // The row IDs of the PR sessions. A PR session gets no yellow box and no escalation.
+  private readonly prSessions: Set<string>
   private readonly aliases: Map<string, string>
   private readonly priorities: Map<string, Priority>
   // The watch colour of each watched session. The Map order is the watchlist order.
@@ -247,6 +252,7 @@ export class SessionRegistry {
     }
     this.names = new Map(Object.entries(opts.store.names))
     this.started = new Set(opts.store.started)
+    this.prSessions = new Set(opts.store.prSessions ?? [])
     this.aliases = new Map(Object.entries(opts.store.aliases ?? {}))
     this.priorities = new Map(Object.entries(opts.store.priorities ?? {}) as [string, Priority][])
     this.watched = new Map((opts.store.watch ?? []).map(w => [w.sessionId, w.colour]))
@@ -291,13 +297,16 @@ export class SessionRegistry {
       if (entry.kind === 'background' && entry.id && entry.sessionId.startsWith(entry.id)) {
         s.jobId = entry.sessionId
       }
-      s.machine = onStatus(s.machine, {
-        live: this.liveOf(rowId),
-        prevStatus,
-        sampledAt,
-        status: entry.status,
-        waitingFor: entry.waitingFor,
-      })
+      this.setMachine(
+        s,
+        onStatus(s.machine, {
+          live: this.liveOf(rowId),
+          prevStatus,
+          sampledAt,
+          status: entry.status,
+          waitingFor: entry.waitingFor,
+        }),
+      )
       this.keepWorktree(s)
     }
     for (const id of this.active) {
@@ -720,6 +729,7 @@ export class SessionRegistry {
     this.activeBackground.delete(sessionId)
     const removed = [
       this.started.delete(sessionId),
+      this.prSessions.delete(sessionId),
       this.names.delete(sessionId),
       this.aliases.delete(sessionId),
       this.priorities.delete(sessionId),
@@ -730,6 +740,16 @@ export class SessionRegistry {
       this.jobs.delete(sessionId),
     ]
     if (removed.some(Boolean)) this.changed = true
+  }
+
+  // Record a session as a review session for a PR. It gets no yellow box and no Resume all.
+  markPrSession(sessionId: string): void {
+    if (this.prSessions.has(sessionId)) return
+    this.prSessions.add(sessionId)
+    const s = this.sessions.get(sessionId)
+    if (s) this.setMachine(s, s.machine)
+    this.resumable.delete(sessionId)
+    this.changed = true
   }
 
   // A stopped session is no candidate for Resume all.
@@ -784,7 +804,7 @@ export class SessionRegistry {
   tick(now: number): void {
     this.advance(now)
     for (const s of this.sessions.values()) {
-      s.machine = onTick(s.machine, now, this.escalationMs)
+      this.setMachine(s, onTick(s.machine, now, this.escalationMs))
     }
     this.dropOldEvents(now)
     for (const id of this.lastActive) {
@@ -906,7 +926,7 @@ export class SessionRegistry {
 
   // Return a copy of the store.
   store(): RegistryStore {
-    return {
+    const store: RegistryStore = {
       aliases: Object.fromEntries(this.aliases),
       current: Object.fromEntries(this.currents),
       jobs: Object.fromEntries(this.jobs),
@@ -917,6 +937,9 @@ export class SessionRegistry {
       watch: [...this.watched].map(([sessionId, colour]) => ({ colour, sessionId })),
       worktrees: [...this.worktrees].map(([sessionId, path]) => ({ path, sessionId })),
     }
+    // The key exists only when a PR session exists.
+    if (this.prSessions.size > 0) store.prSessions = [...this.prSessions]
+    return store
   }
 
   // Return true one time after a change to the store. Then return false until the next change.
@@ -958,10 +981,15 @@ export class SessionRegistry {
   private applyEvent(s: Session, ev: HookEvent): void {
     if (isOlder(ev, s)) return
     if (ev.name === 'SessionEnd' && ev.reason === 'clear') return
-    s.machine = onHookEvent(s.machine, ev)
+    this.setMachine(s, onHookEvent(s.machine, ev))
     s.lastEventAt = ev.at
     s.lastEventSeq = ev.seq
     if (ev.name === 'SessionEnd') s.parkedAt = Math.max(s.parkedAt, ev.at)
+  }
+
+  // Store the new machine state of a row. A PR session gets no yellow box (design 12.3).
+  private setMachine(s: Session, machine: MachineState): void {
+    s.machine = this.prSessions.has(s.sessionId) ? withoutYellow(machine) : machine
   }
 
   // Move the clock forward. The clock never goes back.
@@ -1172,7 +1200,10 @@ export class SessionRegistry {
     const colour = this.watched.get(s.sessionId)
     if (colour !== undefined)
       row.watch = { colour, order: [...this.watched.keys()].indexOf(s.sessionId) }
-    if (m.state === 'parked' && this.resumable.has(s.sessionId)) row.resumable = true
+    if (this.prSessions.has(s.sessionId)) row.prSession = true
+    if (m.state === 'parked' && this.resumable.has(s.sessionId) && !row.prSession) {
+      row.resumable = true
+    }
     if (s.kind === 'external' && s.pid !== undefined) {
       const app = this.terminals.get(s.pid)
       if (app) row.terminalApp = app.name

@@ -176,3 +176,9 @@ export function onTick(s: MachineState, now: number, escalationMs: number): Mach
 export function onParked(s: MachineState): MachineState {
   return withoutBox(s, 'parked')
 }
+
+// A PR session gets no yellow box (design 12.3). A yellow box becomes no box with the state idle.
+// The last message stays. Other states do not change.
+export function withoutYellow(s: MachineState): MachineState {
+  return s.box === 'yellow' ? withoutBox(s, 'idle') : s
+}

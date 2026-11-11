@@ -8,6 +8,7 @@ import {
   onStatus,
   onTick,
   STATUS_GRACE_MS,
+  withoutYellow,
 } from '../../../src/main/registry/state-machine'
 
 const ev = (name: HookEventName, at: number, extra = {}): HookEvent => ({
@@ -565,5 +566,22 @@ describe('poll-only yellow box (O3)', () => {
       box: 'none',
       state: 'working',
     })
+  })
+})
+
+describe('withoutYellow', () => {
+  test('withoutYellow clears a yellow box and keeps a red box', () => {
+    const yellow = onHookEvent(working, ev('Stop', 5, { lastAssistantMessage: 'done' }))
+    expect(yellow.box).toBe('yellow')
+    expect(withoutYellow(yellow)).toEqual({
+      box: 'none',
+      boxSince: null,
+      confirmed: false,
+      lastMessage: 'done',
+      state: 'idle',
+    })
+    const red = onHookEvent(working, ev('PermissionRequest', 6))
+    expect(withoutYellow(red)).toBe(red)
+    expect(withoutYellow(working)).toBe(working)
   })
 })

@@ -2520,3 +2520,59 @@ describe('one row across /clear in an interactive session (2026-11-06)', () => {
     expect(other?.priority).toBeUndefined()
   })
 })
+
+describe('PR sessions', () => {
+  test('a PR session gets no yellow box at the end of a turn and no escalation', () => {
+    const r = registry()
+    r.markPrSession('s1')
+    r.applyAgents([bg({ status: 'busy' })], 100)
+    r.applyAgents([bg({ status: 'idle' })], 200)
+    expect(r.rows()[0]).toMatchObject({ box: 'none', prSession: true, state: 'idle' })
+    r.applyEvents([ev('UserPromptSubmit', 's1', 300), ev('Stop', 's1', 400)], 400)
+    expect(r.rows()[0]).toMatchObject({ box: 'none', state: 'idle' })
+    r.tick(400 + 700_000)
+    expect(r.rows()[0]).toMatchObject({ box: 'none', state: 'idle' })
+    const plain = registry()
+    plain.applyAgents([bg({ status: 'busy' })], 100)
+    plain.applyAgents([bg({ status: 'idle' })], 200)
+    expect(plain.rows()[0].box).toBe('yellow')
+    expect(plain.rows()[0].prSession).toBeUndefined()
+  })
+
+  test('a PR session still gets a red error box', () => {
+    const r = registry()
+    r.markPrSession('s1')
+    r.applyAgents([bg({ status: 'busy' })], 100)
+    r.applyEvents([ev('StopFailure', 's1', 150)], 150)
+    expect(r.rows()[0]).toMatchObject({ box: 'red', boxReason: 'error' })
+  })
+
+  test('the store keeps the PR sessions and forget removes one', () => {
+    const r = registry()
+    r.markPrSession('s1')
+    r.markPrSession('s2')
+    expect(r.store().prSessions).toEqual(['s1', 's2'])
+    expect(r.storeChanged()).toBe(true)
+    const again = registry({ ...r.store() })
+    again.applyAgents([bg()], 100)
+    expect(again.rows()[0].prSession).toBe(true)
+    r.forget('s1')
+    expect(r.store().prSessions).toEqual(['s2'])
+  })
+
+  test('Resume all skips a PR session', () => {
+    const r = registry({
+      lastActive: ['s1'],
+      names: {},
+      priorities: {},
+      prSessions: ['s1'],
+      started: [],
+      watch: [],
+    })
+    r.applyAgents([], 100)
+    r.applyAllAgents([bg({ pid: undefined, status: '' }), another], true)
+    const row = r.rows().find(x => x.sessionId === 's1')
+    expect(row?.state).toBe('parked')
+    expect(row?.resumable).toBeUndefined()
+  })
+})

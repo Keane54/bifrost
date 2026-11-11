@@ -128,6 +128,8 @@ export interface SessionRow {
   watch?: { colour: WatchColour; order: number }
   // True for a parked row that Resume all resumes.
   resumable?: true
+  // True for a review session of a PR. It gets no yellow box and no escalation (design 12.3).
+  prSession?: true
   // The name of the terminal app of an external row.
   terminalApp?: string
 }

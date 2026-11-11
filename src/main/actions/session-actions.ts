@@ -257,6 +257,51 @@ export function handOverArgs(opts: {
   ]
 }
 
+// A trust error of claude. The message is the instruction for the user.
+export class TrustNeededError extends Error {}
+
+// Run a claude command that starts a session in cwd. A trust error gives TrustNeededError.
+export async function startRun(
+  run: RunClaude,
+  args: string[],
+  cwd: string,
+  what: string,
+): Promise<ExecResult> {
+  const result = await run(args, { cwd, timeoutMs: RUN_TIMEOUT_MS })
+  if (isTrustError(result.stdout) || isTrustError(result.stderr)) {
+    throw new TrustNeededError(trustMessage(cwd))
+  }
+  if (result.code !== 0) throw new Error(claudeFailure(result, what))
+  return result
+}
+
+// Run "claude --bg" with the arguments in cwd, wait for the entry of the new session and mark
+// it as started. New session, Hand over and the review session use this.
+export async function startBackground(
+  deps: Pick<SessionActionDeps, 'waitForRow' | 'markStarted'>,
+  run: RunClaude,
+  args: string[],
+  cwd: string,
+): Promise<SessionRow> {
+  const result = await startRun(run, args, cwd, 'claude --bg')
+  const id = parseShortId(result.stdout)
+  if (id === null) throw new Error(REASON_NO_SHORT_ID)
+  let row: SessionRow
+  try {
+    row = await deps.waitForRow(
+      r => r.shortId === id && r.kind === 'owned' && r.state !== 'parked' && r.pid !== undefined,
+      START_TIMEOUT_MS,
+    )
+  } catch (error) {
+    if (messageOf(error) !== TIMEOUT) throw error
+    throw new Error(
+      `The session ${id} did not start in 30 seconds. Run claude logs ${id} to see the cause.`,
+    )
+  }
+  deps.markStarted(row.sessionId)
+  return row
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -356,21 +401,6 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   const command = async (run: RunClaude, args: string[], what: string): Promise<void> => {
     const result = await run(args, { timeoutMs: RUN_TIMEOUT_MS })
     if (result.code !== 0) throw new Error(claudeFailure(result, what))
-  }
-
-  // Run a claude command that starts a session in cwd. A trust error gives the instruction.
-  const start = async (
-    run: RunClaude,
-    args: string[],
-    cwd: string,
-    what: string,
-  ): Promise<ExecResult> => {
-    const result = await run(args, { cwd, timeoutMs: RUN_TIMEOUT_MS })
-    if (isTrustError(result.stdout) || isTrustError(result.stderr)) {
-      throw new Error(trustMessage(cwd))
-    }
-    if (result.code !== 0) throw new Error(claudeFailure(result, what))
-    return result
   }
 
   const checkProjectDir = async (cwd: string): Promise<void> => {
@@ -485,7 +515,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (row.state !== 'parked') throw new Error(REFUSED_NOT_PARKED)
     checkSessionId(resumeIdOf(row))
     await checkProjectDir(row.cwd)
-    await start(run, resumeArgs(row), row.cwd, 'claude --bg --resume')
+    await startRun(run, resumeArgs(row), row.cwd, 'claude --bg --resume')
   }
 
   // Check isAlive each END_POLL_MS for up to limitMs. Return true when the process ended.
@@ -497,27 +527,9 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     }
   }
 
-  // Run "claude --bg" with the arguments in cwd, wait for the entry of the new session and mark
-  // it as started. New session and Hand over use this.
-  const startAndWait = async (run: RunClaude, args: string[], cwd: string): Promise<SessionRow> => {
-    const result = await start(run, args, cwd, 'claude --bg')
-    const id = parseShortId(result.stdout)
-    if (id === null) throw new Error(REASON_NO_SHORT_ID)
-    let row: SessionRow
-    try {
-      row = await deps.waitForRow(
-        r => r.shortId === id && r.kind === 'owned' && r.state !== 'parked' && r.pid !== undefined,
-        START_TIMEOUT_MS,
-      )
-    } catch (error) {
-      if (messageOf(error) !== TIMEOUT) throw error
-      throw new Error(
-        `The session ${id} did not start in 30 seconds. Run claude logs ${id} to see the cause.`,
-      )
-    }
-    deps.markStarted(row.sessionId)
-    return row
-  }
+  // New session and Hand over use this. See startBackground.
+  const startAndWait = (run: RunClaude, args: string[], cwd: string): Promise<SessionRow> =>
+    startBackground(deps, run, args, cwd)
 
   // Check the New session values, run "claude --bg" and wait for the entry of the session.
   const startNew = async (input: unknown): Promise<{ sessionId: string }> => {
@@ -720,7 +732,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (!(await waitForEnd(pid))) throw new Error(REASON_NOT_ENDED)
         // A started session parks when it ends. So a failed resume leaves a parked row (D6).
         deps.markStarted(row.sessionId)
-        await start(run, takeControlArgs(current), cwd, 'claude --bg --resume')
+        await startRun(run, takeControlArgs(current), cwd, 'claude --bg --resume')
         await waitResumed(row.sessionId)
         // The resumed session must still run after RESUME_SETTLE_MS. Else it ended or parked
         // before it ran.

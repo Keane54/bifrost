@@ -21,6 +21,7 @@ function emptyStore(): RegistryStore {
     lastActive: [],
     names: {},
     priorities: {},
+    prSessions: [],
     started: [],
     watch: [],
     worktrees: [],
@@ -37,6 +38,7 @@ function emptyStore(): RegistryStore {
 // two processes can run one conversation.
 // A short ID must have the form of a short ID.
 // A file without lastActive (from M3) gives an empty list.
+// A file without prSessions (from before the review sessions) gives no PR sessions.
 // A file without watch (from M3) gives an empty watchlist.
 // A watch entry with a bad colour, a bad ID or a repeated ID is dropped.
 // A file without worktrees (from M3 or an early M4) gives no worktrees.
@@ -99,6 +101,9 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   const lastActive = Array.isArray(data.lastActive)
     ? [...new Set(data.lastActive.filter((id): id is string => typeof id === 'string'))]
     : []
+  const prSessions = Array.isArray(data.prSessions)
+    ? [...new Set(data.prSessions.filter((id): id is string => typeof id === 'string'))]
+    : []
   const seen = new Set<string>()
   const watch: RegistryStore['watch'] = []
   if (Array.isArray(data.watch)) {
@@ -128,7 +133,19 @@ export async function loadStore(file: string): Promise<RegistryStore> {
       worktrees.push({ path, sessionId })
     }
   }
-  return { aliases, current, jobs, lastActive, names, priorities, started, watch, worktrees }
+  const store: RegistryStore = {
+    aliases,
+    current,
+    jobs,
+    lastActive,
+    names,
+    priorities,
+    started,
+    watch,
+    worktrees,
+  }
+  if (prSessions.length > 0) store.prSessions = prSessions
+  return store
 }
 
 // Write the store to a temporary name in the same directory. Then rename the file.

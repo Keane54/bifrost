@@ -213,6 +213,11 @@ export class RegistryService {
     this.changed()
   }
 
+  markPrSession(sessionId: string): void {
+    this.registry.markPrSession(sessionId)
+    this.changed()
+  }
+
   markStopped(sessionId: string): void {
     this.registry.markStopped(sessionId)
     this.changed()
