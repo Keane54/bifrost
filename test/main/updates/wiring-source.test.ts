@@ -160,11 +160,12 @@ describe('the updater wiring in ipc.ts', () => {
     )
     expect(handler('updates:check')).toContain('updater?.checkNow()')
     expect(handler('updates:restart')).toContain('updater?.restart()')
-    expect(handler('updates:show-log')).toContain('if (log === null) return')
+    expect(handler('updates:show-log')).toContain('updateLog?.path ?? null')
   })
 
-  it('opens the update log with shell.openPath', () => {
-    expect(handler('updates:show-log')).toContain('await shell.openPath(log.path)')
+  it('opens the update log with shell.openPath through openUpdateLog', () => {
+    expect(handler('updates:show-log')).toContain('await openUpdateLog(')
+    expect(handler('updates:show-log')).toContain('shell.openPath(path)')
   })
 
   it('has no console or update log call with a token in it', () => {

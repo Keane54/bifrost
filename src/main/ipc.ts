@@ -134,6 +134,7 @@ import { skillsSourceDir } from './skills/skills-folder'
 import { openSettingsStore, type SettingsStore } from './store/settings-store'
 import { openUiStore } from './store/ui-store'
 import { findOnPath, pluginEnv, type TestHome } from './test-home'
+import { openUpdateLog } from './updates/open-log'
 import { appBundlePath } from './updates/rules'
 import { openUpdateStateStore } from './updates/state-store'
 import { createUpdateLog, type UpdateLog } from './updates/update-log'
@@ -1157,13 +1158,14 @@ export function registerIpc(home: TestHome | null = null): void {
   )
   ipcMain.handle('updates:show-log', e =>
     fromPage(e, async () => {
-      const log = updateLog
-      if (log === null) return
-      // The log file does not exist before the first log line. Make it, so the open finds a file.
-      await mkdir(dirname(log.path), { recursive: true })
-      await appendFile(log.path, '')
-      const error = await shell.openPath(log.path)
-      if (error) console.error(`Bifrost cannot open the update log. ${error}`)
+      await openUpdateLog(updateLog?.path ?? null, {
+        ensureFile: async path => {
+          await mkdir(dirname(path), { recursive: true })
+          await appendFile(path, '')
+        },
+        openPath: path => shell.openPath(path),
+        showItemInFolder: path => shell.showItemInFolder(path),
+      })
     }),
   )
   ipcMain.handle('registry:set-alias', (e, sessionId: unknown, name: unknown) =>

@@ -249,7 +249,8 @@ export interface BifrostApi {
     check(): Promise<void>
     // Install the ready update and restart Bifrost. This does nothing when no update is ready.
     restart(): Promise<void>
-    // Open the update log in its default app (Console).
+    // Open the update log in its default app (Console). This rejects with a message when it
+    // cannot open the log.
     showLog(): Promise<void>
   }
   // Live details (D11). Each action resolves with the new status. It rejects with the message
