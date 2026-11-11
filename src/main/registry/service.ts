@@ -218,6 +218,16 @@ export class RegistryService {
     this.changed()
   }
 
+  expectPrSession(name: string): void {
+    this.registry.expectPrSession(name)
+    this.changed()
+  }
+
+  releasePrSession(name: string): void {
+    this.registry.releasePrSession(name)
+    this.changed()
+  }
+
   markStopped(sessionId: string): void {
     this.registry.markStopped(sessionId)
     this.changed()

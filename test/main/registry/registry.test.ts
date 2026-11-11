@@ -2576,3 +2576,31 @@ describe('PR sessions', () => {
     expect(row?.resumable).toBeUndefined()
   })
 })
+
+describe('PR session names', () => {
+  test('a row with an expected PR name gets the PR rule when it shows', () => {
+    const r = registry()
+    r.expectPrSession('alpha')
+    r.applyAgents([bg({ status: 'busy' })], 100)
+    r.applyAgents([bg({ status: 'idle' })], 200)
+    expect(r.rows()[0]).toMatchObject({ box: 'none', prSession: true })
+    expect(r.store().prNames).toEqual(['alpha'])
+    const again = registry({ ...r.store() })
+    again.applyAgents([bg()], 300)
+    expect(again.rows()[0].prSession).toBe(true)
+  })
+
+  test('forget keeps the name mark, and releasePrSession removes it', () => {
+    const r = registry()
+    r.expectPrSession('alpha')
+    r.applyAgents([bg()], 100)
+    r.forget('s1')
+    r.applyAgents([bg()], 200)
+    expect(r.rows()[0].prSession).toBe(true)
+    r.releasePrSession('alpha')
+    r.forget('s1')
+    r.applyAgents([bg()], 300)
+    expect(r.rows()[0].prSession).toBeUndefined()
+    expect(r.store().prNames).toBeUndefined()
+  })
+})

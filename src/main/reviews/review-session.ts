@@ -5,8 +5,11 @@ import { MAX_NAME, type ModelChoice } from '../../shared/new-session'
 import type { SessionRow } from '../../shared/types'
 import { claudeFailure, SHORT_ID } from '../actions/claude-output'
 import {
+  messageOf,
   NO_STATUSLINE_SETTINGS,
+  REFUSED_BAD_ID,
   RUN_TIMEOUT_MS,
+  resolveClaude,
   startBackground,
   TrustNeededError,
 } from '../actions/session-actions'
@@ -17,9 +20,6 @@ export const REVIEW_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep', 'Write',
 
 // A test home starts each PR session name with this text.
 export const TEST_PREFIX = 'bifrost-test-'
-
-const NO_CLAUDE = 'claude not found'
-const REFUSED_SHORT_ID = 'refused: bad session ID'
 
 // The name of a review session: <repo>-<number>-review. On a clash with a name in use, the owner
 // comes first. The repository part is cut so that the name has MAX_NAME characters or less.
@@ -73,69 +73,66 @@ export function reviewSessionArgs(o: {
   return args
 }
 
+// The name goes in each outcome, so the caller can find the session by name when its row shows.
 export type StartOutcome =
-  | { ok: true; shortId: string; sessionId: string }
-  | { ok: false; trust: boolean; message: string }
+  | { ok: true; shortId: string; sessionId: string; name: string }
+  | { ok: false; trust: boolean; message: string; name: string }
 
 export interface ReviewSessions {
-  start(o: { cwd: string; args: string[] }): Promise<StartOutcome>
+  start(o: { cwd: string; args: string[]; name: string }): Promise<StartOutcome>
   stop(shortId: string): Promise<void>
-  remove(row: { shortId: string; sessionId: string }): Promise<void>
+  remove(row: { shortId: string; sessionId: string; name: string }): Promise<void>
 }
 
 export function createReviewSessions(deps: {
   run(): Promise<RunClaude | null>
   waitForRow(match: (row: SessionRow) => boolean, timeoutMs: number): Promise<SessionRow>
   markStarted(id: string): void
-  markPrSession(id: string): void
+  expectPrSession(name: string): void
+  releasePrSession(name: string): void
   forget(id: string): void
   log(m: string): void
 }): ReviewSessions {
-  const claude = async (): Promise<RunClaude> => {
-    const run = await deps.run()
-    if (!run) throw new Error(NO_CLAUDE)
-    return run
-  }
   const checkShortId = (shortId: string): void => {
-    if (!SHORT_ID.test(shortId)) throw new Error(REFUSED_SHORT_ID)
+    if (!SHORT_ID.test(shortId)) throw new Error(REFUSED_BAD_ID)
   }
 
   return {
     // Stop, then remove. A failed stop does not matter. A refusal of rm goes to the log. The
-    // registry forgets the row in each case.
+    // row and its PR mark stay, so the session keeps the PR rule. After a working rm the
+    // registry releases the name and forgets the row.
     async remove(row) {
       checkShortId(row.shortId)
-      const run = await claude()
+      const run = await resolveClaude(deps)
       await run(['stop', row.shortId], { timeoutMs: RUN_TIMEOUT_MS })
       const result = await run(['rm', row.shortId], { timeoutMs: RUN_TIMEOUT_MS })
-      if (result.code !== 0) deps.log(claudeFailure(result, 'claude rm'))
+      if (result.code !== 0) {
+        deps.log(claudeFailure(result, 'claude rm'))
+        return
+      }
+      deps.releasePrSession(row.name)
       deps.forget(row.sessionId)
     },
-    async start({ args, cwd }) {
-      let run: RunClaude
+    // The registry gets the name first. So the session has the PR rule from its first row, also
+    // when the row shows late. A start that cannot have made a session releases the name.
+    async start({ args, cwd, name }) {
+      deps.expectPrSession(name)
       try {
-        run = await claude()
+        const run = await resolveClaude(deps)
+        const { row, shortId } = await startBackground(deps, run, args, cwd)
+        return { name, ok: true, sessionId: row.sessionId, shortId }
       } catch (error) {
-        return { message: messageOf(error), ok: false, trust: false }
-      }
-      try {
-        const row = await startBackground(deps, run, args, cwd)
-        deps.markPrSession(row.sessionId)
-        return { ok: true, sessionId: row.sessionId, shortId: row.shortId ?? '' }
-      } catch (error) {
-        return { message: messageOf(error), ok: false, trust: error instanceof TrustNeededError }
+        const trust = error instanceof TrustNeededError
+        if (trust) deps.releasePrSession(name)
+        return { message: messageOf(error), name, ok: false, trust }
       }
     },
 
     async stop(shortId) {
       checkShortId(shortId)
-      const run = await claude()
+      const run = await resolveClaude(deps)
       const result = await run(['stop', shortId], { timeoutMs: RUN_TIMEOUT_MS })
       if (result.code !== 0) throw new Error(claudeFailure(result, 'claude stop'))
     },
   }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

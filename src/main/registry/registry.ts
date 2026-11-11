@@ -40,6 +40,8 @@ export interface RegistryStore {
   names: Record<string, string>
   // The row IDs of the review sessions for PRs. They get no yellow box.
   prSessions?: string[]
+  // The names of the PR sessions that Bifrost starts. A row with such a name is a PR session.
+  prNames?: string[]
   started: string[]
   priorities: Record<string, Priority>
   // The watched sessions. The array order is the order of the watchlist.
@@ -189,6 +191,8 @@ export class SessionRegistry {
   private readonly started: Set<string>
   // The row IDs of the PR sessions. A PR session gets no yellow box and no escalation.
   private readonly prSessions: Set<string>
+  // A row with one of these names is a PR session, also after forget and after a restart.
+  private readonly prNames: Set<string>
   private readonly aliases: Map<string, string>
   private readonly priorities: Map<string, Priority>
   // The watch colour of each watched session. The Map order is the watchlist order.
@@ -253,6 +257,7 @@ export class SessionRegistry {
     this.names = new Map(Object.entries(opts.store.names))
     this.started = new Set(opts.store.started)
     this.prSessions = new Set(opts.store.prSessions ?? [])
+    this.prNames = new Set(opts.store.prNames ?? [])
     this.aliases = new Map(Object.entries(opts.store.aliases ?? {}))
     this.priorities = new Map(Object.entries(opts.store.priorities ?? {}) as [string, Priority][])
     this.watched = new Map((opts.store.watch ?? []).map(w => [w.sessionId, w.colour]))
@@ -752,6 +757,19 @@ export class SessionRegistry {
     this.changed = true
   }
 
+  // Call this before the start of a PR session. A row with this name gets the PR rule when it
+  // shows, also after forget and after a restart.
+  expectPrSession(name: string): void {
+    if (this.prNames.has(name)) return
+    this.prNames.add(name)
+    this.changed = true
+  }
+
+  // Remove the name after a remove that worked. The row mark goes with forget.
+  releasePrSession(name: string): void {
+    if (this.prNames.delete(name)) this.changed = true
+  }
+
   // A stopped session is no candidate for Resume all.
   markStopped(sessionId: string): void {
     if (this.lastActive.delete(sessionId)) this.changed = true
@@ -939,6 +957,7 @@ export class SessionRegistry {
     }
     // The key exists only when a PR session exists.
     if (this.prSessions.size > 0) store.prSessions = [...this.prSessions]
+    if (this.prNames.size > 0) store.prNames = [...this.prNames]
     return store
   }
 
@@ -1031,6 +1050,7 @@ export class SessionRegistry {
 
   private keepName(rowId: string, entry: AgentEntry): void {
     const name = realName(entry)
+    if (name !== undefined && this.prNames.has(name)) this.markPrSession(rowId)
     if (name === undefined || this.names.get(rowId) === name) return
     this.names.set(rowId, name)
     this.changed = true

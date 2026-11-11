@@ -103,6 +103,9 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   const prSessions = Array.isArray(data.prSessions)
     ? [...new Set(data.prSessions.filter((id): id is string => typeof id === 'string'))]
     : []
+  const prNames = Array.isArray(data.prNames)
+    ? [...new Set(data.prNames.filter((id): id is string => typeof id === 'string'))]
+    : []
   const seen = new Set<string>()
   const watch: RegistryStore['watch'] = []
   if (Array.isArray(data.watch)) {
@@ -144,6 +147,7 @@ export async function loadStore(file: string): Promise<RegistryStore> {
     worktrees,
   }
   if (prSessions.length > 0) store.prSessions = prSessions
+  if (prNames.length > 0) store.prNames = prNames
   return store
 }
 

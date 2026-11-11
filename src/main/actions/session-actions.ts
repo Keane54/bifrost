@@ -75,7 +75,7 @@ const UUID = new RegExp(UUID_PATTERN)
 
 export const NO_CLAUDE = 'claude not found'
 export const REFUSED_UNKNOWN = 'refused: unknown session'
-const REFUSED_BAD_ID = 'refused: bad session ID'
+export const REFUSED_BAD_ID = 'refused: bad session ID'
 const REFUSED_LOCKED = 'refused: an action on this session runs'
 const REFUSED_RESUME_ALL = 'refused: Resume all runs'
 const REFUSED_NOT_CONFIRMED = 'refused: Delete needs a confirmation'
@@ -257,6 +257,13 @@ export function handOverArgs(opts: {
   ]
 }
 
+// The claude runner, or an error when Bifrost cannot find claude.
+export async function resolveClaude(deps: Pick<SessionActionDeps, 'run'>): Promise<RunClaude> {
+  const run = await deps.run()
+  if (!run) throw new Error(NO_CLAUDE)
+  return run
+}
+
 // A trust error of claude. The message is the instruction for the user.
 export class TrustNeededError extends Error {}
 
@@ -282,7 +289,7 @@ export async function startBackground(
   run: RunClaude,
   args: string[],
   cwd: string,
-): Promise<SessionRow> {
+): Promise<{ row: SessionRow; shortId: string }> {
   const result = await startRun(run, args, cwd, 'claude --bg')
   const id = parseShortId(result.stdout)
   if (id === null) throw new Error(REASON_NO_SHORT_ID)
@@ -299,10 +306,10 @@ export async function startBackground(
     )
   }
   deps.markStarted(row.sessionId)
-  return row
+  return { row, shortId: id }
 }
 
-function messageOf(error: unknown): string {
+export function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
@@ -376,11 +383,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   // True while a New session start runs. A double click must not start two sessions.
   let creating = false
 
-  const claude = async (): Promise<RunClaude> => {
-    const run = await deps.run()
-    if (!run) throw new Error(NO_CLAUDE)
-    return run
-  }
+  const claude = (): Promise<RunClaude> => resolveClaude(deps)
 
   // Run fn with the lock of the session. fn gets the current row of the session.
   // The lock check and the lock are in the same synchronous step, so two calls cannot both run.
@@ -529,7 +532,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
 
   // New session and Hand over use this. See startBackground.
   const startAndWait = (run: RunClaude, args: string[], cwd: string): Promise<SessionRow> =>
-    startBackground(deps, run, args, cwd)
+    startBackground(deps, run, args, cwd).then(r => r.row)
 
   // Check the New session values, run "claude --bg" and wait for the entry of the session.
   const startNew = async (input: unknown): Promise<{ sessionId: string }> => {

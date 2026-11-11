@@ -477,3 +477,11 @@ test('the PR sessions survive a save and a load, and an empty list adds no key',
   await saveStore(file, { ...base, prSessions: ['s1', 's2'] })
   expect((await loadStore(file)).prSessions).toEqual(['s1', 's2'])
 })
+
+test('the PR session names survive a save and a load', async () => {
+  const file = join(dir, 'registry.json')
+  const base = await loadStore(file)
+  expect(base.prNames).toBeUndefined()
+  await saveStore(file, { ...base, prNames: ['a-1-review', 'a-1-review', 3 as never] })
+  expect((await loadStore(file)).prNames).toEqual(['a-1-review'])
+})
