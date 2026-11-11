@@ -1,0 +1,97 @@
+{
+  "data": {
+    "mine": {
+      "nodes": [],
+      "pageInfo": {
+        "hasNextPage": false
+      }
+    },
+    "rateLimit": {
+      "cost": 11,
+      "limit": 5000,
+      "remaining": 4930,
+      "resetAt": "2026-11-09T11:00:00Z"
+    },
+    "toReview": {
+      "nodes": [
+        {
+          "additions": 1,
+          "author": {
+            "login": "bob"
+          },
+          "baseRefName": "main",
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "@HEAD@",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [],
+                      "pageInfo": {
+                        "hasNextPage": false,
+                        "hasPreviousPage": false
+                      }
+                    },
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-01T09:00:00Z",
+          "deletions": 1,
+          "headRefName": "raise-limit",
+          "headRefOid": "@HEAD@",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "number": 7,
+          "pendingReviews": {
+            "nodes": [
+              {
+                "id": "PRR_fake"
+              }
+            ]
+          },
+          "repository": {
+            "name": "api",
+            "owner": {
+              "login": "acme"
+            }
+          },
+          "reviewDecision": null,
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "dev-user"
+                }
+              }
+            ]
+          },
+          "timelineItems": {
+            "nodes": [
+              {
+                "createdAt": "2026-11-04T08:00:00Z",
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "dev-user"
+                }
+              }
+            ]
+          },
+          "title": "Raise the token limit",
+          "updatedAt": "2026-11-08T09:00:00Z",
+          "url": "https://github.com/acme/api/pull/7"
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false
+      }
+    },
+    "viewer": {
+      "login": "dev-user"
+    }
+  }
+}

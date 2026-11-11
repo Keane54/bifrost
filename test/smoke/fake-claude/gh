@@ -1,32 +1,94 @@
 #!/bin/sh
 # The fake gh of the smoke test. The smoke test puts this folder first on the PATH of Bifrost.
-# The script answers the poll of the Reviews panel with fixed JSON. The first poll gets
-# reviews-1.json. Each later poll gets reviews-2.json, which has one more direct request. The
-# script does not call GitHub.
+# The script gives fixed JSON and does not call GitHub. It has two modes.
 #
-# A request flashes only when its request event is after the turn-on. So the script puts the
-# time of the first later poll in place of @ASKED@ in reviews-2.json. It keeps that time in the
-# test home, so each later poll gives the same time and the request is not a re-request.
+# The R1 mode answers the poll of the Reviews panel. The first poll gets reviews-1.json. Each
+# later poll gets reviews-2.json, which has one more direct request. A request flashes only when
+# its request event is after the turn-on. So the script puts the time of the first later poll in
+# place of @ASKED@ in reviews-2.json. It keeps that time in the test home, so each later poll
+# gives the same time and the request is not a re-request.
+#
+# The review-round mode applies when the file gh-fixtures in the test home holds review-round.
+# The script tells the GraphQL calls apart by the operation name in the query text. The poll gets
+# review-round-poll-1.json until the post of the review, then review-round-poll-2.json. The
+# ReviewContext query gets review-context.json. The create of a pending review saves stdin to
+# review-post.json. Each fixture gets the content of smoke-head in place of @HEAD@.
+#
+# Each write call goes to gh-writes.log in the test home, in both modes. A write call is an api
+# call with a method that is not GET, a GraphQL mutation, or a pr call that is not pr view.
 
 dir=$(cd "$(dirname "$0")" && pwd)
+home=${BIFROST_TEST_HOME:-}
 
-if [ "$#" -ge 3 ] && [ "$1 $2 $3" = 'api graphql -f' ]; then
+write=no
+prev=''
+for arg in "$@"; do
+  case "$prev" in
+    --method | -X)
+      [ "$arg" = GET ] || write=yes
+      ;;
+  esac
+  case "$arg" in
+    --method=GET | -XGET) ;;
+    --method=* | -X?*) write=yes ;;
+    query=mutation*) write=yes ;;
+  esac
+  prev=$arg
+done
+if [ "${1:-}" = pr ] && [ "${2:-}" != view ]; then
+  write=yes
+fi
+if [ "$write" = yes ] && [ -n "$home" ]; then
+  # A GraphQL query has line breaks. The log keeps one line for each call.
+  printf '%s' "$*" | tr '\n' ' ' >>"$home/gh-writes.log"
+  echo >>"$home/gh-writes.log"
+fi
+
+mode=''
+if [ -n "$home" ] && [ -f "$home/gh-fixtures" ]; then
+  mode=$(cat "$home/gh-fixtures")
+fi
+
+if [ "$mode" = review-round ]; then
+  head=$(cat "$home/smoke-head")
+  if [ "$#" -ge 4 ] && [ "$1 $2 $3" = 'api graphql -f' ]; then
+    case "$4" in
+      'query=query Poll {'*)
+        poll=review-round-poll-1.json
+        if [ -f "$home/review-post.json" ]; then
+          poll=review-round-poll-2.json
+        fi
+        sed "s/@HEAD@/$head/g" "$dir/../fixtures/$poll"
+        exit 0
+        ;;
+      'query=query ReviewContext('*)
+        sed "s/@HEAD@/$head/g" "$dir/../fixtures/review-context.json"
+        exit 0
+        ;;
+    esac
+  fi
+  if [ "$*" = 'api --method POST repos/acme/api/pulls/7/reviews --input -' ]; then
+    cat >"$home/review-post.json"
+    echo '{"node_id":"PRR_fake","state":"PENDING","html_url":"https://github.com/acme/api/pull/7"}'
+    exit 0
+  fi
+elif [ "$#" -ge 3 ] && [ "$1 $2 $3" = 'api graphql -f' ]; then
   # A counter file in the test home tells the first poll from a later poll.
-  counter="${BIFROST_TEST_HOME:-/dev/null}/gh-polls"
+  counter="${home:-/dev/null}/gh-polls"
   count=0
   if [ -f "$counter" ]; then
     count=$(cat "$counter")
   fi
   count=$((count + 1))
-  if [ -n "${BIFROST_TEST_HOME:-}" ]; then
+  if [ -n "$home" ]; then
     echo "$count" >"$counter"
   fi
   if [ "$count" -eq 1 ]; then
     cat "$dir/../fixtures/reviews-1.json"
   else
     asked=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    if [ -n "${BIFROST_TEST_HOME:-}" ]; then
-      stamp="$BIFROST_TEST_HOME/gh-asked"
+    if [ -n "$home" ]; then
+      stamp="$home/gh-asked"
       if [ ! -f "$stamp" ]; then
         echo "$asked" >"$stamp"
       fi
@@ -46,7 +108,7 @@ fi
 # An unknown call goes to stderr and to a file in the test home. The smoke test checks that the
 # file is empty or absent.
 echo "fake gh: unknown call: $*" >&2
-if [ -n "${BIFROST_TEST_HOME:-}" ]; then
-  echo "gh $*" >>"$BIFROST_TEST_HOME/unknown.log"
+if [ -n "$home" ]; then
+  echo "gh $*" >>"$home/unknown.log"
 fi
 exit 2

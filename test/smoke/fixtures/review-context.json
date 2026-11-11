@@ -1,0 +1,29 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "author": {
+          "login": "bob"
+        },
+        "baseRefName": "main",
+        "baseRefOid": "1111111111111111111111111111111111111111",
+        "body": "This raises the limit of the token cache to 1200.",
+        "headRefName": "raise-limit",
+        "headRefOid": "@HEAD@",
+        "pending": {
+          "nodes": []
+        },
+        "reviews": {
+          "nodes": [],
+          "pageInfo": {
+            "endCursor": null,
+            "hasNextPage": false
+          }
+        },
+        "state": "OPEN",
+        "title": "Raise the token limit",
+        "url": "https://github.com/acme/api/pull/7"
+      }
+    }
+  }
+}

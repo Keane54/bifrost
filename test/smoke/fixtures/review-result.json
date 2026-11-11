@@ -1,0 +1,16 @@
+{
+  "comments": [
+    {
+      "body": "This limit is 100 times the old value. Is that on purpose?",
+      "line": 12,
+      "path": "src/limit.ts",
+      "side": "RIGHT"
+    }
+  ],
+  "headSha": "@HEAD@",
+  "pr": "acme/api#7",
+  "recommendation": "request-changes",
+  "summary": "The limit goes from 12 to 1200. Please explain the new value, or keep it lower.",
+  "version": 1,
+  "why": "The new limit can keep too many tokens in memory."
+}

@@ -1,26 +1,89 @@
 #!/bin/sh
 # The fake claude of the smoke test (spec 15, D23). The smoke test puts this folder first on the
 # PATH of Bifrost. The script gives fixed answers to the commands that Bifrost runs at the start,
-# and to the attach of a chat window. It writes no file of Claude Code.
+# to the attach of a chat window, to the trust terminal and to a review session. It writes files
+# only in the test home and in the input folder of a review.
+#
+# A review session (claude --bg with --restricted) writes the result file of the review and
+# starts a sleep as the process of the session. The file fake-agents.json in the test home then
+# holds the entry of the session, and agents --json gives that file in place of the fixture. The
+# entry shows busy for BUSY_SECONDS and then idle, as the real claude does in one turn.
 
 dir=$(cd "$(dirname "$0")" && pwd)
+home=${BIFROST_TEST_HOME:-}
+agents="${home:-/dev/null}/fake-agents.json"
+busy="${home:-/dev/null}/fake-busy-until"
+SHORT_ID=abcd1234
+BUSY_SECONDS=5
+
+# Print the entry of the review session. Before the time in fake-busy-until, the entry shows
+# busy and working. After that time, it shows the values of the file: idle and done.
+print_agents() {
+  ends=$(cat "$busy" 2>/dev/null)
+  if [ -n "$ends" ] && [ "$(date +%s)" -lt "$ends" ]; then
+    sed -e 's/"status": "idle"/"status": "busy"/' -e 's/"state": "done"/"state": "working"/' \
+      "$agents"
+  else
+    cat "$agents"
+  fi
+}
+
+# Stop the sleep of the review session and delete the files of the session.
+end_session() {
+  pid=$(sed -n 's/^ *"pid": \([0-9][0-9]*\),$/\1/p' "$agents" 2>/dev/null)
+  if [ -n "$pid" ]; then
+    kill "$pid" 2>/dev/null
+  fi
+  rm -f "$agents" "$busy"
+}
 
 case "$#:$*" in
+  # The trust terminal runs claude with no arguments. The fake prompt waits for one line, then
+  # writes the trust of the real path of the folder to the .claude.json of the test home. The
+  # SIGHUP of the closed terminal stops the sleep.
+  '0:')
+    echo 'FAKE TRUST PROMPT'
+    read -r answer
+    if [ -n "$home" ]; then
+      printf '{"projects":{"%s":{"hasTrustDialogAccepted":true}}}\n' "$(pwd -P)" \
+        >"$home/.claude.json.tmp"
+      mv "$home/.claude.json.tmp" "$home/.claude.json"
+    fi
+    exec sleep 600
+    ;;
   '1:--version')
     echo '2.1.318 (Claude Code)'
     exit 0
     ;;
   '2:agents --json')
-    cat "$dir/../fixtures/agents-active.json"
+    if [ -f "$agents" ]; then
+      print_agents
+    else
+      cat "$dir/../fixtures/agents-active.json"
+    fi
     exit 0
     ;;
   '3:agents --json --all')
-    cat "$dir/../fixtures/agents-all.json"
+    if [ -f "$agents" ]; then
+      print_agents
+    else
+      cat "$dir/../fixtures/agents-all.json"
+    fi
     exit 0
     ;;
   # No Bifrost plugin. Live details is then not installed, and no live server starts.
   '3:plugin list --json' | '4:plugin marketplace list --json')
     echo '[]'
+    exit 0
+    ;;
+  "2:stop $SHORT_ID")
+    end_session
+    echo "stopped $SHORT_ID"
+    exit 0
+    ;;
+  "2:rm $SHORT_ID")
+    end_session
+    echo "removed $SHORT_ID"
     exit 0
     ;;
 esac
@@ -29,17 +92,69 @@ if [ "$#" -eq 2 ] && [ "$1" = attach ]; then
   echo "FAKE ATTACH $2"
   # WebGL draws the text of a chat window, so the DOM has no text to read (R7). The smoke test
   # reads this file in the test home.
-  if [ -n "${BIFROST_TEST_HOME:-}" ]; then
-    echo "FAKE ATTACH $2" >>"$BIFROST_TEST_HOME/attach.log"
+  if [ -n "$home" ]; then
+    echo "FAKE ATTACH $2" >>"$home/attach.log"
   fi
   # The SIGHUP of a closed chat window stops the sleep.
   exec sleep 600
 fi
 
+# A review session. The log gets one line for each start. Without a trust in the .claude.json of
+# the test home, the start fails with the trust error of the real claude. Else the session
+# writes result.json next to the input file, with the headSha of the input file.
+restricted=no
+name=''
+prev=''
+last=''
+for arg in "$@"; do
+  if [ "$arg" = --restricted ]; then
+    restricted=yes
+  fi
+  if [ "$prev" = --name ]; then
+    name=$arg
+  fi
+  prev=$arg
+  last=$arg
+done
+if [ "${1:-}" = --bg ] && [ "$restricted" = yes ] && [ -n "$home" ]; then
+  printf '%s\n' "$*" >>"$home/review-args.log"
+  if ! grep -q hasTrustDialogAccepted "$home/.claude.json" 2>/dev/null; then
+    folder=$(pwd)
+    echo "Workspace not trusted. Run claude in $folder once and accept the trust prompt," \
+      'then retry.' >&2
+    exit 1
+  fi
+  input=${last#*bifrost-input=}
+  head=$(sed -n 's/^ *"headSha": "\([0-9a-f]*\)",*$/\1/p' "$input")
+  sed "s/@HEAD@/$head/g" "$dir/../fixtures/review-result.json" >"$(dirname "$input")/result.json"
+  # The sleep gets no pipe of Bifrost, so the call of Bifrost ends when this script ends.
+  sleep 600 </dev/null >/dev/null 2>&1 &
+  pid=$!
+  now=$(date +%s)
+  echo $((now + BUSY_SECONDS)) >"$busy"
+  cat >"$agents" <<EOF
+[
+  {
+    "cwd": "$(pwd -P)",
+    "id": "$SHORT_ID",
+    "kind": "background",
+    "name": "$name",
+    "pid": $pid,
+    "sessionId": "$SHORT_ID-0000-4000-8000-000000000001",
+    "startedAt": ${now}000,
+    "state": "done",
+    "status": "idle"
+  }
+]
+EOF
+  echo "backgrounded · $SHORT_ID · $name"
+  exit 0
+fi
+
 # An unknown call goes to stderr and to a file in the test home. The smoke test checks that the
 # file is empty or absent, so a new command of Bifrost shows in a failed run.
 echo "fake claude: $*" >&2
-if [ -n "${BIFROST_TEST_HOME:-}" ]; then
-  echo "$*" >>"$BIFROST_TEST_HOME/unknown.log"
+if [ -n "$home" ]; then
+  echo "$*" >>"$home/unknown.log"
 fi
 exit 2
