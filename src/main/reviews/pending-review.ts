@@ -5,7 +5,7 @@
 
 import { PR_KEY, prKey } from '../../shared/reviews'
 import type { ExecResult } from '../claude/cli'
-import { type Gh, ghFailure, MESSAGE_MAX } from './gh'
+import { EXIT_AUTH, type Gh, ghFailure, MESSAGE_MAX } from './gh'
 import { MAX_REVIEW_BODY, type ResultComment } from './result-file'
 import { BAD_ANSWER } from './review-query'
 import {
@@ -18,6 +18,7 @@ import {
   REASON_SUMMARY_TOO_LONG,
   reasonPartlyAdded,
   reasonPostFailed,
+  reasonPostUnknown,
   reasonSummaryFailed,
 } from './round-text'
 
@@ -31,9 +32,10 @@ export interface PostArgs {
   comments: ResultComment[]
 }
 
-// unknownResult is true when Bifrost cannot tell if GitHub saved the last write: a timeout, an
-// overflow, or exit code 0 with an answer that Bifrost cannot read. The caller must then never
-// post again by itself, because a second post can make a second review or double comments.
+// unknownResult is true when Bifrost cannot tell if GitHub saved the last write. This is each
+// failure that is not known (see writeFailure), and exit code 0 with an answer that Bifrost cannot
+// read. The caller must then never post again by itself, because a second post can make a second
+// review or double comments.
 export type PostOutcome =
   | { ok: true; reviewId: string; added: number }
   | { ok: false; message: string; added: number; unknownResult?: true }
@@ -81,13 +83,23 @@ function parse(stdout: string): unknown {
   }
 }
 
-// The failure of a write call, or null when gh ended well. A timeout or an overflow can come
-// after GitHub saved the write, so its result is not known.
+// GitHub refused the request. gh puts the status at the end of its error line.
+const HTTP_4XX = /\(HTTP 4\d\d\)/
+
+// The failure of a write call, or null when gh ended well. A failure is known only when GitHub
+// did not save the write: gh did not start (ENOENT), the user is logged out (exit code 4), or
+// GitHub refused the request (HTTP 4xx). Each other failure, for example a timeout, a network
+// error or a signal, can come after GitHub saved the write. So its result is not known.
 function writeFailure(result: ExecResult): Failure | null {
   if (result.timedOut) return { known: false, message: REASON_POST_TIMEOUT }
   if (result.overflow) return UNREADABLE
   const failure = ghFailure(result)
-  return failure === null ? null : { known: true, message: failure.message }
+  if (failure === null) return null
+  const known =
+    failure.availability === 'no-gh' || result.code === EXIT_AUTH || HTTP_4XX.test(result.stderr)
+  return known
+    ? { known: true, message: failure.message }
+    : { known: false, message: reasonPostUnknown(failure.message) }
 }
 
 function restComment(c: ResultComment): Rec {
@@ -124,20 +136,21 @@ function threadFields(review: string, c: ResultComment): string[] {
 }
 
 // Run one GraphQL mutation. An answer with errors fails, also when it has data. GitHub then did
-// not do the mutation, so the result is known.
+// not do the mutation, so the result is known. gh prints the answer also when it exits with an
+// error, so the check of the errors comes first.
 async function mutate(gh: Gh, query: string, fields: string[]): Promise<Answer> {
   const result = await gh.run(['api', 'graphql', '-f', `query=${query}`, ...fields])
-  const failure = writeFailure(result)
-  if (failure) return { ...failure, ok: false }
-  const top = parse(result.stdout)
-  if (!isRecord(top)) return { ...UNREADABLE, ok: false }
-  const errors = Array.isArray(top.errors) ? top.errors : []
+  // After a timeout or an overflow, stdout can be a part of the answer only.
+  const top = result.timedOut || result.overflow ? null : parse(result.stdout)
+  const errors = isRecord(top) && Array.isArray(top.errors) ? top.errors : []
   if (errors.length > 0) {
     const first = asRec(errors[0]).message
     const message = typeof first === 'string' ? firstLine(first).slice(0, MESSAGE_MAX) : ''
     return { known: true, message: message || BAD_ANSWER, ok: false }
   }
-  if (!isRecord(top.data)) return { ...UNREADABLE, ok: false }
+  const failure = writeFailure(result)
+  if (failure) return { ...failure, ok: false }
+  if (!isRecord(top) || !isRecord(top.data)) return { ...UNREADABLE, ok: false }
   return { data: top.data, ok: true }
 }
 

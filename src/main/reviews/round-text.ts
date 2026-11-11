@@ -39,6 +39,8 @@ export const REASON_POST_TIMEOUT =
 export const REASON_POST_UNREADABLE =
   "Bifrost couldn't read the answer from GitHub, so it can't tell if your draft review was " +
   'saved. Check the pull request on GitHub.'
+export const reasonPostUnknown = (message: string): string =>
+  `Bifrost can't tell if your draft review was saved: ${message} Check the pull request on GitHub.`
 
 export const reasonBadResult = (why: string): string =>
   `The review session wrote a result Bifrost couldn't use (${why}). Nothing was posted. Try again.`

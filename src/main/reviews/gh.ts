@@ -13,7 +13,7 @@ export const GH_TIMEOUT_MS = 30_000
 export const GH_MAX_BUFFER = 16 * 1024 * 1024
 export const MESSAGE_MAX = 200
 // gh gives exit code 4 when the user is not logged in.
-const EXIT_AUTH = 4
+export const EXIT_AUTH = 4
 
 export interface Gh {
   // input goes to the stdin of gh, for example for --input -.

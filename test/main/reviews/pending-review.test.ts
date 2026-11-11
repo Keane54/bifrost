@@ -17,8 +17,10 @@ import {
   REASON_SUMMARY_TOO_LONG,
   reasonPartlyAdded,
   reasonPostFailed,
+  reasonPostUnknown,
   reasonSummaryFailed,
 } from '../../../src/main/reviews/round-text'
+import { REASON_GH_LOGGED_OUT, REASON_GH_MISSING } from '../../../src/shared/reviews'
 
 const HEAD = 'a'.repeat(40)
 const OLD = 'b'.repeat(40)
@@ -47,6 +49,12 @@ const refused = (stderr: string): ExecResult => ({ code: 1, stderr, stdout: '' }
 const timedOut = (): ExecResult => ({ code: 1, stderr: '', stdout: '', timedOut: true })
 const overflow = (): ExecResult => ({ code: 1, overflow: true, stderr: 'maxBuffer', stdout: '' })
 const unreadable = (): ExecResult => ({ code: 0, stderr: '', stdout: 'not json' })
+// gh prints the GraphQL answer on stdout and the first error on stderr, and exits with code 1.
+const graphqlRefused = (message: string): ExecResult => ({
+  code: 1,
+  stderr: `gh: ${message}`,
+  stdout: JSON.stringify({ data: null, errors: [{ message }] }),
+})
 const created = (state = 'PENDING'): ExecResult => ok({ id: 5, node_id: 'PRR_new', state })
 const threadAdded = (): ExecResult =>
   ok({ data: { addPullRequestReviewThread: { thread: { id: 'T' } } } })
@@ -104,6 +112,13 @@ describe('the texts of a failed post', () => {
     for (const text of [REASON_POST_TIMEOUT, REASON_POST_UNREADABLE]) {
       expect(text).not.toMatch(/try again|Nothing was posted/i)
     }
+  })
+
+  it('gives the gh message when the result of a failed write is unknown', () => {
+    expect(reasonPostUnknown('gh: Server Error (HTTP 502)')).toBe(
+      "Bifrost can't tell if your draft review was saved: gh: Server Error (HTTP 502) " +
+        'Check the pull request on GitHub.',
+    )
   })
 
   it('says what is in the draft when only the summary failed', () => {
@@ -303,24 +318,24 @@ describe('postPendingReview with a pending review of the user', () => {
     const three = [comment(), comment({ line: 13 }), comment({ line: 14 })]
     const { gh, calls } = fakeGh([
       threadAdded(),
-      refused('gh: Line is not in the diff'),
+      graphqlRefused('Line is not in the diff'),
       threadAdded(),
     ])
     const out = await postPendingReview(gh, args({ comments: three, pending: mine() }))
     expect(out).toEqual({
       added: 1,
-      message: reasonPartlyAdded(1, 3, 'gh: Line is not in the diff'),
+      message: reasonPartlyAdded(1, 3, 'Line is not in the diff'),
       ok: false,
     })
     expect(calls).toHaveLength(2)
   })
 
   it('gives reasonPostFailed when the first comment is refused', async () => {
-    const { gh, calls } = fakeGh([refused('gh: Line is not in the diff')])
+    const { gh, calls } = fakeGh([graphqlRefused('Line is not in the diff')])
     const out = await postPendingReview(gh, args({ pending: mine() }))
     expect(out).toEqual({
       added: 0,
-      message: reasonPostFailed('gh: Line is not in the diff'),
+      message: reasonPostFailed('Line is not in the diff'),
       ok: false,
     })
     expect(calls).toHaveLength(1)
@@ -337,22 +352,69 @@ describe('postPendingReview with a pending review of the user', () => {
   })
 
   it('says that the comments are in the draft when the body is refused after them', async () => {
-    const { gh } = fakeGh([threadAdded(), refused('gh: Something went wrong')])
+    const { gh } = fakeGh([threadAdded(), graphqlRefused('Something went wrong')])
     const out = await postPendingReview(gh, args({ pending: mine() }))
     expect(out).toEqual({
       added: 1,
-      message: reasonSummaryFailed('gh: Something went wrong'),
+      message: reasonSummaryFailed('Something went wrong'),
       ok: false,
     })
   })
 
   it('gives reasonPostFailed when the body is refused and there are no comments', async () => {
-    const { gh } = fakeGh([refused('gh: Something went wrong')])
+    const { gh } = fakeGh([refused('gh: Something went wrong (HTTP 403)')])
     const out = await postPendingReview(gh, args({ comments: [], pending: mine() }))
     expect(out).toEqual({
       added: 0,
-      message: reasonPostFailed('gh: Something went wrong'),
+      message: reasonPostFailed('gh: Something went wrong (HTTP 403)'),
       ok: false,
+    })
+  })
+
+  it('counts a failure as known only for exit 4, ENOENT, HTTP 4xx or GraphQL errors', async () => {
+    const known: [ExecResult, string][] = [
+      [{ code: 4, stderr: 'To get started, run: gh auth login', stdout: '' }, REASON_GH_LOGGED_OUT],
+      [{ code: 1, stderr: 'spawn gh ENOENT', stdout: '' }, REASON_GH_MISSING],
+      [refused('gh: Not Found (HTTP 404)'), 'gh: Not Found (HTTP 404)'],
+      [graphqlRefused('Could not resolve to a node.'), 'Could not resolve to a node.'],
+    ]
+    for (const [answer, message] of known) {
+      const { gh } = fakeGh([answer])
+      const out = await postPendingReview(gh, args({ pending: mine() }))
+      expect(out).toEqual({ added: 0, message: reasonPostFailed(message), ok: false })
+    }
+  })
+
+  it('marks each other failure of a write with an unknown result', async () => {
+    // A network error after the request went out, and a kill signal that is not the timeout.
+    const reset = 'Post "https://api.github.com/graphql": read: connection reset by peer'
+    const killed = 'Command failed: gh api graphql'
+    const other: [ExecResult, string][] = [
+      [refused(reset), reset],
+      [refused(killed), killed],
+      [
+        { code: 2, stderr: 'gh: Server Error (HTTP 502)', stdout: '' },
+        'gh: Server Error (HTTP 502)',
+      ],
+    ]
+    for (const [answer, message] of other) {
+      const two = [comment(), comment({ line: 13 })]
+      const { gh, calls } = fakeGh([threadAdded(), answer, threadAdded(), bodySet()])
+      const out = await postPendingReview(gh, args({ comments: two, pending: mine() }))
+      expect(out).toEqual({
+        added: 1,
+        message: reasonPostUnknown(message),
+        ok: false,
+        unknownResult: true,
+      })
+      expect(calls).toHaveLength(2)
+    }
+    const { gh } = fakeGh([refused(reset)])
+    expect(await postPendingReview(gh, args())).toEqual({
+      added: 0,
+      message: reasonPostUnknown(reset),
+      ok: false,
+      unknownResult: true,
     })
   })
 
