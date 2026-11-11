@@ -4,6 +4,7 @@ import type { ConfirmText } from '../../../src/renderer/src/actions/confirm'
 import { confirmFor } from '../../../src/renderer/src/actions/confirm'
 import { CONFIRM_AGAIN_WAIT_MS, confirmStep } from '../../../src/renderer/src/actions/confirm-step'
 import {
+  afterFailedDelete,
   FOCUS_REQUEST_MS,
   focusRequestUsable,
   notifiedOpenStep,
@@ -288,5 +289,13 @@ describe('notifiedOpenStep', () => {
   it('stops when the registry has loaded and the row is not there', () => {
     expect(notifiedOpenStep('S9', rows, true)).toBe('drop')
     expect(notifiedOpenStep('S1', [], true)).toBe('drop')
+  })
+})
+
+describe('afterFailedDelete (spec 8 of the skills design)', () => {
+  it('closes the chat when the main process forgot the row, else keeps it', () => {
+    expect(afterFailedDelete('o', [row({ sessionId: 'p' })])).toBe('close-chat')
+    expect(afterFailedDelete('o', [])).toBe('close-chat')
+    expect(afterFailedDelete('o', [row({ sessionId: 'o' }), row({ sessionId: 'p' })])).toBe('none')
   })
 })

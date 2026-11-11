@@ -1382,6 +1382,45 @@ describe('remove in a folder that another session uses (spec 8 of the skills des
     ])
   })
 
+  test('a deferred entry that went during the last delete gets no claude rm', async () => {
+    f.rows = [old({ sessionId: S3, shortId: S3_SHORT })]
+    f.deferred = [entryOf(S, SHORT), entryOf(S2, S2_SHORT)]
+    // The orphan rule removes the second entry during the claude rm of the first one.
+    f.exec = args => {
+      if (args[0] === 'rm' && args[1] === SHORT) {
+        f.deferred = f.deferred.filter(d => d.sessionId !== S2)
+      }
+      return OK
+    }
+    await actions.remove(S3, true)
+    expect(f.ops()).toEqual([
+      runLine(['rm', S3_SHORT]),
+      runLine(['rm', SHORT]),
+      `0 dropDeferred ${S}`,
+      `0 forget ${S3}`,
+    ])
+  })
+
+  test('a new row in the worktree stops the deferred claude rm', async () => {
+    f.rows = [old({ sessionId: S3, shortId: S3_SHORT })]
+    f.deferred = [entryOf(S, SHORT), entryOf(S2, S2_SHORT)]
+    // A session starts in the worktree during the claude rm of the first deferred session.
+    const started = row({ cwd: WT, sessionId: S4, shortId: '9abc0def' })
+    f.exec = args => {
+      if (args[0] === 'rm' && args[1] === SHORT) f.rows = [...f.rows, started]
+      return OK
+    }
+    await actions.remove(S3, true)
+    expect(f.ops()).toEqual([
+      runLine(['rm', S3_SHORT]),
+      runLine(['rm', SHORT]),
+      `0 dropDeferred ${S}`,
+      `0 forget ${S3}`,
+    ])
+    // The second session stays deferred for the Delete of the new last session.
+    expect(f.deferred).toEqual([entryOf(S2, S2_SHORT)])
+  })
+
   test('a failed claude rm of the last session runs no deferred rm', async () => {
     f.rows = [old({ sessionId: S3, shortId: S3_SHORT })]
     f.deferred = [entryOf(S, SHORT)]

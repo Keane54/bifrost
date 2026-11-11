@@ -36,6 +36,17 @@ export type RunPlan =
   | { kind: 'rename' }
   | { kind: 'call'; call: ApiCall; confirm: ConfirmText | null; after: After }
 
+// What the provider does with the chat window after a Delete that failed. A failed claude rm of a
+// deferred delete rejects after the main process forgot the row of the Delete (spec 8 of the
+// skills design). rows are the rows of the main process after the failure. When the row is not
+// there, the chat window closes, as after a good Delete.
+export function afterFailedDelete(
+  sessionId: string,
+  rows: readonly Pick<SessionRow, 'sessionId'>[],
+): After {
+  return rows.some(r => r.sessionId === sessionId) ? 'none' : 'close-chat'
+}
+
 // A request of a focus-send plan: the send box of the session takes the focus.
 export interface FocusRequest {
   sessionId: string

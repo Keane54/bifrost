@@ -45,7 +45,7 @@ function emptyStore(): RegistryStore {
 // An entry with a repeated ID is dropped.
 // A file without deferred (from before the deferred delete) gives no deferred deletes. A deferred
 // delete needs a non-empty ID, a short ID and a worktree root. An entry with a repeated ID is
-// dropped.
+// dropped. The job value is optional. A job value that is not a short ID is dropped.
 // The function removes each value that has the wrong type.
 // Other read errors, for example EACCES or EISDIR, reject.
 export async function loadStore(file: string): Promise<RegistryStore> {
@@ -163,12 +163,14 @@ function deferredOf(value: unknown): DeferredDelete[] {
   const deferred: DeferredDelete[] = []
   for (const entry of value) {
     if (!isObject(entry)) continue
-    const { sessionId, shortId, worktree } = entry
+    const { job, sessionId, shortId, worktree } = entry
     if (typeof sessionId !== 'string' || sessionId === '' || ids.has(sessionId)) continue
     if (typeof shortId !== 'string' || !SHORT_ID.test(shortId)) continue
     if (typeof worktree !== 'string' || worktreeRoot(worktree)?.worktree !== worktree) continue
     ids.add(sessionId)
-    deferred.push({ sessionId, shortId, worktree })
+    const kept: DeferredDelete = { sessionId, shortId, worktree }
+    if (typeof job === 'string' && SHORT_ID.test(job)) kept.job = job
+    deferred.push(kept)
   }
   return deferred
 }

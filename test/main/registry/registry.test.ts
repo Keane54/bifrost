@@ -9,6 +9,7 @@ import {
   type RegistryStore,
   SessionRegistry,
 } from '../../../src/main/registry/registry'
+import { folderSharer } from '../../../src/shared/worktree'
 
 const bg = (o: Partial<AgentEntry> = {}): AgentEntry => ({
   cwd: '/p',
@@ -2701,6 +2702,8 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
   // The --all entry of b after a stop. b started in the worktree.
   const bStopped = bg({ ...bRuns, pid: undefined, status: '' })
   const A = { sessionId: 's1', shortId: 'aa', worktree: WT }
+  // The stored entry also keeps the job value of the row.
+  const AJ = { ...A, job: 'aa' }
   const ids = (r: SessionRegistry) => r.rows().map(row => row.sessionId)
 
   // a is parked and b runs. Then the Delete of a defers it.
@@ -2723,7 +2726,7 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
     expect(ids(r)).toEqual(['s2'])
     expect(r.storeChanged()).toBe(true)
     const store = r.store()
-    expect(store.deferred).toEqual([A])
+    expect(store.deferred).toEqual([AJ])
     expect(store.names).toEqual({ s2: 'beta' })
     expect(store.jobs).toEqual({ s2: 'bb' })
     expect(store.worktrees).toEqual([{ path: WT, sessionId: 's2' }])
@@ -2732,7 +2735,7 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
     const D = { sessionId: 's4', shortId: 'dd', worktree: '/r/.claude/worktrees/w2' }
     r.defer(C)
     r.defer(D)
-    expect(r.deferredIn(WT)).toEqual([A, C])
+    expect(r.deferredIn(WT)).toEqual([AJ, C])
     expect(r.deferredIn('/r/.claude/worktrees/w2')).toEqual([D])
     // The caller cannot change the registry through the result.
     r.deferredIn(WT)[0].shortId = 'zz'
@@ -2763,7 +2766,7 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
   test('a deferred delete survives a store reload and stays hidden', () => {
     const r = withDeferred()
     const again = registry(structuredClone(r.store()))
-    expect(again.deferredIn(WT)).toEqual([A])
+    expect(again.deferredIn(WT)).toEqual([AJ])
     again.applyAgents([bRuns], 300)
     // The --all list still has the deferred session.
     for (let i = 0; i < 3; i++) {
@@ -2772,7 +2775,7 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
     }
     again.applyAgents([bRuns], 400)
     expect(ids(again)).toEqual(['s2'])
-    expect(again.store().deferred).toEqual([A])
+    expect(again.store().deferred).toEqual([AJ])
     // An old store without the field loads with no deferred delete.
     const old = registry({ lastActive: [], names: {}, priorities: {}, started: [], watch: [] })
     expect(old.deferredIn(WT)).toEqual([])
@@ -2794,13 +2797,13 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
     // After a stop, the active list can show the entry without a pid for a short time.
     r.applyAgents([aStopped, bRuns], 300)
     expect(ids(r)).toEqual(['s2'])
-    expect(r.deferredIn(WT)).toEqual([A])
+    expect(r.deferredIn(WT)).toEqual([AJ])
     // A sample that started before the defer still saw the process.
     r.undefer('s1')
     r.defer(A, 500)
     r.applyAgents([aRuns, bRuns], 400)
     expect(ids(r)).toEqual(['s2'])
-    expect(r.deferredIn(WT)).toEqual([A])
+    expect(r.deferredIn(WT)).toEqual([AJ])
     r.applyAgents([aRuns, bRuns], 600)
     expect(ids(r)).toEqual(['s1', 's2'])
     expect(r.deferredIn(WT)).toEqual([])
@@ -2809,11 +2812,11 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
   test('the gone rule drops a deferred delete', () => {
     const r = withDeferred()
     r.applyAllAgents([bRuns], true)
-    expect(r.deferredIn(WT)).toEqual([A])
+    expect(r.deferredIn(WT)).toEqual([AJ])
     // A list that has the session again sets the count back to 0.
     r.applyAllAgents([aStopped, bRuns], true)
     r.applyAllAgents([bRuns], true)
-    expect(r.deferredIn(WT)).toEqual([A])
+    expect(r.deferredIn(WT)).toEqual([AJ])
     r.storeChanged()
     r.applyAllAgents([bRuns], true)
     expect(r.deferredIn(WT)).toEqual([])
@@ -2828,7 +2831,7 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
     r.applyAgents([], 300)
     r.applyAllAgents([aStopped], true)
     expect(r.rows()).toMatchObject([{ sessionId: 's2', state: 'parked' }])
-    expect(r.deferredIn(WT)).toEqual([A])
+    expect(r.deferredIn(WT)).toEqual([AJ])
     r.applyAllAgents([aStopped], true)
     expect(ids(r)).toEqual([])
     expect(r.deferredIn(WT)).toEqual([])
@@ -2862,11 +2865,11 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
     again.applyAllAgents([aStopped, bRuns], true)
     expect(ids(again)).toEqual([])
     again.applyAllAgents([aStopped, bRuns], true)
-    expect(again.deferredIn(WT)).toEqual([A])
+    expect(again.deferredIn(WT)).toEqual([AJ])
     // A background entry without a pid also keeps the folder in use.
     again.applyAllAgents([aStopped, bStopped], true)
     again.applyAllAgents([aStopped, bStopped], true)
-    expect(again.deferredIn(WT)).toEqual([A])
+    expect(again.deferredIn(WT)).toEqual([AJ])
     again.applyAgents([bRuns], 400)
     expect(ids(again)).toEqual(['s2'])
   })
@@ -2878,9 +2881,9 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
       r.applyAllAgents([bRuns], false)
       r.applyAllAgents([], true)
     }
-    expect(r.deferredIn(WT)).toEqual([A])
+    expect(r.deferredIn(WT)).toEqual([AJ])
     r.applyAllAgents([bRuns], true)
-    expect(r.deferredIn(WT)).toEqual([A])
+    expect(r.deferredIn(WT)).toEqual([AJ])
     // No row uses the folder now. A list that does not count does not show the session again.
     r.forget('s2')
     r.applyAgents([], 300)
@@ -2888,7 +2891,111 @@ describe('deferred deletes (spec 8 of the skills design)', () => {
       r.applyAllAgents([aStopped], false)
       r.applyAllAgents([], true)
     }
-    expect(r.deferredIn(WT)).toEqual([A])
+    expect(r.deferredIn(WT)).toEqual([AJ])
     expect(ids(r)).toEqual([])
+  })
+
+  test('a session that shows again keeps its worktree and its job', () => {
+    const r = withDeferred()
+    r.undefer('s1')
+    expect(r.store().jobs).toEqual({ s1: 'aa', s2: 'bb' })
+    expect(r.store().worktrees).toContainEqual({ path: WT, sessionId: 's1' })
+    r.applyAllAgents([aStopped, bRuns], true)
+    const rows = r.rows()
+    expect(rows[0]).toMatchObject({ cwd: '/r', sessionId: 's1', state: 'parked', worktree: WT })
+    // So a second Delete of a also keeps the folder.
+    const sharers = rows.filter(row => row.sessionId === 's1').map(row => folderSharer(row, rows))
+    expect(sharers.map(row => row?.sessionId)).toEqual(['s2'])
+  })
+
+  test('the orphan rule and the active list give the worktree and the job back', () => {
+    const r = withDeferred()
+    r.applyAgents([], 300)
+    r.applyAllAgents([aStopped], true)
+    r.applyAllAgents([aStopped], true)
+    expect(r.deferredIn(WT)).toEqual([])
+    expect(r.store().jobs).toEqual({ s1: 'aa' })
+    expect(r.store().worktrees).toEqual([{ path: WT, sessionId: 's1' }])
+    r.applyAllAgents([aStopped], true)
+    expect(r.rows()).toMatchObject([{ sessionId: 's1', state: 'parked', worktree: WT }])
+    // The session runs again from its start folder.
+    const q = withDeferred()
+    q.applyAgents([{ ...aRuns, cwd: '/r' }, bRuns], 300)
+    expect(q.rows()[0]).toMatchObject({ sessionId: 's1', worktree: WT })
+    // dropDeferred and the gone rule give nothing back.
+    const d = withDeferred()
+    d.dropDeferred('s1')
+    expect(d.store().jobs).toEqual({ s2: 'bb' })
+    expect(d.store().worktrees).toEqual([{ path: WT, sessionId: 's2' }])
+    const g = withDeferred()
+    g.applyAllAgents([bRuns], true)
+    g.applyAllAgents([bRuns], true)
+    expect(g.deferredIn(WT)).toEqual([])
+    expect(g.store().jobs).toEqual({ s2: 'bb' })
+    expect(g.store().worktrees).toEqual([{ path: WT, sessionId: 's2' }])
+  })
+
+  test('a row from after a /clear stays hidden after a reload and keeps its row ID', () => {
+    // Bifrost first saw the job after a /clear. So its row ID is not the --all session ID.
+    const cleared = bg({ ...aRuns, cwd: WT, sessionId: 'r1' })
+    const original = bg({ ...aStopped, sessionId: 'aa-0001' })
+    const r = registry()
+    r.applyAgents([cleared, bRuns], 100)
+    r.applyAllAgents([cleared, bRuns], true)
+    r.applyAgents([bRuns], 200)
+    r.applyAllAgents([original, bRuns], true)
+    expect(r.rows()).toMatchObject([
+      { sessionId: 'r1', state: 'parked', worktree: WT },
+      { sessionId: 's2' },
+    ])
+    r.defer({ sessionId: 'r1', shortId: 'aa', worktree: WT })
+    const again = registry(structuredClone(r.store()))
+    again.applyAgents([bRuns], 300)
+    for (let i = 0; i < 3; i++) {
+      again.applyAllAgents([original, bRuns], true)
+      expect(ids(again)).toEqual(['s2'])
+    }
+    again.undefer('r1')
+    again.applyAllAgents([original, bRuns], true)
+    expect(again.rows()).toMatchObject([
+      { sessionId: 'r1', state: 'parked', worktree: WT },
+      { sessionId: 's2' },
+    ])
+  })
+
+  test('an entry of any kind with a pid keeps the folder in use', () => {
+    // A claude in a terminal runs in the worktree. Bifrost has no row for it yet.
+    const terminal = bg({
+      cwd: `${WT}/src`,
+      id: undefined,
+      kind: 'interactive',
+      name: '',
+      pid: 77,
+      sessionId: 't1',
+    })
+    const r = withDeferred()
+    r.forget('s2')
+    r.applyAgents([], 300)
+    r.applyAllAgents([aStopped, terminal], true)
+    expect(r.deferredIn(WT)).toEqual([AJ])
+    // A terminal session that ended does not use the folder.
+    r.applyAllAgents([aStopped, { ...terminal, pid: undefined }], true)
+    expect(r.deferredIn(WT)).toEqual([])
+  })
+
+  test('the own entry of a deferred session with a pid keeps its folder in use', () => {
+    const r = registry()
+    r.applyAgents([aRuns, bRuns], 100)
+    r.applyAllAgents([aRuns, bRuns], true)
+    r.applyAgents([aRuns], 200)
+    r.defer({ sessionId: 's2', shortId: 'bb', worktree: WT })
+    // claude rm in a terminal removed a. Then b runs again, and the active list does not have it.
+    r.applyAgents([], 300)
+    r.applyAllAgents([bRuns], true)
+    r.applyAllAgents([bRuns], true)
+    expect(ids(r)).toEqual([])
+    expect(r.deferredIn(WT)).toHaveLength(1)
+    r.applyAgents([bRuns], 400)
+    expect(ids(r)).toEqual(['s2'])
   })
 })

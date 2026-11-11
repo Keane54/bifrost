@@ -284,7 +284,10 @@ export class SessionRegistry {
   // match gives the row of each entry. The session ID of the entry is the current ID of its row.
   applyAgents(entries: AgentEntry[], sampledAt: number): void {
     this.advance(sampledAt)
-    const matches = this.match(entries, true).filter(m => !this.hiddenInActive(m, sampledAt))
+    const matches: Match[] = []
+    for (const m of this.match(entries, true)) {
+      if (!this.hiddenInActive(m, sampledAt)) matches.push(m)
+    }
     const ids = new Set(matches.map(m => m.rowId))
     for (const { entry, isNew, rowId } of matches) {
       const known = this.sessions.get(rowId)
@@ -618,7 +621,7 @@ export class SessionRegistry {
     }
     if (!counts) return
     this.forgetGone(listed)
-    this.checkDeferred(found)
+    this.checkDeferred(found, entries)
   }
 
   // True when the active list skips the entry of a deferred row (spec 8 of the skills design).
@@ -631,7 +634,7 @@ export class SessionRegistry {
     if (!this.deferred.has(m.rowId)) return false
     const deferredAt = this.deferredAt.get(m.rowId) ?? Number.NEGATIVE_INFINITY
     if (m.entry.pid === undefined || sampledAt <= deferredAt) return true
-    this.removeDeferred(m.rowId)
+    this.showAgain(m.rowId)
     return false
   }
 
@@ -640,11 +643,14 @@ export class SessionRegistry {
   // Gone rule: a deferred delete whose row ID the list does not give adds 1 to its count. After
   // GONE_LISTS counted lists in a row without it, the deferred delete goes. A list that gives the
   // row ID sets the count back to 0.
-  // Orphan rule: a worktree is in use when a row, or a background entry of the list with or
-  // without a pid, has it as its root. The entries of the deferred sessions do not count. A
-  // deferred delete of a worktree that is not in use goes. The next list then shows its session
-  // again as a parked row, so the user can delete it with the normal check.
-  private checkDeferred(found: Match[]): void {
+  // Orphan rule: a worktree is in use when one of these has it as its root:
+  // - a row,
+  // - an entry of any kind with a pid, for example a claude in a terminal,
+  // - a background entry without a pid, except the entry of a deferred session.
+  // A deferred delete of a worktree that is not in use goes, and its session gets its worktree and
+  // its job back. The next list then shows the session again as a parked row, so the user can
+  // delete it with the normal check.
+  private checkDeferred(found: Match[], entries: AgentEntry[]): void {
     const given = new Set(found.map(m => m.rowId))
     for (const id of [...this.deferred.keys()]) {
       if (given.has(id)) {
@@ -656,17 +662,21 @@ export class SessionRegistry {
       else this.deferredMissing.set(id, missing)
     }
     const used = new Set<string>()
+    const addRootOf = (cwd: string): void => {
+      const root = worktreeRoot(cwd)
+      if (root !== null) used.add(root.worktree)
+    }
     for (const s of this.sessions.values()) {
       const root = worktreeOf({ cwd: s.cwd, worktree: this.worktrees.get(s.sessionId) })
       if (root !== null) used.add(root)
     }
+    // A deferred session with a pid runs in the folder again, so its entry also counts.
+    for (const entry of entries) if (entry.pid !== undefined) addRootOf(entry.cwd)
     for (const { entry, rowId } of found) {
-      if (this.deferred.has(rowId)) continue
-      const root = worktreeRoot(entry.cwd)
-      if (root !== null) used.add(root.worktree)
+      if (entry.pid === undefined && !this.deferred.has(rowId)) addRootOf(entry.cwd)
     }
     for (const d of [...this.deferred.values()]) {
-      if (!used.has(d.worktree)) this.removeDeferred(d.sessionId)
+      if (!used.has(d.worktree)) this.showAgain(d.sessionId)
     }
   }
 
@@ -1028,16 +1038,21 @@ export class SessionRegistry {
   // Forget the row, as forget does, and keep the deferred delete in the store. at is the time of
   // the defer. An active sample that started before it does not show the row again.
   // A worktree that is not a worktree root changes nothing. The same entry again changes nothing.
+  // The entry keeps the job value of the row. The job value of the caller does not count.
   defer(entry: DeferredDelete, at = this.clock): void {
-    if (worktreeRoot(entry.worktree)?.worktree !== entry.worktree) return
-    this.forget(entry.sessionId)
-    this.deferredAt.set(entry.sessionId, at)
-    const old = this.deferred.get(entry.sessionId)
-    if (old?.shortId === entry.shortId && old.worktree === entry.worktree) return
+    const { sessionId, shortId, worktree } = entry
+    if (worktreeRoot(worktree)?.worktree !== worktree) return
+    const old = this.deferred.get(sessionId)
+    const job = this.jobs.get(sessionId) ?? old?.job
+    this.forget(sessionId)
+    this.deferredAt.set(sessionId, at)
+    if (old?.shortId === shortId && old.worktree === worktree && old.job === job) return
     // A changed entry goes to the end, as a new defer.
-    this.deferred.delete(entry.sessionId)
-    this.deferred.set(entry.sessionId, { ...entry })
-    this.deferredMissing.delete(entry.sessionId)
+    const kept: DeferredDelete = { sessionId, shortId, worktree }
+    if (job !== undefined) kept.job = job
+    this.deferred.delete(sessionId)
+    this.deferred.set(sessionId, kept)
+    this.deferredMissing.delete(sessionId)
     this.changed = true
   }
 
@@ -1048,7 +1063,7 @@ export class SessionRegistry {
 
   // Remove a deferred delete. The next --all list shows the session again as a parked row.
   undefer(sessionId: string): void {
-    this.removeDeferred(sessionId)
+    this.showAgain(sessionId)
   }
 
   // Remove a deferred delete after a good claude rm.
@@ -1088,6 +1103,17 @@ export class SessionRegistry {
     if (this.prNames.size > 0) store.prNames = [...this.prNames]
     if (this.deferred.size > 0) store.deferred = [...this.deferred.values()].map(d => ({ ...d }))
     return store
+  }
+
+  // Remove a deferred delete, and give the session its stored worktree and job value back. The
+  // forget of the defer removed them. So the next entry of the job finds the same row (rule 1 of
+  // match), and the row keeps its worktree. An unknown ID changes nothing.
+  private showAgain(sessionId: string): void {
+    const d = this.deferred.get(sessionId)
+    if (d === undefined) return
+    this.removeDeferred(sessionId)
+    this.worktrees.set(sessionId, d.worktree)
+    if (d.job !== undefined) this.jobs.set(sessionId, d.job)
   }
 
   // Remove a deferred delete and its count. An unknown ID changes nothing.

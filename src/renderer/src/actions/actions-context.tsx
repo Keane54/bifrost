@@ -48,7 +48,13 @@ import { createDeleteNotices } from './delete-notice'
 import { friendlyError, handOverFailure } from './errors'
 import RenameDialog from './RenameDialog'
 import { afterSend } from './rename-model'
-import { type FocusRequest, notifiedOpenStep, planRun, type RunPlan } from './run-plan'
+import {
+  afterFailedDelete,
+  type FocusRequest,
+  notifiedOpenStep,
+  planRun,
+  type RunPlan,
+} from './run-plan'
 
 // A notice of an action shows for 5 seconds. An error stays until the user closes it, because a
 // Delete error can be long (Task 17).
@@ -272,6 +278,26 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
     [updateHistory],
   )
 
+  // Close the chat window of a session that went, and clear its selection.
+  const closeChat = useCallback(
+    (sessionId: string) => {
+      dispatch({ panelId: chatPanelId(sessionId), type: 'close' })
+      if (latest.current.selectedId === sessionId) select(null)
+    },
+    [dispatch, select],
+  )
+
+  // A Delete can fail after the main process forgot its row: a failed claude rm of a deferred
+  // delete (spec 8 of the skills design). The rows of the main process show this. Then the chat
+  // window closes, as after a good Delete. The error stays.
+  const afterDeleteFailure = useCallback(
+    async (sessionId: string) => {
+      const rows = await window.bifrost.registry.rows().catch(() => null)
+      if (rows !== null && afterFailedDelete(sessionId, rows) === 'close-chat') closeChat(sessionId)
+    },
+    [closeChat],
+  )
+
   // Run one API call. Take control and Delete pass true only after the confirm click.
   // folderShared comes from the context of the action (contextOf).
   const runCall = useCallback(
@@ -424,8 +450,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
         }
         switch (plan.after) {
           case 'close-chat':
-            dispatch({ panelId: chatPanelId(sessionId), type: 'close' })
-            if (latest.current.selectedId === sessionId) select(null)
+            closeChat(sessionId)
             break
           case 'restart-chat':
             chats.get(sessionId)?.restart()
@@ -438,12 +463,25 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
         if (plan.call === 'take-control') chats.finishLoader(sessionId)
       } catch (err) {
         fail(err)
+        if (deleting) void afterDeleteFailure(sessionId)
       } finally {
         if (deleting) notices.endDelete()
         if (marked) setRunningFor(sessionId, false)
       }
     },
-    [chats, confirm, dispatch, fail, notices, onBusy, select, setRunningFor, showError],
+    [
+      afterDeleteFailure,
+      chats,
+      closeChat,
+      confirm,
+      dispatch,
+      fail,
+      notices,
+      onBusy,
+      select,
+      setRunningFor,
+      showError,
+    ],
   )
 
   const run = useCallback(

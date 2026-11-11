@@ -83,6 +83,9 @@ export interface DeferredDelete {
   sessionId: string
   shortId: string
   worktree: string
+  // The job value (the short ID in jobs) of the row at the defer. The registry sets it. A
+  // session that shows again gets it back, so its next entry finds the same row.
+  job?: string
 }
 
 // One row of the session list. The main process sends rows to the renderer.

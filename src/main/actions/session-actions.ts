@@ -521,6 +521,9 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   // apply. A good run drops the entry. A failed run undefers that entry and each later entry, so
   // these sessions show again as parked rows. Then the last session goes, because its claude rm
   // worked, and the Delete rejects with the error of the failed run.
+  // A claude rm can take minutes. So before each run, Bifrost skips an entry that the registry
+  // no longer has, for example after the orphan rule. Bifrost also skips an entry while another
+  // row uses the worktree again. Then the entry stays for the Delete of that row.
   const removeDeferred = async (
     run: RunClaude,
     row: SessionRow,
@@ -529,6 +532,11 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   ): Promise<void> => {
     const entries = deps.deferredIn(worktree)
     for (const [i, entry] of entries.entries()) {
+      const kept = deps.deferredIn(worktree).some(d => d.sessionId === entry.sessionId)
+      const used = deps
+        .rows()
+        .some(r => r.sessionId !== row.sessionId && worktreeOf(r) === entry.worktree)
+      if (!kept || used) continue
       try {
         // The short ID goes into an argument, so it must match SHORT_ID.
         if (!SHORT_ID.test(entry.shortId)) throw new Error(REFUSED_BAD_ID)

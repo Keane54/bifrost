@@ -40,3 +40,13 @@ describe('hand over in the action button', () => {
     expect(BUTTON).toContain('handOverWarning(')
   })
 })
+
+describe('a failed Delete in the actions provider (spec 8 of the skills design)', () => {
+  it('reads the rows of the main process and closes the chat of a row that went', () => {
+    expect(CONTEXT).toMatch(/fail\(err\)\s+if \(deleting\) void afterDeleteFailure\(sessionId\)/)
+    expect(CONTEXT).toContain('await window.bifrost.registry.rows()')
+    expect(CONTEXT).toContain("afterFailedDelete(sessionId, rows) === 'close-chat'")
+    // A good Delete and a failed one close the chat window by the same function.
+    expect(CONTEXT.match(/closeChat\(sessionId\)/g)).toHaveLength(2)
+  })
+})
