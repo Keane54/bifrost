@@ -81,9 +81,11 @@ function ModelRow(props: {
 }
 
 // The row that deletes the clones of Bifrost. It asks first. A refusal shows as the row error.
+// The button is disabled while the confirm or the delete runs.
 function RemoveClonesRow(): React.JSX.Element {
   const confirm = useConfirm()
   const row = useRowSave(REVIEWS_ROWS.removeClones)
+  const [busy, setBusy] = useState(false)
   return (
     <SettingRow
       error={row.error}
@@ -93,9 +95,15 @@ function RemoveClonesRow(): React.JSX.Element {
     >
       <button
         className='h-5 shrink-0 border border-panel-edge px-2 text-xs text-text hover:bg-hover active:bg-accent/12 disabled:opacity-40'
+        disabled={busy}
         onClick={async () => {
-          if (!(await confirm(REMOVE_CLONES_CONFIRM))) return
-          await row.save(() => window.bifrost.reviews.removeClones())
+          setBusy(true)
+          try {
+            if (!(await confirm(REMOVE_CLONES_CONFIRM))) return
+            await row.save(() => window.bifrost.reviews.removeClones())
+          } finally {
+            setBusy(false)
+          }
         }}
         type='button'
       >

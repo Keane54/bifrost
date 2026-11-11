@@ -70,17 +70,31 @@ describe('Settings > Reviews', () => {
     expect(SECTION).toContain('<RemoveClonesRow')
   })
 
-  it('asks with useConfirm before it calls removeClones, and shows a refusal as the row error', () => {
-    const ask = SECTION.indexOf('await confirm(REMOVE_CLONES_CONFIRM)')
-    const call = SECTION.indexOf('window.bifrost.reviews.removeClones()')
-    expect(ask).toBeGreaterThan(-1)
-    expect(call).toBeGreaterThan(ask)
-    expect(SECTION).toContain('row.save(() => window.bifrost.reviews.removeClones())')
-    expect(SECTION).toContain("title: 'Remove all clones?'")
-    expect(SECTION).toContain("confirm: 'Remove',")
-    expect(SECTION).toContain(
-      'Bifrost will delete its copies of your repositories, the review sessions that use them and any queued reviews. Your own checkouts and your draft reviews on GitHub stay as they are. While Watch GitHub is on, Bifrost copies the repositories of your open pull requests again.',
-    )
+  it(
+    'asks with useConfirm before it calls removeClones, ' + 'and shows a refusal as the row error',
+    () => {
+      const ask = SECTION.indexOf('await confirm(REMOVE_CLONES_CONFIRM)')
+      const call = SECTION.indexOf('window.bifrost.reviews.removeClones()')
+      expect(ask).toBeGreaterThan(-1)
+      expect(call).toBeGreaterThan(ask)
+      expect(SECTION).toContain('row.save(() => window.bifrost.reviews.removeClones())')
+      expect(SECTION).toContain("title: 'Remove all clones?'")
+      expect(SECTION).toContain("confirm: 'Remove',")
+      expect(SECTION).toContain(
+        'Bifrost will delete its copies of your repositories, the review sessions that use them and any queued reviews. Your own checkouts and your draft reviews on GitHub stay as they are. While Watch GitHub is on, Bifrost copies the repositories of your open pull requests again.',
+      )
+    },
+  )
+
+  it('disables the Remove button while the confirm or the delete runs', () => {
+    const start = SECTION.indexOf('function RemoveClonesRow(')
+    const body = SECTION.slice(start, SECTION.indexOf('\nfunction ', start + 1))
+    expect(body).toContain('const [busy, setBusy] = useState(false)')
+    expect(body).toContain('disabled={busy}')
+    const on = body.indexOf('setBusy(true)')
+    expect(on).toBeGreaterThan(-1)
+    expect(body.indexOf('await confirm(REMOVE_CLONES_CONFIRM)')).toBeGreaterThan(on)
+    expect(body).toMatch(/finally \{\s*setBusy\(false\)/)
   })
 
   it('has the new body in the Watch GitHub confirm', () => {
