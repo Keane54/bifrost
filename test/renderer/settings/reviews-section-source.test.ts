@@ -63,6 +63,11 @@ describe('Settings > Reviews', () => {
     expect(SECTION).toContain("title='Remove'")
   })
 
+  it('makes the model list with modelOptions', () => {
+    expect(SECTION).toContain('modelOptions()')
+    expect(SECTION).not.toContain('const MODEL_CHOICES')
+  })
+
   it('has a RowFilterContext provider', () => {
     expect(SECTION).toContain('<RowFilterContext value={only}>')
   })

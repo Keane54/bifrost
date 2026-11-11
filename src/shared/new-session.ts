@@ -12,6 +12,18 @@ export const MODEL_CHOICES: readonly { value: ModelChoice; label: string }[] = O
   { label: 'Haiku', value: 'haiku' },
 ])
 
+// The values of MODEL_CHOICES. The settings checks use them.
+export const MODEL_VALUES: readonly ModelChoice[] = Object.freeze(
+  MODEL_CHOICES.map(choice => choice.value),
+)
+
+// The options of a model select in Settings. The empty value is the default of Claude Code.
+export function modelOptions(): { value: ModelChoice; label: string }[] {
+  return MODEL_CHOICES.map(choice =>
+    choice.value === '' ? { label: 'Claude Code default', value: '' } : { ...choice },
+  )
+}
+
 // The choices of "claude --help" without bypassPermissions (M4 Task 1).
 // The empty value means Default and gives no flag.
 export const PERMISSION_MODES: readonly string[] = Object.freeze([

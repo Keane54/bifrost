@@ -8,6 +8,8 @@ import {
   isClaudeCommand,
   MAX_NAME,
   MODEL_CHOICES,
+  MODEL_VALUES,
+  modelOptions,
   PERMISSION_MODES,
   REASON_DIR_CHECK,
   REASON_DIR_MISSING,
@@ -192,5 +194,20 @@ describe('in-app texts', () => {
     expect(REASON_NO_GIT).toBe("This folder isn't in a git repository, so it can't use a worktree.")
     const empty = checkNewSessionSpec({ cwd: '' })
     expect(empty).toEqual({ ok: false, reason: 'Choose a project folder.' })
+  })
+})
+
+describe('model options', () => {
+  test('MODEL_VALUES comes from MODEL_CHOICES', () => {
+    expect(MODEL_VALUES).toEqual(['', 'opus', 'sonnet', 'haiku'])
+  })
+
+  test('modelOptions names the empty value Claude Code default', () => {
+    expect(modelOptions()).toEqual([
+      { label: 'Claude Code default', value: '' },
+      { label: 'Opus', value: 'opus' },
+      { label: 'Sonnet', value: 'sonnet' },
+      { label: 'Haiku', value: 'haiku' },
+    ])
   })
 })

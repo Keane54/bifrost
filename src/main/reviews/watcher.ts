@@ -106,8 +106,8 @@ type Outcome = { ok: true; data: PollData } | { ok: false; failure: GhFailure }
 // - While GitHub has more requests than the first page, a key that is not in the answer can
 //   still be open. It keeps its entry and its pause. A partial answer (with errors) does the
 //   same, because it can lack PRs that are open.
-// - A known key with a request time after its firstSeen is a re-request. It is new again and
-//   loses its pause.
+// - A known key with a request time after its firstSeen is a re-request when the PR is a direct
+//   request. It is new again and loses its pause. A team row keeps its pause and its entry.
 // firstSeen is never before the request time, so a late local clock cannot give a re-request at
 // each poll.
 function nextState(
@@ -129,7 +129,7 @@ function nextState(
       const baseline = s.turnedOnAt !== null && pr.requestedAt < s.turnedOnAt
       requests[key] = { baseline, firstSeen: seen }
       if (!baseline) arrived.add(key)
-    } else if (pr.requestedAt > known.firstSeen) {
+    } else if (pr.requestedAt > known.firstSeen && pr.requestedUsers.includes(poll.viewer)) {
       requests[key] = { baseline: false, firstSeen: seen }
       arrived.add(key)
     } else {
@@ -180,6 +180,8 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
   let unsaved: ReviewsState | null = null
   // True after a failed save, until a save works again. One log line for each failure period.
   let saveFailing = false
+  // The joined errors of the last partial answer, or null after a poll with no errors.
+  let lastErrors: string | null = null
   let snapshot: ReviewsSnapshot = EMPTY_REVIEWS
 
   function set(next: ReviewsSnapshot): void {
@@ -335,11 +337,13 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       ])
       if (outcome === null || !running || gen !== generation) return
       if (outcome.ok) {
-        // One log line for each poll with errors. It has only the messages, no PR text.
+        // One log line for each new error text. It has only the messages, no PR text.
         const { errors } = outcome.data
-        if (errors.length > 0) {
-          deps.log(`GitHub gave errors with the Reviews poll: ${errors.join(' | ')}`)
+        const text = errors.length > 0 ? errors.join(' | ') : null
+        if (text !== null && text !== lastErrors) {
+          deps.log(`GitHub gave errors with the Reviews poll: ${text}`)
         }
+        lastErrors = text
         await apply(gen, outcome.data)
       } else fail(outcome.failure)
     } catch (error) {
@@ -410,6 +414,7 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       polledAt = null
       failure = null
       unsaved = null
+      lastErrors = null
       // No more polls come. So the failures in a row of Reviews go to 0.
       health.stopped('reviews')
       if (snapshot !== EMPTY_REVIEWS) set(EMPTY_REVIEWS)

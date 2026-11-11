@@ -530,6 +530,26 @@ describe('createReviewsWatcher', () => {
     t.watcher.stop()
   })
 
+  test('a new team request event does not end the pause of a team row', async () => {
+    const before = Date.now() - 60 * MIN
+    const entry = { baseline: false, firstSeen: before }
+    const t = setup({
+      replies: [answer([{ asked: '2026-11-09T09:59:00Z', number: 103, team: true }])],
+      state: {
+        pauses: { [K103]: Date.now() + 30 * MIN },
+        requests: { [K103]: entry },
+        turnedOnAt: before,
+      },
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(row(t.watcher, K103)).toMatchObject({ flash: false, state: 'paused' })
+    expect(t.store.get().pauses[K103]).toBeGreaterThan(Date.now())
+    expect(t.store.get().requests[K103]).toEqual(entry)
+    expect(t.notified).toEqual([])
+    t.watcher.stop()
+  })
+
   test('a request time after the local clock notifies only once', async () => {
     // The clock of this Mac is late, so the request time is in the future.
     const asked = '2026-11-09T11:00:00Z'
@@ -579,7 +599,7 @@ describe('createReviewsWatcher', () => {
     t.watcher.stop()
   })
 
-  test('a partial answer keeps its data and logs the errors once for each poll', async () => {
+  test('a partial answer keeps its data and logs the same errors once', async () => {
     const message = 'Something went wrong while executing your query.'
     const t = setup({ replies: [partial([{ number: 101 }], [message, message], 1)] })
     t.watcher.start()
@@ -589,7 +609,28 @@ describe('createReviewsWatcher', () => {
     const lines = (): string[] => t.logs.filter(m => m.includes(message))
     expect(lines()).toEqual([`GitHub gave errors with the Reviews poll: ${message}`])
     await vi.advanceTimersByTimeAsync(2 * MIN)
-    expect(lines()).toHaveLength(2)
+    expect(lines()).toHaveLength(1)
+    t.watcher.stop()
+  })
+
+  test('logs the same partial error once and logs a new one', async () => {
+    const t = setup({
+      replies: [
+        partial([{ number: 101 }], ['Error A'], 1),
+        partial([{ number: 101 }], ['Error A'], 1),
+        partial([{ number: 101 }], ['Error B'], 1),
+      ],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.run).toHaveBeenCalledTimes(3)
+    const lines = t.logs.filter(m => m.startsWith('GitHub gave errors'))
+    expect(lines).toEqual([
+      'GitHub gave errors with the Reviews poll: Error A',
+      'GitHub gave errors with the Reviews poll: Error B',
+    ])
     t.watcher.stop()
   })
 

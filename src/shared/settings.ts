@@ -9,7 +9,7 @@ import {
   parseCustomKeys,
   slotById,
 } from './keys'
-import type { ModelChoice } from './new-session'
+import { MODEL_VALUES, type ModelChoice } from './new-session'
 import { isPlainObject } from './plain-object'
 import type { ProjectApp, ProjectAppId } from './types'
 
@@ -210,8 +210,8 @@ const SIMPLE_CHECKS: Readonly<Record<SimpleKey, Check>> = {
   reviewsMaxSessions: onStep(1, 10, 1),
   reviewsPauseMinutes: oneOf([15, 30, 60, 120, 240, 480]),
   reviewsPollMinutes: oneOf([1, 2, 5, 10]),
-  reviewsRequestModel: oneOf(['', 'opus', 'sonnet', 'haiku']),
-  reviewsReviewModel: oneOf(['', 'opus', 'sonnet', 'haiku']),
+  reviewsRequestModel: oneOf(MODEL_VALUES),
+  reviewsReviewModel: oneOf(MODEL_VALUES),
   reviewsTeamRequests: isBoolean,
   reviewsWatch: isBoolean,
   rowFlash: isBoolean,

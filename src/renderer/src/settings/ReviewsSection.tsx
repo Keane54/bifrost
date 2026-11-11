@@ -2,7 +2,7 @@
 // A row saves on change. The ignore list works like the list of slash commands.
 import { X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { ModelChoice } from '../../../shared/new-session'
+import { type ModelChoice, modelOptions } from '../../../shared/new-session'
 import { MAX_REVIEWS_IGNORE } from '../../../shared/settings'
 import { useConfirm } from '../actions/ConfirmDialog'
 import type { ConfirmText } from '../actions/confirm'
@@ -30,12 +30,7 @@ const POLL_CHOICES = [1, 2, 5, 10] as const
 // The hint of a row that saves but has no effect in R1.
 const LATER = 'Comes in a later version.'
 
-const MODEL_CHOICES: { label: string; value: string }[] = [
-  { label: 'Claude Code default', value: '' },
-  { label: 'Opus', value: 'opus' },
-  { label: 'Sonnet', value: 'sonnet' },
-  { label: 'Haiku', value: 'haiku' },
-]
+const MODEL_OPTIONS = modelOptions()
 
 function minutesText(minutes: number): string {
   if (minutes < 60) return `${minutes} minutes`
@@ -68,7 +63,7 @@ function ModelRow(props: {
         }}
         value={props.value}
       >
-        {MODEL_CHOICES.map(choice => (
+        {MODEL_OPTIONS.map(choice => (
           <option key={choice.value} value={choice.value}>
             {choice.label}
           </option>

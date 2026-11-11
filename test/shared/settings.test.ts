@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import { MODEL_VALUES } from '../../src/shared/new-session'
 import {
   applyPatch,
   checkFontFamily,
@@ -239,6 +240,17 @@ describe('Reviews settings', () => {
     )
     expect(reasonOf(current, { reviewsWatch: 'yes' })).toBe('refused: bad reviewsWatch')
     expect(reasonOf(current, { reviewsMaxSessions: 10, reviewsReviewModel: 'haiku' })).toBe('ok')
+  })
+
+  test('reviewsReviewModel accepts each value of MODEL_VALUES and refuses fable', () => {
+    const current = defaults()
+    for (const value of MODEL_VALUES) {
+      expect(reasonOf(current, { reviewsReviewModel: value })).toBe('ok')
+      expect(reasonOf(current, { reviewsRequestModel: value })).toBe('ok')
+    }
+    expect(reasonOf(current, { reviewsReviewModel: 'fable' })).toBe(
+      'refused: bad reviewsReviewModel',
+    )
   })
 
   test('parseSettings gives an empty ignore list for a value that is not a list', () => {
