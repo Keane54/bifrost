@@ -1,8 +1,15 @@
 // The content rules of the Bifrost skill files in resources/bifrost-skills.
 import { readdirSync, readFileSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readPluginSnapshot } from '../../scripts/skills/snapshot'
+import { parseDiff } from '../../src/main/reviews/diff-lines'
+import type { RepoStore } from '../../src/main/reviews/repo-store'
+import { parseReviewResult, placeComments } from '../../src/main/reviews/result-file'
+import { writeRoundFiles } from '../../src/main/reviews/review-input'
+import type { ReviewContext } from '../../src/main/reviews/review-query'
 import { parseSkill, type SkillFields, skillGroup } from '../../src/shared/skill-check'
 
 const ROOT = join(__dirname, '../../resources/bifrost-skills')
@@ -37,6 +44,26 @@ const NOTE_PARTS = [
   'References',
 ]
 const HAND_OVER_RULES = 'skills/bifrost-hand-over/hand-over-rules.md'
+const BIFROST_MODE = 'skills/bifrost-review/bifrost-mode.md'
+// The fields of the input file that bifrost-mode.md uses.
+const INPUT_FIELDS = [
+  'pr',
+  'pr.key',
+  'pr.headSha',
+  'viewer',
+  'review.kind',
+  'review.since',
+  'review.note',
+  'review.lastReview',
+  'changedFiles',
+  'earlier.threads',
+  'earlier.summaries',
+  'files.fullDiff',
+  'files.sinceDiff',
+  'files.result',
+  'files.rules',
+]
+const SAMPLE_DIFF = readFileSync(join(__dirname, '../fixtures/reviews/sample.diff'), 'utf8')
 // The start of a variable. Bifrost puts the rules file in a prompt as it is, so the file has none.
 const VARIABLE_START = '${'
 
@@ -153,6 +180,126 @@ describe('bifrost-review', () => {
   it('skips the reviews that hold only thread replies when it finds the re-review baseline', () => {
     expect(read('skills/bifrost-review/reference.md')).toContain('.replyTo != null')
     expect(bodyOf('bifrost-review')).toContain('tell the user which review is the baseline')
+  })
+
+  it('bifrost-review starts its Bifrost mode on bifrost-input= and reads mode.md', () => {
+    const body = bodyOf('bifrost-review')
+    const start = body.indexOf('## Started by Bifrost')
+    const end = body.indexOf('\n## ', start + 1)
+    expect(start).toBeGreaterThan(-1)
+    // The section comes before the reference file and before the rules.
+    expect(start).toBeLessThan(body.indexOf('reference.md'))
+    expect(start).toBeLessThan(body.indexOf('## Rules that always apply'))
+    // The text can wrap at any space.
+    const section = body.slice(start, end).replace(/\s+/g, ' ')
+    for (const text of [
+      '`$ARGUMENTS` starts with `bifrost-input=`',
+      'Read `mode.md` in the folder of that file',
+      'sections 1, 8, 9 and 10',
+      '`files.rules`',
+      'current folder',
+    ]) {
+      expect(section).toContain(text)
+    }
+  })
+})
+
+describe('the Bifrost mode of bifrost-review', () => {
+  const mode = (): string => read(BIFROST_MODE)
+
+  it('the JSON example in bifrost-mode.md is a valid result', () => {
+    const block = /```json\n([\s\S]*?)\n```/.exec(mode())
+    expect(block).not.toBeNull()
+    const files = parseDiff(SAMPLE_DIFF)
+    const out = parseReviewResult(block?.[1] ?? '', {
+      files,
+      headSha: 'a'.repeat(40),
+      pr: 'acme/api#7',
+    })
+    expect(out.ok ? 'valid' : out.reason).toBe('valid')
+    if (!out.ok) return
+    expect(out.result.recommendation).toBe('request-changes')
+    expect(out.result.comments).toEqual([
+      expect.objectContaining({ line: 12, path: 'src/limit.ts', side: 'RIGHT' }),
+    ])
+    expect(placeComments(out.result, files).moved).toBe(0)
+  })
+
+  it('bifrost-mode.md names each input field that it uses', async () => {
+    for (const field of INPUT_FIELDS) expect(mode()).toContain(`\`${field}\``)
+    // Each field is in the input file that Bifrost writes.
+    const base = await mkdtemp(join(tmpdir(), 'bifrost-mode-fields-'))
+    try {
+      const repos = {
+        hasCommit: async () => true,
+        isAncestor: async () => true,
+        async resetIo(): Promise<string> {
+          const io = join(base, 'io')
+          await mkdir(io, { recursive: true })
+          return io
+        },
+        async writeDiff(_c: string, _f: string, _t: string, file: string): Promise<void> {
+          await writeFile(file, SAMPLE_DIFF)
+        },
+      } as unknown as RepoStore
+      const old = 'c'.repeat(40)
+      const context = {
+        author: 'someone',
+        baseRef: 'main',
+        baseSha: 'b'.repeat(40),
+        body: '',
+        headRef: 'feature',
+        headSha: 'a'.repeat(40),
+        number: 7,
+        owner: 'acme',
+        pending: null,
+        repo: 'api',
+        reviews: [
+          {
+            body: 'Fix it.',
+            commit: old,
+            replyOnly: false,
+            state: 'COMMENTED',
+            submittedAt: 1,
+            url: '',
+          },
+        ],
+        state: 'OPEN',
+        threads: [],
+        title: 'A title',
+        truncated: false,
+        url: '',
+      } as unknown as ReviewContext
+      const out = await writeRoundFiles(
+        { repos, skillsDir: ROOT },
+        {
+          clone: join(base, 'clone'),
+          context,
+          fetched: { base: 'b'.repeat(40), head: 'a'.repeat(40), mergeBase: 'b'.repeat(40) },
+          number: 7,
+          viewer: 'me',
+        },
+      )
+      expect(out.ok).toBe(true)
+      if (!out.ok) return
+      expect(out.input.review.kind).toBe('re-review')
+      for (const field of INPUT_FIELDS) {
+        let value: unknown = out.input
+        for (const key of field.split('.')) {
+          expect(value).toHaveProperty([key])
+          value = (value as Record<string, unknown>)[key]
+        }
+      }
+    } finally {
+      await rm(base, { force: true, recursive: true })
+    }
+  })
+
+  // Bifrost copies the file into the input folder, and the session reads it as it is.
+  it('bifrost-mode.md has no frontmatter, no variable and British spelling', () => {
+    expect(mode().startsWith('---')).toBe(false)
+    expect(mode()).not.toContain(VARIABLE_START)
+    expect(mode()).not.toMatch(AMERICAN)
   })
 })
 

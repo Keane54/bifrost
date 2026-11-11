@@ -11,6 +11,23 @@ Review the pull request (PR) `$ARGUMENTS` for the problems that matter: bugs, er
 problems, and places where the intent is not clear. If no PR is given, use the PR of the current
 branch.
 
+## Started by Bifrost
+
+If `$ARGUMENTS` starts with `bifrost-input=`, Bifrost started this session, and the rest of the
+arguments is the path of the input file. The path can hold spaces. Read `mode.md` in the folder of
+that file, and obey it.
+
+`mode.md` replaces sections 1, 8, 9 and 10 and the reference file. It also changes section 2: it
+gives the check of the earlier threads and summaries in its own words. Sections 3 to 7 and the
+rules that always apply still apply, with two changes:
+
+- The humanise rules are in the file that `files.rules` of the input file names.
+- The files at the head commit are in the current folder.
+
+## Started by hand
+
+If `$ARGUMENTS` does not start with `bifrost-input=`, the user started this session.
+
 The result is a pending review on GitHub, plus a recommendation in the chat: Approve, Comment or
 Request changes. Only the user can see a pending review. The user reads it, changes it if they want,
 and submits it in GitHub with the recommended action or another one. You never submit it.
