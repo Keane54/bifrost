@@ -386,9 +386,13 @@ describe('handOverArgs', () => {
     )
   })
 
-  test('the length limit of the New session prompt applies', () => {
+  test('the New session length limit applies, with a reason about the note', async () => {
     expect(handOverArgs({ ...opts, prompt: 'x'.repeat(MAX_TEXT) }).at(-1)).toHaveLength(MAX_TEXT)
     expect(() => handOverArgs({ ...opts, prompt: 'x'.repeat(MAX_TEXT + 1) })).toThrow(
+      'The note is too long to start a new session with it.',
+    )
+    // New session keeps its own text.
+    await expect(actions.create(newSpec({ prompt: 'x'.repeat(MAX_TEXT + 1) }))).rejects.toThrow(
       REASON_TOO_LONG,
     )
   })
@@ -1252,6 +1256,14 @@ describe('remove of a parked row whose folder another session uses (spec 8)', ()
     f.rows = [parked(), row({ sessionId: S2, shortId: '1234abcd' })]
     await actions.remove(S, true)
     expect(f.ops('forget')).toEqual([`0 forget ${S}`, `0 forget ${S}`])
+  })
+
+  test('a parked row with no short ID is only forgotten, so it is not blocked', async () => {
+    // Delete runs no claude rm for this row, so the worktree is safe.
+    f.rows = [parked({ cwd: '/r', shortId: undefined, worktree: WT }), user()]
+    f.claude = false
+    await actions.remove(S, true)
+    expect(f.ops()).toEqual([`0 forget ${S}`])
   })
 })
 

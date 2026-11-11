@@ -62,6 +62,11 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+// True for an error of the file system, for example ENOENT or EACCES. Such an error has a code.
+function isFileError(error: unknown): boolean {
+  return typeof (error as { code?: unknown } | null)?.code === 'string'
+}
+
 export function createHandOver(deps: HandOverDeps): HandOverRun {
   // The transcript and its size before the send. The reply reader reads only after the size.
   // So an older note in the transcript never counts (Review Focus 2).
@@ -92,6 +97,10 @@ export function createHandOver(deps: HandOverDeps): HandOverRun {
       try {
         tail = await deps.readTail(file, baseline)
       } catch (error) {
+        // The message of a file error holds the transcript path, so the user does not see it.
+        // The send is done, so for Bifrost the session stopped. The checks of readTail itself,
+        // for example a reply that is too long, keep their reason.
+        if (isFileError(error)) throw new Error(TEXT_STOPPED)
         throw new Error(readFailed(messageOf(error)))
       }
       const reply = readReply(tail, id)

@@ -3,7 +3,7 @@
 // The renderer sends session IDs and the New session values only. This module finds the row,
 // checks it and makes the claude arguments. It never trusts a PID or a path from the renderer.
 // Each command waits for the registry entry. Exit code 0 is not proof of a start (spec 8.9).
-import { MAX_TEXT, promptBlocks, REASON_TOO_LONG } from '../../shared/input'
+import { MAX_TEXT, promptBlocks } from '../../shared/input'
 import {
   checkNewSessionSpec,
   type DirInfo,
@@ -213,12 +213,15 @@ export function newSessionArgs(spec: NewSessionSpec): string[] {
 
 // A model name from the transcript, for example "opus" or "claude-opus-5-5[1m]".
 const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._[\]-]{0,99}$/
+// The reason of a hand-over prompt that is too long. The prompt holds the note.
+const REASON_NOTE_TOO_LONG = 'The note is too long to start a new session with it.'
 
 // The arguments of "claude --bg" for the new session of a hand-over (spec 8, step 5).
 // The model and the mode come from the transcript of the old session. So the model must have the
 // form of a model name, and only a mode in the list gives the flag. The default mode and
 // bypassPermissions give no flag. The name and the prompt get the checks of newSessionArgs.
-// The prompt also gets the length limit of the New session prompt (checkNewSessionSpec).
+// The prompt also gets the length limit of the New session prompt (checkNewSessionSpec), with a
+// reason about the note.
 // The new session uses the folder of the old session. So it gets no --worktree, and no
 // --plugin-dir or --resume.
 export function handOverArgs(opts: {
@@ -235,7 +238,7 @@ export function handOverArgs(opts: {
     /[\r\n]/.test(name) ||
     name.trimStart().startsWith('-')
   if (badName) throw new Error('refused: bad name')
-  if (opts.prompt.length > MAX_TEXT) throw new Error(REASON_TOO_LONG)
+  if (opts.prompt.length > MAX_TEXT) throw new Error(REASON_NOTE_TOO_LONG)
   if (opts.prompt.trimStart().startsWith('-')) throw new Error(REASON_PROMPT_FLAG)
   if (isClaudeCommand(opts.prompt)) throw new Error(REASON_PROMPT_IS_COMMAND)
   const mode = opts.permissionMode
@@ -570,7 +573,8 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     // M2). Else the dialog did not show the work that a discard removes.
     // claude rm can remove a clean worktree of a stopped session while another session uses it.
     // So Bifrost refuses the Delete of a parked row while a row that runs uses its worktree
-    // (spec 8 of the skills design).
+    // (spec 8 of the skills design). A row without a short ID gets no claude rm, so this
+    // block does not apply to it.
     async remove(sessionId, confirmed, seen) {
       if (confirmed !== true) throw new Error(REFUSED_NOT_CONFIRMED)
       const counts = seenOf(seen)
@@ -578,7 +582,9 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (row.kind === 'external' && row.state !== 'parked') {
           throw new Error(REFUSED_DELETE_EXTERNAL)
         }
-        if (folderUser(row, deps.rows()) !== undefined) throw new Error(REFUSED_FOLDER_IN_USE)
+        if (row.shortId !== undefined && folderUser(row, deps.rows()) !== undefined) {
+          throw new Error(REFUSED_FOLDER_IN_USE)
+        }
         if (row.shortId === undefined && row.state !== 'parked') {
           throw new Error(REFUSED_NO_SHORT_ID)
         }

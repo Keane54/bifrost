@@ -13,7 +13,7 @@ import {
   NOTE_START,
   requestLine,
 } from '../../../src/main/handover/prompt'
-import { MAX_TEXT, REASON_TOO_LONG } from '../../../src/shared/input'
+import { MAX_TEXT } from '../../../src/shared/input'
 import type { SessionRow } from '../../../src/shared/types'
 
 const S = 'f3a9c2d1-4b5e-4c6d-8e7f-0a1b2c3d4e5f'
@@ -398,6 +398,24 @@ describe('the hand-over run: each failure', () => {
     nothingDone()
   })
 
+  test('a reply that is too long keeps its reason', async () => {
+    f.readError = new Error('The reply is too long to read.')
+    expect(await failure(f.run())).toBe(readFailed('The reply is too long to read.'))
+    nothingDone()
+  })
+
+  test('a file error after the send gives the stopped text without the path', async () => {
+    for (const code of ['ENOENT', 'EACCES', 'EIO']) {
+      f = new Fake()
+      f.readError = Object.assign(new Error(`${code}: failed, open '${FILE}'`), { code })
+      const message = await failure(f.run())
+      expect(message, code).toBe(STOPPED)
+      expect(message).not.toContain(FILE)
+      expect(f.ops('send')).toHaveLength(1)
+      nothingDone()
+    }
+  })
+
   test('the timeout comes after exactly 5 minutes of fake time', async () => {
     // The session ends its turn but never gets idle.
     f.status(1000, 'busy')
@@ -433,7 +451,9 @@ describe('the hand-over run: each failure', () => {
   test('a note that is too long for the prompt is saved, and no session starts', async () => {
     const long = 'n'.repeat(MAX_TEXT)
     goodTimeline(long)
-    expect(await failure(f.run())).toBe(startFailed(REASON_TOO_LONG))
+    expect(await failure(f.run())).toBe(
+      startFailed('The note is too long to start a new session with it.'),
+    )
     expect(f.notes).toEqual([long])
     expect(f.ops('start')).toEqual([])
   })
