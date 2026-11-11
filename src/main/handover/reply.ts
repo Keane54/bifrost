@@ -19,6 +19,7 @@ const SYNTHETIC = '<synthetic>'
 const REASON_LINE = 'a line of the transcript has an unknown form'
 const REASON_EARLY_END = 'a turn ended before the hand-over request'
 const REASON_REPLY = "the reply has a part that Bifrost doesn't know"
+const REASON_INTERRUPT = 'the session was interrupted'
 const REASON_USER = 'a new message came in during the hand-over'
 const REASON_TWO_MARKERS = 'the reply has more than one note'
 const REASON_NO_MARKERS = "the reply doesn't have both note markers"
@@ -76,6 +77,11 @@ function isAllowedUser(entry: Entry): boolean {
   const content = isObject(entry.message) ? entry.message.content : undefined
   if (!Array.isArray(content) || content.length === 0) return false
   return content.every(block => isObject(block) && block.type === 'tool_result')
+}
+
+// True for the entry that Claude Code writes after an Interrupt: a user entry with this text.
+function isInterrupt(entry: Entry): boolean {
+  return entry.type === 'user' && userText(entry).startsWith('[Request interrupted by user')
 }
 
 // True for a message from the user (Review Focus 3): a user entry that isAllowedUser does not
@@ -162,7 +168,7 @@ export function readReply(tail: string, requestId: string): ReplyState {
       if (entry.type === 'user' && holdsRequest(entry, wanted)) request = entry
       continue
     }
-    if (isNewMessage(entry)) return failed(REASON_USER)
+    if (isNewMessage(entry)) return failed(isInterrupt(entry) ? REASON_INTERRUPT : REASON_USER)
     // After the first turn end, only a new message counts.
     if (result !== null) continue
     if (isTurnEnd(entry)) {

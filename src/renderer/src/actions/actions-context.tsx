@@ -57,11 +57,11 @@ const MESSAGE_MS = 5000
 const CHECKING_NOTICE = 'Checking for unmerged work...'
 // The notice while a Delete runs after the confirm. claude rm can take some minutes (Task 17).
 const DELETING_NOTICE = 'Deleting the session...'
-// The notice when a confirmation cannot open, because another dialog is open.
 // The notice while the hand-over note is written. The wait can take some minutes.
 const HAND_OVER_NOTICE = 'Writing the hand-over note...'
 // The start of the error when the old session does not stop after a good hand-over.
 const PARK_FAILED_NOTICE = "The new session started, but Bifrost couldn't park the old one."
+// The notice when a confirmation cannot open, because another dialog is open.
 const DIALOG_BUSY_NOTICE = 'Another dialog is open. Finish that one first.'
 
 export interface ActionsValue {

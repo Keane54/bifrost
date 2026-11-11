@@ -180,6 +180,13 @@ describe('handOverFailure', () => {
     expect(handOverFailure('refused: unknown model')).toBe(friendlyError('refused: unknown model'))
   })
 
+  it('never shows the raw arguments of a failed command', () => {
+    const raw = `Command failed: claude --bg --settings {"x":1} --model opus Note`
+    const text = handOverFailure(`${lead} ${raw}`)
+    expect(text).toBe(`${lead} A Claude Code command failed. Try again in a moment.`)
+    expect(text).not.toContain('--settings')
+  })
+
   it('keeps a message without a code as it is', () => {
     expect(handOverFailure(lead)).toBe(lead)
   })

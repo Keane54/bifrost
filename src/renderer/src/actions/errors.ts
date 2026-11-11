@@ -34,7 +34,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: an action on this session runs':
     'Another action is still running on this session. Try again in a moment.',
   'refused: another session uses this folder':
-    'Another session is still using this folder. Stop that session first, then delete this one.',
+    'Another session is still using this folder. ' +
+    'Stop that session first, then delete this one.',
   'refused: Bifrost does not delete an external session':
     "Bifrost can't delete a session that runs in another terminal.",
   'refused: bad chat panel': "Bifrost couldn't read the list of chat windows.",
@@ -137,9 +138,12 @@ export function friendlyError(message: string): string {
   return rest.charAt(0).toUpperCase() + rest.slice(1)
 }
 
-// The text of a failed hand-over. The message can end with a raw code after the lead text.
-// The lead text stays, and the code gets its friendly text. Other messages use friendlyError.
+// The text of a failed hand-over. The message can end with a raw code or a "Command failed:"
+// text after the lead text. The lead text stays. The code gets its friendly text. The command
+// text gets the generic text, because it holds raw arguments. Other messages use friendlyError.
 export function handOverFailure(message: string): string {
+  const failedAt = message.indexOf(COMMAND_FAILED)
+  if (failedAt > 0) return `${message.slice(0, failedAt).trimEnd()} ${COMMAND_FAILED_TEXT}`
   const at = message.indexOf(PREFIX)
   if (at <= 0) return friendlyError(message)
   const lead = message.slice(0, at).trimEnd()

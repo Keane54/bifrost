@@ -119,14 +119,10 @@ export default function ActionButton({
   const { contextFor, run } = useActions()
   const ctx = contextFor(sessionId)
   if (action === 'watch-add') return <WatchAddButton sessionId={sessionId} />
-  const state = actionStateFor(
-    action,
-    rows.find(r => r.sessionId === sessionId),
-    ctx,
-  )
+  const row = rows.find(r => r.sessionId === sessionId)
+  const state = actionStateFor(action, row, ctx)
   const Icon = ICONS[action] ?? Circle
   // Hand over shows the warning colour when the context is nearly full.
-  const row = rows.find(r => r.sessionId === sessionId)
   const warn = action === 'hand-over' && row !== undefined && handOverWarning(row)
   return (
     <Tip label={buttonTip(action, state, ctx.labels)}>

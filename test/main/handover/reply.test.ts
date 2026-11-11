@@ -258,6 +258,8 @@ describe('readReply: a failure', () => {
     })
     // The failure does not wait for a turn end.
     expect(readReply(request() + interrupt, ID).kind).toBe('failed')
+    const result = readReply(request() + interrupt, ID)
+    expect(result.kind === 'failed' && result.reason).toBe('the session was interrupted')
     // A tool result next to a text block is a user message.
     const mixed = line({
       message: { content: [{ content: 'ok', tool_use_id: 't1', type: 'tool_result' }, text('x')] },
