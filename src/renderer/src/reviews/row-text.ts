@@ -100,15 +100,21 @@ export type MenuItemId =
   | 'Pause'
   | 'End pause now'
 
-// A draft-ready row has no Review. A new round on the draft review of Bifrost would add each
-// comment and the summary a second time.
-const NO_REVIEW_ITEM: readonly string[] = ['reviewing', 'queued', 'trust-needed', 'draft-ready']
+const NO_REVIEW_ITEM: readonly string[] = ['reviewing', 'queued', 'trust-needed']
+
+// A draft-ready row with a mark shows the draft review of Bifrost (the snapshot gives the mark
+// only for that draft). A new round would add each comment and the summary to it a second time,
+// so the row has no Review. A pending review that the user made has no mark. Review then adds
+// the comments of Bifrost to it.
+const hasReview = (row: ToReviewRow): boolean =>
+  !NO_REVIEW_ITEM.includes(row.state) &&
+  !(row.state === 'draft-ready' && row.recommendation !== null)
 
 // The menu items of a To review row, in order.
 export function menuItems(row: ToReviewRow): MenuItemId[] {
   const items: MenuItemId[] = ['Open on GitHub']
   if (row.sessionId !== null) items.push('Open session')
-  if (!NO_REVIEW_ITEM.includes(row.state)) items.push('Review')
+  if (hasReview(row)) items.push('Review')
   if (row.state === 'queued' || row.state === 'trust-needed') items.push('Cancel review')
   if (row.sessionId !== null) items.push('Stop session')
   if (row.state === 'new') items.push('Pause')

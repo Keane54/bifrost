@@ -195,13 +195,23 @@ describe('menuItems', () => {
       'Open session',
       'Stop session',
     ])
-    // A draft-ready row has no Review: a new round would add each comment a second time.
-    expect(menuItems(to({ sessionId: S, state: 'draft-ready' }))).toEqual([
+    // A draft-ready row with the mark of Bifrost has no Review: a new round would add each
+    // comment a second time to the draft of Bifrost.
+    const own = { recommendation: 'comment', state: 'draft-ready' } as const
+    expect(menuItems(to({ ...own, sessionId: S }))).toEqual([
       'Open on GitHub',
       'Open session',
       'Stop session',
     ])
-    expect(menuItems(to({ state: 'draft-ready' }))).toEqual(['Open on GitHub'])
+    expect(menuItems(to(own))).toEqual(['Open on GitHub'])
+    // A pending review that the user made has no mark. Review adds the comments to it.
+    expect(menuItems(to({ sessionId: S, state: 'draft-ready' }))).toEqual([
+      'Open on GitHub',
+      'Open session',
+      'Review',
+      'Stop session',
+    ])
+    expect(menuItems(to({ state: 'draft-ready' }))).toEqual(['Open on GitHub', 'Review'])
     expect(menuItems(to({ sessionId: S, state: 'failed' }))).toEqual([
       'Open on GitHub',
       'Open session',
