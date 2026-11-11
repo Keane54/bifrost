@@ -15,6 +15,7 @@ import { useOverview } from '../overview/overviews-context'
 import { SessionIcon } from '../overview/SessionIcon'
 import PerformancePanel from '../performance/PerformancePanel'
 import ReviewsPanel from '../reviews/ReviewsPanel'
+import TrustPanel from '../reviews/TrustPanel'
 import ServiceStatusPanel from '../service/ServiceStatusPanel'
 import SettingsPanel from '../settings/SettingsPanel'
 import UsagePanel from '../usage/UsagePanel'
@@ -53,6 +54,8 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
       return 'Reviews'
     case 'performance':
       return 'Performance'
+    case 'trust':
+      return 'Trust a repository'
     case 'show-info': {
       const id = showInfoSessionId(panelId)
       const name = rows?.find(r => r.sessionId === id)?.name
@@ -152,6 +155,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <ReviewsPanel />
     case 'performance':
       return <PerformancePanel />
+    case 'trust':
+      return <TrustPanel />
     default:
       return <div className='p-3 text-[13px] text-text-dim'>This panel is not known.</div>
   }

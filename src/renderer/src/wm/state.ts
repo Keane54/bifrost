@@ -15,6 +15,7 @@ export type PanelKind =
   | 'service-status'
   | 'reviews'
   | 'performance'
+  | 'trust'
 
 export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   chat: { h: 480, w: 720 },
@@ -27,6 +28,7 @@ export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   'service-status': { h: 240, w: 420 },
   settings: { h: 540, w: 640 },
   'show-info': { h: 560, w: 460 },
+  trust: { h: 380, w: 640 },
   'usage-hud': { h: 180, w: 360 },
   watchlist: { h: 280, w: 320 },
 }
@@ -82,7 +84,8 @@ export function panelKind(panelId: string): PanelKind | null {
     panelId === 'usage-hud' ||
     panelId === 'service-status' ||
     panelId === 'reviews' ||
-    panelId === 'performance'
+    panelId === 'performance' ||
+    panelId === 'trust'
   ) {
     return panelId
   }

@@ -12,6 +12,7 @@ import { useSettingsNav } from '../settings/settings-nav'
 import { panelBody } from './panel-body'
 import { MyPrItem, ToReviewItem } from './ReviewRow'
 import { type ReviewsTab, setReviewsTab, useReviewsTab } from './reviews-tab'
+import { TrustStrip } from './TrustStrip'
 import { useReviews } from './use-reviews'
 
 const TABS: { id: ReviewsTab; label: string }[] = [
@@ -129,6 +130,7 @@ export default function ReviewsPanel(): React.JSX.Element {
           </div>
         </div>
       )}
+      <TrustStrip needs={snapshot.trust} onAct={onAct} />
       <div className='min-h-0 flex-1 overflow-auto select-none'>{body}</div>
       {availability === 'error' && snapshot.message !== null && (
         <ErrorLine message={snapshot.message} />
