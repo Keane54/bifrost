@@ -52,6 +52,7 @@ export interface WmState {
 export type WmAction =
   | { type: 'open'; panelId: string }
   | { type: 'close'; panelId: string }
+  | { type: 'replace'; panelId: string; withId: string }
   | { type: 'closeActive' }
   | { type: 'focus'; frameId: string }
   | { type: 'setRect'; frameId: string; rect: Rect }
@@ -163,6 +164,18 @@ function close(state: WmState, panelId: string): WmState {
     return { ...state, frames: state.frames.filter(f => f.id !== frame.id), memory }
   }
   return { ...withFrame(state, { ...frame, ...rest }), memory }
+}
+
+// Put withId in the place of panelId. The frame keeps its ID, rect and z-order.
+// When withId has a frame already, only panelId closes.
+function replacePanel(state: WmState, panelId: string, withId: string): WmState {
+  if (panelId === withId || !panelKind(withId)) return state
+  const frame = frameOf(state, panelId)
+  if (!frame) return state
+  if (frameOf(state, withId)) return close(state, panelId)
+  const swap = (id: string) => (id === panelId ? withId : id)
+  const next: Frame = { ...frame, active: swap(frame.active), panels: frame.panels.map(swap) }
+  return { ...withFrame(state, next), memory: { ...state.memory, [panelId]: frame.rect } }
 }
 
 // The first rect from the start rect, in steps of STEP down and right, that no visible frame
@@ -281,6 +294,8 @@ export function wmReducer(state: WmState, action: WmAction): WmState {
       return open(state, action.panelId)
     case 'close':
       return close(state, action.panelId)
+    case 'replace':
+      return replacePanel(state, action.panelId, action.withId)
     case 'closeActive': {
       const frame = topFrame(state)
       return frame ? close(state, frame.active) : state

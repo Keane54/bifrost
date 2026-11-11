@@ -12,8 +12,15 @@ import {
 } from 'react'
 import { isPriority } from '../../../shared/priority'
 import type { Settings } from '../../../shared/settings'
-import type { ProjectApp, ProjectAppId, SeenCounts, SessionRow } from '../../../shared/types'
+import type {
+  HandOverResult,
+  ProjectApp,
+  ProjectAppId,
+  SeenCounts,
+  SessionRow,
+} from '../../../shared/types'
 import { DEFAULT_WATCH_COLOUR, isWatchColour } from '../../../shared/watch'
+import { folderUser } from '../../../shared/worktree'
 import { useChats } from '../chat/chat-terminals'
 import { chatPanelId } from '../chat/views'
 import { useRegistry } from '../data/registry'
@@ -37,7 +44,7 @@ import {
 import { useConfirm } from './ConfirmDialog'
 import { confirmFor } from './confirm'
 import { createDeleteNotices } from './delete-notice'
-import { friendlyError } from './errors'
+import { friendlyError, handOverFailure } from './errors'
 import RenameDialog from './RenameDialog'
 import { afterSend } from './rename-model'
 import { type FocusRequest, notifiedOpenStep, planRun, type RunPlan } from './run-plan'
@@ -51,6 +58,10 @@ const CHECKING_NOTICE = 'Checking for unmerged work...'
 // The notice while a Delete runs after the confirm. claude rm can take some minutes (Task 17).
 const DELETING_NOTICE = 'Deleting the session...'
 // The notice when a confirmation cannot open, because another dialog is open.
+// The notice while the hand-over note is written. The wait can take some minutes.
+const HAND_OVER_NOTICE = 'Writing the hand-over note...'
+// The start of the error when the old session does not stop after a good hand-over.
+const PARK_FAILED_NOTICE = "The new session started, but Bifrost couldn't park the old one."
 const DIALOG_BUSY_NOTICE = 'Another dialog is open. Finish that one first.'
 
 export interface ActionsValue {
@@ -83,15 +94,19 @@ const ActionsContext = createContext<ActionsValue | null>(null)
 
 function contextOf(
   sessionId: string,
+  rows: readonly SessionRow[],
   state: WmState,
   apps: ProjectApp[],
   running: boolean,
   slashRecent: string[],
   settings: Settings,
 ): ActionContext {
+  const row = rows.find(r => r.sessionId === sessionId)
   return {
     apps,
     chatOpen: frameOf(state, chatPanelId(sessionId)) !== undefined,
+    // The main process blocks Delete by the same rule: only a row with a short ID.
+    folderInUse: row?.shortId !== undefined && folderUser(row, rows) !== undefined,
     labels: settings.labels,
     running,
     slashFavourites: settings.slashCommands,
@@ -320,6 +335,36 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           case 'resume':
             await api.sessions.resume(sessionId)
             break
+          case 'hand-over': {
+            const shown = notices.showUntilHidden(HAND_OVER_NOTICE)
+            let result: HandOverResult
+            try {
+              result = await api.sessions.handOver(sessionId)
+            } catch (err) {
+              notices.hide(shown)
+              showError(handOverFailure(errorMessage(err)))
+              return
+            }
+            notices.hide(shown)
+            // Switch the panel and select the new session. Then park the old session.
+            if (frameOf(latest.current.state, chatPanelId(sessionId)) !== undefined) {
+              dispatch({
+                panelId: chatPanelId(sessionId),
+                type: 'replace',
+                withId: chatPanelId(result.sessionId),
+              })
+            }
+            select(result.sessionId)
+            try {
+              await api.sessions.stop(sessionId)
+            } catch (err) {
+              const why = friendlyError(errorMessage(err))
+              showError(`${PARK_FAILED_NOTICE} ${why}`)
+              return
+            }
+            notices.notify(`Handed over to ${result.name}.`)
+            break
+          }
           case 'take-control': {
             if (!confirmed) return
             // The chat window opens at once with the loader, and the row is selected (spec 9.2).
@@ -384,7 +429,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
         if (marked) setRunningFor(sessionId, false)
       }
     },
-    [chats, confirm, dispatch, fail, notices, onBusy, select, setRunningFor],
+    [chats, confirm, dispatch, fail, notices, onBusy, select, setRunningFor, showError],
   )
 
   const run = useCallback(
@@ -393,6 +438,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       const row = now.rows.find(r => r.sessionId === sessionId)
       const ctx = contextOf(
         sessionId,
+        now.rows,
         now.state,
         now.apps,
         runningRef.current.has(sessionId),
@@ -522,7 +568,15 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       clearFocusRequest,
       closeError,
       contextFor: sessionId =>
-        contextOf(sessionId, state, apps, running.has(sessionId), history.recentSlash, settings),
+        contextOf(
+          sessionId,
+          rows,
+          state,
+          apps,
+          running.has(sessionId),
+          history.recentSlash,
+          settings,
+        ),
       error,
       focusRequest,
       globalContext: () => globalOf(rows, resumeAllRunning, settings.labels),

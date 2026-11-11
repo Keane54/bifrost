@@ -36,3 +36,6 @@ export const REASON_RESUME_ALL_RUNS = 'Resume all is already running.'
 
 export const REASON_WATCHED = 'This session is already on the watchlist.'
 export const REASON_NOT_WATCHED = "This session isn't on the watchlist."
+
+export const REASON_FOLDER_IN_USE =
+  'Another session is still using this folder. Stop that session first, then delete this one.'

@@ -3,6 +3,7 @@ import { Button } from '@base-ui/react/button'
 import { Menu } from '@base-ui/react/menu'
 import {
   AppWindow,
+  ArrowRightLeft,
   Circle,
   Eye,
   EyeOff,
@@ -26,6 +27,7 @@ import {
   actionStateFor,
   buttonTip,
   checkedKey,
+  handOverWarning,
   rowMenu,
 } from './action-model'
 import { useActions } from './actions-context'
@@ -33,6 +35,7 @@ import { useActions } from './actions-context'
 // The icons of the Selected Item buttons. Another action shows a plain circle.
 const ICONS: Partial<Record<ActionId, LucideIcon>> = {
   compact: Shrink,
+  'hand-over': ArrowRightLeft,
   interrupt: Hand,
   open: AppWindow,
   'open-in-terminal': SquareTerminal,
@@ -44,8 +47,8 @@ const ICONS: Partial<Record<ActionId, LucideIcon>> = {
   'watch-remove': EyeOff,
 }
 
-const BUTTON =
-  'flex size-6 shrink-0 items-center justify-center text-text hover:bg-hover not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
+const BUTTON_BASE =
+  'flex size-6 shrink-0 items-center justify-center hover:bg-hover not-data-disabled:active:bg-accent/12 data-disabled:opacity-40 data-disabled:hover:bg-transparent'
 
 // The Add to watchlist button. It opens the colour submenu of the row menu (spec 8.12).
 // The items come from the same model, so the colours and the labels are the same.
@@ -64,7 +67,7 @@ function WatchAddButton({ sessionId }: { sessionId: string }): React.JSX.Element
       <Tip label={buttonTip('watch-add', state, ctx.labels)}>
         <Menu.Trigger
           aria-label={actionLabel('watch-add', ctx.labels)}
-          className={BUTTON}
+          className={cx(BUTTON_BASE, 'text-text')}
           data-action='watch-add'
           disabled={!state.enabled}
         >
@@ -122,11 +125,14 @@ export default function ActionButton({
     ctx,
   )
   const Icon = ICONS[action] ?? Circle
+  // Hand over shows the warning colour when the context is nearly full.
+  const row = rows.find(r => r.sessionId === sessionId)
+  const warn = action === 'hand-over' && row !== undefined && handOverWarning(row)
   return (
     <Tip label={buttonTip(action, state, ctx.labels)}>
       <Button
         aria-label={actionLabel(action, ctx.labels)}
-        className={BUTTON}
+        className={cx(BUTTON_BASE, warn ? 'text-ctx-mid' : 'text-text')}
         data-action={action}
         disabled={!state.enabled}
         focusableWhenDisabled={true}

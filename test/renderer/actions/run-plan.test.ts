@@ -17,6 +17,7 @@ const ctx = (over: Partial<ActionContext> = {}): ActionContext => ({
     { id: 'warp', label: 'Warp' },
   ],
   chatOpen: true,
+  folderInUse: false,
   labels: 'plain',
   running: false,
   slashFavourites: ['/compact'],
@@ -87,6 +88,21 @@ describe('planRun', () => {
     const red = row({ box: 'red', sessionId: 'r', shortId: 'abcd1234', state: 'needs-you' })
     for (const r of [working, red, external, parked, undefined]) {
       expect(planRun('compact', r, ctx())).toEqual({ kind: 'none' })
+    }
+  })
+
+  it('Hand over plans one call with no confirmation', () => {
+    expect(planRun('hand-over', owned, ctx())).toEqual({
+      after: 'none',
+      call: 'hand-over',
+      confirm: null,
+      kind: 'call',
+    })
+  })
+
+  it('Hand over plans nothing while the session works or for another class', () => {
+    for (const r of [working, external, parked, undefined]) {
+      expect(planRun('hand-over', r, ctx())).toEqual({ kind: 'none' })
     }
   })
 

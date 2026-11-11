@@ -8,6 +8,7 @@ import { type ConfirmText, confirmFor } from './confirm'
 // The API call of an action. remove is the call of Delete.
 export type ApiCall =
   | 'interrupt'
+  | 'hand-over'
   | 'stop'
   | 'remove'
   | 'resume'
@@ -108,6 +109,8 @@ export function planRun(
       return { kind: 'send', text: COMPACT_COMMAND }
     case 'rename':
       return { kind: 'rename' }
+    case 'hand-over':
+      return call('hand-over', null, 'none')
     case 'show-info':
       return { kind: 'open-panel', panelId: showInfoPanelId(row.sessionId) }
     case 'interrupt':

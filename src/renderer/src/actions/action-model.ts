@@ -14,6 +14,7 @@ import type {
 import { WATCH_COLOURS } from '../../../shared/watch'
 import {
   REASON_EXTERNAL,
+  REASON_FOLDER_IN_USE,
   REASON_GONE,
   REASON_NO_APPS,
   REASON_NO_CWD,
@@ -43,6 +44,7 @@ export type ActionId =
   | 'send-message'
   | 'run-slash'
   | 'compact'
+  | 'hand-over'
   | 'interrupt'
   | 'rename'
   | 'set-priority'
@@ -61,6 +63,15 @@ export type ActionId =
   | 'watch-remove'
 
 export type RowClass = 'owned' | 'external' | 'parked'
+
+// The context percent from which the Hand over button shows the warning colour.
+export const HAND_OVER_WARN_PERCENT = 80
+
+export function handOverWarning(row: Pick<SessionRow, 'contextPercent'>): boolean {
+  return (
+    row.contextPercent !== undefined && Math.round(row.contextPercent) >= HAND_OVER_WARN_PERCENT
+  )
+}
 
 // A parked row is its own class. Any other row has the class of its kind.
 export function rowClass(row: SessionRow): RowClass {
@@ -89,6 +100,7 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
   compact: def('compact', 'Compact', 'Compress cargo', ['owned']),
   'copy-id': def('copy-id', 'Copy session ID', 'Copy transponder ID', 'all'),
   delete: def('delete', 'Delete session', 'Self-destruct', ['owned', 'parked']),
+  'hand-over': def('hand-over', 'Hand over', 'Transfer command', ['owned']),
   interrupt: def('interrupt', 'Interrupt', 'Full stop', ['owned']),
   'new-session': def('new-session', 'New session', 'Launch', 'all'),
   open: def('open', 'Open', 'Warp to', ['owned']),
@@ -113,6 +125,8 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
 
 export interface ActionContext {
   chatOpen: boolean
+  // True when a parked row with a short ID shares its worktree with a row that is not parked.
+  folderInUse: boolean
   apps: ProjectApp[]
   labels: LabelSet
   // True while another action runs on the session.
@@ -128,12 +142,24 @@ export interface ActionState {
 
 const off = (reason: string): ActionState => ({ enabled: false, reason })
 
-const RUNNING_BLOCKED: ReadonlySet<ActionId> = new Set(['stop', 'delete', 'resume', 'take-control'])
-const RED_BOX_BLOCKED: ReadonlySet<ActionId> = new Set(['send-message', 'run-slash', 'compact'])
+const RUNNING_BLOCKED: ReadonlySet<ActionId> = new Set([
+  'stop',
+  'delete',
+  'resume',
+  'take-control',
+  'hand-over',
+])
+const RED_BOX_BLOCKED: ReadonlySet<ActionId> = new Set([
+  'send-message',
+  'run-slash',
+  'compact',
+  'hand-over',
+])
 const NEEDS_SHORT_ID: ReadonlySet<ActionId> = new Set([
   'send-message',
   'run-slash',
   'compact',
+  'hand-over',
   'interrupt',
   'stop',
 ])
@@ -161,12 +187,14 @@ export function actionStateFor(
     if (ctx.apps.length === 0) return off(REASON_NO_APPS)
   }
   if (RUNNING_BLOCKED.has(id) && ctx.running) return off(REASON_RUNNING)
+  if (id === 'delete' && ctx.folderInUse) return off(REASON_FOLDER_IN_USE)
   // The main process uses the same rule (spec 8.4). Take control keeps its own rule below.
   if (RED_BOX_BLOCKED.has(id) && promptBlocks(row)) return off(REASON_RED_BOX)
   if (NEEDS_SHORT_ID.has(id) && !row.shortId) return off(REASON_WAIT_ID)
   if (id === 'open-in-terminal' && cls === 'owned' && !row.shortId) return off(REASON_WAIT_ID)
   // The working state means that Claude is in the middle of a reply (user decision, 2026-11-10).
-  if (id === 'compact' && row.state === 'working') return off(REASON_WAIT_IDLE)
+  if ((id === 'compact' || id === 'hand-over') && row.state === 'working')
+    return off(REASON_WAIT_IDLE)
   if (id === 'take-control') {
     if (row.state === 'working') return off(REASON_TAKE_BUSY)
     if (row.box === 'red') return off(REASON_TAKE_PROMPT)
@@ -225,6 +253,7 @@ export const SELECTED_ITEM_ACTIONS: ActionId[] = [
   'send-message',
   'run-slash',
   'compact',
+  'hand-over',
   'interrupt',
   'show-info',
   'open-in-terminal',
@@ -313,6 +342,7 @@ export function rowMenu(row: SessionRow, ctx: ActionContext): MenuEntry[] {
     entry('send-message'),
     entry('run-slash'),
     entry('compact'),
+    entry('hand-over'),
     entry('interrupt'),
     sep,
     entry('set-priority'),

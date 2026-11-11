@@ -136,3 +136,12 @@ export function friendlyError(message: string): string {
   const rest = message.slice(PREFIX.length)
   return rest.charAt(0).toUpperCase() + rest.slice(1)
 }
+
+// The text of a failed hand-over. The message can end with a raw code after the lead text.
+// The lead text stays, and the code gets its friendly text. Other messages use friendlyError.
+export function handOverFailure(message: string): string {
+  const at = message.indexOf(PREFIX)
+  if (at <= 0) return friendlyError(message)
+  const lead = message.slice(0, at).trimEnd()
+  return `${lead} ${friendlyError(message.slice(at).trim())}`
+}

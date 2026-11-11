@@ -7,6 +7,8 @@ import {
   buttonTip,
   checkedKey,
   globalActionState,
+  HAND_OVER_WARN_PERCENT,
+  handOverWarning,
   type MenuEntry,
   rowMenu,
   SELECTED_ITEM_ACTIONS,
@@ -21,6 +23,7 @@ const ctx = (over: Partial<ActionContext> = {}): ActionContext => ({
     { id: 'warp', label: 'Warp' },
   ],
   chatOpen: true,
+  folderInUse: false,
   labels: 'plain',
   running: false,
   slashFavourites: [],
@@ -51,6 +54,7 @@ describe('action model', () => {
       'Send message...',
       'Run slash command',
       'Compact',
+      'Hand over',
       'Interrupt',
       '-',
       'Set priority',
@@ -517,11 +521,87 @@ describe('action model', () => {
         'send-message',
         'run-slash',
         'compact',
+        'hand-over',
         'interrupt',
         'show-info',
         'open-in-terminal',
         'stop',
       ])
+    })
+  })
+
+  describe('Hand over', () => {
+    const idle = (over: Partial<SessionRow> = {}) =>
+      row({ sessionId: 'h', shortId: 'abcd1234', state: 'idle', ...over })
+
+    it('has the labels Hand over and Transfer command, for owned rows only', () => {
+      expect([ACTIONS['hand-over'].plain, ACTIONS['hand-over'].space]).toEqual([
+        'Hand over',
+        'Transfer command',
+      ])
+      expect(ACTIONS['hand-over'].for).toEqual(['owned'])
+    })
+
+    it('is enabled for an owned row that waits, also with a yellow box', () => {
+      for (const r of [idle(), idle({ box: 'yellow', state: 'needs-you' })]) {
+        expect(actionStateFor('hand-over', r, ctx())).toEqual({ enabled: true, reason: null })
+      }
+    })
+
+    it('gives the reason of the row class for an external row and a parked row', () => {
+      expect(actionStateFor('hand-over', external, ctx()).reason).toBe(R.REASON_EXTERNAL)
+      expect(actionStateFor('hand-over', parked, ctx()).reason).toBe(R.REASON_PARKED)
+    })
+
+    it('is blocked by a red box, by a missing short ID and by a working row', () => {
+      expect(actionStateFor('hand-over', redBox(), ctx()).reason).toBe(R.REASON_RED_BOX)
+      expect(actionStateFor('hand-over', idle({ shortId: undefined }), ctx()).reason).toBe(
+        R.REASON_WAIT_ID,
+      )
+      expect(actionStateFor('hand-over', idle({ state: 'working' }), ctx()).reason).toBe(
+        R.REASON_WAIT_IDLE,
+      )
+    })
+
+    it('is blocked while another action runs on the session', () => {
+      expect(actionStateFor('hand-over', idle(), ctx({ running: true })).reason).toBe(
+        R.REASON_RUNNING,
+      )
+    })
+
+    it('is a menu entry after Compact and a Selected Item button', () => {
+      const ids = rowMenu(owned, ctx()).map(e => (e.type === 'separator' ? '-' : e.action))
+      expect(ids.indexOf('hand-over')).toBe(ids.indexOf('compact') + 1)
+      expect(find(rowMenu(owned, ctx({ labels: 'space' })), 'hand-over')).toMatchObject({
+        label: 'Transfer command',
+      })
+    })
+
+    it('handOverWarning is true from 80 percent, after rounding', () => {
+      expect(HAND_OVER_WARN_PERCENT).toBe(80)
+      expect(handOverWarning({ contextPercent: undefined })).toBe(false)
+      expect(handOverWarning({ contextPercent: 79.4 })).toBe(false)
+      expect(handOverWarning({ contextPercent: 79.5 })).toBe(true)
+      expect(handOverWarning({ contextPercent: 80 })).toBe(true)
+    })
+  })
+
+  describe('Delete and a shared folder', () => {
+    it('gives REASON_FOLDER_IN_USE when another session uses the folder', () => {
+      const state = actionStateFor('delete', parked, ctx({ folderInUse: true }))
+      expect(state).toEqual({ enabled: false, reason: R.REASON_FOLDER_IN_USE })
+      expect(R.REASON_FOLDER_IN_USE).toBe(
+        'Another session is still using this folder. Stop that session first, then delete this one.',
+      )
+    })
+
+    it('stays enabled when no session uses the folder', () => {
+      expect(actionStateFor('delete', parked, ctx()).enabled).toBe(true)
+    })
+
+    it('gives REASON_RUNNING first while an action runs', () => {
+      const c = ctx({ folderInUse: true, running: true })
+      expect(actionStateFor('delete', parked, c).reason).toBe(R.REASON_RUNNING)
     })
   })
 

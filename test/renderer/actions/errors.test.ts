@@ -1,7 +1,11 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { FRIENDLY_ERRORS, friendlyError } from '../../../src/renderer/src/actions/errors'
+import {
+  FRIENDLY_ERRORS,
+  friendlyError,
+  handOverFailure,
+} from '../../../src/renderer/src/actions/errors'
 
 const ROOT = join(__dirname, '../../../src')
 // The em dash, written as a code. The source holds no em dash character.
@@ -156,5 +160,27 @@ describe('friendly errors', () => {
       expect(text).not.toContain(EM_DASH)
       expect(text.length).toBeLessThanOrEqual(150)
     }
+  })
+})
+
+describe('handOverFailure', () => {
+  const lead = "The note is saved at /a/b.md, but the new session didn't start."
+
+  it('adds the friendly text of a code after the lead text', () => {
+    expect(handOverFailure(`${lead} refused: unknown model`)).toBe(
+      `${lead} Bifrost doesn't know that model.`,
+    )
+  })
+
+  it('uses the generic fallback for an unknown code', () => {
+    expect(handOverFailure(`${lead} refused: something odd`)).toBe(`${lead} Something odd`)
+  })
+
+  it('keeps the friendlyError path for a message that is only a code', () => {
+    expect(handOverFailure('refused: unknown model')).toBe(friendlyError('refused: unknown model'))
+  })
+
+  it('keeps a message without a code as it is', () => {
+    expect(handOverFailure(lead)).toBe(lead)
   })
 })

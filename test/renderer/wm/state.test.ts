@@ -490,4 +490,69 @@ describe('wm state', () => {
       expect(wmReducer(s, { bounds: b, type: 'bounds' })).toBe(s)
     }
   })
+
+  describe('replace', () => {
+    const OLD = 'chat:11111111-1111-4111-8111-111111111111'
+    const NEW = 'chat:22222222-2222-4222-8222-222222222222'
+    const replace = (panelId: string, withId: string): WmAction => ({
+      panelId,
+      type: 'replace',
+      withId,
+    })
+
+    it('puts the new panel in the frame of the old panel and keeps the frame', () => {
+      const before = run([open(OLD)])
+      const after = run([replace(OLD, NEW)], before)
+      expect(after.frames).toHaveLength(1)
+      expect(after.frames[0]).toEqual({ ...before.frames[0], active: NEW, panels: [NEW] })
+      expect(frameOf(after, OLD)).toBeUndefined()
+    })
+
+    it('keeps the tab place and the active tab of a stack', () => {
+      const s = run([open('watchlist'), open(OLD), open('reviews')])
+      const id = (panelId: string) => frameOf(s, panelId)?.id ?? ''
+      const stacked = run(
+        [
+          { frameId: id(OLD), targetId: id('watchlist'), type: 'stack' },
+          { frameId: id('reviews'), targetId: id('watchlist'), type: 'stack' },
+          { panelId: OLD, type: 'activate' },
+        ],
+        s,
+      )
+      const before = frameOf(stacked, OLD)
+      expect(before?.panels).toHaveLength(3)
+      const after = frameOf(run([replace(OLD, NEW)], stacked), NEW)
+      expect(after?.panels).toEqual(before?.panels.map(p => (p === OLD ? NEW : p)))
+      expect(after?.active).toBe(NEW)
+      expect(after?.id).toBe(before?.id)
+    })
+
+    it('keeps another active tab of the stack', () => {
+      const s = run([open('watchlist'), open(OLD)])
+      const stacked = run(
+        [{ frameId: s.frames[1]?.id ?? '', targetId: s.frames[0]?.id ?? '', type: 'stack' }],
+        s,
+      )
+      const after = run([{ panelId: 'watchlist', type: 'activate' }, replace(OLD, NEW)], stacked)
+      expect(frameOf(after, NEW)?.active).toBe('watchlist')
+      expect(frameOf(after, NEW)?.panels).toEqual(['watchlist', NEW])
+    })
+
+    it('closes only the old panel when the new panel already has a frame', () => {
+      const s = run([open(OLD), open(NEW)])
+      const after = run([replace(OLD, NEW)], s)
+      expect(after.frames.map(f => f.panels)).toEqual([[NEW]])
+      expect(after.frames[0]?.id).toBe(s.frames[1]?.id)
+    })
+
+    it('gives the same state for an unknown old panel', () => {
+      const s = run([open(NEW)])
+      expect(wmReducer(s, replace(OLD, NEW))).toBe(s)
+    })
+
+    it('gives the same state for a new panel that panelKind refuses', () => {
+      const s = run([open(OLD)])
+      expect(wmReducer(s, replace(OLD, 'nonsense'))).toBe(s)
+    })
+  })
 })
