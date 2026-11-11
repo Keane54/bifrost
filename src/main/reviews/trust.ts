@@ -38,6 +38,11 @@ export async function trustedDirs(file: string, dirs: readonly string[]): Promis
   const data = await readClaudeJson(file)
   if (data === null) return out
   for (const dir of dirs) {
+    // Claude Code can write the key as given or as the real path. A match on either counts.
+    if (trustedIn(data, dir)) {
+      out.add(dir)
+      continue
+    }
     try {
       if (trustedIn(data, await realpath(dir))) out.add(dir)
     } catch {

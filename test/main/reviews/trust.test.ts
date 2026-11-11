@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -58,6 +58,29 @@ describe('trustedDirs', () => {
     await writeFile(file, JSON.stringify({ projects: { [a]: { hasTrustDialogAccepted: true } } }))
     const set = await trustedDirs(file, [a, b, join(dir, 'missing')])
     expect([...set]).toEqual([a])
+  })
+})
+
+describe('trustedDirs with a link in the path', () => {
+  it('matches the key as given and the key as the real path', async () => {
+    const real = join(dir, 'real')
+    await mkdir(real)
+    const link = join(dir, 'link')
+    await symlink(real, link)
+    const asLink = join(link, 'sub')
+    await mkdir(join(real, 'sub'))
+    const byLink = join(dir, 'k1.json')
+    await writeFile(
+      byLink,
+      JSON.stringify({ projects: { [link]: { hasTrustDialogAccepted: true } } }),
+    )
+    expect([...(await trustedDirs(byLink, [asLink]))]).toEqual([asLink])
+    const byReal = join(dir, 'k2.json')
+    await writeFile(
+      byReal,
+      JSON.stringify({ projects: { [real]: { hasTrustDialogAccepted: true } } }),
+    )
+    expect([...(await trustedDirs(byReal, [asLink]))]).toEqual([asLink])
   })
 })
 
@@ -153,6 +176,28 @@ describe('createTrustWindow', () => {
     w.resize(80, 24)
     expect(pty.write).toHaveBeenCalledWith(TRUST_VIEW, 'y')
     expect(pty.resize).toHaveBeenCalledWith(TRUST_VIEW, 80, 24)
+    w.close()
+  })
+
+  it('ignores a slow check that ends after a close or a second open', async () => {
+    const pty = fakePty()
+    const resolvers: Array<(v: boolean) => void> = []
+    const isTrusted = vi.fn(() => new Promise<boolean>(r => resolvers.push(r)))
+    const onEnd = vi.fn()
+    const w = createTrustWindow({ isTrusted, onEnd, pty: async () => pty })
+    await w.open('o/one', '/c1')
+    await vi.advanceTimersByTimeAsync(TRUST_POLL_MS)
+    w.close()
+    resolvers[0](true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onEnd).not.toHaveBeenCalled()
+    await w.open('o/one', '/c1')
+    await vi.advanceTimersByTimeAsync(TRUST_POLL_MS)
+    await w.open('o/two', '/c2')
+    resolvers[1](true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onEnd).not.toHaveBeenCalled()
+    expect(w.current()).toBe('o/two')
     w.close()
   })
 })
