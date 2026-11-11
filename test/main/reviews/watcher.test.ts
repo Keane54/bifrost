@@ -634,6 +634,35 @@ describe('createReviewsWatcher', () => {
     t.watcher.stop()
   })
 
+  test('logs error A again after a poll with no errors', async () => {
+    const t = setup({
+      replies: [
+        partial([{ number: 101 }], ['Error A'], 1),
+        answer([{ number: 101 }]),
+        partial([{ number: 101 }], ['Error A'], 1),
+      ],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.run).toHaveBeenCalledTimes(3)
+    expect(t.logs.filter(m => m.includes('Error A'))).toHaveLength(2)
+    t.watcher.stop()
+  })
+
+  test('logs error A again after stop and a new start', async () => {
+    const t = setup({ replies: [partial([{ number: 101 }], ['Error A'], 1)] })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    t.watcher.stop()
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.run).toHaveBeenCalledTimes(2)
+    expect(t.logs.filter(m => m.includes('Error A'))).toHaveLength(2)
+    t.watcher.stop()
+  })
+
   test('a partial answer keeps a request that it does not show', async () => {
     const before = Date.now() - 60 * MIN
     const t = setup({

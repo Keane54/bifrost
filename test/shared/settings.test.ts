@@ -253,6 +253,11 @@ describe('Reviews settings', () => {
     )
   })
 
+  test('parseSettings gives the default for a model that is not a choice', () => {
+    expect(parseSettings({ reviewsReviewModel: 'fable', version: 1 }).reviewsReviewModel).toBe('')
+    expect(parseSettings({ reviewsRequestModel: 'fable', version: 1 }).reviewsRequestModel).toBe('')
+  })
+
   test('parseSettings gives an empty ignore list for a value that is not a list', () => {
     expect(parseSettings({ reviewsIgnore: 'x', version: 1 }).reviewsIgnore).toEqual([])
   })
