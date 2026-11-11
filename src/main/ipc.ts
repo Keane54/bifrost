@@ -108,6 +108,7 @@ import { readProcessTable } from './registry/terminal-app'
 import { createReleaseNotesSource, fileFetch } from './release-notes/source'
 import { openReleaseNotesStore, releaseNotesFile } from './release-notes/state-store'
 import { createWhatsNew } from './release-notes/whats-new'
+import { friendlyFailure } from './reviews/friendly-failure'
 import { createGh, type Gh } from './reviews/gh'
 import { createRepoGit } from './reviews/repo-git'
 import { createRepoStore, remoteBase } from './reviews/repo-store'
@@ -153,7 +154,11 @@ let managerPromise: Promise<PtyManager | null> | null = null
 // A PTY cannot exist before this time.
 let liveManager: PtyManager | null = null
 // All PTYs belong to the page that the current window shows.
-const page = new PageScope(() => liveManager?.closeAll())
+// The end of a page closes the trust terminal first. closeAll runs no exit callback.
+const page = new PageScope(() => {
+  trustWindow?.close()
+  liveManager?.closeAll()
+})
 
 // The PID of the owned row that a chat view shows, or undefined.
 function pidOfView(viewId: string): number | undefined {
@@ -219,6 +224,9 @@ let trustWindow: TrustWindow | null = null
 // The most bytes of text that the page may write to the trust terminal in one call.
 const MAX_TRUST_WRITE = 64 * 1024
 const REFUSED_BAD_TERMINAL = 'refused: bad terminal value'
+const REVIEW_FAILED = "Bifrost couldn't do that. Please try again."
+const REMOVE_CLONES_FAILED = "Bifrost couldn't delete the clones. Please try again."
+const NO_RUNNER = "Bifrost couldn't start the review rounds. Please restart Bifrost."
 const TRUST_OPEN_FAILED = 'Bifrost could not open the terminal. Please try again.'
 // The Performance monitor (Performance design). registerIpc starts it. It samples on a timer, also
 // in a test home, and sends a snapshot after each tick. stopRegistry stops it.
@@ -268,6 +276,8 @@ function fromPage<T>(e: IpcMainInvokeEvent, fn: () => Promise<T>): Promise<T> {
   }
   return fn()
 }
+
+const reviewLog = (m: string): void => console.error(m)
 
 // True for an integer column or row count that the trust terminal accepts.
 function isTerminalSize(value: unknown): value is number {
@@ -490,7 +500,11 @@ async function startReviews(
   const [store, settings, service] = await Promise.all([
     openReviewsStateStore(reviewsStateFile(bifrostHome), console.error, health),
     settingsReady,
-    parts.service,
+    // With no registry service, the panel still works. It has no review rounds then.
+    parts.service.catch((): null => {
+      console.error('Bifrost cannot start the review rounds.')
+      return null
+    }),
   ])
   const { home } = parts
   const watcher = createReviewsWatcher({
@@ -510,6 +524,10 @@ async function startReviews(
     store,
   })
   reviewsWatcher = watcher
+  if (service === null) {
+    if (!serviceStopped && settings.get().reviewsWatch) watcher.start()
+    return watcher
+  }
   const claudeJson = claudeJsonFile(home?.home ?? homedir())
   const repoGit = createRepoGit({
     env: async () => ({
@@ -552,7 +570,13 @@ async function startReviews(
     viewer: () => watcher.viewer(),
   })
   reviewRunner = runner
-  service.onUpdate(rows => runner.onRows(rows))
+  service.onUpdate(rows => {
+    try {
+      runner.onRows(rows)
+    } catch {
+      console.error('The review runner failed on a session update.')
+    }
+  })
   trustWindow = createTrustWindow({
     isTrusted: async dir => (await trustedDirs(claudeJson, [dir])).has(dir),
     onEnd: end => {
@@ -1034,19 +1058,25 @@ export function registerIpc(home: TestHome | null = null): void {
   ipcMain.handle('reviews:review', (e, key: unknown) =>
     fromPage(e, async () => {
       const k = toReviewKey(whileOn(await reviews), checkPrKey(key))
-      await reviewRunner?.review(k)
+      const runner = reviewRunner
+      if (runner === null) throw new Error(NO_RUNNER)
+      await friendlyFailure(() => runner.review(k), REVIEW_FAILED, reviewLog)
     }),
   )
   ipcMain.handle('reviews:cancel', (e, key: unknown) =>
     fromPage(e, async () => {
       const k = toReviewKey(whileOn(await reviews), checkPrKey(key))
-      await reviewRunner?.cancel(k)
+      const runner = reviewRunner
+      if (runner === null) throw new Error(NO_RUNNER)
+      await friendlyFailure(() => runner.cancel(k), REVIEW_FAILED, reviewLog)
     }),
   )
   ipcMain.handle('reviews:stop-session', (e, key: unknown) =>
     fromPage(e, async () => {
       const k = toReviewKey(whileOn(await reviews), checkPrKey(key))
-      await reviewRunner?.stopSession(k)
+      const runner = reviewRunner
+      if (runner === null) throw new Error(NO_RUNNER)
+      await friendlyFailure(() => runner.stopSession(k), REVIEW_FAILED, reviewLog)
     }),
   )
   ipcMain.handle('reviews:trust-open', (e, repo: unknown) =>
@@ -1096,7 +1126,9 @@ export function registerIpc(home: TestHome | null = null): void {
   ipcMain.handle('reviews:remove-clones', e =>
     fromPage(e, async () => {
       await reviews
-      await reviewRunner?.removeClones()
+      const runner = reviewRunner
+      if (runner === null) throw new Error(NO_RUNNER)
+      await friendlyFailure(() => runner.removeClones(), REMOVE_CLONES_FAILED, reviewLog)
     }),
   )
   // The updater (updater design). With no updater, the snapshot has available false, and the other

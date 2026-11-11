@@ -59,4 +59,29 @@ describe('the review wiring in ipc.ts', () => {
     expect(stop).toMatch(/reviewRunner\?\.stop\(\)/)
     expect(stop).toMatch(/trustWindow\?\.close\(\)/)
   })
+
+  test('the PR channels and remove-clones hide a raw error', () => {
+    for (const channel of [
+      'reviews:review',
+      'reviews:cancel',
+      'reviews:stop-session',
+      'reviews:remove-clones',
+    ]) {
+      expect(handler(channel), channel).toMatch(/friendlyFailure\(/)
+    }
+  })
+
+  test('the end of a page closes the trust terminal before the PTYs', () => {
+    expect(code).toMatch(
+      /new PageScope\(\(\) => \{\s*trustWindow\?\.close\(\)\s*liveManager\?\.closeAll\(\)\s*\}\)/,
+    )
+  })
+
+  test('a service callback of the runner cannot throw into the registry', () => {
+    expect(code).toMatch(/service\.onUpdate\(rows => \{\s*try \{\s*runner\.onRows\(rows\)/)
+  })
+
+  test('Reviews run with no runner when the registry service fails', () => {
+    expect(code).toMatch(/parts\.service\.catch\(/)
+  })
 })

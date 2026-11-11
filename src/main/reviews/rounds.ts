@@ -1047,6 +1047,27 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     }, PASS_MS)
   }
 
+  function onRowsNow(rows: readonly SessionRow[]): void {
+    if (!running) return
+    const now = deps.now()
+    for (const [key, pr] of Object.entries(store.get().prs)) {
+      if (pr.round?.phase !== 'running') continue
+      const watch = watchOf(key)
+      if (watch.rowsSince === null) watch.rowsSince = now
+    }
+    pass(rows)
+    idleStops(rows, now)
+    bindLate(rows)
+    removeLate(rows)
+    const text = sessionsText()
+    if (text !== lastSessions) {
+      lastSessions = text
+      deps.changed()
+    }
+    // A session that waits for the user frees its slot.
+    if (store.get().queue.length > 0) bg(pump())
+  }
+
   function clonePathOf(repo: string): string | null {
     if (!REPO_KEY.test(repo)) return null
     return cloneOfRepo(repo)
@@ -1085,24 +1106,12 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     clonePathOf,
 
     onRows(rows) {
-      if (!running) return
-      const now = deps.now()
-      for (const [key, pr] of Object.entries(store.get().prs)) {
-        if (pr.round?.phase !== 'running') continue
-        const watch = watchOf(key)
-        if (watch.rowsSince === null) watch.rowsSince = now
+      // The registry calls this. A throw must not reach the registry or its other callbacks.
+      try {
+        onRowsNow(rows)
+      } catch {
+        deps.log('The review runner failed on a session update.')
       }
-      pass(rows)
-      idleStops(rows, now)
-      bindLate(rows)
-      removeLate(rows)
-      const text = sessionsText()
-      if (text !== lastSessions) {
-        lastSessions = text
-        deps.changed()
-      }
-      // A session that waits for the user frees its slot.
-      if (store.get().queue.length > 0) bg(pump())
     },
 
     async removeClones() {

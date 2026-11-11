@@ -1675,4 +1675,18 @@ describe('the review round', () => {
       expect(h.calls.notices.filter(n => n.title === 'Trust needed')).toEqual([])
     },
   )
+
+  it('onRows never throws, and logs a fixed text', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    await review(h)
+    await h.rowsNow([row(1)])
+    const bad = new Proxy([], {
+      get() {
+        throw new Error('boom')
+      },
+    })
+    expect(() => h.runner.onRows(bad)).not.toThrow()
+    expect(h.calls.logs).toContain('The review runner failed on a session update.')
+  })
 })

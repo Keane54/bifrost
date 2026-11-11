@@ -16,6 +16,7 @@ import {
   type ReviewsWatcher,
   requestNotice,
   requestNotices,
+  toReviewKey,
   urlToOpen,
   type WatcherDeps,
   whileOn,
@@ -1345,6 +1346,56 @@ describe('the review runner in the watcher', () => {
     await vi.advanceTimersByTimeAsync(2 * MIN)
     await vi.advanceTimersByTimeAsync(2 * MIN)
     expect(afterPoll).toHaveBeenCalledTimes(2)
+    t.watcher.stop()
+  })
+
+  test('a re-request leaves the state of another PR as it was', async () => {
+    const before = Date.now() - 60 * MIN
+    const other = { ...emptyPrState(), lastError: 'keep' }
+    const t = setup({
+      replies: [answer([{ asked: '2026-11-09T09:59:00Z', number: 103 }, { number: 102 }])],
+      state: {
+        prs: { [K102]: other, [K103]: { ...emptyPrState(), lastError: 'old' } },
+        requests: {
+          [K102]: { baseline: false, firstSeen: before },
+          [K103]: { baseline: false, firstSeen: before },
+        },
+        turnedOnAt: before,
+      },
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.store.get().prs[K102]).toEqual(other)
+    expect(t.store.get().prs[K103]?.lastError).toBeNull()
+    t.watcher.stop()
+  })
+
+  test('a throw of afterPoll is logged and does not fail the poll', async () => {
+    const reviews = {
+      afterPoll: () => {
+        throw new Error('boom')
+      },
+      session: () => null,
+      sessionOf: () => null,
+      trust: () => [],
+    }
+    const t = setup({ replies: [answer([{ number: 101 }])], reviews })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(row(t.watcher, K101)).toBeDefined()
+    expect(t.logs.some(l => l.startsWith('The review runner failed after a poll.'))).toBe(true)
+    expect(t.watcher.current().availability).not.toBe('error')
+    t.watcher.stop()
+  })
+
+  test('toReviewKey accepts only a To review row of the snapshot', async () => {
+    const t = setup({ replies: [answer([{ number: 101 }])] })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(toReviewKey(t.watcher, K101)).toBe(K101)
+    expect(() => toReviewKey(t.watcher, K102)).toThrow(REFUSED_UNKNOWN_PR)
+    expect(() => toReviewKey(t.watcher, 42)).toThrow(REFUSED_UNKNOWN_PR)
+    expect(() => toReviewKey(t.watcher, '../x')).toThrow(REFUSED_UNKNOWN_PR)
     t.watcher.stop()
   })
 })
