@@ -362,20 +362,21 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
 
   // Keep the chat terminal values and the sessions of one good ps read. The CPU of a ps process
   // is the change of its CPU time since the last read, over the real time between the two reads
-  // (P3). The first read of a process gives 0.
+  // (P3), in percent of all cores. The first read of a process gives 0.
   function applyPs(
     now: number,
     table: Map<number, ProcRow>,
     ptys: Pty[],
     rows: SessionRow[],
     metrics: AppMetric[],
+    cores: number,
   ): void {
     const elapsed = now - st.lastCpuAt
     const nextCpu = new Map<number, number>()
     const procCpu = (row: ProcRow): number => {
       nextCpu.set(row.pid, row.cpuSeconds)
       const before = st.lastCpu.get(row.pid)
-      return before === undefined ? 0 : cpuPercent(before, row.cpuSeconds, elapsed)
+      return before === undefined ? 0 : cpuPercent(before, row.cpuSeconds, elapsed) / cores
     }
     st.terminals = new Map(
       ptys.map((p): [number, Use] => {
@@ -390,7 +391,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     st.lastCpuAt = now
   }
 
-  function addSample(now: number, use: BifrostUse): void {
+  function addSample(now: number, use: BifrostUse, cores: number): void {
     const last = st.samples.at(-1)
     if (last !== undefined && now - last.at > SAMPLE_GAP_MS) {
       st.samples = []
@@ -401,6 +402,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       bifrostCpuNoTerm: use.cpu - use.terminals.cpu,
       bifrostRamMb: use.ramMb,
       bifrostRamNoTermMb: use.ramMb - use.terminals.ramMb,
+      cores,
       largestTerminalRamMb: use.largestTerminalRamMb,
     })
     st.trend.push({ at: now, cpu: use.cpu, ramMb: use.ramMb })
@@ -549,14 +551,16 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       if (mac !== undefined) [st.pressure, st.swap] = mac
       // The panel can close during the reads. Then the rates stay away.
       if (net !== undefined && showing) applyNetwork(now, net)
-      if (table) applyPs(now, table, ptys, rows, metrics)
+      // All CPU values are percent of all cores. The limits keep percent of one core.
+      const cores = Math.max(1, cpus.length)
+      if (table) applyPs(now, table, ptys, rows, metrics, cores)
       const use = bifrostUse(
-        metrics,
+        metrics.map(x => ({ ...x, cpu: { percentCPUUsage: x.cpu.percentCPUUsage / cores } })),
         ptys.map(p => st.terminals.get(p.pid) ?? NO_USE),
       )
       // A tick with a failed ps adds no sample, because its chat terminal values are old. The
       // first tick with metrics adds no sample either.
-      if (metrics.length > 0 && table !== null && st.metricsRead) addSample(now, use)
+      if (metrics.length > 0 && table !== null && st.metricsRead) addSample(now, use, cores)
       if (metrics.length > 0) st.metricsRead = true
       const load = st.lastCpus === null ? null : cpuLoad(st.lastCpus, cpus)
       st.lastCpus = cpus

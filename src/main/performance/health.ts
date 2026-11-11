@@ -14,9 +14,13 @@ export interface Sample {
   bifrostRamNoTermMb: number
   // The RAM of the largest chat terminal, or 0 with no chat terminal.
   largestTerminalRamMb: number
+  // The CPU of Bifrost without the chat terminals, in percent of all cores of the Mac.
   bifrostCpuNoTerm: number
+  // The number of logical cores. The CPU limits are in percent of one core, so they need it.
+  cores: number
 }
 
+// The CPU limits cpuWarn and cpuProblem are in percent of one core.
 export const LIMITS = {
   cpuProblem: 100,
   cpuWarn: 50,
@@ -178,8 +182,10 @@ export function evaluateHealth(
       if (recent.length > 0) {
         const avg = recent.reduce((a, s) => a + s.bifrostCpuNoTerm, 0) / recent.length
         const text = `Bifrost is using ${Math.round(avg)}% CPU on average over the last ${LIMITS.cpuWindowMs / 60_000} minutes.`
-        if (avg > LIMITS.cpuProblem) add('problem', text)
-        else if (avg > LIMITS.cpuWarn) add('warning', text)
+        // The limits are in percent of one core. So scale the average of all cores.
+        const perCore = avg * (recent.at(-1)?.cores ?? 1)
+        if (perCore > LIMITS.cpuProblem) add('problem', text)
+        else if (perCore > LIMITS.cpuWarn) add('warning', text)
       }
     }
   }

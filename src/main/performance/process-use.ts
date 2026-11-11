@@ -18,7 +18,7 @@ export interface AppMetric {
   memory: { workingSetSize: number }
 }
 
-// The RAM in MB and the CPU in percent of one core.
+// The RAM in MB and the CPU in percent of all cores.
 export interface Use {
   ramMb: number
   cpu: number

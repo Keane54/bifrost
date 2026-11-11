@@ -110,7 +110,7 @@ export function treeSumIn(
   return sum
 }
 
-// Percent of one core between two samples of cumulative CPU time.
+// Percent of one core between two samples of cumulative CPU time. Callers divide by the cores.
 export function cpuPercent(prevSeconds: number, nextSeconds: number, elapsedMs: number): number {
   if (elapsedMs <= 0) return 0
   return Math.max(0, ((nextSeconds - prevSeconds) / (elapsedMs / 1000)) * 100)

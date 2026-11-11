@@ -32,6 +32,7 @@ function sample(at: number, over: Partial<Sample> = {}): Sample {
     bifrostCpuNoTerm: 2,
     bifrostRamMb: 500,
     bifrostRamNoTermMb: 400,
+    cores: 1,
     largestTerminalRamMb: 0,
     ...over,
   }
@@ -197,6 +198,16 @@ describe('CPU', () => {
     ])
     expect(reasons({ samples: cpuSamples(101) })).toEqual([
       { level: 'problem', text: 'Bifrost is using 101% CPU on average over the last 2 minutes.' },
+    ])
+  })
+  test('the limits are percent of one core, so 10 cores scale them', () => {
+    const on10 = (cpu: number) => cpuSamples(cpu).map(s => ({ ...s, cores: 10 }))
+    expect(reasons({ samples: on10(5) })).toEqual([])
+    expect(reasons({ samples: on10(5.1) })).toEqual([
+      { level: 'warning', text: 'Bifrost is using 5% CPU on average over the last 2 minutes.' },
+    ])
+    expect(reasons({ samples: on10(10.1) })).toEqual([
+      { level: 'problem', text: 'Bifrost is using 10% CPU on average over the last 2 minutes.' },
     ])
   })
   test('only the last 2 minutes count', () => {

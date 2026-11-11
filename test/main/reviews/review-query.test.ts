@@ -52,6 +52,11 @@ function vars(args: string[]): Record<string, string> {
 
 const queryOf = (args: string[]): string => args.find(a => a.startsWith('query=')) ?? ''
 
+// The directives of a query that do not follow a name or the arguments of a field. GraphQL puts
+// a directive before the selection set of its field. GitHub refuses each other place.
+const badDirectives = (query: string): string[] =>
+  [...query.matchAll(/(\S)\s*@\w+/g)].filter(m => !/[\w)]/.test(m[1] ?? '')).map(m => m[0])
+
 function fakeGh(
   answer: (
     op: 'ReviewContext' | 'ReviewThreads',
@@ -188,6 +193,19 @@ describe('fetchReviewContext', () => {
     expect(args.join(' ')).toContain('-f login=me')
     expect(queryOf(args)).not.toContain('acme')
     expect(queryOf(args)).not.toContain('api')
+  })
+
+  it('puts each directive before the selection set of its field', async () => {
+    const pages = loadPages()
+    const { gh, calls } = fakeGh((op, v) => {
+      if (op === 'ReviewThreads') return ok(load('threads-1'))
+      return ok(v.after === 'CUR1' ? pages[1] : pages[0])
+    })
+    await fetchReviewContext(gh, PR, 'me')
+    const queries = [...new Set(calls.map(queryOf))]
+    expect(queries.some(q => q.includes('query ReviewContext'))).toBe(true)
+    expect(queries.some(q => q.includes('query ReviewThreads'))).toBe(true)
+    for (const query of queries) expect(badDirectives(query)).toEqual([])
   })
 
   it('gives pending null when the draft has no id', async () => {

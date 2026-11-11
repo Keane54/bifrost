@@ -17,7 +17,7 @@ export function gb(value: number | null): string {
   return value === null ? '-' : `${Math.round(value)} GB`
 }
 
-// A CPU value as a whole percent of one core.
+// A CPU value as a whole percent of all cores of the Mac.
 export function percent(value: number): string {
   return `${Math.round(value)}%`
 }
@@ -97,7 +97,7 @@ const TREND_MS = 600_000
 const MINUTE_MS = 60_000
 // The RAM line shows at least this range, so a small change does not fill the height.
 const MIN_RAM_SPAN_MB = 64
-// The CPU line shows at least 0 to 100% of one core.
+// The CPU line shows 0 to 100% of all cores.
 const MIN_CPU_TOP = 100
 
 type TrendPoint = NonNullable<PerformanceSnapshot['bifrost']>['trend'][number]
