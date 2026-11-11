@@ -1,6 +1,7 @@
 // The texts of a review round. The strings go to the user as given.
 
 import { RECOMMENDATION_TEXT, type Recommendation } from '../../shared/reviews'
+import { count, MAX_REVIEW_BODY } from './result-file'
 import type { RequestNotice } from './watcher'
 
 export const REASON_TOO_LARGE =
@@ -20,6 +21,25 @@ export const REASON_NOT_PENDING =
 export const REASON_CLOSED_WHILE_POSTING =
   'Bifrost closed while it saved the draft review. Check the pull request on GitHub.'
 
+// Bifrost made no call for these three texts.
+export const REASON_DRAFT_TOO_LONG =
+  "Your draft review text and Claude's summary together are longer than GitHub allows " +
+  `(${count(MAX_REVIEW_BODY)} characters). Nothing was posted.`
+export const REASON_SUMMARY_TOO_LONG =
+  `Claude's summary is longer than GitHub allows (${count(MAX_REVIEW_BODY)} characters). ` +
+  'Nothing was posted.'
+export const REASON_BAD_PR =
+  "Bifrost couldn't use the owner, repository or number of this pull request. " +
+  'Nothing was posted.'
+// GitHub can have saved the write. So these texts do not say that nothing was posted, and they do
+// not ask the user to try again.
+export const REASON_POST_TIMEOUT =
+  "GitHub didn't answer in time, so Bifrost can't tell if your draft review was saved. " +
+  'Check the pull request on GitHub.'
+export const REASON_POST_UNREADABLE =
+  "Bifrost couldn't read the answer from GitHub, so it can't tell if your draft review was " +
+  'saved. Check the pull request on GitHub.'
+
 export const reasonBadResult = (why: string): string =>
   `The review session wrote a result Bifrost couldn't use (${why}). Nothing was posted. Try again.`
 
@@ -29,6 +49,11 @@ export const reasonPostFailed = (message: string): string =>
 export const reasonPartlyAdded = (added: number, total: number, message: string): string =>
   `GitHub stopped after ${added} of ${total} comments: ${message} ` +
   'Check your draft review on GitHub.'
+
+// All the comments are in the draft review. Only the summary is not.
+export const reasonSummaryFailed = (message: string): string =>
+  "Bifrost added the comments to your draft review, but GitHub didn't add the summary: " +
+  `${message} Check your draft review on GitHub.`
 
 interface NoticePr {
   repo: string

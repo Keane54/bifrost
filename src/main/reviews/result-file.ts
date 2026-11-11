@@ -93,7 +93,8 @@ type Parsed = { ok: true; result: ReviewResult } | { ok: false; reason: string }
 type Checked<T> = { ok: true; value: T } | { ok: false; reason: string }
 
 const fail = (reason: string): { ok: false; reason: string } => ({ ok: false, reason })
-const count = (n: number): string => n.toLocaleString('en-GB')
+// A number for a text, with a comma for each group of 3 digits.
+export const count = (n: number): string => n.toLocaleString('en-GB')
 const blank = (text: string): boolean => text.trim() === ''
 
 function isObject(value: unknown): value is Record<string, unknown> {

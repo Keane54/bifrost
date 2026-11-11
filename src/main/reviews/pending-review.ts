@@ -4,14 +4,21 @@
 // Each value goes as a -f or -F field, or in the JSON on stdin. No value goes in the query text.
 
 import { PR_KEY, prKey } from '../../shared/reviews'
+import type { ExecResult } from '../claude/cli'
 import { type Gh, ghFailure, MESSAGE_MAX } from './gh'
 import { MAX_REVIEW_BODY, type ResultComment } from './result-file'
 import { BAD_ANSWER } from './review-query'
 import {
+  REASON_BAD_PR,
+  REASON_DRAFT_TOO_LONG,
   REASON_NOT_PENDING,
   REASON_OTHER_COMMIT,
+  REASON_POST_TIMEOUT,
+  REASON_POST_UNREADABLE,
+  REASON_SUMMARY_TOO_LONG,
   reasonPartlyAdded,
   reasonPostFailed,
+  reasonSummaryFailed,
 } from './round-text'
 
 export interface PostArgs {
@@ -24,14 +31,14 @@ export interface PostArgs {
   comments: ResultComment[]
 }
 
+// unknownResult is true when Bifrost cannot tell if GitHub saved the last write: a timeout, an
+// overflow, or exit code 0 with an answer that Bifrost cannot read. The caller must then never
+// post again by itself, because a second post can make a second review or double comments.
 export type PostOutcome =
   | { ok: true; reviewId: string; added: number }
-  | { ok: false; message: string; added: number }
+  | { ok: false; message: string; added: number; unknownResult?: true }
 
 const NOTHING_TO_POST = 'nothing to post'
-const LIMIT = MAX_REVIEW_BODY.toLocaleString('en-GB')
-const TOO_LONG = `the review text is longer than ${LIMIT} characters.`
-const BAD_NAME = 'the name of the pull request is not valid.'
 
 // The optional variables (startLine, startSide) go only with a range comment.
 const ADD_THREAD = `mutation AddThread(
@@ -53,13 +60,18 @@ const SET_BODY = `mutation SetBody($review: ID!, $body: String!) {
 }`
 
 type Rec = Record<string, unknown>
-type Answer = { ok: true; data: Rec } | { ok: false; message: string }
+// known is false when GitHub can have saved the write.
+type Failure = { message: string; known: boolean }
+type Answer = { ok: true; data: Rec } | ({ ok: false } & Failure)
 
 // The answer of GitHub is not typed. Each read checks the type of its value.
 const isRecord = (x: unknown): x is Rec => typeof x === 'object' && x !== null && !Array.isArray(x)
 const asRec = (x: unknown): Rec => (isRecord(x) ? x : {})
 const isId = (x: unknown): x is string => typeof x === 'string' && x !== ''
 const hasText = (text: string): boolean => text.trim() !== ''
+const firstLine = (text: string): string => (text.trim().split('\n')[0] ?? '').trim()
+
+const UNREADABLE: Failure = { known: false, message: REASON_POST_UNREADABLE }
 
 function parse(stdout: string): unknown {
   try {
@@ -67,6 +79,15 @@ function parse(stdout: string): unknown {
   } catch {
     return null
   }
+}
+
+// The failure of a write call, or null when gh ended well. A timeout or an overflow can come
+// after GitHub saved the write, so its result is not known.
+function writeFailure(result: ExecResult): Failure | null {
+  if (result.timedOut) return { known: false, message: REASON_POST_TIMEOUT }
+  if (result.overflow) return UNREADABLE
+  const failure = ghFailure(result)
+  return failure === null ? null : { known: true, message: failure.message }
 }
 
 function restComment(c: ResultComment): Rec {
@@ -102,58 +123,75 @@ function threadFields(review: string, c: ResultComment): string[] {
   return out
 }
 
-// Run one GraphQL mutation. An answer with errors fails, also when it has data.
+// Run one GraphQL mutation. An answer with errors fails, also when it has data. GitHub then did
+// not do the mutation, so the result is known.
 async function mutate(gh: Gh, query: string, fields: string[]): Promise<Answer> {
   const result = await gh.run(['api', 'graphql', '-f', `query=${query}`, ...fields])
-  const failure = ghFailure(result)
-  if (failure) return { message: failure.message, ok: false }
-  const top = asRec(parse(result.stdout))
+  const failure = writeFailure(result)
+  if (failure) return { ...failure, ok: false }
+  const top = parse(result.stdout)
+  if (!isRecord(top)) return { ...UNREADABLE, ok: false }
   const errors = Array.isArray(top.errors) ? top.errors : []
   if (errors.length > 0) {
     const first = asRec(errors[0]).message
-    const message = typeof first === 'string' ? first.trim().slice(0, MESSAGE_MAX) : ''
-    return { message: message || BAD_ANSWER, ok: false }
+    const message = typeof first === 'string' ? firstLine(first).slice(0, MESSAGE_MAX) : ''
+    return { known: true, message: message || BAD_ANSWER, ok: false }
   }
-  if (!isRecord(top.data)) return { message: BAD_ANSWER, ok: false }
+  if (!isRecord(top.data)) return { ...UNREADABLE, ok: false }
   return { data: top.data, ok: true }
 }
 
+const unknown = (added: number, failure: Failure): PostOutcome => ({
+  added,
+  message: failure.message,
+  ok: false,
+  unknownResult: true,
+})
+
 async function createReview(gh: Gh, args: PostArgs): Promise<PostOutcome> {
-  const path = `repos/${args.owner}/${args.repo}/pulls/${args.number}/reviews`
-  const result = await gh.run(['api', '--method', 'POST', path, '--input', '-'], {
-    input: JSON.stringify(reviewPayload(args)),
-  })
-  const failure = ghFailure(result)
+  const { owner, repo, number } = args
+  const result = await gh.run(
+    ['api', '--method', 'POST', `repos/${owner}/${repo}/pulls/${number}/reviews`, '--input', '-'],
+    { input: JSON.stringify(reviewPayload(args)) },
+  )
+  const failure = writeFailure(result)
+  if (failure && !failure.known) return unknown(0, failure)
   if (failure) return { added: 0, message: reasonPostFailed(failure.message), ok: false }
+  const answer = parse(result.stdout)
+  if (!isRecord(answer) || typeof answer.state !== 'string') return unknown(0, UNREADABLE)
   // GitHub made the review with all its comments in one step.
   const added = args.comments.length
-  const answer = asRec(parse(result.stdout))
-  if (answer.state !== 'PENDING' || !isId(answer.node_id)) {
-    return { added, message: REASON_NOT_PENDING, ok: false }
-  }
+  if (answer.state !== 'PENDING') return { added, message: REASON_NOT_PENDING, ok: false }
+  if (!isId(answer.node_id)) return unknown(0, UNREADABLE)
   return { added, ok: true, reviewId: answer.node_id }
 }
 
 async function addToReview(gh: Gh, args: PostArgs, id: string, body: string): Promise<PostOutcome> {
   const total = args.comments.length
   let added = 0
-  const stop = (message: string): PostOutcome => ({
-    added,
-    message: added === 0 ? reasonPostFailed(message) : reasonPartlyAdded(added, total, message),
-    ok: false,
-  })
+  const refused = (message: string): PostOutcome => ({ added, message, ok: false })
   for (const comment of args.comments) {
     const r = await mutate(gh, ADD_THREAD, threadFields(id, comment))
-    if (!r.ok) return stop(r.message)
-    if (!isId(asRec(asRec(r.data.addPullRequestReviewThread).thread).id)) return stop(BAD_ANSWER)
+    if (!r.ok && !r.known) return unknown(added, r)
+    if (!r.ok) {
+      const partly = reasonPartlyAdded(added, total, r.message)
+      return refused(added === 0 ? reasonPostFailed(r.message) : partly)
+    }
+    if (!isId(asRec(asRec(r.data.addPullRequestReviewThread).thread).id)) {
+      return unknown(added, UNREADABLE)
+    }
     added++
   }
   if (hasText(args.summary)) {
     const r = await mutate(gh, SET_BODY, ['-f', `review=${id}`, '-f', `body=${body}`])
-    if (!r.ok) return stop(r.message)
+    if (!r.ok && !r.known) return unknown(added, r)
+    // With 1 or more comments, all of them are in the draft review now. Only the summary is not.
+    if (!r.ok) {
+      return refused(added === 0 ? reasonPostFailed(r.message) : reasonSummaryFailed(r.message))
+    }
     const review = asRec(asRec(r.data.updatePullRequestReview).pullRequestReview)
-    if (!isId(review.id)) return stop(BAD_ANSWER)
-    if (review.state !== 'PENDING') return { added, message: REASON_NOT_PENDING, ok: false }
+    if (!isId(review.id)) return unknown(added, UNREADABLE)
+    if (review.state !== 'PENDING') return refused(REASON_NOT_PENDING)
   }
   return { added, ok: true, reviewId: id }
 }
@@ -164,15 +202,14 @@ export async function postPendingReview(gh: Gh, args: PostArgs): Promise<PostOut
   const refuse = (message: string): PostOutcome => ({ added: 0, message, ok: false })
   if (!hasText(args.summary) && args.comments.length === 0) return refuse(NOTHING_TO_POST)
   // The REST path holds the owner, the repository and the number.
-  if (!PR_KEY.test(prKey(args.owner, args.repo, args.number))) {
-    return refuse(reasonPostFailed(BAD_NAME))
-  }
+  if (!PR_KEY.test(prKey(args.owner, args.repo, args.number))) return refuse(REASON_BAD_PR)
   const { pending } = args
   // A thread goes on the commit of the pending review. So that commit must be the reviewed one.
   if (pending !== null && pending.commit !== args.headSha) return refuse(REASON_OTHER_COMMIT)
   const body = pending === null ? args.summary : joinedBody(pending.body, args.summary)
   if (hasText(args.summary) && body.length > MAX_REVIEW_BODY) {
-    return refuse(reasonPostFailed(TOO_LONG))
+    const withDraft = pending !== null && hasText(pending.body)
+    return refuse(withDraft ? REASON_DRAFT_TOO_LONG : REASON_SUMMARY_TOO_LONG)
   }
   return pending === null ? createReview(gh, args) : addToReview(gh, args, pending.id, body)
 }

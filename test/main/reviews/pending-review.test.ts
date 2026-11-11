@@ -8,15 +8,20 @@ import {
 } from '../../../src/main/reviews/pending-review'
 import { MAX_REVIEW_BODY, type ResultComment } from '../../../src/main/reviews/result-file'
 import {
+  REASON_BAD_PR,
+  REASON_DRAFT_TOO_LONG,
   REASON_NOT_PENDING,
   REASON_OTHER_COMMIT,
+  REASON_POST_TIMEOUT,
+  REASON_POST_UNREADABLE,
+  REASON_SUMMARY_TOO_LONG,
   reasonPartlyAdded,
   reasonPostFailed,
+  reasonSummaryFailed,
 } from '../../../src/main/reviews/round-text'
 
 const HEAD = 'a'.repeat(40)
 const OLD = 'b'.repeat(40)
-const TOO_LONG = reasonPostFailed('the review text is longer than 65,536 characters.')
 
 interface Call {
   args: string[]
@@ -39,6 +44,9 @@ function fakeGh(answers: ExecResult[]): { gh: Gh; calls: Call[] } {
 
 const ok = (data: unknown): ExecResult => ({ code: 0, stderr: '', stdout: JSON.stringify(data) })
 const refused = (stderr: string): ExecResult => ({ code: 1, stderr, stdout: '' })
+const timedOut = (): ExecResult => ({ code: 1, stderr: '', stdout: '', timedOut: true })
+const overflow = (): ExecResult => ({ code: 1, overflow: true, stderr: 'maxBuffer', stdout: '' })
+const unreadable = (): ExecResult => ({ code: 0, stderr: '', stdout: 'not json' })
 const created = (state = 'PENDING'): ExecResult => ok({ id: 5, node_id: 'PRR_new', state })
 const threadAdded = (): ExecResult =>
   ok({ data: { addPullRequestReviewThread: { thread: { id: 'T' } } } })
@@ -82,6 +90,47 @@ function field(call: Call, name: string): { flag: string; value: string } | unde
   return undefined
 }
 
+// The texts of a failed post. A text never says more than Bifrost knows.
+describe('the texts of a failed post', () => {
+  it('says that Bifrost cannot tell when the result of a write is unknown', () => {
+    expect(REASON_POST_TIMEOUT).toBe(
+      "GitHub didn't answer in time, so Bifrost can't tell if your draft review was saved. " +
+        'Check the pull request on GitHub.',
+    )
+    expect(REASON_POST_UNREADABLE).toBe(
+      "Bifrost couldn't read the answer from GitHub, so it can't tell if your draft review was " +
+        'saved. Check the pull request on GitHub.',
+    )
+    for (const text of [REASON_POST_TIMEOUT, REASON_POST_UNREADABLE]) {
+      expect(text).not.toMatch(/try again|Nothing was posted/i)
+    }
+  })
+
+  it('says what is in the draft when only the summary failed', () => {
+    expect(reasonSummaryFailed('gh: No.')).toBe(
+      "Bifrost added the comments to your draft review, but GitHub didn't add the summary: " +
+        'gh: No. Check your draft review on GitHub.',
+    )
+  })
+
+  it('does not say that GitHub refused a text that Bifrost did not send', () => {
+    expect(REASON_DRAFT_TOO_LONG).toBe(
+      "Your draft review text and Claude's summary together are longer than GitHub allows " +
+        '(65,536 characters). Nothing was posted.',
+    )
+    expect(REASON_SUMMARY_TOO_LONG).toBe(
+      "Claude's summary is longer than GitHub allows (65,536 characters). Nothing was posted.",
+    )
+    expect(REASON_BAD_PR).toBe(
+      "Bifrost couldn't use the owner, repository or number of this pull request. " +
+        'Nothing was posted.',
+    )
+    for (const text of [REASON_DRAFT_TOO_LONG, REASON_SUMMARY_TOO_LONG, REASON_BAD_PR]) {
+      expect(text).not.toContain("GitHub didn't accept")
+    }
+  })
+})
+
 describe('reviewPayload', () => {
   it('has no body for a summary with no text, and no comments key with no comments', () => {
     expect(reviewPayload(args({ comments: [], summary: ' \n ' }))).toEqual({ commit_id: HEAD })
@@ -121,10 +170,20 @@ describe('postPendingReview with no pending review of the user', () => {
     })
   })
 
-  it('refuses a PENDING answer with no node_id', async () => {
-    const { gh } = fakeGh([ok({ id: 5, state: 'PENDING' })])
-    const out = await postPendingReview(gh, args())
-    expect(out).toEqual({ added: 1, message: REASON_NOT_PENDING, ok: false })
+  it('marks a create with an unknown result', async () => {
+    const answers: [ExecResult, string][] = [
+      [timedOut(), REASON_POST_TIMEOUT],
+      [overflow(), REASON_POST_UNREADABLE],
+      [unreadable(), REASON_POST_UNREADABLE],
+      [ok([]), REASON_POST_UNREADABLE],
+      [ok({ id: 5 }), REASON_POST_UNREADABLE],
+      [ok({ id: 5, state: 'PENDING' }), REASON_POST_UNREADABLE],
+    ]
+    for (const [answer, message] of answers) {
+      const { gh } = fakeGh([answer])
+      const out = await postPendingReview(gh, args())
+      expect(out).toEqual({ added: 0, message, ok: false, unknownResult: true })
+    }
   })
 
   it('gives the gh message when GitHub refuses the review', async () => {
@@ -167,7 +226,7 @@ describe('postPendingReview with no pending review of the user', () => {
   it('refuses a summary longer than MAX_REVIEW_BODY before any call', async () => {
     const { gh, calls } = fakeGh([created()])
     const out = await postPendingReview(gh, args({ summary: 'x'.repeat(MAX_REVIEW_BODY + 1) }))
-    expect(out).toEqual({ added: 0, message: TOO_LONG, ok: false })
+    expect(out).toEqual({ added: 0, message: REASON_SUMMARY_TOO_LONG, ok: false })
     expect(calls).toEqual([])
   })
 
@@ -175,11 +234,7 @@ describe('postPendingReview with no pending review of the user', () => {
     const { gh, calls } = fakeGh([created()])
     for (const bad of [{ owner: '..' }, { repo: '../x' }, { number: 0 }, { number: 1.5 }]) {
       const out = await postPendingReview(gh, args(bad))
-      expect(out).toEqual({
-        added: 0,
-        message: reasonPostFailed('the name of the pull request is not valid.'),
-        ok: false,
-      })
+      expect(out).toEqual({ added: 0, message: REASON_BAD_PR, ok: false })
     }
     expect(calls).toEqual([])
   })
@@ -272,20 +327,63 @@ describe('postPendingReview with a pending review of the user', () => {
   })
 
   it('a GraphQL answer with errors is a failure', async () => {
-    const errors = ok({ data: { addPullRequestReviewThread: null }, errors: [{ message: 'No.' }] })
+    const errors = ok({
+      data: { addPullRequestReviewThread: null },
+      errors: [{ message: 'No.\nThe second line.' }],
+    })
     const { gh } = fakeGh([errors])
     const out = await postPendingReview(gh, args({ pending: mine() }))
     expect(out).toEqual({ added: 0, message: reasonPostFailed('No.'), ok: false })
   })
 
-  it('reports the count when the body is refused after the comments', async () => {
+  it('says that the comments are in the draft when the body is refused after them', async () => {
     const { gh } = fakeGh([threadAdded(), refused('gh: Something went wrong')])
     const out = await postPendingReview(gh, args({ pending: mine() }))
     expect(out).toEqual({
       added: 1,
-      message: reasonPartlyAdded(1, 1, 'gh: Something went wrong'),
+      message: reasonSummaryFailed('gh: Something went wrong'),
       ok: false,
     })
+  })
+
+  it('gives reasonPostFailed when the body is refused and there are no comments', async () => {
+    const { gh } = fakeGh([refused('gh: Something went wrong')])
+    const out = await postPendingReview(gh, args({ comments: [], pending: mine() }))
+    expect(out).toEqual({
+      added: 0,
+      message: reasonPostFailed('gh: Something went wrong'),
+      ok: false,
+    })
+  })
+
+  it('marks a comment with an unknown result and stops', async () => {
+    const answers: [ExecResult, string][] = [
+      [timedOut(), REASON_POST_TIMEOUT],
+      [overflow(), REASON_POST_UNREADABLE],
+      [unreadable(), REASON_POST_UNREADABLE],
+      [ok({ data: { addPullRequestReviewThread: { thread: null } } }), REASON_POST_UNREADABLE],
+    ]
+    for (const [answer, message] of answers) {
+      const two = [comment(), comment({ line: 13 })]
+      const { gh, calls } = fakeGh([threadAdded(), answer, threadAdded(), bodySet()])
+      const out = await postPendingReview(gh, args({ comments: two, pending: mine() }))
+      expect(out).toEqual({ added: 1, message, ok: false, unknownResult: true })
+      expect(calls).toHaveLength(2)
+    }
+  })
+
+  it('marks a body with an unknown result', async () => {
+    const answers: [ExecResult, string][] = [
+      [timedOut(), REASON_POST_TIMEOUT],
+      [overflow(), REASON_POST_UNREADABLE],
+      [unreadable(), REASON_POST_UNREADABLE],
+      [ok({ data: { updatePullRequestReview: {} } }), REASON_POST_UNREADABLE],
+    ]
+    for (const [answer, message] of answers) {
+      const { gh } = fakeGh([threadAdded(), answer])
+      const out = await postPendingReview(gh, args({ pending: mine() }))
+      expect(out).toEqual({ added: 1, message, ok: false, unknownResult: true })
+    }
   })
 
   it('refuses a body answer that is not PENDING', async () => {
@@ -309,7 +407,12 @@ describe('postPendingReview with a pending review of the user', () => {
       fakeGh([]).gh,
       args({ pending: mine(`${fits}a`), summary }),
     )
-    expect(over).toEqual({ added: 0, message: TOO_LONG, ok: false })
+    expect(over).toEqual({ added: 0, message: REASON_DRAFT_TOO_LONG, ok: false })
+    const alone = await postPendingReview(
+      fakeGh([]).gh,
+      args({ pending: mine(' '), summary: 'x'.repeat(MAX_REVIEW_BODY + 1) }),
+    )
+    expect(alone).toEqual({ added: 0, message: REASON_SUMMARY_TOO_LONG, ok: false })
 
     const { gh, calls } = fakeGh([threadAdded(), bodySet()])
     expect((await postPendingReview(gh, args({ pending: mine(fits), summary }))).ok).toBe(true)
