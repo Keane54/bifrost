@@ -1,7 +1,9 @@
-// The session commands: New session, Stop, Delete, Resume, Resume all and Take control (spec 9.1).
+// The session commands: New session, Stop, Delete, Resume, Resume all, Take control (spec 9.1)
+// and Hand over (spec 8 of the skills design).
 // The renderer sends session IDs and the New session values only. This module finds the row,
 // checks it and makes the claude arguments. It never trusts a PID or a path from the renderer.
 // Each command waits for the registry entry. Exit code 0 is not proof of a start (spec 8.9).
+import { MAX_TEXT, promptBlocks, REASON_TOO_LONG } from '../../shared/input'
 import {
   checkNewSessionSpec,
   type DirInfo,
@@ -16,10 +18,19 @@ import {
   worktreeName,
 } from '../../shared/new-session'
 import { continueIdOf, currentIdOf, REFUSED_NO_RESUME_ID } from '../../shared/session-ids'
-import type { ResumeAllResult, SeenCounts, SessionRow, WorktreeCheck } from '../../shared/types'
+import type {
+  HandOverResult,
+  ResumeAllResult,
+  SeenCounts,
+  SessionRow,
+  WorktreeCheck,
+} from '../../shared/types'
 import { UUID_PATTERN } from '../../shared/uuid'
-import { worktreeOf, worktreeRoot } from '../../shared/worktree'
+import { folderUser, worktreeOf, worktreeRoot } from '../../shared/worktree'
 import type { ExecResult, RunClaude } from '../claude/cli'
+// A type-only import. hand-over.ts imports handOverArgs from this module, so a value import here
+// would make an import cycle.
+import type { HandOverRun } from '../handover/hand-over'
 import {
   claudeFailure,
   isTrustError,
@@ -73,6 +84,7 @@ const REFUSED_NO_SHORT_ID = 'refused: the session runs and has no short ID'
 const REFUSED_BAD_PID = 'refused: bad process ID'
 const REFUSED_STOP = 'refused: only an owned session that runs'
 export const REFUSED_DELETE_EXTERNAL = 'refused: Bifrost does not delete an external session'
+export const REFUSED_FOLDER_IN_USE = 'refused: another session uses this folder'
 const REFUSED_NOT_PARKED = 'refused: the session is not parked'
 const REFUSED_NOT_EXTERNAL = 'refused: only an external session'
 const REFUSED_WORKING = 'refused: the session is working'
@@ -124,6 +136,9 @@ export interface SessionActionDeps {
   rememberWorktree(sessionId: string, worktree: string): void
   // True when the transcript of the session has a user message. A read error gives true.
   hasMessages(sessionId: string): Promise<boolean>
+  // The hand-over run (createHandOver in hand-over.ts). It gets the checked row and the start of
+  // the new session.
+  handOver: HandOverRun
 }
 
 export interface SessionActions {
@@ -137,6 +152,8 @@ export interface SessionActions {
   resumeAll(): Promise<ResumeAllResult>
   // confirmed must be true, as for remove. Take control ends a terminal process.
   takeControl(sessionId: unknown, confirmed: unknown): Promise<{ sessionId: string }>
+  // Move an owned session that runs to a new session with a hand-over note (spec 8).
+  handOver(sessionId: unknown): Promise<HandOverResult>
   dirInfo(dir: unknown): Promise<DirInfo>
 }
 
@@ -201,6 +218,7 @@ const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._[\]-]{0,99}$/
 // The model and the mode come from the transcript of the old session. So the model must have the
 // form of a model name, and only a mode in the list gives the flag. The default mode and
 // bypassPermissions give no flag. The name and the prompt get the checks of newSessionArgs.
+// The prompt also gets the length limit of the New session prompt (checkNewSessionSpec).
 // The new session uses the folder of the old session. So it gets no --worktree, and no
 // --plugin-dir or --resume.
 export function handOverArgs(opts: {
@@ -217,6 +235,7 @@ export function handOverArgs(opts: {
     /[\r\n]/.test(name) ||
     name.trimStart().startsWith('-')
   if (badName) throw new Error('refused: bad name')
+  if (opts.prompt.length > MAX_TEXT) throw new Error(REASON_TOO_LONG)
   if (opts.prompt.trimStart().startsWith('-')) throw new Error(REASON_PROMPT_FLAG)
   if (isClaudeCommand(opts.prompt)) throw new Error(REASON_PROMPT_IS_COMMAND)
   const mode = opts.permissionMode
@@ -475,17 +494,10 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     }
   }
 
-  // Check the New session values, run "claude --bg" and wait for the entry of the session.
-  const startNew = async (input: unknown): Promise<{ sessionId: string }> => {
-    const checked = checkNewSessionSpec(input)
-    if (!checked.ok) throw new Error(checked.reason)
-    const spec = checked.spec
-    const dir = await deps.dirInfo(spec.cwd)
-    if (dir.kind !== 'dir') throw new Error(REASON_DIR_MISSING)
-    if (spec.worktree && !dir.git) throw new Error(REASON_NO_GIT)
-    const run = await claude()
-    const args = newSessionArgs(spec)
-    const result = await start(run, args, spec.cwd, 'claude --bg')
+  // Run "claude --bg" with the arguments in cwd, wait for the entry of the new session and mark
+  // it as started. New session and Hand over use this.
+  const startAndWait = async (run: RunClaude, args: string[], cwd: string): Promise<SessionRow> => {
+    const result = await start(run, args, cwd, 'claude --bg')
     const id = parseShortId(result.stdout)
     if (id === null) throw new Error(REASON_NO_SHORT_ID)
     let row: SessionRow
@@ -501,6 +513,19 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
       )
     }
     deps.markStarted(row.sessionId)
+    return row
+  }
+
+  // Check the New session values, run "claude --bg" and wait for the entry of the session.
+  const startNew = async (input: unknown): Promise<{ sessionId: string }> => {
+    const checked = checkNewSessionSpec(input)
+    if (!checked.ok) throw new Error(checked.reason)
+    const spec = checked.spec
+    const dir = await deps.dirInfo(spec.cwd)
+    if (dir.kind !== 'dir') throw new Error(REASON_DIR_MISSING)
+    if (spec.worktree && !dir.git) throw new Error(REASON_NO_GIT)
+    const run = await claude()
+    const row = await startAndWait(run, newSessionArgs(spec), spec.cwd)
     return { sessionId: row.sessionId }
   }
 
@@ -520,12 +545,32 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
       return deps.dirInfo(dir)
     },
 
+    // Hand over (spec 8). Only an owned session that runs, waits for input and has no prompt box.
+    // The run holds the lock of the old session until the new session started or a step failed.
+    // So no other action runs on the old session during the wait for the note.
+    async handOver(sessionId) {
+      return locked(sessionId, async row => {
+        if (row.kind !== 'owned' || row.state === 'parked') throw new Error(REFUSED_STOP)
+        // The send goes through "attach <short id>".
+        if (row.shortId === undefined) throw new Error(REFUSED_NO_SHORT_ID)
+        shortIdOf(row)
+        if (row.state === 'working') throw new Error(REFUSED_WORKING)
+        if (promptBlocks(row)) throw new Error(REFUSED_PROMPT)
+        await checkProjectDir(row.cwd)
+        const run = await claude()
+        return deps.handOver(row, (args, cwd) => startAndWait(run, args, cwd))
+      })
+    },
+
     // Delete runs claude stop for a session that runs, then claude rm, then forgets the session.
     // A parked row without a short ID is only removed from Bifrost (D5). Bifrost refuses a
     // session that runs and has no short ID. Bifrost cannot stop it, and the next sample
     // shows it again. removeSession gives the rules for a worktree that claude rm keeps.
     // The check that the dialog showed must be for the worktree of the row now (final review
     // M2). Else the dialog did not show the work that a discard removes.
+    // claude rm can remove a clean worktree of a stopped session while another session uses it.
+    // So Bifrost refuses the Delete of a parked row while a row that runs uses its worktree
+    // (spec 8 of the skills design).
     async remove(sessionId, confirmed, seen) {
       if (confirmed !== true) throw new Error(REFUSED_NOT_CONFIRMED)
       const counts = seenOf(seen)
@@ -533,6 +578,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (row.kind === 'external' && row.state !== 'parked') {
           throw new Error(REFUSED_DELETE_EXTERNAL)
         }
+        if (folderUser(row, deps.rows()) !== undefined) throw new Error(REFUSED_FOLDER_IN_USE)
         if (row.shortId === undefined && row.state !== 'parked') {
           throw new Error(REFUSED_NO_SHORT_ID)
         }

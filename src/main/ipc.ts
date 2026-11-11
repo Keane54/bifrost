@@ -1,5 +1,16 @@
+import { randomUUID } from 'node:crypto'
 import { constants, existsSync } from 'node:fs'
-import { access, appendFile, mkdir, rename, rm, stat, statfs, writeFile } from 'node:fs/promises'
+import {
+  access,
+  appendFile,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  statfs,
+  writeFile,
+} from 'node:fs/promises'
 import { cpus, homedir, hostname } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
@@ -37,7 +48,7 @@ import { findProjectApps, findTerminalApps } from './actions/project-apps'
 import { createSessionActions } from './actions/session-actions'
 import { hasLeftKey, SessionInput } from './actions/session-input'
 import { createTerminalLauncher } from './actions/terminal-launch'
-import { hasMessages } from './actions/transcript'
+import { findTranscript, hasMessages, readTail, TRANSCRIPT_TAIL_MAX } from './actions/transcript'
 import { checkWorktreeHead, createWorktreeActions, trackedChanges } from './actions/worktree-check'
 import { AFPLAY, createAlertMonitor, SOUND_FILE } from './alerts/alert-monitor'
 import { showNotification } from './alerts/notifier'
@@ -54,6 +65,10 @@ import {
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
 import { loadLoginEnv, stringValues } from './env/login-env'
 import { createBatcher, EventLog, NOTIFICATION_REFUSED } from './events/event-log'
+import { createHandOver } from './handover/hand-over'
+import { noteFileName } from './handover/naming'
+import { writeNoteFile } from './handover/note-file'
+import { handOverRulesPath } from './handover/prompt'
 import { createPrLookup, prUrlToOpen } from './info/pr-info'
 import {
   defaultPaths,
@@ -1047,12 +1062,29 @@ export function registerIpc(home: TestHome | null = null): void {
   const kill = (pid: number, signal: string | number): void => {
     process.kill(pid, signal)
   }
-  // Take control reads only the start of the transcript of the session (Task 15).
+  // Take control reads only the start of the transcript of the session (Task 15). Hand over reads
+  // the lines after a baseline (spec 8 of the skills design).
   const projectsDir = join(homedir(), '.claude', 'projects')
+  // The Hand over run. The request prompt goes through the same SessionInput as Send message.
+  // Bifrost writes each note to a new file in its handovers folder.
+  const handOver = createHandOver({
+    now: () => Date.now(),
+    readTail: (file, offset) => readTail(file, offset, TRANSCRIPT_TAIL_MAX),
+    requestId: () => randomUUID().slice(0, 8),
+    rows: () => liveService?.rows() ?? [],
+    rules: () => readFile(handOverRulesPath(app.getAppPath()), 'utf8'),
+    send: (id, text) => input.send(id, text),
+    size: async file => (await stat(file)).size,
+    sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+    transcript: row => findTranscript(projectsDir, row),
+    writeNote: (name, note, at) =>
+      writeNoteFile(join(paths.bifrostHome, 'handovers'), noteFileName(name, at), note),
+  })
   const sessions = createSessionActions({
     checkWorktree: worktree => checkWorktreeHead(worktree, execFile),
     dirInfo: dir => dirInfo(execFile, stat, dir),
     forget: id => liveService?.forget(id),
+    handOver,
     hasMessages: id => hasMessages(projectsDir, id),
     isAlive: pid => isAlive(kill, pid),
     markStarted: id => liveService?.markStarted(id),
@@ -1122,6 +1154,10 @@ export function registerIpc(home: TestHome | null = null): void {
   ipcMain.handle('sessions:resume-all', e => fromPage(e, () => sessions.resumeAll()))
   ipcMain.handle('sessions:take-control', (e, sessionId: unknown, confirmed: unknown) =>
     fromPage(e, () => sessions.takeControl(sessionId, confirmed)),
+  )
+  // The page sends the session ID only. The main process finds the row and makes the prompts.
+  ipcMain.handle('sessions:hand-over', (e, sessionId: unknown) =>
+    fromPage(e, () => sessions.handOver(sessionId)),
   )
   ipcMain.handle('sessions:dir-info', (e, dir: unknown) => fromPage(e, () => sessions.dirInfo(dir)))
   // The picker starts at the directory from the renderer when it is absolute, else at home.

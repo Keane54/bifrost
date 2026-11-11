@@ -8,6 +8,7 @@ import type {
   AccountUsage,
   ClaudeVersion,
   DisplayMode,
+  HandOverResult,
   LiveStatus,
   LogEntry,
   PrInfo,
@@ -142,6 +143,10 @@ export interface BifrostApi {
     // Pass true only after the user accepted the confirmation. The main process refuses
     // a call without it.
     takeControl(sessionId: string, confirmed: true): Promise<{ sessionId: string }>
+    // Ask the session for a hand-over note, save it and start a new session that continues from
+    // it (spec 8). Only for an owned session that runs and waits for input. This resolves when
+    // the new session shows. The old session stays as it is.
+    handOver(sessionId: string): Promise<HandOverResult>
     // Count the commits that are not merged and the changed files in the worktree of the
     // session. This resolves with null when a git command fails.
     deleteCheck(sessionId: string): Promise<WorktreeCheck | null>

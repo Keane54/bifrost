@@ -33,6 +33,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
     "Bifrost can't find Claude Code. Check that the claude command works in a terminal.",
   'refused: an action on this session runs':
     'Another action is still running on this session. Try again in a moment.',
+  'refused: another session uses this folder':
+    'Another session is still using this folder. Stop that session first, then delete this one.',
   'refused: Bifrost does not delete an external session':
     "Bifrost can't delete a session that runs in another terminal.",
   'refused: bad chat panel': "Bifrost couldn't read the list of chat windows.",

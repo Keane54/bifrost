@@ -1,3 +1,5 @@
+import type { SessionRow } from './types'
+
 // The worktree of a session. Claude Code makes it in <repo>/.claude/worktrees/<name>.
 const MARK = '/.claude/worktrees/'
 
@@ -22,4 +24,21 @@ export function worktreeOf(row: { cwd: string; worktree?: string }): string | nu
   const root =
     worktreeRoot(row.cwd) ?? (row.worktree === undefined ? null : worktreeRoot(row.worktree))
   return root?.worktree ?? null
+}
+
+// The row that runs in the worktree of a parked row, else undefined (spec 8).
+// claude rm can remove a clean worktree when its session is stopped, also while another session
+// uses that folder. So Delete of a parked row is blocked while such a row exists.
+// Only a parked row can be blocked, and only a row that is not parked can block. So two parked
+// rows never block each other. A plain folder never blocks. The row itself never counts.
+export function folderUser<T extends Pick<SessionRow, 'sessionId' | 'state' | 'cwd' | 'worktree'>>(
+  row: T,
+  rows: readonly T[],
+): T | undefined {
+  if (row.state !== 'parked') return undefined
+  const root = worktreeOf(row)
+  if (root === null) return undefined
+  return rows.find(
+    r => r.sessionId !== row.sessionId && r.state !== 'parked' && worktreeOf(r) === root,
+  )
 }

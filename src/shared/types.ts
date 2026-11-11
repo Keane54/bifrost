@@ -132,6 +132,13 @@ export interface SessionRow {
   terminalApp?: string
 }
 
+// The result of a hand-over (spec 8): the new session, its name and the path of the note file.
+export interface HandOverResult {
+  sessionId: string
+  name: string
+  notePath: string
+}
+
 // The result of Resume all. resumed counts the sessions whose entry showed.
 // Each failure has the row name and the reason.
 export interface ResumeAllResult {

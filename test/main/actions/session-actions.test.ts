@@ -18,6 +18,8 @@ import {
   takeControlArgs,
 } from '../../../src/main/actions/session-actions'
 import type { ExecResult } from '../../../src/main/claude/cli'
+import type { HandOverRun } from '../../../src/main/handover/hand-over'
+import { MAX_TEXT, REASON_TOO_LONG } from '../../../src/shared/input'
 import {
   type DirInfo,
   type NewSessionSpec,
@@ -116,6 +118,11 @@ class Fake {
   check: (path: string) => (WorktreeCheck & { head: string }) | null = () => null
   // The count of the tracked changed files of a worktree before the stop. null is a git failure.
   tracked: (path: string) => number | null = () => 0
+  // The hand-over run. The default starts the new session with fixed arguments.
+  handOverRun: HandOverRun = async (r, start) => {
+    const started = await start(['--bg', '--name', 'x (2)', 'Continue.'], r.cwd)
+    return { name: started.name, notePath: '/n.md', sessionId: started.sessionId }
+  }
   base = Date.now()
 
   private add(op: string, ...args: unknown[]): void {
@@ -149,6 +156,10 @@ class Fake {
         return this.dir
       },
       forget: id => this.add('forget', id),
+      handOver: (r, start) => {
+        this.add('handOver', r.sessionId)
+        return this.handOverRun(r, start)
+      },
       hasMessages: async id => {
         this.add('hasMessages', id)
         return this.messages
@@ -372,6 +383,13 @@ describe('handOverArgs', () => {
     expect(() => handOverArgs({ ...opts, prompt: 'update' })).toThrow(REASON_PROMPT_IS_COMMAND)
     expect(() => handOverArgs({ ...opts, prompt: ' -p x' })).toThrow(
       'The first prompt cannot start with "-".',
+    )
+  })
+
+  test('the length limit of the New session prompt applies', () => {
+    expect(handOverArgs({ ...opts, prompt: 'x'.repeat(MAX_TEXT) }).at(-1)).toHaveLength(MAX_TEXT)
+    expect(() => handOverArgs({ ...opts, prompt: 'x'.repeat(MAX_TEXT + 1) })).toThrow(
+      REASON_TOO_LONG,
     )
   })
 
@@ -1198,6 +1216,160 @@ describe('remove waits for the end of the session process (Task 19 bugs 1 and 2)
       ['rm', KEPT_SHORT_ID, '--discard-unpushed', KEPT_DISCARD],
     ])
     expect(f.ops('forget')).toEqual([`${Date.now() - f.base} forget ${S}`])
+  })
+})
+
+describe('remove of a parked row whose folder another session uses (spec 8)', () => {
+  const WT = '/r/.claude/worktrees/w1'
+  const IN_USE = 'refused: another session uses this folder'
+  // A stopped worktree session reports its start folder. The row keeps the worktree.
+  const old = () => parked({ cwd: '/r', worktree: WT })
+  const user = (o: Partial<SessionRow> = {}) =>
+    row({ cwd: `${WT}/src`, sessionId: S2, shortId: '1234abcd', ...o })
+
+  test('remove refuses while a running row uses the same worktree root', async () => {
+    f.rows = [old(), user()]
+    await expect(actions.remove(S, true)).rejects.toThrow(IN_USE)
+    // Also an external row and a working row block.
+    f.rows = [old(), user({ kind: 'external', shortId: undefined, state: 'working' })]
+    await expect(actions.remove(S, true)).rejects.toThrow(IN_USE)
+    expect(f.log).toEqual([])
+  })
+
+  test('remove runs when that row is parked too', async () => {
+    f.rows = [old(), user({ pid: undefined, state: 'parked' })]
+    await actions.remove(S, true)
+    expect(f.ops()).toEqual([
+      `0 run ${JSON.stringify(['rm', SHORT])} ${JSON.stringify(RM_OPTS)}`,
+      `0 forget ${S}`,
+    ])
+  })
+
+  test('a running row is not blocked, and a plain folder is not blocked', async () => {
+    // claude rm keeps a worktree that a running session uses. So only a parked row is blocked.
+    f.rows = [row({ cwd: WT }), user()]
+    await actions.remove(S, true)
+    f.rows = [parked(), row({ sessionId: S2, shortId: '1234abcd' })]
+    await actions.remove(S, true)
+    expect(f.ops('forget')).toEqual([`0 forget ${S}`, `0 forget ${S}`])
+  })
+})
+
+describe('handOver', () => {
+  const NEW_ROW = row({ name: 'x (2)', sessionId: S2, shortId: NEW_SHORT })
+
+  test('handOver checks the folder, finds claude, then runs the hand-over', async () => {
+    f.rows = [row({ box: 'yellow', state: 'needs-you' })]
+    f.exec = () => STARTED
+    f.appear = [NEW_ROW]
+    await expect(actions.handOver(S)).resolves.toEqual({
+      name: 'x (2)',
+      notePath: '/n.md',
+      sessionId: S2,
+    })
+    expect(f.ops('dirInfo', 'handOver')).toEqual(['0 dirInfo /p', `0 handOver ${S}`])
+  })
+
+  test('start runs claude --bg in the folder, waits for the new row and marks it', async () => {
+    f.rows = [row()]
+    f.exec = () => STARTED
+    // Only an owned entry with a PID that is not parked is the new session.
+    f.appear = [
+      row({ kind: 'external', sessionId: S3, shortId: NEW_SHORT }),
+      parked({ sessionId: S3, shortId: NEW_SHORT }),
+      row({ pid: undefined, sessionId: S3, shortId: NEW_SHORT }),
+      NEW_ROW,
+    ]
+    await actions.handOver(S)
+    expect(f.ops()).toEqual([
+      '0 dirInfo /p',
+      `0 handOver ${S}`,
+      `0 run ${JSON.stringify(['--bg', '--name', 'x (2)', 'Continue.'])} ${JSON.stringify(IN_P)}`,
+      `0 waitForRow ${START_TIMEOUT_MS}`,
+      `0 markStarted ${S2}`,
+    ])
+  })
+
+  test('start gives the timeout text of New session and marks nothing', async () => {
+    f.rows = [row()]
+    f.exec = () => STARTED
+    const done = actions.handOver(S)
+    const check = expect(done).rejects.toThrow(
+      `The session ${NEW_SHORT} did not start in 30 seconds. ` +
+        `Run claude logs ${NEW_SHORT} to see the cause.`,
+    )
+    await vi.advanceTimersByTimeAsync(START_TIMEOUT_MS)
+    await check
+    expect(f.ops('markStarted')).toEqual([])
+  })
+
+  test('handOver refuses external, parked, working, an open prompt and no short ID', async () => {
+    const cases: [SessionRow, string][] = [
+      [external(), 'refused: only an owned session that runs'],
+      [parked(), 'refused: only an owned session that runs'],
+      [row({ state: 'working' }), 'refused: the session is working'],
+      [
+        row({ box: 'red', boxReason: 'prompt', state: 'needs-you' }),
+        'refused: the session has an open prompt',
+      ],
+      // A red box with no known cause can be a prompt.
+      [row({ box: 'red', state: 'needs-you' }), 'refused: the session has an open prompt'],
+      [row({ shortId: undefined }), 'refused: the session runs and has no short ID'],
+      [row({ shortId: 'ABCD1234' }), 'refused: bad session ID'],
+    ]
+    for (const [r, reason] of cases) {
+      f.rows = [r]
+      await expect(actions.handOver(S), reason).rejects.toThrow(reason)
+    }
+    await expect(actions.handOver(7)).rejects.toThrow('refused: unknown session')
+    await expect(actions.handOver(S2)).rejects.toThrow('refused: unknown session')
+    expect(f.log).toEqual([])
+  })
+
+  test('an old yellow box and an error box do not block', async () => {
+    for (const boxReason of ['escalated', 'error'] as const) {
+      f.rows = [row({ box: 'red', boxReason, state: 'needs-you' })]
+      f.exec = () => STARTED
+      f.appear = [NEW_ROW]
+      await expect(actions.handOver(S)).resolves.toEqual(expect.objectContaining({ sessionId: S2 }))
+    }
+  })
+
+  test('handOver refuses a missing folder and a missing claude before the run', async () => {
+    f.rows = [row()]
+    f.dir = { git: false, kind: 'missing' }
+    await expect(actions.handOver(S)).rejects.toThrow("The folder /p doesn't exist.")
+    f.dir = { git: true, kind: 'dir' }
+    f.claude = false
+    await expect(actions.handOver(S)).rejects.toThrow('claude not found')
+    expect(f.ops('handOver', 'run')).toEqual([])
+  })
+
+  test('a stop during a handOver is refused, and the lock is free after it', async () => {
+    f.rows = [row()]
+    f.handOverRun = () =>
+      new Promise(resolve =>
+        setTimeout(() => resolve({ name: 'x (2)', notePath: '/n.md', sessionId: S2 }), 1000),
+      )
+    const running = actions.handOver(S)
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(actions.stop(S)).rejects.toThrow(LOCKED)
+    await expect(actions.handOver(S)).rejects.toThrow(LOCKED)
+    await expect(actions.remove(S, true)).rejects.toThrow(LOCKED)
+    await vi.advanceTimersByTimeAsync(1000)
+    await expect(running).resolves.toEqual(expect.objectContaining({ sessionId: S2 }))
+    await expect(actions.stop(S)).resolves.toBeUndefined()
+  })
+
+  test('a failed hand-over gives its message and frees the lock', async () => {
+    f.rows = [row()]
+    f.handOverRun = async () => {
+      throw new Error('The session stopped before it finished the hand-over note.')
+    }
+    await expect(actions.handOver(S)).rejects.toThrow(
+      'The session stopped before it finished the hand-over note.',
+    )
+    await expect(actions.stop(S)).resolves.toBeUndefined()
   })
 })
 
