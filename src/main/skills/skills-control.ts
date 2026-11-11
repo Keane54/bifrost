@@ -50,15 +50,29 @@ export function createSkillsControl(deps: SkillsControlDeps): SkillsControl {
 
   // Refuse a marketplace of another program. Bifrost acts only when the marketplace is missing
   // or its path is the skills folder. Else it changes nothing.
+  function foreignText(market: MarketplaceEntry): string | null {
+    if (market.path !== undefined && samePath(market.path, dir)) return null
+    return (
+      'A marketplace with the name bifrost-skills already exists at ' +
+      `${market.path ?? market.source}. Bifrost did not change it.`
+    )
+  }
+
   async function ownMarket(cli: PluginCli): Promise<MarketplaceEntry | null> {
     const market = await cli.marketplace()
-    if (market !== null && (market.path === undefined || !samePath(market.path, dir))) {
-      throw new Error(
-        'A marketplace with the name bifrost-skills already exists at ' +
-          `${market.path ?? market.source}. Bifrost did not change it.`,
-      )
-    }
+    const text = market === null ? null : foreignText(market)
+    if (text !== null) throw new Error(text)
     return market
+  }
+
+  // The text for a foreign marketplace, or null. A failed read gives null.
+  async function foreignMarket(): Promise<string | null> {
+    try {
+      const market = await (await needCli()).marketplace()
+      return market === null ? null : foreignText(market)
+    } catch {
+      return null
+    }
   }
 
   async function readPlugin(): Promise<{
@@ -76,7 +90,7 @@ export function createSkillsControl(deps: SkillsControlDeps): SkillsControl {
   }
 
   async function status(): Promise<SkillsStatus> {
-    const [plugin, current, list] = await Promise.all([
+    const [plugin, current, list, foreign] = await Promise.all([
       readPlugin(),
       skillsFolderCurrent(source, dir),
       listSkills(source).then(
@@ -86,9 +100,13 @@ export function createSkillsControl(deps: SkillsControlDeps): SkillsControl {
           skills: [],
         }),
       ),
+      foreignMarket(),
     ])
     const folder = plugin.entry?.folder
-    const error = [plugin.error, list.error].filter(e => e !== undefined && e !== '').join(' ')
+    const foreignError = plugin.entry !== null && plugin.error === undefined ? foreign : null
+    const error = [plugin.error, list.error, foreignError ?? undefined]
+      .filter(e => e !== undefined && e !== '')
+      .join(' ')
     const result: SkillsStatus = {
       folderCurrent: current && (folder === undefined || samePath(folder, dir)),
       plugin: plugin.state,

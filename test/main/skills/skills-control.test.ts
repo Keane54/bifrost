@@ -197,7 +197,7 @@ describe('uninstall', () => {
     expect(existsSync(dir)).toBe(false)
     expect(status.plugin).toBe('not-installed')
   })
-  test('refuses a marketplace at another path, and keeps it and its folder (Review Focus 5)', async () => {
+  test('refuses a marketplace at another path, keeps it and its folder (Review Focus 5)', async () => {
     const other = join(root, 'other')
     put(other, 'keep.txt', 'mine')
     await syncSkillsFolder(source, dir)
@@ -312,6 +312,17 @@ describe('a foreign marketplace bifrost-skills', () => {
     )
     expect(writes()).toEqual([])
     expect(existsSync(dir)).toBe(false)
+  })
+  test('status reports the foreign marketplace as its error', async () => {
+    const { control } = setup({ marketplace: foreign, plugin: on })
+    const status = await control.status()
+    expect(status.error).toBe(
+      'A marketplace with the name bifrost-skills already exists at /other. ' +
+        'Bifrost did not change it.',
+    )
+  })
+  test('status has no foreign error for an own or missing marketplace', async () => {
+    expect((await setup({ plugin: on }).control.status()).error).toBeUndefined()
   })
 })
 

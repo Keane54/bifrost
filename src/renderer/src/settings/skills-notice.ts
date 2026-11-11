@@ -61,7 +61,9 @@ export function skillsNotice(status: SkillsStatus | null): SkillsNotice {
     case 'disabled':
       return { kind: 'off' }
     case 'enabled':
-      return status.folderCurrent ? { kind: 'on' } : { kind: 'problem', message: FILES_DIFFER }
+      if (status.folderCurrent) return { kind: 'on' }
+      // A problem text of the main process (for example a foreign marketplace) comes first.
+      return { kind: 'problem', message: status.error ?? FILES_DIFFER }
   }
 }
 

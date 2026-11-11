@@ -88,6 +88,16 @@ describe('skillsNotice and skillsStateLine', () => {
   })
 })
 
+describe('skillsNotice with a foreign marketplace', () => {
+  it('shows the problem text, not the files text', () => {
+    const error = 'A marketplace with the name bifrost-skills already exists at /other.'
+    expect(skillsNotice(status({ error, folderCurrent: false }))).toEqual({
+      kind: 'problem',
+      message: error,
+    })
+  })
+})
+
 describe('skillsDoneLine', () => {
   it('names the skills, except in a problem', () => {
     expect(skillsDoneLine({ kind: 'on' })).toBe('Skills: On.')
