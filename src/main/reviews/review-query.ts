@@ -99,7 +99,7 @@ const THREADS_QUERY = `query ReviewThreads(
 type Rec = Record<string, unknown>
 type Fail = { ok: false; message: string }
 
-const BAD_ANSWER = 'GitHub gave an answer that Bifrost could not read.'
+export const BAD_ANSWER = 'GitHub gave an answer that Bifrost could not read.'
 const REVIEW_STATES: readonly string[] = [
   'APPROVED',
   'CHANGES_REQUESTED',

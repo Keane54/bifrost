@@ -37,6 +37,18 @@ describe('createGh', () => {
       timeoutMs: 5000,
     })
   })
+
+  it('passes input to exec when given', async () => {
+    const exec = vi.fn<ExecFn>(async () => res({ code: 0 }))
+    const gh = createGh({ env: async () => ({}), exec })
+    await gh.run(['api', '--input', '-'], { input: '{}' })
+    expect(exec).toHaveBeenCalledWith('gh', ['api', '--input', '-'], {
+      env: {},
+      input: '{}',
+      maxBuffer: GH_MAX_BUFFER,
+      timeoutMs: GH_TIMEOUT_MS,
+    })
+  })
 })
 
 describe('ghFailure', () => {

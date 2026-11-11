@@ -11,12 +11,16 @@ import type { ExecFn, ExecResult } from '../claude/cli'
 
 export const GH_TIMEOUT_MS = 30_000
 export const GH_MAX_BUFFER = 16 * 1024 * 1024
-const MESSAGE_MAX = 200
+export const MESSAGE_MAX = 200
 // gh gives exit code 4 when the user is not logged in.
 const EXIT_AUTH = 4
 
 export interface Gh {
-  run(args: string[], opts?: { cwd?: string; timeoutMs?: number }): Promise<ExecResult>
+  // input goes to the stdin of gh, for example for --input -.
+  run(
+    args: string[],
+    opts?: { cwd?: string; timeoutMs?: number; input?: string },
+  ): Promise<ExecResult>
 }
 
 export interface GhDeps {
@@ -31,6 +35,7 @@ export function createGh(deps: GhDeps): Gh {
       return deps.exec('gh', args, {
         ...(opts?.cwd === undefined ? {} : { cwd: opts.cwd }),
         env: await deps.env(),
+        ...(opts?.input === undefined ? {} : { input: opts.input }),
         maxBuffer: GH_MAX_BUFFER,
         timeoutMs: opts?.timeoutMs ?? GH_TIMEOUT_MS,
       })

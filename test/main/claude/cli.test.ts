@@ -130,3 +130,29 @@ test('execFile keeps the Node default limit without maxBuffer', async () => {
   expect(result.code).toBe(0)
   expect(result.stdout).toHaveLength(64)
 })
+
+// gh reads a request body from stdin. cat gives the input back, so the test sees each byte. The
+// input is larger than a pipe buffer and has a character of more than one byte.
+test('execFile passes input to stdin', async () => {
+  const input = `café ${'x'.repeat(200_000)}\n`
+  const result = await execFile('/bin/cat', [], { input, timeoutMs: 5000 })
+  expect(result.code).toBe(0)
+  expect(result.stdout).toBe(input)
+})
+
+// The program ends before it reads stdin. The write then fails with EPIPE. execFile ignores that
+// error and gives the result of the program.
+test('execFile gives the result when the program ends before it reads its input', async () => {
+  const result = await execFile('/bin/sh', ['-c', 'exit 3'], { input: 'x'.repeat(1_000_000) })
+  expect(result.code).toBe(3)
+})
+
+// claude adds piped stdin to the prompt. So a claude run never gets input, also when a caller
+// passes a wider object.
+test('createRunClaude never passes input to claude', async () => {
+  const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '' })
+  const opts = { cwd: '/w', input: 'text' }
+  await createRunClaude(exec, '/bin/claude', {})(['-p'], opts)
+  expect(exec.mock.calls[0][2]).not.toHaveProperty('input')
+  expect(exec.mock.calls[0][2].cwd).toBe('/w')
+})

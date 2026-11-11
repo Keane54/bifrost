@@ -27,6 +27,8 @@ export type ExecFn = (
     killSignal?: KillSignal
     // The limit of stdout and of stderr in bytes. The default is the default of Node.
     maxBuffer?: number
+    // The text for stdin. Only gh gets it. A claude run never gets it (see execFile).
+    input?: string
   },
 ) => Promise<ExecResult>
 
@@ -42,6 +44,7 @@ const DEFAULT_TIMEOUT_MS = 10000
 // must also set its own limit.
 // The program gets an empty, closed stdin. claude adds piped stdin to the prompt (spec 8).
 // A program that reads stdin then gets the end of the input at once. It does not wait.
+// With opts.input, the program gets that text on stdin, then the end of the input.
 export const execFile: ExecFn = (file, args, opts) =>
   new Promise(resolve => {
     const child = nodeExecFile(
@@ -78,7 +81,14 @@ export const execFile: ExecFn = (file, args, opts) =>
         resolve(result)
       },
     )
-    child.stdin?.end()
+    if (opts?.input === undefined) {
+      child.stdin?.end()
+      return
+    }
+    // The program can end before it reads stdin. The write then fails with EPIPE. The callback
+    // gives the result of the program, so this error has no other effect.
+    child.stdin?.on('error', () => undefined)
+    child.stdin?.end(opts.input)
   })
 
 // True when the file exists and the user can run it.
@@ -128,5 +138,10 @@ export function createRunClaude(
   claudePath: string,
   baseEnv: NodeJS.ProcessEnv,
 ): RunClaude {
-  return (args, opts) => exec(claudePath, args, { ...opts, env: childEnv(baseEnv, { pty: false }) })
+  return (args, opts) => {
+    // claude adds piped stdin to the prompt. So a claude run never gets input, also when a
+    // caller passes a wider object.
+    const { input: _input, ...rest } = (opts ?? {}) as NonNullable<Parameters<ExecFn>[2]>
+    return exec(claudePath, args, { ...rest, env: childEnv(baseEnv, { pty: false }) })
+  }
 }
