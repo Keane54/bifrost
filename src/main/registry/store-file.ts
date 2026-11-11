@@ -21,7 +21,6 @@ function emptyStore(): RegistryStore {
     lastActive: [],
     names: {},
     priorities: {},
-    prSessions: [],
     started: [],
     watch: [],
     worktrees: [],
