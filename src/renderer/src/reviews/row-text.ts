@@ -25,8 +25,14 @@ export function toReviewText(row: ToReviewRow, now: number): string {
       return ''
     case 'draft-ready':
       return 'Draft ready'
+    case 'reviewed':
+      return 'Looks good'
+    case 'failed':
+      return 'Review failed'
     case 'waiting':
       return 'Waiting for you'
+    case 'trust-needed':
+      return 'Trust needed'
     case 'reviewing':
       return 'Reviewing'
     case 'queued':

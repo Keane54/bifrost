@@ -1,7 +1,17 @@
 // Types and values of the Reviews panel. Main and renderer both use this file.
 
 // A PR key looks like owner/repo#123. The renderer sends only this key, never a path or a URL.
-export const PR_KEY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}#[1-9][0-9]{0,9}$/
+// The repository name is never . or .. (a path part).
+export const PR_KEY =
+  /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}#)[A-Za-z0-9._-]{1,100}#[1-9][0-9]{0,9}$/
+
+// A repository key looks like owner/repo.
+export const REPO_KEY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/
+
+// The owner/repo part of a PR key, in lower case. GitHub ignores case in these names.
+export function repoOf(key: string): string {
+  return key.slice(0, key.lastIndexOf('#')).toLowerCase()
+}
 
 export function prKey(owner: string, repo: string, number: number): string {
   return `${owner}/${repo}#${number}`
@@ -16,12 +26,22 @@ export type ReviewsAvailability = 'off' | 'starting' | 'ok' | 'no-gh' | 'logged-
 export type ToReviewState =
   | 'new'
   | 'draft-ready'
+  | 'reviewed'
+  | 'failed'
   | 'waiting'
+  | 'trust-needed'
   | 'reviewing'
   | 'queued'
   | 'paused'
   | 'approved-by-others'
   | 'team'
+export type Recommendation = 'approve' | 'comment' | 'request-changes'
+export const RECOMMENDATIONS: readonly Recommendation[] = ['approve', 'comment', 'request-changes']
+export const RECOMMENDATION_TEXT: Record<Recommendation, string> = {
+  approve: 'Approve',
+  comment: 'Comment',
+  'request-changes': 'Request changes',
+}
 export type ReviewStatus = 'changes-requested' | 'comments' | 'approved' | 'pending'
 export type ClaudeState =
   | 'needs-you'
@@ -49,6 +69,11 @@ export interface ToReviewRow {
   flash: boolean
   pauseEndsAt: number | null
   sessionId: string | null
+  // The recommendation of the last review. Set for draft-ready and reviewed rows only.
+  recommendation: Recommendation | null
+  why: string | null
+  // The error of the last review. Set for failed rows only.
+  error: string | null
 }
 
 export interface MyPrRow {

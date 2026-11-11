@@ -1,4 +1,5 @@
-import { PR_KEY } from '../../shared/reviews'
+import { PR_KEY, RECOMMENDATIONS, REPO_KEY, type Recommendation } from '../../shared/reviews'
+import { SHORT_ID } from '../actions/claude-output'
 
 // The Reviews state. Bifrost keeps it in ~/.bifrost/reviews/state.json.
 // R1 uses turnedOnAt, baseline, requests and pauses.
@@ -7,6 +8,38 @@ import { PR_KEY } from '../../shared/reviews'
 export interface SessionRef {
   sessionId: string
   name: string
+  // The short ID of the session. Kept only when it has 8 hex digits.
+  shortId?: string
+}
+
+export type RoundPhase = 'preparing' | 'running' | 'posting'
+
+// One review round of a PR. `at` is the `at` of the queue entry that started the round.
+export interface ActiveRound {
+  phase: RoundPhase
+  startedAt: number
+  at: number
+  headSha: string | null
+  shortId: string | null
+  sessionId: string | null
+  stoppedByUser: boolean
+}
+
+export interface RecommendationMark {
+  value: Recommendation
+  why: string
+  headSha: string
+  reviewId: string | null
+  at: number
+}
+
+// R3 adds 'request'.
+export type JobKind = 'review'
+
+export interface QueueEntry {
+  key: string
+  kind: JobKind
+  at: number
 }
 
 export interface PrState {
@@ -20,6 +53,9 @@ export interface PrState {
   handleCopilot: boolean
   rerequested: Record<string, string>
   lastError: string | null
+  round: ActiveRound | null
+  recommendation: RecommendationMark | null
+  actedAt: number | null
 }
 
 export interface PostedComment {
@@ -56,7 +92,14 @@ export interface ReviewsState {
   posted: PostedComment[]
   drafts: DraftComment[]
   voicePairs: VoicePair[]
+  // One entry for each key and kind, sorted by at.
+  queue: QueueEntry[]
+  repos: Record<string, { trustNotifiedAt: number | null }>
+  // The end of the trust set-up. Null until the set-up ran.
+  setUpAt: number | null
 }
+
+export const MAX_QUEUE = 200
 
 export const EMPTY_STATE: ReviewsState = {
   baseline: [],
@@ -64,7 +107,10 @@ export const EMPTY_STATE: ReviewsState = {
   pauses: {},
   posted: [],
   prs: {},
+  queue: [],
+  repos: {},
   requests: {},
+  setUpAt: null,
   turnedOnAt: null,
   version: 1,
   voicePairs: [],
@@ -72,15 +118,18 @@ export const EMPTY_STATE: ReviewsState = {
 
 export function emptyPrState(): PrState {
   return {
+    actedAt: null,
     firstCopilotReview: null,
     handleCopilot: false,
     handled: {},
     handleOlder: false,
     lastError: null,
     lastReviewedCommit: null,
+    recommendation: null,
     request: null,
     rerequested: {},
     review: null,
+    round: null,
   }
 }
 
@@ -109,7 +158,58 @@ function stringOrNull(value: unknown): string | null {
 
 function sessionRef(value: unknown): SessionRef | null {
   if (!isObject(value) || !isString(value.sessionId) || !isString(value.name)) return null
-  return { name: value.name, sessionId: value.sessionId }
+  const ref: SessionRef = { name: value.name, sessionId: value.sessionId }
+  if (isString(value.shortId) && SHORT_ID.test(value.shortId)) ref.shortId = value.shortId
+  return ref
+}
+
+function parseRound(value: unknown): ActiveRound | null {
+  if (!isObject(value)) return null
+  const { phase } = value
+  if (phase !== 'preparing' && phase !== 'running' && phase !== 'posting') return null
+  if (!isNumber(value.startedAt) || !isNumber(value.at)) return null
+  return {
+    at: value.at,
+    headSha: stringOrNull(value.headSha),
+    phase,
+    sessionId: stringOrNull(value.sessionId),
+    shortId: isString(value.shortId) && SHORT_ID.test(value.shortId) ? value.shortId : null,
+    startedAt: value.startedAt,
+    stoppedByUser: value.stoppedByUser === true,
+  }
+}
+
+function parseMark(value: unknown): RecommendationMark | null {
+  if (!isObject(value) || !isNumber(value.at)) return null
+  const { value: mark } = value
+  if (!RECOMMENDATIONS.includes(mark as Recommendation)) return null
+  if (!isString(value.why) || !isString(value.headSha)) return null
+  return {
+    at: value.at,
+    headSha: value.headSha,
+    reviewId: stringOrNull(value.reviewId),
+    value: mark as Recommendation,
+    why: value.why,
+  }
+}
+
+// Keep the valid entries. One entry for each key and kind, the first wins. Sort by time and keep
+// the newest, up to the cap.
+function parseQueue(value: unknown): QueueEntry[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  const list: QueueEntry[] = []
+  for (const entry of value) {
+    if (!isObject(entry) || !keyOk(entry.key) || entry.kind !== 'review' || !isNumber(entry.at)) {
+      continue
+    }
+    const id = `${entry.kind}:${entry.key}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    list.push({ at: entry.at, key: entry.key, kind: entry.kind })
+  }
+  list.sort((a, b) => a.at - b.at)
+  return list.length > MAX_QUEUE ? list.slice(0, MAX_QUEUE) : list
 }
 
 // Keys that change an object or its prototype. A file can hold them as own keys, because
@@ -144,6 +244,9 @@ function parsePrState(value: unknown): PrState {
   state.review = sessionRef(value.review)
   state.handleOlder = value.handleOlder === true
   state.handleCopilot = value.handleCopilot === true
+  state.round = parseRound(value.round)
+  state.recommendation = parseMark(value.recommendation)
+  state.actedAt = isNumber(value.actedAt) ? value.actedAt : null
   return state
 }
 
@@ -191,6 +294,15 @@ export function parseState(data: unknown): ReviewsState {
       if (keyOk(key)) prs[key] = parsePrState(entry)
     }
   }
+  const repos: ReviewsState['repos'] = {}
+  if (isObject(data.repos)) {
+    for (const [key, entry] of Object.entries(data.repos)) {
+      if (!REPO_KEY.test(key) || !isObject(entry)) continue
+      repos[key] = {
+        trustNotifiedAt: isNumber(entry.trustNotifiedAt) ? entry.trustNotifiedAt : null,
+      }
+    }
+  }
   return {
     baseline: Array.isArray(data.baseline)
       ? data.baseline.filter((id): id is string => isString(id) && id !== '')
@@ -219,7 +331,10 @@ export function parseState(data: unknown): ReviewsState {
         : null,
     ),
     prs,
+    queue: parseQueue(data.queue),
+    repos,
     requests,
+    setUpAt: isNumber(data.setUpAt) ? data.setUpAt : null,
     turnedOnAt: isNumber(data.turnedOnAt) ? data.turnedOnAt : null,
     version: 1,
     voicePairs: parseList(data.voicePairs, MAX_VOICE_PAIRS, e =>

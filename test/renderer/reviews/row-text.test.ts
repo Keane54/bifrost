@@ -18,17 +18,20 @@ function to(patch: Partial<ToReviewRow>): ToReviewRow {
     additions: 1,
     author: 'sam',
     deletions: 1,
+    error: null,
     flash: false,
     key: 'a/b#1',
     number: 1,
     owner: 'a',
     pauseEndsAt: null,
+    recommendation: null,
     repo: 'b',
     requestedAt: NOW,
     sessionId: null,
     state: 'new',
     team: false,
     title: 't',
+    why: null,
     ...patch,
   }
 }
@@ -71,6 +74,9 @@ describe('row text', () => {
 
   it('toReviewText', () => {
     expect(toReviewText(to({ state: 'draft-ready' }), NOW)).toBe('Draft ready')
+    expect(toReviewText(to({ state: 'reviewed' }), NOW)).toBe('Looks good')
+    expect(toReviewText(to({ state: 'failed' }), NOW)).toBe('Review failed')
+    expect(toReviewText(to({ state: 'trust-needed' }), NOW)).toBe('Trust needed')
     expect(toReviewText(to({ state: 'waiting' }), NOW)).toBe('Waiting for you')
     expect(toReviewText(to({ state: 'reviewing' }), NOW)).toBe('Reviewing')
     expect(toReviewText(to({ state: 'queued' }), NOW)).toBe('Queued')

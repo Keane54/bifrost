@@ -172,6 +172,8 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
   let lastEndAt = Number.NEGATIVE_INFINITY
   let lastPoll: PollData | null = null
   let polledAt: number | null = null
+  // The start time of the last good poll.
+  let pollStartedAt = 0
   // The failure of the last poll, or null after a good poll.
   let failure: GhFailure | null = null
   // The state of the last good poll when the store could not save it, or null. The snapshot uses
@@ -199,9 +201,12 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       claude: () => R1_CLAUDE,
       now: deps.now(),
       poll: lastPoll,
+      pollStartedAt,
       session: () => null,
+      sessionOf: () => null,
       settings: deps.settings(),
       state: unsaved ?? deps.store.get(),
+      trust: [],
     })
     return { ...built, polledAt, ...failed }
   }
@@ -305,6 +310,7 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
     unsaved = notSaved
     lastPoll = data
     polledAt = now
+    pollStartedAt = lastPollAt
     failure = null
     health.poll('reviews', 'ok')
     set(build())

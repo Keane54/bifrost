@@ -7,6 +7,7 @@ import {
   type ToReviewRow,
   type ToReviewState,
   TRUSTED_ASSOCIATIONS,
+  type TrustNeed,
 } from '../../shared/reviews'
 import { sortMine, sortToReview } from '../../shared/reviews-order'
 import type { Settings } from '../../shared/settings'
@@ -156,7 +157,29 @@ export interface RequestContext {
   known: { baseline: boolean } | undefined
   pauseEndsAt: number | null
   teamRequests: boolean
-  session: 'reviewing' | 'queued' | null
+  session: 'reviewing' | 'queued' | 'trust-needed' | null
+  // The result of the last round of the PR, from outcomeOf.
+  outcome: 'drafted' | 'reviewed' | 'failed' | null
+  // True when the user acted on the request (a round started or ended).
+  acted: boolean
+}
+
+// The result of the last round of a PR.
+// failed: the last round gave an error.
+// reviewed: the mark has no review ID and its head is the PR head (no draft was needed).
+// drafted: the mark has a review ID and is newer than the poll, so the poll does not show the
+// new draft yet.
+export function outcomeOf(
+  pr: PrState | undefined,
+  headSha: string,
+  pollStartedAt: number,
+): 'drafted' | 'reviewed' | 'failed' | null {
+  if (pr === undefined) return null
+  if (pr.lastError !== null) return 'failed'
+  const mark = pr.recommendation
+  if (mark === null) return null
+  if (mark.reviewId === null) return mark.headSha === headSha ? 'reviewed' : null
+  return mark.at > pollStartedAt ? 'drafted' : null
 }
 
 // Design 8.2. The result is null for a team request when team requests are off.
@@ -169,11 +192,13 @@ export function toReviewState(
   const direct = pr.requestedUsers.includes(viewer)
   // With team requests off, Bifrost hides a team-only request in all states except a session.
   if (!direct && !ctx.teamRequests) return null
-  if (pr.viewerPendingReviewId !== null) return 'draft-ready'
+  if (pr.viewerPendingReviewId !== null || ctx.outcome === 'drafted') return 'draft-ready'
+  if (ctx.outcome === 'reviewed') return 'reviewed'
+  if (ctx.outcome === 'failed') return 'failed'
   if (ctx.pauseEndsAt !== null && ctx.now < ctx.pauseEndsAt) return 'paused'
   if (pr.reviewDecision === 'APPROVED') return 'approved-by-others'
   if (!direct) return 'team'
-  return ctx.known?.baseline === true ? 'waiting' : 'new'
+  return ctx.known?.baseline === true || ctx.acted ? 'waiting' : 'new'
 }
 
 // The ignore list holds "owner/*" or "owner/repo". The match ignores case.
@@ -191,7 +216,12 @@ export interface SnapshotInput {
   state: ReviewsState
   now: number
   settings: Pick<Settings, 'reviewsTeamRequests' | 'reviewsIgnore'>
-  session(key: string): 'reviewing' | 'queued' | null
+  session(key: string): 'reviewing' | 'queued' | 'trust-needed' | null
+  // The row ID of a review session of the PR that is not parked.
+  sessionOf(key: string): string | null
+  trust: TrustNeed[]
+  // The start time of the last good poll.
+  pollStartedAt: number
   claude(key: string): {
     claude: ClaudeState
     fixing: number
@@ -225,29 +255,38 @@ export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
   for (const pr of poll.toReview) {
     if (isIgnored(pr.owner, pr.repo, settings.reviewsIgnore)) continue
     const pauseEndsAt = state.pauses[pr.key] ?? null
+    const known = state.requests[pr.key]
+    const prState = state.prs[pr.key]
     const rowState = toReviewState(pr, poll.viewer, {
-      known: state.requests[pr.key],
+      acted: prState?.actedAt != null && known !== undefined && prState.actedAt >= known.firstSeen,
+      known,
       now,
+      outcome: outcomeOf(prState, pr.headSha, input.pollStartedAt),
       pauseEndsAt,
       session: input.session(pr.key),
       teamRequests: settings.reviewsTeamRequests,
     })
     if (rowState === null) continue
+    const mark =
+      rowState === 'draft-ready' || rowState === 'reviewed' ? prState?.recommendation : null
     toReview.push({
       additions: pr.additions,
       author: pr.author,
       deletions: pr.deletions,
+      error: rowState === 'failed' ? (prState?.lastError ?? null) : null,
       flash: rowState === 'new',
       key: pr.key,
       number: pr.number,
       owner: pr.owner,
       pauseEndsAt: rowState === 'paused' ? pauseEndsAt : null,
+      recommendation: mark?.value ?? null,
       repo: pr.repo,
       requestedAt: pr.requestedAt,
-      sessionId: null,
+      sessionId: input.sessionOf(pr.key),
       state: rowState,
       team: !pr.requestedUsers.includes(poll.viewer),
       title: pr.title,
+      why: mark?.why ?? null,
     })
   }
   const mine: MyPrRow[] = []
@@ -281,7 +320,7 @@ export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
     mine: sortMine(mine),
     polledAt: now,
     toReview: sortToReview(toReview),
-    trust: [],
+    trust: input.trust,
   }
 }
 

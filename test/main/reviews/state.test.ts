@@ -18,7 +18,10 @@ function valid(): ReviewsState {
     pauses: { [KEY]: 99 },
     posted: [{ at: 1, body: 'x', id: 'c1', prKey: KEY }],
     prs: { [KEY]: { ...emptyPrState(), handleCopilot: true } },
+    queue: [],
+    repos: {},
     requests: { [KEY]: { baseline: true, firstSeen: 5 } },
+    setUpAt: null,
     turnedOnAt: 10,
     version: 1,
     voicePairs: [{ at: 2, draft: 'd', final: 'f', prKey: KEY }],
@@ -26,6 +29,74 @@ function valid(): ReviewsState {
 }
 
 describe('parseState', () => {
+  it('keeps a valid queue, round, mark, actedAt and setUpAt', () => {
+    const state = valid()
+    state.queue = [
+      { at: 1, key: KEY, kind: 'review' },
+      { at: 2, key: 'acme/app#13', kind: 'review' },
+    ]
+    state.repos = { 'acme/app': { trustNotifiedAt: 7 } }
+    state.setUpAt = 50
+    state.prs[KEY] = {
+      ...emptyPrState(),
+      actedAt: 9,
+      recommendation: { at: 8, headSha: 'abc', reviewId: 'r1', value: 'comment', why: 'w' },
+      review: { name: 'n', sessionId: 's', shortId: 'abcd1234' },
+      round: {
+        at: 1,
+        headSha: 'abc',
+        phase: 'running',
+        sessionId: 's',
+        shortId: 'abcd1234',
+        startedAt: 2,
+        stoppedByUser: false,
+      },
+    }
+    expect(parseState(JSON.parse(JSON.stringify(state)))).toEqual(state)
+  })
+
+  it('drops a queue entry with a bad key and a second entry for one key', () => {
+    const state = parseState({
+      ...valid(),
+      queue: [
+        { at: 3, key: KEY, kind: 'review' },
+        { at: 1, key: 'bad key', kind: 'review' },
+        { at: 2, key: KEY, kind: 'review' },
+        { at: 4, key: 'acme/app#2', kind: 'other' },
+        { at: 5, key: 'acme/..#2', kind: 'review' },
+      ],
+    })
+    expect(state.queue).toEqual([{ at: 3, key: KEY, kind: 'review' }])
+  })
+
+  it('a file from R1 parses with an empty queue, no round and a null setUpAt', () => {
+    const old: Record<string, unknown> = JSON.parse(JSON.stringify(valid()))
+    delete old.queue
+    delete old.repos
+    delete old.setUpAt
+    const prs = old.prs as Record<string, Record<string, unknown>>
+    for (const field of ['round', 'recommendation', 'actedAt']) delete prs[KEY]?.[field]
+    const state = parseState(old)
+    expect(state.queue).toEqual([])
+    expect(state.repos).toEqual({})
+    expect(state.setUpAt).toBeNull()
+    expect(state.prs[KEY]?.round).toBeNull()
+    expect(state.prs[KEY]?.recommendation).toBeNull()
+    expect(state.prs[KEY]?.actedAt).toBeNull()
+  })
+
+  it('drops a shortId that is not 8 hex digits', () => {
+    const data = valid()
+    data.prs[KEY] = {
+      ...emptyPrState(),
+      request: { name: 'n', sessionId: 's', shortId: 'XYZ' },
+      review: { name: 'n', sessionId: 's', shortId: 'abcd1234' },
+    }
+    const state = parseState(JSON.parse(JSON.stringify(data)))
+    expect(state.prs[KEY]?.request).toEqual({ name: 'n', sessionId: 's' })
+    expect(state.prs[KEY]?.review?.shortId).toBe('abcd1234')
+  })
+
   it('keeps a valid state', () => {
     const state = valid()
     expect(parseState(JSON.parse(JSON.stringify(state)))).toEqual(state)

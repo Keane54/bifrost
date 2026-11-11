@@ -4,7 +4,10 @@ import type { MyPrRow, ReviewStatus, ToReviewRow, ToReviewState } from './review
 export const TO_REVIEW_ORDER: readonly ToReviewState[] = [
   'new',
   'draft-ready',
+  'reviewed',
+  'failed',
   'waiting',
+  'trust-needed',
   'reviewing',
   'queued',
   'paused',

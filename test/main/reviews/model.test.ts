@@ -5,6 +5,7 @@ import {
   isCopilot,
   isIgnored,
   isTrustedHuman,
+  outcomeOf,
   type RequestContext,
   reviewStatus,
   splitWork,
@@ -19,7 +20,7 @@ import type {
   PrThread,
 } from '../../../src/main/reviews/pr-data'
 import { EMPTY_STATE, emptyPrState, type PrState } from '../../../src/main/reviews/state'
-import { COPILOT_LOGIN } from '../../../src/shared/reviews'
+import { COPILOT_LOGIN, PR_KEY, REPO_KEY, repoOf } from '../../../src/shared/reviews'
 
 const VIEWER = 'dev-user'
 const NONE = new Set<string>()
@@ -337,18 +338,34 @@ describe('reviewStatus', () => {
   })
 })
 
+function snapshotInput(poll: PollData, state: typeof EMPTY_STATE) {
+  return {
+    claude: () => ({ claude: 'waiting' as const, error: null, fixing: 0, sessionId: null }),
+    now: 5000,
+    poll,
+    pollStartedAt: 0,
+    session: () => null,
+    sessionOf: () => null,
+    settings: { reviewsIgnore: [] as string[], reviewsTeamRequests: true },
+    state,
+    trust: [],
+  }
+}
+
 describe('toReviewState', () => {
   const direct = pr({ requestedUsers: [VIEWER] })
   const ctx = (over: Partial<RequestContext> = {}): RequestContext => ({
+    acted: false,
     known: undefined,
     now: 1000,
+    outcome: null,
     pauseEndsAt: null,
     session: null,
     teamRequests: true,
     ...over,
   })
 
-  it('toReviewState: precedence session > draft-ready > paused > approved-by-others > team > waiting > new', () => {
+  it('toReviewState: precedence session > draft-ready > reviewed > failed > paused > approved-by-others > team > waiting > new', () => {
     const full = pr({
       requestedUsers: [VIEWER],
       reviewDecision: 'APPROVED',
@@ -357,8 +374,12 @@ describe('toReviewState', () => {
     const base = ctx({ known: { baseline: true }, pauseEndsAt: 2000 })
     expect(toReviewState(full, VIEWER, { ...base, session: 'reviewing' })).toBe('reviewing')
     expect(toReviewState(full, VIEWER, { ...base, session: 'queued' })).toBe('queued')
+    expect(toReviewState(full, VIEWER, { ...base, session: 'trust-needed' })).toBe('trust-needed')
     expect(toReviewState(full, VIEWER, base)).toBe('draft-ready')
     const noDraft = { ...full, viewerPendingReviewId: null }
+    expect(toReviewState(noDraft, VIEWER, { ...base, outcome: 'drafted' })).toBe('draft-ready')
+    expect(toReviewState(noDraft, VIEWER, { ...base, outcome: 'reviewed' })).toBe('reviewed')
+    expect(toReviewState(noDraft, VIEWER, { ...base, outcome: 'failed' })).toBe('failed')
     expect(toReviewState(noDraft, VIEWER, base)).toBe('paused')
     expect(toReviewState(noDraft, VIEWER, { ...base, pauseEndsAt: 1000 })).toBe(
       'approved-by-others',
@@ -369,6 +390,58 @@ describe('toReviewState', () => {
     expect(toReviewState(direct, VIEWER, ctx({ known: { baseline: true } }))).toBe('waiting')
     expect(toReviewState(direct, VIEWER, ctx({ known: { baseline: false } }))).toBe('new')
     expect(toReviewState(direct, VIEWER, ctx())).toBe('new')
+  })
+
+  it('an acted request is waiting, not new, and does not flash', () => {
+    expect(toReviewState(direct, VIEWER, ctx({ acted: true }))).toBe('waiting')
+    const state = structuredClone(EMPTY_STATE)
+    state.requests['acme/app#1'] = { baseline: false, firstSeen: 100 }
+    state.prs['acme/app#1'] = { ...emptyPrState(), actedAt: 100 }
+    const poll: PollData = {
+      errors: [],
+      mine: [],
+      mineHasMore: false,
+      rateLimit: null,
+      toReview: [pr({ requestedUsers: [VIEWER] })],
+      toReviewHasMore: false,
+      viewer: VIEWER,
+    }
+    const row = (s: typeof state) => buildSnapshot(snapshotInput(poll, s)).toReview[0]
+    expect(row(state)?.state).toBe('waiting')
+    expect(row(state)?.flash).toBe(false)
+    state.prs['acme/app#1'] = { ...emptyPrState(), actedAt: 99 }
+    expect(row(state)?.state).toBe('new')
+  })
+
+  it('outcomeOf: drafted only while the poll is older than the mark', () => {
+    const mark = { at: 500, headSha: 'abc', reviewId: 'r1', value: 'comment' as const, why: 'w' }
+    const prState = { ...emptyPrState(), recommendation: mark }
+    expect(outcomeOf(prState, 'abc', 400)).toBe('drafted')
+    expect(outcomeOf(prState, 'abc', 500)).toBeNull()
+    expect(outcomeOf(prState, 'abc', 600)).toBeNull()
+    expect(outcomeOf(undefined, 'abc', 0)).toBeNull()
+    expect(outcomeOf({ ...prState, lastError: 'boom' }, 'abc', 600)).toBe('failed')
+  })
+
+  it('outcomeOf: reviewed only for the same head', () => {
+    const mark = { at: 500, headSha: 'abc', reviewId: null, value: 'approve' as const, why: 'w' }
+    const prState = { ...emptyPrState(), recommendation: mark }
+    expect(outcomeOf(prState, 'abc', 600)).toBe('reviewed')
+    expect(outcomeOf(prState, 'def', 600)).toBeNull()
+  })
+
+  it('PR_KEY refuses acme/..#1 and REPO_KEY refuses acme/.', () => {
+    expect(PR_KEY.test('acme/..#1')).toBe(false)
+    expect(PR_KEY.test('acme/.#1')).toBe(false)
+    expect(PR_KEY.test('acme/a.b#1')).toBe(true)
+    expect(REPO_KEY.test('acme/.')).toBe(false)
+    expect(REPO_KEY.test('acme/..')).toBe(false)
+    expect(REPO_KEY.test('acme/app')).toBe(true)
+  })
+
+  it('repoOf gives a lower-case key', () => {
+    expect(repoOf('Acme/Api#7')).toBe('acme/api')
+    expect(repoOf('acme/api#7')).toBe('acme/api')
   })
 
   it('toReviewState: a team request is null when teamRequests is off', () => {
@@ -405,9 +478,12 @@ describe('buildSnapshot', () => {
       claude: () => waiting,
       now: 5000,
       poll,
+      pollStartedAt: 0,
       session: () => null,
+      sessionOf: () => null,
       settings,
       state: structuredClone(EMPTY_STATE),
+      trust: [],
       ...over,
     }
   }
@@ -502,9 +578,12 @@ describe('buildSnapshot team flag', () => {
       claude: () => ({ claude: 'waiting', error: null, fixing: 0, sessionId: null }),
       now: 5000,
       poll,
+      pollStartedAt: 0,
       session: () => null,
+      sessionOf: () => null,
       settings: { reviewsIgnore: [], reviewsTeamRequests: true },
       state,
+      trust: [],
     })
     expect(snap.toReview.map(r => [r.key, r.state, r.team]).sort()).toEqual([
       ['acme/app#1', 'team', true],
@@ -512,6 +591,70 @@ describe('buildSnapshot team flag', () => {
       ['acme/app#3', 'paused', true],
       ['acme/app#4', 'new', false],
     ])
+  })
+})
+
+describe('buildSnapshot recommendation', () => {
+  it('buildSnapshot fills the recommendation only for draft-ready and reviewed rows', () => {
+    const mark = (reviewId: string | null) => ({
+      at: 500,
+      headSha: 'abc',
+      reviewId,
+      value: 'request-changes' as const,
+      why: 'Bug in a.ts',
+    })
+    const mk = (n: number, over: Partial<PrData> = {}) =>
+      pr({ key: `acme/app#${n}`, number: n, requestedUsers: [VIEWER], ...over })
+    const poll: PollData = {
+      errors: [],
+      mine: [],
+      mineHasMore: false,
+      rateLimit: null,
+      toReview: [mk(1), mk(2), mk(3), mk(4)],
+      toReviewHasMore: false,
+      viewer: VIEWER,
+    }
+    const state = structuredClone(EMPTY_STATE)
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('r1') }
+    state.prs['acme/app#2'] = { ...emptyPrState(), recommendation: mark(null) }
+    state.prs['acme/app#3'] = {
+      ...emptyPrState(),
+      lastError: 'The review failed.',
+      recommendation: mark('r1'),
+    }
+    state.prs['acme/app#4'] = { ...emptyPrState(), recommendation: mark(null) }
+    const input = snapshotInput(poll, state)
+    input.pollStartedAt = 400
+    const snap = buildSnapshot({
+      ...input,
+      session: key => (key === 'acme/app#4' ? 'reviewing' : null),
+      sessionOf: key => (key === 'acme/app#4' ? 'row-4' : null),
+      trust: [{ repo: 'acme/app', waiting: 1 }],
+    })
+    const rows = Object.fromEntries(snap.toReview.map(r => [r.key, r]))
+    expect(rows['acme/app#1']).toMatchObject({
+      error: null,
+      recommendation: 'request-changes',
+      state: 'draft-ready',
+      why: 'Bug in a.ts',
+    })
+    expect(rows['acme/app#2']).toMatchObject({
+      recommendation: 'request-changes',
+      state: 'reviewed',
+    })
+    expect(rows['acme/app#3']).toMatchObject({
+      error: 'The review failed.',
+      recommendation: null,
+      state: 'failed',
+      why: null,
+    })
+    expect(rows['acme/app#4']).toMatchObject({
+      recommendation: null,
+      sessionId: 'row-4',
+      state: 'reviewing',
+      why: null,
+    })
+    expect(snap.trust).toEqual([{ repo: 'acme/app', waiting: 1 }])
   })
 })
 
@@ -528,9 +671,12 @@ describe('buildSnapshot of a busy PR', () => {
       toReviewHasMore: false,
       viewer: VIEWER,
     },
+    pollStartedAt: 0,
     session: () => null,
+    sessionOf: () => null,
     settings: { reviewsIgnore: [] as string[], reviewsTeamRequests: true },
     state: structuredClone(EMPTY_STATE),
+    trust: [],
   })
 
   it('a My PRs row is truncated when one of its lists is cut', () => {
