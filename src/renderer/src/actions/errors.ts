@@ -67,6 +67,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: only an external session': REASON_ONLY_EXTERNAL,
   'refused: only an owned session that runs': ONLY_RUNNING,
   'refused: Resume all runs': REASON_RESUME_ALL_RUNS,
+  'refused: reviews are busy': 'Wait for the running reviews to finish, then try again.',
   'refused: reviews are off': 'Turn on Watch GitHub in Settings first.',
   'refused: Take control needs a confirmation': 'Take control needs your confirmation first.',
   'refused: the attach is not for the session of the chat view':
@@ -105,12 +106,15 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the worktree has uncommitted changes':
     "This worktree has changes that aren't committed, so Claude Code won't delete it. Open the worktree, commit or discard them, then delete again.",
   'refused: the worktree option is off': "The worktree option isn't available.",
+  'refused: this pull request cannot get a review now':
+    "This pull request can't get a review right now.",
   'refused: two keys have the same binding': "Two actions can't share the same key.",
   'refused: unknown app': "Bifrost doesn't know that app.",
   'refused: unknown model': "Bifrost doesn't know that model.",
   'refused: unknown permission mode': "Bifrost doesn't know that permission mode.",
   'refused: unknown pull request': "That pull request isn't in the list any more.",
   'refused: unknown release': "That release isn't in the list of release notes.",
+  'refused: unknown repository': "That repository doesn't need trust any more.",
   'refused: unknown service': "Bifrost doesn't know that service.",
   'refused: unknown session': REASON_GONE,
 }

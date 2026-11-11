@@ -20,6 +20,9 @@ export interface ActiveRound {
   startedAt: number
   at: number
   headSha: string | null
+  // The base commit of the diff of the round. After a restart, Bifrost makes the diff again from
+  // its clone with this commit. A file without it parses with no baseSha.
+  baseSha?: string
   shortId: string | null
   sessionId: string | null
   stoppedByUser: boolean
@@ -141,6 +144,9 @@ export const MAX_VOICE_PAIRS = 1000
 
 type Obj = Record<string, unknown>
 
+// A full commit ID: SHA-1 or SHA-256.
+const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
 function isObject(value: unknown): value is Obj {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -169,7 +175,7 @@ function parseRound(value: unknown): ActiveRound | null {
   const { phase } = value
   if (phase !== 'preparing' && phase !== 'running' && phase !== 'posting') return null
   if (!isNumber(value.startedAt) || !isNumber(value.at)) return null
-  return {
+  const round: ActiveRound = {
     at: value.at,
     headSha: stringOrNull(value.headSha),
     phase,
@@ -178,6 +184,8 @@ function parseRound(value: unknown): ActiveRound | null {
     startedAt: value.startedAt,
     stoppedByUser: value.stoppedByUser === true,
   }
+  if (isString(value.baseSha) && OBJECT_ID.test(value.baseSha)) round.baseSha = value.baseSha
+  return round
 }
 
 function parseMark(value: unknown): RecommendationMark | null {

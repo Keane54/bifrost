@@ -86,6 +86,27 @@ describe('parseState', () => {
     expect(state.prs[KEY]?.actedAt).toBeNull()
   })
 
+  it('keeps the base commit of a round, and drops a base that is not a commit ID', () => {
+    const base = 'b'.repeat(40)
+    const round = {
+      at: 1,
+      baseSha: base,
+      headSha: 'a'.repeat(40),
+      phase: 'running',
+      sessionId: 's',
+      shortId: 'abcd1234',
+      startedAt: 2,
+      stoppedByUser: false,
+    }
+    const data = JSON.parse(JSON.stringify(valid()))
+    data.prs[KEY] = { ...emptyPrState(), round }
+    expect(parseState(data).prs[KEY]?.round?.baseSha).toBe(base)
+    data.prs[KEY].round.baseSha = 'main'
+    expect(parseState(data).prs[KEY]?.round).not.toHaveProperty('baseSha')
+    delete data.prs[KEY].round.baseSha
+    expect(parseState(data).prs[KEY]?.round).not.toHaveProperty('baseSha')
+  })
+
   it('drops a shortId that is not 8 hex digits', () => {
     const data = valid()
     data.prs[KEY] = {
