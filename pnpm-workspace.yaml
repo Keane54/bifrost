@@ -4,8 +4,5 @@ allowBuilds:
   node-pty: true
   electron-winstaller: false
   lefthook: true
-minimumReleaseAgeExclude:
-  - '@tanstack/hotkeys@0.27.1'
-  - '@tanstack/react-hotkeys@0.23.1'
 patchedDependencies:
   '@xterm/addon-webgl@0.19.0': patches/@xterm__addon-webgl@0.19.0.patch
