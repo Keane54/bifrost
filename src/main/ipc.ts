@@ -1303,6 +1303,9 @@ export function registerIpc(home: TestHome | null = null): void {
       writeNoteFile(join(paths.bifrostHome, 'handovers'), noteFileName(name, at), note),
   })
   const sessions = createSessionActions({
+    carryOver: (from, to) => {
+      liveService?.carryOver(from, to)
+    },
     checkWorktree: worktree => checkWorktreeHead(worktree, execFile),
     dirInfo: dir => dirInfo(execFile, stat, dir),
     forget: id => liveService?.forget(id),

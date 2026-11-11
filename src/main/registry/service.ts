@@ -285,6 +285,13 @@ export class RegistryService {
     return ok
   }
 
+  // Move the priority and the watchlist entry to the new session of a Hand over.
+  carryOver(fromId: string, toId: string): boolean {
+    const ok = this.registry.carryOver(fromId, toId)
+    if (ok) this.changed()
+    return ok
+  }
+
   // Store the worktree that claude rm names for a session. Return false when the registry
   // refuses it.
   rememberWorktree(sessionId: string, path: string): boolean {

@@ -148,6 +148,7 @@ class Fake {
 
   deps(): SessionActionDeps {
     return {
+      carryOver: (from, to) => this.add('carryOver', from, to),
       checkWorktree: async path => {
         this.add('checkWorktree', path)
         return this.check(path)
@@ -1300,6 +1301,7 @@ describe('handOver', () => {
       `0 run ${JSON.stringify(['--bg', '--name', 'x (2)', 'Continue.'])} ${JSON.stringify(IN_P)}`,
       `0 waitForRow ${START_TIMEOUT_MS}`,
       `0 markStarted ${S2}`,
+      `0 carryOver ${S} ${S2}`,
     ])
   })
 
@@ -1372,6 +1374,23 @@ describe('handOver', () => {
     await vi.advanceTimersByTimeAsync(1000)
     await expect(running).resolves.toEqual(expect.objectContaining({ sessionId: S2 }))
     await expect(actions.stop(S)).resolves.toBeUndefined()
+  })
+
+  test('hand over moves the values to the new session', async () => {
+    f.rows = [row()]
+    f.exec = () => STARTED
+    f.appear = [NEW_ROW]
+    await actions.handOver(S)
+    expect(f.ops('handOver', 'carryOver')).toEqual([`0 handOver ${S}`, `0 carryOver ${S} ${S2}`])
+  })
+
+  test('a failed hand over moves nothing', async () => {
+    f.rows = [row()]
+    f.handOverRun = async () => {
+      throw new Error('The session stopped before it finished the hand-over note.')
+    }
+    await expect(actions.handOver(S)).rejects.toThrow()
+    expect(f.ops('carryOver')).toEqual([])
   })
 
   test('a failed hand-over gives its message and frees the lock', async () => {

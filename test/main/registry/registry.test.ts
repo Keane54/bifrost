@@ -763,6 +763,91 @@ describe('forget, lastActive and terminals', () => {
   })
 })
 
+describe('carryOver', () => {
+  const four = (store?: RegistryStore) => {
+    const r = registry(store)
+    r.applyAgents(
+      ['s1', 's2', 's3', 's4'].map((id, i) =>
+        bg({ id: `i${i}`, name: id, pid: 5 + i, sessionId: id }),
+      ),
+      100,
+    )
+    r.storeChanged()
+    return r
+  }
+
+  test('moves the priority to the new session', () => {
+    const r = four()
+    r.setPriority('s2', 2)
+    r.storeChanged()
+    expect(r.carryOver('s2', 's4')).toBe(true)
+    expect(r.store().priorities).toEqual({ s4: 2 })
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('moves the watch entry to the same place with the same colour', () => {
+    const r = four()
+    r.watchAdd('s1', 'red')
+    r.watchAdd('s2', 'amber')
+    r.watchAdd('s3', 'green')
+    r.storeChanged()
+    expect(r.carryOver('s2', 's4')).toBe(true)
+    expect(r.store().watch).toEqual([
+      { colour: 'red', sessionId: 's1' },
+      { colour: 'amber', sessionId: 's4' },
+      { colour: 'green', sessionId: 's3' },
+    ])
+    expect(r.storeChanged()).toBe(true)
+  })
+
+  test('keeps the values of the new session when the old one has none', () => {
+    const r = four()
+    r.setPriority('s4', 3)
+    r.watchAdd('s4', 'green')
+    r.storeChanged()
+    expect(r.carryOver('s2', 's4')).toBe(true)
+    expect(r.store().priorities).toEqual({ s4: 3 })
+    expect(r.store().watch).toEqual([{ colour: 'green', sessionId: 's4' }])
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('replaces an earlier watch entry of the new session', () => {
+    const r = four()
+    r.watchAdd('s2', 'red')
+    r.watchAdd('s3', 'green')
+    r.watchAdd('s4', 'dark-blue')
+    r.storeChanged()
+    expect(r.carryOver('s2', 's4')).toBe(true)
+    expect(r.store().watch).toEqual([
+      { colour: 'red', sessionId: 's4' },
+      { colour: 'green', sessionId: 's3' },
+    ])
+  })
+
+  test('returns false and changes nothing for an unknown ID', () => {
+    const r = four()
+    r.setPriority('s2', 2)
+    r.watchAdd('s2', 'red')
+    r.storeChanged()
+    const before = structuredClone(r.store())
+    expect(r.carryOver('s2', 'nope')).toBe(false)
+    expect(r.carryOver('nope', 's4')).toBe(false)
+    expect(r.store()).toEqual(before)
+    expect(r.storeChanged()).toBe(false)
+  })
+
+  test('the moved values survive a store reload', () => {
+    const r = four()
+    r.setPriority('s2', 2)
+    r.watchAdd('s2', 'red')
+    r.carryOver('s2', 's4')
+    const again = four(structuredClone(r.store()))
+    expect(again.rows().find(row => row.sessionId === 's4')?.priority).toBe(2)
+    expect(again.store().watch).toEqual([{ colour: 'red', sessionId: 's4' }])
+    expect(again.store().priorities).toEqual({ s4: 2 })
+  })
+})
+
 describe('watchlist', () => {
   const two = () => {
     const r = registry()

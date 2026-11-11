@@ -134,6 +134,8 @@ export interface SessionActionDeps {
   // The count of the changed files that git tracks in a worktree root (trackedChanges in
   // worktree-check.ts). Untracked files do not count. null means a git failure.
   trackedChanges(worktree: string): Promise<number | null>
+  // Move the priority and the watchlist entry of the old session to the new session.
+  carryOver(fromId: string, toId: string): void
   // Store the worktree root that claude rm names, for a row whose worktree Bifrost does not know.
   rememberWorktree(sessionId: string, worktree: string): void
   // True when the transcript of the session has a user message. A read error gives true.
@@ -579,7 +581,9 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (promptBlocks(row)) throw new Error(REFUSED_PROMPT)
         await checkProjectDir(row.cwd)
         const run = await claude()
-        return deps.handOver(row, (args, cwd) => startAndWait(run, args, cwd))
+        const result = await deps.handOver(row, (args, cwd) => startAndWait(run, args, cwd))
+        deps.carryOver(row.sessionId, result.sessionId)
+        return result
       })
     },
 

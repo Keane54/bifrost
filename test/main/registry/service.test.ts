@@ -378,6 +378,22 @@ describe('updates and the store', () => {
     expect(service.rememberWorktree('nope', WT)).toBe(false)
   })
 
+  test('carryOver sends one update only when the registry moves values', async () => {
+    const entries = [bg(), bg({ id: 'bb', name: 'beta', pid: 6, sessionId: 's2' })]
+    const { service, updates } = startService(fakeDeps({ listActive: async () => ({ entries }) }))
+    await vi.advanceTimersByTimeAsync(1000)
+    service.setPriority('s1', 2)
+    await vi.advanceTimersByTimeAsync(1000)
+    const count = updates.length
+    expect(service.carryOver('s1', 's2')).toBe(true)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(updates.length).toBe(count + 1)
+    expect(updates.at(-1)?.rows.find(r => r.sessionId === 's2')?.priority).toBe(2)
+    expect(service.carryOver('s1', 'nope')).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(updates.length).toBe(count + 1)
+  })
+
   test('the watch changes send an update and save the store', async () => {
     const saveStore = vi.fn(async () => {})
     const entries = [bg(), bg({ id: 'bb', name: 'beta', pid: 6, sessionId: 's2' })]

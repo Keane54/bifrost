@@ -916,6 +916,32 @@ export class SessionRegistry {
     return true
   }
 
+  // Move the priority and the watchlist entry of one session to another session (Hand over).
+  // The old session loses both. With no value on the old session, the new session keeps its own.
+  // The new session takes the place and the colour of the old session in the watchlist.
+  // Return false if one ID is unknown. Then nothing changes.
+  carryOver(fromId: string, toId: string): boolean {
+    if (!this.sessions.has(fromId) || !this.sessions.has(toId)) return false
+    if (fromId === toId) return true
+    const priority = this.priorities.get(fromId)
+    if (priority !== undefined) {
+      this.priorities.delete(fromId)
+      this.priorities.set(toId, priority)
+      this.changed = true
+    }
+    const colour = this.watched.get(fromId)
+    if (colour !== undefined) {
+      const entries = [...this.watched].filter(([id]) => id !== toId)
+      this.watched.clear()
+      for (const [id, c] of entries) {
+        if (id === fromId) this.watched.set(toId, colour)
+        else this.watched.set(id, c)
+      }
+      this.changed = true
+    }
+    return true
+  }
+
   // Store the worktree root that claude rm names for a session. Bifrost did not see the
   // session run in it. Return false for an unknown session or a path that is not a worktree
   // root. Then nothing changes.
