@@ -137,7 +137,7 @@ export interface ReviewRunner {
   trust(): TrustNeed[]
   busy(): boolean
   clonePathOf(repo: string): string | null
-  // Resolves when the background work of the runner ends. Tests use it.
+  // For tests only. Resolves when the background work of the runner ends.
   settled(): Promise<void>
 }
 
@@ -220,6 +220,11 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   const ending = new Set<string>()
   // The review sessions that got the idle stop, by row ID.
   const idleStopped = new Set<string>()
+  // The names of late sessions that no PR state holds any more: a start gave no row in time, and
+  // then the request went or a new round replaced the session. When the row of such a session
+  // shows, Bifrost removes the session. No new session gets one of these names. The list is not
+  // saved.
+  const late = new Set<string>()
   const work = new Set<Promise<unknown>>()
   let pumping = false
   let pumpAgain = false
@@ -529,11 +534,16 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     }
   }
 
-  // Stop and remove a review session. With no short ID, there is nothing to remove.
+  // Stop and remove a review session. With no short ID, there is nothing to remove. A late session
+  // with no row yet keeps its name in late, so it goes when its row shows.
   async function removeSession(ref: SessionRef): Promise<void> {
     const row = rowOf(ref, deps.rows())
     const shortId = ref.shortId ?? row?.shortId
     const sessionId = row?.sessionId ?? ref.sessionId
+    if (row === undefined && ref.sessionId === '') {
+      late.add(ref.name)
+      return
+    }
     if (shortId === undefined || sessionId === '') return
     idleStopped.delete(sessionId)
     try {
@@ -562,12 +572,16 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     }
   }
 
-  // The names of the sessions in the registry.
+  // The names of the sessions in the registry, and the names of the late sessions. A late session
+  // can still show, so a new session never gets its name.
   function namesInUse(): Set<string> {
-    const names = new Set<string>()
+    const names = new Set<string>(late)
     for (const row of deps.rows()) {
       names.add(row.name)
       names.add(row.claudeName)
+    }
+    for (const pr of Object.values(store.get().prs)) {
+      if (pr.review?.sessionId === '') names.add(pr.review.name)
     }
     return names
   }
@@ -624,6 +638,9 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
       if (!alive(key, token)) {
         if (started.ok) {
           await removeSession({ name, sessionId: started.sessionId, shortId: started.shortId })
+        } else if (!started.trust) {
+          // The session can still run. Remove it when its row shows.
+          late.add(name)
         }
         return await gone()
       }
@@ -653,6 +670,9 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
                 phase: 'running',
                 sessionId: started.sessionId,
                 shortId: started.shortId,
+                // The time limit counts from the start of the session, so a slow clone or
+                // checkout does not take time from the session.
+                startedAt: deps.now(),
               },
       }))
       if (!saved) {
@@ -941,6 +961,16 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     deps.changed()
   }
 
+  // Remove each late session whose row shows now.
+  function removeLate(rows: readonly SessionRow[]): void {
+    for (const name of late) {
+      const row = rows.find(r => r.kind === 'owned' && r.claudeName === name)
+      if (row?.shortId === undefined) continue
+      late.delete(name)
+      bg(removeSession({ name, sessionId: row.sessionId, shortId: row.shortId }))
+    }
+  }
+
   function sessionOf(key: string): string | null {
     const ref = store.get().prs[key]?.review
     if (!ref) return null
@@ -974,7 +1004,10 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
         for (const [key] of lost) {
           const round = next.prs[key]?.round
           if (round == null || tokens.has(key)) continue
-          if (round.phase === 'preparing') {
+          if (round.phase === 'preparing' && round.stoppedByUser) {
+            // The user stopped the round. It must not start again.
+            next = changePr(next, key, p => ({ ...p, lastError: REASON_STOPPED, round: null }))
+          } else if (round.phase === 'preparing') {
             next = changePr(next, key, p => ({ ...p, round: null }))
             next = { ...next, queue: enqueue(next.queue, { at: round.at, key, kind: 'review' }) }
           } else if (round.phase === 'posting') {
@@ -1003,7 +1036,10 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
       timer = null
       if (!running) return
       try {
-        pass(deps.rows())
+        const rows = deps.rows()
+        pass(rows)
+        // The registry sends rows only when they change, and an idle session changes nothing.
+        idleStops(rows, deps.now())
       } catch (error) {
         deps.log(`The review runner failed: ${messageOf(error)}`)
       }
@@ -1059,6 +1095,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
       pass(rows)
       idleStops(rows, now)
       bindLate(rows)
+      removeLate(rows)
       const text = sessionsText()
       if (text !== lastSessions) {
         lastSessions = text

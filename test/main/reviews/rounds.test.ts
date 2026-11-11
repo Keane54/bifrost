@@ -8,6 +8,7 @@ import type { Gh } from '../../../src/main/reviews/gh'
 import type { PollData, PrData } from '../../../src/main/reviews/pr-data'
 import { clonePath, ioPath, isInside, worktreePath } from '../../../src/main/reviews/repo-paths'
 import type { RepoStore } from '../../../src/main/reviews/repo-store'
+import { REASON_INPUT_FAILED } from '../../../src/main/reviews/review-input'
 import {
   type ReviewSessions,
   type StartOutcome,
@@ -80,6 +81,19 @@ const DIFF = [
 const OTHER_DIFF = DIFF.replaceAll('src/a.ts', 'src/evil.ts')
 
 const short = (n: number): string => n.toString(16).padStart(8, '0')
+
+// A promise that the test opens, and a promise that resolves when the code reaches the gate.
+function gate(): { wait: Promise<void>; open(): void; reach(): void; reached: Promise<void> } {
+  let open = (): void => {}
+  let reach = (): void => {}
+  const wait = new Promise<void>(resolve => {
+    open = resolve
+  })
+  const reached = new Promise<void>(resolve => {
+    reach = resolve
+  })
+  return { open, reach, reached, wait }
+}
 
 function resultText(over: Record<string, unknown> = {}, key = KEY): string {
   return JSON.stringify({
@@ -271,10 +285,13 @@ function make(o: Options = {}) {
     return { name: s.name, ok: true, sessionId: `sess-${started}`, shortId: short(started) }
   }
   const fake = {
+    // fetchPr calls atFetch, then waits for fetchGate.
+    atFetch: () => {},
     changed: 0,
     cloned: new Set<string>(),
     cloneFail: new Set<string>(),
     cloneGate: null as Promise<void> | null,
+    fetchGate: null as Promise<void> | null,
     head: HEAD,
     post: null as ExecResult | null,
     start: okStart as (s: {
@@ -306,6 +323,8 @@ function make(o: Options = {}) {
       return path
     },
     async fetchPr() {
+      fake.atFetch()
+      if (fake.fetchGate) await fake.fetchGate
       return { base: BASE, head: fake.head, mergeBase: BASE }
     },
     hasCommit: async () => false,
@@ -1264,23 +1283,24 @@ describe('the review round', () => {
     await ready(h, [pr(7)])
     await review(h)
     await endTurn(h, { result: APPROVE })
+    // The registry sends no update while the session stays idle. Only the timer runs.
     const since = Date.now()
-    await h.rowsNow([row(1, { ...IDLE, lastActivity: since })])
-    await h.tick(IDLE_STOP_MS - 1000)
-    await h.rowsNow([row(1, { ...IDLE, lastActivity: since })])
+    h.setRows([row(1, { ...IDLE, lastActivity: since })])
+    const onRows = vi.spyOn(h.runner, 'onRows')
+    await h.tick(IDLE_STOP_MS - PASS_MS)
     expect(h.calls.stops).toEqual([])
-    await h.tick(1000)
-    await h.rowsNow([row(1, { ...IDLE, lastActivity: since })])
+    await h.tick(2 * PASS_MS)
     expect(h.calls.stops).toEqual([short(1)])
-    await h.rowsNow([row(1, { ...IDLE, lastActivity: since })])
+    await h.tick(10 * PASS_MS)
     expect(h.calls.stops).toEqual([short(1)])
+    expect(onRows).not.toHaveBeenCalled()
     // A session with a prompt is not idle.
     const p = make({ id: 'b' })
     await ready(p, [pr(7)])
     await review(p)
     await endTurn(p, { result: APPROVE })
-    await p.tick(IDLE_STOP_MS)
     await p.rowsNow([row(1, { ...PROMPT, lastActivity: T0.getTime() })])
+    await p.tick(IDLE_STOP_MS + PASS_MS)
     expect(p.calls.stops).toEqual([])
   })
 
@@ -1396,6 +1416,222 @@ describe('the review round', () => {
       })
       await h.rowsNow([row(15, { claudeName: 'web-7-review', name: 'web-7-review' })])
       expect(h.calls.stops).toEqual([short(15)])
+    },
+  )
+
+  it('a restart fails a stopped preparing round with REASON_STOPPED', async () => {
+    const state: ReviewsState = {
+      ...EMPTY_STATE,
+      prs: {
+        [KEY]: {
+          ...emptyPrState(),
+          round: {
+            at: 100,
+            headSha: null,
+            phase: 'preparing',
+            sessionId: null,
+            shortId: null,
+            startedAt: 200,
+            stoppedByUser: true,
+          },
+        },
+      },
+      setUpAt: 1,
+    }
+    const h = make({ state })
+    await h.preClone()
+    await h.writeTrust([h.clone()])
+    h.runner.start()
+    await h.runner.settled()
+    await h.poll(pollOf([pr(7)]))
+    expect(h.pr()?.lastError).toBe(REASON_STOPPED)
+    expect(h.pr()?.round).toBeNull()
+    expect(h.state().queue).toEqual([])
+    expect(h.calls.starts).toEqual([])
+  })
+
+  it('a restart with no base commit fails the running round with REASON_INPUT_FAILED', async () => {
+    const state: ReviewsState = {
+      ...EMPTY_STATE,
+      prs: {
+        [KEY]: {
+          ...emptyPrState(),
+          review: { name: 'web-7-review', sessionId: 'sess-10', shortId: short(10) },
+          round: {
+            at: 100,
+            headSha: HEAD,
+            phase: 'running',
+            sessionId: 'sess-10',
+            shortId: short(10),
+            startedAt: T0.getTime(),
+            stoppedByUser: false,
+          },
+        },
+      },
+      setUpAt: 1,
+    }
+    const h = make({ state })
+    await h.preClone()
+    await h.writeTrust([h.clone()])
+    await mkdir(h.io(), { recursive: true })
+    await h.writeResult(resultText())
+    h.runner.start()
+    await h.runner.settled()
+    await h.poll(pollOf([pr(7)]))
+    await h.rowsNow([row(10, IDLE)])
+    await h.tick(END_SETTLE_MS + PASS_MS)
+    expect(h.pr()?.lastError).toBe(REASON_INPUT_FAILED)
+    expect(h.pr()?.round).toBeNull()
+    expect(h.posts()).toEqual([])
+  })
+
+  it('a PR that is closed at the second read fails the round with REASON_PR_CLOSED', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    await review(h)
+    h.ctx.state = 'MERGED'
+    await endTurn(h, { result: resultText() })
+    expect(h.pr()?.lastError).toBe(REASON_PR_CLOSED)
+    expect(h.pr()?.round).toBeNull()
+    expect(h.pr()?.recommendation).toBeNull()
+    expect(h.posts()).toEqual([])
+  })
+
+  it('stop ends the 5 second timer', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    await review(h)
+    expect(vi.getTimerCount()).toBe(1)
+    await h.rowsNow([row(1)])
+    await h.writeResult(resultText())
+    h.setRows([row(1, IDLE)])
+    h.runner.stop()
+    expect(vi.getTimerCount()).toBe(0)
+    await h.tick(ROUND_LIMIT_MS + PASS_MS)
+    expect(vi.getTimerCount()).toBe(0)
+    expect(h.pr()?.round?.phase).toBe('running')
+    expect(h.calls.stops).toEqual([])
+    expect(h.posts()).toEqual([])
+  })
+
+  it('a stop during preparing fails the round before the start', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    const g = gate()
+    h.fake.atFetch = g.reach
+    h.fake.fetchGate = g.wait
+    await h.runner.review(KEY)
+    await g.reached
+    await h.runner.stopSession(KEY)
+    expect(h.pr()?.round?.stoppedByUser).toBe(true)
+    g.open()
+    await h.runner.settled()
+    expect(h.pr()?.lastError).toBe(REASON_STOPPED)
+    expect(h.pr()?.round).toBeNull()
+    expect(h.calls.starts).toEqual([])
+    expect(h.calls.stops).toEqual([])
+    // A stop during the start stops the new session at once.
+    const b = make({ id: 'b' })
+    await ready(b, [pr(7)])
+    const s = gate()
+    b.fake.start = async x => {
+      s.reach()
+      await s.wait
+      return b.okStart(x)
+    }
+    await b.runner.review(KEY)
+    await s.reached
+    await b.runner.stopSession(KEY)
+    s.open()
+    await b.runner.settled()
+    expect(b.calls.stops).toEqual([short(1)])
+    await b.rowsNow([row(1, { state: 'parked', status: 'stopped' })])
+    await b.tick(END_SETTLE_MS + PASS_MS)
+    expect(b.pr()?.lastError).toBe(REASON_STOPPED)
+    expect(b.posts()).toEqual([])
+  })
+
+  it('the time limit of 30 minutes starts when the session starts', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    // The clone, the fetch and the worktree take 20 minutes.
+    h.fake.start = s => {
+      vi.setSystemTime(Date.now() + 20 * 60_000)
+      return h.okStart(s)
+    }
+    await review(h)
+    expect(h.pr()?.round?.startedAt).toBe(T0.getTime() + 20 * 60_000)
+    await h.rowsNow([row(1)])
+    await h.tick(ROUND_LIMIT_MS - 2 * PASS_MS)
+    expect(h.pr()?.round?.phase).toBe('running')
+    await h.tick(3 * PASS_MS)
+    expect(h.pr()?.lastError).toBe(REASON_TIMEOUT)
+  })
+
+  it(
+    'a request that goes while a start gives no row ' + 'removes the session when its row shows',
+    async () => {
+      const h = make()
+      await ready(h, [pr(7)])
+      const g = gate()
+      h.fake.start = async s => {
+        g.reach()
+        await g.wait
+        return { message: 'No row.', name: s.name, ok: false, trust: false }
+      }
+      await h.runner.review(KEY)
+      await g.reached
+      h.runner.afterPoll(pollOf([]))
+      g.open()
+      await h.runner.settled()
+      expect(h.pr()).toMatchObject({ lastError: null, review: null, round: null })
+      expect(h.calls.removes).toEqual([])
+      const late = row(15, { claudeName: 'web-7-review', name: 'web-7-review' })
+      await h.rowsNow([late])
+      expect(h.calls.removes).toEqual([
+        { name: 'web-7-review', sessionId: 'sess-15', shortId: short(15) },
+      ])
+      await h.rowsNow([late])
+      expect(h.calls.removes).toHaveLength(1)
+    },
+  )
+
+  it('a request that goes before the row of a late session shows keeps its name', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    h.fake.start = s => ({ message: 'No row.', name: s.name, ok: false, trust: false })
+    await review(h)
+    expect(h.pr()?.review).toEqual({ name: 'web-7-review', sessionId: '' })
+    await h.poll(pollOf([]))
+    expect(h.pr()?.review).toBeNull()
+    expect(h.calls.removes).toEqual([])
+    await h.rowsNow([row(15, { claudeName: 'web-7-review', name: 'web-7-review' })])
+    expect(h.calls.removes).toEqual([
+      { name: 'web-7-review', sessionId: 'sess-15', shortId: short(15) },
+    ])
+  })
+
+  it(
+    'a new click keeps the name of a late session, ' + 'and the new session gets another name',
+    async () => {
+      const h = make()
+      await ready(h, [pr(7)])
+      h.fake.start = s => ({ message: 'No row.', name: s.name, ok: false, trust: false })
+      await review(h)
+      expect(h.pr()?.review).toEqual({ name: 'web-7-review', sessionId: '' })
+      h.fake.start = h.okStart
+      await review(h)
+      expect(h.calls.starts.map(s => s.name)).toEqual(['web-7-review', 'acme-web-7-review'])
+      expect(h.pr()?.review).toEqual({
+        name: 'acme-web-7-review',
+        sessionId: 'sess-1',
+        shortId: short(1),
+      })
+      await h.rowsNow([row(1), row(15, { claudeName: 'web-7-review', name: 'web-7-review' })])
+      expect(h.calls.removes).toEqual([
+        { name: 'web-7-review', sessionId: 'sess-15', shortId: short(15) },
+      ])
+      expect(h.pr()?.round?.phase).toBe('running')
     },
   )
 
