@@ -24,7 +24,7 @@ const ctx = (over: Partial<ActionContext> = {}): ActionContext => ({
     { id: 'warp', label: 'Warp' },
   ],
   chatOpen: true,
-  folderInUse: false,
+  folderShared: false,
   labels: 'plain',
   running: false,
   slashFavourites: [],
@@ -593,21 +593,19 @@ describe('action model', () => {
     })
   })
 
-  describe('Delete and a shared folder', () => {
-    it('gives REASON_FOLDER_IN_USE when another session uses the folder', () => {
-      const state = actionStateFor('delete', parked, ctx({ folderInUse: true }))
-      expect(state).toEqual({ enabled: false, reason: R.REASON_FOLDER_IN_USE })
-      expect(R.REASON_FOLDER_IN_USE).toBe(
-        'Another session is still using this folder. Stop that session first, then delete this one.',
-      )
+  describe('Delete and a shared folder (spec 8 of the skills design)', () => {
+    it('Delete is enabled for a parked row whose folder a running row uses', () => {
+      const state = actionStateFor('delete', parked, ctx({ folderShared: true }))
+      expect(state).toEqual({ enabled: true, reason: null })
+      expect(Object.keys(R)).not.toContain('REASON_FOLDER_IN_USE')
     })
 
     it('stays enabled when no session uses the folder', () => {
       expect(actionStateFor('delete', parked, ctx()).enabled).toBe(true)
     })
 
-    it('gives REASON_RUNNING first while an action runs', () => {
-      const c = ctx({ folderInUse: true, running: true })
+    it('gives REASON_RUNNING while an action runs', () => {
+      const c = ctx({ folderShared: true, running: true })
       expect(actionStateFor('delete', parked, c).reason).toBe(R.REASON_RUNNING)
     })
   })

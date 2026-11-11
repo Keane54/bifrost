@@ -14,7 +14,6 @@ import type {
 import { WATCH_COLOURS } from '../../../shared/watch'
 import {
   REASON_EXTERNAL,
-  REASON_FOLDER_IN_USE,
   REASON_GONE,
   REASON_NO_APPS,
   REASON_NO_CWD,
@@ -127,8 +126,9 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
 
 export interface ActionContext {
   chatOpen: boolean
-  // True when a parked row with a short ID shares its worktree with a row that is not parked.
-  folderInUse: boolean
+  // True when a row with a short ID shares its worktree with another row. Delete then keeps the
+  // folder and shows no worktree check (spec 8 of the skills design). Delete stays enabled.
+  folderShared: boolean
   apps: ProjectApp[]
   labels: LabelSet
   // True while another action runs on the session.
@@ -191,7 +191,6 @@ export function actionStateFor(
     if (ctx.apps.length === 0) return off(REASON_NO_APPS)
   }
   if (RUNNING_BLOCKED.has(id) && ctx.running) return off(REASON_RUNNING)
-  if (id === 'delete' && ctx.folderInUse) return off(REASON_FOLDER_IN_USE)
   // The main process uses the same rule (spec 8.4). Take control keeps its own rule below.
   if (RED_BOX_BLOCKED.has(id) && promptBlocks(row)) return off(REASON_RED_BOX)
   if (NEEDS_SHORT_ID.has(id) && !row.shortId) return off(REASON_WAIT_ID)

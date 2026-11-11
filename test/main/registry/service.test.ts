@@ -394,6 +394,63 @@ describe('updates and the store', () => {
     expect(updates.length).toBe(count + 1)
   })
 
+  test('the deferred delete functions save the store only when it changes', async () => {
+    const saveStore = vi.fn(async (_store: RegistryStore) => {})
+    const WT = '/r/.claude/worktrees/w1'
+    const A = { sessionId: 's1', shortId: 'aa', worktree: WT }
+    // s1 is a parked row of the last run. s2 runs in the same worktree.
+    const entries = [bg({ cwd: WT, id: 'bb', name: 'beta', pid: 6, sessionId: 's2' })]
+    const registry = newRegistry({
+      lastActive: [],
+      names: {},
+      priorities: {},
+      started: ['s1'],
+      watch: [],
+    })
+    const { service, updates } = startService(
+      fakeDeps({ listActive: async () => ({ entries }), saveStore }),
+      registry,
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(updates.at(-1)?.rows.map(r => r.sessionId)).toEqual(['s1', 's2'])
+    saveStore.mockClear()
+    const count = updates.length
+    const saves = () => saveStore.mock.calls.length
+    const lastDeferred = () => saveStore.mock.calls.at(-1)?.[0].deferred
+
+    // defer removes the row: one update and one save.
+    service.defer(A)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(updates.length).toBe(count + 1)
+    expect(updates.at(-1)?.rows.map(r => r.sessionId)).toEqual(['s2'])
+    expect(saves()).toBe(1)
+    expect(lastDeferred()).toEqual([A])
+
+    // No change gives no save and no update.
+    service.defer(A)
+    expect(service.deferredIn(WT)).toEqual([A])
+    service.undefer('nope')
+    service.dropDeferred('nope')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(saves()).toBe(1)
+    expect(updates.length).toBe(count + 1)
+
+    // undefer and dropDeferred change only the store.
+    service.undefer('s1')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(saves()).toBe(2)
+    expect(lastDeferred()).toBeUndefined()
+    service.defer(A)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(saves()).toBe(3)
+    service.dropDeferred('s1')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(saves()).toBe(4)
+    expect(lastDeferred()).toBeUndefined()
+    expect(service.deferredIn(WT)).toEqual([])
+    expect(updates.length).toBe(count + 1)
+  })
+
   test('the watch changes send an update and save the store', async () => {
     const saveStore = vi.fn(async () => {})
     const entries = [bg(), bg({ id: 'bb', name: 'beta', pid: 6, sessionId: 's2' })]

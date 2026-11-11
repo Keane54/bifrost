@@ -26,19 +26,15 @@ export function worktreeOf(row: { cwd: string; worktree?: string }): string | nu
   return root?.worktree ?? null
 }
 
-// The row that runs in the worktree of a parked row, else undefined (spec 8).
-// claude rm can remove a clean worktree when its session is stopped, also while another session
-// uses that folder. So Delete of a parked row is blocked while such a row exists.
-// Only a parked row can be blocked, and only a row that is not parked can block. So two parked
-// rows never block each other. A plain folder never blocks. The row itself never counts.
-export function folderUser<T extends Pick<SessionRow, 'sessionId' | 'state' | 'cwd' | 'worktree'>>(
+// Another row in the worktree of the row, else undefined (spec 8 of the skills design). The
+// state of each row does not matter. claude rm can remove a clean worktree while another session
+// uses it. So a Delete of a row with such a row keeps the folder and defers the claude rm.
+// A plain folder gives undefined. The row itself never counts.
+export function folderSharer<T extends Pick<SessionRow, 'sessionId' | 'cwd' | 'worktree'>>(
   row: T,
   rows: readonly T[],
 ): T | undefined {
-  if (row.state !== 'parked') return undefined
   const root = worktreeOf(row)
   if (root === null) return undefined
-  return rows.find(
-    r => r.sessionId !== row.sessionId && r.state !== 'parked' && worktreeOf(r) === root,
-  )
+  return rows.find(r => r.sessionId !== row.sessionId && worktreeOf(r) === root)
 }

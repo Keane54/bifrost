@@ -26,7 +26,7 @@ import {
   type NewSessionSpec,
   REASON_PROMPT_IS_COMMAND,
 } from '../../../src/shared/new-session'
-import type { SessionRow, WorktreeCheck } from '../../../src/shared/types'
+import type { DeferredDelete, SessionRow, WorktreeCheck } from '../../../src/shared/types'
 import { worktreeOf } from '../../../src/shared/worktree'
 import {
   CHANGES_SHORT_ID,
@@ -119,6 +119,8 @@ class Fake {
   check: (path: string) => (WorktreeCheck & { head: string }) | null = () => null
   // The count of the tracked changed files of a worktree before the stop. null is a git failure.
   tracked: (path: string) => number | null = () => 0
+  // The deferred deletes of the fake registry, in the order of the defers.
+  deferred: DeferredDelete[] = []
   // The hand-over run. The default starts the new session with fixed arguments.
   handOverRun: HandOverRun = async (r, start) => {
     const started = await start(['--bg', '--name', 'x (2)', 'Continue.'], r.cwd)
@@ -153,9 +155,20 @@ class Fake {
         this.add('checkWorktree', path)
         return this.check(path)
       },
+      // defer forgets the row, as the registry does. deferredIn is a read, so it is not logged.
+      defer: entry => {
+        this.add('defer', entry)
+        this.rows = this.rows.filter(r => r.sessionId !== entry.sessionId)
+        this.deferred = [...this.deferred.filter(d => d.sessionId !== entry.sessionId), entry]
+      },
+      deferredIn: worktree => this.deferred.filter(d => d.worktree === worktree),
       dirInfo: async dir => {
         this.add('dirInfo', dir)
         return this.dir
+      },
+      dropDeferred: id => {
+        this.add('dropDeferred', id)
+        this.deferred = this.deferred.filter(d => d.sessionId !== id)
       },
       forget: id => this.add('forget', id),
       handOver: (r, start) => {
@@ -193,6 +206,10 @@ class Fake {
       trackedChanges: async path => {
         this.add('trackedChanges', path)
         return this.tracked(path)
+      },
+      undefer: id => {
+        this.add('undefer', id)
+        this.deferred = this.deferred.filter(d => d.sessionId !== id)
       },
       waitForRow: (match, timeoutMs) => {
         this.add('waitForRow', timeoutMs)
@@ -1225,44 +1242,165 @@ describe('remove waits for the end of the session process (Task 19 bugs 1 and 2)
   })
 })
 
-describe('remove of a parked row whose folder another session uses (spec 8)', () => {
+describe('remove in a folder that another session uses (spec 8 of the skills design)', () => {
   const WT = '/r/.claude/worktrees/w1'
-  const IN_USE = 'refused: another session uses this folder'
+  const S2_SHORT = '1234abcd'
+  const S3_SHORT = '5678abcd'
+  const runLine = (args: string[]) =>
+    `0 run ${JSON.stringify(args)} ${JSON.stringify(args[0] === 'rm' ? RM_OPTS : RUN_OPTS)}`
   // A stopped worktree session reports its start folder. The row keeps the worktree.
-  const old = () => parked({ cwd: '/r', worktree: WT })
-  const user = (o: Partial<SessionRow> = {}) =>
-    row({ cwd: `${WT}/src`, sessionId: S2, shortId: '1234abcd', ...o })
+  const old = (o: Partial<SessionRow> = {}) => parked({ cwd: '/r', worktree: WT, ...o })
+  const other = (o: Partial<SessionRow> = {}) =>
+    row({ cwd: `${WT}/src`, pid: 5151, sessionId: S2, shortId: S2_SHORT, ...o })
+  const entryOf = (sessionId: string, shortId: string, worktree = WT) => ({
+    sessionId,
+    shortId,
+    worktree,
+  })
+  const deferLine = (sessionId: string, shortId: string) =>
+    `0 defer ${JSON.stringify(entryOf(sessionId, shortId))}`
 
-  test('remove refuses while a running row uses the same worktree root', async () => {
-    f.rows = [old(), user()]
-    await expect(actions.remove(S, true)).rejects.toThrow(IN_USE)
-    // Also an external row and a working row block.
-    f.rows = [old(), user({ kind: 'external', shortId: undefined, state: 'working' })]
-    await expect(actions.remove(S, true)).rejects.toThrow(IN_USE)
-    expect(f.log).toEqual([])
+  test('a shared folder defers the delete and runs no claude rm', async () => {
+    // The other row can run or be parked. The check counts are not used.
+    for (const sharer of [other(), other({ pid: undefined, state: 'parked' })]) {
+      f.log = []
+      f.deferred = []
+      f.rows = [old(), sharer]
+      await actions.remove(S, true, { changedFiles: 0, unmergedCommits: 0, worktree: '/x' })
+      expect(f.ops()).toEqual([deferLine(S, SHORT)])
+      expect(f.deferred).toEqual([entryOf(S, SHORT)])
+      expect(f.rows).toEqual([sharer])
+    }
   })
 
-  test('remove runs when that row is parked too', async () => {
-    f.rows = [old(), user({ pid: undefined, state: 'parked' })]
+  test('a running row with a shared folder stops, then defers', async () => {
+    f.rows = [row({ cwd: `${WT}/src` }), other({ pid: undefined, state: 'parked' })]
+    // No claude rm runs, so no check of the changes runs before the stop.
+    f.tracked = () => 3
     await actions.remove(S, true)
+    expect(f.ops()).toEqual([runLine(['stop', SHORT]), '0 isAlive 4242', deferLine(S, SHORT)])
+  })
+
+  test('a running row that does not stop is not deferred', async () => {
+    f.rows = [row({ cwd: `${WT}/src` }), other()]
+    f.alive = () => true
+    const done = expect(actions.remove(S, true)).rejects.toThrow(
+      'refused: the session did not stop',
+    )
+    await vi.advanceTimersByTimeAsync(DELETE_END_WAIT_MS)
+    await done
+    expect(f.ops('run', 'defer', 'forget')).toEqual([runLine(['stop', SHORT])])
+    expect(f.deferred).toEqual([])
+  })
+
+  test('the last delete removes each deferred session of the folder', async () => {
+    // Three sessions in one folder, after two hand-overs.
+    f.rows = [
+      old(),
+      other({ pid: undefined, state: 'parked' }),
+      other({ cwd: WT, pid: 6262, sessionId: S3, shortId: S3_SHORT }),
+    ]
+    await actions.remove(S, true)
+    await actions.remove(S2, true)
+    expect(f.deferred).toEqual([entryOf(S, SHORT), entryOf(S2, S2_SHORT)])
+    expect(f.rows.map(r => r.sessionId)).toEqual([S3])
+    expect(f.ops('run', 'forget')).toEqual([])
+    f.log = []
+    await actions.remove(S3, true, { changedFiles: 0, unmergedCommits: 0, worktree: WT })
+    // The last row first, then the deferred rows in the order of the defers.
     expect(f.ops()).toEqual([
-      `0 run ${JSON.stringify(['rm', SHORT])} ${JSON.stringify(RM_OPTS)}`,
-      `0 forget ${S}`,
+      `0 trackedChanges ${WT}`,
+      runLine(['stop', S3_SHORT]),
+      '0 isAlive 6262',
+      runLine(['rm', S3_SHORT]),
+      runLine(['rm', SHORT]),
+      `0 dropDeferred ${S}`,
+      runLine(['rm', S2_SHORT]),
+      `0 dropDeferred ${S2}`,
+      `0 forget ${S3}`,
+    ])
+    expect(f.deferred).toEqual([])
+  })
+
+  test('a failed deferred rm shows the session again and rejects', async () => {
+    const S4_SHORT = '9abc0def'
+    f.rows = [old({ sessionId: S3, shortId: S3_SHORT })]
+    f.deferred = [entryOf(S, SHORT), entryOf(S2, S2_SHORT), entryOf(S4, S4_SHORT)]
+    // claude rm keeps the worktree for the second deferred session, because it has changes.
+    const changes: ExecResult = { code: 1, stderr: '', stdout: CHANGES_STDOUT }
+    f.exec = args => (args[0] === 'rm' && args[1] === S2_SHORT ? changes : OK)
+    await expect(actions.remove(S3, true)).rejects.toThrow(
+      'refused: the worktree has uncommitted changes',
+    )
+    expect(f.ops()).toEqual([
+      runLine(['rm', S3_SHORT]),
+      runLine(['rm', SHORT]),
+      `0 dropDeferred ${S}`,
+      runLine(['rm', S2_SHORT]),
+      `0 undefer ${S2}`,
+      `0 undefer ${S4}`,
+      `0 forget ${S3}`,
+    ])
+    expect(f.deferred).toEqual([])
+  })
+
+  test('a deferred rm gets the check of the last dialog for a discard', async () => {
+    // The deferred session has the short ID and the worktree of the real kept text.
+    const K = KEPT_WORKTREE
+    const kept: ExecResult = { code: 1, stderr: '', stdout: KEPT_STDOUT }
+    f.exec = args => (args.length === 2 && args[1] === KEPT_SHORT_ID ? kept : OK)
+    f.check = () => ({
+      branch: 'worktree-bifrost-test-rmx',
+      changedFiles: 0,
+      head: KEPT_HEAD,
+      unmergedCommits: 1,
+      worktree: K,
+    })
+    const last = () => parked({ cwd: '/r', sessionId: S2, shortId: S2_SHORT, worktree: K })
+    const deferred = entryOf(S, KEPT_SHORT_ID, K)
+    f.rows = [last()]
+    f.deferred = [deferred]
+    await actions.remove(S2, true, { changedFiles: 0, unmergedCommits: 1, worktree: K })
+    expect(f.ops()).toEqual([
+      runLine(['rm', S2_SHORT]),
+      runLine(['rm', KEPT_SHORT_ID]),
+      `0 checkWorktree ${K}`,
+      runLine(['rm', KEPT_SHORT_ID, '--discard-unpushed', KEPT_DISCARD]),
+      `0 dropDeferred ${S}`,
+      `0 forget ${S2}`,
+    ])
+    // The dialog showed no check. Bifrost discards nothing, and the session shows again.
+    f.log = []
+    f.rows = [last()]
+    f.deferred = [deferred]
+    await expect(actions.remove(S2, true)).rejects.toThrow('refused: claude rm kept the worktree')
+    expect(f.ops()).toEqual([
+      runLine(['rm', S2_SHORT]),
+      runLine(['rm', KEPT_SHORT_ID]),
+      `0 undefer ${S}`,
+      `0 forget ${S2}`,
     ])
   })
 
-  test('a running row is not blocked, and a plain folder is not blocked', async () => {
-    // claude rm keeps a worktree that a running session uses. So only a parked row is blocked.
-    f.rows = [row({ cwd: WT }), user()]
-    await actions.remove(S, true)
-    f.rows = [parked(), row({ sessionId: S2, shortId: '1234abcd' })]
-    await actions.remove(S, true)
-    expect(f.ops('forget')).toEqual([`0 forget ${S}`, `0 forget ${S}`])
+  test('a failed claude rm of the last session runs no deferred rm', async () => {
+    f.rows = [old({ sessionId: S3, shortId: S3_SHORT })]
+    f.deferred = [entryOf(S, SHORT)]
+    f.exec = () => ({ code: 1, stderr: 'boom', stdout: '' })
+    await expect(actions.remove(S3, true)).rejects.toThrow()
+    expect(f.ops()).toEqual([runLine(['rm', S3_SHORT])])
+    expect(f.deferred).toEqual([entryOf(S, SHORT)])
   })
 
-  test('a parked row with no short ID is only forgotten, so it is not blocked', async () => {
-    // Delete runs no claude rm for this row, so the worktree is safe.
-    f.rows = [parked({ cwd: '/r', shortId: undefined, worktree: WT }), user()]
+  test('a deferred entry with a bad short ID gets no claude rm', async () => {
+    f.rows = [old({ sessionId: S3, shortId: S3_SHORT })]
+    f.deferred = [entryOf(S, '--force')]
+    await expect(actions.remove(S3, true)).rejects.toThrow('refused: bad session ID')
+    expect(f.ops()).toEqual([runLine(['rm', S3_SHORT]), `0 undefer ${S}`, `0 forget ${S3}`])
+  })
+
+  test('a row without a short ID is only forgotten', async () => {
+    // Delete runs no claude rm for this row, so the folder is safe.
+    f.rows = [parked({ cwd: '/r', shortId: undefined, worktree: WT }), other()]
     f.claude = false
     await actions.remove(S, true)
     expect(f.ops()).toEqual([`0 forget ${S}`])

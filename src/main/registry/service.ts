@@ -1,4 +1,10 @@
-import type { Priority, SessionRow, UsageSnapshot, WatchColour } from '../../shared/types'
+import type {
+  DeferredDelete,
+  Priority,
+  SessionRow,
+  UsageSnapshot,
+  WatchColour,
+} from '../../shared/types'
 import type { AgentList } from '../claude/agents'
 import type { LiveEvent } from '../live/live-event'
 import { type HealthEvents, NO_HEALTH } from '../performance/health-log'
@@ -290,6 +296,28 @@ export class RegistryService {
     const ok = this.registry.carryOver(fromId, toId)
     if (ok) this.changed()
     return ok
+  }
+
+  // The deferred deletes of Delete (spec 8 of the skills design). changed() saves the store and
+  // sends the rows only when they changed. defer removes a row, so the usage name can change.
+  defer(entry: DeferredDelete): void {
+    this.registry.defer(entry, this.deps.now())
+    this.changed()
+    this.checkUsage()
+  }
+
+  deferredIn(worktree: string): DeferredDelete[] {
+    return this.registry.deferredIn(worktree)
+  }
+
+  undefer(sessionId: string): void {
+    this.registry.undefer(sessionId)
+    this.changed()
+  }
+
+  dropDeferred(sessionId: string): void {
+    this.registry.dropDeferred(sessionId)
+    this.changed()
   }
 
   // Store the worktree that claude rm names for a session. Return false when the registry

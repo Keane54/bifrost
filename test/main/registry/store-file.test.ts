@@ -485,3 +485,29 @@ test('the PR session names survive a save and a load', async () => {
   await saveStore(file, { ...base, prNames: ['a-1-review', 'a-1-review', 3 as never] })
   expect((await loadStore(file)).prNames).toEqual(['a-1-review'])
 })
+
+test('the deferred deletes survive a save and a load, and a bad entry is dropped', async () => {
+  const file = join(dir, 'registry.json')
+  const base = await loadStore(file)
+  // An old store has no deferred deletes, and an empty list adds no key.
+  expect(base.deferred).toBeUndefined()
+  const WT = '/r/.claude/worktrees/w1'
+  const good = { sessionId: 's1', shortId: '2f493bf0', worktree: WT }
+  const later = { sessionId: 's2', shortId: '1db82d17', worktree: WT }
+  await saveStore(file, {
+    ...base,
+    deferred: [
+      good,
+      // A repeated ID, a bad short ID, a path that is not a worktree root and a missing ID.
+      { ...good, shortId: '1db82d17' },
+      { ...later, sessionId: 's3', shortId: 'ABCDEF12' },
+      { ...later, sessionId: 's4', worktree: `${WT}/src` },
+      { ...later, sessionId: '' },
+      7 as never,
+      later,
+    ],
+  })
+  expect((await loadStore(file)).deferred).toEqual([good, later])
+  await writeFile(file, JSON.stringify({ deferred: 'x', names: {} }))
+  expect((await loadStore(file)).deferred).toBeUndefined()
+})

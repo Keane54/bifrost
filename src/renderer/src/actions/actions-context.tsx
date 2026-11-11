@@ -18,9 +18,10 @@ import type {
   ProjectAppId,
   SeenCounts,
   SessionRow,
+  WorktreeCheck,
 } from '../../../shared/types'
 import { DEFAULT_WATCH_COLOUR, isWatchColour } from '../../../shared/watch'
-import { folderUser } from '../../../shared/worktree'
+import { folderSharer } from '../../../shared/worktree'
 import { useChats } from '../chat/chat-terminals'
 import { chatPanelId } from '../chat/views'
 import { useRegistry } from '../data/registry'
@@ -105,8 +106,9 @@ function contextOf(
   return {
     apps,
     chatOpen: frameOf(state, chatPanelId(sessionId)) !== undefined,
-    // The main process blocks Delete by the same rule: only a row with a short ID.
-    folderInUse: row?.shortId !== undefined && folderUser(row, rows) !== undefined,
+    // The main process defers the claude rm of a Delete by the same rule: only a row with a
+    // short ID (spec 8 of the skills design).
+    folderShared: row?.shortId !== undefined && folderSharer(row, rows) !== undefined,
     labels: settings.labels,
     running,
     slashFavourites: settings.slashCommands,
@@ -271,8 +273,14 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   )
 
   // Run one API call. Take control and Delete pass true only after the confirm click.
+  // folderShared comes from the context of the action (contextOf).
   const runCall = useCallback(
-    async (plan: CallPlan, row: SessionRow, arg: MenuArg | undefined): Promise<void> => {
+    async (
+      plan: CallPlan,
+      row: SessionRow,
+      arg: MenuArg | undefined,
+      folderShared: boolean,
+    ): Promise<void> => {
       const api = window.bifrost
       const sessionId = row.sessionId
       // True only after a click on the confirm button of the dialog.
@@ -286,22 +294,28 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
       try {
         if (plan.call === 'remove') {
           // Delete runs the unmerged-work check first (Task 13). A failed check gives null.
+          // A shared folder stays, so its Delete runs no claude rm now and needs no check
+          // (spec 8 of the skills design).
           setRunningFor(sessionId, true)
           marked = true
-          // The page is not modal during the check. The notice tells the user that it runs.
-          const checking = notices.showUntilHidden(CHECKING_NOTICE)
-          const check = await api.sessions.deleteCheck(sessionId).catch(() => null)
-          notices.hide(checking)
-          if (check !== null && check.worktree !== null) {
-            // The main process refuses the Delete when the row has another worktree now.
-            seen = {
-              changedFiles: check.changedFiles,
-              unmergedCommits: check.unmergedCommits,
-              worktree: check.worktree,
+          let check: WorktreeCheck | null | undefined
+          if (!folderShared) {
+            // The page is not modal during the check. The notice tells the user that it runs.
+            const checking = notices.showUntilHidden(CHECKING_NOTICE)
+            check = await api.sessions.deleteCheck(sessionId).catch(() => null)
+            notices.hide(checking)
+            if (check !== null && check.worktree !== null) {
+              // The main process refuses the Delete when the row has another worktree now.
+              seen = {
+                changedFiles: check.changedFiles,
+                unmergedCommits: check.unmergedCommits,
+                worktree: check.worktree,
+              }
             }
           }
           const now = latest.current.rows.find(r => r.sessionId === sessionId) ?? row
-          const text = confirmFor('delete', now, latest.current.settings.labels, check)
+          const labels = latest.current.settings.labels
+          const text = confirmFor('delete', now, labels, check, folderShared)
           if (text === null) return
           confirmed = await confirm(text, {
             onBusy,
@@ -473,7 +487,7 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
           setRenameFor(sessionId)
           break
         case 'call':
-          if (row) void runCall(plan, row, arg)
+          if (row) void runCall(plan, row, arg, ctx.folderShared)
           break
       }
     },

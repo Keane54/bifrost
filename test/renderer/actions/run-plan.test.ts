@@ -17,7 +17,7 @@ const ctx = (over: Partial<ActionContext> = {}): ActionContext => ({
     { id: 'warp', label: 'Warp' },
   ],
   chatOpen: true,
-  folderInUse: false,
+  folderShared: false,
   labels: 'plain',
   running: false,
   slashFavourites: ['/compact'],

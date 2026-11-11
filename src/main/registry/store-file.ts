@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { cleanAlias } from '../../shared/alias'
 import { isPriority } from '../../shared/priority'
-import type { Priority } from '../../shared/types'
+import type { DeferredDelete, Priority } from '../../shared/types'
 import { isUuid } from '../../shared/uuid'
 import { isWatchColour, OLD_WATCH_COLOURS } from '../../shared/watch'
 import { worktreeRoot } from '../../shared/worktree'
@@ -43,6 +43,9 @@ function emptyStore(): RegistryStore {
 // A file without worktrees (from M3 or an early M4) gives no worktrees.
 // A worktree entry needs a string ID and an absolute path that worktreeRoot accepts.
 // An entry with a repeated ID is dropped.
+// A file without deferred (from before the deferred delete) gives no deferred deletes. A deferred
+// delete needs a non-empty ID, a short ID and a worktree root. An entry with a repeated ID is
+// dropped.
 // The function removes each value that has the wrong type.
 // Other read errors, for example EACCES or EISDIR, reject.
 export async function loadStore(file: string): Promise<RegistryStore> {
@@ -135,6 +138,7 @@ export async function loadStore(file: string): Promise<RegistryStore> {
       worktrees.push({ path, sessionId })
     }
   }
+  const deferred = deferredOf(data.deferred)
   const store: RegistryStore = {
     aliases,
     current,
@@ -148,7 +152,25 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   }
   if (prSessions.length > 0) store.prSessions = prSessions
   if (prNames.length > 0) store.prNames = prNames
+  if (deferred.length > 0) store.deferred = deferred
   return store
+}
+
+// The valid deferred deletes of the file, in the file order.
+function deferredOf(value: unknown): DeferredDelete[] {
+  if (!Array.isArray(value)) return []
+  const ids = new Set<string>()
+  const deferred: DeferredDelete[] = []
+  for (const entry of value) {
+    if (!isObject(entry)) continue
+    const { sessionId, shortId, worktree } = entry
+    if (typeof sessionId !== 'string' || sessionId === '' || ids.has(sessionId)) continue
+    if (typeof shortId !== 'string' || !SHORT_ID.test(shortId)) continue
+    if (typeof worktree !== 'string' || worktreeRoot(worktree)?.worktree !== worktree) continue
+    ids.add(sessionId)
+    deferred.push({ sessionId, shortId, worktree })
+  }
+  return deferred
 }
 
 // Write the store to a temporary name in the same directory. Then rename the file.

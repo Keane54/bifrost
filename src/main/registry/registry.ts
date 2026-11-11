@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { cleanAlias } from '../../shared/alias'
 import type {
+  DeferredDelete,
   Priority,
   RateLimits,
   RateWindow,
@@ -9,7 +10,7 @@ import type {
   UsageSnapshot,
   WatchColour,
 } from '../../shared/types'
-import { worktreeRoot } from '../../shared/worktree'
+import { worktreeOf, worktreeRoot } from '../../shared/worktree'
 import type { AgentEntry } from '../claude/agents'
 import type { LiveUsage } from '../live/live-event'
 import { modelName } from '../live/model-name'
@@ -32,6 +33,9 @@ export interface RegistryStore {
   // The current ID of each row whose current ID is not its row ID. A /clear gives the process a
   // new session ID. A restart finds the row of that ID with this map.
   current: Record<string, string>
+  // The deferred deletes, in the order of the defers (spec 8 of the skills design). The key
+  // exists only when a deferred delete exists.
+  deferred?: DeferredDelete[]
   // The short ID of each background row. A restart finds the row of a job with it, also after a
   // /clear changed the session ID of the job.
   jobs: Record<string, string>
@@ -214,6 +218,14 @@ export class SessionRegistry {
   // The count of the counted --all lists without the session, since the count went back to 0
   // (forgetGone). A list that does not count leaves the count as it is.
   private readonly missing = new Map<string, number>()
+  // The deferred deletes by row ID, in the order of the defers. A deferred row ID never becomes a
+  // row (spec 8 of the skills design).
+  private readonly deferred: Map<string, DeferredDelete>
+  // The time of each defer in this run. An active sample that started before it is too old to
+  // show the row again. Not saved.
+  private readonly deferredAt = new Map<string, number>()
+  // The count of the counted --all lists without a deferred session, as for missing.
+  private readonly deferredMissing = new Map<string, number>()
   // The terminal app for each PID. null means that the PID has no app.
   private readonly terminals = new Map<number, TerminalApp | null>()
   private changed = false
@@ -265,13 +277,14 @@ export class SessionRegistry {
     const last = opts.store.lastActive ?? []
     this.lastActive = new Set(last)
     this.resumable = new Set(last)
+    this.deferred = new Map((opts.store.deferred ?? []).map(d => [d.sessionId, { ...d }]))
   }
 
   // Apply the output of "claude agents --json". sampledAt is the time when the poll started.
   // match gives the row of each entry. The session ID of the entry is the current ID of its row.
   applyAgents(entries: AgentEntry[], sampledAt: number): void {
     this.advance(sampledAt)
-    const matches = this.match(entries, true)
+    const matches = this.match(entries, true).filter(m => !this.hiddenInActive(m, sampledAt))
     const ids = new Set(matches.map(m => m.rowId))
     for (const { entry, isNew, rowId } of matches) {
       const known = this.sessions.get(rowId)
@@ -415,13 +428,16 @@ export class SessionRegistry {
     return pairs.filter(([entry, rowId]) => once(pairEntries, entry) && once(pairRows, rowId))
   }
 
-  // The one row of the job with this short ID: the row with that short ID in jobs. When no row
-  // has it, the one known row whose row ID starts with the short ID, has no short ID and has its
-  // row ID as its current ID. The short ID is the first 8 characters of the original session ID
-  // of the job (section 4), so that row is the job before a /clear, for example a row of an older
-  // store (review M6). undefined when no row or more than one row matches.
+  // The one row of the job with this short ID: the row with that short ID in jobs or in a
+  // deferred delete. When no row has it, the one known row whose row ID starts with the short ID,
+  // has no short ID and has its row ID as its current ID. The short ID is the first 8 characters
+  // of the original session ID of the job (section 4), so that row is the job before a /clear, for
+  // example a row of an older store (review M6). undefined when no row or more than one row
+  // matches.
   private jobRow(shortId: string): string | undefined {
     const owners = [...this.jobs].filter(([, id]) => id === shortId).map(([rowId]) => rowId)
+    // A deferred session has no row and no stored values. Its short ID still gives its row ID.
+    for (const d of this.deferred.values()) if (d.shortId === shortId) owners.push(d.sessionId)
     if (owners.length > 0) return owners.length === 1 ? owners[0] : undefined
     const prefix = `${shortId}-`
     const rows = new Set(
@@ -570,9 +586,10 @@ export class SessionRegistry {
     // An interactive session that ended must not come back as a parked row.
     // So the registry uses only the background entries.
     const owned = entries.filter(entry => entry.kind === 'background')
+    const found = this.match(owned, false)
     // A running entry that needs a new row ID waits for the active list, which gives its row. An
     // ID from this list would be another new ID, so its values would go to no row.
-    const matches = this.match(owned, false).filter(
+    const matches = found.filter(
       m => !(m.isNew && m.rowId !== m.entry.sessionId && m.entry.pid !== undefined),
     )
     const ownedIds = matches.map(m => m.rowId)
@@ -587,6 +604,8 @@ export class SessionRegistry {
       (owned.length > 0 || !this.knowsParkedOwned())
     this.all = counts ? new Set(ownedIds) : new Set([...this.all, ...ownedIds])
     for (const { entry, isNew, rowId } of matches) {
+      // A deferred row ID never becomes a row (spec 8 of the skills design).
+      if (this.deferred.has(rowId)) continue
       this.keepName(rowId, entry)
       this.keepJob(rowId, entry)
       // An entry with a pid has a process. The active list gives its data.
@@ -597,7 +616,58 @@ export class SessionRegistry {
       this.keepJobId(s, entry)
       this.park(s)
     }
-    if (counts) this.forgetGone(listed)
+    if (!counts) return
+    this.forgetGone(listed)
+    this.checkDeferred(found)
+  }
+
+  // True when the active list skips the entry of a deferred row (spec 8 of the skills design).
+  // An entry with a pid, from a sample that started after the defer, means that the session runs
+  // again, for example after a resume outside Bifrost. Then the deferred delete goes, and the row
+  // shows as normal. After a stop, the active list can show the entry without a pid for a short
+  // time. A sample that started before the defer can still have the pid. These entries stay
+  // hidden.
+  private hiddenInActive(m: Match, sampledAt: number): boolean {
+    if (!this.deferred.has(m.rowId)) return false
+    const deferredAt = this.deferredAt.get(m.rowId) ?? Number.NEGATIVE_INFINITY
+    if (m.entry.pid === undefined || sampledAt <= deferredAt) return true
+    this.removeDeferred(m.rowId)
+    return false
+  }
+
+  // The rules of the deferred deletes after a counted --all list (spec 8 of the skills design).
+  // found has the row of each background entry of the list.
+  // Gone rule: a deferred delete whose row ID the list does not give adds 1 to its count. After
+  // GONE_LISTS counted lists in a row without it, the deferred delete goes. A list that gives the
+  // row ID sets the count back to 0.
+  // Orphan rule: a worktree is in use when a row, or a background entry of the list with or
+  // without a pid, has it as its root. The entries of the deferred sessions do not count. A
+  // deferred delete of a worktree that is not in use goes. The next list then shows its session
+  // again as a parked row, so the user can delete it with the normal check.
+  private checkDeferred(found: Match[]): void {
+    const given = new Set(found.map(m => m.rowId))
+    for (const id of [...this.deferred.keys()]) {
+      if (given.has(id)) {
+        this.deferredMissing.delete(id)
+        continue
+      }
+      const missing = (this.deferredMissing.get(id) ?? 0) + 1
+      if (missing >= GONE_LISTS) this.removeDeferred(id)
+      else this.deferredMissing.set(id, missing)
+    }
+    const used = new Set<string>()
+    for (const s of this.sessions.values()) {
+      const root = worktreeOf({ cwd: s.cwd, worktree: this.worktrees.get(s.sessionId) })
+      if (root !== null) used.add(root)
+    }
+    for (const { entry, rowId } of found) {
+      if (this.deferred.has(rowId)) continue
+      const root = worktreeRoot(entry.cwd)
+      if (root !== null) used.add(root.worktree)
+    }
+    for (const d of [...this.deferred.values()]) {
+      if (!used.has(d.worktree)) this.removeDeferred(d.sessionId)
+    }
   }
 
   // Apply state events. An event goes to the row whose current ID is its session ID. An event for
@@ -954,6 +1024,38 @@ export class SessionRegistry {
     return true
   }
 
+  // Delete of a session whose worktree another session uses (spec 8 of the skills design).
+  // Forget the row, as forget does, and keep the deferred delete in the store. at is the time of
+  // the defer. An active sample that started before it does not show the row again.
+  // A worktree that is not a worktree root changes nothing. The same entry again changes nothing.
+  defer(entry: DeferredDelete, at = this.clock): void {
+    if (worktreeRoot(entry.worktree)?.worktree !== entry.worktree) return
+    this.forget(entry.sessionId)
+    this.deferredAt.set(entry.sessionId, at)
+    const old = this.deferred.get(entry.sessionId)
+    if (old?.shortId === entry.shortId && old.worktree === entry.worktree) return
+    // A changed entry goes to the end, as a new defer.
+    this.deferred.delete(entry.sessionId)
+    this.deferred.set(entry.sessionId, { ...entry })
+    this.deferredMissing.delete(entry.sessionId)
+    this.changed = true
+  }
+
+  // The deferred deletes of a worktree root, in the order of the defers.
+  deferredIn(worktree: string): DeferredDelete[] {
+    return [...this.deferred.values()].filter(d => d.worktree === worktree).map(d => ({ ...d }))
+  }
+
+  // Remove a deferred delete. The next --all list shows the session again as a parked row.
+  undefer(sessionId: string): void {
+    this.removeDeferred(sessionId)
+  }
+
+  // Remove a deferred delete after a good claude rm.
+  dropDeferred(sessionId: string): void {
+    this.removeDeferred(sessionId)
+  }
+
   // Return new row objects, sorted by startedAt, then by sessionId.
   rows(): SessionRow[] {
     return this.sorted().map(s => this.toRow(s))
@@ -984,7 +1086,15 @@ export class SessionRegistry {
     // The key exists only when a PR session exists.
     if (this.prSessions.size > 0) store.prSessions = [...this.prSessions]
     if (this.prNames.size > 0) store.prNames = [...this.prNames]
+    if (this.deferred.size > 0) store.deferred = [...this.deferred.values()].map(d => ({ ...d }))
     return store
+  }
+
+  // Remove a deferred delete and its count. An unknown ID changes nothing.
+  private removeDeferred(sessionId: string): void {
+    this.deferredAt.delete(sessionId)
+    this.deferredMissing.delete(sessionId)
+    if (this.deferred.delete(sessionId)) this.changed = true
   }
 
   // Return true one time after a change to the store. Then return false until the next change.

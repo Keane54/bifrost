@@ -176,6 +176,34 @@ describe('confirm texts', () => {
     expect(failed?.confirmAgain).toBe('Self-destruct anyway')
   })
 
+  it('Delete in a shared folder says that Bifrost keeps it (spec 8 of the skills design)', () => {
+    const keeps = 'Another session still uses this folder, so Bifrost keeps it.'
+    const later =
+      'It goes from the list now, and Bifrost removes it from Claude Code when you delete ' +
+      'the last session in this folder.'
+    const shared = (labels: 'plain' | 'space', c?: WorktreeCheck | null) =>
+      confirmFor('delete', aliased, labels, c, true)
+    expect(shared('plain')).toEqual({
+      body: `${keeps} Delete ${NAMED}? ${later}`,
+      confirm: 'Delete session',
+      title: `Delete ${NAMED}`,
+    })
+    expect(shared('space')).toEqual({
+      body: `${keeps} Self-destruct ${NAMED}? ${later}`,
+      confirm: 'Self-destruct',
+      title: `Self-destruct ${NAMED}`,
+    })
+    // No check result gives a second click or Open folder.
+    for (const c of [null, check({ changedFiles: 2, unmergedCommits: 1 })]) {
+      expect(shared('plain', c)?.confirmAgain).toBeUndefined()
+      expect(shared('plain', c)?.openFolder).toBeUndefined()
+    }
+    // shared false gives the text of today.
+    expect(confirmFor('delete', aliased, 'plain', undefined, false)).toEqual(
+      confirmFor('delete', aliased, 'plain'),
+    )
+  })
+
   it('the confirm labels use the label set', () => {
     const r = row({ sessionId: 'a' })
     expect(confirmFor('stop', r, 'space')?.confirm).toBe('Power down')

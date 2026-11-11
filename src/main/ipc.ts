@@ -1307,7 +1307,10 @@ export function registerIpc(home: TestHome | null = null): void {
       liveService?.carryOver(from, to)
     },
     checkWorktree: worktree => checkWorktreeHead(worktree, execFile),
+    defer: entry => liveService?.defer(entry),
+    deferredIn: worktree => liveService?.deferredIn(worktree) ?? [],
     dirInfo: dir => dirInfo(execFile, stat, dir),
+    dropDeferred: id => liveService?.dropDeferred(id),
     forget: id => liveService?.forget(id),
     handOver,
     hasMessages: id => hasMessages(projectsDir, id),
@@ -1322,6 +1325,7 @@ export function registerIpc(home: TestHome | null = null): void {
     run: () => run,
     signal: (pid, signal) => sendSignal(kill, pid, signal),
     trackedChanges: worktree => trackedChanges(worktree, execFile),
+    undefer: id => liveService?.undefer(id),
     waitForRow: async (match, timeoutMs) => (await service).waitForRow(match, timeoutMs),
   })
   const worktrees = createWorktreeActions({

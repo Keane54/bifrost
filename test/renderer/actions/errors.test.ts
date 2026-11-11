@@ -88,12 +88,6 @@ describe('friendly errors', () => {
     )
   })
 
-  it('gives the exact text of the Delete block of a folder in use (spec 8)', () => {
-    expect(friendlyError('refused: another session uses this folder')).toBe(
-      'Another session is still using this folder. Stop that session first, then delete this one.',
-    )
-  })
-
   it('gives the friendly texts of the final review fixes', () => {
     expect(friendlyError('refused: the send was cancelled by Interrupt')).toBe(
       'Interrupt cancelled this message before it was sent.',

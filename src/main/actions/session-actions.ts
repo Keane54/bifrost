@@ -19,6 +19,7 @@ import {
 } from '../../shared/new-session'
 import { continueIdOf, currentIdOf, REFUSED_NO_RESUME_ID } from '../../shared/session-ids'
 import type {
+  DeferredDelete,
   HandOverResult,
   ResumeAllResult,
   SeenCounts,
@@ -26,7 +27,7 @@ import type {
   WorktreeCheck,
 } from '../../shared/types'
 import { UUID_PATTERN } from '../../shared/uuid'
-import { folderUser, worktreeOf, worktreeRoot } from '../../shared/worktree'
+import { folderSharer, worktreeOf, worktreeRoot } from '../../shared/worktree'
 import type { ExecResult, RunClaude } from '../claude/cli'
 // A type-only import. hand-over.ts imports handOverArgs from this module, so a value import here
 // would make an import cycle.
@@ -84,7 +85,6 @@ const REFUSED_NO_SHORT_ID = 'refused: the session runs and has no short ID'
 const REFUSED_BAD_PID = 'refused: bad process ID'
 const REFUSED_STOP = 'refused: only an owned session that runs'
 export const REFUSED_DELETE_EXTERNAL = 'refused: Bifrost does not delete an external session'
-export const REFUSED_FOLDER_IN_USE = 'refused: another session uses this folder'
 const REFUSED_NOT_PARKED = 'refused: the session is not parked'
 // A review session of a PR ran one round. Its next round is a new session.
 export const REFUSED_PR_RESUME = 'refused: a review session cannot be resumed'
@@ -138,6 +138,14 @@ export interface SessionActionDeps {
   carryOver(fromId: string, toId: string): void
   // Store the worktree root that claude rm names, for a row whose worktree Bifrost does not know.
   rememberWorktree(sessionId: string, worktree: string): void
+  // The deferred deletes of Delete (spec 8 of the skills design). defer forgets the row and keeps
+  // the entry. deferredIn gives the entries of a worktree root in the order of the defers.
+  // dropDeferred removes an entry after a good claude rm. undefer removes an entry, so the session
+  // shows again as a parked row.
+  defer(entry: DeferredDelete): void
+  deferredIn(worktree: string): DeferredDelete[]
+  dropDeferred(sessionId: string): void
+  undefer(sessionId: string): void
   // True when the transcript of the session has a user message. A read error gives true.
   hasMessages(sessionId: string): Promise<boolean>
   // The hand-over run (createHandOver in hand-over.ts). It gets the checked row and the start of
@@ -162,6 +170,9 @@ export interface SessionActions {
 }
 
 type ResumeRow = Pick<SessionRow, 'currentId' | 'kind' | 'resumeId' | 'sessionId'>
+
+// The fields of a row that claude rm needs. A deferred delete gives them without a row.
+type RmRow = Pick<SessionRow, 'cwd' | 'sessionId' | 'worktree'>
 
 // The session ID that Resume and Resume all pass (spec 9.1): the ID that claude --resume needs.
 // An owned row uses the resume ID of the registry: the original session ID of the job. A resume
@@ -437,7 +448,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   // Store the worktree that a kept line names, for a row whose worktree Bifrost does not know.
   // The next Delete can then check this worktree and offer Open worktree. The kept line must
   // name the short ID of the row and a worktree root.
-  const rememberKept = (row: SessionRow, shortId: string, kept: KeptChanges): void => {
+  const rememberKept = (row: RmRow, shortId: string, kept: KeptChanges): void => {
     if (worktreeOf(row) !== null) return
     const keptPath = withoutSlash(kept.worktree)
     const root = worktreeRoot(keptPath)?.worktree
@@ -456,7 +467,7 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
   // never tries a discard for it, also when the text has a discard value.
   const removeSession = async (
     run: RunClaude,
-    row: SessionRow,
+    row: RmRow,
     shortId: string,
     seen: SeenCounts | null,
   ): Promise<void> => {
@@ -493,6 +504,47 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     if (parseKeptChanges(discard.stdout) !== null) throw new Error(REFUSED_UNCOMMITTED)
     if (parseKept(discard.stdout) !== null) throw new Error(REFUSED_WORKTREE_CHANGED)
     throw new Error(claudeFailure(discard, 'claude rm'))
+  }
+
+  // Stop a session that runs, and wait for the end of its process. claude rm refuses a worktree
+  // while the process runs (Task 19 bug 1).
+  const stopForDelete = async (run: RunClaude, row: SessionRow, shortId: string): Promise<void> => {
+    await command(run, ['stop', shortId], 'claude stop')
+    if (row.pid !== undefined && !(await waitForEnd(row.pid, DELETE_END_WAIT_MS))) {
+      throw new Error(REFUSED_NOT_STOPPED)
+    }
+  }
+
+  // Run claude rm for each deferred delete of the worktree, in the order of the defers (spec 8 of
+  // the skills design). The Delete of the last session there calls this after its own claude rm.
+  // Each run gets the check of the last Delete dialog, so the discard rules of removeSession
+  // apply. A good run drops the entry. A failed run undefers that entry and each later entry, so
+  // these sessions show again as parked rows. Then the last session goes, because its claude rm
+  // worked, and the Delete rejects with the error of the failed run.
+  const removeDeferred = async (
+    run: RunClaude,
+    row: SessionRow,
+    worktree: string,
+    seen: SeenCounts | null,
+  ): Promise<void> => {
+    const entries = deps.deferredIn(worktree)
+    for (const [i, entry] of entries.entries()) {
+      try {
+        // The short ID goes into an argument, so it must match SHORT_ID.
+        if (!SHORT_ID.test(entry.shortId)) throw new Error(REFUSED_BAD_ID)
+        const deferred = {
+          cwd: entry.worktree,
+          sessionId: entry.sessionId,
+          worktree: entry.worktree,
+        }
+        await removeSession(run, deferred, entry.shortId, seen)
+      } catch (error) {
+        for (const later of entries.slice(i)) deps.undefer(later.sessionId)
+        deps.forget(row.sessionId)
+        throw error
+      }
+      deps.dropDeferred(entry.sessionId)
+    }
   }
 
   // claude rm refuses a worktree with changes that git tracks and that are not committed. So the
@@ -594,9 +646,12 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
     // The check that the dialog showed must be for the worktree of the row now (final review
     // M2). Else the dialog did not show the work that a discard removes.
     // claude rm can remove a clean worktree of a stopped session while another session uses it.
-    // So Bifrost refuses the Delete of a parked row while a row that runs uses its worktree
-    // (spec 8 of the skills design). A row without a short ID gets no claude rm, so this
-    // block does not apply to it.
+    // So Delete never removes a folder that another row uses (spec 8 of the skills design). For
+    // such a row with a short ID, Delete stops the session if it runs, and then defers the
+    // claude rm. No claude rm runs now, so no check runs before the stop, and the check counts
+    // are not used. The Delete of the last session in the worktree runs claude rm for each
+    // deferred delete there. A row without a short ID gets no claude rm, so this rule does not
+    // apply to it.
     async remove(sessionId, confirmed, seen) {
       if (confirmed !== true) throw new Error(REFUSED_NOT_CONFIRMED)
       const counts = seenOf(seen)
@@ -604,13 +659,18 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
         if (row.kind === 'external' && row.state !== 'parked') {
           throw new Error(REFUSED_DELETE_EXTERNAL)
         }
-        if (row.shortId !== undefined && folderUser(row, deps.rows()) !== undefined) {
-          throw new Error(REFUSED_FOLDER_IN_USE)
-        }
         if (row.shortId === undefined && row.state !== 'parked') {
           throw new Error(REFUSED_NO_SHORT_ID)
         }
-        if (counts !== null && counts.worktree !== worktreeOf(row)) {
+        const worktree = worktreeOf(row)
+        const shared = worktree !== null && folderSharer(row, deps.rows()) !== undefined
+        if (row.shortId !== undefined && shared) {
+          const shortId = shortIdOf(row)
+          if (row.state !== 'parked') await stopForDelete(await claude(), row, shortId)
+          deps.defer({ sessionId: row.sessionId, shortId, worktree })
+          return
+        }
+        if (counts !== null && counts.worktree !== worktree) {
           throw new Error(REFUSED_WORKTREE_CHANGED)
         }
         if (row.shortId !== undefined) {
@@ -618,13 +678,10 @@ export function createSessionActions(deps: SessionActionDeps): SessionActions {
           const run = await claude()
           if (row.state !== 'parked') {
             await checkBeforeStop(row)
-            await command(run, ['stop', shortId], 'claude stop')
-            // claude rm refuses a worktree while the process runs. Wait for the end first.
-            if (row.pid !== undefined && !(await waitForEnd(row.pid, DELETE_END_WAIT_MS))) {
-              throw new Error(REFUSED_NOT_STOPPED)
-            }
+            await stopForDelete(run, row, shortId)
           }
           await removeSession(run, row, shortId, counts)
+          if (worktree !== null) await removeDeferred(run, row, worktree, counts)
         }
         deps.forget(row.sessionId)
       })

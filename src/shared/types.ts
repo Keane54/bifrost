@@ -76,6 +76,15 @@ export type SeenCounts = Pick<WorktreeCheck, 'unmergedCommits' | 'changedFiles'>
   worktree: string
 }
 
+// A Delete of a session whose worktree another session uses (spec 8 of the skills design).
+// Bifrost removes the row at once and runs claude rm for the session later, at the Delete of the
+// last session in that worktree. sessionId is the row ID. worktree is the worktree root.
+export interface DeferredDelete {
+  sessionId: string
+  shortId: string
+  worktree: string
+}
+
 // One row of the session list. The main process sends rows to the renderer.
 export interface SessionRow {
   // The row ID: the first session ID that Bifrost saw for the session (spec 6.1). It never

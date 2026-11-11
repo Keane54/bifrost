@@ -19,6 +19,13 @@ export interface ConfirmText {
 const KEEPS_CHANGES =
   'Claude Code keeps a worktree with changes that are not committed, so commit or discard them first.'
 
+// The Delete of a session whose folder another session uses (spec 8 of the skills design).
+// Bifrost runs claude rm for it at the Delete of the last session in that folder.
+const SHARED_KEEPS = 'Another session still uses this folder, so Bifrost keeps it.'
+const SHARED_LATER =
+  'It goes from the list now, and Bifrost removes it from Claude Code when you delete the last ' +
+  'session in this folder.'
+
 // The verbs of the dialog bodies. The body uses the verbs of the label set, as the title and the
 // button do (spec 9.1).
 const VERBS: Record<LabelSet, { stopIt: string; delete: string }> = {
@@ -39,11 +46,14 @@ function namedRow(row: SessionRow): string {
     : `${row.name} (Claude Code name: ${row.claudeName})`
 }
 
+// shared is true for a Delete in a folder that another session uses. That Delete runs no claude
+// rm now, so the dialog shows no check, and one click confirms.
 export function confirmFor(
   id: 'stop' | 'delete' | 'take-control',
   row: SessionRow,
   labels: LabelSet,
   check?: WorktreeCheck | null,
+  shared?: boolean,
 ): ConfirmText | null {
   if (id === 'stop') {
     if (row.state !== 'working') return null
@@ -62,6 +72,13 @@ export function confirmFor(
     // claude rm keeps the transcript file, so the text does not say that the conversation goes
     // (final review M6).
     const verb = VERBS[labels].delete
+    if (shared === true) {
+      return {
+        body: `${SHARED_KEEPS} ${verb} ${namedRow(row)}? ${SHARED_LATER}`,
+        confirm: label,
+        title,
+      }
+    }
     const plain = `${verb} ${namedRow(row)}? This removes the session from Claude Code and Bifrost.`
     const ask = `Are you sure you want to ${verb.toLowerCase()} this?`
     const again = `${verb} anyway`

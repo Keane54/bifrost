@@ -27,8 +27,8 @@ describe('hand over in the actions provider', () => {
     expect(CONTEXT).toMatch(/The new session started, but Bifrost couldn't park the old one\./)
   })
 
-  it('contextOf uses folderUser and needs a short ID', () => {
-    expect(CONTEXT).toContain('folderUser(')
+  it('contextOf uses folderSharer and needs a short ID', () => {
+    expect(CONTEXT).toContain('folderSharer(')
     expect(CONTEXT).toContain('row?.shortId !== undefined')
   })
 })
