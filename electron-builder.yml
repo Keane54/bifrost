@@ -31,6 +31,9 @@ mac:
   identity: '-'
   hardenedRuntime: false
   gatekeeperAssess: false
+  # macOS shows this text in the microphone prompt. Dictation needs the microphone.
+  extendInfo:
+    NSMicrophoneUsageDescription: Bifrost uses the microphone when you talk to Claude.
   notarize: false
 dmg:
   # The DMG name has no version. So the link

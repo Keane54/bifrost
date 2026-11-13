@@ -12,6 +12,7 @@
 import type { Configuration } from 'electron-builder'
 
 const PREFIX = 'Developer ID Application:'
+const ENTITLEMENTS = 'build/entitlements.mac.plist'
 
 export function releaseConfig(
   env: Record<string, string | undefined> = process.env,
@@ -30,7 +31,15 @@ export function releaseConfig(
   }
   return {
     extends: './electron-builder.yml',
-    mac: { hardenedRuntime: true, identity, notarize: true },
+    // The entitlements file has the audio-input entitlement. The hardened runtime blocks the
+    // microphone without it. The helpers keep the default inherit file of electron-builder. They
+    // need no microphone, because macOS gives it to the main app.
+    mac: {
+      entitlements: ENTITLEMENTS,
+      hardenedRuntime: true,
+      identity,
+      notarize: true,
+    },
     // electron-builder writes latest-mac.yml and app-update.yml from this block. The dist:release
     // script passes --publish never, so electron-builder uploads nothing. semantic-release
     // uploads the files. Local builds have no publish block. So they have no app-update.yml, and

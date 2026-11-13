@@ -69,6 +69,22 @@ check(
   details.text,
 )
 
+// The microphone for /voice of Claude Code. The hardened runtime blocks the microphone without the
+// entitlement. macOS shows no prompt without the usage text. Both commands only read.
+const AUDIO_INPUT = 'com.apple.security.device.audio-input'
+const entitlements = run('codesign', ['--display', '--entitlements', '-', '--xml', APP])
+check(
+  'the app has the microphone entitlement',
+  entitlements.ok && new RegExp(`<key>${AUDIO_INPUT}</key>\\s*<true/>`).test(entitlements.text),
+  entitlements.text,
+)
+const usage = run('/usr/libexec/PlistBuddy', [
+  '-c',
+  'Print :NSMicrophoneUsageDescription',
+  `${APP}/Contents/Info.plist`,
+])
+check('the app has the microphone usage text', usage.ok && usage.text.trim() !== '', usage.text)
+
 // Step 3: the notarisation ticket is stapled to the app, so macOS can check it with no network.
 const stapler = run('xcrun', ['stapler', 'validate', APP])
 check('the notarisation ticket is stapled', stapler.ok, stapler.text)
