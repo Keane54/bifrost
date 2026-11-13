@@ -15,7 +15,8 @@ const INTRO =
 
 const TOO_MANY = 'Bifrost can send only a limited number of answers at a time'
 
-const LINK = 'shrink-0 cursor-pointer text-text underline hover:text-text-strong'
+const LINK =
+  'shrink-0 cursor-pointer text-text underline transition-colors duration-150 hover:text-text-strong'
 
 const BUTTON =
   'border border-panel-edge bg-black/35 px-2 leading-5 text-text hover:text-text-strong not-disabled:active:bg-accent/12 disabled:opacity-40'

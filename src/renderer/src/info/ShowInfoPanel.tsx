@@ -55,7 +55,7 @@ function Value({
   if (item.label === 'PR' && pr?.kind === 'pr') {
     return (
       <button
-        className='min-w-0 cursor-pointer text-left break-all text-text-strong underline'
+        className='min-w-0 cursor-pointer text-left break-all text-text-strong underline transition-opacity duration-150 hover:opacity-80'
         onClick={() => {
           window.bifrost.info
             .openPr(sessionId)

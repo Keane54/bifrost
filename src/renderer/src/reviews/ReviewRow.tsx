@@ -17,6 +17,7 @@ import { useWmControls } from '../wm/context'
 import { setAnswerKey } from './answer-key'
 import { CiSpinner } from './CiSpinner'
 import { setDraftKey } from './draft-key'
+import { PrNumber } from './PrNumber'
 import {
   ageText,
   approveTip,
@@ -132,6 +133,7 @@ function Line1({
   dot,
   extra,
   number,
+  onOpenPr,
   repo,
   title,
 }: {
@@ -139,6 +141,7 @@ function Line1({
   dot?: string | null
   extra?: React.ReactNode
   number: number
+  onOpenPr: () => void
   repo: string
   title: string
 }): React.JSX.Element {
@@ -152,7 +155,7 @@ function Line1({
         />
       )}
       <span className='shrink-0 text-text'>{repo}</span>
-      <span className='shrink-0 text-text-dim'>#{number}</span>
+      <PrNumber number={number} onOpen={onOpenPr} />
       <span className='min-w-0 truncate text-text-strong'>{title}</span>
       {extra}
     </div>
@@ -369,6 +372,7 @@ export function ToReviewItem({
           )
         }
         number={row.number}
+        onOpenPr={() => onAct(() => window.bifrost.reviews.openPr(row.key))}
         repo={row.repo}
         title={row.title}
       />
@@ -520,6 +524,7 @@ export function MyPrItem({ onAct, row }: Common & { row: MyPrRow }): React.JSX.E
           )
         }
         number={row.number}
+        onOpenPr={() => onAct(() => window.bifrost.reviews.openPr(row.key))}
         repo={row.repo}
         title={row.title}
       />

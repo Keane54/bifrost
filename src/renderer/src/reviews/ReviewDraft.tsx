@@ -62,7 +62,8 @@ const HUNK = cx(
 // A strip of the panel above the footer, and the footer.
 const STRIP = 'flex shrink-0 flex-wrap items-center gap-2 border-t border-panel-edge px-3 py-1.5'
 const PLAIN = 'border-panel-edge text-text'
-const LINK = 'shrink-0 cursor-pointer text-text-dim underline hover:text-text disabled:opacity-40'
+const LINK =
+  'shrink-0 cursor-pointer text-text-dim underline transition-colors duration-150 hover:text-text disabled:opacity-40'
 
 const TONE: Record<Recommendation, string> = {
   approve: 'text-review-approve',
