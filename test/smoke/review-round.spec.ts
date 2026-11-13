@@ -15,7 +15,7 @@
 // fake gh and the fake claude put it in place of @HEAD@ in the fixtures.
 
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -27,7 +27,14 @@ import {
   type Page,
   test,
 } from '@playwright/test'
-import { expectTestHomeOnly, launchOptions, readText, skipSetup, UNKNOWN_LOG } from './app.ts'
+import {
+  expectTestHomeOnly,
+  launchOptions,
+  readText,
+  removeTestHome,
+  skipSetup,
+  UNKNOWN_LOG,
+} from './app.ts'
 
 const run = promisify(execFile)
 
@@ -131,11 +138,21 @@ async function startReview(
   await page.getByRole('button', { exact: true, name: 'Reviews' }).click()
   const strip = page.locator('[data-trust-strip]')
   await expect(strip).toContainText('acme/api', { timeout: 30_000 })
-  await expect(strip).toContainText('1 pull request waiting')
+  await expect(strip).toContainText('1 pull request waiting', { timeout: 30_000 })
   const row = page.locator(`[data-review-row="${PR_KEY}"]`)
-  await expect(row).toBeVisible()
+  await expect(row).toBeVisible({ timeout: 30_000 })
   await row.getByRole('button', { exact: true, name: 'Review' }).click()
-  await expect(row).toContainText('Trust needed')
+  // The row can show Trust needed before the refused start ran: after the click, the entry is
+  // in the queue a short time before Bifrost gives the clone its one start. If the test trusted
+  // the clone in that time, the start would not be refused, or the refusal would come after the
+  // trust. So the test waits for the one refused start in the log of the fake claude first.
+  await expect
+    .poll(async () => (await readText(join(testHome, 'review-args.log'))).trimEnd().split('\n'), {
+      message: 'the fake claude got the refused review start',
+      timeout: 30_000,
+    })
+    .toHaveLength(1)
+  await expect(row).toContainText('Trust needed', { timeout: 30_000 })
 
   // Step 4: Trust opens the trust terminal. Enter answers the fake trust prompt, and the panel
   // closes when Bifrost sees the trust in the .claude.json of the test home.
@@ -167,7 +184,7 @@ test('a review round posts one pending review, and the Review panel sends it', a
     // Step 5: the round runs, then the row shows the draft and the recommendation.
     await expect(row).toContainText('Reviewing', { timeout: 30_000 })
     await expect(row).toContainText('Changes required', { timeout: 90_000 })
-    await expect(row).toContainText('Claude drafted a summary and 1 comment.')
+    await expect(row).toContainText('Claude drafted a summary and 1 comment.', { timeout: 30_000 })
 
     // Step 6: the pending review is on the reviewed commit, has no event and has one comment.
     // It is the only write call, and it ran one time.
@@ -251,7 +268,7 @@ test('a review round posts one pending review, and the Review panel sends it', a
     if (app !== null) await app.close().catch(() => {})
     // Step 11: stop the sleep of the fake review session.
     await stopFakeSession(testHome)
-    await rm(testHome, { force: true, recursive: true })
+    await removeTestHome(testHome)
   }
 })
 
@@ -275,7 +292,7 @@ test('an Approve click submits the draft review of an Approve round as an approv
     await expect(row).toContainText('Reviewing', { timeout: 30_000 })
     await expect(row).toContainText('Approval recommended', { timeout: 90_000 })
     const approve = row.getByRole('button', { exact: true, name: 'Approve' })
-    await expect(approve).toBeEnabled()
+    await expect(approve).toBeEnabled({ timeout: 30_000 })
     const post = JSON.parse(await readText(join(testHome, 'review-post.json')))
     expect(post.commit_id).toBe(head)
     expect(post.body).toBe('The change is small, and the test covers it.')
@@ -286,7 +303,7 @@ test('an Approve click submits the draft review of an Approve round as an approv
     // approved, and the button goes.
     await approve.click()
     await expect(row).toContainText('You approved', { timeout: 30_000 })
-    await expect(approve).toHaveCount(0)
+    await expect(approve).toHaveCount(0, { timeout: 30_000 })
     const writes = (await readText(join(testHome, 'gh-writes.log'))).trimEnd().split('\n')
     expect(writes).toHaveLength(2)
     expect(writes[0]).toBe(REVIEW_CREATE)
@@ -313,7 +330,7 @@ test('an Approve click submits the draft review of an Approve round as an approv
       )
       .toBe(true)
     await expect(row).toContainText('You approved')
-    await expect(approve).toHaveCount(0)
+    await expect(approve).toHaveCount(0, { timeout: 30_000 })
     expect((await readText(join(testHome, 'gh-writes.log'))).trimEnd().split('\n')).toHaveLength(2)
 
     // Step 8: quit the app. The fakes got no unknown call.
@@ -330,7 +347,7 @@ test('an Approve click submits the draft review of an Approve round as an approv
     if (app !== null) await app.close().catch(() => {})
     // Step 9: stop the sleep of the fake review session.
     await stopFakeSession(testHome)
-    await rm(testHome, { force: true, recursive: true })
+    await removeTestHome(testHome)
   }
 })
 
@@ -353,16 +370,16 @@ test('an Approve click with no draft approves the reviewed commit with no text',
     // Step 5: the round runs. Nothing is posted, and the row shows the button.
     await expect(row).toContainText('Reviewing', { timeout: 30_000 })
     await expect(row).toContainText('Approval recommended', { timeout: 90_000 })
-    await expect(row).toContainText('Claude found nothing to change.')
+    await expect(row).toContainText('Claude found nothing to change.', { timeout: 30_000 })
     const approve = row.getByRole('button', { exact: true, name: 'Approve' })
-    await expect(approve).toBeEnabled()
+    await expect(approve).toBeEnabled({ timeout: 30_000 })
     expect(await readText(join(testHome, 'gh-writes.log'))).toBe('')
 
     // Step 6: one click approves the reviewed commit, with the PR ID of the fresh read and no
     // text. It is the only write.
     await approve.click()
     await expect(row).toContainText('You approved', { timeout: 30_000 })
-    await expect(approve).toHaveCount(0)
+    await expect(approve).toHaveCount(0, { timeout: 30_000 })
     const writes = (await readText(join(testHome, 'gh-writes.log'))).trimEnd().split('\n')
     expect(writes).toHaveLength(1)
     expect(writes[0]).toMatch(/^api graphql -f query=mutation ApproveHead\(/)
@@ -386,6 +403,6 @@ test('an Approve click with no draft approves the reviewed commit with no text',
     if (app !== null) await app.close().catch(() => {})
     // Step 8: stop the sleep of the fake review session.
     await stopFakeSession(testHome)
-    await rm(testHome, { force: true, recursive: true })
+    await removeTestHome(testHome)
   }
 })

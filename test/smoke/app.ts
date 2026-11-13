@@ -10,7 +10,7 @@
 // that Bifrost "includes a component that will not work with a future release of macOS"
 // (spec 14.1).
 
-import { mkdir, readFile, realpath } from 'node:fs/promises'
+import { mkdir, readFile, realpath, rm } from 'node:fs/promises'
 import { isAbsolute, join, relative } from 'node:path'
 import { type _electron, type ElectronApplication, expect, type Page } from '@playwright/test'
 
@@ -132,4 +132,20 @@ export async function skipSetup(page: Page): Promise<void> {
   await expect(setup).toHaveAttribute('data-setup-dialog', 'skills')
   await setup.getByRole('button', { exact: true, name: 'Skip' }).click()
   await expect(setup).toBeHidden()
+}
+
+// Remove the test home. A child process of the app (a git or gh process, or the fake claude) can
+// still write in the folder when the app has quit. The remove then fails with ENOTEMPTY. So the
+// remove tries again until the folder is gone. The remove never hides the last error.
+export async function removeTestHome(testHome: string): Promise<void> {
+  const end = Date.now() + 20_000
+  for (;;) {
+    try {
+      await rm(testHome, { force: true, maxRetries: 5, recursive: true, retryDelay: 200 })
+      return
+    } catch (err) {
+      if (Date.now() >= end) throw err
+      await new Promise(resolve => setTimeout(resolve, 250))
+    }
+  }
 }
