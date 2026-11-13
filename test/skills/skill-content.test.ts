@@ -5,11 +5,21 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readPluginSnapshot } from '../../scripts/skills/snapshot'
+import { mergedPrsArgs } from '../../src/main/daily-update/merged-prs'
+import type { DailyInput } from '../../src/main/daily-update/run-input'
+import {
+  checkDailyResult,
+  extractResult,
+  RESULT_BEGIN,
+  RESULT_END,
+} from '../../src/main/daily-update/run-result'
+import { skillExportFile, writeSkillExport } from '../../src/main/daily-update/skill-export'
 import { parseDiff } from '../../src/main/reviews/diff-lines'
 import type { RepoStore } from '../../src/main/reviews/repo-store'
 import { parseReviewResult, placeComments } from '../../src/main/reviews/result-file'
 import { writeRoundFiles } from '../../src/main/reviews/review-input'
 import type { ReviewContext } from '../../src/main/reviews/review-query'
+import { DEFAULT_DAILY_UPDATE, DEFAULT_TEMPLATE } from '../../src/shared/daily-update'
 import { parseSkill, type SkillFields, skillGroup } from '../../src/shared/skill-check'
 
 const ROOT = join(__dirname, '../../resources/bifrost-skills')
@@ -25,6 +35,7 @@ const SKILL_DIR = '${CLAUDE_SKILL_DIR}'
 const HUMANISE_RULES = '${CLAUDE_PLUGIN_ROOT}/skills/bifrost-humanise/rules.md'
 const PR_SKILLS = ['bifrost-review', 'bifrost-resolve-comments']
 const SKILLS = [
+  'bifrost-daily-update',
   'bifrost-grill',
   'bifrost-hand-over',
   'bifrost-humanise',
@@ -85,7 +96,7 @@ function bodyLines(text: string): string[] {
 const bodyOf = (folder: string): string => bodyLines(read(`skills/${folder}/SKILL.md`)).join('\n')
 
 describe('the skills of the Bifrost plugin', () => {
-  it('are exactly the five skill folders', () => {
+  it('are exactly the six skill folders', () => {
     const folders = readdirSync(join(ROOT, 'skills'), { withFileTypes: true })
       .filter(entry => entry.isDirectory())
       .map(entry => entry.name)
@@ -93,7 +104,7 @@ describe('the skills of the Bifrost plugin', () => {
     expect(folders).toEqual(SKILLS)
   })
 
-  // All five skills run inline (spec 6).
+  // All skills run inline (spec 6).
   it.each(SKILLS)('run inline: %s has no context field', folder => {
     expect(fieldsOf(folder)).not.toHaveProperty('context')
   })
@@ -372,5 +383,346 @@ describe('bifrost-hand-over', () => {
   it('uses British spelling in the body and the rules', () => {
     expect(bodyOf('bifrost-hand-over')).not.toMatch(AMERICAN)
     expect(rules()).not.toMatch(AMERICAN)
+  })
+})
+
+const DAILY = 'bifrost-daily-update'
+const DRAFT_RULES = 'skills/bifrost-daily-update/draft-rules.md'
+const DAILY_FAILURES = ['no-user', 'source-unavailable', 'tool-denied']
+// The area IDs of the result example in SKILL.md.
+const EXAMPLE_AREAS = ['area-1', 'area-2']
+// A sample input with each field of DailyInput.
+const SAMPLE_INPUT: DailyInput = {
+  areas: [{ description: 'd', id: 'a', name: 'A', since: 's', takesRest: false }],
+  format: { examples: [], template: 't' },
+  now: 'n',
+  prs: [{ body: '', mergedAt: 'm', number: 1, repo: 'o/r', title: 't', url: 'https://x.test/1' }],
+  source: { server: null, tools: [] },
+  timeZone: 'Europe/London',
+  version: 1,
+  you: '',
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+// The names of the fields that the skill must name. A field of an object gets the name of its
+// parent and a dot. A field of a list item gets its own name only.
+function fieldNames(value: Record<string, unknown>, prefix = ''): string[] {
+  const names: string[] = []
+  for (const [key, child] of Object.entries(value)) {
+    if (isObject(child)) {
+      names.push(...fieldNames(child, `${prefix}${key}.`))
+      continue
+    }
+    names.push(`${prefix}${key}`)
+    if (Array.isArray(child) && isObject(child[0])) names.push(...fieldNames(child[0]))
+  }
+  return names
+}
+
+// A section of the body, from its heading to the next heading of the same level.
+function sectionOf(body: string, heading: string): string {
+  const start = body.indexOf(`\n${heading}\n`)
+  if (start === -1) return ''
+  const level = heading.slice(0, heading.indexOf(' ') + 1)
+  const end = body.indexOf(`\n${level}`, start + heading.length + 1)
+  return body.slice(start, end === -1 ? undefined : end)
+}
+
+// The text with each wrapped list item on one line. A line that starts with spaces and then not
+// with "- " continues the line before it.
+const unwrapped = (text: string): string => text.replace(/\n +(?!- )(?=\S)/g, ' ')
+
+// The fenced text blocks of the body that hold a result.
+function resultBlocks(): string[] {
+  const blocks = [...bodyOf(DAILY).matchAll(/```text\n([\s\S]*?)\n```/g)].map(m => m[1] ?? '')
+  return blocks.filter(block => block.includes(RESULT_BEGIN))
+}
+
+// The words of a shell command, after the shell removes the quotes. The skill uses only double
+// quotes and a backslash at the end of a line.
+function shellWords(command: string): string[] {
+  const words: string[] = []
+  let word = ''
+  let quoted = false
+  let started = false
+  for (const char of command.replace(/\\\n\s*/g, ' ')) {
+    if (char === '"') {
+      quoted = !quoted
+      started = true
+    } else if (!quoted && /\s/.test(char)) {
+      if (started) words.push(word)
+      word = ''
+      started = false
+    } else {
+      word += char
+      started = true
+    }
+  }
+  if (started) words.push(word)
+  return words
+}
+
+// The stdout of claude -p --output-format json with this final reply.
+const asStdout = (reply: string): string =>
+  JSON.stringify({ is_error: false, result: reply, type: 'result' })
+
+describe('bifrost-daily-update', () => {
+  it('is in the called-by-name group and takes the input file', () => {
+    const fields = fieldsOf(DAILY)
+    expect(fields.name).toBe(DAILY)
+    expect(skillGroup(fields)).toBe('called-by-name')
+    expect(fields['argument-hint']).toBe('[bifrost-input=<file>]')
+  })
+
+  it('starts its Bifrost mode on bifrost-input= and has a mode for a start by hand', () => {
+    const body = bodyOf(DAILY)
+    const bifrost = sectionOf(body, '## Started by Bifrost').replace(/\s+/g, ' ')
+    expect(bifrost).toContain('`$ARGUMENTS` starts with `bifrost-input=`')
+    expect(sectionOf(body, '## Started by hand')).not.toBe('')
+  })
+
+  it('reads the draft rules and never changes the board', () => {
+    const body = bodyOf(DAILY)
+    expect(body).toContain(`${SKILL_DIR}/draft-rules.md`)
+    expect(body.replace(/\s+/g, ' ')).toContain('Never change anything on the board.')
+  })
+
+  it('names each field of the input file', () => {
+    const bifrost = sectionOf(bodyOf(DAILY), '## Started by Bifrost')
+    const names = fieldNames(SAMPLE_INPUT as unknown as Record<string, unknown>)
+    expect(names).toContain('source.tools')
+    expect(names).toContain('takesRest')
+    expect(names).toContain('mergedAt')
+    for (const name of names) expect(bifrost).toContain(`\`${name}\``)
+  })
+
+  it('names each field of the settings export in the mode by hand', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'daily-skill-export-'))
+    try {
+      const file = join(dir, 'settings.json')
+      const area = {
+        channel: '#c',
+        description: 'd',
+        id: 'a',
+        name: 'A',
+        on: true,
+        takesRest: false,
+      }
+      await writeSkillExport(file, { ...structuredClone(DEFAULT_DAILY_UPDATE), areas: [area] })
+      const exported = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+      const byHand = sectionOf(bodyOf(DAILY), '## Started by hand')
+      expect(byHand).toContain(skillExportFile('~/.bifrost'))
+      const names = fieldNames(exported)
+      expect(names).toContain('channel')
+      for (const name of names) expect(byHand).toContain(`\`${name}\``)
+    } finally {
+      await rm(dir, { force: true, recursive: true })
+    }
+  })
+
+  it('gives the default template of the settings for a start by hand', () => {
+    expect(sectionOf(bodyOf(DAILY), '## Started by hand')).toContain(DEFAULT_TEMPLATE)
+  })
+
+  it('gives a result example that passes the checks of Bifrost', () => {
+    const blocks = resultBlocks()
+    expect(blocks.length).toBeGreaterThanOrEqual(2)
+    const extracted = extractResult(asStdout(blocks[0] ?? ''))
+    expect(extracted.ok).toBe(true)
+    if (!extracted.ok) return
+    const out = checkDailyResult(extracted.text, EXAMPLE_AREAS)
+    expect(out.ok ? 'valid' : out.failure).toBe('valid')
+    if (!out.ok) return
+    const [first, second] = out.areas
+    expect(first?.items.map(item => item.kind)).toEqual(['ticket', 'pr'])
+    expect(first?.items.every(item => item.url?.startsWith('https://'))).toBe(true)
+    expect(second).toMatchObject({ items: [], moved: false })
+    expect(out.unplaced).toHaveLength(1)
+    // A body line holds 100 characters at most, so the example cuts each draft short. Each
+    // draft starts with the title and the first heading of the default template.
+    const start = DEFAULT_TEMPLATE.split('\n').slice(0, 2).join('\n')
+    for (const area of out.areas) expect(area.draft.startsWith(`${start}\n`)).toBe(true)
+  })
+
+  it('gives a failure example that passes the checks of Bifrost', () => {
+    const extracted = extractResult(asStdout(resultBlocks()[1] ?? ''))
+    expect(extracted.ok).toBe(true)
+    if (!extracted.ok) return
+    expect(checkDailyResult(extracted.text, EXAMPLE_AREAS)).toEqual({
+      failure: 'no-user',
+      ok: false,
+    })
+  })
+
+  it('names each failure code of the result check', () => {
+    const bifrost = sectionOf(bodyOf(DAILY), '## Started by Bifrost')
+    for (const code of DAILY_FAILURES) {
+      expect(bifrost).toContain(`\`${code}\``)
+      const text = JSON.stringify({ failure: code, version: 1 })
+      expect(checkDailyResult(text, [])).toEqual({ failure: code, ok: false })
+    }
+  })
+
+  it('asks for each ticket and each PR once, because the check refuses a second one', () => {
+    const bifrost = unwrapped(sectionOf(bodyOf(DAILY), '## Started by Bifrost'))
+    expect(bifrost).toContain(
+      'Each ticket and each PR is one item only. When a ticket changed more than one time, ' +
+        '`from` is its first state and `to` is its last state.',
+    )
+  })
+
+  it('names the two marker lines and asks for no code fence', () => {
+    const bifrost = sectionOf(bodyOf(DAILY), '## Started by Bifrost')
+    expect(bifrost).toContain(`\`${RESULT_BEGIN}\``)
+    expect(bifrost).toContain(`\`${RESULT_END}\``)
+    expect(bifrost.replace(/\s+/g, ' ')).toContain('Do not put the result in a code fence.')
+  })
+
+  // Each limit in the skill text is the limit of checkDailyResult.
+  it.each([
+    ['id', '100 characters at most', 'item', 100],
+    ['title', '300 characters at most', 'item', 300],
+    ['from', '60 characters at most', 'item', 60],
+    ['to', '60 characters at most', 'item', 60],
+    ['url', '2,000 characters at most', 'item', 2000],
+    ['draft', 'from 1 to 8,000 characters', 'area', 8000],
+    ['items', '100 items at most', 'area', 100],
+    ['unplaced', '100 items at most', 'top', 100],
+  ] as const)('gives the limit of %s as the check has it', (field, phrase, level, limit) => {
+    const lines = unwrapped(sectionOf(bodyOf(DAILY), '## Started by Bifrost')).split('\n')
+    const rule = lines.filter(line => line.trimStart().startsWith(`- \`${field}\`: `))
+    expect(rule.some(line => line.includes(phrase))).toBe(true)
+
+    const item = (size: number): Record<string, unknown> => {
+      const base: Record<string, unknown> = { id: 'T-1', kind: 'ticket', title: 'T' }
+      if (level !== 'item') return base
+      if (field === 'url') base.url = `https://${'x'.repeat(size - 8)}`
+      else base[field] = 'x'.repeat(size)
+      return base
+    }
+    const result = (size: number): string => {
+      // Each item has its own ID, because two items with one kind and ID are refused.
+      const list = (n: number) =>
+        Array.from({ length: n }, (_, i) => ({ ...item(size), id: `T-${i}` }))
+      const area: Record<string, unknown> = {
+        draft: 'x',
+        id: 'a',
+        items: [item(size)],
+        moved: true,
+      }
+      if (field === 'draft') area.draft = 'x'.repeat(size)
+      if (field === 'items') area.items = list(size)
+      const unplaced = field === 'unplaced' ? list(size) : []
+      return JSON.stringify({ areas: [area], unplaced, version: 1 })
+    }
+    expect(checkDailyResult(result(limit), ['a']).ok).toBe(true)
+    expect(checkDailyResult(result(limit + 1), ['a']).ok).toBe(false)
+  })
+
+  it('runs only the gh command of the product, and only in the mode by hand', () => {
+    const body = bodyOf(DAILY)
+    const blocks = [...body.matchAll(/```sh\n([\s\S]*?)\n```/g)].map(m => m[1] ?? '')
+    expect(blocks).toHaveLength(1)
+    expect(shellWords(blocks[0] ?? '')).toEqual(['gh', ...mergedPrsArgs('<ISO time>')])
+    const byHand = sectionOf(body, '## Started by hand')
+    expect(byHand).toContain(blocks[0])
+    expect(sectionOf(body, '## Started by Bifrost')).not.toMatch(/\bgh\b/)
+    const text = byHand.replace(/\s+/g, ' ')
+    for (const phrase of [
+      'This step is for the mode by hand only.',
+      'only when the settings file has `mergedPrs` set to `true`',
+      'ask the user whether to include the merged PRs',
+      'there is nothing to read',
+    ]) {
+      expect(text).toContain(phrase)
+    }
+  })
+
+  it('never writes null in the result: it leaves an optional field out', () => {
+    const bifrost = unwrapped(sectionOf(bodyOf(DAILY), '## Started by Bifrost'))
+    const lines = (bifrost.split('The rules of the result:')[1] ?? '').split('\n')
+    expect(lines).toContain('- Never write `null` in the result. Leave out an optional field.')
+    const fieldRules = lines.filter(line => /^ +- `(from|to|url)`: /.test(line))
+    expect(fieldRules).toHaveLength(3)
+    for (const line of fieldRules) expect(line).not.toContain('`null`')
+  })
+
+  it('says in its description that the chat shows the drafts only by hand', () => {
+    const description = String(fieldsOf(DAILY).description)
+    expect(description.length).toBeLessThanOrEqual(250)
+    expect(description).not.toContain('Shows the drafts in the chat.')
+    expect(description).toContain('by hand')
+  })
+
+  it('uses British spelling in the body and the rules', () => {
+    expect(bodyOf(DAILY)).not.toMatch(AMERICAN)
+    expect(read(DRAFT_RULES)).not.toMatch(AMERICAN)
+  })
+})
+
+describe('the draft rules of bifrost-daily-update', () => {
+  const rules = (): string => read(DRAFT_RULES)
+
+  it('have no frontmatter and no variable', () => {
+    expect(rules().startsWith('---')).toBe(false)
+    expect(rules()).not.toContain(VARIABLE_START)
+  })
+
+  it('give the template, voice, list and truth rules of the spec', () => {
+    // The text can wrap at any space.
+    const text = rules().replace(/\s+/g, ' ')
+    for (const phrase of [
+      'Follow the template exactly',
+      'Write in the voice of the examples.',
+      'Do not give ticket numbers or ticket states.',
+      'Use a list only for separate items.',
+      'Never state work that the input does not show.',
+      '"Nothing"',
+    ]) {
+      expect(text).toContain(phrase)
+    }
+  })
+
+  it('use standard Markdown: two stars for bold, never one', () => {
+    const text = rules().replace(/\s+/g, ' ')
+    expect(text).toContain('`**text**`')
+    expect(text).toContain('`- `')
+    expect(text).toContain('italic')
+    expect(text).toContain('No underline')
+  })
+
+  it('keep secrets out of the drafts and the result', () => {
+    expect(rules()).toMatch(/^- Never put a secret in a draft or in the result\./m)
+  })
+
+  it('keep the blank lines of the template and the examples', () => {
+    const text = rules().replace(/\s+/g, ' ')
+    expect(text).toContain('Keep each blank line of the template.')
+    expect(text).not.toContain('put no blank line')
+  })
+
+  it('never invent a plan for a heading that the input does not support', () => {
+    expect(rules().replace(/\s+/g, ' ')).toContain('Never invent a plan.')
+  })
+
+  // Haiku copies the example more than the rules, so the example adds nothing to its items.
+  it('give an example draft that adds no result to its items', () => {
+    const block = /```text\n([\s\S]*?)\n```/.exec(rules())?.[1] ?? ''
+    expect(block.split('\n')).toContain('The refunds change goes through review next.')
+    expect(block).not.toContain('Once the review is done')
+  })
+
+  it('give an example draft that follows the default template, line for line', () => {
+    const block = /```text\n([\s\S]*?)\n```/.exec(rules())
+    expect(block).not.toBeNull()
+    const lines = (block?.[1] ?? '').split('\n')
+    const at = DEFAULT_TEMPLATE.split('\n').map(line => lines.indexOf(line))
+    expect(at[0]).toBe(0)
+    expect(at).not.toContain(-1)
+    expect(at).toEqual([...at].sort((a, b) => a - b))
+    // Each heading has text below it.
+    expect(lines).toHaveLength(DEFAULT_TEMPLATE.split('\n').length * 2 - 1)
   })
 })

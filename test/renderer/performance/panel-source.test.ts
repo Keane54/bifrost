@@ -10,6 +10,7 @@ const read = (name: string): string => readFileSync(join(SRC, name), 'utf8')
 const PANEL = read('performance/PerformancePanel.tsx')
 const TREND = read('performance/TrendLine.tsx')
 const STORE = read('performance/use-performance.ts')
+const SNAPSHOT_STORE = read('lib/snapshot-store.ts')
 const SIDE_BAR = read('wm/SideBar.tsx')
 const WM = read('wm/WindowManager.tsx')
 
@@ -117,7 +118,9 @@ describe('PerformancePanel source', () => {
 
 describe('one Performance subscription', () => {
   it('has one onUpdate subscription, in the store', () => {
-    expect(STORE.match(/\.onUpdate\(/g)).toHaveLength(1)
+    expect(STORE).toContain('createSnapshotStore(api, EMPTY_PERFORMANCE)')
+    expect(STORE).not.toContain('onUpdate(')
+    expect(SNAPSHOT_STORE.match(/\.onUpdate\(/g)).toHaveLength(1)
     expect(PANEL).not.toContain('onUpdate(')
     expect(SIDE_BAR).not.toContain('onUpdate(')
   })

@@ -2,6 +2,7 @@
 import type { SessionRow } from '../../../shared/types'
 import ChatPanel from '../chat/ChatPanel'
 import { chatSessionId } from '../chat/views'
+import DailyUpdatePanel from '../daily-update/DailyUpdatePanel'
 import { useRegistry } from '../data/registry'
 import EventLogPanel from '../events/EventLogPanel'
 import ShowInfoPanel from '../info/ShowInfoPanel'
@@ -54,6 +55,8 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
       return 'Reviews'
     case 'performance':
       return 'Performance'
+    case 'daily-update':
+      return 'Daily update'
     case 'trust':
       return 'Trust a repository'
     case 'show-info': {
@@ -155,6 +158,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <ReviewsPanel />
     case 'performance':
       return <PerformancePanel />
+    case 'daily-update':
+      return <DailyUpdatePanel />
     case 'trust':
       return <TrustPanel />
     default:

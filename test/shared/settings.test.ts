@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import { DEFAULT_DAILY_UPDATE } from '../../src/shared/daily-update'
 import { MODEL_VALUES } from '../../src/shared/new-session'
 import {
   applyPatch,
@@ -40,6 +41,7 @@ describe('parseSettings', () => {
       accountUsage: false,
       animatedBackground: true,
       autoUpdate: true,
+      dailyUpdate: DEFAULT_DAILY_UPDATE,
       escalationMinutes: 10,
       interfaceScale: 100,
       keys: {},
@@ -73,6 +75,23 @@ describe('parseSettings', () => {
     copy.terminalFont.size = 20
     expect(DEFAULT_SETTINGS.slashCommands).toEqual(['/compact', '/clear', '/context'])
     expect(DEFAULT_SETTINGS.terminalFont.size).toBe(13)
+  })
+
+  test('settings load an old file with no dailyUpdate as DEFAULT_DAILY_UPDATE', () => {
+    const loaded = parseSettings({ labels: 'space', version: 1 })
+    expect(loaded.dailyUpdate).toEqual(DEFAULT_DAILY_UPDATE)
+    loaded.dailyUpdate.days.push(0)
+    expect(DEFAULT_DAILY_UPDATE.days).toEqual([1, 2, 3, 4, 5])
+  })
+
+  test('a dailyUpdate patch goes through checkDailyUpdate', () => {
+    const current = defaults()
+    const good = { ...DEFAULT_DAILY_UPDATE, you: 'Sam' }
+    const result = applyPatch(current, { dailyUpdate: good })
+    expect(result.ok && result.settings.dailyUpdate.you).toBe('Sam')
+    expect(reasonOf(current, { dailyUpdate: { ...good, days: [] } })).toBe(
+      'refused: bad dailyUpdate',
+    )
   })
 
   test('parseSettings keeps good values and gives the default for each bad value', () => {

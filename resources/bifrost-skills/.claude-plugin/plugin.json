@@ -1,5 +1,5 @@
 {
-  "description": "Bifrost skills: review a PR, resolve PR comments, humanise text, grill a plan and hand over a session.",
+  "description": "Bifrost skills: review a PR, resolve PR comments, humanise text, grill a plan, hand over a session and write the daily update.",
   "name": "bifrost",
   "version": "1.0.0"
 }

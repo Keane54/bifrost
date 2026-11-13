@@ -116,6 +116,8 @@ function ghCalls(code: string, file: string): GhCalls {
     if (!isGhCall(command, rest, match[0].startsWith('[') ? ']' : ')')) continue
     if (command === 'api' && /^\s*,\s*(['"`])(?:graphql|rate_limit)\1/.test(rest)) out.allowed++
     else if (command === 'pr' && /^\s*,\s*(['"`])view\1/.test(rest)) out.allowed++
+    // The Daily update reads the merged PRs of the user. A search only reads.
+    else if (command === 'search' && /^\s*,\s*(['"`])prs\1/.test(rest)) out.allowed++
     else if (command === 'api' && file === POSTER && CREATE_TAIL.test(rest)) out.create++
     else out.refused++
   }

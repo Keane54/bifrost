@@ -1,5 +1,5 @@
 // The smoke test of the skills. The setup dialog shows the skills step after the Live step. Then
-// Settings > Skills shows "Not installed." and the five skills. The fake claude lists no Bifrost
+// Settings > Skills shows "Not installed." and the six skills. The fake claude lists no Bifrost
 // plugin, so nothing is installed. The test also checks that the fake claude got no unknown call
 // and that the real Claude files and ~/.bifrost did not change.
 
@@ -10,6 +10,7 @@ import { _electron, type ElectronApplication, expect, test } from '@playwright/t
 import { launchOptions, readText, realFiles, UNKNOWN_LOG } from './app.ts'
 
 const SKILLS = [
+  ['bifrost-daily-update', 'called-by-name'],
   ['bifrost-grill', 'listed'],
   ['bifrost-hand-over', 'called-by-name'],
   ['bifrost-humanise', 'listed'],
@@ -51,7 +52,7 @@ test('the setup dialog offers the skills and Settings > Skills lists them', asyn
     await expect(settingsFrame.locator('[data-skills-state]')).toHaveText('Not installed.')
     await expect(settingsFrame.locator('[data-skills-action="install"]')).toBeVisible()
     const rows = settingsFrame.locator('li[data-skill-name]')
-    await expect(rows).toHaveCount(5)
+    await expect(rows).toHaveCount(SKILLS.length)
     for (const [index, [name, group]] of SKILLS.entries()) {
       const row = rows.nth(index)
       await expect(row).toHaveAttribute('data-skill-name', name)

@@ -1,5 +1,12 @@
 // The settings of spec 12. The main process keeps them in settings.json in userData (D1).
 // This module imports no library, so the main process and the renderer use it.
+
+import {
+  checkDailyUpdate,
+  type DailyUpdateSettings,
+  DEFAULT_DAILY_UPDATE,
+  parseDailyUpdate,
+} from './daily-update'
 import {
   type CustomKeys,
   canonicalBinding,
@@ -68,6 +75,7 @@ export interface Settings {
   // Entries of the form owner/repo or owner/*. The Reviews panel hides them.
   reviewsIgnore: string[]
   terminalFont: TerminalFont
+  dailyUpdate: DailyUpdateSettings
   // Only the changed key slots (D3).
   keys: CustomKeys
   setupDone: boolean
@@ -114,6 +122,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   accountUsage: false,
   animatedBackground: true,
   autoUpdate: true,
+  dailyUpdate: DEFAULT_DAILY_UPDATE,
   escalationMinutes: 10,
   interfaceScale: 100,
   keys: {},
@@ -192,7 +201,10 @@ const isProjectAppId: Check = value =>
 const isFontSize = onStep(FONT_SIZE_MIN, FONT_SIZE_MAX)
 
 // The settings with one value and one check.
-type SimpleKey = Exclude<SettingKey, 'keys' | 'reviewsIgnore' | 'slashCommands' | 'terminalFont'>
+type SimpleKey = Exclude<
+  SettingKey,
+  'dailyUpdate' | 'keys' | 'reviewsIgnore' | 'slashCommands' | 'terminalFont'
+>
 
 const SIMPLE_CHECKS: Readonly<Record<SimpleKey, Check>> = {
   accountUsage: isBoolean,
@@ -273,6 +285,7 @@ export function checkFontFamily(
 function defaultSettings(): Settings {
   return {
     ...DEFAULT_SETTINGS,
+    dailyUpdate: parseDailyUpdate(undefined),
     keys: {},
     reviewsIgnore: [],
     slashCommands: [...DEFAULT_SETTINGS.slashCommands],
@@ -356,6 +369,7 @@ export function parseSettings(data: unknown): Settings {
   settings.slashCommands = parseSlashCommands(own(data, 'slashCommands')) ?? settings.slashCommands
   settings.reviewsIgnore = parseReviewsIgnore(own(data, 'reviewsIgnore'))
   settings.terminalFont = parseFont(own(data, 'terminalFont'))
+  settings.dailyUpdate = parseDailyUpdate(own(data, 'dailyUpdate'))
   settings.keys = parseCustomKeys(own(data, 'keys'))
   return settings
 }
@@ -430,6 +444,10 @@ function checkField(key: SettingKey, value: unknown, current: Settings): FieldRe
   if (key === 'slashCommands') return checkSlashList(value)
   if (key === 'reviewsIgnore') return checkReviewsIgnoreList(value)
   if (key === 'terminalFont') return checkFont(value) ?? refuse(`refused: bad ${key}`)
+  if (key === 'dailyUpdate') {
+    const check = checkDailyUpdate(value)
+    return check.ok ? check : refuse(`refused: bad ${key}`)
+  }
   if (key === 'keys') return checkKeys(value, current.keys)
   return SIMPLE_CHECKS[key](value) ? { ok: true, value } : refuse(`refused: bad ${key}`)
 }

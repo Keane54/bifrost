@@ -2,6 +2,7 @@
 // The search finds the rows of all sections by their label. In Keys, it also finds a row by its
 // key, in the shown form (for example "⇧ ⌘ T") or in a typed form (for example "cmd shift t").
 import { parseBinding } from '../../../shared/keys'
+import { DAILY_ROWS } from './daily-update-rows'
 import { GENERAL_ROWS } from './general-rows'
 import type { KeyRow } from './key-editor'
 import { REVIEWS_ROWS } from './reviews-rows'
@@ -10,6 +11,7 @@ import { UPDATES_ROWS } from './updates-rows'
 
 // The titles of the sections, in the order of the tabs.
 export const SECTION_TITLES: Readonly<Record<SettingsSection, string>> = {
+  'daily-update': 'Daily update',
   general: 'General',
   keys: 'Keys',
   live: 'Live details',
@@ -23,6 +25,7 @@ const SECTION_ORDER: readonly SettingsSection[] = [
   'slash',
   'keys',
   'reviews',
+  'daily-update',
   'live',
   'skills',
   'updates',
@@ -168,6 +171,7 @@ export function settingsIndex(input: {
   skills: readonly string[]
 }): SearchSection[] {
   const rows: Record<SettingsSection, SearchRow[]> = {
+    'daily-update': Object.values(DAILY_ROWS).map(label => ({ id: label, text: label })),
     general: GENERAL_LABELS.map(label => ({ id: label, text: label })),
     keys: input.keys.flatMap(group =>
       group.rows.map(row => ({ binding: row.binding, id: row.slot.id, text: row.label })),

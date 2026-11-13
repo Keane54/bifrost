@@ -9,6 +9,7 @@ export type SettingsSection =
   | 'slash'
   | 'keys'
   | 'reviews'
+  | 'daily-update'
   | 'live'
   | 'skills'
   | 'updates'

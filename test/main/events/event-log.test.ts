@@ -74,6 +74,19 @@ describe('EventLog', () => {
     expect(log.list()).toHaveLength(2)
   })
 
+  test('a line entry has the kind notice and shows each time', () => {
+    const log = new EventLog()
+    expect(log.line('Daily update: the drafts are ready.', 5000)).toEqual({
+      at: 5000,
+      kind: 'notice',
+      name: 'Daily update: the drafts are ready.',
+      seq: 1,
+      sessionId: '',
+    })
+    expect(log.line('Daily update: the drafts are ready.', 6000).seq).toBe(2)
+    expect(log.list()).toHaveLength(2)
+  })
+
   test('the notice text is plain and friendly', () => {
     expect(NOTIFICATION_REFUSED).toBe(
       "macOS didn't show a notification. Allow notifications for Bifrost in System Settings.",

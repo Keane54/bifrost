@@ -1,4 +1,6 @@
-import { homedir } from 'node:os'
+import { existsSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vitest'
 import { createRunClaude, execFile, resolveClaudePath } from '../../../src/main/claude/cli'
@@ -61,10 +63,19 @@ test('execFile sends the kill signal of opts at the timeout and sets timedOut', 
   }
 })
 
+test('execFile gives the signal that ended the program', async () => {
+  const result = await execFile('/bin/sh', ['-c', 'kill -TERM $$'], { timeoutMs: 5000 })
+  expect(result.code).toBe(1)
+  expect(result.signal).toBe('SIGTERM')
+  expect(result.timedOut).toBeUndefined()
+  expect(result.aborted).toBeUndefined()
+})
+
 test('execFile does not set timedOut for a program that exits with an error', async () => {
   const result = await execFile('/bin/sh', ['-c', 'exit 3'])
   expect(result.code).toBe(3)
   expect(result.timedOut).toBeUndefined()
+  expect(result.signal).toBeUndefined()
 })
 
 test('createRunClaude uses the base env without the removed variables', async () => {
@@ -155,4 +166,44 @@ test('createRunClaude never passes input to claude', async () => {
   await createRunClaude(exec, '/bin/claude', {})(['-p'], opts)
   expect(exec.mock.calls[0][2]).not.toHaveProperty('input')
   expect(exec.mock.calls[0][2].cwd).toBe('/w')
+})
+
+test('execFile stops the program when the signal aborts', async () => {
+  const controller = new AbortController()
+  const start = Date.now()
+  const promise = execFile('/bin/sh', ['-c', 'exec sleep 5'], {
+    signal: controller.signal,
+    timeoutMs: 10_000,
+  })
+  setTimeout(() => controller.abort(), 50)
+  const result = await promise
+  expect(Date.now() - start).toBeLessThan(1500)
+  expect(result.code).not.toBe(0)
+  expect(result.aborted).toBe(true)
+  expect(result.timedOut).toBeUndefined()
+})
+
+test('execFile starts no program with an aborted signal', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'bifrost-cli-abort-'))
+  try {
+    const marker = join(dir, 'ran')
+    const controller = new AbortController()
+    controller.abort()
+    const result = await execFile('/bin/sh', ['-c', `touch '${marker}'`], {
+      signal: controller.signal,
+    })
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(result.aborted).toBe(true)
+    expect(result.code).not.toBe(0)
+    expect(existsSync(marker)).toBe(false)
+  } finally {
+    await rm(dir, { force: true, recursive: true })
+  }
+})
+
+test('createRunClaude passes the signal to exec', async () => {
+  const exec = vi.fn().mockResolvedValue({ code: 0, stderr: '', stdout: '' })
+  const controller = new AbortController()
+  await createRunClaude(exec, '/bin/claude', {})(['-p'], { signal: controller.signal })
+  expect(exec.mock.calls[0][2].signal).toBe(controller.signal)
 })

@@ -1,8 +1,9 @@
 #!/bin/sh
 # The fake claude of the smoke test (spec 15, D23). The smoke test puts this folder first on the
 # PATH of Bifrost. The script gives fixed answers to the commands that Bifrost runs at the start,
-# to the attach of a chat window, to the trust terminal and to a review session. It writes files
-# only in the test home and in the input folder of a review.
+# to the attach of a chat window, to the trust terminal, to a review session and to the probe and
+# the draft run of the Daily update. It writes files only in the test home and in the input folder
+# of a review.
 #
 # A review session (claude --bg with --restricted) writes the result file of the review and
 # starts a sleep as the process of the session. The file fake-agents.json in the test home then
@@ -116,6 +117,26 @@ for arg in "$@"; do
   prev=$arg
   last=$arg
 done
+# The probe of the Daily update. It prints one init event and ends. The ticket source "board" and
+# the server "other" are invented names.
+probe='-p --output-format stream-json --verbose --tools  --model haiku --permission-mode dontAsk'
+probe="$probe"' --settings {"disableAllHooks":true} Reply with OK only.'
+if [ "$#" -eq 13 ] && [ "$*" = "$probe" ]; then
+  servers='[{"name":"board","status":"connected"},{"name":"other","status":"connected"}]'
+  tools='["Read","Skill","mcp__board__list_items","mcp__board__update_item","mcp__other__get_note"]'
+  printf '{"type":"system","subtype":"init","mcp_servers":%s,"tools":%s}\n' "$servers" "$tools"
+  exit 0
+fi
+
+# The draft run of the Daily update. The log gets one line for each run. The run prints the JSON
+# output of a good claude -p run. Its result holds the drafts of the work areas area-a and area-b.
+if [ "${1:-} ${2:-} ${3:-}" = '-p --output-format json' ] && [ -n "$home" ] &&
+  [ "${last#/bifrost-daily-update bifrost-input=/}" != "$last" ]; then
+  printf '%s\n' "$*" >>"$home/daily-args.log"
+  cat "$dir/../fixtures/daily-result.json"
+  exit 0
+fi
+
 if [ "${1:-}" = --bg ] && [ "$restricted" = yes ] && [ -n "$home" ]; then
   printf '%s\n' "$*" >>"$home/review-args.log"
   if ! grep -q hasTrustDialogAccepted "$home/.claude.json" 2>/dev/null; then

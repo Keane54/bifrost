@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { DAILY_ROWS } from '../../../src/renderer/src/settings/daily-update-rows'
 import { GENERAL_ROWS } from '../../../src/renderer/src/settings/general-rows'
 import { keyGroups } from '../../../src/renderer/src/settings/key-editor'
 import { REVIEWS_ROWS } from '../../../src/renderer/src/settings/reviews-rows'
@@ -93,12 +94,13 @@ describe('the index of all sections', () => {
     slash: ['/compact', '/clear'],
   })
 
-  it('has the seven sections in the order of the tabs, with their titles', () => {
+  it('has the eight sections in the order of the tabs, with their titles', () => {
     expect(index.map(s => s.id)).toEqual([
       'general',
       'slash',
       'keys',
       'reviews',
+      'daily-update',
       'live',
       'skills',
       'updates',
@@ -108,6 +110,7 @@ describe('the index of all sections', () => {
       'Slash commands',
       'Keys',
       'Reviews',
+      'Daily update',
       'Live details',
       'Skills',
       'Updates',
@@ -125,11 +128,12 @@ describe('the index of all sections', () => {
       text: 'Take control',
     })
     expect(index[3].rows.map(r => r.id)).toEqual(Object.values(REVIEWS_ROWS))
-    expect(index[4].rows).toEqual([{ id: 'live', text: 'Live details Off. Turn on Remove' }])
-    expect(index[5].rows).toEqual([
+    expect(index[4].rows.map(r => r.id)).toEqual(Object.values(DAILY_ROWS))
+    expect(index[5].rows).toEqual([{ id: 'live', text: 'Live details Off. Turn on Remove' }])
+    expect(index[6].rows).toEqual([
       { id: 'skills', text: 'Skills plugin Not installed. Install bifrost-hand-over' },
     ])
-    expect(index[6].rows).toEqual([{ id: UPDATES_ROWS.auto, text: UPDATES_ROWS.auto }])
+    expect(index[7].rows).toEqual([{ id: UPDATES_ROWS.auto, text: UPDATES_ROWS.auto }])
   })
 
   it('finds the Skills section with the query hand-over', () => {

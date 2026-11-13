@@ -24,6 +24,7 @@ import { DEFAULT_WATCH_COLOUR, isWatchColour } from '../../../shared/watch'
 import { folderSharer } from '../../../shared/worktree'
 import { useChats } from '../chat/chat-terminals'
 import { chatPanelId } from '../chat/views'
+import { openDaily } from '../daily-update/use-daily-update'
 import { useRegistry } from '../data/registry'
 import { errorMessage } from '../lib/error-message'
 import { setReviewsTab } from '../reviews/reviews-tab'
@@ -577,6 +578,13 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
   // A click on a usage notification opens the Usage HUD.
   useEffect(
     () => window.bifrost.usage.onOpen(() => dispatch({ panelId: 'usage-hud', type: 'open' })),
+    [dispatch],
+  )
+
+  // A click on a Daily update reminder opens the Daily update panel at the first area that is
+  // not sent.
+  useEffect(
+    () => window.bifrost.dailyUpdate.onOpen(areaId => openDaily(areaId, dispatch)),
     [dispatch],
   )
 

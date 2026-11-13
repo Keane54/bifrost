@@ -10,6 +10,7 @@ import {
   List,
   ListPlus,
   type LucideIcon,
+  MessageSquareText,
   RotateCcw,
   ScrollText,
   Settings,
@@ -25,6 +26,7 @@ import {
   globalActionState,
 } from '../actions/action-model'
 import { useActions } from '../actions/actions-context'
+import { useDailyMarker } from '../daily-update/use-daily-update'
 import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { Tip } from '../lib/menu'
@@ -149,6 +151,8 @@ function UpdateButton(): React.JSX.Element | null {
 }
 
 const REVIEWS_ATTENTION = 'Reviews - a pull request waits for you'
+// The Daily update dot shows on a due day after the draft time, while an area is not sent.
+const DAILY_ATTENTION = 'Daily update - Not sent yet'
 const SETTINGS_ATTENTION = 'Settings - something needs your attention'
 // The Performance dot has the colour of the health state (design section 5.3). OK has no dot.
 const PERFORMANCE_ATTENTION: Record<'warning' | 'problem', string> = {
@@ -193,6 +197,7 @@ function SideBar(): React.JSX.Element {
   const { warning } = useLive()
   const reviews = useReviews()
   const health = usePerformanceState()
+  const dailyMarker = useDailyMarker()
   const open = (panelId: string): void => dispatch({ panelId, type: 'open' })
   const free = freeOverview(state)
   const minimised = state.frames.filter(f => f.minimised)
@@ -223,6 +228,12 @@ function SideBar(): React.JSX.Element {
         icon={GitPullRequest}
         label='Reviews'
         onClick={() => open('reviews')}
+      />
+      <SideButton
+        dot={dailyMarker ? DAILY_ATTENTION : undefined}
+        icon={MessageSquareText}
+        label='Daily update'
+        onClick={() => open('daily-update')}
       />
       <SideButton
         dot={health === 'ok' ? undefined : PERFORMANCE_ATTENTION[health]}
@@ -268,7 +279,8 @@ function SideBar(): React.JSX.Element {
   )
 }
 
-// The side bar has no props. It renders only when a context value changes, or when the health
-// state of the Performance store changes. A drag step changes no context value, and a new
-// snapshot with the same health state gives the same value. So these do not render the side bar.
+// The side bar has no props. It renders only when a context value changes, when the health
+// state of the Performance store changes, or when the Daily update marker changes. A drag step
+// changes no context value, and a new snapshot with the same health state or the same marker
+// gives the same value. So these do not render the side bar.
 export default memo(SideBar)

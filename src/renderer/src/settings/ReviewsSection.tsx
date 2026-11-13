@@ -46,7 +46,7 @@ function minutesText(minutes: number): string {
 }
 
 // A select of a model. The empty value means the default model of Claude Code.
-function ModelRow(props: {
+export function ModelRow(props: {
   label: string
   value: string
   hint?: string

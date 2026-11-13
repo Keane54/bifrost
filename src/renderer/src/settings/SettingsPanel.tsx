@@ -8,6 +8,7 @@ import { cx } from '../lib/cx'
 import { once } from '../lib/once'
 import { useUpdatesFailed } from '../updates/use-updates'
 import { useWmControls } from '../wm/context'
+import DailyUpdateSection from './DailyUpdateSection'
 import GeneralSection from './GeneralSection'
 import KeysSection from './KeysSection'
 import { keyGroups } from './key-editor'
@@ -37,7 +38,16 @@ import { useSkills } from './skills-context'
 import { skillsActions, skillsStateLine } from './skills-notice'
 import UpdatesSection from './UpdatesSection'
 
-const TABS: SettingsSection[] = ['general', 'slash', 'keys', 'reviews', 'live', 'skills', 'updates']
+const TABS: SettingsSection[] = [
+  'general',
+  'slash',
+  'keys',
+  'reviews',
+  'daily-update',
+  'live',
+  'skills',
+  'updates',
+]
 
 // The focus for Cmd+F: in Settings, nowhere (the page body), or in another place.
 function focusPlace(root: HTMLElement | null): 'settings' | 'none' | 'other' {
@@ -83,6 +93,7 @@ function Hit({
       {hit.id === 'slash' && <SlashSection only={only} />}
       {hit.id === 'keys' && <KeysSection only={only} />}
       {hit.id === 'reviews' && <ReviewsSection only={only} />}
+      {hit.id === 'daily-update' && <DailyUpdateSection only={only} />}
       {hit.id === 'live' && <LiveSection readStatus={readLive} />}
       {hit.id === 'skills' && <SkillsSection readStatus={readSkills} />}
       {hit.id === 'updates' && <UpdatesSection only={only} />}
@@ -291,6 +302,7 @@ export default function SettingsPanel(): React.JSX.Element {
           {hits === null && section === 'slash' && <SlashSection />}
           {hits === null && section === 'keys' && <KeysSection />}
           {hits === null && section === 'reviews' && <ReviewsSection />}
+          {hits === null && section === 'daily-update' && <DailyUpdateSection />}
           {hits === null && section === 'live' && <LiveSection readStatus={readLive} />}
           {hits === null && section === 'skills' && <SkillsSection readStatus={readSkills} />}
           {hits === null && section === 'updates' && <UpdatesSection />}

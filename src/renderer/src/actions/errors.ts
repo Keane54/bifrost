@@ -72,8 +72,10 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: Take control needs a confirmation': 'Take control needs your confirmation first.',
   'refused: the attach is not for the session of the chat view':
     "That connection doesn't match the session of this chat window.",
+  'refused: the draft is too long': 'That draft is too long. Make it shorter, then try again.',
   'refused: the ID that resumes this session is not known yet':
     "Bifrost doesn't know which ID resumes this session yet. Try again in 30 seconds.",
+  'refused: the item has no link to open': "That item doesn't have a link that Bifrost can open.",
   'refused: the page that asked for the PTY is gone':
     'The window that asked for the terminal has closed.',
   'refused: the project directory is not known': REASON_NO_CWD,
@@ -101,6 +103,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the terminal app of the session is not known': REASON_TERMINAL_UNKNOWN,
   'refused: the UI state is too large': 'The window layout is too large to save.',
   'refused: the UI state must be an object': "Bifrost couldn't save the window layout.",
+  'refused: the work area has no draft': "This work area doesn't have a draft yet.",
   'refused: the worktree changed after the check':
     'The worktree changed after the check. Check it again, then delete.',
   'refused: the worktree has uncommitted changes':
@@ -117,6 +120,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: unknown repository': "That repository doesn't need trust any more.",
   'refused: unknown service': "Bifrost doesn't know that service.",
   'refused: unknown session': REASON_GONE,
+  'refused: unknown work area': "That work area isn't on any more.",
 }
 
 // Return true for the code of a bad value or an unknown key in a settings patch.

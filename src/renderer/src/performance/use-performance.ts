@@ -15,6 +15,7 @@ import {
   type HealthState,
   type PerformanceSnapshot,
 } from '../../../shared/performance'
+import { createSnapshotStore, type SnapshotStore } from '../lib/snapshot-store'
 import { type Frame, panelKind } from '../wm/state'
 
 // The panel ID of the Performance panel.
@@ -22,60 +23,11 @@ export const PERFORMANCE_PANEL = 'performance'
 
 type PerformanceApi = Pick<BifrostApi['performance'], 'onUpdate' | 'snapshot'>
 
-export interface PerformanceStore {
-  get(): PerformanceSnapshot
-  subscribe(listener: () => void): () => void
-}
+export type PerformanceStore = SnapshotStore<PerformanceSnapshot>
 
-// A store with one subscription to the main process for all its listeners. The first listener
-// starts the subscription and the last listener stops it. The store subscribes first and then
-// loads the value. An update that comes before the first answer wins.
+// A store with one subscription to the main process for all its listeners (createSnapshotStore).
 export function createPerformanceStore(api: () => PerformanceApi): PerformanceStore {
-  let current = EMPTY_PERFORMANCE
-  const listeners = new Set<() => void>()
-  let stop: (() => void) | null = null
-  // A new start makes the answers of an old start go stale.
-  let generation = 0
-
-  const set = (next: PerformanceSnapshot): void => {
-    current = next
-    for (const listener of [...listeners]) listener()
-  }
-
-  const start = (): void => {
-    const gen = ++generation
-    let updated = false
-    const off = api().onUpdate(next => {
-      updated = true
-      if (gen === generation) set(next)
-    })
-    api()
-      .snapshot()
-      .then(
-        first => {
-          if (gen === generation && !updated) set(first)
-        },
-        () => {},
-      )
-    stop = () => {
-      generation++
-      off()
-    }
-  }
-
-  return {
-    get: () => current,
-    subscribe(listener) {
-      listeners.add(listener)
-      if (stop === null) start()
-      return () => {
-        listeners.delete(listener)
-        if (listeners.size > 0 || stop === null) return
-        stop()
-        stop = null
-      }
-    },
-  }
+  return createSnapshotStore(api, EMPTY_PERFORMANCE)
 }
 
 const store = createPerformanceStore(() => window.bifrost.performance)

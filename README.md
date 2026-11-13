@@ -65,11 +65,34 @@ The side bar on the left edge has one button for each panel. It also holds the p
 | Usage HUD | The use of the 5-hour limit and the 7-day limit. |
 | Service status | The status of Claude, GitHub and Sentry. |
 | Reviews | The GitHub pull requests that need you, in two tabs: To review and My PRs. In this version, the panel only shows the pull requests. |
-| Settings | The tabs General, Slash commands, Keys, Reviews, Live details, Skills and Updates. |
+| Daily update | One tab for each work area. Each tab shows the tickets and PRs that moved since your last update, and the draft of your daily update. |
+| Settings | The tabs General, Slash commands, Keys, Reviews, Daily update, Live details, Skills and Updates. |
+
+## Daily update
+
+The Daily update reminds you to post a short update in Slack on each work day. Claude writes one draft for each work area. You read the draft, change it if necessary, and copy it to Slack.
+
+Set up the Daily update in Settings > Daily update:
+
+- **Ticket source**: an MCP server of your Claude Code, for example the server of your ticket board. Bifrost proposes the tools of the server that only read. You confirm the list.
+- **You on the board**: your name, email or ID on the board. When this is empty, Claude uses the user of the MCP server.
+- **Merged PRs**: Bifrost also uses your merged PRs as items. This needs `gh`.
+- **Times and days**: the draft time (default 09:30), the deadline (default 10:00) and the work days (default Monday to Friday).
+- **Format**: the template of the update, and up to three past updates as examples of your style.
+- **Work areas**: each area has a name, a Slack channel and a short text that tells which work goes there. One area can take all other work.
+
+How it works:
+
+- At the draft time, Bifrost runs `claude -p` with the `bifrost-daily-update` skill. Then a notification with a sound tells you that the drafts are ready. When an area is not sent 10 minutes before the deadline, a second notification comes.
+- When you open the Daily update panel, Bifrost makes new drafts. It does not do this when the last run ended less than 5 minutes ago. The Refresh button always makes new drafts.
+- On the same day, a new draft does not replace a draft that you changed. The tab offers the new draft, and you choose. On the next day, the new draft replaces it.
+- The reminders stop when you mark each area as sent, or when you click Skip today. Copy does not stop them.
+- The run only reads the board. It gets the Read and Skill tools of Claude Code and the read tools that you confirmed. Bifrost denies all other tools of the server and all other MCP servers. A tool with a name that can change things, for example `update_item` or `deleteItem`, is always denied. Settings does not let you tick it.
+- The Send button comes with the Slack app. Until then, copy the draft and paste it in Slack.
 
 ## Skills
 
-Bifrost skills are a small Claude Code plugin. The plugin has five skills.
+Bifrost skills are a small Claude Code plugin. The plugin has six skills.
 
 | Skill | Group | Job |
 | --- | --- | --- |
@@ -78,6 +101,7 @@ Bifrost skills are a small Claude Code plugin. The plugin has five skills.
 | `bifrost-humanise` | Listed | Make a text sound like a person wrote it. |
 | `bifrost-grill` | Listed | Ask hard questions about a plan. |
 | `bifrost-hand-over` | Called by name | Hand over a session to a new session. |
+| `bifrost-daily-update` | Called by name | Write a draft of your daily update for each work area. |
 
 Listed skills are in the skill list of Claude, so Claude can start them by itself. A skill that you call by name costs no context until you type its name.
 

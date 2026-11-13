@@ -6,15 +6,22 @@ import { childEnv } from '../child-env'
 
 // timedOut is true only when the timeout stopped the program.
 // overflow is true only when Node stopped the program at the maxBuffer limit.
+// aborted is true only when the signal of opts stopped the program, or when the program did not
+// start because the signal was aborted before.
+// signal is the name of the signal that ended the program, when no timeout and no abort sent it.
 export type ExecResult = {
   code: number
   stdout: string
   stderr: string
   timedOut?: boolean
   overflow?: boolean
+  aborted?: boolean
+  signal?: string
 }
 // The Node error code when stdout or stderr is longer than maxBuffer.
 const MAXBUFFER_CODE = 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+// The stderr of a program that the signal of opts stopped.
+const ABORTED_TEXT = 'Bifrost stopped the program.'
 // The signal that stops a program at the timeout.
 export type KillSignal = 'SIGKILL' | 'SIGTERM'
 export type ExecFn = (
@@ -29,6 +36,8 @@ export type ExecFn = (
     maxBuffer?: number
     // The text for stdin. Only gh gets it. A claude run never gets it (see execFile).
     input?: string
+    // An abort stops the program with the kill signal.
+    signal?: AbortSignal
   },
 ) => Promise<ExecResult>
 
@@ -45,8 +54,14 @@ const DEFAULT_TIMEOUT_MS = 10000
 // The program gets an empty, closed stdin. claude adds piped stdin to the prompt (spec 8).
 // A program that reads stdin then gets the end of the input at once. It does not wait.
 // With opts.input, the program gets that text on stdin, then the end of the input.
+// An abort of opts.signal stops the program with the kill signal. With a signal that is aborted
+// before, the program does not start.
 export const execFile: ExecFn = (file, args, opts) =>
   new Promise(resolve => {
+    if (opts?.signal?.aborted) {
+      resolve({ aborted: true, code: 1, stderr: ABORTED_TEXT, stdout: '' })
+      return
+    }
     const child = nodeExecFile(
       file,
       args,
@@ -56,11 +71,17 @@ export const execFile: ExecFn = (file, args, opts) =>
         env: opts?.env,
         killSignal: opts?.killSignal ?? 'SIGKILL',
         maxBuffer: opts?.maxBuffer,
+        signal: opts?.signal,
         timeout: opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       },
       (error, stdout, stderr) => {
         if (!error) {
           resolve({ code: 0, stderr, stdout })
+          return
+        }
+        // Node gives an AbortError when the signal stopped the program.
+        if (error.name === 'AbortError') {
+          resolve({ aborted: true, code: 1, stderr: stderr || ABORTED_TEXT, stdout })
           return
         }
         // Node sets killed when it sent the kill signal at the timeout.
@@ -76,8 +97,10 @@ export const execFile: ExecFn = (file, args, opts) =>
         // No exit code: the program did not start, a signal ended it, or Node stopped it at
         // the maxBuffer limit.
         const result: ExecResult = { code: 1, stderr: stderr || error.message, stdout }
+        const signal = (error as { signal?: unknown }).signal
         if (code === MAXBUFFER_CODE) result.overflow = true
         else if (killed) result.timedOut = true
+        else if (typeof signal === 'string') result.signal = signal
         resolve(result)
       },
     )
@@ -127,7 +150,7 @@ export async function resolveClaudePath(
 
 export type RunClaude = (
   args: string[],
-  opts?: { cwd?: string; timeoutMs?: number; killSignal?: KillSignal },
+  opts?: { cwd?: string; timeoutMs?: number; killSignal?: KillSignal; signal?: AbortSignal },
 ) => Promise<ExecResult>
 
 // Each claude run gets the clean child env, made from baseEnv.

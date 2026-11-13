@@ -42,6 +42,12 @@ export class EventLog {
   notice(text: string, at: number): LogEntry | null {
     if (this.notices.has(text)) return null
     this.notices.add(text)
+    return this.line(text, at)
+  }
+
+  // Add a plain line for the user each time, for example a line of a Daily update run. Return
+  // the new entry.
+  line(text: string, at: number): LogEntry {
     const entry: LogEntry = { at, kind: 'notice', name: text, seq: this.next++, sessionId: '' }
     this.keep([entry])
     return entry

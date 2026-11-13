@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { constants, existsSync } from 'node:fs'
 import {
@@ -63,7 +64,20 @@ import {
   type RunClaude,
   resolveClaudePath,
 } from './claude/cli'
+import { createSpawnLines, type SpawnLines } from './claude/spawn-lines'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
+import {
+  checkBoolean,
+  checkDraftText,
+  checkId,
+  checkPageTrigger,
+  createDailyUpdateService,
+  DAILY_TITLE,
+  type DailyUpdateService,
+  dailyFolder,
+} from './daily-update/service'
+import { skillExportFile, writeSkillExport } from './daily-update/skill-export'
+import { dailyStateFile, openDailyStateStore } from './daily-update/state-store'
 import { loadLoginEnv, stringValues } from './env/login-env'
 import { createBatcher, EventLog, NOTIFICATION_REFUSED } from './events/event-log'
 import { createHandOver } from './handover/hand-over'
@@ -252,6 +266,17 @@ const REVIEWS_OPEN = 'reviews'
 let usageAlerts: UsageAlertMonitor | null = null
 const pendingUsageOpen = new PendingOpen()
 const USAGE_OPEN = 'usage'
+
+// The Daily update (Daily update design). registerIpc starts it after the settings store opens. A
+// tick checks the schedule at the start, every 30 seconds, and when the Mac wakes or unlocks.
+// stopRegistry stops the ticks, the run and the probes. A click on a reminder while no page is
+// loaded waits for the next page. PendingOpen keeps a text, so the empty text DAILY_NO_AREA means
+// "no area".
+const DAILY_TICK_MS = 30_000
+const pendingDailyOpen = new PendingOpen()
+const DAILY_NO_AREA = ''
+const DAILY_FAILED = "Bifrost couldn't do that. Please try again."
+let stopDaily: (() => void) | null = null
 
 const fetchJson = createFetchJson((url, init) => net.fetch(url, init))
 
@@ -599,6 +624,113 @@ async function startReviews(
   return watcher
 }
 
+// What startDailyUpdate needs besides the settings: the runners of gh and claude, and the skills
+// plugin folder of the review sessions.
+interface DailyParts {
+  gh: Gh
+  run: Promise<RunClaude | null>
+  spawnLines: Promise<SpawnLines | null>
+  pluginDir: string
+}
+
+// Write the Daily update settings for the skill. The folder gets mode 700 before the write. A
+// failure goes to the console only.
+async function exportDailySettings(bifrostHome: string, settings: Settings): Promise<void> {
+  try {
+    await dailyFolder(bifrostHome)
+    await writeSkillExport(skillExportFile(bifrostHome), settings.dailyUpdate)
+  } catch (err) {
+    console.error('Bifrost cannot write the Daily update settings for the skill.', err)
+  }
+}
+
+// Show the window and open the Daily update panel at the area.
+function openDailyPanel(areaId: string | null): void {
+  showWindowFn?.()
+  // With no loaded page, the open waits for the did-finish-load of the next page.
+  if (pendingDailyOpen.click(areaId ?? DAILY_NO_AREA) !== null) send('daily-update:open', areaId)
+}
+
+// Open the day state and make the Daily update service. The state and the skill export go to
+// bifrostHome, so a test home uses its own files. Write the skill export at the start and after
+// each change of the Daily update settings. Then start the ticks.
+async function startDailyUpdate(
+  bifrostHome: string,
+  settingsReady: Promise<SettingsStore>,
+  parts: DailyParts,
+): Promise<DailyUpdateService> {
+  const settings = await settingsReady
+  // The exports run one at a time, so an older export never writes over a newer one.
+  let exports = exportDailySettings(bifrostHome, settings.get())
+  await exports
+  const store = await openDailyStateStore(dailyStateFile(bifrostHome))
+  const service = createDailyUpdateService({
+    bifrostHome,
+    bounce: () => {
+      app.dock?.bounce('informational')
+    },
+    eventNotice: text => eventBatcher.push([eventLog.line(text, Date.now())]),
+    gh: parts.gh,
+    log: message => console.error(message),
+    notify: (text, sound, onClick) =>
+      showNotification(
+        { body: text, label: 'daily update', sessionId: null, sound, title: DAILY_TITLE },
+        () => onClick(),
+        logRefusedNotification,
+      ),
+    now: () => Date.now(),
+    openExternal: url => shell.openExternal(url),
+    openPanel: openDailyPanel,
+    pluginDir: parts.pluginDir,
+    runClaude: () => parts.run,
+    settings: () => settings.get().dailyUpdate,
+    spawnLines: () => parts.spawnLines,
+    store,
+    writeClipboard: text => clipboard.writeText(text),
+  })
+  service.onUpdate(snapshot => send('daily-update:update', snapshot))
+  settings.onChange((next, prev) => {
+    if (next.dailyUpdate === prev.dailyUpdate) return
+    exports = exports.then(() => exportDailySettings(bifrostHome, settings.get()))
+    send('daily-update:update', service.snapshot())
+  })
+  // The app can quit before the state opens. Then stop the service and do not start the ticks.
+  if (serviceStopped) {
+    service.stop()
+    return service
+  }
+  const tick = (): void => {
+    service.tick().catch(err => console.error('The Daily update tick failed.', err))
+  }
+  const timer = setInterval(tick, DAILY_TICK_MS)
+  powerMonitor.on('resume', tick)
+  powerMonitor.on('unlock-screen', tick)
+  // A child of a quit app continues on macOS. So the stop also ends the run and the probes.
+  stopDaily = () => {
+    clearInterval(timer)
+    powerMonitor.off('resume', tick)
+    powerMonitor.off('unlock-screen', tick)
+    service.stop()
+  }
+  tick()
+  return service
+}
+
+// A call of the Daily update panel. A refusal of Bifrost passes on as it is. Each other error
+// becomes a fixed text, so the page never gets a path.
+async function dailyCall<T>(
+  daily: Promise<DailyUpdateService>,
+  fn: (service: DailyUpdateService) => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn(await daily)
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('refused: ')) throw error
+    console.error('A Daily update call failed.', error)
+    throw new Error(DAILY_FAILED)
+  }
+}
+
 // True when Bifrost can write to the folder. An error gives false.
 function canWriteFolder(folder: string): Promise<boolean> {
   return access(folder, constants.W_OK).then(
@@ -894,6 +1026,11 @@ export function registerIpc(home: TestHome | null = null): void {
   const pluginRun = Promise.all([claudePath, loginEnv]).then(([path, env]) =>
     path ? createRunClaude(execFile, path, pluginEnv(env, home)) : null,
   )
+  // The probe of the MCP servers reads the stream of claude line by line. It uses the same env as
+  // run.
+  const spawnLines = Promise.all([claudePath, loginEnv]).then(([path, env]) =>
+    path ? createSpawnLines(spawn, path, env) : null,
+  )
   const getManager = (): Promise<PtyManager | null> => managerPromise as Promise<PtyManager | null>
   // All text and keys that Bifrost types into a session go through this object (D1).
   // A hidden attach opens at the current size of the session (M3).
@@ -945,6 +1082,14 @@ export function registerIpc(home: TestHome | null = null): void {
     skillsDir: skillsSourceDir(app.getAppPath()),
   })
   startPerformance(home, paths.bifrostHome, gh, health)
+  // The Daily update uses the same skills plugin folder as the review sessions.
+  const daily = startDailyUpdate(paths.bifrostHome, settings, {
+    gh,
+    pluginDir: skillsSourceDir(app.getAppPath()),
+    run,
+    spawnLines,
+  })
+  daily.catch(err => console.error('Bifrost cannot start the Daily update.', err))
   // A release build is packaged, has the real home, and has the app-update.yml file of the release
   // config. Only a release build runs the updater and opens What's new by itself. So pnpm dev, a
   // test home and a local build never check for updates and never open What's new by themselves.
@@ -1135,6 +1280,44 @@ export function registerIpc(home: TestHome | null = null): void {
       if (runner === null) throw new Error(NO_RUNNER)
       await friendlyFailure(() => runner.removeClones(), REMOVE_CLONES_FAILED, reviewLog)
     }),
+  )
+  // The Daily update panel. The page sends area IDs, item IDs, the text of a draft, a boolean or
+  // a trigger. It never sends a path, a URL or a command. Open item opens only an https link of
+  // the state.
+  ipcMain.handle('daily-update:snapshot', e =>
+    fromPage(e, () => dailyCall(daily, async s => s.snapshot())),
+  )
+  ipcMain.handle('daily-update:refresh', (e, trigger: unknown) =>
+    fromPage(e, () => dailyCall(daily, s => s.refresh(checkPageTrigger(trigger)))),
+  )
+  ipcMain.handle('daily-update:redo', (e, areaId: unknown) =>
+    fromPage(e, () => dailyCall(daily, s => s.redo(checkId(areaId)))),
+  )
+  ipcMain.handle('daily-update:edit-draft', (e, areaId: unknown, text: unknown) =>
+    fromPage(e, () => dailyCall(daily, s => s.editDraft(checkId(areaId), checkDraftText(text)))),
+  )
+  const dailyAreaHandler = (
+    channel: string,
+    fn: (s: DailyUpdateService, areaId: string) => Promise<void>,
+  ): void => {
+    ipcMain.handle(channel, (e, areaId: unknown) =>
+      fromPage(e, () => dailyCall(daily, s => fn(s, checkId(areaId)))),
+    )
+  }
+  dailyAreaHandler('daily-update:use-pending', (s, id) => s.usePending(id))
+  dailyAreaHandler('daily-update:keep-mine', (s, id) => s.keepMine(id))
+  dailyAreaHandler('daily-update:mark-sent', (s, id) => s.markSent(id))
+  dailyAreaHandler('daily-update:undo-sent', (s, id) => s.undoSent(id))
+  dailyAreaHandler('daily-update:copy', (s, id) => s.copy(id))
+  ipcMain.handle('daily-update:set-skipped', (e, skipped: unknown) =>
+    fromPage(e, () => dailyCall(daily, s => s.setSkipped(checkBoolean(skipped)))),
+  )
+  ipcMain.handle('daily-update:open-item', (e, areaId: unknown, itemId: unknown) =>
+    fromPage(e, () => dailyCall(daily, s => s.openItem(checkId(areaId), checkId(itemId)))),
+  )
+  // The service gives a friendly text with no path for each failure of the inventory.
+  ipcMain.handle('daily-update:inventory', e =>
+    fromPage(e, async () => (await dailyCall(daily, async s => s)).inventory()),
   )
   // The updater (updater design). With no updater, the snapshot has available false, and the other
   // calls do nothing.
@@ -1628,6 +1811,8 @@ export function attachWindow(win: BrowserWindow): void {
     if (sessionId !== null) send('alerts:open', sessionId)
     if (pendingReviewsOpen.load() !== null) send('reviews:open')
     if (pendingUsageOpen.load() !== null) send('usage:open')
+    const areaId = pendingDailyOpen.load()
+    if (areaId !== null) send('daily-update:open', areaId === DAILY_NO_AREA ? null : areaId)
   })
 }
 
@@ -1643,6 +1828,7 @@ function unloadPendingOpens(): void {
   pendingOpen.unload()
   pendingReviewsOpen.unload()
   pendingUsageOpen.unload()
+  pendingDailyOpen.unload()
 }
 
 // Close all PTYs. Call it when the app quits.
@@ -1651,9 +1837,11 @@ export function closeAllPtys(): void {
 }
 
 // Stop the registry service, the server of Live details, the pollers, the updater, the Performance
-// monitor and its delay histogram. Call it when the app quits.
+// monitor and its delay histogram, and the Daily update. Call it when the app quits.
 export function stopRegistry(): void {
   serviceStopped = true
+  stopDaily?.()
+  stopDaily = null
   liveService?.stop()
   eventBatcher.stop()
   liveControl?.stop()

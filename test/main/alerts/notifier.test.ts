@@ -7,7 +7,7 @@ class FakeNotification extends EventEmitter {
   static isSupported(): boolean {
     return true
   }
-  constructor() {
+  constructor(readonly options: { silent?: boolean }) {
     super()
     made.push(this)
   }
@@ -50,6 +50,17 @@ describe('showNotification', () => {
     showNotification({ body: 'b', sessionId: null, title: 't' }, () => {})
     made[2]?.emit('show')
     expect(log).toHaveBeenCalledWith('Bifrost showed a notification for a summary.')
+  })
+
+  test('a notification is silent by default', () => {
+    showNotification({ body: 'b', sessionId: null, title: 't' }, () => {})
+    showNotification({ body: 'b', sessionId: null, sound: false, title: 't' }, () => {})
+    expect(made.map(note => note.options.silent)).toEqual([true, true])
+  })
+
+  test('a notification with sound is not silent', () => {
+    showNotification({ body: 'b', sessionId: null, sound: true, title: 't' }, () => {})
+    expect(made[0]?.options.silent).toBe(false)
   })
 
   test('a refused notification works with no onFailed', () => {

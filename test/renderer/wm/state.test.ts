@@ -60,6 +60,12 @@ describe('wm state', () => {
     expect(run([open('performance')]).frames[0]?.rect).toMatchObject({ h: 460, w: 520 })
   })
 
+  it('panelKind accepts daily-update', () => {
+    expect(panelKind('daily-update')).toBe('daily-update')
+    expect(DEFAULT_SIZES['daily-update']).toEqual({ h: 520, w: 560 })
+    expect(run([open('daily-update')]).frames[0]?.rect).toMatchObject({ h: 520, w: 560 })
+  })
+
   it('panelKind accepts usage-hud', () => {
     expect(panelKind('usage-hud')).toBe('usage-hud')
     expect(DEFAULT_SIZES['usage-hud']).toEqual({ h: 180, w: 360 })

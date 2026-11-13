@@ -1,0 +1,7 @@
+{
+  "is_error": false,
+  "permission_denials": [],
+  "result": "Here are the drafts.\nBIFROST-DAILY-RESULT-BEGIN\n{\"version\":1,\"areas\":[{\"id\":\"area-a\",\"moved\":true,\"items\":[{\"kind\":\"ticket\",\"id\":\"PLAT-1\",\"title\":\"Speed up the login page\",\"from\":\"In progress\",\"to\":\"Done\",\"url\":\"https://example.invalid/PLAT-1\"}],\"draft\":\"**Daily update**\\n**Done since my last update**\\nThe login page loads faster now.\\n**Next**\\nNothing\\n**Blocked or at risk**\\nNothing\"},{\"id\":\"area-b\",\"moved\":true,\"items\":[{\"kind\":\"ticket\",\"id\":\"BILL-7\",\"title\":\"Add the invoice export\",\"to\":\"In review\"}],\"draft\":\"**Daily update**\\n**Done since my last update**\\nThe invoice export is ready for review.\\n**Next**\\nI start the refund report.\\n**Blocked or at risk**\\nNothing\"}],\"unplaced\":[{\"kind\":\"ticket\",\"id\":\"MISC-3\",\"title\":\"Tidy the old reports\"}]}\nBIFROST-DAILY-RESULT-END",
+  "subtype": "success",
+  "type": "result"
+}

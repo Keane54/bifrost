@@ -1,3 +1,5 @@
+import type { DailySnapshot } from './daily-state'
+import type { McpInventory } from './daily-update'
 import type { DirInfo, NewSessionSpec } from './new-session'
 import type { PerformanceSnapshot } from './performance'
 import type { ReleaseNotesResult, WhatsNewStart } from './release-notes'
@@ -204,6 +206,41 @@ export interface BifrostApi {
     // Delete the clones, worktrees and input folders of Bifrost. This also works while Watch
     // GitHub is off.
     removeClones(): Promise<void>
+  }
+  // The Daily update panel (Daily update design). The main process runs the drafts, keeps the
+  // state of the day and shows the reminders. A call with an area ID rejects for an area that is
+  // not on. A call with a bad value rejects and changes nothing.
+  dailyUpdate: {
+    snapshot(): Promise<DailySnapshot>
+    // The main process sends each new snapshot. The returned function removes only this listener.
+    onUpdate(cb: (s: DailySnapshot) => void): () => void
+    // A click on a reminder. The area is the first area that is on and not sent, or null.
+    onOpen(cb: (areaId: string | null) => void): () => void
+    // Run the drafts. This resolves when the run ends, with false when no run started. 'open'
+    // starts no run while a run runs, or within 5 minutes after the end of the last run.
+    // 'button' starts a run unless a run runs.
+    refresh(trigger: 'open' | 'button'): Promise<boolean>
+    // Run the drafts as refresh does, and replace the draft of the area, also a changed one.
+    redo(areaId: string): Promise<boolean>
+    // Keep the text that the user changed. The text is Markdown, 20,000 characters or less.
+    editDraft(areaId: string, text: string): Promise<void>
+    // Use the newer draft of the area, or keep the changed draft.
+    usePending(areaId: string): Promise<void>
+    keepMine(areaId: string): Promise<void>
+    // Mark the area as sent today, or undo the mark. The reminders stop when each area that is on
+    // is sent.
+    markSent(areaId: string): Promise<void>
+    undoSent(areaId: string): Promise<void>
+    // Skip today for all areas, or undo the skip.
+    setSkipped(skipped: boolean): Promise<void>
+    // Put the draft on the clipboard as plain text, as it is. This does not stop the reminders.
+    copy(areaId: string): Promise<void>
+    // Open the link of an item in the browser. The area ID '' is the list of the items that fit
+    // no area. This rejects for an item with no https link.
+    openItem(areaId: string, itemId: string): Promise<void>
+    // The MCP servers of Claude Code and their tools. This can take up to 30 seconds. It rejects
+    // with a friendly text.
+    inventory(): Promise<McpInventory>
   }
   // The Performance panel (Performance design). The main process samples Bifrost, the Claude
   // sessions and the Mac every 15 s, and every 2 s while the panel shows.

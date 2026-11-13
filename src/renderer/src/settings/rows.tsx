@@ -17,6 +17,8 @@ export function DraftField(props: {
   list?: string
   min?: number
   max?: number
+  // True: a refused save keeps the typed text. Escape still goes back to the saved value.
+  keepOnRefusal?: boolean
   // Resolves true when the value saved.
   onCommit(text: string): Promise<boolean>
 }): React.JSX.Element {
@@ -37,7 +39,7 @@ export function DraftField(props: {
           return
         }
         onCommit(text).then(ok => {
-          if (!ok) setDraft(props.value)
+          if (!ok && !props.keepOnRefusal) setDraft(props.value)
         })
       }}
       onChange={e => setDraft(e.target.value)}
