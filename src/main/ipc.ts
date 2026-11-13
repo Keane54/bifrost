@@ -166,7 +166,7 @@ import { createSkillsControl } from './skills/skills-control'
 import { skillsSourceDir } from './skills/skills-folder'
 import { openSettingsStore, type SettingsStore } from './store/settings-store'
 import { openUiStore } from './store/ui-store'
-import { findOnPath, pluginEnv, type TestHome } from './test-home'
+import { findOnPath, pluginEnv, recordTestPaths, type TestHome } from './test-home'
 import { openUpdateLog } from './updates/open-log'
 import { appBundlePath } from './updates/rules'
 import { openUpdateStateStore } from './updates/state-store'
@@ -1186,6 +1186,12 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
     return m
   })
   const paths = defaultPaths(home?.home ?? homedir())
+  // A smoke test reads these paths and checks that each one is in the test home.
+  recordTestPaths(home, {
+    bifrostHome: paths.bifrostHome,
+    claudeJson: claudeJsonFile(home?.home ?? homedir()),
+    claudeSettings: paths.claudeSettings,
+  })
   // The settings store opens one time. Each user gets the same store.
   const settings = openSettings(join(app.getPath('userData'), 'settings.json'), health)
   usageAlerts = startUsageAlerts(home, settings)

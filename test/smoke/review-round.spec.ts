@@ -2,8 +2,8 @@
 // test home. The test home holds a bare git repository as the remote of acme/api, so the clone
 // comes from a file:// URL and never from GitHub. The test turns on Watch GitHub, trusts the
 // clone in the trust terminal, starts a review and waits for the draft. Then it checks the one
-// GitHub write of the fake gh, the flags of the review session, the unknown calls and the real
-// files.
+// GitHub write of the fake gh, the flags of the review session, the unknown calls, and that the
+// app uses only the test home.
 //
 // The file gh-fixtures in the test home tells the fake gh to use the review-round fixtures. The
 // file smoke-head holds the head commit of the PR. The fake gh and the fake claude put it in place
@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
+import { expectTestHomeOnly, launchOptions, readText, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 const run = promisify(execFile)
 
@@ -85,8 +85,7 @@ async function stopFakeSession(testHome: string): Promise<void> {
 
 test('a review round trusts the clone, runs the session and posts one pending review', async () => {
   test.setTimeout(180_000)
-  // Step 1: record the real files. Make the test home, the remote and the fixture files.
-  const before = await realFiles()
+  // Step 1: make the test home, the remote and the fixture files.
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-review-round-'))
   const appOutput: string[] = []
   let app: ElectronApplication | null = null
@@ -100,6 +99,8 @@ test('a review round trusts the clone, runs the session and posts one pending re
     app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
     await skipSetup(page)
     await page.getByRole('button', { exact: true, name: 'Settings' }).click()
     const settingsFrame = page.locator('[data-frame-id]', {
@@ -163,11 +164,10 @@ test('a review round trusts the clone, runs the session and posts one pending re
       expect(args).toMatch(/ \/bifrost-review bifrost-input=\/\S+\/input\.json$/)
     }
 
-    // Step 8: quit the app. The fakes got no unknown call, and the real files did not change.
+    // Step 8: quit the app. The fakes got no unknown call.
     await app.close()
     app = null
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
-    expect(await realFiles()).toEqual(before)
   } catch (err) {
     await test.info().attach('app-output.txt', {
       body: appOutput.join(''),

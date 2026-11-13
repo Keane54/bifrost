@@ -1,8 +1,7 @@
 // The smoke test of spec 15 (D23). It starts Bifrost with a fake claude and a test home. It checks
 // the setup dialog, the hidden window, the sample sessions, the animated background, the Parked
 // tab, the open of the Usage HUD from a usage notification and one chat window. It also checks
-// that the real Claude files and ~/.bifrost did not change, and that the fake claude got no
-// unknown call.
+// that the app uses only the test home, and that the fake claude got no unknown call.
 //
 // app.ts tells how to start the build in out/ or the packaged app.
 
@@ -12,10 +11,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, type Locator, test } from '@playwright/test'
 import {
+  expectTestHomeOnly,
   launchOptions,
   makeSessionFolders,
   readText,
-  realFiles,
   SESSION_ROOT,
   skipSetup,
   UNKNOWN_LOG,
@@ -30,8 +29,7 @@ interface CanvasFont {
 }
 
 test('Bifrost starts with a fake claude and shows the sample sessions', async () => {
-  // Step 1: record the real files, and make the test home.
-  const before = await realFiles()
+  // Step 1: make the test home.
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-smoke-'))
   const appOutput: string[] = []
   // Set before the first mkdir. So a failed mkdir still removes a root folder that this run made.
@@ -48,6 +46,8 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     await app.context().tracing.start({ screenshots: true, snapshots: true })
     tracing = true
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
 
     // Step 3: the fake claude lists no Bifrost plugin, so the setup dialog shows.
     await skipSetup(page)
@@ -287,14 +287,12 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
     await app.close()
     app = null
 
-    // Step 8: the Skip choice is in the test home. The real Claude files and ~/.bifrost did not
-    // change. Live details is not installed, so no live server made a socket. The fake claude
-    // got only the calls that it knows.
+    // Step 8: the Skip choice is in the test home. Live details is not installed, so no live
+    // server made a socket. The fake claude got only the calls that it knows.
     const settings = JSON.parse(
       await readFile(join(testHome, 'user-data', 'settings.json'), 'utf8'),
     )
     expect(settings.setupDone).toBe(true)
-    expect(await realFiles()).toEqual(before)
     expect(existsSync(join(testHome, '.bifrost', 'live.sock'))).toBe(false)
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
   } catch (err) {

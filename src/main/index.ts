@@ -1,4 +1,3 @@
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { app, BrowserWindow, Menu, screen, systemPreferences } from 'electron'
 import icon from '../../resources/icon.png?asset'
@@ -27,10 +26,12 @@ import { hideFromDock, showMainWindow } from './window/show-window'
 import { openWindowStateStore, restoreBounds } from './window/window-state'
 
 // The test home (D12). Read it before the single instance lock, because the lock uses the
-// userData folder. So a test home gets its own lock and runs beside the real Bifrost.
-const testHome = testHomeConfig(process.env, homedir())
+// userData folder. So a test home gets its own lock and runs beside the real Bifrost. The check
+// compares with the home folder in the user database, because a smoke test sets HOME to the test
+// home.
+const testHome = testHomeConfig(process.env)
 // A value that Bifrost refuses must not fall back to the real home.
-const badTestHome = refusedTestHome(process.env, homedir())
+const badTestHome = refusedTestHome(process.env)
 // A headless test home shows no window, no Dock icon and no menu bar (user decision, 2026-11-13).
 // Leave the Dock as early as possible. macOS can show the Dock icon for a short time before the
 // app gets to this line.

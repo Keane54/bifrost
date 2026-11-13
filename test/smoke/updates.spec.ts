@@ -1,17 +1,15 @@
 // The smoke test of the Updates section. In a test run the updater does not start. So the side
 // bar has no update button, and Settings > Updates shows the "not available" form. The test also
-// checks that the fake claude got no unknown call, that the test home has no updater log, and
-// that the real updater log did not change.
+// checks that the app uses only the test home, that the fake claude got no unknown call, and that
+// the test home has no updater log.
 
 import { mkdtemp, rm, stat } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
+import { expectTestHomeOnly, launchOptions, readText, skipSetup, UNKNOWN_LOG } from './app.ts'
 
-const REAL_UPDATER_LOG = join(homedir(), 'Library', 'Logs', 'Bifrost', 'updater.log')
-
-// The mtime of a file in ms, or "missing". The test never creates or removes this file.
+// The mtime of a file in ms, or "missing".
 async function mtimeOf(path: string): Promise<number | 'missing'> {
   try {
     return (await stat(path)).mtimeMs
@@ -22,8 +20,6 @@ async function mtimeOf(path: string): Promise<number | 'missing'> {
 }
 
 test('a test run shows the Updates section in the not available form', async () => {
-  const before = await realFiles()
-  const logBefore = await mtimeOf(REAL_UPDATER_LOG)
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-updates-'))
   const appOutput: string[] = []
   let app: ElectronApplication | null = null
@@ -32,6 +28,8 @@ test('a test run shows the Updates section in the not available form', async () 
     app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
 
     await skipSetup(page)
 
@@ -56,13 +54,8 @@ test('a test run shows the Updates section in the not available form', async () 
     // Quit the app. Nothing ran that should not run.
     await app.close()
     app = null
-    expect(await realFiles()).toEqual(before)
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
     expect(await mtimeOf(join(testHome, 'logs', 'updater.log'))).toBe('missing')
-    // The installed Bifrost of the user can write the real updater.log during the run, for
-    // example at its hourly check. Then this guard fails with no fault in the test app. Run the
-    // test again.
-    expect(await mtimeOf(REAL_UPDATER_LOG)).toBe(logBefore)
   } catch (err) {
     await test.info().attach('app-output.txt', {
       body: appOutput.join(''),

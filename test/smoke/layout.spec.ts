@@ -21,7 +21,7 @@ import {
   type Page,
   test,
 } from '@playwright/test'
-import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
+import { expectTestHomeOnly, launchOptions, readText, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 // The width of the narrow Settings frame of the M5a check.
 const NARROW_W = 360
@@ -76,7 +76,6 @@ async function penDrag(page: Page, from: Point, to: Point, steps: number): Promi
 }
 
 test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their layout', async () => {
-  const before = await realFiles()
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-layout-'))
   const appOutput: string[] = []
   let app: ElectronApplication | null = null
@@ -85,6 +84,8 @@ test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their la
     app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
 
     await skipSetup(page)
 
@@ -181,8 +182,7 @@ test('the Rename dialog, the Usage HUD and a narrow Settings frame keep their la
     await app.close()
     app = null
 
-    // The test changed no real file, and the fake claude got only the calls that it knows.
-    expect(await realFiles()).toEqual(before)
+    // The fake claude got only the calls that it knows.
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
   } catch (err) {
     await test.info().attach('app-output.txt', {

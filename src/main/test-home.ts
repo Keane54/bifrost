@@ -1,8 +1,12 @@
 // The test home (D12, D25). With BIFROST_TEST_HOME=<absolute folder>, Bifrost keeps its files,
 // the Live details socket, the mod folder and the Claude settings under that folder. A check can
 // then click Install or Remove of Live details, and the real home of the user does not change.
+//
+// The smoke tests also set HOME to the test home (user decision, 2026-11-13). So HOME does not
+// show the real home. The real home is the home folder of the user in the user database.
 
 import { realpathSync } from 'node:fs'
+import { userInfo } from 'node:os'
 import { isAbsolute, join, normalize, sep } from 'node:path'
 
 export const TEST_HOME_ENV = 'BIFROST_TEST_HOME'
@@ -34,6 +38,11 @@ const DEFAULT_CHECK: PathCheck = {
   },
 }
 
+// The home folder of the user in the user database. HOME does not change it.
+function passwdHome(): string {
+  return userInfo().homedir
+}
+
 // Remove a trailing separator, but keep the root "/".
 function trimSlash(path: string): string {
   return path.length > 1 && path.endsWith(sep) ? path.slice(0, -1) : path
@@ -51,9 +60,10 @@ function holdsRealHome(home: string, real: string, ignoreCase: boolean): boolean
 // real home, because the test home must never hold the real files of the user. The check uses
 // the path as given and the real path of each path that exists. So a symbolic link to the real
 // home is refused too. A refused value also gives null.
+// The default real home is the home folder in the user database, not HOME.
 export function testHomeConfig(
   env: Record<string, string | undefined>,
-  realHome: string,
+  realHome: string = passwdHome(),
   check: PathCheck = DEFAULT_CHECK,
 ): TestHome | null {
   const value = env[TEST_HOME_ENV]
@@ -72,7 +82,7 @@ export function testHomeConfig(
 // refused too.
 export function refusedTestHome(
   env: Record<string, string | undefined>,
-  realHome: string,
+  realHome: string = passwdHome(),
   check: PathCheck = DEFAULT_CHECK,
 ): string | null {
   const value = env[TEST_HOME_ENV]
@@ -87,6 +97,20 @@ export function testHeadless(
   testHome: TestHome | null,
 ): boolean {
   return testHome !== null && env[TEST_HEADLESS_ENV] === '1'
+}
+
+// The paths of the user files that Bifrost reads and writes.
+export interface TestPaths {
+  bifrostHome: string
+  claudeJson: string
+  claudeSettings: string
+}
+
+// In a test home, Bifrost gives its paths to a smoke test as globalThis.bifrostTestPaths. The smoke
+// test reads them in the main process and checks that each path is in the test home. Without a
+// test home, this function does nothing.
+export function recordTestPaths(testHome: TestHome | null, paths: TestPaths): void {
+  if (testHome !== null) Object.assign(globalThis, { bifrostTestPaths: paths })
 }
 
 // The error line for a refused value. An empty value shows as "(empty)".

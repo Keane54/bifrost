@@ -1,11 +1,12 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { tmpdir, userInfo } from 'node:os'
+import { dirname, join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   findOnPath,
   type PathCheck,
   pluginEnv,
+  recordTestPaths,
   refusedTestHome,
   TEST_HEADLESS_ENV,
   TEST_HOME_ENV,
@@ -168,6 +169,56 @@ describe('test home', () => {
       expect(testHeadless({ BIFROST_TEST_HEADLESS: value }, home), String(value)).toBe(false)
     }
     expect(testHeadless({}, home)).toBe(false)
+  })
+
+  // A smoke test sets HOME to the test home (user decision, 2026-11-13). So the real home is the
+  // home folder in the user database, and HOME does not change it.
+  describe('the real home is the home folder in the user database', () => {
+    const passwdHome = userInfo().homedir
+    const testDir = '/tmp/bifrost-th-home'
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    it('testHomeConfig accepts a test home that is also HOME', () => {
+      vi.stubEnv('HOME', testDir)
+      expect(testHomeConfig(env(testDir))).toEqual({
+        home: testDir,
+        userData: `${testDir}/user-data`,
+      })
+      expect(refusedTestHome(env(testDir))).toBeNull()
+    })
+
+    it('testHomeConfig refuses the real home and its parent when HOME is another folder', () => {
+      vi.stubEnv('HOME', testDir)
+      for (const bad of [passwdHome, dirname(passwdHome)]) {
+        expect(testHomeConfig(env(bad)), bad).toBeNull()
+        expect(refusedTestHome(env(bad)), bad).toBe(bad)
+      }
+    })
+  })
+
+  it('index.ts reads the test home with the real home of the user database', () => {
+    const source = readFileSync(join(__dirname, '../../src/main/index.ts'), 'utf8')
+    expect(source).toContain('testHomeConfig(process.env)')
+    expect(source).toContain('refusedTestHome(process.env)')
+    expect(source).not.toContain('homedir()')
+  })
+
+  it('recordTestPaths gives the paths to a smoke test only in a test home', () => {
+    const paths = {
+      bifrostHome: '/tmp/bh/.bifrost',
+      claudeJson: '/tmp/bh/.claude.json',
+      claudeSettings: '/tmp/bh/.claude/settings.json',
+    }
+    try {
+      recordTestPaths(null, paths)
+      expect('bifrostTestPaths' in globalThis).toBe(false)
+      recordTestPaths({ home: '/tmp/bh', userData: '/tmp/bh/user-data' }, paths)
+      expect((globalThis as { bifrostTestPaths?: unknown }).bifrostTestPaths).toEqual(paths)
+    } finally {
+      Reflect.deleteProperty(globalThis, 'bifrostTestPaths')
+    }
   })
 
   it('index.ts moves the logs folder into the test home', () => {

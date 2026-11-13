@@ -1,7 +1,7 @@
 // The smoke test of the Reviews panel (R1). It starts Bifrost with a fake claude, a fake gh and a
 // test home. It turns on Watch GitHub in Settings, and it checks the To review rows, the flash
-// of a new request after a refresh, and the My PRs rows. It also checks that the real Claude
-// files and ~/.bifrost did not change, and that the fakes got no unknown call.
+// of a new request after a refresh, and the My PRs rows. It also checks that the app uses only
+// the test home, and that the fakes got no unknown call.
 //
 // The test does not click a row with the Cmd key, because that opens a browser. The main process
 // uses the hidden window of a headless run as a window with the focus, so no notification starts.
@@ -11,11 +11,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
+import { expectTestHomeOnly, launchOptions, readText, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 test('the Reviews panel shows the PRs from the fake gh and flashes a new request', async () => {
-  // Step 1: record the real files, make the test home and start the app.
-  const before = await realFiles()
+  // Step 1: make the test home and start the app.
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-reviews-'))
   const appOutput: string[] = []
   let app: ElectronApplication | null = null
@@ -24,6 +23,8 @@ test('the Reviews panel shows the PRs from the fake gh and flashes a new request
     app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
 
     await skipSetup(page)
 
@@ -74,10 +75,9 @@ test('the Reviews panel shows the PRs from the fake gh and flashes a new request
     await expect(row('acme/api#31')).toContainText('Approved')
     await expect(page.locator('[data-review-row]', { hasText: '✕' })).toHaveCount(1)
 
-    // Step 6: quit the app. The real files did not change, and the fakes got no unknown call.
+    // Step 6: quit the app. The fakes got no unknown call.
     await app.close()
     app = null
-    expect(await realFiles()).toEqual(before)
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
   } catch (err) {
     await test.info().attach('app-output.txt', {

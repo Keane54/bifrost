@@ -1,5 +1,5 @@
 // The parts that the Playwright tests in test/smoke share: the start of Bifrost with a fake
-// claude and a test home, and the guard of the real files.
+// claude and a test home, and the check that the test app uses only the test home.
 //
 // Without BIFROST_SMOKE_APP, a test starts the build in out/ with the Electron of the
 // repository. The start uses the main field of package.json, so the app path is the repository.
@@ -10,31 +10,14 @@
 // that Bifrost "includes a component that will not work with a future release of macOS"
 // (spec 14.1).
 
-import { createHash } from 'node:crypto'
-import type { Dirent } from 'node:fs'
-import { mkdir, readdir, readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { type _electron, expect, type Page } from '@playwright/test'
+import { mkdir, readFile, realpath } from 'node:fs/promises'
+import { isAbsolute, join, relative } from 'node:path'
+import { type _electron, type ElectronApplication, expect, type Page } from '@playwright/test'
 
 type LaunchOptions = NonNullable<Parameters<typeof _electron.launch>[0]>
 
 const ROOT = join(import.meta.dirname, '..', '..')
 const FAKE_DIR = join(import.meta.dirname, 'fake-claude')
-// The SHA values come from the real home, and the app gets the real home as HOME.
-// BIFROST_TEST_HOME is the test home.
-const REAL_HOME = homedir()
-const CLAUDE_FILES = [
-  join(REAL_HOME, '.claude', 'settings.json'),
-  join(REAL_HOME, '.claude', 'plugins', 'installed_plugins.json'),
-  join(REAL_HOME, '.claude', 'plugins', 'known_marketplaces.json'),
-]
-// Claude Code writes the lastUpdated values of this file by itself (M5a check). The compare
-// ignores them.
-const MARKETPLACES_FILE = 'known_marketplaces.json'
-// The folder of the real Bifrost. The guard lists it, but not the socket of a running Bifrost.
-const BIFROST_DIR = join(REAL_HOME, '.bifrost')
-const SOCKET_NAME = 'live.sock'
 // The fixtures give each sample session a folder under this folder. node-pty starts the attach
 // in the folder of the session, and it cannot start in a folder that does not exist.
 export const SESSION_ROOT = '/tmp/bifrost-smoke'
@@ -42,80 +25,51 @@ const SESSION_FOLDERS = ['alpha', 'beta', 'gamma']
 // The fake claude writes each call that it does not know to this file in the test home.
 export const UNKNOWN_LOG = 'unknown.log'
 
-// Remove each lastUpdated key at each depth, and sort the keys. This is the same rule as
-// jq -S 'walk(if type == "object" then del(.lastUpdated) else . end)' in the M5a check.
-function withoutLastUpdated(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutLastUpdated)
-  if (typeof value !== 'object' || value === null) return value
-  const source = value as Record<string, unknown>
-  const result: Record<string, unknown> = {}
-  for (const key of Object.keys(source).sort()) {
-    if (key !== 'lastUpdated') result[key] = withoutLastUpdated(source[key])
-  }
-  return result
+// The paths that the test app uses. The main process gives them. A path that the app did not
+// record is null.
+interface AppPaths {
+  bifrostHome: string | null
+  claudeJson: string | null
+  claudeSettings: string | null
+  logs: string
+  userData: string
 }
 
-function sha256(data: Buffer | string): string {
-  return createHash('sha256').update(data).digest('hex')
+// True when path is in one of the folders dirs, after the resolve of "." and "..".
+function isInside(path: string | null, dirs: string[]): boolean {
+  if (path === null) return false
+  return dirs.some(dir => {
+    const rel = relative(dir, path)
+    return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel)
+  })
 }
 
-// The SHA-256 of a file, or "missing". For the marketplace file, the hash is of the JSON without
-// the lastUpdated values. A marketplace file that is not JSON gets the hash of its bytes.
-async function fingerprint(path: string): Promise<string> {
-  let bytes: Buffer
-  try {
-    bytes = await readFile(path)
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 'missing'
-    throw err
-  }
-  let data: Buffer | string = bytes
-  if (path.endsWith(MARKETPLACES_FILE)) {
-    try {
-      data = JSON.stringify(withoutLastUpdated(JSON.parse(bytes.toString('utf8'))))
-    } catch {
-      // The file is not JSON. Use its bytes.
+// Check in the main process of the test app that the home folder is the test home, and that the
+// user files of Bifrost and Claude, the userData folder and the logs folder are in the test home.
+// The app then cannot get to the real ~/.claude, ~/.claude.json, ~/.bifrost or ~/Library/Logs. A
+// Bifrost of the user that runs at the same time does not change the result.
+export async function expectTestHomeOnly(
+  app: ElectronApplication,
+  testHome: string,
+): Promise<void> {
+  const { home, paths } = await app.evaluate(({ app: electronApp }) => {
+    const recorded = (globalThis as { bifrostTestPaths?: Record<string, string> }).bifrostTestPaths
+    const paths: AppPaths = {
+      bifrostHome: recorded?.bifrostHome ?? null,
+      claudeJson: recorded?.claudeJson ?? null,
+      claudeSettings: recorded?.claudeSettings ?? null,
+      logs: electronApp.getPath('logs'),
+      userData: electronApp.getPath('userData'),
     }
+    return { home: process.getBuiltinModule('node:os').homedir(), paths }
+  })
+  expect(home).toBe(testHome)
+  // Electron can give a path with each symbolic link resolved, for example /private/var in place
+  // of /var. So the real path of the test home is also correct.
+  const homes = [testHome, await realpath(testHome)]
+  for (const [key, path] of Object.entries(paths)) {
+    expect(isInside(path, homes), `${key}: ${path}`).toBe(true)
   }
-  return sha256(data)
-}
-
-// Each entry of a folder at each depth, by its path in the folder: "dir" for a folder, the size
-// and the SHA-256 for a file, and the kind for other entries. The socket of a running Bifrost is
-// not in the list (R13). A folder that does not exist gives an empty list.
-export async function folderListing(dir: string): Promise<Record<string, string>> {
-  const result: Record<string, string> = {}
-  let entries: Dirent[]
-  try {
-    entries = await readdir(dir, { recursive: true, withFileTypes: true })
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return result
-    throw err
-  }
-  for (const entry of entries) {
-    if (entry.name === SOCKET_NAME) continue
-    const path = join(entry.parentPath, entry.name)
-    const key = path.slice(dir.length + 1)
-    if (entry.isDirectory()) {
-      result[key] = 'dir'
-    } else if (entry.isFile()) {
-      const bytes = await readFile(path)
-      result[key] = `${bytes.length} ${sha256(bytes)}`
-    } else {
-      result[key] = entry.isSymbolicLink() ? 'link' : 'other'
-    }
-  }
-  return result
-}
-
-// The guard values of the real files: the three Claude files and the listing of ~/.bifrost.
-export async function realFiles(): Promise<{
-  claude: Record<string, string>
-  bifrost: Record<string, string>
-}> {
-  const claude: Record<string, string> = {}
-  for (const path of CLAUDE_FILES) claude[path] = await fingerprint(path)
-  return { bifrost: await folderListing(BIFROST_DIR), claude }
 }
 
 // The text of a file, or '' when the file does not exist.
@@ -137,12 +91,16 @@ export async function makeSessionFolders(): Promise<void> {
 // ELECTRON_RUN_AS_NODE and no BIFROST_LIVE_LISTEN gets to the app. The fake claude is the first
 // claude on the PATH.
 //
+// HOME is the test home (user decision, 2026-11-13). The app and its child processes then read
+// and write only in the test home. No ZDOTDIR, XDG_* or CLAUDE_CONFIG_DIR variable gets to the
+// app, so these tools also use HOME.
+//
 // The app shows no window and no Dock icon, and it never takes the focus (user decision,
 // 2026-11-13). To see the window when you debug a test, set BIFROST_SMOKE_HEADED=1.
 function launchEnv(testHome: string): Record<string, string> {
   const env: Record<string, string> = {
     BIFROST_TEST_HOME: testHome,
-    HOME: REAL_HOME,
+    HOME: testHome,
     PATH: `${FAKE_DIR}:/usr/bin:/bin:/usr/sbin:/sbin`,
   }
   if (process.env.BIFROST_SMOKE_HEADED !== '1') env.BIFROST_TEST_HEADLESS = '1'

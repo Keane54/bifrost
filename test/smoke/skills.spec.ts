@@ -1,13 +1,13 @@
 // The smoke test of the skills. The setup dialog shows the skills step after the Live step. Then
 // Settings > Skills shows "Not installed." and the six skills. The fake claude lists no Bifrost
-// plugin, so nothing is installed. The test also checks that the fake claude got no unknown call
-// and that the real Claude files and ~/.bifrost did not change.
+// plugin, so nothing is installed. The test also checks that the app uses only the test home, and
+// that the fake claude got no unknown call.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, UNKNOWN_LOG } from './app.ts'
+import { expectTestHomeOnly, launchOptions, readText, UNKNOWN_LOG } from './app.ts'
 
 const SKILLS = [
   ['bifrost-daily-update', 'called-by-name'],
@@ -19,7 +19,6 @@ const SKILLS = [
 ]
 
 test('the setup dialog offers the skills and Settings > Skills lists them', async () => {
-  const before = await realFiles()
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-skills-'))
   const appOutput: string[] = []
   let app: ElectronApplication | null = null
@@ -28,6 +27,8 @@ test('the setup dialog offers the skills and Settings > Skills lists them', asyn
     app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
 
     // Step 1: the Live step comes first. Skip shows the skills step.
     const setup = page.locator('[data-setup-dialog]')
@@ -63,7 +64,6 @@ test('the setup dialog offers the skills and Settings > Skills lists them', asyn
     // Quit the app. Nothing ran that should not run.
     await app.close()
     app = null
-    expect(await realFiles()).toEqual(before)
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
   } catch (err) {
     await test.info().attach('app-output.txt', {

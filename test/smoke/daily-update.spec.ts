@@ -3,7 +3,8 @@
 // on, one area that is off, and the invented ticket source "board". The open of the panel runs
 // the drafts: the fake claude answers the two probes and the run. The test checks the side bar
 // dot, the tabs, the draft of the second tab, and that Mark as sent on both areas clears the dot.
-// Then it checks the flags of the run, the unknown calls and the real files.
+// Then it checks the flags of the run, the unknown calls, and that the app uses only the test
+// home.
 //
 // The day state of the test home says that both reminders of today showed. So no scheduled run
 // starts and no macOS notification shows during the test. The open of the panel starts the only
@@ -13,7 +14,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, UNKNOWN_LOG } from './app.ts'
+import { expectTestHomeOnly, launchOptions, readText, UNKNOWN_LOG } from './app.ts'
 
 const pad = (n: number): string => String(n).padStart(2, '0')
 
@@ -78,8 +79,7 @@ function dayState(today: string): unknown {
 
 test('the Daily update panel shows the drafts and Mark as sent clears the dot', async () => {
   test.setTimeout(120_000)
-  // Step 1: record the real files. Write the settings and the day state of the test home.
-  const before = await realFiles()
+  // Step 1: write the settings and the day state of the test home.
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-daily-update-'))
   const appOutput: string[] = []
   let app: ElectronApplication | null = null
@@ -95,6 +95,8 @@ test('the Daily update panel shows the drafts and Mark as sent clears the dot', 
     app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
     const button = page.getByRole('button', { exact: true, name: 'Daily update' })
     const dot = button.locator('[data-side-warning]')
     await expect(dot).toBeVisible({ timeout: 15_000 })
@@ -146,7 +148,7 @@ test('the Daily update panel shows the drafts and Mark as sent clears the dot', 
 
     // Step 7: quit the app. One run started. It may use only the read tool of the ticket source,
     // with Read and Skill, and every other tool and server is denied. The fake claude got no
-    // unknown call, and the real files did not change.
+    // unknown call.
     await app.close()
     app = null
     const runs = (await readText(join(testHome, 'daily-args.log'))).trimEnd().split('\n')
@@ -158,7 +160,6 @@ test('the Daily update panel shows the drafts and Mark as sent clears the dot', 
     expect(args).toContain('"disableAllHooks":true')
     expect(args).toMatch(/ \/bifrost-daily-update bifrost-input=\/\S+\/input\.json$/)
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
-    expect(await realFiles()).toEqual(before)
   } catch (err) {
     await test.info().attach('app-output.txt', {
       body: appOutput.join(''),

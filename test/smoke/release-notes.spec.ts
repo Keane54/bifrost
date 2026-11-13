@@ -4,18 +4,17 @@
 // state, then with the fake answer of test/smoke/fixtures/github-releases.json. It stubs the open
 // of a GitHub page in the main process, so no browser opens. It also checks that What's new did
 // not open by itself and stored no state, that the fake claude got no unknown call, and that the
-// real files did not change.
+// app uses only the test home.
 
 import { copyFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
+import { expectTestHomeOnly, launchOptions, readText, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 const FIXTURE = join(import.meta.dirname, 'fixtures', 'github-releases.json')
 
 test('Settings > Updates opens the release notes of the fake GitHub answer', async () => {
-  const before = await realFiles()
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-release-notes-'))
   const appOutput: string[] = []
   let app: ElectronApplication | null = null
@@ -24,6 +23,8 @@ test('Settings > Updates opens the release notes of the fake GitHub answer', asy
     app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
 
     // A GitHub page must not open in the browser of the user. So replace the open in the main
     // process, and check that the change took effect before any click.
@@ -127,7 +128,6 @@ test('Settings > Updates opens the release notes of the fake GitHub answer', asy
     // Quit the app. Nothing ran that should not run.
     await app.close()
     app = null
-    expect(await realFiles()).toEqual(before)
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
     expect(await readText(join(testHome, 'user-data', 'release-notes.json'))).toBe('')
   } catch (err) {

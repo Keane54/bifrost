@@ -1,17 +1,16 @@
 // The smoke test of the Performance panel. It starts Bifrost with a fake claude and a test home.
 // It opens Performance from the side bar, waits for the headline, and opens and closes the
-// Details row. It also checks that the real Claude files and ~/.bifrost did not change, and
-// that the fakes got no unknown call.
+// Details row. It also checks that the app uses only the test home, and that the fakes got no
+// unknown call.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
+import { expectTestHomeOnly, launchOptions, readText, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 test('the Performance panel shows a headline and opens and closes the details', async () => {
-  // Step 1: record the real files, make the test home and start the app.
-  const before = await realFiles()
+  // Step 1: make the test home and start the app.
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-performance-'))
   const appOutput: string[] = []
   let app: ElectronApplication | null = null
@@ -20,6 +19,8 @@ test('the Performance panel shows a headline and opens and closes the details', 
     app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
 
     await skipSetup(page)
 
@@ -59,10 +60,9 @@ test('the Performance panel shows a headline and opens and closes the details', 
     await expect(details).toHaveAttribute('aria-expanded', 'false')
     await expect(panel.locator('[data-perf-sections]')).toHaveCount(0)
 
-    // Step 5: quit the app. The real files did not change, and the fakes got no unknown call.
+    // Step 5: quit the app. The fakes got no unknown call.
     await app.close()
     app = null
-    expect(await realFiles()).toEqual(before)
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
   } catch (err) {
     await test.info().attach('app-output.txt', {

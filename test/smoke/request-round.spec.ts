@@ -4,7 +4,7 @@
 // trusts the clone. A later poll shows a new review thread on the user's own PR acme/api#9. The
 // fake request session changes src/limit.ts and writes its result file. Then the test checks
 // the pushed fix on the remote, the two GitHub writes of the fake gh, the flags of the session,
-// the unknown calls and the real files.
+// the unknown calls, and that the app uses only the test home.
 //
 // The second test turns on Sign commits through GitHub. Then Bifrost sends the fix with the signed
 // commit write of the fake gh, which makes the commit in the bare remote as GitHub does. git
@@ -20,7 +20,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { _electron, type ElectronApplication, expect, type Page, test } from '@playwright/test'
-import { launchOptions, readText, realFiles, skipSetup, UNKNOWN_LOG } from './app.ts'
+import { expectTestHomeOnly, launchOptions, readText, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 const run = promisify(execFile)
 
@@ -128,8 +128,7 @@ test('with Sign commits through GitHub on, GitHub makes the fix commit', async (
 
 async function requestRound(o: { signed: boolean }): Promise<void> {
   test.setTimeout(180_000)
-  // Step 1: record the real files. Make the test home, the remote and the fixture files.
-  const before = await realFiles()
+  // Step 1: make the test home, the remote and the fixture files.
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-request-round-'))
   const appOutput: string[] = []
   let app: ElectronApplication | null = null
@@ -144,6 +143,8 @@ async function requestRound(o: { signed: boolean }): Promise<void> {
     app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
     app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
     const page = await app.firstWindow()
+    // The app uses only the test home.
+    await expectTestHomeOnly(app, testHome)
     await skipSetup(page)
     await page.getByRole('button', { exact: true, name: 'Settings' }).click()
     const settingsFrame = page.locator('[data-frame-id]', {
@@ -251,11 +252,10 @@ async function requestRound(o: { signed: boolean }): Promise<void> {
       1,
     )
 
-    // Step 9: quit the app. The fakes got no unknown call, and the real files did not change.
+    // Step 9: quit the app. The fakes got no unknown call.
     await app.close()
     app = null
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
-    expect(await realFiles()).toEqual(before)
   } catch (err) {
     await test.info().attach('app-output.txt', {
       body: appOutput.join(''),
