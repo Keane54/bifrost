@@ -148,7 +148,13 @@ async function makeCommit(bare: string, input: CommitInput): Promise<string | { 
   const tree = await git(['write-tree'], bare, index)
   const { body, headline } = input.message
   const message = body === undefined ? headline : `${headline}\n\n${body}`
-  const oid = await git(['commit-tree', tree, '-p', now, '-m', message], bare)
+  // GitHub is the committer of the commits that it makes. So the commit of GitHub never has the
+  // SHA of the local fix commit, also when both come in the same second.
+  const committer = {
+    GIT_COMMITTER_EMAIL: 'fake-github@example.invalid',
+    GIT_COMMITTER_NAME: 'Fake GitHub',
+  }
+  const oid = await git(['commit-tree', tree, '-p', now, '-m', message], bare, committer)
   await git(['update-ref', ref, oid, now], bare)
   return oid
 }
