@@ -219,6 +219,15 @@ jobs:
           security find-identity -v -p codesigning "$keychain"
           echo "CSC_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
 
+      # The signing identity and the team ID are public: each released app shows them in its code
+      # signature. So the workflow reads them from the certificate in the keychain, and the repo
+      # and the secrets hold no signing name. The script prints no value of the p12 file.
+      - name: Read the signing identity
+        shell: bash
+        run: |
+          security find-identity -v -p codesigning "$CSC_KEYCHAIN" |
+            node scripts/release/signing-identity.ts
+
       # The exec plugin sets the version in package.json, runs "pnpm dist:release" (signed and
       # notarised) and "pnpm verify:release". Only then does the github plugin publish the tag,
       # the release, the DMG and the update files. No commit goes back to main.

@@ -16,7 +16,7 @@ export const REFUSED_NOT_CHAT = 'refused: not a chat view'
 export const REFUSED_NOT_ATTACH = 'refused: not an attach to an owned session that is not parked'
 export const REFUSED_OTHER_SESSION = 'refused: the attach is not for the session of the chat view'
 
-export type ChatOpen = { ok: true; sessionId: string } | { ok: false; reason: string }
+export type ChatOpen = { ok: true; sessionId: string; cwd: string } | { ok: false; reason: string }
 
 // Decide if the renderer may open this chat view with these args (D1).
 // The renderer can open only chat views. Only the main process opens send views.
@@ -27,8 +27,8 @@ export function checkChatOpen(rows: SessionRow[], viewId: unknown, args: string[
   }
   const sessionId = viewId.slice('chat:'.length)
   if (!canAttach(rows, args)) return { ok: false, reason: REFUSED_NOT_ATTACH }
-  if (rows.find(r => r.sessionId === sessionId)?.shortId !== args[1]) {
-    return { ok: false, reason: REFUSED_OTHER_SESSION }
-  }
-  return { ok: true, sessionId }
+  const row = rows.find(r => r.sessionId === sessionId)
+  if (row?.shortId !== args[1]) return { ok: false, reason: REFUSED_OTHER_SESSION }
+  // The folder comes from the row. The page never sends a path.
+  return { cwd: row.cwd || '/', ok: true, sessionId }
 }

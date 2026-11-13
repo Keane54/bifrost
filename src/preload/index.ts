@@ -37,7 +37,6 @@ const api: BifrostApi = {
   alerts: {
     onOpen: cb => subscribe('alerts:open', cb),
   },
-  claudePath: () => invoke('claude:path'),
   claudeVersion: () => invoke('claude:version'),
   dailyUpdate: {
     copy: areaId => invoke('daily-update:copy', areaId),
@@ -187,6 +186,9 @@ const api: BifrostApi = {
     onAccountUpdate: cb => subscribe('usage:account-update', cb),
     onOpen: cb => subscribe('usage:open', cb),
     onUpdate: cb => subscribe('usage:update', cb),
+  },
+  window: {
+    setVisible: visible => invoke('window:visible', visible),
   },
   wm: {
     onClosePanel: cb => subscribe('wm:close-panel', cb),

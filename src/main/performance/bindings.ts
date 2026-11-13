@@ -1,5 +1,6 @@
 // The helpers that ipc.ts uses to bind the Performance monitor (Performance design section 7). The
 // module never imports electron. ipc.ts gives each Electron and Node function.
+import { MAX_FPS } from '../../shared/performance'
 import { CHAT_VIEW } from '../../shared/view-id'
 import { type Gh, ghFailure } from '../reviews/gh'
 import type { GithubLimit, PanelView, ProbeResult } from './monitor'
@@ -22,7 +23,6 @@ export const REFUSED_BAD_CHAT_PANEL = 'refused: bad chat panel'
 const REFUSED_BAD_INPUT = 'refused: bad input'
 // More chat panels than this in one report is not a real window.
 const MAX_CHAT_PANELS = 500
-const MAX_FPS = 1000
 const NS_PER_MS = 1e6
 
 // Read the GraphQL limit from the REST answer of gh api rate_limit. reset is in seconds.

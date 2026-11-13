@@ -1,5 +1,7 @@
 // The check of one public status page (Atlassian Statuspage). The endpoints, the component
 // filter and the rank rules are those of claude-statusline. The fetch is a parameter.
+
+import { isRecord } from '../../shared/plain-object'
 import type { Impact, Incident, ServiceId, ServiceLevel, ServiceStatus } from '../../shared/types'
 
 export interface ServiceDef {
@@ -87,10 +89,6 @@ export function createFetchJson(fetch: FetchFn): FetchJson {
 
 const INDICATORS: readonly string[] = ['none', 'minor', 'major', 'critical', 'maintenance']
 const WORDS: readonly Impact[] = ['none', 'minor', 'major', 'critical']
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
 
 // The weight of a level: minor 1, major 2, critical 3, each other value 0.
 function rank(level: string): number {

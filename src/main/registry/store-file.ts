@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { cleanAlias } from '../../shared/alias'
+import { isRecord } from '../../shared/plain-object'
 import { isPriority } from '../../shared/priority'
 import type { DeferredDelete, Priority } from '../../shared/types'
 import { isUuid } from '../../shared/uuid'
@@ -8,10 +9,6 @@ import { worktreeRoot } from '../../shared/worktree'
 import { SHORT_ID } from '../actions/claude-output'
 import { writeJsonAtomic } from '../store/json-file'
 import type { RegistryStore } from './registry'
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 function emptyStore(): RegistryStore {
   return {
@@ -62,8 +59,8 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   } catch {
     return emptyStore()
   }
-  if (!isObject(data)) return emptyStore()
-  const names = isObject(data.names)
+  if (!isRecord(data)) return emptyStore()
+  const names = isRecord(data.names)
     ? Object.fromEntries(
         Object.entries(data.names).filter((pair): pair is [string, string] => {
           return typeof pair[1] === 'string'
@@ -71,7 +68,7 @@ export async function loadStore(file: string): Promise<RegistryStore> {
       )
     : {}
   const aliases: Record<string, string> = {}
-  if (isObject(data.aliases)) {
+  if (isRecord(data.aliases)) {
     for (const [id, value] of Object.entries(data.aliases)) {
       if (typeof value !== 'string') continue
       const clean = cleanAlias(value)
@@ -79,13 +76,13 @@ export async function loadStore(file: string): Promise<RegistryStore> {
     }
   }
   const current: Record<string, string> = {}
-  if (isObject(data.current)) {
+  if (isRecord(data.current)) {
     for (const [rowId, id] of Object.entries(data.current)) {
       if (isUuid(id) && id !== rowId) current[rowId] = id
     }
   }
   const jobs: Record<string, string> = {}
-  if (isObject(data.jobs)) {
+  if (isRecord(data.jobs)) {
     for (const [rowId, id] of Object.entries(data.jobs)) {
       if (typeof id === 'string' && SHORT_ID.test(id)) jobs[rowId] = id
     }
@@ -93,7 +90,7 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   const started = Array.isArray(data.started)
     ? data.started.filter((id): id is string => typeof id === 'string')
     : []
-  const priorities = isObject(data.priorities)
+  const priorities = isRecord(data.priorities)
     ? Object.fromEntries(
         Object.entries(data.priorities).filter((pair): pair is [string, Priority] => {
           return isPriority(pair[1])
@@ -113,7 +110,7 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   const watch: RegistryStore['watch'] = []
   if (Array.isArray(data.watch)) {
     for (const entry of data.watch) {
-      if (!isObject(entry)) continue
+      if (!isRecord(entry)) continue
       const { sessionId } = entry
       // An old colour name maps to a new colour before the check.
       const old =
@@ -130,7 +127,7 @@ export async function loadStore(file: string): Promise<RegistryStore> {
   const worktrees: RegistryStore['worktrees'] = []
   if (Array.isArray(data.worktrees)) {
     for (const entry of data.worktrees) {
-      if (!isObject(entry)) continue
+      if (!isRecord(entry)) continue
       const { path, sessionId } = entry
       if (typeof sessionId !== 'string' || withWorktree.has(sessionId)) continue
       if (typeof path !== 'string' || worktreeRoot(path) === null) continue
@@ -162,7 +159,7 @@ function deferredOf(value: unknown): DeferredDelete[] {
   const ids = new Set<string>()
   const deferred: DeferredDelete[] = []
   for (const entry of value) {
-    if (!isObject(entry)) continue
+    if (!isRecord(entry)) continue
     const { job, sessionId, shortId, worktree } = entry
     if (typeof sessionId !== 'string' || sessionId === '' || ids.has(sessionId)) continue
     if (typeof shortId !== 'string' || !SHORT_ID.test(shortId)) continue

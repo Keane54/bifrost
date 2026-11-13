@@ -42,8 +42,11 @@ function fakeDeps(o: Partial<ServiceDeps> = {}): ServiceDeps {
   }
 }
 
+// The store of an older version can lack some fields.
+type StoreIn = ConstructorParameters<typeof SessionRegistry>[0]['store']
+
 const newRegistry = (
-  store: RegistryStore = { lastActive: [], names: {}, priorities: {}, started: [], watch: [] },
+  store: StoreIn = { lastActive: [], names: {}, priorities: {}, started: [], watch: [] },
 ) => new SessionRegistry({ escalationMs: 600_000, store })
 
 interface Update {
@@ -168,6 +171,18 @@ describe('brief', () => {
     expect(service.rows().map(r => r.branch)).toEqual(['main', 'main'])
     await vi.advanceTimersByTimeAsync(SERVICE_TIMING.branchMs)
     expect(readBranch).toHaveBeenCalledTimes(2)
+  })
+
+  test('a loop that throws logs each new error one time and keeps running', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const readBranch = vi.fn(async (): Promise<string | null> => {
+      throw new TypeError('boom')
+    })
+    startService(fakeDeps({ listActive: async () => ({ entries: [bg()] }), readBranch }))
+    await vi.advanceTimersByTimeAsync(3 * SERVICE_TIMING.branchMs)
+    expect(readBranch.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(error.mock.calls.filter(c => c.some(a => String(a).includes('boom')))).toHaveLength(1)
+    error.mockRestore()
   })
 })
 
@@ -306,6 +321,65 @@ describe('list polls', () => {
   })
 })
 
+describe('polls while the window is not visible', () => {
+  test('a hidden window polls every 15 seconds', async () => {
+    const listActive = vi.fn(async () => empty())
+    const { service } = startService(fakeDeps({ listActive }))
+    await vi.advanceTimersByTimeAsync(100)
+    expect(listActive).toHaveBeenCalledTimes(1)
+    service.setPageVisible(false)
+    // The wait that runs now ends at 2000 ms. The next waits are 15000 ms.
+    await vi.advanceTimersByTimeAsync(1900)
+    expect(listActive).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(14_999)
+    expect(listActive).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(listActive).toHaveBeenCalledTimes(3)
+  })
+
+  test('a visible window again polls at once, then at the normal interval', async () => {
+    const listActive = vi.fn(async () => empty())
+    const { service } = startService(fakeDeps({ listActive }))
+    await vi.advanceTimersByTimeAsync(100)
+    service.setPageVisible(false)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(listActive).toHaveBeenCalledTimes(2)
+    // A wait of 15000 ms is open. Show the window 5000 ms into it.
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(listActive).toHaveBeenCalledTimes(2)
+    service.setPageVisible(true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(listActive).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(listActive).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(listActive).toHaveBeenCalledTimes(4)
+  })
+
+  test('the same visible value twice does not poll again', async () => {
+    const listActive = vi.fn(async () => empty())
+    const { service } = startService(fakeDeps({ listActive }))
+    await vi.advanceTimersByTimeAsync(100)
+    service.setPageVisible(true)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(listActive).toHaveBeenCalledTimes(1)
+  })
+
+  test('a change of the setting applies the larger value while hidden', async () => {
+    const listActive = vi.fn(async () => empty())
+    const { service } = startService(fakeDeps({ listActive }))
+    await vi.advanceTimersByTimeAsync(100)
+    service.setPageVisible(false)
+    service.setActiveInterval(30_000)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(listActive).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(29_000)
+    expect(listActive).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(listActive).toHaveBeenCalledTimes(3)
+  })
+})
+
 describe('updates and the store', () => {
   test('no update goes out when the rows did not change', async () => {
     const deps = fakeDeps({ listActive: async () => ({ entries: [bg()] }) })
@@ -334,7 +408,7 @@ describe('updates and the store', () => {
   })
 
   test('setPriority sends an update and saves the store', async () => {
-    const saveStore = vi.fn(async () => {})
+    const saveStore = vi.fn(async (_store: RegistryStore) => {})
     const { service, updates } = startService(
       fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }),
     )
@@ -348,7 +422,7 @@ describe('updates and the store', () => {
   })
 
   test('setAlias sends an update, saves the store and changes the usage name', async () => {
-    const saveStore = vi.fn(async () => {})
+    const saveStore = vi.fn(async (_store: RegistryStore) => {})
     const { service, updates } = startService(
       fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }),
     )
@@ -362,7 +436,7 @@ describe('updates and the store', () => {
   })
 
   test('rememberWorktree sends an update and saves the store', async () => {
-    const saveStore = vi.fn(async () => {})
+    const saveStore = vi.fn(async (_store: RegistryStore) => {})
     const WT = '/r/.claude/worktrees/fix-a'
     const { service, updates } = startService(
       fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }),
@@ -452,7 +526,7 @@ describe('updates and the store', () => {
   })
 
   test('the watch changes send an update and save the store', async () => {
-    const saveStore = vi.fn(async () => {})
+    const saveStore = vi.fn(async (_store: RegistryStore) => {})
     const entries = [bg(), bg({ id: 'bb', name: 'beta', pid: 6, sessionId: 's2' })]
     const { service, updates } = startService(
       fakeDeps({ listActive: async () => ({ entries }), saveStore }),
@@ -505,7 +579,7 @@ describe('updates and the store', () => {
   })
 
   test('the service saves the store after a change to the store', async () => {
-    const saveStore = vi.fn(async () => {})
+    const saveStore = vi.fn(async (_store: RegistryStore) => {})
     startService(fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }))
     await vi.advanceTimersByTimeAsync(0)
     expect(saveStore).toHaveBeenCalledTimes(1)
@@ -683,7 +757,7 @@ describe('M4 registry service', () => {
   })
 
   test('forget, markStarted and markStopped save the store and send an update', async () => {
-    const saveStore = vi.fn(async () => {})
+    const saveStore = vi.fn(async (_store: RegistryStore) => {})
     const { service, updates } = startService(
       fakeDeps({ listActive: async () => ({ entries: [bg()] }), saveStore }),
     )

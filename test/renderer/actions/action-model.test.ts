@@ -614,11 +614,11 @@ describe('action model', () => {
   it('checkedKey gives the key of the checked item, or undefined', () => {
     expect(
       checkedKey([
-        { arg: 1, key: '1' },
-        { arg: 2, checked: true, key: '2' },
+        { arg: 1, key: '1', label: 'One' },
+        { arg: 2, checked: true, key: '2', label: 'Two' },
       ]),
     ).toBe('2')
-    expect(checkedKey([{ arg: 1, checked: false, key: '1' }])).toBeUndefined()
+    expect(checkedKey([{ arg: 1, checked: false, key: '1', label: 'One' }])).toBeUndefined()
     const watched = row({ sessionId: 'w', watch: { colour: 'light-blue', order: 0 } })
     const change = find(rowMenu(watched, ctx()), 'watch-colour')
     if (change?.type !== 'submenu') throw new Error('not a submenu')

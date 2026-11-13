@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_WIDTHS } from '../../../src/renderer/src/overview/columns'
 import {
+  ageStepMs,
   barFill,
   contextBand,
   formatAge,
@@ -14,6 +15,22 @@ import {
 } from '../../../src/renderer/src/overview/format'
 
 describe('format', () => {
+  it('ageStepMs gives the time until the age text changes', () => {
+    const cases: [number, number, number][] = [
+      [0, 30_500, 500],
+      [0, 90_000, 30_000],
+      [0, 3_605_000, 3_595_000],
+      [10_000, 9_000, 2_000],
+    ]
+    for (const [since, now, step] of cases) {
+      expect(ageStepMs(since, now)).toBe(step)
+      expect(formatAge(since, now + step - 1)).toBe(formatAge(since, now))
+      expect(formatAge(since, now + step)).not.toBe(formatAge(since, now))
+    }
+    expect(ageStepMs(0, 2 * 86_400_000)).toBe(3_600_000)
+    expect(ageStepMs(Number.NaN, 0)).toBe(60_000)
+  })
+
   it('shownContextBand uses the rounded percent, as the text shows it', () => {
     expect(shownContextBand(39.4)).toBe('low')
     expect(shownContextBand(39.6)).toBe('mid')

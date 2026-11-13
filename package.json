@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "@electron-toolkit/utils": "4.0.0",
     "electron-updater": "6.8.11",
     "node-pty": "1.1.0"
   },
@@ -58,7 +57,7 @@
     "check:write": "biome check --write",
     "dev": "electron-vite dev",
     "dist": "electron-vite build && electron-builder --mac --arm64",
-    "dist:release": "electron-vite build && electron-builder --mac --arm64 --config electron-builder.release.yml --publish never",
+    "dist:release": "electron-vite build && electron-builder --mac --arm64 --config electron-builder.release.ts --publish never",
     "format": "biome format",
     "format:write": "biome format --write",
     "icon": "node scripts/make-icon.ts",
@@ -70,9 +69,10 @@
     "smoke:app": "playwright test",
     "start": "electron-vite preview",
     "test": "vitest run",
-    "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web && pnpm run typecheck:scripts",
+    "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web && pnpm run typecheck:scripts && pnpm run typecheck:test",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "verify:release": "node scripts/verify-release.ts"
   },

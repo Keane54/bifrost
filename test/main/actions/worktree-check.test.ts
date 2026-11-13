@@ -117,7 +117,7 @@ describe('checkWorktree', () => {
   it('gives null when a git command fails in both tries', async () => {
     // One try runs the commands up to the one that fails. The second try gets the same outputs.
     const twice = (i: number, v: ExecResult | Error) => {
-      const out = good().slice(0, i + 1)
+      const out: (ExecResult | Error)[] = good().slice(0, i + 1)
       out[i] = v
       return [...out, ...out]
     }

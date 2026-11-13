@@ -1,6 +1,8 @@
 // Read the access token of the Claude Code login from the macOS Keychain (spec 8.8).
 // SECURITY: this module never logs, stores or returns the Keychain text. It returns the access
 // token only, and only in memory. It never reads the refresh token.
+
+import { isRecord } from '../../shared/plain-object'
 import type { ExecFn } from '../claude/cli'
 
 export const SECURITY_PATH = '/usr/bin/security'
@@ -14,10 +16,6 @@ export const KEYCHAIN_ARGS: readonly string[] = [
 ]
 export const KEYCHAIN_TIMEOUT_MS = 10_000
 export const EXPIRY_MARGIN_MS = 60_000
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 // Return the access token, or null for "no token". Null covers: a failed command, bad JSON, a
 // missing field, and a token that has expired. This function never throws and never writes to

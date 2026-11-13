@@ -151,7 +151,11 @@ describe('checkPlugin', () => {
   })
 
   it('fails a missing or empty description', () => {
-    for (const fields of [{ 'disable-model-invocation': 'true' }, { description: '' }]) {
+    const cases: Record<string, string>[] = [
+      { 'disable-model-invocation': 'true' },
+      { description: '' },
+    ]
+    for (const fields of cases) {
       const skill = {
         folder: 'bifrost-grill',
         text: skillText({ 'disable-model-invocation': 'true', ...fields }),

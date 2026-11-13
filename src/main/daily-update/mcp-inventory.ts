@@ -1,4 +1,5 @@
 import { type McpInventory, type McpServerInfo, toolPrefix } from '../../shared/daily-update'
+import { isRecord } from '../../shared/plain-object'
 import type { SpawnLines } from '../claude/spawn-lines'
 
 // The page gets the inventory too, so the types are in the shared module.
@@ -22,10 +23,6 @@ export const PROBE_ARGS = [
   'Reply with OK only.',
 ]
 export const PROBE_TIMEOUT_MS = 30_000
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 // Read one stream-json line. Give the inventory only for the init event.
 // Give null for any other line. A server entry without a text name is ignored.

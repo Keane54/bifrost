@@ -1,6 +1,8 @@
 // The rules of the usage notification (spec 8.8). When the 5-hour limit or the 7-day limit gets to
 // 90% or more, Bifrost shows one notification. Each limit notifies one time in each reset period.
 // Pure functions, no Electron.
+
+import { isRecord } from '../../shared/plain-object'
 import { formatClockOrDay } from '../../shared/time'
 import type { RateLimits } from '../../shared/types'
 import { HIGH_PERCENT } from '../../shared/usage'
@@ -110,10 +112,6 @@ export function alertText(
     body: `Claude Code stops at 100% until the limit resets at ${clock}.`,
     title: `${name} at ${percent}%`,
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 // The extra usage flag of ~/.claude.json. Only oauthAccount.hasExtraUsageEnabled true counts as

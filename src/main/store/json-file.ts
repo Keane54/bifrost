@@ -1,14 +1,21 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 // Write the data to a temporary name in the same directory. Then rename the file.
 // So a crash during the write cannot leave a part of a file.
+// Sync the data to disk before the rename. So a power cut cannot leave an empty file.
 export async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   await mkdir(dirname(file), { recursive: true })
   const temporary = `${file}.${randomUUID()}.tmp`
   try {
-    await writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, { flag: 'wx', mode: 0o600 })
+    const handle = await open(temporary, 'wx', 0o600)
+    try {
+      await handle.writeFile(`${JSON.stringify(data, null, 2)}\n`)
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
     await rename(temporary, file)
   } catch (error) {
     // A failed clean-up must not hide the first error.

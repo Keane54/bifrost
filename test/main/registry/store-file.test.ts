@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { loadStore, openStore, saveStore } from '../../../src/main/registry/store-file'
+import { storeOf } from '../../helpers/registry-store'
 
 let dir: string
 
@@ -109,22 +110,28 @@ test('saveStore then loadStore gives the same store', async () => {
 
 test('saveStore makes the directory and leaves no temporary file', async () => {
   const file = join(dir, 'user-data', 'registry.json')
-  await saveStore(file, {
-    lastActive: [],
-    names: {},
-    priorities: {},
-    started: [],
-    watch: [],
-    worktrees: [],
-  })
-  await saveStore(file, {
-    lastActive: [],
-    names: { s1: 'alpha' },
-    priorities: {},
-    started: [],
-    watch: [],
-    worktrees: [],
-  })
+  await saveStore(
+    file,
+    storeOf({
+      lastActive: [],
+      names: {},
+      priorities: {},
+      started: [],
+      watch: [],
+      worktrees: [],
+    }),
+  )
+  await saveStore(
+    file,
+    storeOf({
+      lastActive: [],
+      names: { s1: 'alpha' },
+      priorities: {},
+      started: [],
+      watch: [],
+      worktrees: [],
+    }),
+  )
   expect(await readdir(join(dir, 'user-data'))).toEqual(['registry.json'])
   expect((await stat(file)).mode & 0o777).toBe(0o600)
 })
@@ -137,14 +144,17 @@ test('loadStore rejects for a file that it cannot read', async () => {
 
 test('openStore loads the file and saves to it', async () => {
   const file = join(dir, 'registry.json')
-  await saveStore(file, {
-    lastActive: [],
-    names: { s1: 'alpha' },
-    priorities: {},
-    started: [],
-    watch: [],
-    worktrees: [],
-  })
+  await saveStore(
+    file,
+    storeOf({
+      lastActive: [],
+      names: { s1: 'alpha' },
+      priorities: {},
+      started: [],
+      watch: [],
+      worktrees: [],
+    }),
+  )
   const log = vi.fn()
   const opened = await openStore(file, log)
   expect(opened.store).toEqual({
@@ -158,14 +168,16 @@ test('openStore loads the file and saves to it', async () => {
     watch: [],
     worktrees: [],
   })
-  await opened.save({
-    lastActive: [],
-    names: { s2: 'beta' },
-    priorities: {},
-    started: ['s2'],
-    watch: [],
-    worktrees: [],
-  })
+  await opened.save(
+    storeOf({
+      lastActive: [],
+      names: { s2: 'beta' },
+      priorities: {},
+      started: ['s2'],
+      watch: [],
+      worktrees: [],
+    }),
+  )
   expect(await loadStore(file)).toEqual({
     aliases: {},
     current: {},
@@ -197,14 +209,16 @@ test('openStore uses an empty store and does not save when it cannot read the fi
     worktrees: [],
   })
   expect(log).toHaveBeenCalledTimes(1)
-  await opened.save({
-    lastActive: [],
-    names: { s1: 'alpha' },
-    priorities: {},
-    started: [],
-    watch: [],
-    worktrees: [],
-  })
+  await opened.save(
+    storeOf({
+      lastActive: [],
+      names: { s1: 'alpha' },
+      priorities: {},
+      started: [],
+      watch: [],
+      worktrees: [],
+    }),
+  )
   expect((await stat(file)).isDirectory()).toBe(true)
   expect(await readdir(file)).toEqual([])
   expect(await readdir(dir)).toEqual(['registry.json'])

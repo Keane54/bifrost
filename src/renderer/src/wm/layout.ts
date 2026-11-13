@@ -1,4 +1,6 @@
 // Snapshots and named layouts. The main process keeps the file. The renderer checks all values.
+
+import { isRecord } from '../../../shared/plain-object'
 import { type OverviewConfig, parseOverviews } from '../overview/config'
 import { EMPTY_HISTORY, type History, parseHistory } from '../sessions/history'
 import type { Rect } from './geometry'
@@ -48,12 +50,8 @@ export function toSnapshot(state: WmState): LayoutSnapshot {
   }
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function parseRect(value: unknown): Rect | null {
-  if (!isObject(value)) return null
+  if (!isRecord(value)) return null
   const { x, y, w, h } = value
   if (![x, y, w, h].every(n => typeof n === 'number' && Number.isFinite(n))) return null
   if ((w as number) <= 0 || (h as number) <= 0) return null
@@ -61,7 +59,7 @@ function parseRect(value: unknown): Rect | null {
 }
 
 function parseFrame(value: unknown): Omit<Frame, 'id'> | null {
-  if (!isObject(value) || !Array.isArray(value.panels)) return null
+  if (!isRecord(value) || !Array.isArray(value.panels)) return null
   const rect = parseRect(value.rect)
   if (!rect) return null
   const panels: string[] = []
@@ -82,12 +80,12 @@ function parseFrame(value: unknown): Omit<Frame, 'id'> | null {
 }
 
 function parseSnapshot(value: unknown): LayoutSnapshot | null {
-  if (!isObject(value)) return null
+  if (!isRecord(value)) return null
   const frames = Array.isArray(value.frames)
     ? value.frames.map(parseFrame).filter((f): f is Omit<Frame, 'id'> => f !== null)
     : []
   const memory: Record<string, Rect> = {}
-  if (isObject(value.memory)) {
+  if (isRecord(value.memory)) {
     for (const [id, raw] of Object.entries(value.memory)) {
       const rect = parseRect(raw)
       if (rect && panelKind(id)) memory[id] = rect
@@ -98,7 +96,7 @@ function parseSnapshot(value: unknown): LayoutSnapshot | null {
 
 // A value that is not true gives the closed Details row.
 function parsePerformance(value: unknown): PerformanceUi {
-  return { detailsOpen: isObject(value) && value.detailsOpen === true }
+  return { detailsOpen: isRecord(value) && value.detailsOpen === true }
 }
 
 function validName(name: string): boolean {
@@ -108,12 +106,12 @@ function validName(name: string): boolean {
 // Check data that the renderer read from ui-state.json. Wrong values give the empty store
 // or lose only the item that holds them.
 export function parseUiStore(data: unknown): UiStore {
-  if (!isObject(data) || data.version !== 1) return EMPTY_STORE
+  if (!isRecord(data) || data.version !== 1) return EMPTY_STORE
   const layouts: UiStore['layouts'] = []
   if (Array.isArray(data.layouts)) {
     for (const item of data.layouts) {
       if (layouts.length >= MAX_LAYOUTS) break
-      if (!isObject(item) || typeof item.name !== 'string') continue
+      if (!isRecord(item) || typeof item.name !== 'string') continue
       const name = item.name.trim()
       if (!validName(name) || layouts.some(l => l.name === name)) continue
       const snapshot = parseSnapshot(item.snapshot)

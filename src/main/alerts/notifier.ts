@@ -7,6 +7,9 @@ const MAX_KEPT = 20
 
 const kept = new Set<Notification>()
 
+// The first refused notification of the run logs. Later ones do not log.
+let failedLogged = false
+
 // label names the notification in the log line, for example "review requests". Without it, the
 // log line names the session, or "a summary" for a summary of boxes.
 // sound true lets macOS play its notification sound. Without it, the notification is silent.
@@ -34,7 +37,10 @@ export function showNotification(
   })
   note.on('failed', (_event, error) => {
     kept.delete(note)
-    console.error('Bifrost cannot show a notification.', error)
+    if (!failedLogged) {
+      failedLogged = true
+      console.error('Bifrost cannot show a notification.', error)
+    }
     onFailed?.()
   })
   note.on('show', () => {

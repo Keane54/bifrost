@@ -2,6 +2,8 @@
 // semantic-release writes each body (.releaserc.json): the summary of the Release workflow, a
 // "## <version>" heading, and a "### <Title>" heading for each section. Each item of a section is
 // a line "* **scope:** text ([hash](url))", or the same line with no scope.
+
+import { isRecord } from '../../shared/plain-object'
 import {
   compareVersions,
   parseVersion,
@@ -109,10 +111,6 @@ export function shownSections(sections: readonly ReleaseSection[]): ReleaseSecti
 export function parseReleaseBody(body: string): BodyParts {
   const { summary, sections } = splitBody(body)
   return { sections: shownSections(sections), summary }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 // One release of the answer, or null for a draft, a prerelease or an entry that the app cannot

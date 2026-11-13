@@ -25,6 +25,7 @@
 // The mod sends version, effort, permissionMode and transcriptPath from M5b on (D28). A line of an
 // older mod does not have them. v stays 1, because each new field is optional.
 
+import { isRecord } from '../../shared/plain-object'
 import type { RateLimits, RateWindow } from '../../shared/types'
 import { isUuid } from '../../shared/uuid'
 import type { HookEvent } from '../registry/hook-event'
@@ -55,10 +56,6 @@ export type LiveEvent =
   | { type: 'usage'; sessionId: string; at: number; usage: LiveUsage }
 
 type Raw = Record<string, unknown>
-
-function isRecord(value: unknown): value is Raw {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 function cut(value: unknown, max: number): string | undefined {
   return typeof value === 'string' ? value.slice(0, max) : undefined

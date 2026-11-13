@@ -64,6 +64,18 @@ export function formatAge(since: number, now: number): string {
   return `${Math.floor(s / 86400)} d`
 }
 
+// The time in ms until formatAge gives a new text. At most one hour. A bad value gives 60 s.
+export function ageStepMs(since: number, now: number): number {
+  const elapsed = now - since
+  if (!Number.isFinite(elapsed)) return 60_000
+  // A time before since shows "0 s" until 1 s after since.
+  if (elapsed < 0) return Math.min(3_600_000, -elapsed + 1000)
+  const s = Math.floor(elapsed / 1000)
+  const unit = s < 60 ? 1 : s < 3600 ? 60 : s < 86400 ? 3600 : 86400
+  const next = (Math.floor(s / unit) + 1) * unit * 1000
+  return Math.min(3_600_000, next - elapsed)
+}
+
 const STATE_LABELS: Record<SessionState, string> = {
   error: 'Error',
   idle: 'Idle',

@@ -1,9 +1,11 @@
 // The on-demand context query of one review: the PR, the reviews of the viewer, and the
 // threads of the viewer. Only reads. Each value goes as a variable, never inside the query text.
 
+import { isRecord } from '../../shared/plain-object'
 import type { Gh } from './gh'
 import { ghFailure } from './gh'
 import type { ReviewState } from './pr-data'
+import { REASON_PR_READ_FAILED } from './round-text'
 
 export const MAX_PAGES = 10
 
@@ -97,7 +99,8 @@ const THREADS_QUERY = `query ReviewThreads(
 }`
 
 type Rec = Record<string, unknown>
-type Fail = { ok: false; message: string }
+// detail is the raw text from gh or GitHub. The caller writes it to the Event log.
+type Fail = { ok: false; message: string; detail?: string }
 
 export const BAD_ANSWER = 'GitHub gave an answer that Bifrost could not read.'
 const REVIEW_STATES: readonly string[] = [
@@ -110,7 +113,6 @@ const REVIEW_STATES: readonly string[] = [
 const PR_STATES: readonly string[] = ['OPEN', 'CLOSED', 'MERGED']
 
 // The answer of GitHub is not typed. Each read checks the type of its value.
-const isRecord = (x: unknown): x is Rec => typeof x === 'object' && x !== null && !Array.isArray(x)
 const asRec = (x: unknown): Rec => (isRecord(x) ? x : {})
 const asArray = (x: unknown): unknown[] => (Array.isArray(x) ? x : [])
 const asString = (x: unknown): string => (typeof x === 'string' ? x : '')
@@ -143,7 +145,10 @@ function args(query: string, v: Vars): string[] {
 async function call(gh: Gh, query: string, v: Vars): Promise<{ ok: true; pr: Rec } | Fail> {
   const result = await gh.run(args(query, v))
   const failure = ghFailure(result)
-  if (failure) return { message: failure.message, ok: false }
+  if (failure) {
+    if (failure.detail === undefined) return { message: failure.message, ok: false }
+    return { detail: failure.detail, message: REASON_PR_READ_FAILED, ok: false }
+  }
   let parsed: unknown
   try {
     parsed = JSON.parse(result.stdout)
@@ -155,7 +160,8 @@ async function call(gh: Gh, query: string, v: Vars): Promise<{ ok: true; pr: Rec
   const errors = asArray(top.errors)
   if (errors.length > 0) {
     const first = asString(asRec(errors[0]).message)
-    return { message: first ? first : BAD_ANSWER, ok: false }
+    if (!first) return { message: BAD_ANSWER, ok: false }
+    return { detail: first, message: REASON_PR_READ_FAILED, ok: false }
   }
   const pr = asRec(asRec(top.data).repository).pullRequest
   if (!isRecord(pr)) return { message: BAD_ANSWER, ok: false }

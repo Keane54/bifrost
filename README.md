@@ -131,7 +131,8 @@ After the first install, you do not need to download a DMG again. Bifrost checks
 
 ## Documentation
 
-The [`docs`](docs) folder has the other documents:
+The [`docs`](docs) folder and the root folder have the other documents:
 
 - [Electron, Tauri or GPUI](docs/electron-or-tauri.md): why Bifrost stays on Electron.
 - [Slack app](docs/slack/README.md): the Slack app for a later milestone.
+- [Releasing](RELEASING.md): the secrets and the steps of a signed release.

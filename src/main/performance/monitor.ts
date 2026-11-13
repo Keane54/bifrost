@@ -32,14 +32,14 @@ import {
 // The tick while the panel is closed, and while it shows (P9).
 export const TICK_MS = 15_000
 export const FAST_TICK_MS = 2_000
-// ps and netstat run at most this often. While the panel is closed, ps runs on each tick
-// (design section 7).
+// ps and netstat run at most this often. While the panel is closed, ps runs on each tick.
 export const COMMAND_MS = 6_000
-// The memory pressure and the swap, at most this often in each state (design section 7).
+// The memory pressure and the swap, at most this often, only while the panel shows.
 export const MAC_MS = 15_000
 // The response times and the gh rate limit, at most this often, only while the panel shows.
 export const PROBE_MS = 60_000
-// The battery, the free disk and the size of the Reviews clones, in each state (design section 7).
+// The battery, the free disk and the size of the Reviews clones, at most this often, only while
+// the panel shows. With the panel closed, each one is read one time, at the first tick.
 export const BATTERY_MS = 60_000
 export const DISK_MS = 60_000
 export const CLONES_MS = 600_000
@@ -162,6 +162,9 @@ const newSide = (): SideRead => ({ at: NEVER, busy: false })
 // due, so a clock change cannot stop a read for a long time.
 const due = (since: number, everyMs: number): boolean => since < 0 || since >= everyMs
 
+// True when the read at time `at` has never run.
+const never = (at: number): boolean => at === NEVER
+
 // The sampled state of the monitor. stop() replaces it with a new one.
 function freshState(linkDue: boolean) {
   return {
@@ -181,7 +184,6 @@ function freshState(linkDue: boolean) {
     link: null as Link | null,
     linkAt: NEVER,
     linkDue,
-    macAt: NEVER,
     // False until the first tick with Electron metrics. The first read of getAppMetrics gives 0%
     // CPU for each process, so that tick adds no sample.
     metricsRead: false,
@@ -201,6 +203,7 @@ function freshState(linkDue: boolean) {
       clones: newSide(),
       disk: newSide(),
       gh: newSide(),
+      mac: newSide(),
       probes: newSide(),
     },
     swap: null as Mac['swap'],
@@ -244,12 +247,20 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
 
   // Start the read when its interval is past and it does not run. The read gives a function that
   // applies its result. Only a read of the current generation applies.
-  function runSide(side: SideRead, everyMs: number, now: number, read: () => Promise<() => void>) {
-    if (side.busy || !due(now - side.at, everyMs)) return
+  // It gives the promise of a read that it starts, or undefined.
+  function runSide(
+    side: SideRead,
+    everyMs: number,
+    now: number,
+    read: () => Promise<() => void>,
+  ): Promise<void> | undefined {
+    if (side.busy || !due(now - side.at, everyMs)) return undefined
+    // With the panel closed, only the first read runs. Only the panel shows these values.
+    if (!showing && !never(side.at)) return undefined
     side.busy = true
     side.at = now
     const gen = generation
-    read()
+    return read()
       .then(apply => {
         if (gen === generation) apply()
       })
@@ -259,30 +270,75 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       })
   }
 
-  function startSideReads(now: number, reviewsLimit: GithubLimit | null): void {
+  // The values that only the panel shows: the Mac, the battery, the disk and the clones. Each one
+  // runs when it is due and the panel shows, or one time when it has never run.
+  // Build the snapshot again from the input of the last tick and emit it.
+  function emitAgain(): void {
+    if (!running || lastBuild === null) return
+    try {
+      snapshot = build({ ...lastBuild, now: deps.now() })
+      deps.emit(snapshot)
+    } catch (error) {
+      console.error('Bifrost cannot refresh the performance data.', error)
+    }
+  }
+
+  function startPanelReads(now: number): Array<Promise<void>> {
     const { sides } = st
-    runSide(sides.battery, BATTERY_MS, now, async () => {
-      const b = await readBattery(deps.exec)
-      return () => {
-        st.battery =
-          b === null ? null : { charging: b.charging, onBattery: b.onBattery, percent: b.percent }
-      }
-    })
-    runSide(sides.disk, DISK_MS, now, async () => {
-      const bytes = await deps.freeDiskBytes()
-      return () => {
-        st.freeDiskGb = bytes === null ? null : bytes / BYTES_PER_GB
-      }
-    })
+    const started: Array<Promise<void> | undefined> = []
+    started.push(
+      runSide(sides.mac, MAC_MS, now, async () => {
+        const [pressure, swap] = await Promise.all([readPressure(deps.exec), readSwap(deps.exec)])
+        return () => {
+          st.pressure = pressure
+          st.swap = swap
+        }
+      }),
+    )
+    started.push(
+      runSide(sides.battery, BATTERY_MS, now, async () => {
+        const b = await readBattery(deps.exec)
+        return () => {
+          st.battery =
+            b === null ? null : { charging: b.charging, onBattery: b.onBattery, percent: b.percent }
+        }
+      }),
+    )
+    started.push(
+      runSide(sides.disk, DISK_MS, now, async () => {
+        const bytes = await deps.freeDiskBytes()
+        return () => {
+          st.freeDiskGb = bytes === null ? null : bytes / BYTES_PER_GB
+        }
+      }),
+    )
     const clones = deps.clonesPath
     if (clones !== null) {
-      runSide(sides.clones, CLONES_MS, now, async () => {
-        const kb = (await deps.exists(clones)) ? await readDuKb(deps.exec, clones) : null
-        return () => {
-          st.clonesMb = kb === null ? null : kb / KB_PER_MB
-        }
-      })
+      started.push(
+        runSide(sides.clones, CLONES_MS, now, async () => {
+          const kb = (await deps.exists(clones)) ? await readDuKb(deps.exec, clones) : null
+          return () => {
+            st.clonesMb = kb === null ? null : kb / KB_PER_MB
+          }
+        }),
+      )
     }
+    return started.filter((p): p is Promise<void> => p !== undefined)
+  }
+
+  // When the reads that an open started end, emit the snapshot once with the new values. No tick
+  // runs. The open must still show, in the same generation.
+  function emitAfterPanelReads(reads: Array<Promise<void>>): void {
+    if (reads.length === 0) return
+    const gen = generation
+    void Promise.all(reads).then(() => {
+      if (gen === generation && showing) emitAgain()
+    })
+  }
+
+  function startSideReads(now: number, reviewsLimit: GithubLimit | null): void {
+    const { sides } = st
+    startPanelReads(now)
     // A test home makes no network request and no gh call.
     if (!deps.network || !showing) return
     runSide(sides.probes, PROBE_MS, now, async () => {
@@ -305,18 +361,15 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     })
   }
 
-  // Mark and give the commands that this tick runs. ps and netstat run at most every 6 s, the
-  // pressure and the swap at most every 15 s. The network commands run only while the panel
-  // shows (design section 7).
+  // Mark and give the commands that this tick runs. ps and netstat run at most every 6 s. The
+  // network commands run only while the panel shows.
   function planReads(now: number) {
     const plan = {
       bytes: showing && due(now - st.netAt, COMMAND_MS),
       kind: showing && (st.linkDue || due(now - st.linkAt, LINK_MS)),
-      mac: due(now - st.macAt, MAC_MS),
       ps: due(now - st.psAt, COMMAND_MS),
     }
     if (plan.ps) st.psAt = now
-    if (plan.mac) st.macAt = now
     if (plan.kind) {
       st.linkDue = false
       st.linkAt = now
@@ -523,6 +576,8 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
     }
     if (!running) return
     trackOrphans(deps.now(), deps.ptys())
+    // An open reads the side values at once, so the panel never shows an old value.
+    if (opened) emitAfterPanelReads(startPanelReads(deps.now()))
     // During a tick, the end of the tick sets the timer.
     if ((opened || closed) && !busy) schedule()
   }
@@ -542,13 +597,11 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       const rows = deps.rows()
       const cpus = deps.cpus()
       const plan = planReads(now)
-      const [table, mac, net] = await Promise.all([
+      const [table, net] = await Promise.all([
         plan.ps ? readPsStats(deps.exec) : undefined,
-        plan.mac ? Promise.all([readPressure(deps.exec), readSwap(deps.exec)]) : undefined,
         plan.kind || plan.bytes ? readNetwork(plan.kind, plan.bytes) : undefined,
       ])
       if (!running || gen !== generation) return
-      if (mac !== undefined) [st.pressure, st.swap] = mac
       // The panel can close during the reads. Then the rates stay away.
       if (net !== undefined && showing) applyNetwork(now, net)
       // All CPU values are percent of all cores. The limits keep percent of one core.
@@ -597,15 +650,7 @@ export function createPerformanceMonitor(deps: MonitorDeps): PerformanceMonitor 
       reported = false
       setView({ chatPanels: [], focused: false, showing: false })
     },
-    refresh() {
-      if (!running || lastBuild === null) return
-      try {
-        snapshot = build({ ...lastBuild, now: deps.now() })
-        deps.emit(snapshot)
-      } catch (error) {
-        console.error('Bifrost cannot refresh the performance data.', error)
-      }
-    },
+    refresh: emitAgain,
     start() {
       if (running) return
       running = true

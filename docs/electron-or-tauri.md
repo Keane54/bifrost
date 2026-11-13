@@ -85,7 +85,7 @@ But it is a much bigger job than Tauri:
 
 ## When to look again
 
-- One framework for all of the company's desktop apps becomes a firm requirement.
+- One framework for all of your company's desktop apps becomes a firm requirement.
 - Download size or memory use becomes a real problem for people using Bifrost.
 - GPUI reaches a stable 1.0 on crates.io, and Discord's GPUI client ships and holds up in daily use. If we ever move, this is the path we would look at first.
 - Tauri gets end-to-end test support on macOS, or a stable way to bundle its own engine (it has explored Servo, through Verso).

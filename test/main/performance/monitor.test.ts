@@ -37,6 +37,7 @@ const MIN = 60_000
 // The KB in one MB.
 const KB_PER_MB = 1024
 const RESET = Date.parse('2026-11-09T11:00:00Z')
+const CLONES = '/fake/home/.bifrost/reviews/repos'
 
 // A session ID. n is one digit.
 const uuid = (n: number): string => `0000000${n}-0000-4000-8000-000000000000`
@@ -152,10 +153,12 @@ interface World {
   clonesExist: boolean
   metricsThrow: boolean
   emitThrows: boolean
+  battery: string
 }
 
 function setup(opts: { network?: boolean; clonesPath?: string | null } = {}) {
   const world: World = {
+    battery: BATTERY,
     clonesExist: true,
     cpus: [cpuInfo(0, 0)],
     delay: null,
@@ -177,7 +180,7 @@ function setup(opts: { network?: boolean; clonesPath?: string | null } = {}) {
   const exec = vi.fn<ExecFn>(async (file, args) => {
     if (file === PS) return world.psFails ? FAILED : ok(psOut(world.procs))
     if (file === SYSCTL) return ok(args.includes('vm.swapusage') ? SWAP : '1\n')
-    if (file === PMSET) return ok(BATTERY)
+    if (file === PMSET) return ok(world.battery)
     if (file === ROUTE) return world.routeFails ? FAILED : ok(routeOut(world.device))
     if (file === NETWORKSETUP) return ok(PORTS)
     if (file === NETSTAT) return ok(netstatOut(world.device, world.inBytes, world.outBytes))
@@ -339,13 +342,14 @@ describe('createPerformanceMonitor', () => {
     await vi.advanceTimersByTimeAsync(10 * SEC)
     t.monitor.view(SHOW)
     await vi.advanceTimersByTimeAsync(0)
-    expect(ticks()).toBe(14)
+    // The tick, and one more snapshot when the side reads of the open end.
+    expect(ticks()).toBe(15)
     // A report that changes only the chat panels does not move the timer.
     t.monitor.view({ ...SHOW, chatPanels: [chat(uuid(1))] })
     await vi.advanceTimersByTimeAsync(FAST_TICK_MS - 1)
-    expect(ticks()).toBe(14)
-    await vi.advanceTimersByTimeAsync(1)
     expect(ticks()).toBe(15)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(ticks()).toBe(16)
     t.monitor.stop()
   })
 
@@ -735,11 +739,12 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
-  it('reads the battery and the free disk every 60 s, and the clones every 10 minutes', async () => {
+  it('reads the battery and disk every 60 s, and the clones every 10 minutes', async () => {
     const clones = '/fake/home/.bifrost/reviews/repos'
     const t = setup({ clonesPath: clones })
     const counts = () => [t.calls(PMSET), t.freeDiskBytes.mock.calls.length, t.calls(DU)]
     t.monitor.start()
+    t.monitor.view(SHOW)
     await vi.advanceTimersByTimeAsync(0)
     expect(counts()).toEqual([1, 1, 1])
     expect(t.exec).toHaveBeenCalledWith(DU, ['-sk', clones], expect.anything())
@@ -756,11 +761,76 @@ describe('createPerformanceMonitor', () => {
     t.monitor.stop()
   })
 
+  it('reads the Mac, battery, disk and clones one time while the panel stays closed', async () => {
+    const t = setup({ clonesPath: CLONES })
+    const counts = () => [
+      t.calls(SYSCTL),
+      t.calls(PMSET),
+      t.freeDiskBytes.mock.calls.length,
+      t.calls(DU),
+    ]
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(counts()).toEqual([2, 1, 1, 1])
+    await vi.advanceTimersByTimeAsync(CLONES_MS)
+    expect(counts()).toEqual([2, 1, 1, 1])
+    t.monitor.stop()
+  })
+
+  it('an open after a long close reads the side values at once', async () => {
+    const t = setup({ clonesPath: CLONES })
+    const counts = () => [
+      t.calls(SYSCTL),
+      t.calls(PMSET),
+      t.freeDiskBytes.mock.calls.length,
+      t.calls(DU),
+    ]
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(30 * MIN)
+    expect(counts()).toEqual([2, 1, 1, 1])
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(counts()).toEqual([4, 2, 2, 2])
+    t.monitor.stop()
+  })
+
+  it('an open emits one snapshot with the new battery value before the next tick', async () => {
+    const t = setup()
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(4 * TICK_MS + SEC)
+    expect(t.monitor.current().mac?.battery).toEqual({
+      charging: false,
+      onBattery: true,
+      percent: 80,
+    })
+    t.world.battery =
+      "Now drawing from 'AC Power'\n" +
+      ' -InternalBattery-0 (id=1)\t55%; charging; 1:00 remaining present: true\n'
+    const before = t.emitted.length
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.emitted).toHaveLength(before + 1)
+    expect(t.emitted.at(-1)?.mac?.battery?.percent).toBe(55)
+    t.monitor.stop()
+  })
+
+  it('an open 1 s after a tick reads the side values at once, not at the next tick', async () => {
+    const t = setup({ clonesPath: CLONES })
+    t.monitor.start()
+    await vi.advanceTimersByTimeAsync(4 * TICK_MS + SEC)
+    expect(t.calls(PMSET)).toBe(1)
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.calls(PMSET)).toBe(2)
+    t.monitor.stop()
+  })
+
   it('reads the clones size only when the folder exists', async () => {
     const clones = '/fake/home/.bifrost/reviews/repos'
     const t = setup({ clonesPath: clones })
     t.world.clonesExist = false
     t.monitor.start()
+    t.monitor.view(SHOW)
     await vi.advanceTimersByTimeAsync(TICK_MS)
     expect(t.exists).toHaveBeenCalledWith(clones)
     expect(t.calls(DU)).toBe(0)
@@ -1183,10 +1253,13 @@ describe('createPerformanceMonitor', () => {
     await vi.advanceTimersByTimeAsync(TICK_MS)
     expect(t.emitted).toHaveLength(2)
     expect(t.monitor.current().limits.freeDiskGb).toBeNull()
-    // The rejected read runs again 60 s after the first one.
+    // With the panel closed, the rejected read does not run again. The open runs it, because 60 s
+    // are past since the first one.
     await vi.advanceTimersByTimeAsync(TICK_MS)
+    expect(t.freeDiskBytes).toHaveBeenCalledTimes(1)
+    t.monitor.view(SHOW)
+    await vi.advanceTimersByTimeAsync(FAST_TICK_MS)
     expect(t.freeDiskBytes).toHaveBeenCalledTimes(2)
-    await vi.advanceTimersByTimeAsync(TICK_MS)
     expect(t.monitor.current().limits.freeDiskGb).toBe(250)
     expect(error).toHaveBeenCalled()
     t.monitor.stop()

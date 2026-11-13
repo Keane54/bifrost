@@ -162,13 +162,13 @@ const REFUSED_REVIEWS_IGNORE = 'refused: bad reviewsIgnore'
 const REFUSED_KEYS = 'refused: bad keys'
 const REFUSED_KEY_CONFLICT = 'refused: two keys have the same binding'
 
-type Check = (value: unknown) => boolean
+type Guard<T> = (value: unknown) => value is T
 
-const isBoolean: Check = value => typeof value === 'boolean'
+const isBoolean: Guard<boolean> = (value): value is boolean => typeof value === 'boolean'
 
 // A whole number from min to max. With a step, the value is min plus a multiple of the step.
-function onStep(min: number, max: number, step = 1): Check {
-  return value =>
+function onStep(min: number, max: number, step = 1): Guard<number> {
+  return (value): value is number =>
     typeof value === 'number' &&
     Number.isInteger(value) &&
     value >= min &&
@@ -176,12 +176,12 @@ function onStep(min: number, max: number, step = 1): Check {
     (value - min) % step === 0
 }
 
-function oneOf(list: readonly unknown[]): Check {
-  return value => list.includes(value)
+function oneOf<const T>(list: readonly T[]): Guard<T> {
+  return (value): value is T => (list as readonly unknown[]).includes(value)
 }
 
-function nullOr(check: Check): Check {
-  return value => value === null || check(value)
+function nullOr<T>(check: Guard<T>): Guard<T | null> {
+  return (value): value is T | null => value === null || check(value)
 }
 
 // All project app IDs. The type makes sure that the list is complete.
@@ -195,7 +195,7 @@ const PROJECT_APP_IDS: Readonly<Record<ProjectAppId, true>> = {
   zed: true,
 }
 
-const isProjectAppId: Check = value =>
+const isProjectAppId: Guard<ProjectAppId> = (value): value is ProjectAppId =>
   typeof value === 'string' && Object.hasOwn(PROJECT_APP_IDS, value)
 
 const isFontSize = onStep(FONT_SIZE_MIN, FONT_SIZE_MAX)
@@ -206,7 +206,7 @@ type SimpleKey = Exclude<
   'dailyUpdate' | 'keys' | 'reviewsIgnore' | 'slashCommands' | 'terminalFont'
 >
 
-const SIMPLE_CHECKS: Readonly<Record<SimpleKey, Check>> = {
+const SIMPLE_CHECKS: { readonly [K in SimpleKey]: Guard<Settings[K]> } = {
   accountUsage: isBoolean,
   animatedBackground: isBoolean,
   autoUpdate: isBoolean,
@@ -234,6 +234,12 @@ const SIMPLE_CHECKS: Readonly<Record<SimpleKey, Check>> = {
 }
 
 const SIMPLE_KEYS = Object.keys(SIMPLE_CHECKS) as SimpleKey[]
+
+// Set one setting when the value passes the check of its key. The check ties key and type.
+function assignChecked<K extends SimpleKey>(target: Settings, key: K, value: unknown): void {
+  const check: Guard<Settings[K]> = SIMPLE_CHECKS[key]
+  if (check(value)) target[key] = value
+}
 
 // The keys that a patch can have: all keys of Settings except version.
 const PATCH_KEYS: ReadonlySet<string> = new Set(
@@ -352,7 +358,7 @@ function parseFont(value: unknown): TerminalFont {
   const check = typeof family === 'string' ? checkFontFamily(family) : null
   if (check?.ok) font.family = check.family
   const size = own(value, 'size')
-  if (isFontSize(size)) font.size = size as number
+  if (isFontSize(size)) font.size = size
   return font
 }
 
@@ -361,11 +367,7 @@ function parseFont(value: unknown): TerminalFont {
 export function parseSettings(data: unknown): Settings {
   const settings = defaultSettings()
   if (!isPlainObject(data) || own(data, 'version') !== 1) return settings
-  const target = settings as unknown as Record<string, unknown>
-  for (const key of SIMPLE_KEYS) {
-    const value = own(data, key)
-    if (SIMPLE_CHECKS[key](value)) target[key] = value
-  }
+  for (const key of SIMPLE_KEYS) assignChecked(settings, key, own(data, key))
   settings.slashCommands = parseSlashCommands(own(data, 'slashCommands')) ?? settings.slashCommands
   settings.reviewsIgnore = parseReviewsIgnore(own(data, 'reviewsIgnore'))
   settings.terminalFont = parseFont(own(data, 'terminalFont'))
@@ -374,7 +376,8 @@ export function parseSettings(data: unknown): Settings {
   return settings
 }
 
-type FieldResult = { ok: true; value: unknown } | { ok: false; reason: string }
+// A good field gives a typed patch with the one key.
+type FieldResult = { ok: true; patch: SettingsPatch } | { ok: false; reason: string }
 
 function refuse(reason: string): { ok: false; reason: string } {
   return { ok: false, reason }
@@ -391,13 +394,13 @@ function checkSlashList(value: unknown): FieldResult {
     if (list.includes(check.text)) return refuse(REFUSED_SLASH)
     list.push(check.text)
   }
-  return { ok: true, value: list }
+  return { ok: true, patch: { slashCommands: list } }
 }
 
 // A patch gives the full list. The entries get their clean form.
 function checkReviewsIgnoreList(value: unknown): FieldResult {
   if (!checkReviewsIgnore(value)) return refuse(REFUSED_REVIEWS_IGNORE)
-  return { ok: true, value: parseReviewsIgnore(value) }
+  return { ok: true, patch: { reviewsIgnore: parseReviewsIgnore(value) } }
 }
 
 // A patch gives the family and the size, and nothing more. Return null for a bad font.
@@ -407,7 +410,7 @@ function checkFont(value: unknown): FieldResult | null {
   const check = typeof family === 'string' ? checkFontFamily(family) : null
   const size = own(value, 'size')
   if (!check?.ok || !isFontSize(size)) return null
-  return { ok: true, value: { family: check.family, size } }
+  return { ok: true, patch: { terminalFont: { family: check.family, size } } }
 }
 
 // Each conflict of the keys as one text: the two slot IDs and the binding that they share.
@@ -437,7 +440,16 @@ function checkKeys(value: unknown, current: CustomKeys): FieldResult {
   if (conflictsOf(keys).some(conflict => !before.has(conflict))) {
     return refuse(REFUSED_KEY_CONFLICT)
   }
-  return { ok: true, value: keys }
+  return { ok: true, patch: { keys } }
+}
+
+// Check one simple setting. The patch has the typed value, or the result is null.
+function simpleField<K extends SimpleKey>(key: K, value: unknown): FieldResult | null {
+  const check: Guard<Settings[K]> = SIMPLE_CHECKS[key]
+  if (!check(value)) return null
+  const patch: SettingsPatch = {}
+  patch[key] = value
+  return { ok: true, patch }
 }
 
 function checkField(key: SettingKey, value: unknown, current: Settings): FieldResult {
@@ -446,10 +458,12 @@ function checkField(key: SettingKey, value: unknown, current: Settings): FieldRe
   if (key === 'terminalFont') return checkFont(value) ?? refuse(`refused: bad ${key}`)
   if (key === 'dailyUpdate') {
     const check = checkDailyUpdate(value)
-    return check.ok ? check : refuse(`refused: bad ${key}`)
+    return check.ok
+      ? { ok: true, patch: { dailyUpdate: check.value } }
+      : refuse(`refused: bad ${key}`)
   }
   if (key === 'keys') return checkKeys(value, current.keys)
-  return SIMPLE_CHECKS[key](value) ? { ok: true, value } : refuse(`refused: bad ${key}`)
+  return simpleField(key, value) ?? refuse(`refused: bad ${key}`)
 }
 
 // Compare two values of JSON data. The order of object keys does not count.
@@ -473,16 +487,18 @@ export function applyPatch(
   patch: unknown,
 ): { ok: true; settings: Settings } | { ok: false; reason: string } {
   if (!isPlainObject(patch)) return refuse(REFUSED_SETTINGS)
-  const changes: Record<string, unknown> = {}
+  const changes: SettingsPatch = {}
   for (const key of Object.keys(patch)) {
     if (!PATCH_KEYS.has(key)) return refuse(`refused: unknown setting ${key}`)
     const settingKey = key as SettingKey
     const field = checkField(settingKey, patch[key], current)
     if (!field.ok) return field
-    if (!sameValue(field.value, current[settingKey])) changes[key] = field.value
+    if (!sameValue(field.patch[settingKey], current[settingKey])) {
+      Object.assign(changes, field.patch)
+    }
   }
   if (Object.keys(changes).length === 0) return { ok: true, settings: current }
-  return { ok: true, settings: { ...current, ...changes } as Settings }
+  return { ok: true, settings: { ...current, ...changes } }
 }
 
 // The CSS font-family value of the terminal font, with the fallbacks.

@@ -11,6 +11,7 @@ import type { SessionRow } from '../../../src/shared/types'
 const row = (o: Partial<SessionRow> = {}): SessionRow => ({
   box: 'none',
   boxSince: null,
+  claudeName: 'alpha',
   cwd: '/p',
   flashing: false,
   kind: 'owned',
@@ -66,6 +67,7 @@ describe('checkChatOpen', () => {
 
   test('checkChatOpen allows a chat view with the attach of its own session', () => {
     expect(checkChatOpen(rows, `chat:${S}`, ['attach', 'abcd1234'])).toEqual({
+      cwd: '/p',
       ok: true,
       sessionId: S,
     })
@@ -107,4 +109,31 @@ describe('checkChatOpen', () => {
       reason: REFUSED_NOT_ATTACH,
     })
   })
+})
+
+describe('checkChatOpen cwd', () => {
+  const S = 'f3a9c2d1-4b5e-4c6d-8e7f-0a1b2c3d4e5f'
+  test('gives the cwd of the row', () => {
+    const r = row({ cwd: '/work/tree', sessionId: S, shortId: 'bb' })
+    expect(checkChatOpen([r], `chat:${S}`, ['attach', 'bb'])).toEqual({
+      cwd: '/work/tree',
+      ok: true,
+      sessionId: S,
+    })
+  })
+
+  test('gives the root folder for a row with no cwd', () => {
+    const r = row({ cwd: '', sessionId: S })
+    expect(checkChatOpen([r], `chat:${S}`, ['attach', 'aa'])).toMatchObject({ cwd: '/', ok: true })
+  })
+})
+
+test('checkChatOpen gives the cwd of each active kind of owned row', () => {
+  const S = 'f3a9c2d1-4b5e-4c6d-8e7f-0a1b2c3d4e5f'
+  for (const state of ['idle', 'working', 'needs-you', 'error'] as const) {
+    const r = row({ cwd: '/wt/a', sessionId: S, state })
+    expect(checkChatOpen([r], `chat:${S}`, ['attach', 'aa'])).toMatchObject({ cwd: '/wt/a' })
+  }
+  const parked = row({ sessionId: S, state: 'parked' })
+  expect(checkChatOpen([parked], `chat:${S}`, ['attach', 'aa']).ok).toBe(false)
 })

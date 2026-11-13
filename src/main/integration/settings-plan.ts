@@ -1,5 +1,6 @@
 // Pure functions that plan the changes to the Claude Code settings.
 // They do no file IO. They never change their input.
+import { isRecord } from '../../shared/plain-object'
 
 export const HOOK_COMMAND = '~/.bifrost/bin/bifrost-hook'
 export const STATUSLINE_COMMAND = '~/.bifrost/bin/bifrost-statusline'
@@ -29,16 +30,12 @@ export interface StatusLineSetting {
 type Row = { event: string; matcher?: string }
 type Loose = Record<string, unknown>
 
-function isObject(value: unknown): value is Loose {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function isBifrostHook(hook: unknown): boolean {
-  return isObject(hook) && hook.command === HOOK_COMMAND
+  return isRecord(hook) && hook.command === HOOK_COMMAND
 }
 
 function entryHasBifrostHook(entry: unknown): boolean {
-  return isObject(entry) && Array.isArray(entry.hooks) && entry.hooks.some(isBifrostHook)
+  return isRecord(entry) && Array.isArray(entry.hooks) && entry.hooks.some(isBifrostHook)
 }
 
 function rowName(row: Row): string {
@@ -46,16 +43,16 @@ function rowName(row: Row): string {
 }
 
 function hasRow(hooks: unknown, row: Row): boolean {
-  if (!isObject(hooks)) return false
+  if (!isRecord(hooks)) return false
   const entries = hooks[row.event]
   if (!Array.isArray(entries)) return false
   return entries.some(
-    entry => isObject(entry) && entry.matcher === row.matcher && entryHasBifrostHook(entry),
+    entry => isRecord(entry) && entry.matcher === row.matcher && entryHasBifrostHook(entry),
   )
 }
 
 function isWrapper(statusLine: unknown): boolean {
-  return isObject(statusLine) && statusLine.command === STATUSLINE_COMMAND
+  return isRecord(statusLine) && statusLine.command === STATUSLINE_COMMAND
 }
 
 export function planUninstall(
@@ -64,7 +61,7 @@ export function planUninstall(
 ): ClaudeSettings {
   const next: ClaudeSettings = structuredClone(settings)
 
-  if (isObject(next.hooks)) {
+  if (isRecord(next.hooks)) {
     const hooks = next.hooks
     let touched = false
     for (const [event, entries] of Object.entries(hooks)) {
@@ -101,7 +98,7 @@ export function planUninstall(
 // any matcher, or the wrapper. It uses the same tests as planUninstall.
 export function hasBifrostEntry(settings: ClaudeSettings): boolean {
   if (isWrapper(settings.statusLine)) return true
-  if (!isObject(settings.hooks)) return false
+  if (!isRecord(settings.hooks)) return false
   return Object.values(settings.hooks).some(
     entries => Array.isArray(entries) && entries.some(entryHasBifrostHook),
   )

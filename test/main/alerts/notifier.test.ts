@@ -67,4 +67,16 @@ describe('showNotification', () => {
     showNotification({ body: 'b', sessionId: null, title: 't' }, () => {})
     expect(() => made[0]?.emit('failed', {}, 'denied')).not.toThrow()
   })
+
+  test('a refused notification logs one line for each run of the app', async () => {
+    vi.resetModules()
+    const { showNotification: show } = await import('../../../src/main/alerts/notifier')
+    const onFailed = vi.fn()
+    show({ body: 'b', sessionId: null, title: 't' }, () => {}, onFailed)
+    show({ body: 'b', sessionId: null, title: 't' }, () => {}, onFailed)
+    made.at(-2)?.emit('failed', {}, 'denied')
+    made.at(-1)?.emit('failed', {}, 'denied')
+    expect(onFailed).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(console.error)).toHaveBeenCalledTimes(1)
+  })
 })

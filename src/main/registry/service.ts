@@ -9,6 +9,7 @@ import type { AgentList } from '../claude/agents'
 import type { LiveEvent } from '../live/live-event'
 import { type HealthEvents, NO_HEALTH } from '../performance/health-log'
 import type { HookEvent } from './hook-event'
+import { pollInterval } from './poll-interval'
 import type { RegistryStore, SessionRegistry } from './registry'
 import { type ProcessTable, type TerminalApp, terminalAppOf } from './terminal-app'
 
@@ -80,6 +81,8 @@ export class RegistryService {
   private ready = false
   private started = false
   private stopped = false
+  // The messages that the loops logged already.
+  private readonly loggedErrors = new Set<string>()
   // The error of the last active poll. A good poll sets it to null.
   private error: string | null = null
   // True after a failed active poll, until the next update sends the error.
@@ -93,6 +96,10 @@ export class RegistryService {
 
   // The wait between two active polls. setActiveInterval changes it.
   private activeMs: number
+  // False while the window is not visible. Then the active poll waits longer.
+  private pageVisible = true
+  // Ends the wait of the active loop now. Unset while a poll runs.
+  private wakeActive: (() => void) | undefined
 
   constructor(
     private readonly registry: SessionRegistry,
@@ -112,13 +119,14 @@ export class RegistryService {
     this.started = true
     const t = this.timing
     this.loop(
-      () => this.activeMs,
+      () => pollInterval(this.activeMs, this.pageVisible),
       () => this.queued(() => this.pollActive()),
       () => {
         this.loop(t.allMs, () => this.queued(() => this.pollAll()))
         this.loop(t.branchMs, () => this.readBranches())
         this.loop(t.tickMs, async () => this.tick())
       },
+      true,
     )
   }
 
@@ -126,6 +134,14 @@ export class RegistryService {
   // The poll that runs now ends normally. A wait that started already keeps its time.
   setActiveInterval(ms: number): void {
     this.activeMs = ms
+  }
+
+  // Say if the window is visible. A window that is not visible makes the active poll wait 15 s.
+  // When the window becomes visible, a wait in progress ends and the poll runs at once.
+  setPageVisible(visible: boolean): void {
+    if (this.pageVisible === visible) return
+    this.pageVisible = visible
+    if (visible) this.wakeActive?.()
   }
 
   // Stop all loops. A result that comes after this call has no effect.
@@ -340,28 +356,53 @@ export class RegistryService {
     ms: number | (() => number),
     job: () => Promise<void>,
     afterFirst?: () => void,
+    wakeable = false,
   ): void {
     let first = afterFirst
     const run = async (): Promise<void> => {
       try {
         await job()
-      } catch {
+      } catch (error) {
+        this.logLoopError(error)
         // The next run tries again.
       }
       if (this.stopped) return
       first?.()
       first = undefined
-      this.later(typeof ms === 'number' ? ms : ms(), run)
+      const timer = this.later(typeof ms === 'number' ? ms : ms(), () => {
+        if (wakeable) this.wakeActive = undefined
+        void run()
+      })
+      if (wakeable) {
+        this.wakeActive = () => {
+          if (this.stopped) return
+          clearTimeout(timer)
+          this.timers.delete(timer)
+          this.wakeActive = undefined
+          void run()
+        }
+      }
     }
     void run()
   }
 
-  private later(ms: number, fn: () => void): void {
+  // Log an error one time. A repeat of the same message does not log again.
+  // Keep at most 20 messages. Then the log stays short and the set stays small.
+  private logLoopError(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error)
+    if (this.loggedErrors.has(message)) return
+    if (this.loggedErrors.size >= 20) return
+    this.loggedErrors.add(message)
+    console.error('Bifrost: a registry loop failed. The next run tries again.', error)
+  }
+
+  private later(ms: number, fn: () => void): ReturnType<typeof setTimeout> {
     const timer = setTimeout(() => {
       this.timers.delete(timer)
       fn()
     }, ms)
     this.timers.add(timer)
+    return timer
   }
 
   // Put a list poll in the queue. The poll starts when the poll before it ends.

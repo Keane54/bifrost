@@ -1,5 +1,6 @@
 // The merged PRs of the user since a time, from the GitHub CLI (gh).
 
+import { isRecord } from '../../shared/plain-object'
 import { type Gh, ghFailure } from '../reviews/gh'
 import { cutText } from '../reviews/review-input'
 
@@ -25,10 +26,6 @@ export function mergedPrsArgs(sinceIso: string): string[] {
     '--json',
     'number,title,url,repository,closedAt,body',
   ]
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 // Give null for an item with a missing field or a field of the wrong type. For a merged PR,

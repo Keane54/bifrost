@@ -6,6 +6,7 @@ import {
   type NewSessionSpec,
   PERMISSION_MODES,
 } from '../../../shared/new-session'
+import { isRecord } from '../../../shared/plain-object'
 import { checkSlashCommand } from '../../../shared/settings'
 import type { SessionRow } from '../../../shared/types'
 import { repoPath } from '../overview/format'
@@ -26,10 +27,6 @@ export const EMPTY_HISTORY: History = {
 export const MAX_RECENT_DIRS = 10
 export const MAX_RECENT_SLASH = 8
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 // checkSlashCommand gives the rules. A stored command also has no space at the start or the end.
 function validSlash(text: string): boolean {
   const check = checkSlashCommand(text)
@@ -49,7 +46,7 @@ function clean(value: unknown, ok: (text: string) => boolean, max: number): stri
 
 // Check data that the renderer read from ui-state.json. Wrong values are dropped.
 export function parseHistory(data: unknown): History {
-  if (!isObject(data)) return EMPTY_HISTORY
+  if (!isRecord(data)) return EMPTY_HISTORY
   const model = MODEL_CHOICES.find(choice => choice.value === data.model)?.value ?? ''
   const mode = data.permissionMode
   return {

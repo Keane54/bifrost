@@ -1,7 +1,6 @@
 import { isAbsolute } from 'node:path'
 import type { ExecResult, RunClaude } from '../claude/cli'
 
-export const PLUGIN_NAME = 'bifrost-live'
 export const MARKETPLACE_NAME = 'bifrost-local'
 export const PLUGIN_ID = 'bifrost-live@bifrost-local'
 export const PLUGIN_TIMEOUT_MS = 30_000

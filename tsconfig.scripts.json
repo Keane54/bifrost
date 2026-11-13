@@ -7,5 +7,12 @@
   },
   "exclude": ["scripts/m0/**", "scripts/m3/**", "scripts/m4/**"],
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
-  "include": ["playwright.config.ts", "scripts/**/*.ts", "test/smoke/**/*.ts"]
+  "include": [
+    "commitlint.config.ts",
+    "electron-builder.release.ts",
+    "playwright.config.ts",
+    "scripts/**/*.ts",
+    "test/smoke/**/*.ts",
+    "vitest.config.ts"
+  ]
 }

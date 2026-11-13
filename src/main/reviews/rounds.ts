@@ -18,6 +18,7 @@ import {
 import type { Settings } from '../../shared/settings'
 import type { SessionRow } from '../../shared/types'
 import { messageOf } from '../actions/session-actions'
+import { maskToken } from '../log/mask'
 import { type DiffFile, parseDiff } from './diff-lines'
 import type { Gh } from './gh'
 import { isIgnored } from './model'
@@ -143,6 +144,8 @@ export interface RunnerDeps {
   requestPoll(): void
   notify(n: RequestNotice): void
   log(m: string): void
+  // A line for the Event log.
+  eventNotice(text: string): void
 }
 
 export interface ReviewRunner {
@@ -526,6 +529,17 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     bg(pump())
   }
 
+  // A failed read of the pull request. The raw gh line goes to the Event log. The row gets
+  // the friendly text.
+  async function failRead(key: string, token: number, read: { message: string; detail?: string }) {
+    if (read.detail !== undefined) {
+      deps.eventNotice(
+        `Reviews: GitHub couldn't load ${key}. It said: ${maskToken(read.detail, null)}`,
+      )
+    }
+    return await fail(key, token, read.message)
+  }
+
   // The entry goes back to the queue with its first time. The row then shows Trust needed.
   async function putBack(key: string, token: number, at: number): Promise<void> {
     const saved = await changeRound(
@@ -660,7 +674,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
       if (!isTrusted(clone) && !tryOnce.delete(clone)) return await putBack(key, token, at)
       const first = await fetchReviewContext(deps.gh, pr, viewer)
       if (halted()) return await halt()
-      if (!first.ok) return await fail(key, token, first.message)
+      if (!first.ok) return await failRead(key, token, first)
       const { context } = first
       if (context.state !== 'OPEN') return await fail(key, token, REASON_PR_CLOSED)
       if (isOwnDraft(key, context)) return await fail(key, token, REASON_OWN_DRAFT)
@@ -923,7 +937,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     if (viewer === null) return await fail(key, token, REASON_GH_FAILED)
     const again = await fetchReviewContext(deps.gh, pr, viewer)
     if (!alive(key, token)) return
-    if (!again.ok) return await fail(key, token, again.message)
+    if (!again.ok) return await failRead(key, token, again)
     if (again.context.state !== 'OPEN') return await fail(key, token, REASON_PR_CLOSED)
     if (store.get().prs[key]?.round?.stoppedByUser === true) {
       return await fail(key, token, REASON_STOPPED)

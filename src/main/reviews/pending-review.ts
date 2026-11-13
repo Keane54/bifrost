@@ -3,6 +3,7 @@
 // user submits the review. test/main/reviews/github-writes-source.test.ts guards this rule.
 // Each value goes as a -f or -F field, or in the JSON on stdin. No value goes in the query text.
 
+import { isRecord } from '../../shared/plain-object'
 import { PR_KEY, prKey } from '../../shared/reviews'
 import type { ExecResult } from '../claude/cli'
 import { EXIT_AUTH, type Gh, ghFailure, MESSAGE_MAX } from './gh'
@@ -67,7 +68,6 @@ type Failure = { message: string; known: boolean }
 type Answer = { ok: true; data: Rec } | ({ ok: false } & Failure)
 
 // The answer of GitHub is not typed. Each read checks the type of its value.
-const isRecord = (x: unknown): x is Rec => typeof x === 'object' && x !== null && !Array.isArray(x)
 const asRec = (x: unknown): Rec => (isRecord(x) ? x : {})
 const isId = (x: unknown): x is string => typeof x === 'string' && x !== ''
 const hasText = (text: string): boolean => text.trim() !== ''

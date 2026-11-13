@@ -111,10 +111,13 @@ import { createPerformanceMonitor, type PerformanceMonitor } from './performance
 import { checkChatOpen, REFUSED_NOT_CHAT } from './pty/can-attach'
 import { nodePtySpawn } from './pty/node-pty-spawn'
 import { openLink } from './pty/open-link'
+import { createOutputBatcher } from './pty/output-batcher'
 import { PageScope } from './pty/page-scope'
 import { PtyManager } from './pty/pty-manager'
-import { chatSessionOf, readSessionSize, SessionSizeWatcher } from './pty/session-size'
-import { readBranch } from './registry/git-branch'
+import { chatSessionOf, createSessionSizeReader, SessionSizeWatcher } from './pty/session-size'
+import { isTerminalSize, REFUSED_BAD_SIZE } from './pty/terminal-size'
+import { createBranchReader } from './registry/git-branch'
+import { checkVisible } from './registry/poll-interval'
 import { SessionRegistry } from './registry/registry'
 import { RegistryService, SERVICE_TIMING, type ServiceDeps } from './registry/service'
 import { openStore } from './registry/store-file'
@@ -187,15 +190,26 @@ function pidOfSession(sessionId: string): number | undefined {
   return row && row.kind === 'owned' && row.state !== 'parked' ? row.pid : undefined
 }
 
+// One reader for all size reads. It keeps the TTY device of a pid for 30 s.
+const readSessionSize = createSessionSizeReader(execFile)
+
 // Reads the session size after a redraw. It sends the size to the page when it changes.
 const sizeWatcher = new SessionSizeWatcher({
   emit: (viewId, size) => send('pty:size', viewId, size),
   pidOf: pidOfView,
-  read: pid => readSessionSize(execFile, pid),
+  read: readSessionSize,
 })
 // The main process sets liveService and liveRegistry when the store loads.
 let liveService: RegistryService | null = null
 let liveRegistry: SessionRegistry | null = null
+// True when the page says the window is visible. False with no page, so a closed window polls
+// slowly (user decision, 2026-11-13).
+let pageVisible = false
+
+function setPageVisible(visible: boolean): void {
+  pageVisible = visible
+  liveService?.setPageVisible(visible)
+}
 // registerIpc opens the settings store one time. It is null until the store opens.
 let settingsStore: SettingsStore | null = null
 // index.ts gives the function that builds the app menu again.
@@ -304,11 +318,6 @@ function fromPage<T>(e: IpcMainInvokeEvent, fn: () => Promise<T>): Promise<T> {
 }
 
 const reviewLog = (m: string): void => console.error(m)
-
-// True for an integer column or row count that the trust terminal accepts.
-function isTerminalSize(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 2 && value <= 500
-}
 
 // The mode controller of the current window. index.ts sets it.
 let modeController: ModeController | null = null
@@ -580,6 +589,7 @@ async function startReviews(
     bifrostHome,
     changed: () => watcher.rebuild(),
     claudeJson,
+    eventNotice: text => eventBatcher.push([eventLog.line(text, Date.now())]),
     gh,
     log: message => console.error(message),
     notify: notifyReviewRequest,
@@ -871,6 +881,10 @@ function startPerformance(
   })
   perfMonitor = monitor
   monitor.start()
+  // The page says if the window is visible. A window that is not visible polls more slowly.
+  ipcMain.handle('window:visible', (e, value: unknown) =>
+    fromPage(e, async () => setPageVisible(checkVisible(value))),
+  )
   ipcMain.handle('performance:snapshot', e => fromPage(e, async () => monitor.current()))
   ipcMain.handle('performance:view', (e, v: unknown) =>
     fromPage(e, async () => monitor.view(checkView(v))),
@@ -906,12 +920,13 @@ async function startService(
     return listAgents(runClaude, { all })
   }
   const now = (): number => Date.now()
+  const branchReader = createBranchReader(execFile)
   const deps: ServiceDeps = {
     health,
     listActive: () => list(false),
     listAll: () => list(true),
     now,
-    readBranch: cwd => readBranch(execFile, cwd),
+    readBranch: cwd => branchReader.read(cwd),
     readProcessTable: () => readProcessTable(execFile),
     saveStore: store => opened.save(store),
   }
@@ -960,6 +975,7 @@ async function startService(
   service.onEvents(events => eventBatcher.push(eventLog.append(events)))
   liveRegistry = registry
   liveService = service
+  service.setPageVisible(pageVisible)
   // The app can quit before the store loads. Then do not start the service.
   if (!serviceStopped) service.start()
   return service
@@ -1036,16 +1052,18 @@ export function registerIpc(home: TestHome | null = null): void {
   // A hidden attach opens at the current size of the session (M3).
   const input = new SessionInput({
     pty: getManager,
-    readSize: pid => readSessionSize(execFile, pid),
+    readSize: readSessionSize,
     rows: () => liveService?.rows() ?? [],
   })
   managerPromise = Promise.all([claudePath, loginEnv]).then(([path, env]) => {
     if (!path) return null
     const m = new PtyManager(nodePtySpawn, path, env)
+    // Chat output goes to the page in batches. Exit and close flush the batch first.
+    const batcher = createOutputBatcher({ send: (viewId, data) => send('pty:data', viewId, data) })
     m.onData((viewId, chunk) => {
       input.data(viewId)
       // Only the main process uses the hidden send views. Their output stays here.
-      if (CHAT_VIEW.test(viewId)) send('pty:data', viewId, chunk)
+      if (CHAT_VIEW.test(viewId)) batcher.push(viewId, chunk)
       if (viewId === TRUST_VIEW) send('reviews:trust-data', chunk)
       // A full redraw follows a resize by any client (M0 question 1). So read the size.
       // A sequence split over two chunks is missed. The next redraw or the open recovers it.
@@ -1053,10 +1071,12 @@ export function registerIpc(home: TestHome | null = null): void {
     })
     // close, closeAll and a replacing open do not run the exit callback. So forget here too.
     m.onClose(viewId => {
+      batcher.flush(viewId)
       sizeWatcher.forget(viewId)
       input.ended(viewId)
     })
     m.onExit((viewId, exitCode, signal) => {
+      batcher.flush(viewId)
       sizeWatcher.forget(viewId)
       input.ended(viewId)
       if (CHAT_VIEW.test(viewId)) send('pty:exit', viewId, exitCode, signal)
@@ -1160,13 +1180,14 @@ export function registerIpc(home: TestHome | null = null): void {
     }),
   )
 
-  ipcMain.handle('claude:path', () => claudePath)
-  ipcMain.handle('claude:version', async (): Promise<ClaudeVersion> => {
-    const runClaude = await run
-    if (!runClaude) return { minimum: MIN_CLAUDE_VERSION, ok: false, version: null }
-    return checkClaudeVersion(runClaude)
-  })
-  ipcMain.handle('registry:rows', async () => (await service).rows())
+  ipcMain.handle('claude:version', e =>
+    fromPage(e, async (): Promise<ClaudeVersion> => {
+      const runClaude = await run
+      if (!runClaude) return { minimum: MIN_CLAUDE_VERSION, ok: false, version: null }
+      return checkClaudeVersion(runClaude)
+    }),
+  )
+  ipcMain.handle('registry:rows', e => fromPage(e, async () => (await service).rows()))
   ipcMain.handle('events:list', e => fromPage(e, async () => eventLog.list()))
   ipcMain.handle('service:status', e => fromPage(e, async () => serviceList(serviceMonitor)))
   ipcMain.handle('service:open-page', (e, id: unknown) =>
@@ -1689,43 +1710,50 @@ export function registerIpc(home: TestHome | null = null): void {
     typeof viewId === 'string' && CHAT_VIEW.test(viewId)
   ipcMain.handle(
     'pty:open',
-    async (
-      e,
-      viewId: unknown,
-      args: string[],
-      opts: { cwd: string; cols: number; rows: number },
-    ) => {
-      if (!isChatView(viewId)) throw new Error(REFUSED_NOT_CHAT)
-      // Get the page token before the first wait.
-      const token = page.token()
-      const manager = await getManager()
-      if (!manager) throw new Error('claude not found')
-      // Open a PTY only for an attach to an owned session that is not parked.
-      // The attach must be for the session of the chat view.
-      const first = checkChatOpen((await service).rows(), viewId, args)
-      if (!first.ok) throw new Error(first.reason)
-      // One attach serves each session. Wait until a hidden send of this session ends (D1).
-      await input.idle(first.sessionId)
-      // The rows can change during the wait. Check them again.
-      const again = checkChatOpen((await service).rows(), viewId, args)
-      if (!again.ok) throw new Error(again.reason)
-      // The page can end during the waits above. Then no page owns the PTY, so do not open it.
-      if (!isLivePage(e.sender, token)) {
-        throw new Error('refused: the page that asked for the PTY is gone')
-      }
-      const pid = manager.open(viewId, args, { ...opts, cwd: resolve(process.cwd(), opts.cwd) })
-      input.opened(viewId, args[1])
-      sizeWatcher.poke(viewId)
-      return pid
-    },
+    (e, viewId: unknown, args: string[], opts: { cols: number; rows: number }) =>
+      fromPage(e, async () => {
+        if (!isChatView(viewId)) throw new Error(REFUSED_NOT_CHAT)
+        if (!isTerminalSize(opts?.cols) || !isTerminalSize(opts?.rows)) {
+          throw new Error(REFUSED_BAD_SIZE)
+        }
+        const { cols, rows } = opts
+        // Get the page token before the first wait.
+        const token = page.token()
+        const manager = await getManager()
+        if (!manager) throw new Error('claude not found')
+        // Open a PTY only for an attach to an owned session that is not parked.
+        // The attach must be for the session of the chat view.
+        const first = checkChatOpen((await service).rows(), viewId, args)
+        if (!first.ok) throw new Error(first.reason)
+        // One attach serves each session. Wait until a hidden send of this session ends (D1).
+        await input.idle(first.sessionId)
+        // The rows can change during the wait. Check them again.
+        const again = checkChatOpen((await service).rows(), viewId, args)
+        if (!again.ok) throw new Error(again.reason)
+        // The page can end during the waits above. Then no page owns the PTY, so do not open it.
+        if (!isLivePage(e.sender, token)) {
+          throw new Error('refused: the page that asked for the PTY is gone')
+        }
+        // The folder comes from the row of the session, never from the page.
+        const pid = manager.open(viewId, args, {
+          cols,
+          cwd: resolve(process.cwd(), again.cwd),
+          rows,
+        })
+        input.opened(viewId, args[1])
+        sizeWatcher.poke(viewId)
+        return pid
+      }),
   )
-  ipcMain.handle('pty:write', async (_e, viewId: unknown, data: unknown) => {
-    if (!isChatView(viewId) || typeof data !== 'string') return false
-    // The left arrow key can open the agent view. A send to this view then waits (spec 8.5).
-    if (hasLeftKey(data)) input.leftKey(viewId)
-    const manager = await getManager()
-    return manager ? manager.write(viewId, data) : false
-  })
+  ipcMain.handle('pty:write', (e, viewId: unknown, data: unknown) =>
+    fromPage(e, async () => {
+      if (!isChatView(viewId) || typeof data !== 'string') return false
+      // The left arrow key can open the agent view. A send to this view then waits (spec 8.5).
+      if (hasLeftKey(data)) input.leftKey(viewId)
+      const manager = await getManager()
+      return manager ? manager.write(viewId, data) : false
+    }),
+  )
   // A click on a link of a chat window opens the link outside Bifrost (main/pty/open-link.ts).
   ipcMain.handle('pty:open-link', (e, uri: unknown) =>
     fromPage(e, () =>
@@ -1738,16 +1766,20 @@ export function registerIpc(home: TestHome | null = null): void {
       }),
     ),
   )
-  ipcMain.handle('pty:resize', async (_e, viewId: unknown, cols: number, rows: number) => {
-    if (!isChatView(viewId)) return
-    ;(await getManager())?.resize(viewId, cols, rows)
-  })
-  ipcMain.handle('pty:close', async (_e, viewId: unknown, signal?: string) => {
-    if (!isChatView(viewId)) return
-    sizeWatcher.forget(viewId)
-    input.ended(viewId)
-    ;(await getManager())?.close(viewId, signal)
-  })
+  ipcMain.handle('pty:resize', (e, viewId: unknown, cols: unknown, rows: unknown) =>
+    fromPage(e, async () => {
+      if (!isChatView(viewId) || !isTerminalSize(cols) || !isTerminalSize(rows)) return
+      ;(await getManager())?.resize(viewId, cols, rows)
+    }),
+  )
+  ipcMain.handle('pty:close', (e, viewId: unknown, signal?: string) =>
+    fromPage(e, async () => {
+      if (!isChatView(viewId)) return
+      sizeWatcher.forget(viewId)
+      input.ended(viewId)
+      ;(await getManager())?.close(viewId, signal)
+    }),
+  )
   // The renderer reports the agent view of a chat window. Then a send to it rejects.
   ipcMain.handle('pty:set-blocked', (e, viewId: unknown, blocked: unknown) =>
     fromPage(e, async () => input.setBlocked(viewId, blocked)),
@@ -1766,7 +1798,7 @@ export function registerIpc(home: TestHome | null = null): void {
       if (typeof sessionId !== 'string') return null
       await service
       const pid = pidOfSession(sessionId)
-      return pid === undefined ? null : readSessionSize(execFile, pid)
+      return pid === undefined ? null : readSessionSize(pid)
     }),
   )
 }
@@ -1790,7 +1822,10 @@ export function attachWindow(win: BrowserWindow): void {
   // A renderer that stops with a reason other than clean-exit is a crash (P8). Only this listener
   // reports to the health log, so each crash gives one event.
   win.webContents.on('render-process-gone', (_e, details) => {
-    if (currentWindow === win) unloadPendingOpens()
+    if (currentWindow === win) {
+      unloadPendingOpens()
+      setPageVisible(false)
+    }
     if (details.reason !== 'clean-exit') healthLog?.crash('window', details.reason)
     endPage()
   })
@@ -1798,12 +1833,17 @@ export function attachWindow(win: BrowserWindow): void {
     if (currentWindow === win) {
       currentWindow = null
       unloadPendingOpens()
+      setPageVisible(false)
     }
     endPage()
   })
   // A notification click while no page is loaded waits for the next load (D13).
   win.webContents.on('did-start-loading', () => {
-    if (currentWindow === win) unloadPendingOpens()
+    if (currentWindow === win) {
+      unloadPendingOpens()
+      // The new page says its visibility when it loads.
+      setPageVisible(false)
+    }
   })
   win.webContents.on('did-finish-load', () => {
     if (currentWindow !== win) return

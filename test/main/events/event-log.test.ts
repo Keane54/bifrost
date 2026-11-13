@@ -6,6 +6,7 @@ import {
   EventLog,
   NOTIFICATION_REFUSED,
 } from '../../../src/main/events/event-log'
+import { maskToken } from '../../../src/main/log/mask'
 import type { HookEvent } from '../../../src/main/registry/hook-event'
 import type { LogEntry } from '../../../src/shared/types'
 
@@ -91,6 +92,26 @@ describe('EventLog', () => {
     expect(NOTIFICATION_REFUSED).toBe(
       "macOS didn't show a notification. Allow notifications for Bifrost in System Settings.",
     )
+  })
+})
+
+describe('EventLog masks tokens', () => {
+  const token = `ghp_${'A'.repeat(24)}`
+  test('line and notice store *** and no token', () => {
+    const log = new EventLog()
+    expect(log.line(`bad credentials ${token}`, 1).name).toBe('bad credentials ***')
+    expect(log.notice(`again ${token}`, 2)?.name).toBe('again ***')
+    expect(JSON.stringify(log.list())).not.toContain(token)
+  })
+  test('a fine-grained token and other known forms are hidden', () => {
+    const log = new EventLog()
+    const pat = `github_pat_${'B'.repeat(30)}`
+    expect(log.line(`bad ${pat} end`, 1).name).toBe('bad *** end')
+    const slack = `xoxb-${'1'.repeat(12)}`
+    expect(log.notice(`bad ${slack} end`, 2)?.name).toBe('bad *** end')
+    expect(maskToken(`k sk-ant-${'a'.repeat(24)}`, null)).toBe('k ***')
+    expect(maskToken(`k AKIA${'A'.repeat(16)}`, null)).toBe('k ***')
+    expect(maskToken(`k ${pat}`, null, '[x]')).toBe('k [x]')
   })
 })
 

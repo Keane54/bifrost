@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "composite": true,
+    "lib": ["ESNext"],
     "noImplicitAny": true,
     "types": ["electron-vite/node"]
   },

@@ -5,6 +5,7 @@
 
 import { constants } from 'node:fs'
 import { lstat, open } from 'node:fs/promises'
+import { isRecord as isObject } from '../../shared/plain-object'
 import { RECOMMENDATION_TEXT, RECOMMENDATIONS, type Recommendation } from '../../shared/reviews'
 import { type DiffFile, lineInDiff } from './diff-lines'
 
@@ -96,10 +97,6 @@ const fail = (reason: string): { ok: false; reason: string } => ({ ok: false, re
 // A number for a text, with a comma for each group of 3 digits.
 export const count = (n: number): string => n.toLocaleString('en-GB')
 const blank = (text: string): boolean => text.trim() === ''
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 // The first problem with the keys of an object: an unknown key, then a missing key.
 function keyProblem(

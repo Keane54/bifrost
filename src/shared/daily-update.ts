@@ -65,7 +65,8 @@ export const DEFAULT_DAILY_UPDATE: DailyUpdateSettings = {
   you: '',
 }
 
-const MAX_AREAS = 10
+// The most work areas that the settings accept.
+export const MAX_AREAS = 10
 const MAX_NAME = 60
 const MAX_CHANNEL = 80
 const MAX_DESCRIPTION = 500

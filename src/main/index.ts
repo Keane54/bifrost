@@ -1,6 +1,5 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { electronApp, is } from '@electron-toolkit/utils'
 import { app, BrowserWindow, Menu, screen, systemPreferences } from 'electron'
 import icon from '../../resources/icon.png?asset'
 import devIcon from '../../resources/icon-dev.png?asset'
@@ -59,7 +58,7 @@ function showMenu(): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(
       buildMenuTemplate({
-        isDev: is.dev,
+        isDev: !app.isPackaged,
         keys: menuKeys(effectiveKeys(getSettings().keys)),
         mode: modeController?.get() ?? 'window',
         onClosePanel: () => send('wm:close-panel'),
@@ -154,9 +153,9 @@ async function createWindow(): Promise<void> {
   })
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
-  // In development, F12 opens or closes the DevTools. Bifrost does not use the electron-toolkit
-  // optimizer. It blocks Cmd+R (Resume) in the packaged app, and Cmd+- (Zoom Out) at all times.
-  if (is.dev) {
+  // In development, F12 opens or closes the DevTools. Bifrost sets no other key handler here,
+  // so Cmd+R (Resume) and Cmd+- (Zoom Out) reach the app menu and the renderer.
+  if (!app.isPackaged) {
     mainWindow.webContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown' || input.code !== 'F12') return
       event.preventDefault()
@@ -168,7 +167,7 @@ async function createWindow(): Promise<void> {
 
   // In development, electron-vite gives a URL with hot reload.
   // In production, the app loads the built HTML file.
-  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
+  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     mainWindow.loadFile(join(import.meta.dirname, '../renderer/index.html'))
@@ -215,7 +214,6 @@ function startApp(): void {
 
   // Electron fires this event when it is ready to create windows.
   app.whenReady().then(() => {
-    electronApp.setAppUserModelId('com.keyholding.bifrost')
     // A dev start shows the Bifrost icon with a "dev" badge in the Dock, not the Electron icon.
     const dockIcon = devDockIcon(process.platform, app.isPackaged, devIcon)
     if (dockIcon) app.dock?.setIcon(dockIcon)

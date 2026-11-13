@@ -12,6 +12,7 @@ import {
 import type { SessionRow, TermSize } from '../../shared/types'
 import { CHAT_VIEW } from '../../shared/view-id'
 import { canAttach } from '../pty/can-attach'
+import { SHORT_ID } from './claude-output'
 import { QuietWatch } from './quiet-watch'
 
 export { CHAT_VIEW }
@@ -68,9 +69,6 @@ const REFUSED_SESSION = 'refused: the session is not an owned session that runs'
 const REFUSED_NO_PID = 'refused: the session has no process ID yet'
 export const REFUSED_CANCELLED = 'refused: the send was cancelled by Interrupt'
 const NO_CLAUDE = 'claude not found'
-
-// A short ID goes into the attach arguments. Accept only 8 hex digits.
-const SHORT_ID = /^[0-9a-f]{8}$/
 
 // The gaps use a clock that only goes forward. A change of the wall clock has no effect.
 function now(): number {

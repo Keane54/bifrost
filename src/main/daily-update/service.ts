@@ -34,6 +34,7 @@ import {
   undoSent as undoSentOf,
 } from '../../shared/daily-state'
 import type { DailyUpdateSettings, McpInventory, WorkArea } from '../../shared/daily-update'
+import { isRecord } from '../../shared/plain-object'
 import { claudeFailure } from '../actions/claude-output'
 import type { ExecResult, RunClaude } from '../claude/cli'
 import type { SpawnLines } from '../claude/spawn-lines'
@@ -42,7 +43,7 @@ import { probeInventory } from './mcp-inventory'
 import { type DailyPr, fetchMergedPrs } from './merged-prs'
 import { allowedNow, denyList, runArgs } from './run-args'
 import { type DailyInput, RUN_TIMEOUT_MS, runPrompt, writeDailyInput } from './run-input'
-import { checkDailyResult, extractResult, MAX_OUTPUT_BYTES } from './run-result'
+import { checkDailyResult, extractResult, MAX_ID, MAX_OUTPUT_BYTES } from './run-result'
 import type { DailyStateStore } from './state-store'
 
 // The title of each reminder. ipc.ts adds it.
@@ -80,7 +81,6 @@ const MAX_NAME_TRIES = 100
 export type RefreshTrigger = 'open' | 'button' | 'schedule'
 
 // The checks of the values that the page sends. Each bad value is refused.
-const MAX_ID = 100
 // A draft that the user changed can be longer than a draft of Claude.
 export const MAX_EDIT = 20_000
 
@@ -164,10 +164,6 @@ function fail(failure: FailureCode, detail?: string): Drafts {
 
 function own<T>(record: Record<string, T>, id: string): T | undefined {
   return Object.hasOwn(record, id) ? record[id] : undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 const pad = (n: number): string => String(n).padStart(2, '0')

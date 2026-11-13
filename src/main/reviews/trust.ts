@@ -4,16 +4,13 @@
 
 import { realpath } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { isRecord } from '../../shared/plain-object'
 import type { PtyManager } from '../pty/pty-manager'
 import { readClaudeJson } from '../usage-alerts/claude-json'
 
 export const TRUST_VIEW = 'trust'
 export const TRUST_POLL_MS = 2000
 export const TRUST_SIZE = { cols: 100, rows: 30 }
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
 
 // True when projects[p].hasTrustDialogAccepted is true for dir or for a parent folder of dir.
 export function trustedIn(data: unknown, dir: string): boolean {

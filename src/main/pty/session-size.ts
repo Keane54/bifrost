@@ -38,6 +38,37 @@ export async function readSessionSize(exec: ExecFn, pid: number): Promise<TermSi
   return stty.code === 0 ? parseSttySize(stty.stdout) : null
 }
 
+const DEFAULT_TTL_MS = 30_000
+
+// A reader that keeps the TTY device of each pid for the TTL. The device of a pid does not
+// change, so ps runs one time for many reads. The TTL limits the risk of a pid that a new process
+// reuses. A failed stty drops the device, so the next read runs ps again.
+export function createSessionSizeReader(
+  exec: ExecFn,
+  opts: { ttlMs?: number; now?: () => number } = {},
+): (pid: number) => Promise<TermSize | null> {
+  const ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS
+  const now = opts.now ?? (() => Date.now())
+  const devices = new Map<number, { device: string; at: number }>()
+  return async pid => {
+    const kept = devices.get(pid)
+    let device = kept && now() - kept.at < ttlMs ? kept.device : null
+    if (device === null) {
+      devices.delete(pid)
+      const ps = await exec('/bin/ps', psTtyArgs(pid))
+      device = ps.code === 0 ? parsePsTty(ps.stdout) : null
+      if (device === null) return null
+      devices.set(pid, { at: now(), device })
+    }
+    const stty = await exec('/bin/stty', sttyArgs(device))
+    if (stty.code !== 0) {
+      devices.delete(pid)
+      return null
+    }
+    return parseSttySize(stty.stdout)
+  }
+}
+
 // The session ID of a chat view ID, or null for another view.
 export function chatSessionOf(viewId: string): string | null {
   return viewId.startsWith(CHAT_PREFIX) && viewId.length > CHAT_PREFIX.length

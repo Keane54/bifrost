@@ -1,7 +1,7 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { readJsonFile, writeJsonAtomic } from '../../../src/main/store/json-file'
 
 let dir: string
@@ -39,4 +39,15 @@ test('readJsonFile reports a missing file, bad JSON and good JSON', async () => 
 
 test('readJsonFile rejects other read errors', async () => {
   await expect(readJsonFile(dir)).rejects.toThrow()
+})
+
+test('writeJsonAtomic syncs the temporary file before the rename', async () => {
+  const probe = await open(join(dir, 'probe'), 'w')
+  const proto = Object.getPrototypeOf(probe)
+  await probe.close()
+  const sync = vi.spyOn(proto, 'sync')
+  await writeJsonAtomic(join(dir, 'a.json'), { a: 1 })
+  expect(sync).toHaveBeenCalledTimes(1)
+  expect(JSON.parse(await readFile(join(dir, 'a.json'), 'utf8'))).toEqual({ a: 1 })
+  sync.mockRestore()
 })

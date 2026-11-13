@@ -1,15 +1,8 @@
 // The cells of the Overview rows, and the class lookups for the colour tokens.
 import type { Priority, SessionRow } from '../../../shared/types'
+import { ActivityAge } from './ActivityAge'
 import type { ColumnId } from './columns'
-import {
-  formatAge,
-  formatCost,
-  formatPercent,
-  projectLabel,
-  stateLabel,
-  stateTone,
-  type Tone,
-} from './format'
+import { formatCost, formatPercent, projectLabel, stateLabel, stateTone, type Tone } from './format'
 import { SessionIcon } from './SessionIcon'
 
 // Tailwind finds only full class names in the source. So these lookups hold full names.
@@ -86,15 +79,13 @@ export const TONE_TEXT: Record<Tone, string> = {
   yellow: 'text-box-yellow',
 }
 
-// The content of one cell. The age in the Activity column uses the time now.
+// The content of one cell. The Activity cell has its own clock.
 export function CellContent({
   column,
   row,
-  now,
 }: {
   column: ColumnId
   row: SessionRow
-  now: number
 }): React.ReactNode {
   switch (column) {
     case 'kind':
@@ -116,6 +107,6 @@ export function CellContent({
     case 'cost':
       return formatCost(row.costUsd)
     case 'activity':
-      return formatAge(row.lastActivity, now)
+      return <ActivityAge since={row.lastActivity} />
   }
 }

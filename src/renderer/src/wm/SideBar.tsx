@@ -32,7 +32,7 @@ import { cx } from '../lib/cx'
 import { Tip } from '../lib/menu'
 import { panelTitle } from '../panels/panels'
 import { usePerformanceState } from '../performance/use-performance'
-import { useReviews } from '../reviews/use-reviews'
+import { useReviewsAttention } from '../reviews/use-reviews'
 import { useLive } from '../settings/live-context'
 import { useSettingsNav } from '../settings/settings-nav'
 import { useUpdateButton } from '../updates/use-updates'
@@ -195,7 +195,7 @@ function SideBar(): React.JSX.Element {
   const { rows } = useRegistry()
   const settingsNav = useSettingsNav()
   const { warning } = useLive()
-  const reviews = useReviews()
+  const reviewsAttention = useReviewsAttention()
   const health = usePerformanceState()
   const dailyMarker = useDailyMarker()
   const open = (panelId: string): void => dispatch({ panelId, type: 'open' })
@@ -224,7 +224,7 @@ function SideBar(): React.JSX.Element {
       <SideButton icon={Gauge} label='Usage HUD' onClick={() => open('usage-hud')} />
       <SideButton icon={Activity} label='Service status' onClick={() => open('service-status')} />
       <SideButton
-        dot={reviews.toReview.some(r => r.flash) ? REVIEWS_ATTENTION : undefined}
+        dot={reviewsAttention ? REVIEWS_ATTENTION : undefined}
         icon={GitPullRequest}
         label='Reviews'
         onClick={() => open('reviews')}

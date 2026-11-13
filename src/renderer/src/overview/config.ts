@@ -1,4 +1,6 @@
 // The config of one Overview: its tabs, filters, columns, widths and sort.
+
+import { isRecord } from '../../../shared/plain-object'
 import type { SessionKind, SessionState } from '../../../shared/types'
 import { panelKind } from '../wm/state'
 import {
@@ -105,17 +107,13 @@ export function activeTab(config: OverviewConfig): OverviewTab {
   return config.tabs.find(t => t.id === config.active) ?? (config.tabs[0] as OverviewTab)
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function clampWidth(value: number): number {
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(value)))
 }
 
 function parseWidths(value: unknown): Partial<Record<ColumnId, number>> {
   const widths: Partial<Record<ColumnId, number>> = {}
-  if (!isObject(value)) return widths
+  if (!isRecord(value)) return widths
   for (const [key, raw] of Object.entries(value)) {
     if (isColumnId(key) && typeof raw === 'number' && Number.isFinite(raw)) {
       widths[key] = clampWidth(raw)
@@ -160,7 +158,7 @@ function knownValues<T>(value: unknown, known: readonly T[]): T[] {
 }
 
 function parseFilter(value: unknown): TabFilter {
-  const filter = isObject(value) ? value : {}
+  const filter = isRecord(value) ? value : {}
   return {
     boxOnly: filter.boxOnly === true,
     // A filter from before the kinds, or a damaged kind list, shows both kinds.
@@ -172,7 +170,7 @@ function parseFilter(value: unknown): TabFilter {
 }
 
 function parseSort(value: unknown): SortSpec {
-  if (!isObject(value) || !isColumnId(value.column)) return { ...NAME_SORT }
+  if (!isRecord(value) || !isColumnId(value.column)) return { ...NAME_SORT }
   return { column: value.column, desc: value.desc === true }
 }
 
@@ -187,7 +185,7 @@ function withVisibleSort(t: OverviewTab): OverviewTab {
 }
 
 function parseTab(value: unknown, index: number): OverviewTab | null {
-  if (!isObject(value) || typeof value.id !== 'string' || !TAB_ID.test(value.id)) return null
+  if (!isRecord(value) || typeof value.id !== 'string' || !TAB_ID.test(value.id)) return null
   if (typeof value.name !== 'string') return null
   const trimmed = value.name.trim()
   if (trimmed.length < 1 || trimmed.length > MAX_TAB_NAME) return null
@@ -221,7 +219,7 @@ function tabNumber(id: string): number {
 
 // Check a config that the renderer read from ui-state.json. Give null when no tab is valid.
 export function parseOverviewConfig(data: unknown): OverviewConfig | null {
-  if (!isObject(data) || !Array.isArray(data.tabs)) return null
+  if (!isRecord(data) || !Array.isArray(data.tabs)) return null
   const tabs: OverviewTab[] = []
   for (const raw of data.tabs) {
     if (tabs.length >= MAX_TABS) break
@@ -249,7 +247,7 @@ export function parseOverviewConfig(data: unknown): OverviewConfig | null {
 
 export function parseOverviews(data: unknown): Record<string, OverviewConfig> {
   const result: Record<string, OverviewConfig> = {}
-  if (!isObject(data)) return result
+  if (!isRecord(data)) return result
   for (const [key, raw] of Object.entries(data)) {
     if (panelKind(key) !== 'overview') continue
     const config = parseOverviewConfig(raw)

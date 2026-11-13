@@ -18,6 +18,7 @@ function tr(key: string, over: Partial<ToReviewRow>): ToReviewRow {
     requestedAt: 0,
     sessionId: null,
     state: 'new',
+    team: false,
     title: 't',
     why: null,
     ...over,
@@ -40,6 +41,7 @@ function mp(key: string, over: Partial<MyPrRow>): MyPrRow {
     sessionId: null,
     status: 'pending',
     title: 't',
+    truncated: false,
     updatedAt: 0,
     ...over,
   }

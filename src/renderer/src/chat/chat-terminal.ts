@@ -439,7 +439,7 @@ export class ChatTerminal {
     this.resizeLocal(size)
     this.lastSent = size
     this.lastSentAt = Date.now()
-    const opts = { cols: size.cols, cwd: target.cwd, rows: size.rows }
+    const opts = { cols: size.cols, rows: size.rows }
     this.deps.pty.open(this.viewId, ['attach', target.shortId], opts).then(
       () => {
         this.opening = false

@@ -3,6 +3,9 @@
 // each line and for each entry that it uses: the request, the replies, the turn end and the new
 // messages from the user. A form that it does not know is a failure. It skips the metadata
 // entries, because their types change between versions of Claude Code.
+
+import { isRecord } from '../../shared/plain-object'
+import { maskToken } from '../log/mask'
 import { NOTE_END, NOTE_START, requestLine } from './prompt'
 
 export type ReplyState =
@@ -29,10 +32,6 @@ const REASON_NO_MODEL = 'the reply has no model name'
 
 type Entry = Record<string, unknown>
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 function failed(reason: string): ReplyState {
   return { kind: 'failed', reason }
 }
@@ -45,7 +44,7 @@ function parseEntry(line: string): Entry | null {
   } catch {
     return null
   }
-  return isObject(value) && typeof value.type === 'string' ? value : null
+  return isRecord(value) && typeof value.type === 'string' ? value : null
 }
 
 function isTurnEnd(entry: Entry): boolean {
@@ -54,11 +53,11 @@ function isTurnEnd(entry: Entry): boolean {
 
 // The text of a user entry: a string content, or the text blocks of an array content.
 function userText(entry: Entry): string {
-  const content = isObject(entry.message) ? entry.message.content : undefined
+  const content = isRecord(entry.message) ? entry.message.content : undefined
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
   return content
-    .filter(block => isObject(block) && block.type === 'text' && typeof block.text === 'string')
+    .filter(block => isRecord(block) && block.type === 'text' && typeof block.text === 'string')
     .map(block => block.text)
     .join('\n')
 }
@@ -74,9 +73,9 @@ function holdsRequest(entry: Entry, wanted: string): boolean {
 // True for a user entry that is not a message from the user: a meta entry, or only tool results.
 function isAllowedUser(entry: Entry): boolean {
   if (entry.isMeta === true) return true
-  const content = isObject(entry.message) ? entry.message.content : undefined
+  const content = isRecord(entry.message) ? entry.message.content : undefined
   if (!Array.isArray(content) || content.length === 0) return false
-  return content.every(block => isObject(block) && block.type === 'tool_result')
+  return content.every(block => isRecord(block) && block.type === 'tool_result')
 }
 
 // True for the entry that Claude Code writes after an Interrupt: a user entry with this text.
@@ -91,18 +90,18 @@ function isInterrupt(entry: Entry): boolean {
 // user.
 function isNewMessage(entry: Entry): boolean {
   if (entry.type === 'user') return !isAllowedUser(entry)
-  if (entry.type !== 'attachment' || !isObject(entry.attachment)) return false
+  if (entry.type !== 'attachment' || !isRecord(entry.attachment)) return false
   const { commandMode, type } = entry.attachment
   return type === 'queued_command' && commandMode !== 'task-notification'
 }
 
 // The texts of the text blocks of an assistant entry. null when the entry has an unknown form.
 function replyTexts(entry: Entry): string[] | null {
-  const content = isObject(entry.message) ? entry.message.content : undefined
+  const content = isRecord(entry.message) ? entry.message.content : undefined
   if (!Array.isArray(content)) return null
   const texts: string[] = []
   for (const block of content) {
-    if (!isObject(block) || typeof block.type !== 'string') return null
+    if (!isRecord(block) || typeof block.type !== 'string') return null
     if (!BLOCK_TYPES.includes(block.type)) return null
     if (block.type !== 'text') continue
     if (typeof block.text !== 'string') return null
@@ -114,7 +113,7 @@ function replyTexts(entry: Entry): string[] | null {
 // The model of an assistant entry: requestedModel, else message.model. <synthetic> does not
 // count.
 function modelOf(entry: Entry): string | undefined {
-  const message = isObject(entry.message) ? entry.message.model : undefined
+  const message = isRecord(entry.message) ? entry.message.model : undefined
   for (const value of [entry.requestedModel, message]) {
     if (typeof value === 'string' && value !== '' && value !== SYNTHETIC) return value
   }
@@ -187,16 +186,8 @@ export function readReply(tail: string, requestId: string): ReplyState {
   return result ?? { kind: 'pending' }
 }
 
-const SECRETS: readonly RegExp[] = [
-  /gh[opsu]_[A-Za-z0-9]{20,}/g,
-  /github_pat_[A-Za-z0-9_]{20,}/g,
-  /sk-ant-[A-Za-z0-9_-]{20,}/g,
-  /AKIA[0-9A-Z]{16}/g,
-  /xox[abpr]-[A-Za-z0-9-]{10,}/g,
-]
-
 // Replace each token of a known form with "[secret removed]". This is a guard for the rule of
 // spec 7.5. The rules also tell Claude to write no secret.
 export function maskSecrets(text: string): string {
-  return SECRETS.reduce((result, pattern) => result.replace(pattern, '[secret removed]'), text)
+  return maskToken(text, null, '[secret removed]')
 }

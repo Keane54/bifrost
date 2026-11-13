@@ -2,6 +2,7 @@
 // Nothing goes to disk.
 import { EVENT_LOG_MAX } from '../../shared/event-log'
 import type { LogEntry } from '../../shared/types'
+import { maskToken } from '../log/mask'
 import type { HookEvent } from '../registry/hook-event'
 
 export { EVENT_LOG_MAX }
@@ -40,15 +41,22 @@ export class EventLog {
   // Add a plain line for the user, for example a refused notification. The same text goes in
   // one time only. Return the new entry, or null when the text was in the log before.
   notice(text: string, at: number): LogEntry | null {
-    if (this.notices.has(text)) return null
-    this.notices.add(text)
-    return this.line(text, at)
+    const safe = maskToken(text, null)
+    if (this.notices.has(safe)) return null
+    this.notices.add(safe)
+    return this.line(safe, at)
   }
 
   // Add a plain line for the user each time, for example a line of a Daily update run. Return
   // the new entry.
   line(text: string, at: number): LogEntry {
-    const entry: LogEntry = { at, kind: 'notice', name: text, seq: this.next++, sessionId: '' }
+    const entry: LogEntry = {
+      at,
+      kind: 'notice',
+      name: maskToken(text, null),
+      seq: this.next++,
+      sessionId: '',
+    }
     this.keep([entry])
     return entry
   }

@@ -1,10 +1,8 @@
 // Read the answer of GET /api/oauth/usage. The endpoint is not documented, so every step is
 // defensive. A bad answer gives null ("no data"), never a throw. Other keys are ignored.
-import type { AccountUsage, RateLimits, RateWindow } from '../../shared/types'
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
+import { isRecord } from '../../shared/plain-object'
+import type { AccountUsage, RateLimits, RateWindow } from '../../shared/types'
 
 // A window from a percent and an ISO 8601 reset time. A percent above 100 becomes 100.
 function windowOf(percent: unknown, resetsAt: unknown): RateWindow | null {

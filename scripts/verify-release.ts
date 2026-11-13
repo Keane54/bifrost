@@ -1,4 +1,4 @@
-// This script checks the signed app of a release build (README, Release flow).
+// This script checks the signed app of a release build (RELEASING.md).
 // The Release workflow runs it after "pnpm dist:release" and before it publishes anything.
 // A failed check stops the release. The script needs macOS.
 import { spawnSync } from 'node:child_process'
@@ -7,7 +7,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { feedSha512, namesRepo } from './release/feed.ts'
 
 const APP = 'dist/mac-arm64/Bifrost.app'
-const TEAM_ID = '2GUX23RPKA'
+// The team ID of the signing certificate. The Release workflow reads it from the certificate
+// in CSC_LINK (scripts/release/signing-identity.ts).
+const TEAM_ID = (process.env.APPLE_TEAM_ID ?? '').trim()
 // The repo of the releases. UPDATE_OWNER and UPDATE_REPO in src/main/updates/updater.ts have the
 // same values. A unit test compares them.
 const OWNER = 'Keane54'
@@ -29,6 +31,18 @@ function check(name: string, ok: boolean, text: string): void {
     console.log(text.trim())
     failures.push(name)
   }
+}
+
+if (TEAM_ID === '') {
+  console.error(
+    'FAIL: APPLE_TEAM_ID is not set. Set it to the team ID of the signing certificate ' +
+      '(RELEASING.md).',
+  )
+  process.exit(1)
+}
+if (!/^[A-Z0-9]{10}$/.test(TEAM_ID)) {
+  console.error('FAIL: APPLE_TEAM_ID must be the 10 letters and digits of the team ID.')
+  process.exit(1)
 }
 
 if (!existsSync(APP)) {

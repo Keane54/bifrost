@@ -26,6 +26,7 @@ const REFUSED = 'refused: the session is not an owned session that runs'
 const row = (o: Partial<SessionRow> = {}): SessionRow => ({
   box: 'none',
   boxSince: null,
+  claudeName: 'bifrost-test-s',
   cwd: '/p',
   flashing: false,
   kind: 'owned',

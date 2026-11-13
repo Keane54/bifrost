@@ -2,6 +2,7 @@
 // trusts none of it. The check is strict: one failed rule gives bad-result.
 
 import type { DailyAreaResult, DailyItem, FailureCode } from '../../shared/daily-state'
+import { isRecord } from '../../shared/plain-object'
 
 export const RESULT_VERSION = 1
 export const RESULT_BEGIN = 'BIFROST-DAILY-RESULT-BEGIN'
@@ -9,7 +10,7 @@ export const RESULT_END = 'BIFROST-DAILY-RESULT-END'
 export const MAX_OUTPUT_BYTES = 1024 * 1024
 
 const MAX_ITEMS = 100
-const MAX_ID = 100
+export const MAX_ID = 100
 const MAX_TITLE = 300
 const MAX_STATE = 60
 const MAX_URL = 2000
@@ -24,10 +25,6 @@ type Result =
   | { ok: false; failure: FailureCode }
 
 const BAD: Result = { failure: 'bad-result', ok: false }
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 const onlyKeys = (value: Record<string, unknown>, allowed: readonly string[]): boolean =>
   Object.keys(value).every(key => allowed.includes(key))

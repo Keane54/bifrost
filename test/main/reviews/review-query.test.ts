@@ -8,7 +8,12 @@ import {
   MAX_PAGES,
   type ViewerReview,
 } from '../../../src/main/reviews/review-query'
-import { draftNotice, reviewedNotice, trustNotice } from '../../../src/main/reviews/round-text'
+import {
+  draftNotice,
+  REASON_PR_READ_FAILED,
+  reviewedNotice,
+  trustNotice,
+} from '../../../src/main/reviews/round-text'
 import { RECOMMENDATION_TEXT } from '../../../src/shared/reviews'
 
 const load = (name: string): unknown =>
@@ -128,7 +133,6 @@ describe('fetchReviewContext', () => {
   })
 
   it('pages the reviews and stops at MAX_PAGES with truncated', async () => {
-    const _re = { pages: loadPages() }
     const endless = loadPages()[0]
     const { gh, calls } = fakeGh(op =>
       op === 'ReviewThreads' ? ok(load('threads-1')) : ok(endless),
@@ -223,7 +227,8 @@ describe('fetchReviewContext', () => {
     fx.errors = [{ message: 'Partial failure' }]
     const { gh } = fakeGh(() => ok(fx))
     expect(await fetchReviewContext(gh, PR, 'me')).toEqual({
-      message: 'Partial failure',
+      detail: 'Partial failure',
+      message: REASON_PR_READ_FAILED,
       ok: false,
     })
   })
@@ -277,13 +282,17 @@ describe('fetchReviewContext', () => {
 
   it('uses ghFailure for a failed call', async () => {
     const { gh } = fakeGh(() => ({ code: 1, stderr: 'boom\nmore', stdout: '' }))
-    expect(await fetchReviewContext(gh, PR, 'me')).toEqual({ message: 'boom', ok: false })
+    expect(await fetchReviewContext(gh, PR, 'me')).toEqual({
+      detail: 'boom',
+      message: REASON_PR_READ_FAILED,
+      ok: false,
+    })
   })
 
   it('fails when the answer has no pull request', async () => {
     const { gh } = fakeGh(() => ok({ data: { repository: null }, errors: [{ message: 'Gone' }] }))
     const r = await fetchReviewContext(gh, PR, 'me')
-    expect(r).toEqual({ message: 'Gone', ok: false })
+    expect(r).toEqual({ detail: 'Gone', message: REASON_PR_READ_FAILED, ok: false })
   })
 
   it('fails on text that is not JSON', async () => {

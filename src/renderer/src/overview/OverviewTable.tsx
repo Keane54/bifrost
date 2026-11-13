@@ -23,7 +23,6 @@ import { useRegistry } from '../data/registry'
 import { useKeys } from '../keys/KeysProvider'
 import { cx } from '../lib/cx'
 import { MENU_POPUP } from '../lib/menu'
-import { useNow } from '../lib/use-now'
 import { WATCH_ROW_BG, WATCH_STRIPE } from '../watch/watch-colours'
 import { useWmState } from '../wm/context'
 import { CellContent } from './cells'
@@ -86,7 +85,6 @@ export default function OverviewTable({
   const { holdClick, holdPress, holding } = useKeys()
   // The rows area. Cmd+0 focuses it, so the single keys act on this Overview (spec 9.3).
   const rowsArea = useRef<HTMLDivElement>(null)
-  const now = useNow()
   const data = useMemo(() => viewRows(rows, tab), [rows, tab])
   const state = useMemo(() => toTableState(tab), [tab])
   const open = useMemo(() => new Set(openChatIds(frames)), [frames])
@@ -327,7 +325,7 @@ export default function OverviewTable({
                         key={cell.id}
                         title={column === 'project' ? row.cwd : undefined}
                       >
-                        <CellContent column={column} now={now} row={row} />
+                        <CellContent column={column} row={row} />
                       </td>
                     )
                   })}

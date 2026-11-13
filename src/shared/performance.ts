@@ -86,3 +86,6 @@ export const EMPTY_PERFORMANCE: PerformanceSnapshot = {
   sessions: null,
   state: 'ok',
 }
+
+// The most frames per second that a report may claim. A higher value is not real.
+export const MAX_FPS = 1000

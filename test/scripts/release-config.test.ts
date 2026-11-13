@@ -1,11 +1,14 @@
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { releaseConfig } from '../../electron-builder.release.ts'
 import { UPDATE_OWNER, UPDATE_REPO } from '../../src/main/updates/updater'
 
 const ROOT = join(__dirname, '../..')
 const read = (file: string): string => readFileSync(join(ROOT, file), 'utf8')
+// Invented test values. They are not a real identity.
+const ID = 'Jane Doe (ABCDE12345)'
 
 // The text of the workflow step with the name, up to the next step.
 function stepOf(workflow: string, name: string): string {
@@ -25,10 +28,10 @@ function runScriptOf(step: string): string {
   return block.join('\n')
 }
 
-// The value of a "key: value" line of the publish block of the release config.
-function publishValue(key: string): string | undefined {
-  const block = read('electron-builder.release.yml').split(/^publish:$/m)[1] ?? ''
-  return new RegExp(`^\\s+${key}: (\\S+)$`, 'm').exec(block)?.[1]
+// A value of the publish block of the release config.
+function publishValue(key: 'owner' | 'provider' | 'repo'): unknown {
+  const publish = releaseConfig({ APPLE_SIGNING_IDENTITY: ID }).publish
+  return (publish as unknown as Record<string, unknown>)[key]
 }
 
 const ASSET_PATHS = [
@@ -200,6 +203,70 @@ describe('the release build config', () => {
       expect(result.status).toBe(0)
       expect(result.out).not.toMatch(/^injected$/m)
     })
+  })
+
+  it('signs with the identity from APPLE_SIGNING_IDENTITY', () => {
+    const config = releaseConfig({ APPLE_SIGNING_IDENTITY: ` ${ID} ` })
+    expect(config.extends).toBe('./electron-builder.yml')
+    expect(config.mac).toMatchObject({ hardenedRuntime: true, identity: ID, notarize: true })
+    expect(config.publish).toEqual({
+      owner: UPDATE_OWNER,
+      provider: 'github',
+      releaseType: 'release',
+      repo: UPDATE_REPO,
+    })
+  })
+
+  it('stops with a clear message when the identity is missing or blank', () => {
+    for (const env of [{}, { APPLE_SIGNING_IDENTITY: '' }, { APPLE_SIGNING_IDENTITY: '  ' }]) {
+      expect(() => releaseConfig(env)).toThrow('APPLE_SIGNING_IDENTITY is not set')
+    }
+  })
+
+  it('stops when the identity starts with the Developer ID prefix', () => {
+    const env = { APPLE_SIGNING_IDENTITY: `Developer ID Application: ${ID}` }
+    expect(() => releaseConfig(env)).toThrow('Remove "Developer ID Application:"')
+  })
+
+  it('keeps no signing value in the repo', () => {
+    expect(existsSync(join(ROOT, 'electron-builder.release.yml'))).toBe(false)
+    expect(read('scripts/verify-release.ts')).toContain('process.env.APPLE_TEAM_ID')
+    expect(read('scripts/verify-release.ts')).not.toMatch(/TEAM_ID = '/)
+    expect(JSON.parse(read('package.json')).scripts['dist:release']).toContain(
+      '--config electron-builder.release.ts',
+    )
+  })
+
+  it('verify:release stops at once when APPLE_TEAM_ID is missing or bad', () => {
+    const run = (env: Record<string, string>) =>
+      spawnSync(process.execPath, ['scripts/verify-release.ts'], {
+        cwd: ROOT,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH ?? '', ...env },
+      })
+    const missing = run({})
+    expect(missing.status).toBe(1)
+    expect(missing.stderr).toBe(
+      'FAIL: APPLE_TEAM_ID is not set. Set it to the team ID of the signing certificate ' +
+        '(RELEASING.md).\n',
+    )
+    const bad = run({ APPLE_TEAM_ID: 'abc' })
+    expect(bad.status).toBe(1)
+    expect(bad.stderr).toBe(
+      'FAIL: APPLE_TEAM_ID must be the 10 letters and digits of the team ID.\n',
+    )
+  })
+
+  it('reads the signing values from the certificate, and not from secrets', () => {
+    const text = read('.github/workflows/release.yml')
+    expect(text).not.toMatch(/secrets\.APPLE_(SIGNING_IDENTITY|TEAM_ID)/)
+    const read_ = stepOf(text, 'Read the signing identity')
+    expect(read_).toContain('security find-identity -v -p codesigning "$CSC_KEYCHAIN"')
+    expect(read_).toContain('node scripts/release/signing-identity.ts')
+    const order = ['Make the signing keychain', 'Read the signing identity', 'Release']
+    const at = order.map(name => text.indexOf(`- name: ${name}`))
+    expect(at.every(i => i >= 0)).toBe(true)
+    expect([...at].sort((x, y) => x - y)).toEqual(at)
   })
 
   it('has electron-updater as an exact dependency', () => {

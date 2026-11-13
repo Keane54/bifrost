@@ -28,6 +28,11 @@ export const REASON_OWN_DRAFT =
   'Your draft review from Bifrost is still on GitHub for this commit. ' +
   'Submit or delete it there, then try again. Nothing was posted.'
 
+// The row shows this text. The Event log gets the raw gh line.
+export const REASON_PR_READ_FAILED =
+  "Bifrost couldn't load this pull request from GitHub, so nothing was posted. Try again. " +
+  'The Event log has the details.'
+
 // The fixed texts for an error of Node, git or claude in a round. The log gets the error. The
 // row never shows the error, because it can hold a path.
 export const REASON_PREPARE_FAILED =

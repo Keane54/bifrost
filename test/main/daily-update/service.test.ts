@@ -33,7 +33,7 @@ import {
 } from '../../../src/main/daily-update/state-store'
 import type { Gh } from '../../../src/main/reviews/gh'
 import { areaSince, movedHeader } from '../../../src/renderer/src/daily-update/panel-model'
-import type { DailySnapshot } from '../../../src/shared/daily-state'
+import type { DailySnapshot, DailyState } from '../../../src/shared/daily-state'
 import { type DailyUpdateSettings, DEFAULT_DAILY_UPDATE } from '../../../src/shared/daily-update'
 
 const READY = 'Your daily update is ready to check.'
@@ -122,6 +122,48 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(home, { force: true, recursive: true })
 })
+
+// A store whose change waits before it saves. It copies a slow disk.
+function slowStore(real: DailyStateStore, delayMs: number): DailyStateStore {
+  return {
+    change: async fn => {
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+      return real.change(fn)
+    },
+    get: () => real.get(),
+  }
+}
+
+// Wraps a store. The function until resolves when the saved state matches.
+function watchStore(real: DailyStateStore): {
+  store: DailyStateStore
+  until(pred: (s: DailyState) => boolean): Promise<void>
+} {
+  const waiters: { pred: (s: DailyState) => boolean; resolve: () => void }[] = []
+  const check = () => {
+    for (const w of [...waiters]) {
+      if (w.pred(real.get())) {
+        waiters.splice(waiters.indexOf(w), 1)
+        w.resolve()
+      }
+    }
+  }
+  return {
+    store: {
+      change: async fn => {
+        const next = await real.change(fn)
+        check()
+        return next
+      },
+      get: () => real.get(),
+    },
+    until: pred =>
+      new Promise<void>(resolve => {
+        waiters.push({ pred, resolve })
+        check()
+      }),
+  }
+}
 
 async function harness(opts: { now?: number; store?: DailyStateStore } = {}) {
   const h = {
@@ -603,7 +645,9 @@ describe('reminders', () => {
   })
 
   it('a 09:50 tick during a run of 09:45 shows only the reminder of the run', async () => {
-    const { h, service, store } = await harness({ now: at(9, 45) })
+    const real = await openDailyStateStore(dailyStateFile(home), () => {})
+    const watched = watchStore(real)
+    const { h, service, store } = await harness({ now: at(9, 45), store: watched.store })
     const run = gate()
     h.runResult = async () => {
       await run.wait()
@@ -616,7 +660,41 @@ describe('reminders', () => {
     const second = service.tick().then(() => {
       secondDone = true
     })
-    await new Promise(resolve => setTimeout(resolve, 20))
+    await watched.until(st => st.marks.secondShown)
+    // The rest of the tick after the save runs in microtasks only.
+    await new Promise(resolve => setImmediate(resolve))
+    expect(h.notified).toHaveLength(0)
+    expect(secondDone).toBe(false)
+    expect(store.get().marks.secondShown).toBe(true)
+    run.open()
+    await Promise.all([first, second])
+    expect(h.notified.map(n => [n.text, n.sound])).toEqual([[READY, true]])
+    expect(h.bounces).toBe(0)
+    h.now = at(9, 55)
+    await service.tick()
+    expect(h.notified).toHaveLength(1)
+    expect(h.runs).toHaveLength(1)
+  })
+
+  it('a 09:50 tick during a run of 09:45 shows one reminder, with a slow disk', async () => {
+    const real = await openDailyStateStore(dailyStateFile(home), () => {})
+    const watched = watchStore(slowStore(real, 50))
+    const { h, service, store } = await harness({ now: at(9, 45), store: watched.store })
+    const run = gate()
+    h.runResult = async () => {
+      await run.wait()
+      return draftResult({ a: 'A', b: 'B' })
+    }
+    const first = service.tick()
+    await run.atGate
+    h.now = at(9, 50)
+    let secondDone = false
+    const second = service.tick().then(() => {
+      secondDone = true
+    })
+    await watched.until(st => st.marks.secondShown)
+    // The rest of the tick after the save runs in microtasks only.
+    await new Promise(resolve => setImmediate(resolve))
     expect(h.notified).toHaveLength(0)
     expect(secondDone).toBe(false)
     expect(store.get().marks.secondShown).toBe(true)

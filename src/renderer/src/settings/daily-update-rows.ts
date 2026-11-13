@@ -4,6 +4,7 @@ import {
   type DailyUpdateSettings,
   hasReadWord,
   hasWriteWord,
+  MAX_AREAS,
   type McpInventory,
   toolPrefix,
   type WorkArea,
@@ -164,9 +165,6 @@ export function toggleDay(days: readonly number[], day: number): number[] {
   const next = days.includes(day) ? days.filter(item => item !== day) : [...days, day]
   return next.sort((a, b) => a - b)
 }
-
-// The most work areas that the settings accept.
-export const MAX_AREAS = 10
 
 // True when the page can add one more work area. Count the saved areas and the new ones.
 export function canAddArea(count: number): boolean {

@@ -1,3 +1,4 @@
+import { isRecord as isObject } from '../../shared/plain-object'
 import { PR_KEY, RECOMMENDATIONS, REPO_KEY, type Recommendation } from '../../shared/reviews'
 import { SHORT_ID } from '../actions/claude-output'
 
@@ -146,10 +147,6 @@ type Obj = Record<string, unknown>
 
 // A full commit ID: SHA-1 or SHA-256.
 const OBJECT_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
-
-function isObject(value: unknown): value is Obj {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)

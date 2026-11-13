@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExecFn } from '../../../src/main/claude/cli'
 import {
   chatSessionOf,
+  createSessionSizeReader,
   parsePsTty,
   parseSttySize,
   psTtyArgs,
@@ -54,6 +55,85 @@ describe('readSessionSize', () => {
     }
     expect(await readSessionSize(exec, 672)).toBeNull()
     expect(calls).toEqual(['/bin/ps'])
+  })
+})
+
+describe('createSessionSizeReader', () => {
+  function fake(sttyOk = true) {
+    const calls: string[] = []
+    const exec: ExecFn = async file => {
+      calls.push(file)
+      if (file === '/bin/ps') return { code: 0, stderr: '', stdout: 'ttys012\n' }
+      return sttyOk
+        ? { code: 0, stderr: '', stdout: '32 120\n' }
+        : { code: 1, stderr: 'gone', stdout: '' }
+    }
+    return { calls, exec }
+  }
+
+  it('runs ps one time for two reads of one pid within the TTL', async () => {
+    const { calls, exec } = fake()
+    let now = 0
+    const read = createSessionSizeReader(exec, { now: () => now, ttlMs: 30_000 })
+    expect(await read(5)).toEqual({ cols: 120, rows: 32 })
+    now = 29_999
+    expect(await read(5)).toEqual({ cols: 120, rows: 32 })
+    expect(calls).toEqual(['/bin/ps', '/bin/stty', '/bin/stty'])
+  })
+
+  it('keeps one device for each pid', async () => {
+    const { calls, exec } = fake()
+    const read = createSessionSizeReader(exec)
+    await read(5)
+    await read(6)
+    expect(calls.filter(f => f === '/bin/ps')).toHaveLength(2)
+  })
+
+  it('runs ps again after the TTL', async () => {
+    const { calls, exec } = fake()
+    let now = 0
+    const read = createSessionSizeReader(exec, { now: () => now, ttlMs: 30_000 })
+    await read(5)
+    now = 30_000
+    await read(5)
+    expect(calls.filter(f => f === '/bin/ps')).toHaveLength(2)
+  })
+
+  it('uses a TTL of 30 s by default', async () => {
+    vi.useFakeTimers()
+    try {
+      const { calls, exec } = fake()
+      const read = createSessionSizeReader(exec)
+      await read(5)
+      vi.advanceTimersByTime(29_000)
+      await read(5)
+      expect(calls.filter(f => f === '/bin/ps')).toHaveLength(1)
+      vi.advanceTimersByTime(2000)
+      await read(5)
+      expect(calls.filter(f => f === '/bin/ps')).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('drops the device after a failed stty', async () => {
+    const bad = fake(false)
+    const read = createSessionSizeReader(bad.exec)
+    expect(await read(5)).toBeNull()
+    expect(await read(5)).toBeNull()
+    expect(bad.calls.filter(f => f === '/bin/ps')).toHaveLength(2)
+  })
+
+  it('gives null and keeps no device when ps finds no TTY', async () => {
+    const calls: string[] = []
+    const exec: ExecFn = async file => {
+      calls.push(file)
+      return { code: 0, stderr: '', stdout: '??\n' }
+    }
+    const read = createSessionSizeReader(exec)
+    expect(await read(5)).toBeNull()
+    expect(await read(5)).toBeNull()
+    expect(calls).toEqual(['/bin/ps', '/bin/ps'])
   })
 })
 

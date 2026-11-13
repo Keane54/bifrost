@@ -32,8 +32,11 @@ const ev = (name: HookEventName, sessionId: string, at: number): HookEvent => ({
   sessionId,
 })
 
+// The store of an older version can lack some fields.
+type StoreIn = ConstructorParameters<typeof SessionRegistry>[0]['store']
+
 const registry = (
-  store: RegistryStore = { lastActive: [], names: {}, priorities: {}, started: [], watch: [] },
+  store: StoreIn = { lastActive: [], names: {}, priorities: {}, started: [], watch: [] },
 ) => new SessionRegistry({ escalationMs: 600_000, store })
 
 describe('brief', () => {
@@ -447,7 +450,7 @@ describe('store', () => {
   })
 
   test('the caller cannot change the registry through the store or a row', () => {
-    const input: RegistryStore = {
+    const input: StoreIn = {
       lastActive: [],
       names: { s1: 'alpha' },
       priorities: {},

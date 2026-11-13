@@ -33,7 +33,6 @@ import type { UpdatesSnapshot } from './updates'
 // When a call fails in the main process, it rejects with an Error.
 // The message of that Error is the message of the failure.
 export interface BifrostApi {
-  claudePath(): Promise<string | null>
   claudeVersion(): Promise<ClaudeVersion>
   registry: {
     rows(): Promise<SessionRow[]>
@@ -261,6 +260,14 @@ export interface BifrostApi {
     // then sends a new snapshot. The health.log file does not change.
     clear(): Promise<void>
   }
+  // The window of the page.
+  window: {
+    // Tell the main process if the page is visible: false for a minimised or hidden window. The
+    // main process then polls the sessions every 15 s, not every 2 s. An unfocused window that
+    // is visible counts as visible. Send it when the page loads and on each change. This
+    // rejects for a value that is not a boolean.
+    setVisible(visible: boolean): Promise<void>
+  }
   // The release notes of the GitHub releases. The main process reads GitHub only when a view opens,
   // and keeps a good answer 10 minutes. The page gets the parsed text, never the raw body.
   releaseNotes: {
@@ -361,11 +368,7 @@ export interface BifrostApi {
   pty: {
     // The main process opens a PTY only for a chat view and "attach <short id>".
     // The session must be owned and not parked, and it must be the session of the view.
-    open(
-      viewId: string,
-      args: string[],
-      opts: { cwd: string; cols: number; rows: number },
-    ): Promise<number>
+    open(viewId: string, args: string[], opts: { cols: number; rows: number }): Promise<number>
     write(viewId: string, data: string): Promise<boolean>
     resize(viewId: string, cols: number, rows: number): Promise<void>
     close(viewId: string, signal?: string): Promise<void>

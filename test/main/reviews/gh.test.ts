@@ -87,6 +87,7 @@ describe('ghFailure', () => {
     const f = ghFailure(res({ stderr: `${'a'.repeat(300)}\nsecond` }))
     expect(f?.availability).toBe('error')
     expect(f?.message).toBe('a'.repeat(200))
+    expect(f?.detail).toBe('a'.repeat(200))
   })
 })
 

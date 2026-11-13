@@ -303,11 +303,16 @@ describe('overview config', () => {
   it('setFilter and setWidths change only the named tab', () => {
     const c = base()
     const f = overviewReducer(c, {
-      filter: { boxOnly: true, kinds: ['owned'], states: ['idle'] },
+      filter: { boxOnly: true, kinds: ['owned'], states: ['idle'], watchedOnly: false },
       tabId: 't4',
       type: 'setFilter',
     })
-    expect(f.tabs[4]?.filter).toEqual({ boxOnly: true, kinds: ['owned'], states: ['idle'] })
+    expect(f.tabs[4]?.filter).toEqual({
+      boxOnly: true,
+      kinds: ['owned'],
+      states: ['idle'],
+      watchedOnly: false,
+    })
     expect(f.tabs[0]).toBe(c.tabs[0])
     const w = overviewReducer(f, {
       tabId: 't2',
@@ -465,7 +470,11 @@ describe('overview config', () => {
     expect(overviewReducer(c, { tabId: 't2', type: 'resetTab' })).toBe(c)
     const changed = overviewReducer(
       overviewReducer(c, { column: 'cost', tabId: 't2', type: 'toggleColumn' }),
-      { filter: { boxOnly: false, kinds: [], states: [] }, tabId: 't2', type: 'setFilter' },
+      {
+        filter: { boxOnly: false, kinds: [], states: [], watchedOnly: false },
+        tabId: 't2',
+        type: 'setFilter',
+      },
     )
     expect(overviewReducer(changed, { tabId: 't2', type: 'resetTab' }).tabs[1]).toEqual(c.tabs[1])
   })

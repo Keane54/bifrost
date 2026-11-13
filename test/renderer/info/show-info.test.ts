@@ -304,7 +304,9 @@ describe('prFailure (final wave item 10)', () => {
       kind: 'unavailable',
       reason: REASON_GONE,
     })
-    expect(prFailure('refused: bad session ID').reason).not.toContain('refused:')
+    const bad = prFailure('refused: bad session ID')
+    if (bad.kind !== 'unavailable') throw new Error('not unavailable')
+    expect(bad.reason).not.toContain('refused:')
   })
 
   it('another message stays as it is', () => {

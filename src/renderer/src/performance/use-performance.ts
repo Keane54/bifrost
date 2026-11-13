@@ -13,6 +13,7 @@ import type { BifrostApi } from '../../../shared/api'
 import {
   EMPTY_PERFORMANCE,
   type HealthState,
+  MAX_FPS,
   type PerformanceSnapshot,
 } from '../../../shared/performance'
 import { createSnapshotStore, type SnapshotStore } from '../lib/snapshot-store'
@@ -93,7 +94,6 @@ export interface FrameClock {
 }
 
 const SECOND_MS = 1000
-const MAX_FPS = 1000
 // The counter counts frames for 2 s in each 10 s (design section 7). A frame loop at the display
 // rate makes the page draw each frame. So a short burst costs much less CPU than a loop that
 // runs at all times.

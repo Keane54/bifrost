@@ -67,6 +67,7 @@ const IN_P = { cwd: '/p', timeoutMs: RUN_TIMEOUT_MS }
 const row = (o: Partial<SessionRow> = {}): SessionRow => ({
   box: 'none',
   boxSince: null,
+  claudeName: 'bifrost-test-s',
   cwd: '/p',
   flashing: false,
   kind: 'owned',

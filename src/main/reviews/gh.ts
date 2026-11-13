@@ -43,7 +43,12 @@ export function createGh(deps: GhDeps): Gh {
   }
 }
 
-export type GhFailure = { availability: 'no-gh' | 'logged-out' | 'error'; message: string }
+// detail is the raw first line of gh. Only the raw-line case sets it.
+export type GhFailure = {
+  availability: 'no-gh' | 'logged-out' | 'error'
+  message: string
+  detail?: string
+}
 
 // Give null when gh ended well. Else say why it failed.
 export function ghFailure(result: ExecResult): GhFailure | null {
@@ -57,5 +62,6 @@ export function ghFailure(result: ExecResult): GhFailure | null {
     return { availability: 'logged-out', message: REASON_GH_LOGGED_OUT }
   }
   const line = result.stderr.trim().split('\n')[0]?.trim().slice(0, MESSAGE_MAX)
-  return { availability: 'error', message: line ? line : REASON_GH_FAILED }
+  if (!line) return { availability: 'error', message: REASON_GH_FAILED }
+  return { availability: 'error', detail: line, message: line }
 }

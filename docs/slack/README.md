@@ -2,8 +2,6 @@
 
 This folder holds the Slack app that the Bifrost chat panels use (milestone M6). The panels show Slack channels and private channels, as the Local and Corp chat windows do in EVE. They never show DMs or group DMs. You read and send messages as yourself.
 
-The full research, with a source for each fact, is in `.superpowers/research-slack.md` (not in git).
-
 ## Why Bifrost needs its own app
 
 - Every supported way to read and send as a user needs a Slack app.
@@ -23,11 +21,11 @@ Use a free, internal app. Slack charges nothing for an app. An internal app that
 
 ## Set up the app
 
-Before you start: you must be a member of the company workspace. If the workspace has app approval on, an admin must approve the app.
+Before you start: you must be a member of your Slack workspace. If the workspace has app approval on, an admin must approve the app.
 
 1. Open <https://api.slack.com/apps>.
 2. Click **Create New App**, then **From a manifest**.
-3. Select the company workspace.
+3. Select your Slack workspace.
 4. Paste the content of `bifrost-slack-app-manifest.yaml`. Click **Next**, then **Create**.
 5. Go to **Basic Information** > **App-Level Tokens**. Click **Generate Token and Scopes**.
 6. Name the token `bifrost-socket`. Add the scope `connections:write`. Click **Generate**. Copy the `xapp-` token.
@@ -96,9 +94,7 @@ Bifrost never reads or sends DMs or group DMs (user decision, 2026-11-09). The a
 1. Socket Mode with user events: all related facts say that it works. But no Slack page says it in one sentence. The first test checks it. If it fails, Bifrost polls `conversations.history` for the open panels.
 2. App label: the first test checks if Slack shows an app label on a message that Bifrost sends.
 
-## Give Bifrost to colleagues
-
-The full research, with a source for each fact, is in `.superpowers/research-slack-distribution.md` (not in git).
+## Give Bifrost to other people
 
 Two Slack facts set the method:
 
@@ -119,8 +115,8 @@ The plan for Bifrost:
 
 | Stage | Method | Users |
 |---|---|---|
-| 1 (M6) | One company app. The user signs in. Live messages come over Socket Mode. | The user only. Do not give the app-level token to a second person. |
-| 2 (later) | The same company app. Each user clicks "Connect Slack" (OAuth with PKCE). A small company relay server gets the Events API over HTTP. It checks `apps.event.authorizations.list` and sends each event only to the Bifrost of the users who can see it. Each Mac reads history and sends messages with its own user token. | All staff. The admin approves the app one time. |
+| 1 (M6) | One workspace app. The user signs in. Live messages come over Socket Mode. | The user only. Do not give the app-level token to a second person. |
+| 2 (later) | The same shared app. Each user clicks "Connect Slack" (OAuth with PKCE). A small relay server gets the Events API over HTTP. It checks `apps.event.authorizations.list` and sends each event only to the Bifrost of the users who can see it. Each Mac reads history and sends messages with its own user token. | All staff. The admin approves the app one time. |
 
 Notes for stage 2:
 
@@ -138,4 +134,4 @@ Methods that do not work:
 - Socket Mode in each Bifrost with one shared app-level token: a privacy fault.
 - Browser session tokens: not supported by Slack.
 
-Outside the company: the Slack Marketplace rejects third-party Slack clients. An unlisted app gets 1 history request each minute. So Bifrost stays a company tool for Slack. Get a legal review before any other plan.
+Outside your organisation: the Slack Marketplace rejects third-party Slack clients. An unlisted app gets 1 history request each minute. So Bifrost stays an internal tool for Slack. Get a legal review before any other plan.

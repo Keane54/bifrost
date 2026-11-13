@@ -1,23 +1,14 @@
 // Pure rules for the updater. This file has no Electron import.
 import { dirname } from 'node:path'
 import type { UpdateCause } from '../../shared/updates'
+import { maskToken } from '../log/mask'
+
+export { maskToken }
 
 export const CHECK_DELAY_MS = 10_000
 export const CHECK_INTERVAL_MS = 60 * 60_000
 
-const TOKEN_PATTERN = /gh[opsu]_[A-Za-z0-9]{20,}/g
 const DETAIL_MAX = 200
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-// Replace the known token and any token-like text with ***.
-export function maskToken(text: string, token: string | null): string {
-  let out = text
-  if (token) out = out.replace(new RegExp(escapeRegExp(token), 'g'), '***')
-  return out.replace(TOKEN_PATTERN, '***')
-}
 
 export type ErrorClass =
   | { kind: 'offline' }

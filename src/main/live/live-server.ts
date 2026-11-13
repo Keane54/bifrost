@@ -14,7 +14,7 @@ export const LIVE_PATH = '/v1/event'
 export const LIVE_BODY_MAX = 65_536
 export const REQUEST_TIMEOUT_MS = 5000
 export const MAX_CONNECTIONS = 64
-const CHECK_INTERVAL_MS = 1000
+const CHECK_INTERVAL_MS = 5000
 const PROBE_TIMEOUT_MS = 500
 
 export interface LiveServerState {

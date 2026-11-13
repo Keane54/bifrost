@@ -24,6 +24,7 @@ import {
   REASON_POST_TIMEOUT,
   REASON_PR_CHANGED,
   REASON_PR_CLOSED,
+  REASON_PR_READ_FAILED,
   REASON_PREPARE_FAILED,
   REASON_START_FAILED,
   REASON_STOPPED,
@@ -59,7 +60,7 @@ import type { ReviewsStateStore } from '../../../src/main/reviews/state-store'
 import { trustedDirs } from '../../../src/main/reviews/trust'
 import type { RequestNotice } from '../../../src/main/reviews/watcher'
 import type { ModelChoice } from '../../../src/shared/new-session'
-import { prKey } from '../../../src/shared/reviews'
+import { prKey, REASON_GH_TIMEOUT } from '../../../src/shared/reviews'
 import type { SessionRow } from '../../../src/shared/types'
 
 const T0 = new Date('2026-11-11T10:00:00Z')
@@ -274,6 +275,7 @@ function make(o: Options = {}) {
     cleaned: [] as number[],
     clones: [] as string[],
     diffs: [] as { from: string; to: string; file: string; mode: string }[],
+    events: [] as string[],
     gh: [] as { args: string[]; input?: string }[],
     logs: [] as string[],
     notices: [] as RequestNotice[],
@@ -303,6 +305,7 @@ function make(o: Options = {}) {
     cloned: new Set<string>(),
     cloneFail: new Set<string>(),
     cloneGate: null as Promise<void> | null,
+    contextResult: null as ExecResult | null,
     fetchGate: null as Promise<void> | null,
     // gh.run and prepareWorktree throw these errors when they are set.
     ghError: null as Error | null,
@@ -374,7 +377,7 @@ function make(o: Options = {}) {
       calls.gh.push(opts?.input === undefined ? { args } : { args, input: opts.input })
       if (fake.ghError) throw fake.ghError
       const query = args.find(a => a.startsWith('query=')) ?? ''
-      if (query.includes('query ReviewContext')) return contextAnswer(ctx)
+      if (query.includes('query ReviewContext')) return fake.contextResult ?? contextAnswer(ctx)
       if (query.includes('mutation AddThread')) {
         return ok({ data: { addPullRequestReviewThread: { thread: { id: 'THR_1' } } } })
       }
@@ -409,6 +412,7 @@ function make(o: Options = {}) {
       calls.changed++
     },
     claudeJson,
+    eventNotice: t => calls.events.push(t),
     gh,
     log: m => calls.logs.push(m),
     notify: n => calls.notices.push(n),
@@ -1974,6 +1978,44 @@ describe('the review round', () => {
     for (const text of [REASON_PREPARE_FAILED, REASON_START_FAILED, REASON_END_FAILED]) {
       expect(text).not.toContain(h.home)
     }
+  })
+
+  it('a gh error on the read gives a friendly text and an Event log line', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    const line = 'GraphQL: Could not resolve to a PullRequest with the number of 7.'
+    h.fake.contextResult = { code: 1, stderr: `${line}\nmore`, stdout: '' }
+    await review(h)
+    expect(h.pr()?.lastError).toBe(REASON_PR_READ_FAILED)
+    expect(h.calls.events).toEqual([`Reviews: GitHub couldn't load ${KEY}. It said: ${line}`])
+  })
+
+  it('masks a token in the gh line of the Event log', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    const token = `ghp_${'B'.repeat(24)}`
+    h.fake.contextResult = { code: 1, stderr: `bad token ${token}\nmore`, stdout: '' }
+    await review(h)
+    expect(h.calls.events).toEqual([`Reviews: GitHub couldn't load ${KEY}. It said: bad token ***`])
+  })
+
+  it('a GraphQL error on the read gives the friendly text and an Event log line', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    const token = `ghp_${'C'.repeat(24)}`
+    h.fake.contextResult = ok({ data: {}, errors: [{ message: `Denied ${token}` }] })
+    await review(h)
+    expect(h.pr()?.lastError).toBe(REASON_PR_READ_FAILED)
+    expect(h.calls.events).toEqual([`Reviews: GitHub couldn't load ${KEY}. It said: Denied ***`])
+  })
+
+  it('a gh timeout on the read keeps its own text and writes no Event log line', async () => {
+    const h = make()
+    await ready(h, [pr(7)])
+    h.fake.contextResult = { code: 1, stderr: '', stdout: '', timedOut: true }
+    await review(h)
+    expect(h.pr()?.lastError).toBe(REASON_GH_TIMEOUT)
+    expect(h.calls.events).toEqual([])
   })
 
   it('onRows never throws, and logs a fixed text', async () => {
