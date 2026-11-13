@@ -129,7 +129,7 @@
      an alias of an existing token, so the app gets no new colour value. */
   --color-review-approve: var(--color-svc-ok);
   --color-review-comment: var(--color-box-yellow);
-  --color-review-changes: var(--color-watch-red);
+  --color-review-changes: var(--color-box-red);
 
   --font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;

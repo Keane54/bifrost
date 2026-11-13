@@ -199,7 +199,7 @@ describe('theme', () => {
   it('defines the green, amber and red review tokens as aliases', () => {
     expect(CSS).toContain('--color-review-approve: var(--color-svc-ok);')
     expect(CSS).toContain('--color-review-comment: var(--color-box-yellow);')
-    expect(CSS).toContain('--color-review-changes: var(--color-watch-red);')
+    expect(CSS).toContain('--color-review-changes: var(--color-box-red);')
     expect(token('watch-green')).toBe('#22c55e')
     expect(token('box-yellow')).toBe('#e2b93b')
   })
