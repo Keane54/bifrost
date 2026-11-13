@@ -136,12 +136,16 @@ export async function makeSessionFolders(): Promise<void> {
 // The env of the app. It has only these variables. So no CLAUDE* variable, no
 // ELECTRON_RUN_AS_NODE and no BIFROST_LIVE_LISTEN gets to the app. The fake claude is the first
 // claude on the PATH.
+//
+// The app shows no window and no Dock icon, and it never takes the focus (user decision,
+// 2026-11-13). To see the window when you debug a test, set BIFROST_SMOKE_HEADED=1.
 function launchEnv(testHome: string): Record<string, string> {
   const env: Record<string, string> = {
     BIFROST_TEST_HOME: testHome,
     HOME: REAL_HOME,
     PATH: `${FAKE_DIR}:/usr/bin:/bin:/usr/sbin:/sbin`,
   }
+  if (process.env.BIFROST_SMOKE_HEADED !== '1') env.BIFROST_TEST_HEADLESS = '1'
   for (const key of ['USER', 'LANG', 'TMPDIR']) {
     const value = process.env[key]
     if (value !== undefined) env[key] = value

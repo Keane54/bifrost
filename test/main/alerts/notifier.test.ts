@@ -80,3 +80,63 @@ describe('showNotification', () => {
     expect(vi.mocked(console.error)).toHaveBeenCalledTimes(1)
   })
 })
+
+// In a test home, Bifrost shows no macOS notification (user decision, 2026-11-13).
+describe('the notifications of a test home', () => {
+  beforeEach(() => {
+    made.length = 0
+    vi.resetModules()
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    Reflect.deleteProperty(globalThis, 'bifrostNotifications')
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    Reflect.deleteProperty(globalThis, 'bifrostNotifications')
+  })
+
+  test('a normal start shows each notification and records none', async () => {
+    const notifier = await import('../../../src/main/alerts/notifier')
+    notifier.showNotification({ body: 'b', sessionId: 's1', title: 't' }, () => {})
+    expect(made).toHaveLength(1)
+    expect(notifier.recordedNotifications()).toEqual([])
+    expect('bifrostNotifications' in globalThis).toBe(false)
+  })
+
+  test('a test home records each notification, shows none and logs one line', async () => {
+    const notifier = await import('../../../src/main/alerts/notifier')
+    notifier.recordNotifications(true)
+    const onClick = vi.fn()
+    notifier.showNotification(
+      { body: 'b', label: 'review requests', sessionId: null, title: 't' },
+      onClick,
+    )
+    notifier.showNotification({ body: 'c', sessionId: 's1', sound: true, title: 'u' }, onClick)
+    expect(made).toHaveLength(0)
+    expect(onClick).not.toHaveBeenCalled()
+    expect(notifier.recordedNotifications()).toEqual([
+      { body: 'b', label: 'review requests', sessionId: null, sound: false, title: 't' },
+      { body: 'c', label: null, sessionId: 's1', sound: true, title: 'u' },
+    ])
+    const log = vi.mocked(console.log)
+    expect(log).toHaveBeenCalledWith('Bifrost recorded a notification for review requests.')
+    expect(log).toHaveBeenCalledWith('Bifrost recorded a notification for s1.')
+  })
+
+  test('a smoke test reads the list as globalThis.bifrostNotifications', async () => {
+    const notifier = await import('../../../src/main/alerts/notifier')
+    notifier.recordNotifications(true)
+    notifier.showNotification({ body: 'b', sessionId: null, title: 't' }, () => {})
+    expect((globalThis as { bifrostNotifications?: unknown }).bifrostNotifications).toBe(
+      notifier.recordedNotifications(),
+    )
+  })
+
+  test('recordNotifications(false) shows the notifications again', async () => {
+    const notifier = await import('../../../src/main/alerts/notifier')
+    notifier.recordNotifications(true)
+    notifier.recordNotifications(false)
+    notifier.showNotification({ body: 'b', sessionId: null, title: 't' }, () => {})
+    expect(made).toHaveLength(1)
+    expect(notifier.recordedNotifications()).toEqual([])
+  })
+})

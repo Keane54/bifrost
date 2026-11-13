@@ -1,7 +1,8 @@
 // The smoke test of spec 15 (D23). It starts Bifrost with a fake claude and a test home. It checks
-// the setup dialog, the sample sessions, the animated background, the Parked tab, the open of the
-// Usage HUD from a usage notification and one chat window. It also checks that the real Claude
-// files and ~/.bifrost did not change, and that the fake claude got no unknown call.
+// the setup dialog, the hidden window, the sample sessions, the animated background, the Parked
+// tab, the open of the Usage HUD from a usage notification and one chat window. It also checks
+// that the real Claude files and ~/.bifrost did not change, and that the fake claude got no
+// unknown call.
 //
 // app.ts tells how to start the build in out/ or the packaged app.
 
@@ -50,6 +51,16 @@ test('Bifrost starts with a fake claude and shows the sample sessions', async ()
 
     // Step 3: the fake claude lists no Bifrost plugin, so the setup dialog shows.
     await skipSetup(page)
+
+    // Step 3b: the app shows no window and no Dock icon, unless BIFROST_SMOKE_HEADED=1 (user
+    // decision, 2026-11-13).
+    if (process.env.BIFROST_SMOKE_HEADED !== '1') {
+      const shown = await app.evaluate(({ app: electronApp, BrowserWindow }) => ({
+        dock: electronApp.dock?.isVisible() ?? false,
+        windows: BrowserWindow.getAllWindows().map(win => win.isVisible()),
+      }))
+      expect(shown).toEqual({ dock: false, windows: [false] })
+    }
 
     // Step 4: the All tab shows the two active sessions, but not the parked session.
     const overview = page.locator('[data-overview-id]').first()

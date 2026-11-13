@@ -7,7 +7,9 @@ import {
   type PathCheck,
   pluginEnv,
   refusedTestHome,
+  TEST_HEADLESS_ENV,
   TEST_HOME_ENV,
+  testHeadless,
   testHomeConfig,
   testHomeError,
 } from '../../src/main/test-home'
@@ -150,6 +152,22 @@ describe('test home', () => {
     expect(pluginEnv({ PATH: '/bin' }, { home: '/tmp/bh', userData: '/tmp/bh/user-data' })).toEqual(
       { CLAUDE_CONFIG_DIR: '/tmp/bh/.claude', HOME: '/tmp/bh', PATH: '/bin' },
     )
+  })
+
+  it('uses the variable BIFROST_TEST_HEADLESS for a test home with no window', () => {
+    expect(TEST_HEADLESS_ENV).toBe('BIFROST_TEST_HEADLESS')
+  })
+
+  it('testHeadless is true only with a test home and the value 1', () => {
+    const home = { home: '/tmp/bh', userData: '/tmp/bh/user-data' }
+    expect(testHeadless({ BIFROST_TEST_HEADLESS: '1' }, home)).toBe(true)
+    // A normal start never hides its window, also with the variable.
+    expect(testHeadless({ BIFROST_TEST_HEADLESS: '1' }, null)).toBe(false)
+    // Without the value 1, a test home shows its window as before.
+    for (const value of [undefined, '', '0', 'true', 'yes', ' 1']) {
+      expect(testHeadless({ BIFROST_TEST_HEADLESS: value }, home), String(value)).toBe(false)
+    }
+    expect(testHeadless({}, home)).toBe(false)
   })
 
   it('index.ts moves the logs folder into the test home', () => {

@@ -3,8 +3,9 @@
 // of a new request after a refresh, and the My PRs rows. It also checks that the real Claude
 // files and ~/.bifrost did not change, and that the fakes got no unknown call.
 //
-// The test does not click a row with the Cmd key, because that opens a browser. The window has
-// the focus, so the test does not check notifications.
+// The test does not click a row with the Cmd key, because that opens a browser. The main process
+// uses the hidden window of a headless run as a window with the focus, so no notification starts.
+// The test does not check notifications.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

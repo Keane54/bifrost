@@ -20,9 +20,10 @@ import {
 } from './ipc'
 import { buildMenuTemplate, menuKeys, modeHandlers, zoomStep } from './menu'
 import { NO_HEALTH } from './performance/health-log'
-import { refusedTestHome, testHomeConfig, testHomeError } from './test-home'
+import { refusedTestHome, testHeadless, testHomeConfig, testHomeError } from './test-home'
 import { createModeController, type ModeController } from './window/display-mode'
 import { devDockIcon } from './window/dock-icon'
+import { hideFromDock, showMainWindow } from './window/show-window'
 import { openWindowStateStore, restoreBounds } from './window/window-state'
 
 // The test home (D12). Read it before the single instance lock, because the lock uses the
@@ -30,6 +31,11 @@ import { openWindowStateStore, restoreBounds } from './window/window-state'
 const testHome = testHomeConfig(process.env, homedir())
 // A value that Bifrost refuses must not fall back to the real home.
 const badTestHome = refusedTestHome(process.env, homedir())
+// A headless test home shows no window, no Dock icon and no menu bar (user decision, 2026-11-13).
+// Leave the Dock as early as possible. macOS can show the Dock icon for a short time before the
+// app gets to this line.
+const headless = testHeadless(process.env, testHome)
+hideFromDock(app, { headless, platform: process.platform })
 if (testHome) {
   app.setPath('userData', testHome.userData)
   // The updater log must not go to the real ~/Library/Logs in a check.
@@ -138,7 +144,7 @@ async function createWindow(): Promise<void> {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    showMainWindow(mainWindow, { focus: false, headless, testHome: testHome !== null })
     // Apply the saved mode. The controller saves the mode again when it changes.
     controller
       .set(store.state.mode)
@@ -179,7 +185,8 @@ function openWindow(): void {
   createWindow().catch(err => console.error('Bifrost cannot open the window.', err))
 }
 
-// Show and focus the window of this instance. Open a window if none is open.
+// Show and focus the window of this instance. Open a window if none is open. In a test home, the
+// window shows without focus. In a headless test home, the window does not show.
 function showWindow(): void {
   if (!app.isReady()) return
   const win = BrowserWindow.getAllWindows()[0]
@@ -188,8 +195,7 @@ function showWindow(): void {
     return
   }
   if (win.isMinimized()) win.restore()
-  win.show()
-  win.focus()
+  showMainWindow(win, { focus: true, headless, testHome: testHome !== null })
 }
 
 // Start the app. Only the first instance calls this function.
@@ -225,7 +231,7 @@ function startApp(): void {
 
     // Register the IPC handlers before any window loads a page.
     // This also opens the settings store and starts the registry service.
-    registerIpc(testHome)
+    registerIpc(testHome, headless)
 
     openWindow()
 

@@ -6,6 +6,9 @@ import { realpathSync } from 'node:fs'
 import { isAbsolute, join, normalize, sep } from 'node:path'
 
 export const TEST_HOME_ENV = 'BIFROST_TEST_HOME'
+// With BIFROST_TEST_HEADLESS=1, a test home shows no window and no Dock icon, and it never takes
+// the focus. The smoke tests set it, unless BIFROST_SMOKE_HEADED=1 (user decision, 2026-11-13).
+export const TEST_HEADLESS_ENV = 'BIFROST_TEST_HEADLESS'
 
 export interface TestHome {
   home: string
@@ -75,6 +78,15 @@ export function refusedTestHome(
   const value = env[TEST_HOME_ENV]
   if (value === undefined) return null
   return testHomeConfig(env, realHome, check) === null ? value : null
+}
+
+// True when the test home runs with no window. It needs a test home and the value 1. A normal
+// start always shows its window.
+export function testHeadless(
+  env: Record<string, string | undefined>,
+  testHome: TestHome | null,
+): boolean {
+  return testHome !== null && env[TEST_HEADLESS_ENV] === '1'
 }
 
 // The error line for a refused value. An empty value shows as "(empty)".

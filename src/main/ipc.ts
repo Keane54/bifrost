@@ -53,7 +53,7 @@ import { createTerminalLauncher } from './actions/terminal-launch'
 import { findTranscript, hasMessages, readTail, TRANSCRIPT_TAIL_MAX } from './actions/transcript'
 import { checkWorktreeHead, createWorktreeActions, trackedChanges } from './actions/worktree-check'
 import { AFPLAY, createAlertMonitor, SOUND_FILE } from './alerts/alert-monitor'
-import { showNotification } from './alerts/notifier'
+import { recordNotifications, showNotification } from './alerts/notifier'
 import { PendingOpen } from './alerts/pending-open'
 import { childEnv } from './child-env'
 import { type AgentList, listAgents } from './claude/agents'
@@ -176,6 +176,7 @@ import { claudeJsonFile, readExtraUsageFlag } from './usage-alerts/claude-json'
 import { createUsageAlertMonitor, type UsageAlertMonitor } from './usage-alerts/monitor'
 import { openUsageAlertStore, usageAlertsFile } from './usage-alerts/state-store'
 import type { ModeController } from './window/display-mode'
+import { seenFocused, seenVisible } from './window/show-window'
 import { isDisplayMode } from './window/window-state'
 
 // The terminal sends this after a resize: clear the screen, then draw it again.
@@ -224,7 +225,22 @@ let pageVisible = false
 
 function setPageVisible(visible: boolean): void {
   pageVisible = visible
-  liveService?.setPageVisible(visible)
+  liveService?.setPageVisible(pollVisible())
+}
+
+// The visibility that the session poll uses. A headless test window never shows, but it polls as
+// a visible window (user decision, 2026-11-13).
+function pollVisible(): boolean {
+  return seenVisible(pageVisible, headless)
+}
+
+// True when the window has the focus. A headless test window counts as focused, as a shown window
+// of a smoke test. So no alert notification starts in a smoke test.
+function windowFocused(): boolean {
+  return seenFocused(
+    currentWindow !== null && !currentWindow.isDestroyed() && currentWindow.isFocused(),
+    headless,
+  )
 }
 // registerIpc opens the settings store one time. It is null until the store opens.
 let settingsStore: SettingsStore | null = null
@@ -236,6 +252,8 @@ let serviceStopped = false
 let liveControl: LiveControl | null = null
 // The test home of BIFROST_TEST_HOME (D12). registerIpc sets it. It is null for the real home.
 let testHome: TestHome | null = null
+// True in a headless test home (BIFROST_TEST_HEADLESS=1). registerIpc sets it.
+let headless = false
 // A click on a notification while no page is loaded waits for the next page (D13).
 const pendingOpen = new PendingOpen()
 // The Event log (spec 8.7). It lives as long as the main process, so a reload of the page keeps
@@ -497,7 +515,7 @@ function logRefusedNotification(): void {
 // shows only when the setting is on and the window is not focused, as for a box. A click shows
 // the window and opens the Reviews panel.
 function notifyReviewRequest(notice: RequestNotice): void {
-  if (!getSettings().notifications || (currentWindow?.isFocused() ?? false)) return
+  if (!getSettings().notifications || windowFocused()) return
   showNotification(
     { ...notice, label: 'review requests', sessionId: null },
     () => {
@@ -1021,7 +1039,7 @@ async function startService(
   })
   // The monitor reads the settings from the store at each update.
   const alerts = createAlertMonitor({
-    focused: () => currentWindow?.isFocused() ?? false,
+    focused: windowFocused,
     notify: n =>
       showNotification(
         n,
@@ -1054,7 +1072,7 @@ async function startService(
   service.onEvents(events => eventBatcher.push(eventLog.append(events)))
   liveRegistry = registry
   liveService = service
-  service.setPageVisible(pageVisible)
+  service.setPageVisible(pollVisible())
   // The app can quit before the store loads. Then do not start the service.
   if (!serviceStopped) service.start()
   return service
@@ -1064,11 +1082,14 @@ async function startService(
 // Call it before any window loads a page. A second call does nothing.
 // The main process finds the claude path one time. The renderer cannot set it.
 // With a test home (D12), Bifrost uses the paths of the test home, the first claude on the PATH
-// and the env of the process. It does not read the env of a login shell.
-export function registerIpc(home: TestHome | null = null): void {
+// and the env of the process. It does not read the env of a login shell. A test home records its
+// notifications and shows none. hidden is true in a headless test home.
+export function registerIpc(home: TestHome | null = null, hidden = false): void {
   if (registered) return
   registered = true
   testHome = home
+  headless = hidden
+  recordNotifications(home !== null)
   // The health log also writes health.log in the logs folder. Clear does not touch that file.
   const healthFile = createRotatingLog(app.getPath('logs'), 'health.log', {
     appendFile,
