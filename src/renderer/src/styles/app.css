@@ -123,6 +123,14 @@
   --color-svc-critical: #d4730a;
   --color-svc-maint: #a5c8f5;
 
+  /* The results of Claude on a To review row (user decision, 2026-11-13): green for Recommends
+     approval, amber for a comment draft, red for Changes required. The Review panel uses the same
+     colours for its Send as switch and its Send review button. Each one is an alias of an existing
+     token, so the app gets no new colour value. */
+  --color-review-approve: var(--color-watch-green);
+  --color-review-comment: var(--color-box-yellow);
+  --color-review-changes: var(--color-watch-red);
+
   --font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
 

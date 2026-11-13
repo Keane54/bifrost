@@ -242,6 +242,98 @@ export const REASON_COMMIT_ERROR = reasonCommitFailed(
   'an error stopped it. The log has the details.',
 )
 
+// The texts of the Approve button of the To review tab (user decision, 2026-11-13). The row shows
+// the text of a click that did not approve. Bifrost made no write for the texts of the fresh check.
+export const REASON_APPROVE_CLOSED =
+  "This pull request is closed or merged, so Bifrost didn't approve it."
+export const REASON_APPROVE_OWN = "You can't approve your own pull request."
+export const REASON_APPROVE_NOT_SUGGESTED =
+  "Claude doesn't suggest Approve for this pull request any more, so Bifrost didn't approve it."
+export const REASON_APPROVE_CHANGED =
+  "This pull request changed after Claude's review, so Bifrost didn't approve it. " +
+  'It needs a new review.'
+export const REASON_APPROVE_DONE = 'You already approved this commit on GitHub.'
+export const REASON_APPROVE_PENDING =
+  'You have a draft review on this pull request. Submit or delete it on GitHub first, ' +
+  'then try again.'
+export const REASON_APPROVE_NO_DRAFT =
+  "Bifrost couldn't find Claude's draft review on GitHub, so it didn't approve. " +
+  'The draft may have been submitted or deleted.'
+export const REASON_APPROVE_DRAFT_COMMIT =
+  "Claude's draft review is on another commit, so Bifrost didn't submit it."
+// The guard of the write refused it. Bifrost sent nothing.
+export const REASON_APPROVE_REFUSED =
+  "Bifrost stopped this approval because it didn't match Claude's review. Nothing was posted."
+// GitHub can have saved the approval. So these texts do not ask the user to try again.
+export const REASON_APPROVE_UNKNOWN =
+  "Bifrost couldn't tell if GitHub saved your approval. Click Refresh to check."
+export const REASON_APPROVE_NOT_APPROVED =
+  'GitHub saved the review, but not as an approval. Check the pull request on GitHub.'
+// GitHub refused the approval. The Event log gets the raw text.
+export const REASON_APPROVE_FAILED =
+  "GitHub didn't accept the approval. The Event log has the details."
+export const reasonApproveFailed = (message: string): string =>
+  `Bifrost couldn't approve this pull request. ${message}`
+// An error of Node before the write. The log gets the error.
+export const REASON_APPROVE_ERROR = "Bifrost couldn't approve this pull request. Please try again."
+
+// The texts of the Review panel (user decision, 2026-11-13). The panel and the row show them.
+// Bifrost wrote nothing for the texts of the fresh check and of the checks of the edits.
+export const REASON_DRAFT_CLOSED =
+  "This pull request is closed or merged, so Bifrost didn't change the draft."
+export const REASON_DRAFT_OWN = "This is your own pull request, so Bifrost didn't change the draft."
+export const REASON_DRAFT_GONE =
+  "Bifrost couldn't find Claude's draft review on GitHub, so it didn't change anything. " +
+  'The draft may have been submitted or deleted.'
+export const REASON_DRAFT_COMMIT =
+  "Claude's draft review is on another commit, so Bifrost didn't change it."
+export const REASON_DRAFT_CHANGED =
+  "This pull request changed after Claude's review, so Bifrost didn't send or approve it. " +
+  'You can still discard the draft.'
+export const REASON_DRAFT_TOO_MANY =
+  'This draft has more comments than Bifrost can show. Please finish it on GitHub.'
+export const REASON_DRAFT_EDITED =
+  'The draft changed on GitHub after you opened it, so Bifrost sent nothing. ' +
+  'Close this panel and open it again.'
+export const REASON_DRAFT_EMPTY = 'Add a summary or keep a comment, then send the review.'
+export const REASON_DRAFT_NEEDS_SUMMARY = 'Add a summary to request changes.'
+export const REASON_DRAFT_BLANK = 'One comment has no text. Write something, or remove the comment.'
+// The guard of the writes refused one. Bifrost sent nothing more.
+export const REASON_DRAFT_REFUSED =
+  "Bifrost stopped this because it didn't match Claude's draft. Nothing more was sent."
+// A change of the summary or of a comment did not work. The review is still a draft.
+export const REASON_DRAFT_EDIT_FAILED =
+  "GitHub didn't take all of your changes, so the review is still a draft. Your edits are " +
+  'still here, so you can send it again. The Event log has the details.'
+export const REASON_DRAFT_EDIT_UNKNOWN =
+  "Bifrost couldn't tell if GitHub saved all of your changes. The review is still a draft, " +
+  'and your edits are still here, so you can send it again.'
+export const REASON_DRAFT_NOT_PENDING =
+  "Claude's review isn't a draft on GitHub any more. Check the pull request on GitHub."
+export const REASON_SEND_FAILED =
+  "GitHub didn't send the review, so it's still a draft. Your edits are still here, so you " +
+  'can try again. The Event log has the details.'
+// GitHub can have sent the review. So these texts do not ask the user to try again.
+export const REASON_SEND_UNKNOWN =
+  "Bifrost couldn't tell if GitHub sent your review. Click Refresh to check."
+export const REASON_SEND_NOT_AS_SENT =
+  'GitHub saved the review, but not as you sent it. Check the pull request on GitHub.'
+export const REASON_DISCARD_FAILED =
+  "GitHub didn't delete the draft. The Event log has the details."
+export const REASON_DISCARD_UNKNOWN =
+  "Bifrost couldn't tell if GitHub deleted the draft. Click Refresh to check."
+// Approve instead deleted the draft, and then the approval did not work.
+export const REASON_INSTEAD_FAILED =
+  "The draft is deleted, but the approval didn't go through. Click Approve on the row to " +
+  'try again.'
+export const REASON_INSTEAD_UNKNOWN =
+  "The draft is deleted, but Bifrost couldn't tell if GitHub saved your approval. " +
+  'Click Refresh to check.'
+// An error of Node before a write. The log gets the error.
+export const REASON_DRAFT_ERROR = "Bifrost couldn't finish that. Please try again."
+export const reasonDraftFailed = (message: string): string =>
+  `Bifrost couldn't change the draft. ${message}`
+
 interface NoticePr {
   repo: string
   number: number

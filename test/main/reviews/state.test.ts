@@ -27,6 +27,7 @@ function valid(): ReviewsState {
     baseline: ['PR_node1'],
     drafts: [{ at: 3, body: 'b', line: 4, path: 'a.ts', prKey: KEY, reviewId: 'r1' }],
     fixFrom: null,
+    hidden: {},
     pauses: { [KEY]: 99 },
     posted: [{ at: 1, body: 'x', id: 'c1', prKey: KEY }],
     prs: { [KEY]: { ...emptyPrState(), handleCopilot: true } },
@@ -614,5 +615,38 @@ describe('parseState R3', () => {
     const data = JSON.parse(JSON.stringify(valid()))
     data.prs[KEY] = { ...emptyPrState(), handled: { PRRT_1: { at: 3, lastReplyAt: null } } }
     expect(parseState(data).prs[KEY]?.handled).toEqual({ PRRT_1: { at: 3, lastReplyAt: null } })
+  })
+})
+
+describe('parseState of the review actions (user decision, 2026-11-13)', () => {
+  it('keeps the hidden PRs with their times, and drops a bad entry', () => {
+    const data = JSON.parse(JSON.stringify(valid()))
+    data.hidden = {
+      __proto__x: 4,
+      'acme/app#13': 'soon',
+      'acme/app#14': Number.NaN,
+      'not a key': 3,
+      [KEY]: 42,
+    }
+    expect(parseState(data).hidden).toEqual({ [KEY]: 42 })
+  })
+
+  it('a file with no hidden field, or a bad one, gives no hidden PR', () => {
+    const data = JSON.parse(JSON.stringify(valid()))
+    delete data.hidden
+    expect(parseState(data).hidden).toEqual({})
+    expect(parseState({ ...data, hidden: [KEY] }).hidden).toEqual({})
+    expect(EMPTY_STATE.hidden).toEqual({})
+  })
+
+  it('keeps the deleted flag of a mark only with no draft', () => {
+    const data = JSON.parse(JSON.stringify(valid()))
+    const mark = { at: 8, headSha: 'abc', reviewId: null, value: 'comment', why: 'w' }
+    data.prs[KEY] = { ...emptyPrState(), recommendation: { ...mark, deleted: true } }
+    expect(parseState(data).prs[KEY]?.recommendation).toEqual({ ...mark, deleted: true })
+    data.prs[KEY].recommendation = { ...mark, deleted: 'yes' }
+    expect(parseState(data).prs[KEY]?.recommendation).toEqual(mark)
+    data.prs[KEY].recommendation = { ...mark, deleted: true, reviewId: 'r1' }
+    expect(parseState(data).prs[KEY]?.recommendation).toEqual({ ...mark, reviewId: 'r1' })
   })
 })

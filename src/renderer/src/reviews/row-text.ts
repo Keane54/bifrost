@@ -1,5 +1,6 @@
 // The texts of the rows of the Reviews panel.
 import {
+  type DraftAction,
   type MyPrRow,
   RECOMMENDATION_TEXT,
   type ReviewStatus,
@@ -51,29 +52,146 @@ export function toReviewText(row: ToReviewRow, now: number): string {
       return 'Approved by others'
     case 'team':
       return 'Team request'
+    case 'you-approved':
+      return 'You approved'
+    case 'you-reviewed':
+      return 'Review sent'
   }
 }
 
-// The text at the right of a To review row. A draft or a reviewed row adds its recommendation.
+// The kind of result of a To review row (ruling B1): Claude recommends approval, Claude drafted a
+// comment, Claude drafted a request for changes, the user deleted the draft to approve instead, or
+// others approved the PR. Null for each other row.
+export type RowResult = 'approve' | 'comment' | 'changes' | 'deleted' | 'others'
+
+export function resultOf(row: ToReviewRow): RowResult | null {
+  const { recommendation, state } = row
+  if (state === 'approved-by-others') return 'others'
+  if (state === 'reviewed' && row.draftDeleted) return 'deleted'
+  const withMark = state === 'reviewed' || state === 'draft-ready'
+  if (withMark && recommendation === 'approve') return 'approve'
+  if (state !== 'draft-ready') return null
+  if (recommendation === 'comment') return 'comment'
+  return recommendation === 'request-changes' ? 'changes' : null
+}
+
+const RESULT_TEXT: Record<RowResult, string> = {
+  approve: 'Recommends approval',
+  changes: 'Changes required',
+  comment: 'Draft ready',
+  deleted: 'Draft deleted',
+  others: 'Approved by others',
+}
+
+// The text of an action of the Review panel that did not work.
+const ISSUE_TEXT: Record<DraftAction, string> = {
+  approve: "Couldn't approve",
+  discard: "Couldn't discard",
+  send: "Couldn't send",
+}
+
+// The text at the right of a To review row. A row with a result of Claude shows the text of the
+// result. An Approve click or an action of the Review panel that did not work shows its own text
+// until the next poll.
 export function rightText(row: ToReviewRow, now: number): string {
-  const text = toReviewText(row, now)
-  const withRecommendation = row.state === 'draft-ready' || row.state === 'reviewed'
-  if (withRecommendation && row.recommendation !== null) {
-    return `${text} · ${RECOMMENDATION_TEXT[row.recommendation]}`
+  if (row.approveIssue !== null) {
+    return row.approveIssue.unknown ? 'Approval not confirmed' : "Couldn't approve"
   }
-  return text
+  if (row.draftIssue !== null) {
+    return row.draftIssue.unknown ? 'Not confirmed' : ISSUE_TEXT[row.draftIssue.action]
+  }
+  const result = resultOf(row)
+  return result === null ? toReviewText(row, now) : RESULT_TEXT[result]
+}
+
+// What Claude drafted, for the second line of a row.
+function draftedText(drafted: ToReviewRow['drafted']): string {
+  if (drafted === null) return 'Claude drafted a review.'
+  const n = drafted.comments
+  const comments = `${n} ${plural(n, 'comment', 'comments')}`
+  if (drafted.summary && n > 0) return `Claude drafted a summary and ${comments}.`
+  if (drafted.summary) return 'Claude drafted a summary.'
+  return n > 0 ? `Claude drafted ${comments}.` : 'Claude found nothing to change.'
+}
+
+// The second line of a row with a result (ruling B1): what Claude did, or who approved. Null for
+// each other row: it shows the author, the size and the age.
+export function resultLine(row: ToReviewRow): string | null {
+  const result = resultOf(row)
+  if (result === null) return null
+  if (result === 'deleted') return "You deleted Claude's draft. Approve when you're ready."
+  if (result !== 'others') return draftedText(row.drafted)
+  const n = row.approvals
+  const who = n === 0 ? 'Others' : `${n} ${plural(n, 'person', 'people')}`
+  return `${who} approved it, so you don't need to review it.`
+}
+
+// The buttons of a To review row, in order (ruling B1). Each result has one button. Remove shows
+// only on an approved-by-others row.
+export type RowButtonId =
+  | 'Approve'
+  | 'Comment'
+  | 'Request changes'
+  | 'Remove'
+  | 'Review'
+  | 'Try again'
+  | 'Pause'
+
+const REVIEW_BUTTON: readonly string[] = ['new', 'waiting', 'team', 'failed']
+
+export function rowButtons(row: ToReviewRow): RowButtonId[] {
+  const buttons: RowButtonId[] = []
+  if (row.approve !== null) buttons.push('Approve')
+  const result = resultOf(row)
+  if (row.draft !== null && result === 'comment') buttons.push('Comment')
+  if (row.draft !== null && result === 'changes') buttons.push('Request changes')
+  if (row.state === 'approved-by-others') buttons.push('Remove')
+  // A reviewed row whose Approve button is hidden gets Review back.
+  if (REVIEW_BUTTON.includes(row.state) || (row.state === 'reviewed' && row.approve === null)) {
+    buttons.push(row.state === 'failed' ? 'Try again' : 'Review')
+  }
+  if (row.state === 'new') buttons.push('Pause')
+  return buttons
+}
+
+const DRAFT_TIP = "Check Claude's draft, change it if you like, and send it."
+const REMOVE_TIP =
+  'Hide this pull request in Bifrost. Nothing changes on GitHub. ' +
+  'It comes back if someone asks for your review again.'
+
+// The tip of a button of a To review row. Null for a button with no tip.
+export function buttonTip(id: RowButtonId, row: ToReviewRow): string | null {
+  switch (id) {
+    case 'Approve':
+      return approveTip(row)
+    case 'Comment':
+    case 'Request changes':
+      return row.draft === 'running' ? 'Working on the draft…' : DRAFT_TIP
+    case 'Remove':
+      return REMOVE_TIP
+    default:
+      return null
+  }
 }
 
 // The tip of the right text of a To review row. Null when the state has no tip.
 export function rowTip(row: ToReviewRow): string | null {
+  if (row.approveIssue !== null) return row.approveIssue.message
+  if (row.draftIssue !== null) return row.draftIssue.message
   const why = row.why === null || row.why === '' ? '' : ` ${row.why}`
+  if (resultOf(row) === 'deleted') {
+    return "You deleted Claude's draft. Click Approve to approve this pull request."
+  }
   switch (row.state) {
-    case 'draft-ready':
+    case 'draft-ready': {
       if (row.recommendation === null) return null
-      return (
-        `Claude suggests: ${RECOMMENDATION_TEXT[row.recommendation]}.${why} ` +
-        'Check the draft on GitHub, then submit it.'
-      )
+      const text = RECOMMENDATION_TEXT[row.recommendation]
+      const next =
+        row.recommendation === 'approve'
+          ? "Click Approve to submit Claude's draft as an approval."
+          : `Click ${text} to check the draft and send it.`
+      return `Claude suggests: ${text}.${why} ${next}`
+    }
     case 'reviewed':
       return `Claude suggests: Approve.${why} Nothing was posted.`
     case 'failed':
@@ -87,15 +205,31 @@ export function rowTip(row: ToReviewRow): string | null {
       return 'Waiting for a free review slot.'
     case 'reviewing':
       return 'Claude is reviewing this pull request.'
+    case 'you-approved':
+      return 'You approved this pull request on GitHub.'
+    case 'you-reviewed':
+      return 'You sent your review on GitHub.'
     default:
       return null
   }
 }
 
+// The tip of the Approve button of a To review row.
+export function approveTip(row: ToReviewRow): string {
+  if (row.approve === 'running') return 'Approving…'
+  return row.state === 'draft-ready'
+    ? "Submit Claude's draft review on GitHub as an approval."
+    : 'Approve this pull request on GitHub.'
+}
+
 export type MenuItemId =
   | 'Open on GitHub'
   | 'Open session'
+  | 'Approve'
+  | 'Comment'
+  | 'Request changes'
   | 'Review'
+  | 'Remove'
   | 'Cancel review'
   | 'Stop session'
   | 'Pause'
@@ -115,7 +249,14 @@ const hasReview = (row: ToReviewRow): boolean =>
 export function menuItems(row: ToReviewRow): MenuItemId[] {
   const items: MenuItemId[] = ['Open on GitHub']
   if (row.sessionId !== null) items.push('Open session')
+  // The menu has Approve only while the row shows the Approve button and no write runs. The same
+  // rule applies to the buttons of the Review panel.
+  if (row.approve === 'ready') items.push('Approve')
+  const result = resultOf(row)
+  if (row.draft === 'ready' && result === 'comment') items.push('Comment')
+  if (row.draft === 'ready' && result === 'changes') items.push('Request changes')
   if (hasReview(row)) items.push('Review')
+  if (row.state === 'approved-by-others') items.push('Remove')
   if (row.state === 'queued' || row.state === 'trust-needed') items.push('Cancel review')
   if (row.sessionId !== null) items.push('Stop session')
   if (row.state === 'new') items.push('Pause')

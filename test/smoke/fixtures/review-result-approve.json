@@ -1,0 +1,9 @@
+{
+  "comments": [],
+  "headSha": "@HEAD@",
+  "pr": "acme/api#7",
+  "recommendation": "approve",
+  "summary": "The change is small, and the test covers it.",
+  "version": 1,
+  "why": "The new limit is safe for the cache."
+}

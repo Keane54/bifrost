@@ -18,7 +18,7 @@ import { useSettings } from './settings-context'
 
 // Each turn-on of Watch GitHub asks first.
 const WATCH_CONFIRM: ConfirmText = {
-  body: 'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It makes its own copy of each of their repositories, and asks you to trust each copy once. When you click Review, Claude reviews the pull request and Bifrost saves a draft review that only you can see. On your own pull requests, Claude fixes or answers new review comments, and Bifrost pushes the fixes and posts the replies. Bifrost never submits a review, approves or merges.',
+  body: 'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It makes its own copy of each of their repositories, and asks you to trust each copy once. When you click Review, Claude reviews the pull request and Bifrost saves a draft review that only you can see. On your own pull requests, Claude fixes or answers new review comments, and Bifrost pushes the fixes and posts the replies. Bifrost changes, sends or approves a review only when you click a button in the Review panel or Approve, and it never merges.',
   confirm: 'Turn on',
   title: 'Watch GitHub?',
 }

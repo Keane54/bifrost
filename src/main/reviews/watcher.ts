@@ -16,8 +16,9 @@ import {
 import type { Settings } from '../../shared/settings'
 import { MAX_NOTIFICATIONS } from '../alerts/alert-monitor'
 import { type HealthEvents, NO_HEALTH } from '../performance/health-log'
+import { REFUSED_NO_DRAFT } from './draft-panel'
 import { type Gh, type GhFailure, ghFailure } from './gh'
-import { baselineOf, buildSnapshot } from './model'
+import { type ApproveEntry, baselineOf, buildSnapshot, type DraftEntry } from './model'
 import type { PollData, PrData, RateLimit } from './pr-data'
 import { parsePoll, pollArgs } from './query'
 import type { ReviewRunner } from './rounds'
@@ -31,6 +32,7 @@ export const REFRESH_GAP_MS = 5_000
 export const REFUSED_NO_COMMENT_LINK = 'refused: no GitHub link for this comment'
 export const REFUSED_UNKNOWN_PR = 'refused: unknown pull request'
 export const REFUSED_REVIEWS_OFF = 'refused: reviews are off'
+export const REFUSED_NOT_REMOVABLE = 'refused: only a pull request that others approved can go'
 
 // Bifrost opens only a PR URL that starts with this text.
 const GITHUB_URL = 'https://github.com/'
@@ -80,6 +82,10 @@ export interface WatcherDeps {
   health?: Pick<HealthEvents, 'poll' | 'stopped'>
   // The review runner. Without it, no PR has a session.
   reviews?: Pick<ReviewRunner, 'session' | 'sessionOf' | 'trust' | 'afterPoll' | 'mine'>
+  // The result of the last Approve click of a PR (approve.ts). Without it, no row has one.
+  approval?(key: string): ApproveEntry | null
+  // The result of the last action of the Review panel for a PR (draft-panel.ts).
+  draft?(key: string): DraftEntry | null
 }
 
 export interface ReviewsWatcher {
@@ -100,6 +106,9 @@ export interface ReviewsWatcher {
   pause(key: string): Promise<void>
   // End the pause of a To review row now. The same refusal as pause.
   endPause(key: string): Promise<void>
+  // Hide an approved-by-others row in Bifrost (ruling B3). Nothing changes on GitHub. Another row
+  // gets REFUSED_NOT_REMOVABLE.
+  remove(key: string): Promise<void>
   // The URL of the PR from the last poll, or null. Only a URL that starts with
   // https://github.com/.
   urlOf(key: string): string | null
@@ -112,6 +121,8 @@ export interface ReviewsWatcher {
   minePr(key: string): PrData | null
   // The login of the user from the last poll, or null before the first good poll and after stop.
   viewer(): string | null
+  // The start time of the last good poll, or 0 before it.
+  pollStartedAt(): number
 }
 
 type Outcome = { ok: true; data: PollData } | { ok: false; failure: GhFailure }
@@ -173,13 +184,21 @@ function nextState(
   for (const [key, until] of Object.entries(s.pauses)) {
     if (until > now && Object.hasOwn(requests, key) && !arrived.has(key)) pauses[key] = until
   }
+  // A removed PR shows again after a new request for the review (ruling B3). A PR that goes from
+  // the list (closed, merged, or the request went) loses its entry. A partial answer keeps it.
+  const hidden: ReviewsState['hidden'] = {}
+  for (const [key, at] of Object.entries(s.hidden)) {
+    const pr = poll.toReview.find(p => p.key === key)
+    if (pr === undefined ? Object.hasOwn(requests, key) : pr.requestedAt <= at) hidden[key] = at
+  }
   const gone = Object.keys(s.requests).some(key => !Object.hasOwn(requests, key))
   const ended = Object.keys(pauses).length !== Object.keys(s.pauses).length
   const cleared = Object.keys(prs).some(key => prs[key] !== s.prs[key])
-  const changed = first || edited || gone || ended || cleared
+  const shown = Object.keys(hidden).length !== Object.keys(s.hidden).length
+  const changed = first || edited || gone || ended || cleared || shown
   const state: ReviewsState = first
-    ? { ...s, baseline: baselineOf(poll).items, pauses, requests, turnedOnAt: now }
-    : { ...s, pauses, prs, requests }
+    ? { ...s, baseline: baselineOf(poll).items, hidden, pauses, requests, turnedOnAt: now }
+    : { ...s, hidden, pauses, prs, requests }
   return { arrived, changed, state }
 }
 
@@ -226,7 +245,9 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
     const failed = failure === null ? {} : { ...failure }
     if (lastPoll === null) return { ...EMPTY_REVIEWS, availability: 'starting', ...failed }
     const built = buildSnapshot({
+      approval: key => deps.approval?.(key) ?? null,
       claude: key => deps.reviews?.mine(key) ?? IDLE_MINE,
+      draft: key => deps.draft?.(key) ?? null,
       now: deps.now(),
       poll: lastPoll,
       pollStartedAt,
@@ -419,8 +440,16 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
       const until = deps.now() + deps.settings().reviewsPauseMinutes * 60_000
       await changeState(s => ({ ...s, pauses: { ...s.pauses, [key]: until } }))
     },
+    pollStartedAt: () => pollStartedAt,
     rateLimit: () => lastPoll?.rateLimit ?? null,
     rebuild,
+    async remove(key) {
+      const row = snapshot.toReview.find(r => r.key === key)
+      if (row?.state !== 'approved-by-others') throw new Error(REFUSED_NOT_REMOVABLE)
+      // A request before this time never shows the PR again, also with a late local clock.
+      const at = Math.max(deps.now(), row.requestedAt)
+      await changeState(s => ({ ...s, hidden: { ...s.hidden, [key]: at } }))
+    },
     requestPoll() {
       if (!running || busy) return
       if (deps.now() - lastPollAt < REFRESH_GAP_MS) return
@@ -483,6 +512,34 @@ export function toReviewKey(watcher: ReviewsWatcher, value: unknown): string {
   if (!watcher.current().toReview.some(row => row.key === key)) {
     throw new Error(REFUSED_UNKNOWN_PR)
   }
+  return key
+}
+
+// The PR key of a reviews:approve call (ruling A1): exactly one value, the PR key of a To review
+// row of the current snapshot. Else refuse with REFUSED_UNKNOWN_PR.
+export function approveKey(watcher: ReviewsWatcher, args: readonly unknown[]): string {
+  if (args.length !== 1) throw new Error(REFUSED_UNKNOWN_PR)
+  return toReviewKey(watcher, args[0])
+}
+
+// The PR key of a reviews:remove call (ruling B3): exactly one value, the PR key of an
+// approved-by-others row of the current snapshot. Else refuse.
+export function removeKey(watcher: ReviewsWatcher, args: readonly unknown[]): string {
+  if (args.length !== 1) throw new Error(REFUSED_UNKNOWN_PR)
+  const key = toReviewKey(watcher, args[0])
+  const row = watcher.current().toReview.find(r => r.key === key)
+  if (row?.state !== 'approved-by-others') throw new Error(REFUSED_NOT_REMOVABLE)
+  return key
+}
+
+// The PR key of a call of the Review panel (ruling B10): count values, the first the PR key of a
+// To review row of the current snapshot that offers the panel. The caller checks the other
+// values. Else refuse.
+export function draftKey(watcher: ReviewsWatcher, args: readonly unknown[], count: number): string {
+  if (args.length !== count) throw new Error(REFUSED_UNKNOWN_PR)
+  const key = toReviewKey(watcher, args[0])
+  const row = watcher.current().toReview.find(r => r.key === key)
+  if (row?.draft !== 'ready') throw new Error(REFUSED_NO_DRAFT)
   return key
 }
 

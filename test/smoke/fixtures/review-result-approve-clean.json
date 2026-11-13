@@ -1,0 +1,9 @@
+{
+  "comments": [],
+  "headSha": "@HEAD@",
+  "pr": "acme/api#7",
+  "recommendation": "approve",
+  "summary": "",
+  "version": 1,
+  "why": "The change is small and safe."
+}

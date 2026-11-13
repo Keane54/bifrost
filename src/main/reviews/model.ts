@@ -1,8 +1,11 @@
 import {
   type ClaudeState,
   COPILOT_LOGIN,
+  type DraftAction,
   type MyPrRow,
   type QuestionRow,
+  type Reviewer,
+  type ReviewerStance,
   type ReviewStatus,
   type ReviewsSnapshot,
   type ToReviewRow,
@@ -14,6 +17,7 @@ import { sortMine, sortToReview } from '../../shared/reviews-order'
 import type { Settings } from '../../shared/settings'
 import type { Author, PollData, PrComment, PrData, PrReview } from './pr-data'
 import {
+  type DraftComment,
   emptyPrState,
   type Outbox,
   type PrState,
@@ -283,6 +287,10 @@ export interface ToReviewContext {
   outcome: 'drafted' | 'reviewed' | 'failed' | null
   // True when the user acted on the request (a round started or ended).
   acted: boolean
+  // True when a click of Approve worked, and no poll shows it yet.
+  approved?: boolean
+  // True when Send review of the Review panel worked, and no poll shows it yet.
+  sent?: boolean
 }
 
 // The result of the last round of a PR.
@@ -313,13 +321,129 @@ export function toReviewState(
   const direct = pr.requestedUsers.includes(viewer)
   // With team requests off, Bifrost hides a team-only request in all states except a session.
   if (!direct && !ctx.teamRequests) return null
+  // The poll can still show the draft that the click submitted.
+  if (ctx.approved === true) return 'you-approved'
+  if (ctx.sent === true) return 'you-reviewed'
   if (pr.viewerPendingReviewId !== null || ctx.outcome === 'drafted') return 'draft-ready'
+  // A new request on the same commit stays new, so it flashes as before.
+  const fresh = direct && ctx.known?.baseline !== true && !ctx.acted
+  if (viewerApproved(pr) && !fresh) return 'you-approved'
   if (ctx.outcome === 'reviewed') return 'reviewed'
   if (ctx.outcome === 'failed') return 'failed'
   if (ctx.pauseEndsAt !== null && ctx.now < ctx.pauseEndsAt) return 'paused'
   if (pr.reviewDecision === 'APPROVED') return 'approved-by-others'
   if (!direct) return 'team'
   return ctx.known?.baseline === true || ctx.acted ? 'waiting' : 'new'
+}
+
+// The result of an Approve click (user decision, 2026-11-13). approve.ts keeps one entry for
+// each PR in memory. at is the time of the click while the write runs, and the end of the write
+// after that.
+export type ApproveEntry =
+  | { phase: 'running' | 'approved'; at: number }
+  | { phase: 'failed' | 'unknown'; at: number; message: string }
+
+// The entry while its write runs, and until a poll that starts after the end of the write. That
+// poll shows the true state on GitHub. Else null. The entries of the Approve button and of the
+// Review panel use this rule.
+export function liveEntry<E extends { phase: string; at: number }>(
+  entry: E | null | undefined,
+  pollStartedAt: number,
+): E | null {
+  if (entry == null) return null
+  return entry.phase === 'running' || entry.at > pollStartedAt ? entry : null
+}
+
+export function liveApproval(
+  entry: ApproveEntry | null | undefined,
+  pollStartedAt: number,
+): ApproveEntry | null {
+  return liveEntry(entry, pollStartedAt)
+}
+
+// The result of an action of the Review panel (user decision, 2026-11-13). draft-panel.ts keeps
+// one entry for each PR in memory, with the same times as an ApproveEntry. gone is the ID of the
+// pending review that the action submitted or deleted: the snapshot does not show it, also when
+// the last poll still has it.
+export type DraftEntry = { action: DraftAction; at: number } & (
+  | { phase: 'running' }
+  | { phase: 'sent' | 'discarded'; gone: string }
+  | { phase: 'failed' | 'unknown'; message: string }
+)
+
+// The states that give the opinion of a reviewer. A COMMENTED or PENDING review does not change it.
+const OPINIONS: readonly string[] = ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED']
+
+// The one rule of "already approved" (fix round 1). The poll (viewerApproved) and the fresh check
+// before the write (approve.ts) both use it: the newest opinion of the viewer is an approval of
+// the head commit.
+export function approvedOnHead(
+  reviews: readonly { state: string; commit: string | null; submittedAt: number | null }[],
+  head: string,
+): boolean {
+  let newest: (typeof reviews)[number] | null = null
+  for (const r of reviews) {
+    if (!OPINIONS.includes(r.state)) continue
+    if (newest === null || (r.submittedAt ?? -1) >= (newest.submittedAt ?? -1)) newest = r
+  }
+  return head !== '' && newest?.state === 'APPROVED' && newest.commit === head
+}
+
+// True when the latest opinion of the viewer in the poll is an approval of the head commit.
+export function viewerApproved(pr: Pick<PrData, 'headSha' | 'viewerReviews'>): boolean {
+  return approvedOnHead(pr.viewerReviews, pr.headSha)
+}
+
+// True when the mark lets the user approve: Claude suggests Approve, or the user deleted the
+// draft of Claude with Approve instead (user decision, 2026-11-13).
+export function approvable(mark: RecommendationMark): boolean {
+  return mark.value === 'approve' || mark.deleted === true
+}
+
+// True when a To review row can get the Approve button: a reviewed or draft-ready row that shows
+// an Approve mark for the head commit, with no approval of the viewer on that commit.
+export function canApprove(
+  rowState: ToReviewState,
+  pr: Pick<PrData, 'headSha' | 'viewerReviews'>,
+  mark: RecommendationMark | null,
+): boolean {
+  if (rowState !== 'reviewed' && rowState !== 'draft-ready') return false
+  if (mark === null || !approvable(mark)) return false
+  return mark.headSha === pr.headSha && !viewerApproved(pr)
+}
+
+// True when a To review row offers the Review panel: a draft-ready row that shows a Comment or a
+// Request changes mark with a draft review of Claude (ruling B4).
+export function canEditDraft(rowState: ToReviewState, mark: RecommendationMark | null): boolean {
+  return rowState === 'draft-ready' && mark !== null && mark.reviewId !== null && !approvable(mark)
+}
+
+// The panel button of a row. An action that runs disables it. A result that is not known hides it
+// until the next poll. After a known failure, the user can click again.
+function draftButton(shown: boolean, entry: DraftEntry | null): ToReviewRow['draft'] {
+  if (!shown || entry?.phase === 'unknown') return null
+  return entry?.phase === 'running' ? 'running' : 'ready'
+}
+
+// What Claude drafted for a mark: a summary and the count of comments, from the drafts that
+// Bifrost saved for the draft review. A mark with no draft drafted nothing. Null when Bifrost
+// kept no draft of the review.
+function draftedOf(
+  mark: RecommendationMark | null,
+  drafts: readonly DraftComment[],
+): ToReviewRow['drafted'] {
+  if (mark === null || mark.deleted === true) return null
+  if (mark.reviewId === null) return { comments: 0, summary: false }
+  const own = drafts.filter(d => d.reviewId === mark.reviewId)
+  if (own.length === 0) return null
+  return { comments: own.filter(d => d.path !== '').length, summary: own.some(d => d.path === '') }
+}
+
+// The Approve button of a row. A write that runs disables it. A result that is not known hides
+// it until the next poll. After a known failure, the user can click again.
+function approveButton(shown: boolean, entry: ApproveEntry | null): ToReviewRow['approve'] {
+  if (!shown || entry?.phase === 'unknown' || entry?.phase === 'approved') return null
+  return entry?.phase === 'running' ? 'running' : 'ready'
 }
 
 // The ignore list holds "owner/*" or "owner/repo". The match ignores case.
@@ -343,6 +467,10 @@ export interface SnapshotInput {
   trust: TrustNeed[]
   // The start time of the last good poll.
   pollStartedAt: number
+  // The result of the last Approve click of the PR, or null.
+  approval?(key: string): ApproveEntry | null
+  // The result of the last action of the Review panel for the PR, or null.
+  draft?(key: string): DraftEntry | null
   claude(key: string): {
     claude: ClaudeState
     fixing: number
@@ -351,12 +479,30 @@ export interface SnapshotInput {
   }
 }
 
-function reviewers(pr: PrData, viewer: string): string[] {
-  const names: string[] = []
+// The stance of one reviewer. The latest opinion decides (an approval, a change request, or a
+// dismissal, newest by time). A later comment does not change it. A dismissed opinion, and
+// Copilot, give no colour. With no opinion, a comment gives the comment stance.
+function stanceOf(pr: PrData, login: string): ReviewerStance {
+  if (login === COPILOT_LOGIN) return 'none'
+  let latest: PrReview | null = null
+  let commented = false
+  for (const review of [...pr.reviews, ...pr.decisions]) {
+    if (review.author.login !== login) continue
+    if (review.state === 'COMMENTED') commented = true
+    if (review.state === 'COMMENTED' || review.state === 'PENDING') continue
+    if (latest === null || (review.submittedAt ?? 0) >= (latest.submittedAt ?? 0)) latest = review
+  }
+  if (latest === null) return commented ? 'commented' : 'none'
+  if (latest.state === 'APPROVED') return 'approved'
+  return latest.state === 'CHANGES_REQUESTED' ? 'changes' : 'none'
+}
+
+function reviewers(pr: PrData, viewer: string): Reviewer[] {
+  const names: Reviewer[] = []
   const add = (login: string): void => {
     if (login === viewer) return
     const name = login === COPILOT_LOGIN ? 'Copilot' : login
-    if (!names.includes(name)) names.push(name)
+    if (!names.some(n => n.name === name)) names.push({ name, stance: stanceOf(pr, login) })
   }
   for (const login of pr.requestedUsers) add(login)
   for (const review of pr.reviews) add(review.author.login)
@@ -388,27 +534,61 @@ export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
   const { poll, state, now, settings } = input
   const baseline = new Set(state.baseline)
   const toReview: ToReviewRow[] = []
-  for (const pr of poll.toReview) {
-    if (isIgnored(pr.owner, pr.repo, settings.reviewsIgnore)) continue
+  for (const polled of poll.toReview) {
+    if (isIgnored(polled.owner, polled.repo, settings.reviewsIgnore)) continue
+    // The user removed the PR in Bifrost. It counts nowhere until a new request (ruling B3).
+    if (Object.hasOwn(state.hidden, polled.key)) continue
+    const draftEntry = liveEntry(input.draft?.(polled.key), input.pollStartedAt)
+    // The last poll can still show the draft that the panel submitted or deleted.
+    const gone = draftEntry?.phase === 'sent' || draftEntry?.phase === 'discarded'
+    const pr =
+      gone && draftEntry.gone === polled.viewerPendingReviewId
+        ? { ...polled, viewerPendingReviewId: null }
+        : polled
     const pauseEndsAt = state.pauses[pr.key] ?? null
     const known = state.requests[pr.key]
     const prState = state.prs[pr.key]
     const outcome = outcomeOf(prState, pr.headSha, input.pollStartedAt)
+    const entry = liveApproval(input.approval?.(pr.key), input.pollStartedAt)
     const rowState = toReviewState(pr, poll.viewer, {
       acted: prState?.actedAt != null && known !== undefined && prState.actedAt >= known.firstSeen,
+      approved: entry?.phase === 'approved',
       known,
       now,
       outcome,
       pauseEndsAt,
+      sent: draftEntry?.phase === 'sent',
       session: input.session(pr.key),
       teamRequests: settings.reviewsTeamRequests,
     })
     if (rowState === null) continue
     const mark = shownMark(rowState, pr, prState, outcome)
+    const shown = canApprove(rowState, pr, mark)
+    const issue = entry?.phase === 'failed' || entry?.phase === 'unknown' ? entry : null
+    const withMark = rowState === 'reviewed' || rowState === 'draft-ready'
+    const draftIssue =
+      draftEntry?.phase === 'failed' || draftEntry?.phase === 'unknown' ? draftEntry : null
     toReview.push({
       additions: pr.additions,
+      approvals: pr.approvals,
+      approve: approveButton(shown, entry),
+      approveIssue:
+        issue !== null && withMark
+          ? { message: issue.message, unknown: issue.phase === 'unknown' }
+          : null,
       author: pr.author,
       deletions: pr.deletions,
+      draft: draftButton(canEditDraft(rowState, mark), draftEntry),
+      draftDeleted: mark?.deleted === true,
+      drafted: draftedOf(mark, state.drafts),
+      draftIssue:
+        draftIssue !== null && withMark
+          ? {
+              action: draftIssue.action,
+              message: draftIssue.message,
+              unknown: draftIssue.phase === 'unknown',
+            }
+          : null,
       error: rowState === 'failed' ? (prState?.lastError ?? null) : null,
       flash: rowState === 'new',
       key: pr.key,

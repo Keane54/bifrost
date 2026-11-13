@@ -14,6 +14,25 @@
 # ReviewContext query gets review-context.json. The create of a pending review saves stdin to
 # review-post.json. Each fixture gets the content of smoke-head in place of @HEAD@.
 #
+# The approve-round mode applies when gh-fixtures holds approve-round. It is the review-round mode
+# with an Approve result of the fake claude. After the post of the review, the ReviewContext query
+# gets review-context-draft.json, which has the draft review of Bifrost as the pending review of
+# the viewer. The ApproveDraft write saves the file gh-approved in the test home and gives a good
+# answer. After that write, the poll gets review-round-poll-3.json, which has no pending review
+# and an approval of the viewer on the head. Each poll after the write adds one line to
+# gh-polls-approved, so the smoke test can wait for a poll.
+#
+# The approve-head-round mode is the same with an Approve result that has nothing to post. So no
+# draft review exists, and the ApproveHead write approves the head with no text. It saves
+# gh-approved in the same way.
+#
+# In the review-round mode, the Review panel (user decision, 2026-11-13) can send the draft. After
+# the post of the review, the ReviewContext query gets review-context-draft.json, and the
+# DraftReview query gets review-draft.json. The EditBody write gives a good answer. The
+# SendChanges write saves the file gh-sent in the test home and gives a good answer. After that
+# write, the poll gets review-round-poll-sent.json, which has no review request. Each poll after
+# the write adds one line to gh-polls-sent.
+#
 # The request-round mode applies when gh-fixtures holds request-round. The first poll gets
 # request-round-poll-1.json. Each later poll gets request-round-poll-2.json, which has one new
 # review thread. The script puts the time of the first later poll in place of @CREATED@, and it
@@ -47,7 +66,7 @@ is_read_query() {
       ;;
     'query=query ReviewContext('* | 'query=query RequestContext('*) known=pr ;;
     'query=query RequestThreads('* | 'query=query RequestComments('*) known=pr ;;
-    'query=query ThreadComments('*) known=node ;;
+    'query=query ThreadComments('* | 'query=query DraftReview('*) known=node ;;
     *) return 1 ;;
   esac
   shift 4
@@ -158,21 +177,67 @@ if [ -n "$home" ] && [ -f "$home/gh-fixtures" ]; then
   mode=$(cat "$home/gh-fixtures")
 fi
 
-if [ "$mode" = review-round ]; then
+if [ "$mode" = review-round ] || [ "$mode" = approve-round ] || [ "$mode" = approve-head-round ]
+then
   head=$(cat "$home/smoke-head")
   if [ "$#" -ge 4 ] && [ "$1 $2 $3" = 'api graphql -f' ]; then
     case "$4" in
       'query=query Poll {'*)
         poll=review-round-poll-1.json
-        if [ -f "$home/review-post.json" ]; then
+        if [ -f "$home/gh-sent" ]; then
+          poll=review-round-poll-sent.json
+          echo poll >>"$home/gh-polls-sent"
+        elif [ -f "$home/gh-approved" ]; then
+          poll=review-round-poll-3.json
+          echo poll >>"$home/gh-polls-approved"
+        elif [ -f "$home/review-post.json" ]; then
           poll=review-round-poll-2.json
         fi
         sed "s/@HEAD@/$head/g" "$dir/../fixtures/$poll"
         exit 0
         ;;
       'query=query ReviewContext('*)
-        sed "s/@HEAD@/$head/g" "$dir/../fixtures/review-context.json"
+        context=review-context.json
+        if [ "$mode" != approve-head-round ] && [ -f "$home/review-post.json" ]; then
+          context=review-context-draft.json
+        fi
+        sed "s/@HEAD@/$head/g" "$dir/../fixtures/$context"
         exit 0
+        ;;
+      'query=query DraftReview('*)
+        sed "s/@HEAD@/$head/g" "$dir/../fixtures/review-draft.json"
+        exit 0
+        ;;
+      'query=mutation EditBody('*)
+        if [ "$mode" = review-round ]; then
+          review='{"pullRequestReview":{"id":"PRR_fake","state":"PENDING"}}'
+          printf '{"data":{"updatePullRequestReview":%s}}\n' "$review"
+          exit 0
+        fi
+        ;;
+      'query=mutation SendChanges('*)
+        if [ "$mode" = review-round ]; then
+          : >"$home/gh-sent"
+          review='{"pullRequestReview":{"id":"PRR_fake","state":"CHANGES_REQUESTED"}}'
+          printf '{"data":{"submitPullRequestReview":%s}}\n' "$review"
+          exit 0
+        fi
+        ;;
+      'query=mutation ApproveDraft('*)
+        if [ "$mode" = approve-round ]; then
+          : >"$home/gh-approved"
+          review='{"pullRequestReview":{"id":"PRR_fake","state":"APPROVED"}}'
+          printf '{"data":{"submitPullRequestReview":%s}}\n' "$review"
+          exit 0
+        fi
+        ;;
+      'query=mutation ApproveHead('*)
+        if [ "$mode" = approve-head-round ]; then
+          : >"$home/gh-approved"
+          review='{"pullRequestReview":{"id":"PRR_head","state":"APPROVED"}}'
+          printf '{"data":{"addPullRequestReview":%s}}\n' "$review"
+          exit 0
+        fi
         ;;
     esac
   fi

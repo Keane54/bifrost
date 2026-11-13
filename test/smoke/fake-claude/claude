@@ -6,9 +6,12 @@
 # in the input folder of a round and in the worktree of a request round.
 #
 # A review session (claude --bg with --restricted) writes the result file of the review and
-# starts a sleep as the process of the session. The file fake-agents.json in the test home then
-# holds the entry of the session, and agents --json gives that file in place of the fixture. The
-# entry shows busy for BUSY_SECONDS and then idle, as the real claude does in one turn.
+# starts a sleep as the process of the session. When gh-fixtures in the test home holds
+# approve-round, the result is review-result-approve.json. For approve-head-round, it is
+# review-result-approve-clean.json, an Approve with nothing to post. Else it is review-result.json.
+# The file fake-agents.json in the test home then holds the entry of the session, and agents
+# --json gives that file in place of the fixture. The entry shows busy for BUSY_SECONDS and then
+# idle, as the real claude does in one turn.
 #
 # A request session (claude --bg with --setting-sources) adds one line to src/limit.ts in its
 # cwd, the worktree of the PR. Then it writes the result file of the round and starts a sleep in
@@ -187,7 +190,13 @@ if [ "${1:-}" = --bg ] && [ "$restricted" = yes ] && [ -n "$home" ]; then
   refuse_untrusted
   input=${last#*bifrost-input=}
   head=$(sed -n 's/^ *"headSha": "\([0-9a-f]*\)",*$/\1/p' "$input")
-  sed "s/@HEAD@/$head/g" "$dir/../fixtures/review-result.json" >"$(dirname "$input")/result.json"
+  # The approve-round mode of the fake gh gets a review with an Approve recommendation.
+  result=review-result.json
+  case "$(cat "$home/gh-fixtures" 2>/dev/null)" in
+    approve-round) result=review-result-approve.json ;;
+    approve-head-round) result=review-result-approve-clean.json ;;
+  esac
+  sed "s/@HEAD@/$head/g" "$dir/../fixtures/$result" >"$(dirname "$input")/result.json"
   start_session
   exit 0
 fi

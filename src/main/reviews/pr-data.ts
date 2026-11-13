@@ -29,6 +29,13 @@ export interface PrThread {
 
 export type ReviewState = 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
 
+// A review of the viewer for the Approve button: its state, its commit and its time.
+export interface ViewerOpinion {
+  state: ReviewState
+  commit: string | null
+  submittedAt: number | null
+}
+
 export interface PrReview {
   id: string
   databaseId: number
@@ -77,6 +84,12 @@ export interface PrData {
   baseRef: string
   isCrossRepository: boolean
   viewerPendingReviewId: string | null
+  // The latest opinion of the viewer, from latestOpinionatedReviews: 0 or 1 review. The Approve
+  // button needs it. Only a To review PR reads it. A My PRs PR has an empty list.
+  viewerReviews: ViewerOpinion[]
+  // The count of the other reviewers whose latest opinion approves the PR, from the same list.
+  // Only a To review PR reads it. A My PRs PR has 0.
+  approvals: number
   // Each flag is true when GitHub has more items in that list than the query reads.
   // The threads flag is also true when a thread has more comments than the query reads.
   // The reviews flag covers the reviews and the decisions.

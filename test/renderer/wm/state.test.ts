@@ -42,6 +42,11 @@ describe('wm state', () => {
     expect(run([open('service-status')]).frames[0]?.rect).toMatchObject({ h: 240, w: 420 })
   })
 
+  it('panelKind accepts review-draft, the Review panel', () => {
+    expect(panelKind('review-draft')).toBe('review-draft')
+    expect(DEFAULT_SIZES['review-draft']).toEqual({ h: 560, w: 620 })
+  })
+
   it('panelKind accepts answer', () => {
     expect(panelKind('answer')).toBe('answer')
     expect(DEFAULT_SIZES.answer).toEqual({ h: 420, w: 560 })

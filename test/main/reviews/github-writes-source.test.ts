@@ -3,12 +3,20 @@
 // of the user and set its body. R3 replies to a thread, resolves a thread, adds a PR comment and
 // asks a reviewer for a new review, each in reviews/request-writes.ts. When the user turns on
 // signed commits, R3 also sends the fix commit with createCommitOnBranch, in the same file, with
-// its body on stdin. Only reviews/request-push.ts calls that write. Bifrost never submits,
-// approves, requests changes, dismisses, deletes, edits, hides, unresolves or merges, and it never
-// closes, reopens, changes or converts a PR. This test reads each .ts file of src/main and fails
-// when a call or a field for one of these shows up. Where it can, a rule allows a known form, and
-// refuses all others. If a pattern finds a harmless text in a file, make the pattern more exact.
-// Never remove a pattern.
+// its body on stdin. Only reviews/request-push.ts calls that write. The Approve button of the To
+// review tab (user decision, 2026-11-13) has two writes in reviews/approve-review.ts: an approval
+// of the reviewed commit, and the submit of the draft review of Claude as an approval. Each has
+// the event APPROVE in its text, and only reviews/approve.ts calls them, after a click of the
+// user. The Review panel (user decision, 2026-11-13) has six writes in reviews/draft-writes.ts:
+// it changes the summary or a comment of the draft review of Claude, removes a comment, deletes
+// the draft, or submits it. One submit has the event COMMENT in its text, and the other has
+// REQUEST_CHANGES. Only reviews/draft-panel.ts calls them, after a click of the user.
+// Bifrost never dismisses, unresolves or merges. It never edits, deletes or hides a comment or a
+// review, except the draft review of Claude in the Review panel. It never closes, reopens,
+// changes or converts a PR. It never submits or approves a review in another way. This test reads
+// each .ts file of src/main and fails when a call or a field for one of these shows up. Where it
+// can, a rule allows a known form, and refuses all others. If a pattern finds a harmless text in
+// a file, make the pattern more exact. Never remove a pattern.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -19,6 +27,14 @@ const MAIN = fileURLToPath(new URL('../../../src/main/', import.meta.url))
 // The path of each file is relative to src/main, with forward slashes. POSTERS gives each file
 // that holds a GraphQL mutation, with the mutation fields that it can use.
 const POSTERS: Record<string, readonly string[]> = {
+  'reviews/approve-review.ts': ['addPullRequestReview', 'submitPullRequestReview'],
+  'reviews/draft-writes.ts': [
+    'updatePullRequestReview',
+    'updatePullRequestReviewComment',
+    'deletePullRequestReviewComment',
+    'deletePullRequestReview',
+    'submitPullRequestReview',
+  ],
   'reviews/pending-review.ts': ['addPullRequestReviewThread', 'updatePullRequestReview'],
   'reviews/request-writes.ts': [
     'addPullRequestReviewThreadReply',
@@ -33,6 +49,12 @@ const POSTER = 'reviews/pending-review.ts'
 const REQUEST_WRITES = 'reviews/request-writes.ts'
 // The only file that calls the signed commit write of request-writes.ts.
 const SIGNED_PUSHER = 'reviews/request-push.ts'
+// The file of the two approve writes, and the only file that calls them.
+const APPROVER = 'reviews/approve-review.ts'
+const APPROVE_FLOW = 'reviews/approve.ts'
+// The file of the six writes of the Review panel, and the only file that calls them.
+const DRAFTER = 'reviews/draft-writes.ts'
+const DRAFT_FLOW = 'reviews/draft-panel.ts'
 // The one gh call of request-writes.ts that sends its body on stdin: the signed commit.
 const COMMIT_CALL = /\[\s*'api'\s*,\s*'graphql'\s*,\s*'--input'\s*,\s*'-'\s*,?\s*\]/g
 const isPoster = (file: string): boolean => Object.hasOwn(POSTERS, file)
@@ -322,8 +344,27 @@ function codeOf(text: string): string {
     .join('\n')
 }
 
+// The exact text of an allowed approve write, with any white space between its words.
+const exactText = (query: string): RegExp =>
+  new RegExp(
+    flat(query)
+      .split(' ')
+      .map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('\\s+'),
+    'g',
+  )
+
+// approve-review.ts can hold the two approve writes, each exactly as APPROVE_QUERIES gives it, and
+// draft-writes.ts can hold the six draft writes of DRAFT_QUERIES. The rules read the rest of each
+// file. So another event, another field or a second field in that file shows as a forbidden name
+// or as an event key.
+function withoutAllowedWrites(code: string, file: string): string {
+  const allowed = file === APPROVER ? APPROVE_QUERIES : file === DRAFTER ? DRAFT_QUERIES : []
+  return allowed.reduce((text, query) => text.replace(exactText(query), ''), code)
+}
+
 function ruleNames(text: string, file: string): string[] {
-  const code = codeOf(text)
+  const code = withoutAllowedWrites(codeOf(text), file)
   return RULES.filter(rule => rule.finds(code, file)).map(rule => rule.name)
 }
 
@@ -344,6 +385,7 @@ describe('GitHub writes in src/main', () => {
   })
 
   it('has no call or field that submits, approves, requests changes, dismisses or merges', () => {
+    // The writes of approve-review.ts and draft-writes.ts are the only exceptions. See below.
     const found = sourceFiles().flatMap(file =>
       ruleNames(readFileSync(join(MAIN, file), 'utf8'), file).map(name => `${file}: ${name}`),
     )
@@ -374,6 +416,60 @@ describe('GitHub writes in src/main', () => {
     const queries = [...code.matchAll(/`(\s*mutation\b[^`]*)`/g)].map(m => flat(m[1] ?? ''))
     expect(queries.sort()).toEqual(WRITE_QUERIES.map(query => flat(query.slice(1, -1))).sort())
     expect(count(code, /\bmutation\b/g)).toBe(WRITE_QUERIES.length)
+  })
+
+  it('has exactly the two approve writes in approve-review.ts, each with the event APPROVE', () => {
+    const code = codeOf(readFileSync(join(MAIN, APPROVER), 'utf8'))
+    const queries = [...code.matchAll(/`(\s*mutation\b[^`]*)`/g)].map(m => flat(m[1] ?? ''))
+    expect(queries.sort()).toEqual(APPROVE_QUERIES.map(query => flat(query.slice(1, -1))).sort())
+    expect(count(code, /\bmutation\b/g)).toBe(APPROVE_QUERIES.length)
+    expect(count(code, /\bevent\s*:\s*APPROVE\b/g)).toBe(APPROVE_QUERIES.length)
+    // Outside the two writes, the file has no mutation and no event. No variable gives the event.
+    expect(withoutAllowedWrites(code, APPROVER)).not.toMatch(/\bmutation\b|\bevent\b/)
+    // No other review event shows in the file.
+    expect(code).not.toMatch(/\b(?:REQUEST_CHANGES|COMMENT|DISMISS)\b/)
+  })
+
+  it('calls the approve writes only from approve.ts', () => {
+    const read = (file: string): string => codeOf(readFileSync(join(MAIN, file), 'utf8'))
+    const users = sourceFiles().filter(file => /\b(?:approveHead|approveDraft)\b/.test(read(file)))
+    expect(users).toEqual([APPROVE_FLOW, APPROVER].sort())
+    // addPullRequestReview shows only in approve-review.ts. submitPullRequestReview shows only in
+    // approve-review.ts and draft-writes.ts.
+    const adds = sourceFiles().filter(file => /\baddPullRequestReview\b/.test(read(file)))
+    expect(adds).toEqual([APPROVER])
+    const submits = sourceFiles().filter(file => /submitPullRequestReview/.test(read(file)))
+    expect(submits).toEqual([APPROVER, DRAFTER].sort())
+    // The flow sends no GraphQL text of its own.
+    expect(read(APPROVE_FLOW)).not.toMatch(/\bmutation\b|'graphql'/)
+  })
+
+  it('has exactly the six draft writes in draft-writes.ts, each submit with its own event', () => {
+    const code = codeOf(readFileSync(join(MAIN, DRAFTER), 'utf8'))
+    const queries = [...code.matchAll(/`(\s*mutation\b[^`]*)`/g)].map(m => flat(m[1] ?? ''))
+    expect(queries.sort()).toEqual(DRAFT_QUERIES.map(query => flat(query.slice(1, -1))).sort())
+    expect(count(code, /\bmutation\b/g)).toBe(DRAFT_QUERIES.length)
+    expect(count(code, /\bevent\s*:\s*COMMENT\b/g)).toBe(1)
+    expect(count(code, /\bevent\s*:\s*REQUEST_CHANGES\b/g)).toBe(1)
+    // Outside the six writes, the file has no mutation and no event. No variable gives the event.
+    expect(withoutAllowedWrites(code, DRAFTER)).not.toMatch(/\bmutation\b|\bevent\b/)
+    // The file never approves or dismisses.
+    expect(code).not.toMatch(/\b(?:APPROVE|DISMISS)\b/)
+  })
+
+  it('calls the draft writes only from draft-panel.ts', () => {
+    const read = (file: string): string => codeOf(readFileSync(join(MAIN, file), 'utf8'))
+    const users = sourceFiles().filter(file => /\bwriteDraft\b/.test(read(file)))
+    expect(users).toEqual([DRAFT_FLOW, DRAFTER].sort())
+    // The comment writes and the delete of a review show only in draft-writes.ts.
+    const names = new RegExp(
+      String.raw`\b(?:updatePullRequestReviewComment|deletePullRequestReviewComment)\b|` +
+        'deletePullRequestReview',
+    )
+    const named = sourceFiles().filter(file => names.test(read(file)))
+    expect(named).toEqual([DRAFTER])
+    // The flow sends no GraphQL text of its own.
+    expect(read(DRAFT_FLOW)).not.toMatch(/\bmutation\b|'graphql'/)
   })
 
   it('creates the pending review only with POST and no event', () => {
@@ -434,6 +530,70 @@ const REVIEWS_BY_VARIABLE =
 const REPLY_ALIAS =
   '`mutation A($t: ID!) { addPullRequestReviewThreadReply: ' +
   'unresolveReviewThread(input: { threadId: $t }) { a } }`'
+// The two approve writes of approve-review.ts (user decision, 2026-11-13). White space does not
+// count.
+const ADD_APPROVE =
+  '`mutation ApproveHead($pr: ID!, $commit: GitObjectID!) {\n' +
+  '  addPullRequestReview(input: { pullRequestId: $pr, commitOID: $commit, event: APPROVE }) {\n' +
+  '    pullRequestReview { id state }\n  }\n}`'
+const SUBMIT_APPROVE =
+  '`mutation ApproveDraft($review: ID!) {\n' +
+  '  submitPullRequestReview(input: { pullRequestReviewId: $review, event: APPROVE }) {\n' +
+  '    pullRequestReview { id state }\n  }\n}`'
+const APPROVE_QUERIES = [ADD_APPROVE, SUBMIT_APPROVE]
+// The six writes of draft-writes.ts (user decision, 2026-11-13). White space does not count.
+const EDIT_BODY =
+  '`mutation EditBody($review: ID!, $body: String!) {\n' +
+  '  updatePullRequestReview(input: { pullRequestReviewId: $review, body: $body }) {\n' +
+  '    pullRequestReview { id state }\n  }\n}`'
+const EDIT_COMMENT =
+  '`mutation EditComment($comment: ID!, $body: String!) {\n' +
+  '  updatePullRequestReviewComment(input: { pullRequestReviewCommentId: $comment, ' +
+  'body: $body }) {\n    pullRequestReviewComment { id }\n  }\n}`'
+const REMOVE_COMMENT =
+  '`mutation RemoveComment($comment: ID!) {\n' +
+  '  deletePullRequestReviewComment(input: { id: $comment }) {\n' +
+  '    pullRequestReview { id }\n  }\n}`'
+const DISCARD_DRAFT =
+  '`mutation DiscardDraft($review: ID!) {\n' +
+  '  deletePullRequestReview(input: { pullRequestReviewId: $review }) {\n' +
+  '    pullRequestReview { id }\n  }\n}`'
+const SEND_COMMENT =
+  '`mutation SendComment($review: ID!) {\n' +
+  '  submitPullRequestReview(input: { pullRequestReviewId: $review, event: COMMENT }) {\n' +
+  '    pullRequestReview { id state }\n  }\n}`'
+const SEND_CHANGES = SEND_COMMENT.replace('SendComment', 'SendChanges').replace(
+  'event: COMMENT',
+  'event: REQUEST_CHANGES',
+)
+const DRAFT_QUERIES = [
+  EDIT_BODY,
+  EDIT_COMMENT,
+  REMOVE_COMMENT,
+  DISCARD_DRAFT,
+  SEND_COMMENT,
+  SEND_CHANGES,
+]
+const SEND_APPROVE = SEND_COMMENT.replace('event: COMMENT', 'event: APPROVE')
+const SEND_DISMISS = SEND_COMMENT.replace('event: COMMENT', 'event: DISMISS')
+const SEND_BY_VARIABLE = SEND_COMMENT.replace('event: COMMENT', 'event: $event')
+const SEND_AND_MERGE = SEND_COMMENT.replace(
+  '{ id state }\n  }',
+  '{ id state }\n  }\n  mergePullRequest(input: { pullRequestId: $pr }) { a }',
+)
+const DISMISS_DRAFT = DISCARD_DRAFT.replace('deletePullRequestReview(', 'dismissPullRequestReview(')
+const EDIT_ISSUE_COMMENT = EDIT_COMMENT.replace(
+  'updatePullRequestReviewComment(',
+  'updateIssueComment(',
+)
+const SUBMIT_CHANGES = SUBMIT_APPROVE.replace('event: APPROVE', 'event: REQUEST_CHANGES')
+const ADD_COMMENT = ADD_APPROVE.replace('event: APPROVE', 'event: COMMENT')
+const ADD_BY_VARIABLE = ADD_APPROVE.replace('event: APPROVE', 'event: $event')
+const ADD_WITH_BODY = ADD_APPROVE.replace('event: APPROVE', 'event: APPROVE, body: $body')
+const SUBMIT_AND_MERGE = SUBMIT_APPROVE.replace(
+  '{ id state }\n  }',
+  '{ id state }\n  }\n  mergePullRequest(input: { pullRequestId: $pr }) { a }',
+)
 const REPLY_AND_RESOLVE =
   '`mutation A { addPullRequestReviewThreadReply(input: {}) { a } ' +
   'resolveReviewThread(input: {}) { a } }`'
@@ -554,8 +714,39 @@ describe('the rules', () => {
     [RULE.secondField, TWO_WRITES, POSTER],
     [RULE.inputField, TWO_WRITES, POSTER],
     [RULE.eventKey, APPROVE_STDIN, 'info/pr-info.ts'],
+    // An approve write in approve-review.ts that is not exactly one of the two.
+    ['submitPullRequestReview', SUBMIT_CHANGES, APPROVER],
+    ['addPullRequestReview', ADD_COMMENT, APPROVER],
+    ['addPullRequestReview', ADD_BY_VARIABLE, APPROVER],
+    [RULE.eventKey, ADD_BY_VARIABLE, APPROVER],
+    ['addPullRequestReview', ADD_WITH_BODY, APPROVER],
+    ['submitPullRequestReview', SUBMIT_AND_MERGE, APPROVER],
+    ['mergePullRequest', SUBMIT_AND_MERGE, APPROVER],
+    [RULE.eventKey, "const write = { event: 'APPROVE', key }", APPROVER],
+    [RULE.shortEvent, 'const write = { event, key }', APPROVER],
+    // The two approve writes in another file.
+    ['submitPullRequestReview', SUBMIT_APPROVE, APPROVE_FLOW],
+    ['addPullRequestReview', ADD_APPROVE, REQUEST_WRITES],
+    [RULE.mutationWord, ADD_APPROVE, 'reviews/x.ts'],
     [RULE.input, APPROVE_STDIN, 'info/pr-info.ts'],
     [RULE.ghCall, APPROVE_STDIN, 'info/pr-info.ts'],
+    // A draft write in draft-writes.ts that is not exactly one of the six.
+    ['submitPullRequestReview', SEND_APPROVE, DRAFTER],
+    ['submitPullRequestReview', SEND_DISMISS, DRAFTER],
+    ['submitPullRequestReview', SEND_BY_VARIABLE, DRAFTER],
+    [RULE.eventKey, SEND_BY_VARIABLE, DRAFTER],
+    ['submitPullRequestReview', SEND_AND_MERGE, DRAFTER],
+    ['mergePullRequest', SEND_AND_MERGE, DRAFTER],
+    ['dismissPullRequestReview', DISMISS_DRAFT, DRAFTER],
+    ['updateIssueComment', EDIT_ISSUE_COMMENT, DRAFTER],
+    [RULE.eventKey, "const write = { event: 'COMMENT', key }", DRAFTER],
+    [RULE.shortEvent, 'const write = { event, key }', DRAFTER],
+    // The draft writes in another file.
+    ['deletePullRequestReview', DISCARD_DRAFT, DRAFT_FLOW],
+    ['submitPullRequestReview', SEND_CHANGES, APPROVER],
+    ['updatePullRequestReviewComment', EDIT_COMMENT, POSTER],
+    ['deletePullRequestReviewComment', REMOVE_COMMENT, REQUEST_WRITES],
+    [RULE.mutationWord, SEND_COMMENT, 'reviews/x.ts'],
   ]
   it.each(bad)('%s finds %j in %s', (rule, text, file) => {
     expect(ruleNames(text, file)).toContain(rule)
@@ -589,6 +780,11 @@ describe('the rules', () => {
     [COMMENT, REQUEST_WRITES],
     [REVIEWS, REQUEST_WRITES],
     [COMMIT_ON_BRANCH, REQUEST_WRITES],
+    [ADD_APPROVE, APPROVER],
+    [SUBMIT_APPROVE, APPROVER],
+    [`${ADD_APPROVE}\n${SUBMIT_APPROVE}`, APPROVER],
+    ...DRAFT_QUERIES.map((query): [string, string] => [query, DRAFTER]),
+    [DRAFT_QUERIES.join('\n'), DRAFTER],
     // The commit call sends its body on stdin.
     ["gh.run(['api', 'graphql', '--input', '-'], { input: body })", REQUEST_WRITES],
     // The R2 field and the R3 field start with a forbidden name, but are other words.

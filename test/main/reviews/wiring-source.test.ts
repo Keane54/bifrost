@@ -1,9 +1,22 @@
 // A source test of the review wiring in ipc.ts. It reads the file as text.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 const code = readFileSync(join(__dirname, '../../../src/main/ipc.ts'), 'utf8')
+
+// The files of src/main with a code line that matches the pattern. A full-line comment does not
+// count.
+function callers(pattern: RegExp): string[] {
+  const main = join(__dirname, '../../../src/main')
+  return readdirSync(main, { recursive: true })
+    .map(entry => String(entry).split('\\').join('/'))
+    .filter(file => /\.tsx?$/.test(file))
+    .filter(file => {
+      const lines = readFileSync(join(main, file), 'utf8').split('\n')
+      return lines.some(line => !line.trim().startsWith('//') && pattern.test(line))
+    })
+}
 
 // The text of one ipcMain.handle call, from its channel to the next handle call.
 function handler(channel: string): string {
@@ -25,6 +38,12 @@ const NEW_CHANNELS = [
   'reviews:handle',
   'reviews:retry',
   'reviews:answer',
+  'reviews:approve',
+  'reviews:draft',
+  'reviews:draft-send',
+  'reviews:draft-discard',
+  'reviews:draft-approve',
+  'reviews:remove',
 ]
 
 describe('the review wiring in ipc.ts', () => {
@@ -44,6 +63,52 @@ describe('the review wiring in ipc.ts', () => {
       expect(handler(channel), channel).toMatch(/rowKey\(/)
     }
     expect(handler('reviews:review')).toMatch(/toReviewKey\(/)
+  })
+
+  test('reviews:approve takes only one PR key of a To review row, and only calls approve', () => {
+    const text = handler('reviews:approve')
+    expect(text).toMatch(/\(e, \.\.\.args: unknown\[\]\) =>/)
+    expect(text).toMatch(/approveKey\(whileOn\(await reviews\), args\)/)
+    expect(text).toMatch(/\.approve\(k\)/)
+    // The approver is the only caller of the approve writes. ipc.ts never calls them. It calls
+    // approve only in this handler and in Approve instead of the Review panel (ruling B9).
+    expect(code).not.toMatch(/\bapproveHead\b|\bapproveDraft\b/)
+    expect(code.match(/\.approve\(/g)).toHaveLength(2)
+    expect(handler('reviews:draft-approve').match(/\.approve\(k\)/g)).toHaveLength(1)
+  })
+
+  test('the Review panel channels take the PR key of a row with a draft, and checked edits', () => {
+    const counts: [string, number][] = [
+      ['reviews:draft', 1],
+      ['reviews:draft-send', 2],
+      ['reviews:draft-discard', 1],
+      ['reviews:draft-approve', 1],
+    ]
+    for (const [channel, n] of counts) {
+      const text = handler(channel)
+      expect(text, channel).toMatch(/\(e, \.\.\.args: unknown\[\]\) =>/)
+      expect(text, channel).toMatch(
+        new RegExp(`draftKey\\(whileOn\\(await reviews\\), args, ${n}\\)`),
+      )
+    }
+    expect(handler('reviews:draft-send')).toMatch(/checkDraftEdits\(args\[1\]\)/)
+    // Only ipc.ts calls Approve instead of the draft editor.
+    expect(handler('reviews:draft-approve')).toMatch(/\.approveInstead\(k, /)
+  })
+
+  test('reviews:remove takes only one PR key of an approved-by-others row', () => {
+    const text = handler('reviews:remove')
+    expect(text).toMatch(/\(e, \.\.\.args: unknown\[\]\) =>/)
+    expect(text).toMatch(/removeKey\(whileOn\(await reviews\), args\)/)
+    expect(text).toMatch(/\.remove\(k\)/)
+  })
+
+  test('no file of src/main calls approve of the approver, except ipc.ts', () => {
+    expect(callers(/\.approve\(/)).toEqual(['ipc.ts'])
+  })
+
+  test('no file of src/main calls the actions of the draft editor, except ipc.ts', () => {
+    expect(callers(/\.approveInstead\(|\bcreateDraftEditor\(\{/)).toEqual(['ipc.ts'])
   })
 
   test('reviews:handle takes only the fixed words', () => {

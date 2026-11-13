@@ -46,6 +46,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: bad priority': "That priority isn't valid.",
   'refused: bad process ID': "The process ID of this session isn't valid.",
   'refused: bad repository name': "That repository name isn't valid.",
+  'refused: bad review edits': "Bifrost couldn't read those edits.",
   'refused: bad reviewsIgnore': "That list of repositories to ignore isn't valid.",
   'refused: bad session ID': "That session ID isn't valid.",
   'refused: bad settings': "Bifrost couldn't read those settings.",
@@ -67,6 +68,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: not an attach to an owned session that is not parked':
     'A chat window can only attach to a Bifrost session that is running.',
   'refused: not the Bifrost page': "That request didn't come from the Bifrost window.",
+  'refused: only a pull request that others approved can go':
+    'Only a pull request that others approved can be removed.',
   'refused: only an external session': REASON_ONLY_EXTERNAL,
   'refused: only an owned session that runs': ONLY_RUNNING,
   'refused: Resume all runs': REASON_RESUME_ALL_RUNS,
@@ -112,6 +115,10 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the worktree has uncommitted changes':
     "This worktree has changes that aren't committed, so Claude Code won't delete it. Open the worktree, commit or discard them, then delete again.",
   'refused: the worktree option is off': "The worktree option isn't available.",
+  'refused: this draft cannot be changed now':
+    "This draft can't be changed right now. Wait a moment, then try again.",
+  'refused: this pull request cannot be approved now':
+    "This pull request can't be approved right now.",
   'refused: this pull request cannot be handled now':
     "This pull request can't be handled right now.",
   'refused: this pull request cannot get a review now':

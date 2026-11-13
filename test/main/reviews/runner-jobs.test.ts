@@ -67,6 +67,7 @@ function memoryStore(initial: ReviewsState, stats: StoreStats): ReviewsStateStor
 function pr(number: number, repo = 'web'): PrData {
   return {
     additions: 1,
+    approvals: 0,
     author: 'alice',
     baseRef: 'main',
     comments: [],
@@ -96,6 +97,7 @@ function pr(number: number, repo = 'web'): PrData {
     updatedAt: 5,
     url: `https://github.com/acme/${repo}/pull/${number}`,
     viewerPendingReviewId: null,
+    viewerReviews: [],
   }
 }
 

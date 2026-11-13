@@ -10,6 +10,7 @@
         "body": "This raises the limit of the token cache to 1200.",
         "headRefName": "raise-limit",
         "headRefOid": "@HEAD@",
+        "id": "PR_fake7",
         "pending": {
           "nodes": []
         },

@@ -3,7 +3,7 @@ import type { McpInventory } from './daily-update'
 import type { DirInfo, NewSessionSpec } from './new-session'
 import type { PerformanceSnapshot } from './performance'
 import type { ReleaseNotesResult, WhatsNewStart } from './release-notes'
-import type { ReviewsSnapshot } from './reviews'
+import type { DraftEdits, DraftOpen, DraftResult, ReviewsSnapshot } from './reviews'
 import type { Settings, SettingsPatch } from './settings'
 import type { SkillsStatus } from './skills'
 import type {
@@ -188,6 +188,23 @@ export interface BifrostApi {
     onOpen(cb: () => void): () => void
     // Start a review of a To review PR. This rejects for a key that is not a To review row.
     review(key: string): Promise<void>
+    // Approve a To review PR on GitHub, on the click of the user (user decision, 2026-11-13). The
+    // row must show the Approve button. This rejects for any other key. The result shows on the
+    // row of the next snapshot.
+    approve(key: string): Promise<void>
+    // The Review panel (user decision, 2026-11-13). The row must offer the panel. Each call reads
+    // the pull request and the draft review from GitHub again first. A result with ok false has a
+    // friendly text. Read the draft review of Claude for the panel.
+    draft(key: string): Promise<DraftOpen>
+    // Apply the edits to the draft review, then submit it as a comment or as request changes.
+    sendDraft(key: string, edits: DraftEdits): Promise<DraftResult>
+    // Delete the draft review of Claude on GitHub.
+    discardDraft(key: string): Promise<DraftResult>
+    // Delete the draft review of Claude, then approve the pull request with no text.
+    approveInstead(key: string): Promise<DraftResult>
+    // Hide an approved-by-others row in Bifrost only. Nothing changes on GitHub. The row comes
+    // back when someone asks for the review again. This rejects for any other row.
+    remove(key: string): Promise<void>
     // Take a PR out of the queue, or stop its round. This works on a row of either tab.
     cancel(key: string): Promise<void>
     // Stop the session of a PR. This works on a row of either tab. It rejects for a key that is

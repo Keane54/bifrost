@@ -125,6 +125,8 @@ import { readProcessTable } from './registry/terminal-app'
 import { createReleaseNotesSource, fileFetch } from './release-notes/source'
 import { openReleaseNotesStore, releaseNotesFile } from './release-notes/state-store'
 import { createWhatsNew } from './release-notes/whats-new'
+import { type Approver, createApprover } from './reviews/approve'
+import { checkDraftEdits, createDraftEditor, type DraftEditor } from './reviews/draft-panel'
 import { friendlyFailure } from './reviews/friendly-failure'
 import { createGh, type Gh } from './reviews/gh'
 import { createRepoGit } from './reviews/repo-git'
@@ -146,13 +148,16 @@ import { MAX_ANSWER } from './reviews/state'
 import { openReviewsStateStore, reviewsStateFile } from './reviews/state-store'
 import { createTrustWindow, TRUST_VIEW, type TrustWindow, trustedDirs } from './reviews/trust'
 import {
+  approveKey,
   checkPrKey,
   commentUrlToOpen,
   createReviewsWatcher,
+  draftKey,
   IDLE_MINE,
   mineKey,
   type RequestNotice,
   type ReviewsWatcher,
+  removeKey,
   rowKey,
   toReviewKey,
   urlToOpen,
@@ -284,6 +289,12 @@ let reviewsWatcher: ReviewsWatcher | null = null
 // watcher. stopRegistry stops them.
 let reviewRunner: ReviewRunner | null = null
 let trustWindow: TrustWindow | null = null
+// The Approve button of the To review tab (user decision, 2026-11-13). startReviews makes it. It
+// has no timer, so stopRegistry has nothing to stop.
+let reviewApprover: Approver | null = null
+// The Review panel of the To review tab (user decision, 2026-11-13). startReviews makes it. It
+// has no timer either.
+let reviewDrafts: DraftEditor | null = null
 // The most bytes of text that the page may write to the trust terminal in one call.
 const MAX_TRUST_WRITE = 64 * 1024
 const REFUSED_BAD_TERMINAL = 'refused: bad terminal value'
@@ -619,6 +630,8 @@ async function startReviews(
   ])
   const { home } = parts
   const watcher = createReviewsWatcher({
+    approval: key => reviewApprover?.entry(key) ?? null,
+    draft: key => reviewDrafts?.entry(key) ?? null,
     emit: snapshot => send('reviews:update', snapshot),
     gh,
     health,
@@ -636,6 +649,32 @@ async function startReviews(
     store,
   })
   reviewsWatcher = watcher
+  // The Approve button needs no session, so it works also with no registry service.
+  reviewApprover = createApprover({
+    changed: () => watcher.rebuild(),
+    eventNotice: text => eventBatcher.push([eventLog.line(text, Date.now())]),
+    gh,
+    log: message => console.error(message),
+    now: () => Date.now(),
+    pollStartedAt: () => watcher.pollStartedAt(),
+    requestPoll: () => watcher.requestPoll(),
+    store,
+    toReviewPr: key => watcher.toReviewPr(key),
+    viewer: () => watcher.viewer(),
+  })
+  // The Review panel needs no session either.
+  reviewDrafts = createDraftEditor({
+    changed: () => watcher.rebuild(),
+    eventNotice: text => eventBatcher.push([eventLog.line(text, Date.now())]),
+    gh,
+    log: message => console.error(message),
+    now: () => Date.now(),
+    pollStartedAt: () => watcher.pollStartedAt(),
+    requestPoll: () => watcher.requestPoll(),
+    store,
+    toReviewPr: key => watcher.toReviewPr(key),
+    viewer: () => watcher.viewer(),
+  })
   if (service === null) {
     if (!serviceStopped && settings.get().reviewsWatch) watcher.start()
     return watcher
@@ -1355,6 +1394,65 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
       const runner = reviewRunner
       if (runner === null) throw new Error(NO_RUNNER)
       await friendlyFailure(() => runner.stopSession(k), REVIEW_FAILED, reviewLog)
+    }),
+  )
+  // The Approve button (user decision, 2026-11-13). The page sends only the PR key of a To review
+  // row. Main finds all other values in its own state, and reads the PR from GitHub again before
+  // the write. No other code path approves.
+  ipcMain.handle('reviews:approve', (e, ...args: unknown[]) =>
+    fromPage(e, async () => {
+      const k = approveKey(whileOn(await reviews), args)
+      const approver = reviewApprover
+      if (approver === null) throw new Error(NO_RUNNER)
+      await friendlyFailure(() => approver.approve(k), REVIEW_FAILED, reviewLog)
+    }),
+  )
+  // The Review panel (user decision, 2026-11-13). The page sends the PR key of a To review row
+  // that offers the panel, and Send review also sends the edits of the user. Main finds the IDs
+  // of the review in its own state and in a fresh read of GitHub (ruling B10). Approve instead
+  // deletes the draft, then approves through the approver, as the Approve button does.
+  ipcMain.handle('reviews:draft', (e, ...args: unknown[]) =>
+    fromPage(e, async () => {
+      const k = draftKey(whileOn(await reviews), args, 1)
+      const drafts = reviewDrafts
+      if (drafts === null) throw new Error(NO_RUNNER)
+      return await friendlyFailure(() => drafts.open(k), REVIEW_FAILED, reviewLog)
+    }),
+  )
+  ipcMain.handle('reviews:draft-send', (e, ...args: unknown[]) =>
+    fromPage(e, async () => {
+      const k = draftKey(whileOn(await reviews), args, 2)
+      const edits = checkDraftEdits(args[1])
+      const drafts = reviewDrafts
+      if (drafts === null) throw new Error(NO_RUNNER)
+      return await friendlyFailure(() => drafts.send(k, edits), REVIEW_FAILED, reviewLog)
+    }),
+  )
+  ipcMain.handle('reviews:draft-discard', (e, ...args: unknown[]) =>
+    fromPage(e, async () => {
+      const k = draftKey(whileOn(await reviews), args, 1)
+      const drafts = reviewDrafts
+      if (drafts === null) throw new Error(NO_RUNNER)
+      return await friendlyFailure(() => drafts.discard(k), REVIEW_FAILED, reviewLog)
+    }),
+  )
+  ipcMain.handle('reviews:draft-approve', (e, ...args: unknown[]) =>
+    fromPage(e, async () => {
+      const k = draftKey(whileOn(await reviews), args, 1)
+      const drafts = reviewDrafts
+      const approver = reviewApprover
+      if (drafts === null || approver === null) throw new Error(NO_RUNNER)
+      const step = { result: () => approver.entry(k), run: () => approver.approve(k) }
+      return await friendlyFailure(() => drafts.approveInstead(k, step), REVIEW_FAILED, reviewLog)
+    }),
+  )
+  // Remove of an approved-by-others row (ruling B3). The page sends only the PR key. Bifrost hides
+  // the PR in its own state. Nothing goes to GitHub.
+  ipcMain.handle('reviews:remove', (e, ...args: unknown[]) =>
+    fromPage(e, async () => {
+      const k = removeKey(whileOn(await reviews), args)
+      const watcher = await reviews
+      await friendlyFailure(() => watcher.remove(k), REVIEW_FAILED, reviewLog)
     }),
   )
   // The request rounds. The page sends the key of a My PRs row, a fixed word, or answers. Each

@@ -345,6 +345,7 @@ async function run(): Promise<void> {
     number: PR_NUMBER,
     owner: 'bifrost-live',
     pending: null,
+    prId: 'PR_fixture',
     repo: 'fixture',
     reviews: [],
     state: 'OPEN',

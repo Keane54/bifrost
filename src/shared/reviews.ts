@@ -40,6 +40,10 @@ export type ToReviewState =
   | 'paused'
   | 'approved-by-others'
   | 'team'
+  // The user approved the head commit with the Approve button, or on GitHub.
+  | 'you-approved'
+  // The user sent the draft review with Send review. Only until the next poll.
+  | 'you-reviewed'
 export type Recommendation = 'approve' | 'comment' | 'request-changes'
 export const RECOMMENDATIONS: readonly Recommendation[] = ['approve', 'comment', 'request-changes']
 export const RECOMMENDATION_TEXT: Record<Recommendation, string> = {
@@ -80,7 +84,76 @@ export interface ToReviewRow {
   why: string | null
   // The error of the last review. Set for failed rows only.
   error: string | null
+  // The Approve button (user decision, 2026-11-13). ready: the row shows it. running: the row
+  // shows it disabled while the write runs. null: the row has no button. Only a reviewed or a
+  // draft-ready row with an Approve recommendation for the head commit has it.
+  approve: 'ready' | 'running' | null
+  // The friendly text of the last Approve click that did not approve, until the next poll.
+  // unknown is true when GitHub can have saved the approval.
+  approveIssue: { message: string; unknown: boolean } | null
+  // What Claude drafted for the row: a summary and a count of comments. A mark with no draft
+  // gives no summary and 0 comments. Null when the row shows no mark, or when Bifrost does not
+  // know the draft.
+  drafted: { summary: boolean; comments: number } | null
+  // The count of the other reviewers that approved the PR, from their latest opinions.
+  approvals: number
+  // The Review panel (user decision, 2026-11-13). ready: the row offers the panel for the draft of
+  // Claude. running: an action of the panel runs. null: the row has no panel.
+  draft: 'ready' | 'running' | null
+  // The friendly text of the last action of the panel that did not work, until the next poll.
+  // unknown is true when GitHub can have saved the write.
+  draftIssue: { action: DraftAction; message: string; unknown: boolean } | null
+  // True when the user deleted the draft of Claude with Approve instead, and the row offers the
+  // Approve button again.
+  draftDeleted: boolean
 }
+
+// The actions of the Review panel.
+export type DraftAction = 'send' | 'discard' | 'approve'
+// The "Send as" switch of the Review panel.
+export type SendVerdict = 'comment' | 'request-changes'
+export const SEND_VERDICTS: readonly SendVerdict[] = ['comment', 'request-changes']
+// The longest summary and the longest comment that GitHub takes, in characters.
+export const MAX_REVIEW_TEXT = 65_536
+// The most comments of a draft review that the Review panel shows.
+export const MAX_DRAFT_COMMENTS = 300
+
+// One comment of the draft review in the Review panel. hunk holds the last lines of the diff
+// hunk of the comment. yours is true when Claude did not draft the comment: the user added it on
+// GitHub. All text comes from GitHub, so the panel shows it as text only.
+export interface DraftCommentView {
+  id: string
+  path: string
+  line: number | null
+  startLine: number | null
+  hunk: string[]
+  body: string
+  yours: boolean
+}
+
+// The draft review of Claude, read from GitHub when the Review panel opens. changed is true when
+// the PR head is not the reviewed commit any more.
+export interface DraftView {
+  key: string
+  recommendation: Recommendation
+  why: string
+  body: string
+  comments: DraftCommentView[]
+  changed: boolean
+}
+
+export type DraftOpen = { ok: true; draft: DraftView } | { ok: false; message: string }
+
+// The edits of the Review panel. comments has each comment of the draft, with its new text, or
+// null when the user removed it.
+export interface DraftEdits {
+  verdict: SendVerdict
+  body: string
+  comments: { id: string; body: string | null }[]
+}
+
+// The result of an action of the Review panel. message is a friendly text.
+export type DraftResult = { ok: true } | { ok: false; message: string }
 
 // An open question of a request round. `where` names the file and line, or the author.
 // The longest answer to a question of Claude, in characters.
@@ -101,6 +174,14 @@ export interface QuestionRow {
   kind?: 'thread' | 'comment'
 }
 
+// The stance of a reviewer on a PR. It sets the colour of the name on a My PRs row.
+export type ReviewerStance = 'approved' | 'commented' | 'changes' | 'none'
+
+export interface Reviewer {
+  name: string
+  stance: ReviewerStance
+}
+
 export interface MyPrRow {
   key: string
   owner: string
@@ -108,7 +189,7 @@ export interface MyPrRow {
   number: number
   title: string
   status: ReviewStatus
-  reviewers: string[]
+  reviewers: Reviewer[]
   failedChecks: number
   laterCopilot: number
   // The last error of the PR. The row error hides it while a question is open, so the Answer

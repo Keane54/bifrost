@@ -1,0 +1,31 @@
+{
+  "data": {
+    "node": {
+      "body": "The limit goes from 12 to 1200. Please explain the new value, or keep it lower.",
+      "comments": {
+        "nodes": [
+          {
+            "body": "This limit is 100 times the old value. Is that on purpose?",
+            "diffHunk": "@@ -9,7 +9,7 @@\n export const line9 = 9\n export const line10 = 10\n export const line11 = 11\n-export const line12 = 12\n+export const line12 = 1200",
+            "id": "PRRC_fake1",
+            "line": 12,
+            "originalLine": 12,
+            "originalStartLine": null,
+            "path": "src/limit.ts",
+            "startLine": null
+          }
+        ],
+        "pageInfo": {
+          "endCursor": null,
+          "hasNextPage": false
+        }
+      },
+      "commit": {
+        "oid": "@HEAD@"
+      },
+      "id": "PRR_fake",
+      "state": "PENDING",
+      "viewerDidAuthor": true
+    }
+  }
+}

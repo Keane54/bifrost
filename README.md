@@ -94,14 +94,18 @@ How it works:
 
 The Reviews panel shows the GitHub pull requests that need you. To start, turn on Watch GitHub in Settings > Reviews. Bifrost uses your `gh` login and checks GitHub every 2 minutes. You can change this interval.
 
-- **To review**: the pull requests that ask for your review. A new request flashes. When you click Review, Claude reviews the pull request in a read-only session. Bifrost then saves a draft review on GitHub. Only you can see the draft. You read it and submit it.
-- **My PRs**: your own pull requests. Claude fixes or answers each new comment from an owner, a member or a collaborator of the repository. It also handles the first Copilot review of the pull request. The session of Claude has no access to GitHub. Bifrost then commits the fix, pushes it to your branch, replies to the comment and resolves its thread. When Claude needs a decision from you, the row shows Needs you. Click the row and answer in the Answer panel.
+- **To review**: the pull requests that ask for your review. A new request flashes. When you click Review, Claude reviews the pull request in a read-only session. Bifrost then saves a draft review on GitHub. Only you can see the draft. The row shows the result of Claude in a colour, with one button:
+  - **Recommends approval** (green): click Approve to approve the pull request on GitHub, or to submit the draft review as an approval.
+  - **Draft ready** (amber) or **Changes required** (red): click Comment or Request changes to open the Review panel. The panel shows the summary and each comment of the draft, also the comments that you added on GitHub. You can change each text and remove a comment. Bifrost changes nothing on GitHub until you click Send review. "Send as" sets the type of the review. Discard draft deletes the draft on GitHub. Approve instead deletes the draft, then approves the pull request.
+  - **Approved by others** (grey): click Remove to hide the row in Bifrost. Nothing changes on GitHub. The row comes back when someone asks for your review again.
+- **My PRs**: your own pull requests. Claude fixes or answers each new comment from an owner, a member or a collaborator of the repository. It also handles the first Copilot review of the pull request. The session of Claude has no access to GitHub. Bifrost then commits the fix, pushes it to your branch, replies to the comment and resolves its thread. When Claude needs a decision from you, the row shows Needs you. Click the row and answer in the Answer panel. Each reviewer name has the colour of the latest review: green for approved, amber for comments only, red for changes requested, grey for no review.
 
 Rules:
 
 - Bifrost makes its own copy of each repository and asks you to trust each copy one time. It never uses your checkouts.
-- Bifrost never submits a review, approves or merges a pull request. It never force-pushes. Bifrost
-  itself never signs a commit.
+- Bifrost approves a pull request only when you click Approve or Approve instead. It sends or
+  deletes a draft review only when you click a button in the Review panel. It never merges a
+  pull request. It never force-pushes. Bifrost itself never signs a commit.
 - To get signed fix commits, turn on "Sign commits through GitHub" in Settings > Reviews. Bifrost
   then sends each fix to GitHub with your `gh` login, and does not push it with git. GitHub makes
   the commit and signs it, so the commit shows as Verified. You are its author. Bifrost does not

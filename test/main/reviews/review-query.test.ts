@@ -98,6 +98,7 @@ describe('fetchReviewContext', () => {
       number: 7,
       owner: 'acme',
       pending: null,
+      prId: 'PR_kwDOexample7',
       repo: 'api',
       reviews: [],
       state: 'OPEN',

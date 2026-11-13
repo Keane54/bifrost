@@ -56,6 +56,9 @@ export interface RecommendationMark {
   headSha: string
   reviewId: string | null
   at: number
+  // True when the user deleted the draft of the mark with Approve instead of the Review panel.
+  // reviewId is then null, and the row offers the Approve button (user decision, 2026-11-13).
+  deleted?: true
 }
 
 export interface QueueEntry {
@@ -184,6 +187,10 @@ export interface ReviewsState {
   // name the fixes, so no automatic request round starts. The confirm of Handle comments
   // automatically sets true. Null when nothing asked for the confirm.
   autoFixConsent: boolean | null
+  // The To review PRs that the user removed in Bifrost, with the time of the remove (user
+  // decision, 2026-11-13). A new review request after that time shows the PR again. Nothing
+  // changes on GitHub.
+  hidden: Record<string, number>
 }
 
 export const MAX_QUEUE = 200
@@ -213,6 +220,7 @@ export const EMPTY_STATE: ReviewsState = {
   baseline: [],
   drafts: [],
   fixFrom: null,
+  hidden: {},
   pauses: {},
   posted: [],
   prs: {},
@@ -447,12 +455,15 @@ function parseMark(value: unknown): RecommendationMark | null {
   const { value: mark } = value
   if (!RECOMMENDATIONS.includes(mark as Recommendation)) return null
   if (!isString(value.why) || !isString(value.headSha)) return null
+  const reviewId = stringOrNull(value.reviewId)
   return {
     at: value.at,
     headSha: value.headSha,
-    reviewId: stringOrNull(value.reviewId),
+    reviewId,
     value: mark as Recommendation,
     why: value.why,
+    // Only a mark with no draft can have a deleted draft.
+    ...(value.deleted === true && reviewId === null ? { deleted: true } : {}),
   }
 }
 
@@ -564,6 +575,12 @@ export function parseState(data: unknown): ReviewsState {
       if (keyOk(key) && isNumber(until)) pauses[key] = until
     }
   }
+  const hidden: ReviewsState['hidden'] = {}
+  if (isObject(data.hidden)) {
+    for (const [key, at] of Object.entries(data.hidden)) {
+      if (keyOk(key) && isNumber(at)) hidden[key] = at
+    }
+  }
   const prs: ReviewsState['prs'] = {}
   if (isObject(data.prs)) {
     for (const [key, entry] of Object.entries(data.prs)) {
@@ -602,6 +619,7 @@ export function parseState(data: unknown): ReviewsState {
         : null,
     ),
     fixFrom: isNumber(data.fixFrom) ? data.fixFrom : null,
+    hidden,
     pauses,
     posted: parseList(data.posted, MAX_POSTED, e =>
       isString(e.id) && keyOk(e.prKey) && isString(e.body) && isNumber(e.at)

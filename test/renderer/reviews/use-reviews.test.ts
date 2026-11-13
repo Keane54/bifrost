@@ -13,8 +13,15 @@ import {
 function row(flash: boolean): ToReviewRow {
   return {
     additions: 1,
+    approvals: 0,
+    approve: null,
+    approveIssue: null,
     author: 'a',
     deletions: 1,
+    draft: null,
+    draftDeleted: false,
+    drafted: null,
+    draftIssue: null,
     error: null,
     flash,
     key: 'o/r#1',

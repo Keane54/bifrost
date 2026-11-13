@@ -10,6 +10,7 @@ import type {
   PrThread,
   RateLimit,
   ReviewState,
+  ViewerOpinion,
 } from './pr-data'
 
 const SEARCH_OPEN = 'is:pr is:open archived:false'
@@ -101,7 +102,16 @@ const PR_CONVERSATION = `
     nodes { ${COMMENT_FIELDS} }
   }`
 
-export const TO_REVIEW_FRAGMENT = `fragment ToReviewFields on PullRequest {${PR_HEAD}${prChecks(20)}
+// The latest opinion of each reviewer. The poll keeps the opinion of the viewer: the Approve
+// button of a To review row hides when it is an approval of the head commit. The poll also counts
+// the approvals of the other reviewers for an approved-by-others row.
+const VIEWER_REVIEW = `
+  latestOpinionatedReviews(first: 20) {
+    nodes { author { login } state submittedAt commit { oid } }
+  }`
+
+const TO_REVIEW_FIELDS = `${PR_HEAD}${VIEWER_REVIEW}${prChecks(20)}`
+export const TO_REVIEW_FRAGMENT = `fragment ToReviewFields on PullRequest {${TO_REVIEW_FIELDS}
 }`
 export const MINE_FRAGMENT = `fragment MineFields on PullRequest {${PR_HEAD}${PR_CONVERSATION}${prChecks(20)}
 }`
@@ -264,7 +274,33 @@ function reviewer(v: unknown): { user: string | null; team: string | null } {
 
 const DECISIONS = ['APPROVED', 'CHANGES_REQUESTED', 'REVIEW_REQUIRED'] as const
 
-function readPr(v: unknown, viewer: string): PrData | null {
+// The latest opinions of the viewer. A review of another author, or with an unknown state, goes.
+// GitHub ignores case in a login.
+function viewerReviews(v: unknown, viewer: string): ViewerOpinion[] {
+  return nodes(v).flatMap(n => {
+    const o = obj(n)
+    const state = str(o?.state)
+    const login = str(obj(o?.author)?.login)
+    if (state === null || !REVIEW_STATES.includes(state)) return []
+    if (login === null || login.toLowerCase() !== viewer.toLowerCase()) return []
+    const commit = str(obj(o?.commit)?.oid)
+    return [{ commit, state: state as ReviewState, submittedAt: time(o?.submittedAt) }]
+  })
+}
+
+// The count of the other reviewers whose latest opinion is an approval. A review with no author
+// does not count. GitHub ignores case in a login.
+function otherApprovals(v: unknown, viewer: string): number {
+  return nodes(v).filter(n => {
+    const o = obj(n)
+    const login = str(obj(o?.author)?.login)
+    return o?.state === 'APPROVED' && login !== null && login.toLowerCase() !== viewer.toLowerCase()
+  }).length
+}
+
+// toReview is true for a PR of the To review list. Only that list reads the opinions of the
+// viewer. The decisions of a My PRs PR come from the same field.
+function readPr(v: unknown, viewer: string, toReview: boolean): PrData | null {
   const o = obj(v)
   if (!o) return null
   const number = o.number
@@ -324,11 +360,12 @@ function readPr(v: unknown, viewer: string): PrData | null {
   const decision = str(o.reviewDecision)
   return {
     additions: num(o.additions),
+    approvals: toReview ? otherApprovals(o.latestOpinionatedReviews, viewer) : 0,
     author: str(obj(o.author)?.login) ?? 'ghost',
     baseRef: str(o.baseRefName) ?? '',
     comments: readComments(o.comments),
     createdAt,
-    decisions: nodes(o.latestOpinionatedReviews).flatMap(r => readReview(r) ?? []),
+    decisions: toReview ? [] : nodes(o.latestOpinionatedReviews).flatMap(r => readReview(r) ?? []),
     deletions: num(o.deletions),
     failedChecks,
     headRef: str(o.headRefName) ?? '',
@@ -353,6 +390,7 @@ function readPr(v: unknown, viewer: string): PrData | null {
     updatedAt: time(o.updatedAt) ?? createdAt,
     url,
     viewerPendingReviewId: str(obj(nodes(o.pendingReviews)[0])?.id),
+    viewerReviews: toReview ? viewerReviews(o.latestOpinionatedReviews, viewer) : [],
   }
 }
 
@@ -406,14 +444,15 @@ export function parsePoll(
     if (!usable) return { message: errors[0] ?? 'GitHub gave an error.', ok: false }
   }
   if (!data || !viewer) return { message: 'GitHub did not say who you are.', ok: false }
-  const list = (v: unknown): PrData[] => nodes(v).flatMap(n => readPr(n, viewer) ?? [])
+  const list = (v: unknown, toReview: boolean): PrData[] =>
+    nodes(v).flatMap(n => readPr(n, viewer, toReview) ?? [])
   return {
     data: {
       errors,
-      mine: list(data.mine),
+      mine: list(data.mine, false),
       mineHasMore: more(data.mine),
       rateLimit: readRateLimit(data.rateLimit),
-      toReview: list(data.toReview),
+      toReview: list(data.toReview, true),
       toReviewHasMore: more(data.toReview),
       viewer,
     },

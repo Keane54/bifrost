@@ -11,6 +11,8 @@ export const TO_REVIEW_ORDER: readonly ToReviewState[] = [
   'reviewing',
   'queued',
   'paused',
+  'you-approved',
+  'you-reviewed',
   'approved-by-others',
   'team',
 ]

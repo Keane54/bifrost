@@ -17,6 +17,7 @@ export type PanelKind =
   | 'performance'
   | 'trust'
   | 'answer'
+  | 'review-draft'
   | 'daily-update'
 
 export const DEFAULT_SIZES: Record<PanelKind, Size> = {
@@ -27,6 +28,7 @@ export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   overview: { h: 360, w: 760 },
   'overview-settings': { h: 420, w: 360 },
   performance: { h: 460, w: 520 },
+  'review-draft': { h: 560, w: 620 },
   reviews: { h: 420, w: 480 },
   'selected-item': { h: 300, w: 360 },
   'service-status': { h: 240, w: 420 },
@@ -91,6 +93,7 @@ export function panelKind(panelId: string): PanelKind | null {
     panelId === 'performance' ||
     panelId === 'trust' ||
     panelId === 'answer' ||
+    panelId === 'review-draft' ||
     panelId === 'daily-update'
   ) {
     return panelId

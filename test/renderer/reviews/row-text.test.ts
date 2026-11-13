@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest'
 import {
   AUTO_FIX_HINT,
   ageText,
+  approveTip,
+  buttonTip,
   claudeText,
   claudeTip,
   laterCopilotText,
   menuItems,
   mineMenuItems,
   olderText,
+  resultLine,
+  resultOf,
   rightText,
+  rowButtons,
   rowTip,
   sizeText,
   statusText,
@@ -23,8 +28,15 @@ const NOW = 1_000_000_000
 function to(patch: Partial<ToReviewRow>): ToReviewRow {
   return {
     additions: 1,
+    approvals: 0,
+    approve: null,
+    approveIssue: null,
     author: 'sam',
     deletions: 1,
+    draft: null,
+    draftDeleted: false,
+    drafted: null,
+    draftIssue: null,
     error: null,
     flash: false,
     key: 'a/b#1',
@@ -97,6 +109,7 @@ describe('row text', () => {
     expect(toReviewText(to({ state: 'approved-by-others' }), NOW)).toBe('Approved by others')
     expect(toReviewText(to({ state: 'team' }), NOW)).toBe('Team request')
     expect(toReviewText(to({ state: 'new' }), NOW)).toBe('')
+    expect(toReviewText(to({ state: 'you-reviewed' }), NOW)).toBe('Review sent')
   })
 
   it('statusText', () => {
@@ -134,13 +147,22 @@ describe('row text', () => {
 })
 
 describe('rightText', () => {
-  it('adds the recommendation to a draft or a reviewed row', () => {
+  it('gives one text for each result of Claude (ruling B1)', () => {
     expect(rightText(to({ recommendation: 'request-changes', state: 'draft-ready' }), NOW)).toBe(
-      'Draft ready · Request changes',
+      'Changes required',
+    )
+    expect(rightText(to({ recommendation: 'comment', state: 'draft-ready' }), NOW)).toBe(
+      'Draft ready',
+    )
+    expect(rightText(to({ recommendation: 'approve', state: 'draft-ready' }), NOW)).toBe(
+      'Recommends approval',
     )
     expect(rightText(to({ recommendation: 'approve', state: 'reviewed' }), NOW)).toBe(
-      'Looks good · Approve',
+      'Recommends approval',
     )
+    expect(rightText(to({ state: 'approved-by-others' }), NOW)).toBe('Approved by others')
+    const deleted = { draftDeleted: true, recommendation: 'comment', state: 'reviewed' } as const
+    expect(rightText(to(deleted), NOW)).toBe('Draft deleted')
   })
 
   it('adds nothing without a recommendation or in another state', () => {
@@ -153,7 +175,14 @@ describe('rowTip', () => {
   it('explains a draft', () => {
     expect(
       rowTip(to({ recommendation: 'comment', state: 'draft-ready', why: 'Small risk.' })),
-    ).toBe('Claude suggests: Comment. Small risk. Check the draft on GitHub, then submit it.')
+    ).toBe('Claude suggests: Comment. Small risk. Click Comment to check the draft and send it.')
+    expect(rowTip(to({ recommendation: 'request-changes', state: 'draft-ready' }))).toBe(
+      'Claude suggests: Request changes. Click Request changes to check the draft and send it.',
+    )
+    expect(rowTip(to({ recommendation: 'approve', state: 'draft-ready', why: 'Fine.' }))).toBe(
+      "Claude suggests: Approve. Fine. Click Approve to submit Claude's draft as an approval.",
+    )
+    expect(rowTip(to({ state: 'draft-ready' }))).toBeNull()
   })
 
   it('explains a reviewed row', () => {
@@ -194,7 +223,11 @@ describe('menuItems', () => {
     ])
     expect(menuItems(to({ state: 'waiting' }))).toEqual(['Open on GitHub', 'Review'])
     expect(menuItems(to({ state: 'team' }))).toEqual(['Open on GitHub', 'Review'])
-    expect(menuItems(to({ state: 'approved-by-others' }))).toEqual(['Open on GitHub', 'Review'])
+    expect(menuItems(to({ state: 'approved-by-others' }))).toEqual([
+      'Open on GitHub',
+      'Review',
+      'Remove',
+    ])
     expect(menuItems(to({ state: 'queued' }))).toEqual(['Open on GitHub', 'Cancel review'])
     expect(menuItems(to({ state: 'trust-needed' }))).toEqual(['Open on GitHub', 'Cancel review'])
     expect(menuItems(to({ state: 'reviewing' }))).toEqual(['Open on GitHub'])
@@ -344,5 +377,180 @@ describe('AUTO_FIX_HINT', () => {
 
   it('shows Open session only with a session ID', () => {
     expect(mineMenuItems(mine({ sessionId: 's' }))).toEqual(['Open on GitHub', 'Open session'])
+  })
+})
+
+describe('the Approve button (user decision, 2026-11-13)', () => {
+  const reviewed = { recommendation: 'approve', state: 'reviewed' } as const
+  const drafted = { recommendation: 'approve', state: 'draft-ready' } as const
+
+  it('shows You approved after the approval', () => {
+    expect(toReviewText(to({ state: 'you-approved' }), NOW)).toBe('You approved')
+    expect(rightText(to({ state: 'you-approved' }), NOW)).toBe('You approved')
+    expect(rowTip(to({ state: 'you-approved' }))).toBe('You approved this pull request on GitHub.')
+  })
+
+  it('tips the button for each kind of row and while the write runs', () => {
+    expect(approveTip(to({ ...reviewed, approve: 'ready' }))).toBe(
+      'Approve this pull request on GitHub.',
+    )
+    expect(approveTip(to({ ...drafted, approve: 'ready' }))).toBe(
+      "Submit Claude's draft review on GitHub as an approval.",
+    )
+    expect(approveTip(to({ ...reviewed, approve: 'running' }))).toBe('Approving…')
+  })
+
+  it('shows the text of an approval that did not work in place of the state', () => {
+    const failed = to({ ...reviewed, approveIssue: { message: 'GitHub said no.', unknown: false } })
+    expect(rightText(failed, NOW)).toBe("Couldn't approve")
+    expect(rowTip(failed)).toBe('GitHub said no.')
+    const unsure = to({ ...drafted, approveIssue: { message: 'Not sure.', unknown: true } })
+    expect(rightText(unsure, NOW)).toBe('Approval not confirmed')
+    expect(rowTip(unsure)).toBe('Not sure.')
+  })
+
+  it('adds Approve to the menu only when the button is ready', () => {
+    expect(menuItems(to({ ...reviewed, approve: 'ready' }))).toEqual([
+      'Open on GitHub',
+      'Approve',
+      'Review',
+    ])
+    expect(menuItems(to({ ...drafted, approve: 'ready' }))).toEqual(['Open on GitHub', 'Approve'])
+    expect(menuItems(to({ ...reviewed, approve: 'running' }))).toEqual(['Open on GitHub', 'Review'])
+    expect(menuItems(to(reviewed))).toEqual(['Open on GitHub', 'Review'])
+    expect(menuItems(to({ state: 'you-approved' }))).toEqual(['Open on GitHub', 'Review'])
+  })
+})
+
+describe('the results of Claude on a row (ruling B1)', () => {
+  const approve = { recommendation: 'approve', state: 'reviewed' } as const
+  const approveDraft = { recommendation: 'approve', state: 'draft-ready' } as const
+  const comment = { draft: 'ready', recommendation: 'comment', state: 'draft-ready' } as const
+  const changes = {
+    draft: 'ready',
+    recommendation: 'request-changes',
+    state: 'draft-ready',
+  } as const
+  const deleted = {
+    draftDeleted: true,
+    recommendation: 'request-changes',
+    state: 'reviewed',
+  } as const
+
+  it('gives the kind of each row', () => {
+    expect(resultOf(to(approve))).toBe('approve')
+    expect(resultOf(to(approveDraft))).toBe('approve')
+    expect(resultOf(to(comment))).toBe('comment')
+    expect(resultOf(to(changes))).toBe('changes')
+    expect(resultOf(to(deleted))).toBe('deleted')
+    expect(resultOf(to({ state: 'approved-by-others' }))).toBe('others')
+    for (const state of ['new', 'waiting', 'failed', 'draft-ready', 'you-approved'] as const) {
+      expect(resultOf(to({ state }))).toBeNull()
+    }
+  })
+
+  it('says what Claude did on the second line', () => {
+    const line = (patch: Partial<ToReviewRow>) => resultLine(to(patch))
+    expect(line({ ...approve, drafted: { comments: 0, summary: false } })).toBe(
+      'Claude found nothing to change.',
+    )
+    expect(line({ ...approveDraft, drafted: { comments: 0, summary: true } })).toBe(
+      'Claude drafted a summary.',
+    )
+    expect(line({ ...comment, drafted: { comments: 2, summary: true } })).toBe(
+      'Claude drafted a summary and 2 comments.',
+    )
+    expect(line({ ...changes, drafted: { comments: 1, summary: true } })).toBe(
+      'Claude drafted a summary and 1 comment.',
+    )
+    expect(line({ ...changes, drafted: { comments: 3, summary: false } })).toBe(
+      'Claude drafted 3 comments.',
+    )
+    expect(line({ ...changes, drafted: null })).toBe('Claude drafted a review.')
+    expect(line(deleted)).toBe("You deleted Claude's draft. Approve when you're ready.")
+    expect(line({ approvals: 2, state: 'approved-by-others' })).toBe(
+      "2 people approved it, so you don't need to review it.",
+    )
+    expect(line({ approvals: 1, state: 'approved-by-others' })).toBe(
+      "1 person approved it, so you don't need to review it.",
+    )
+    expect(line({ approvals: 0, state: 'approved-by-others' })).toBe(
+      "Others approved it, so you don't need to review it.",
+    )
+    expect(line({ state: 'new' })).toBeNull()
+    expect(line({ state: 'you-reviewed' })).toBeNull()
+  })
+
+  it('gives one button for each result, and Remove only for approved-by-others', () => {
+    expect(rowButtons(to({ ...approve, approve: 'ready' }))).toEqual(['Approve'])
+    expect(rowButtons(to({ ...approveDraft, approve: 'running' }))).toEqual(['Approve'])
+    expect(rowButtons(to(comment))).toEqual(['Comment'])
+    expect(rowButtons(to({ ...changes, draft: 'running' }))).toEqual(['Request changes'])
+    expect(rowButtons(to({ ...deleted, approve: 'ready' }))).toEqual(['Approve'])
+    expect(rowButtons(to({ state: 'approved-by-others' }))).toEqual(['Remove'])
+    expect(rowButtons(to({ state: 'new' }))).toEqual(['Review', 'Pause'])
+    expect(rowButtons(to({ state: 'waiting' }))).toEqual(['Review'])
+    expect(rowButtons(to({ state: 'team' }))).toEqual(['Review'])
+    expect(rowButtons(to({ state: 'failed' }))).toEqual(['Try again'])
+    // A reviewed row whose Approve button is hidden gets Review back.
+    expect(rowButtons(to(approve))).toEqual(['Review'])
+    for (const state of [
+      'reviewing',
+      'queued',
+      'paused',
+      'you-approved',
+      'you-reviewed',
+    ] as const) {
+      expect(rowButtons(to({ state }))).toEqual([])
+    }
+    // An unknown result of a panel action hides the button until the next poll.
+    expect(rowButtons(to({ ...comment, draft: null }))).toEqual([])
+    for (const state of ['new', 'waiting', 'draft-ready', 'reviewed', 'team'] as const) {
+      expect(rowButtons(to({ state }))).not.toContain('Remove')
+    }
+  })
+
+  it('puts each button in the menu', () => {
+    expect(menuItems(to(comment))).toEqual(['Open on GitHub', 'Comment'])
+    expect(menuItems(to(changes))).toEqual(['Open on GitHub', 'Request changes'])
+    expect(menuItems(to({ ...changes, draft: 'running' }))).toEqual(['Open on GitHub'])
+    expect(menuItems(to({ ...deleted, approve: 'ready' }))).toEqual([
+      'Open on GitHub',
+      'Approve',
+      'Review',
+    ])
+  })
+
+  it('tips each button', () => {
+    expect(buttonTip('Comment', to(comment))).toBe(
+      "Check Claude's draft, change it if you like, and send it.",
+    )
+    expect(buttonTip('Request changes', to(changes))).toBe(
+      "Check Claude's draft, change it if you like, and send it.",
+    )
+    const running = to({ ...comment, draft: 'running' })
+    expect(buttonTip('Comment', running)).toBe('Working on the draft…')
+    expect(buttonTip('Remove', to({ state: 'approved-by-others' }))).toBe(
+      'Hide this pull request in Bifrost. Nothing changes on GitHub. ' +
+        'It comes back if someone asks for your review again.',
+    )
+  })
+
+  it('tips a deleted draft and a sent review', () => {
+    expect(rowTip(to(deleted))).toBe(
+      "You deleted Claude's draft. Click Approve to approve this pull request.",
+    )
+    expect(rowTip(to({ state: 'you-reviewed' }))).toBe('You sent your review on GitHub.')
+    expect(rightText(to({ state: 'you-reviewed' }), NOW)).toBe('Review sent')
+  })
+
+  it('shows the text of a panel action that did not work in place of the state', () => {
+    const issue = (action: 'send' | 'discard' | 'approve', unknown: boolean) =>
+      to({ ...changes, draftIssue: { action, message: 'Why.', unknown } })
+    expect(rightText(issue('send', false), NOW)).toBe("Couldn't send")
+    expect(rightText(issue('discard', false), NOW)).toBe("Couldn't discard")
+    expect(rightText(issue('approve', false), NOW)).toBe("Couldn't approve")
+    expect(rightText(issue('send', true), NOW)).toBe('Not confirmed')
+    expect(rowTip(issue('send', true))).toBe('Why.')
   })
 })

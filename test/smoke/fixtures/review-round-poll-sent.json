@@ -1,0 +1,25 @@
+{
+  "data": {
+    "mine": {
+      "nodes": [],
+      "pageInfo": {
+        "hasNextPage": false
+      }
+    },
+    "rateLimit": {
+      "cost": 11,
+      "limit": 5000,
+      "remaining": 4930,
+      "resetAt": "2026-11-09T11:00:00Z"
+    },
+    "toReview": {
+      "nodes": [],
+      "pageInfo": {
+        "hasNextPage": false
+      }
+    },
+    "viewer": {
+      "login": "dev-user"
+    }
+  }
+}

@@ -1412,9 +1412,11 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     trust() {
       if (lastPoll === null) return []
       const ignore = deps.settings().reviewsIgnore
+      // A PR that the user removed in Bifrost counts nowhere (ruling B3).
+      const { hidden } = store.get()
       const counts = new Map<string, number>()
       for (const pr of [...lastPoll.toReview, ...lastPoll.mine]) {
-        if (isIgnored(pr.owner, pr.repo, ignore)) continue
+        if (isIgnored(pr.owner, pr.repo, ignore) || Object.hasOwn(hidden, pr.key)) continue
         const repo = repoOf(pr.key)
         counts.set(repo, (counts.get(repo) ?? 0) + 1)
       }

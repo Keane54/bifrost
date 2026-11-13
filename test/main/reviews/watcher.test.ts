@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExecResult } from '../../../src/main/claude/cli'
 import type { HealthEvents } from '../../../src/main/performance/health-log'
+import { REFUSED_NO_DRAFT } from '../../../src/main/reviews/draft-panel'
 import type { Gh } from '../../../src/main/reviews/gh'
 import { pollArgs } from '../../../src/main/reviews/query'
 import { EMPTY_STATE, emptyPrState, type ReviewsState } from '../../../src/main/reviews/state'
@@ -9,14 +10,17 @@ import {
   checkPrKey,
   commentUrlToOpen,
   createReviewsWatcher,
+  draftKey,
   mineKey,
   POLL_DEADLINE_MS,
   REFRESH_GAP_MS,
   REFUSED_NO_COMMENT_LINK,
+  REFUSED_NOT_REMOVABLE,
   REFUSED_REVIEWS_OFF,
   REFUSED_UNKNOWN_PR,
   type RequestNotice,
   type ReviewsWatcher,
+  removeKey,
   requestNotice,
   requestNotices,
   rowKey,
@@ -51,6 +55,9 @@ interface FakePr {
   // The time of the request event for the viewer (ISO). Without it, the request time is the
   // creation time of the PR, which is before the start of each test.
   asked?: string
+  // True when others approved the PR: the review decision is APPROVED, with one approval of
+  // another reviewer.
+  approved?: boolean
 }
 
 // A request time after the first poll of a test (10:00) and before the second poll (10:02).
@@ -78,10 +85,22 @@ function prNode(pr: FakePr): Record<string, unknown> {
     createdAt: '2026-11-01T09:00:00Z',
     deletions: 2,
     isDraft: false,
+    latestOpinionatedReviews: {
+      nodes: pr.approved
+        ? [
+            {
+              author: { login: 'erin' },
+              commit: { oid: 'c1' },
+              state: 'APPROVED',
+              submittedAt: null,
+            },
+          ]
+        : [],
+    },
     number: pr.number,
     pendingReviews: { nodes: [] },
     repository: { name: repo, owner: { login: 'acme' } },
-    reviewDecision: null,
+    reviewDecision: pr.approved ? 'APPROVED' : null,
     reviewRequests: {
       nodes: [
         {
@@ -1250,8 +1269,15 @@ describe('IPC helpers', () => {
   test('requestNotice gives the title and the body of the notification', () => {
     const notice = requestNotice({
       additions: 1,
+      approvals: 0,
+      approve: null,
+      approveIssue: null,
       author: 'alice',
       deletions: 1,
+      draft: null,
+      draftDeleted: false,
+      drafted: null,
+      draftIssue: null,
       error: null,
       flash: true,
       key: K101,
@@ -1278,8 +1304,15 @@ describe('requestNotices', () => {
   const rows = (count: number): ToReviewRow[] =>
     Array.from({ length: count }, (_, i) => ({
       additions: 1,
+      approvals: 0,
+      approve: null,
+      approveIssue: null,
       author: 'alice',
       deletions: 1,
+      draft: null,
+      draftDeleted: false,
+      drafted: null,
+      draftIssue: null,
       error: null,
       flash: true,
       key: `acme/web#${i + 1}`,
@@ -1512,5 +1545,116 @@ describe('the review runner in the watcher', () => {
     expect(() => toReviewKey(t.watcher, 42)).toThrow(REFUSED_UNKNOWN_PR)
     expect(() => toReviewKey(t.watcher, '../x')).toThrow(REFUSED_UNKNOWN_PR)
     t.watcher.stop()
+  })
+})
+
+describe('Remove (ruling B3)', () => {
+  const TEN = Date.parse('2026-11-09T10:00:00Z')
+
+  test('hides an approved-by-others row in Bifrost only, with the time of the hide', async () => {
+    const t = setup({ replies: [answer([{ approved: true, number: 101 }, { number: 102 }])] })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(row(t.watcher, K101)).toMatchObject({ approvals: 1, state: 'approved-by-others' })
+    const calls = t.run.mock.calls.length
+    await t.watcher.remove(K101)
+    expect(row(t.watcher, K101)).toBeUndefined()
+    expect(t.watcher.current().toReview.map(r => r.key)).toEqual([K102])
+    expect(t.store.get().hidden).toEqual({ [K101]: TEN })
+    // Nothing goes to GitHub.
+    expect(t.run.mock.calls.length).toBe(calls)
+    t.watcher.stop()
+  })
+
+  test('refuses a row that others did not approve, and an unknown key', async () => {
+    const t = setup({ replies: [answer([{ number: 101 }])] })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await expect(t.watcher.remove(K101)).rejects.toThrow(REFUSED_NOT_REMOVABLE)
+    await expect(t.watcher.remove('acme/web#999')).rejects.toThrow(REFUSED_NOT_REMOVABLE)
+    expect(t.store.get().hidden).toEqual({})
+    t.watcher.stop()
+  })
+
+  test('a hidden PR stays hidden at the next poll: no row, no count, no notice', async () => {
+    const t = setup({ replies: [answer([{ approved: true, number: 101 }])] })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await t.watcher.remove(K101)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.run).toHaveBeenCalledTimes(2)
+    expect(t.watcher.current().toReview).toEqual([])
+    expect(t.store.get().hidden).toEqual({ [K101]: TEN })
+    expect(t.notified).toEqual([])
+    t.watcher.stop()
+  })
+
+  test('the PR comes back when someone asks for the review again after the hide', async () => {
+    const t = setup({
+      replies: [
+        answer([{ approved: true, number: 101 }]),
+        answer([{ approved: true, asked: ASKED, number: 101 }]),
+      ],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await t.watcher.remove(K101)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(row(t.watcher, K101)?.state).toBe('approved-by-others')
+    expect(t.store.get().hidden).toEqual({})
+    t.watcher.stop()
+  })
+
+  test('a PR that leaves the list loses its entry; a partial answer keeps it', async () => {
+    const t = setup({
+      replies: [answer([{ approved: true, number: 101 }]), partial([], ['boom']), answer([])],
+    })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    await t.watcher.remove(K101)
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.store.get().hidden).toEqual({ [K101]: TEN })
+    await vi.advanceTimersByTimeAsync(2 * MIN)
+    expect(t.run).toHaveBeenCalledTimes(3)
+    expect(t.store.get().hidden).toEqual({})
+    t.watcher.stop()
+  })
+
+  test('removeKey takes exactly one PR key of an approved-by-others row', () => {
+    const fake = {
+      current: () => ({
+        availability: 'ok',
+        toReview: [
+          { draft: null, key: K101, state: 'approved-by-others' },
+          { draft: 'ready', key: K102, state: 'draft-ready' },
+        ],
+      }),
+    } as unknown as ReviewsWatcher
+    expect(removeKey(fake, [K101])).toBe(K101)
+    expect(() => removeKey(fake, [K102])).toThrow(REFUSED_NOT_REMOVABLE)
+    for (const args of [[], [K101, K101], [42], ['acme/web'], [{ key: K101 }]]) {
+      expect(() => removeKey(fake, args), JSON.stringify(args)).toThrow(REFUSED_UNKNOWN_PR)
+    }
+  })
+
+  test('draftKey takes the PR key of a row with the Review panel, and the right count', () => {
+    const fake = {
+      current: () => ({
+        availability: 'ok',
+        toReview: [
+          { draft: null, key: K101, state: 'approved-by-others' },
+          { draft: 'ready', key: K102, state: 'draft-ready' },
+          { draft: 'running', key: K103, state: 'draft-ready' },
+        ],
+      }),
+    } as unknown as ReviewsWatcher
+    expect(draftKey(fake, [K102], 1)).toBe(K102)
+    expect(draftKey(fake, [K102, { body: '' }], 2)).toBe(K102)
+    expect(() => draftKey(fake, [K101], 1)).toThrow(REFUSED_NO_DRAFT)
+    expect(() => draftKey(fake, [K103], 1)).toThrow(REFUSED_NO_DRAFT)
+    expect(() => draftKey(fake, ['acme/web#999'], 1)).toThrow(REFUSED_UNKNOWN_PR)
+    expect(() => draftKey(fake, [K102], 2)).toThrow(REFUSED_UNKNOWN_PR)
+    expect(() => draftKey(fake, [K102, 'x'], 1)).toThrow(REFUSED_UNKNOWN_PR)
+    expect(() => draftKey(fake, [42], 1)).toThrow(REFUSED_UNKNOWN_PR)
   })
 })

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  approvedOnHead,
   autoFixOn,
   baselineOf,
   buildSnapshot,
+  type DraftEntry,
   isCopilot,
   isIgnored,
   isTrustedHuman,
@@ -12,6 +14,7 @@ import {
   splitWork,
   type ToReviewContext,
   toReviewState,
+  viewerApproved,
   workSince,
 } from '../../../src/main/reviews/model'
 import type {
@@ -21,6 +24,8 @@ import type {
   PrData,
   PrReview,
   PrThread,
+  ReviewState,
+  ViewerOpinion,
 } from '../../../src/main/reviews/pr-data'
 import {
   EMPTY_STATE,
@@ -29,6 +34,7 @@ import {
   type Outbox,
   type PrState,
   type Question,
+  type RecommendationMark,
 } from '../../../src/main/reviews/state'
 import { COPILOT_LOGIN, PR_KEY, REPO_KEY, repoOf } from '../../../src/shared/reviews'
 
@@ -73,6 +79,7 @@ function review(id: string, author: Author, over: Partial<PrReview> = {}): PrRev
 function pr(over: Partial<PrData> = {}): PrData {
   return {
     additions: 1,
+    approvals: 0,
     author: VIEWER,
     baseRef: 'main',
     comments: [],
@@ -102,6 +109,7 @@ function pr(over: Partial<PrData> = {}): PrData {
     updatedAt: 5,
     url: 'https://github.com/acme/app/pull/1',
     viewerPendingReviewId: null,
+    viewerReviews: [],
     ...over,
   }
 }
@@ -576,7 +584,11 @@ describe('buildSnapshot', () => {
     ])
     const row = snap.mine[0]
     expect(row?.status).toBe('comments')
-    expect(row?.reviewers).toEqual(['bob', 'Copilot', 'alice'])
+    expect(row?.reviewers).toEqual([
+      { name: 'bob', stance: 'none' },
+      { name: 'Copilot', stance: 'none' },
+      { name: 'alice', stance: 'approved' },
+    ])
     expect(row?.laterCopilot).toBe(1)
     expect(row?.olderOpen).toBe(1)
     expect(row?.claude).toBe('waiting')
@@ -781,7 +793,9 @@ describe('buildSnapshot of a busy PR', () => {
 
   it('a reviewer with only a decision shows in the reviewers', () => {
     const p = pr({ decisions: [review('r9', member, { state: 'APPROVED' })] })
-    expect(buildSnapshot(input([p])).mine[0]?.reviewers).toEqual(['alice'])
+    expect(buildSnapshot(input([p])).mine[0]?.reviewers).toEqual([
+      { name: 'alice', stance: 'approved' },
+    ])
   })
 })
 
@@ -1239,5 +1253,476 @@ describe('buildSnapshot R3', () => {
     expect(buildSnapshot(snapshotInput(poll([p]), state)).mine[0]?.lastError).toBe('It broke.')
     const none = buildSnapshot(snapshotInput(poll([p]), structuredClone(EMPTY_STATE))).mine[0]
     expect(none?.lastError).toBeNull()
+  })
+})
+
+describe('the Approve button (user decision, 2026-11-13)', () => {
+  const HEAD = 'a'.repeat(40)
+  const mark = (value: 'approve' | 'comment' | 'request-changes', reviewId: string | null) => ({
+    at: 100,
+    headSha: HEAD,
+    reviewId,
+    value,
+    why: 'Small and safe.',
+  })
+  const mk = (n: number, over: Partial<PrData> = {}) =>
+    pr({ headSha: HEAD, key: `acme/app#${n}`, number: n, requestedUsers: [VIEWER], ...over })
+  const pollOf = (toReview: PrData[]): PollData => ({
+    errors: [],
+    mine: [],
+    mineHasMore: false,
+    rateLimit: null,
+    toReview,
+    toReviewHasMore: false,
+    viewer: VIEWER,
+  })
+  const rowsOf = (input: ReturnType<typeof snapshotInput>) =>
+    Object.fromEntries(buildSnapshot(input).toReview.map(r => [r.key, r]))
+
+  it('shows only for an Approve mark on a reviewed row and on a draft-ready row', () => {
+    const poll = pollOf([
+      mk(1),
+      mk(2, { viewerPendingReviewId: 'r2' }),
+      mk(3),
+      mk(4, { viewerPendingReviewId: 'r4' }),
+      mk(5, { viewerPendingReviewId: 'r5' }),
+      mk(6),
+    ])
+    const state = structuredClone(EMPTY_STATE)
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('approve', null) }
+    state.prs['acme/app#2'] = { ...emptyPrState(), recommendation: mark('approve', 'r2') }
+    state.prs['acme/app#3'] = { ...emptyPrState(), recommendation: mark('comment', null) }
+    state.prs['acme/app#4'] = { ...emptyPrState(), recommendation: mark('comment', 'r4') }
+    state.prs['acme/app#5'] = { ...emptyPrState(), recommendation: mark('request-changes', 'r5') }
+    const rows = rowsOf(snapshotInput(poll, state))
+    expect(rows['acme/app#1']).toMatchObject({ approve: 'ready', state: 'reviewed' })
+    expect(rows['acme/app#2']).toMatchObject({ approve: 'ready', state: 'draft-ready' })
+    expect(rows['acme/app#3']).toMatchObject({ approve: null, state: 'reviewed' })
+    expect(rows['acme/app#4']).toMatchObject({ approve: null, state: 'draft-ready' })
+    expect(rows['acme/app#5']).toMatchObject({ approve: null, state: 'draft-ready' })
+    expect(rows['acme/app#6']).toMatchObject({ approve: null, approveIssue: null, state: 'new' })
+  })
+
+  it('does not show for a draft of the user, or for a mark on an older head', () => {
+    const poll = pollOf([
+      mk(1, { viewerPendingReviewId: 'r-user' }),
+      mk(2, { headSha: 'b'.repeat(40), viewerPendingReviewId: 'r2' }),
+    ])
+    const state = structuredClone(EMPTY_STATE)
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('approve', 'r1') }
+    state.prs['acme/app#2'] = { ...emptyPrState(), recommendation: mark('approve', 'r2') }
+    // The poll is newer than the marks.
+    const rows = rowsOf({ ...snapshotInput(poll, state), pollStartedAt: 400 })
+    expect(rows['acme/app#1']).toMatchObject({ approve: null, state: 'draft-ready' })
+    expect(rows['acme/app#2']).toMatchObject({ approve: null, state: 'draft-ready' })
+  })
+
+  it('is disabled while the write runs, and hides after an unknown result until a poll', () => {
+    const poll = pollOf([mk(1), mk(2), mk(3)])
+    const state = structuredClone(EMPTY_STATE)
+    for (const n of [1, 2, 3]) {
+      state.prs[`acme/app#${n}`] = { ...emptyPrState(), recommendation: mark('approve', null) }
+    }
+    const input = {
+      ...snapshotInput(poll, state),
+      approval: (key: string) => {
+        if (key === 'acme/app#1') return { at: 900, phase: 'running' as const }
+        if (key === 'acme/app#2') {
+          return { at: 900, message: 'Not sure.', phase: 'unknown' as const }
+        }
+        return { at: 900, message: 'It failed.', phase: 'failed' as const }
+      },
+      pollStartedAt: 800,
+    }
+    const rows = rowsOf(input)
+    expect(rows['acme/app#1']).toMatchObject({ approve: 'running', approveIssue: null })
+    expect(rows['acme/app#2']).toMatchObject({
+      approve: null,
+      approveIssue: { message: 'Not sure.', unknown: true },
+      state: 'reviewed',
+    })
+    // A known failure wrote nothing, so the button shows again.
+    expect(rows['acme/app#3']).toMatchObject({
+      approve: 'ready',
+      approveIssue: { message: 'It failed.', unknown: false },
+    })
+    // The next poll shows the true state.
+    const later = rowsOf({ ...input, pollStartedAt: 1000 })
+    expect(later['acme/app#1']).toMatchObject({ approve: 'running' })
+    expect(later['acme/app#2']).toMatchObject({ approve: 'ready', approveIssue: null })
+    expect(later['acme/app#3']).toMatchObject({ approve: 'ready', approveIssue: null })
+  })
+
+  it('a click that worked shows You approved at once, before the poll', () => {
+    const poll = pollOf([mk(1), mk(2, { viewerPendingReviewId: 'r2' })])
+    const state = structuredClone(EMPTY_STATE)
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('approve', null) }
+    state.prs['acme/app#2'] = { ...emptyPrState(), recommendation: mark('approve', 'r2') }
+    const input = {
+      ...snapshotInput(poll, state),
+      approval: () => ({ at: 900, phase: 'approved' as const }),
+      pollStartedAt: 800,
+    }
+    const rows = rowsOf(input)
+    for (const key of ['acme/app#1', 'acme/app#2']) {
+      expect(rows[key]).toMatchObject({ approve: null, approveIssue: null, state: 'you-approved' })
+    }
+  })
+
+  it('hides after the poll shows an approval of the viewer on the head', () => {
+    const approved = { commit: HEAD, state: 'APPROVED' as const, submittedAt: 100 }
+    const later = (state: 'COMMENTED' | 'CHANGES_REQUESTED' | 'PENDING') => ({
+      ...approved,
+      state,
+      submittedAt: 200,
+    })
+    const poll = pollOf([
+      mk(1, { viewerReviews: [approved] }),
+      mk(2, { viewerReviews: [{ ...approved, commit: 'b'.repeat(40) }] }),
+      mk(3, { viewerReviews: [{ ...approved, state: 'COMMENTED' }] }),
+      // An approval and then a comment or a draft on the head: the approval stands.
+      mk(4, { viewerReviews: [approved, later('COMMENTED')] }),
+      mk(5, { viewerReviews: [approved, later('PENDING')] }),
+      // A later Request changes ends the approval.
+      mk(6, { viewerReviews: [approved, later('CHANGES_REQUESTED')] }),
+    ])
+    const state = structuredClone(EMPTY_STATE)
+    for (const n of [1, 2, 3, 4, 5, 6]) {
+      // The user clicked Review after the request came.
+      state.requests[`acme/app#${n}`] = { baseline: false, firstSeen: 10 }
+      state.prs[`acme/app#${n}`] = {
+        ...emptyPrState(),
+        actedAt: 50,
+        recommendation: mark('approve', null),
+      }
+    }
+    const rows = rowsOf(snapshotInput(poll, state))
+    expect(rows['acme/app#1']).toMatchObject({ approve: null, state: 'you-approved' })
+    expect(rows['acme/app#2']).toMatchObject({ approve: 'ready', state: 'reviewed' })
+    expect(rows['acme/app#3']).toMatchObject({ approve: 'ready', state: 'reviewed' })
+    expect(rows['acme/app#4']).toMatchObject({ approve: null, state: 'you-approved' })
+    expect(rows['acme/app#5']).toMatchObject({ approve: null, state: 'you-approved' })
+    expect(rows['acme/app#6']).toMatchObject({ approve: 'ready', state: 'reviewed' })
+  })
+
+  it('the poll and the fresh check use one rule: the latest opinion of the viewer', () => {
+    const at = (
+      state: ReviewState,
+      submittedAt: number | null,
+      commit: string | null = HEAD,
+    ): ViewerOpinion => ({ commit, state, submittedAt })
+    const cases: [ReturnType<typeof at>[], boolean][] = [
+      [[], false],
+      [[at('APPROVED', 1)], true],
+      [[at('APPROVED', 1, 'b'.repeat(40))], false],
+      [[at('APPROVED', 1), at('COMMENTED', 2)], true],
+      [[at('APPROVED', 1), at('PENDING', null)], true],
+      [[at('APPROVED', 1), at('CHANGES_REQUESTED', 2)], false],
+      [[at('APPROVED', 1), at('DISMISSED', 2)], false],
+      [[at('CHANGES_REQUESTED', 1), at('APPROVED', 2)], true],
+      [[at('COMMENTED', 1)], false],
+    ]
+    for (const [reviews, expected] of cases) {
+      expect(approvedOnHead(reviews, HEAD)).toBe(expected)
+      expect(viewerApproved({ headSha: HEAD, viewerReviews: reviews })).toBe(expected)
+    }
+  })
+
+  it('toReviewState: an approval of the viewer gives you-approved, a new request stays new', () => {
+    const ctx: ToReviewContext = {
+      acted: true,
+      known: { baseline: false },
+      now: 1000,
+      outcome: 'reviewed',
+      pauseEndsAt: null,
+      session: null,
+      teamRequests: true,
+    }
+    const approved = mk(1, {
+      reviewDecision: 'APPROVED',
+      viewerReviews: [{ commit: HEAD, state: 'APPROVED', submittedAt: 100 }],
+    })
+    expect(toReviewState(approved, VIEWER, ctx)).toBe('you-approved')
+    expect(toReviewState(approved, VIEWER, { ...ctx, outcome: null })).toBe('you-approved')
+    // A session and a draft of the user come first.
+    expect(toReviewState(approved, VIEWER, { ...ctx, session: 'reviewing' })).toBe('reviewing')
+    const pending = { ...approved, viewerPendingReviewId: 'r-user' }
+    expect(toReviewState(pending, VIEWER, ctx)).toBe('draft-ready')
+    // A new request on the same commit flashes as before.
+    const fresh = { ...ctx, acted: false, outcome: null }
+    expect(toReviewState({ ...approved, reviewDecision: null }, VIEWER, fresh)).toBe('new')
+    // A click that worked wins over the draft that the poll still shows.
+    expect(toReviewState(pending, VIEWER, { ...ctx, approved: true })).toBe('you-approved')
+  })
+})
+
+describe('the row results and the Review panel (user decision, 2026-11-13)', () => {
+  const HEAD = 'a'.repeat(40)
+  type Value = 'approve' | 'comment' | 'request-changes'
+  const mark = (value: Value, reviewId: string | null, over: Partial<RecommendationMark> = {}) => ({
+    at: 100,
+    headSha: HEAD,
+    reviewId,
+    value,
+    why: 'Because.',
+    ...over,
+  })
+  const mk = (n: number, over: Partial<PrData> = {}) =>
+    pr({ headSha: HEAD, key: `acme/app#${n}`, number: n, requestedUsers: [VIEWER], ...over })
+  const pollOf = (toReview: PrData[]): PollData => ({
+    errors: [],
+    mine: [],
+    mineHasMore: false,
+    rateLimit: null,
+    toReview,
+    toReviewHasMore: false,
+    viewer: VIEWER,
+  })
+  const rowsOf = (input: Parameters<typeof buildSnapshot>[0]) =>
+    Object.fromEntries(buildSnapshot(input).toReview.map(r => [r.key, r]))
+  const draftOf = (reviewId: string, path: string, line = 1) => ({
+    at: 50,
+    body: 'x',
+    line,
+    path,
+    prKey: 'acme/app#1',
+    reviewId,
+  })
+
+  it('B1: says what Claude drafted, from the saved drafts of the mark', () => {
+    const poll = pollOf([
+      mk(1, { viewerPendingReviewId: 'r1' }),
+      mk(2, { viewerPendingReviewId: 'r2' }),
+      mk(3),
+      mk(4, { viewerPendingReviewId: 'r4' }),
+      mk(5),
+    ])
+    const state = structuredClone(EMPTY_STATE)
+    state.drafts = [
+      draftOf('r1', 'src/a.ts'),
+      draftOf('r1', 'src/b.ts', 2),
+      draftOf('r1', ''),
+      draftOf('r2', ''),
+      draftOf('other', 'src/c.ts'),
+    ]
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('comment', 'r1') }
+    state.prs['acme/app#2'] = { ...emptyPrState(), recommendation: mark('approve', 'r2') }
+    state.prs['acme/app#3'] = { ...emptyPrState(), recommendation: mark('approve', null) }
+    // Bifrost kept no drafts for r4, so the counts are not known.
+    state.prs['acme/app#4'] = { ...emptyPrState(), recommendation: mark('request-changes', 'r4') }
+    const rows = rowsOf(snapshotInput(poll, state))
+    expect(rows['acme/app#1']?.drafted).toEqual({ comments: 2, summary: true })
+    expect(rows['acme/app#2']?.drafted).toEqual({ comments: 0, summary: true })
+    expect(rows['acme/app#3']?.drafted).toEqual({ comments: 0, summary: false })
+    expect(rows['acme/app#4']?.drafted).toBeNull()
+    expect(rows['acme/app#5']?.drafted).toBeNull()
+  })
+
+  it('B1: gives the count of the approvals of others', () => {
+    const poll = pollOf([mk(1, { approvals: 2, reviewDecision: 'APPROVED' })])
+    const rows = rowsOf(snapshotInput(poll, structuredClone(EMPTY_STATE)))
+    expect(rows['acme/app#1']).toMatchObject({ approvals: 2, state: 'approved-by-others' })
+  })
+
+  it('B4: offers the Review panel only for a Comment or Request changes draft of Claude', () => {
+    const poll = pollOf([
+      mk(1, { viewerPendingReviewId: 'r1' }),
+      mk(2, { viewerPendingReviewId: 'r2' }),
+      mk(3, { viewerPendingReviewId: 'r3' }),
+      mk(4),
+      mk(5, { viewerPendingReviewId: 'r-user' }),
+    ])
+    const state = structuredClone(EMPTY_STATE)
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('comment', 'r1') }
+    state.prs['acme/app#2'] = { ...emptyPrState(), recommendation: mark('request-changes', 'r2') }
+    state.prs['acme/app#3'] = { ...emptyPrState(), recommendation: mark('approve', 'r3') }
+    state.prs['acme/app#4'] = { ...emptyPrState(), recommendation: mark('approve', null) }
+    const rows = rowsOf({ ...snapshotInput(poll, state), pollStartedAt: 400 })
+    expect(rows['acme/app#1']).toMatchObject({ draft: 'ready', state: 'draft-ready' })
+    expect(rows['acme/app#2']).toMatchObject({ draft: 'ready', state: 'draft-ready' })
+    expect(rows['acme/app#3']).toMatchObject({ approve: 'ready', draft: null })
+    expect(rows['acme/app#4']).toMatchObject({ approve: 'ready', draft: null })
+    // A draft of the user has no mark, so it has no panel.
+    expect(rows['acme/app#5']).toMatchObject({ draft: null, state: 'draft-ready' })
+  })
+
+  it('B7: a panel action that runs, fails or is not known shows on the row until a poll', () => {
+    const poll = pollOf([1, 2, 3].map(n => mk(n, { viewerPendingReviewId: `r${n}` })))
+    const state = structuredClone(EMPTY_STATE)
+    for (const n of [1, 2, 3]) {
+      state.prs[`acme/app#${n}`] = { ...emptyPrState(), recommendation: mark('comment', `r${n}`) }
+    }
+    const input = {
+      ...snapshotInput(poll, state),
+      draft: (key: string): DraftEntry | null => {
+        if (key === 'acme/app#1') return { action: 'send', at: 900, phase: 'running' }
+        if (key === 'acme/app#2') {
+          return { action: 'send', at: 900, message: 'Not sure.', phase: 'unknown' }
+        }
+        return { action: 'discard', at: 900, message: 'It failed.', phase: 'failed' }
+      },
+      pollStartedAt: 800,
+    }
+    const rows = rowsOf(input)
+    expect(rows['acme/app#1']).toMatchObject({ draft: 'running', draftIssue: null })
+    expect(rows['acme/app#2']).toMatchObject({
+      draft: null,
+      draftIssue: { action: 'send', message: 'Not sure.', unknown: true },
+    })
+    expect(rows['acme/app#3']).toMatchObject({
+      draft: 'ready',
+      draftIssue: { action: 'discard', message: 'It failed.', unknown: false },
+    })
+    const later = rowsOf({ ...input, pollStartedAt: 1000 })
+    expect(later['acme/app#2']).toMatchObject({ draft: 'ready', draftIssue: null })
+    expect(later['acme/app#3']).toMatchObject({ draft: 'ready', draftIssue: null })
+  })
+
+  it('B7: a sent review shows Review sent at once, and hides the old draft of the poll', () => {
+    const poll = pollOf([mk(1, { viewerPendingReviewId: 'r1' })])
+    const state = structuredClone(EMPTY_STATE)
+    // The send cleared the mark.
+    const entry: DraftEntry = { action: 'send', at: 900, gone: 'r1', phase: 'sent' }
+    const input = { ...snapshotInput(poll, state), draft: () => entry, pollStartedAt: 800 }
+    expect(rowsOf(input)['acme/app#1']).toMatchObject({ draft: null, state: 'you-reviewed' })
+    // A poll after the send shows the true state of GitHub.
+    const after = pollOf([mk(1)])
+    expect(rowsOf({ ...input, poll: after, pollStartedAt: 1000 })['acme/app#1']?.state).toBe('new')
+  })
+
+  it('B8: after a discard the row no longer offers the draft, and offers Review', () => {
+    const poll = pollOf([mk(1, { viewerPendingReviewId: 'r1' })])
+    const state = structuredClone(EMPTY_STATE)
+    state.requests['acme/app#1'] = { baseline: false, firstSeen: 10 }
+    state.prs['acme/app#1'] = { ...emptyPrState(), actedAt: 50 }
+    const entry: DraftEntry = { action: 'discard', at: 900, gone: 'r1', phase: 'discarded' }
+    const row = rowsOf({ ...snapshotInput(poll, state), draft: () => entry, pollStartedAt: 800 })[
+      'acme/app#1'
+    ]
+    expect(row).toMatchObject({ draft: null, recommendation: null, state: 'waiting' })
+  })
+
+  it('B9: a deleted draft gives the Approve button and says that the draft is gone', () => {
+    const poll = pollOf([mk(1, { viewerPendingReviewId: 'r1' })])
+    const state = structuredClone(EMPTY_STATE)
+    const deleted = mark('request-changes', null, { deleted: true })
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: deleted }
+    const entry: DraftEntry = { action: 'approve', at: 900, gone: 'r1', phase: 'discarded' }
+    const input = { ...snapshotInput(poll, state), draft: () => entry, pollStartedAt: 800 }
+    expect(rowsOf(input)['acme/app#1']).toMatchObject({
+      approve: 'ready',
+      draft: null,
+      draftDeleted: true,
+      recommendation: 'request-changes',
+      state: 'reviewed',
+    })
+    // The approval failed: the button shows again, with the text.
+    const failed = {
+      ...input,
+      approval: () => ({ at: 950, message: 'No.', phase: 'failed' as const }),
+    }
+    expect(rowsOf(failed)['acme/app#1']).toMatchObject({
+      approve: 'ready',
+      approveIssue: { message: 'No.', unknown: false },
+      draftDeleted: true,
+    })
+    // A deleted mark of another commit gives no button.
+    const moved = pollOf([mk(1, { headSha: 'b'.repeat(40) })])
+    expect(rowsOf({ ...input, poll: moved })['acme/app#1']?.approve).toBeNull()
+  })
+
+  it('B3: a removed PR shows nowhere: no row, no count and no flash', () => {
+    const poll = pollOf([
+      mk(1, { approvals: 1, reviewDecision: 'APPROVED' }),
+      mk(2, { reviewDecision: 'APPROVED' }),
+    ])
+    const state = structuredClone(EMPTY_STATE)
+    state.hidden = { 'acme/app#1': 900 }
+    const snapshot = buildSnapshot(snapshotInput(poll, state))
+    expect(snapshot.toReview.map(r => r.key)).toEqual(['acme/app#2'])
+  })
+
+  describe('the stance of a reviewer', () => {
+    const bob: Author = { association: 'MEMBER', bot: false, login: 'bob' }
+    const stances = (p: PrData): unknown => {
+      const poll: PollData = {
+        errors: [],
+        mine: [p],
+        mineHasMore: false,
+        rateLimit: null,
+        toReview: [],
+        toReviewHasMore: false,
+        viewer: VIEWER,
+      }
+      const snap = buildSnapshot(snapshotInput(poll, structuredClone(EMPTY_STATE)))
+      return snap.mine[0]?.reviewers.map(r => [r.name, r.stance])
+    }
+    const rev = (author: Author, state: PrReview['state'], at: number, id = `r${at}`): PrReview =>
+      review(id, author, { state, submittedAt: at })
+
+    it('approved, commented only, changes requested and asked only', () => {
+      const p = pr({
+        requestedUsers: ['carol'],
+        reviews: [
+          rev(member, 'APPROVED', 1),
+          rev(bob, 'COMMENTED', 2),
+          rev(outsider, 'CHANGES_REQUESTED', 3),
+        ],
+      })
+      expect(stances(p)).toEqual([
+        ['carol', 'none'],
+        ['alice', 'approved'],
+        ['bob', 'commented'],
+        ['mallory', 'changes'],
+      ])
+    })
+
+    it('the newest opinion wins, and a later comment does not change it', () => {
+      const p = pr({
+        reviews: [
+          rev(member, 'CHANGES_REQUESTED', 5),
+          rev(member, 'APPROVED', 9),
+          rev(member, 'COMMENTED', 12),
+          rev(bob, 'APPROVED', 2),
+          rev(bob, 'CHANGES_REQUESTED', 1),
+        ],
+      })
+      expect(stances(p)).toEqual([
+        ['alice', 'approved'],
+        ['bob', 'approved'],
+      ])
+    })
+
+    it('reads the opinion from the decisions too', () => {
+      const p = pr({ decisions: [rev(member, 'CHANGES_REQUESTED', 3)] })
+      expect(stances(p)).toEqual([['alice', 'changes']])
+    })
+
+    it('a dismissed latest opinion is grey, even after a comment', () => {
+      const p = pr({
+        reviews: [
+          rev(member, 'APPROVED', 1),
+          rev(member, 'DISMISSED', 2),
+          rev(member, 'COMMENTED', 3),
+        ],
+      })
+      expect(stances(p)).toEqual([['alice', 'none']])
+    })
+
+    it('a new request keeps the colour of the last opinion', () => {
+      const p = pr({ requestedUsers: ['alice'], reviews: [rev(member, 'CHANGES_REQUESTED', 1)] })
+      expect(stances(p)).toEqual([['alice', 'changes']])
+    })
+
+    it('Copilot is always grey, and the viewer is not listed', () => {
+      const p = pr({
+        reviews: [
+          rev(copilot, 'APPROVED', 1),
+          rev(copilot, 'CHANGES_REQUESTED', 2),
+          rev(viewer, 'APPROVED', 3),
+        ],
+      })
+      expect(stances(p)).toEqual([['Copilot', 'none']])
+    })
   })
 })

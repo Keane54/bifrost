@@ -194,6 +194,16 @@ describe('theme', () => {
     expect(CSS).toMatch(new RegExp(`--color-${token}:`))
   })
 
+  // User decision, 2026-11-13: each result of Claude on a To review row has its own colour.
+  // Each one is an alias of an existing token, so the app has no new colour value.
+  it('defines the green, amber and red review tokens as aliases', () => {
+    expect(CSS).toContain('--color-review-approve: var(--color-watch-green);')
+    expect(CSS).toContain('--color-review-comment: var(--color-box-yellow);')
+    expect(CSS).toContain('--color-review-changes: var(--color-watch-red);')
+    expect(token('watch-green')).toBe('#22c55e')
+    expect(token('box-yellow')).toBe('#e2b93b')
+  })
+
   it('defines the light cyan accent and its glow', () => {
     expect(CSS).toContain('--color-accent: #8fdcec;')
     expect(CSS).toContain('--color-accent-glow: rgb(143 220 236 / 0.28);')

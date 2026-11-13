@@ -126,6 +126,7 @@ const context = (extra: Partial<ReviewContext> = {}): ReviewContext => ({
   number: 7,
   owner: 'o',
   pending: null,
+  prId: 'PR_7',
   repo: 'r',
   reviews: [],
   state: 'OPEN',

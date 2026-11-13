@@ -1,15 +1,25 @@
 // One row of the Reviews panel: two lines, as in the design (section 8 and 9).
 import { Button } from '@base-ui/react/button'
 import { ContextMenu } from '@base-ui/react/context-menu'
-import type { MyPrRow, ReviewStatus, ToReviewRow } from '../../../shared/reviews'
+import { Fragment } from 'react'
+import type {
+  MyPrRow,
+  Reviewer,
+  ReviewerStance,
+  ReviewStatus,
+  ToReviewRow,
+} from '../../../shared/reviews'
 import { useActions } from '../actions/actions-context'
 import { cx } from '../lib/cx'
 import { MENU_ITEM, MENU_POPUP, Tip } from '../lib/menu'
 import { useSettings } from '../settings/settings-context'
 import { useWmControls } from '../wm/context'
 import { setAnswerKey } from './answer-key'
+import { setDraftKey } from './draft-key'
 import {
   ageText,
+  approveTip,
+  buttonTip,
   claudeText,
   claudeTip,
   laterCopilotText,
@@ -18,23 +28,44 @@ import {
   menuItems,
   mineMenuItems,
   olderText,
+  type RowButtonId,
+  type RowResult,
+  resultLine,
+  resultOf,
   rightText,
+  rowButtons,
   rowTip,
   sizeText,
   statusText,
   truncatedText,
 } from './row-text'
 
-// The colour of the dot of a review status. Red is only for the flash and for Needs you.
+// The colour of the status text of a My PRs row. Red is for the flash, for Needs you, for a
+// Changes required result of Claude on a To review row, and for a reviewer name with changes
+// requested (user decision, 2026-11-13).
 const STATUS_TEXT: Record<ReviewStatus, string> = {
   approved: 'text-svc-ok',
-  'changes-requested': 'text-watch-amber',
+  'changes-requested': 'text-review-changes',
   comments: 'text-prio-3',
   pending: 'text-text-dim',
 }
 
-const SMALL_BUTTON =
-  'border border-panel-edge bg-black/35 px-1.5 text-text leading-4 hover:text-text-strong not-data-disabled:active:bg-accent/12 data-disabled:opacity-40'
+// The base of a small button, with no colour. Each button adds the colour of its tone.
+const SMALL_BUTTON = cx(
+  'border bg-black/35 px-1.5 leading-4 hover:text-text-strong',
+  'not-data-disabled:active:bg-accent/12 data-disabled:opacity-40',
+)
+
+// The colours of a small button. Each result of Claude has its own colour (ruling B1).
+const TONES = {
+  approve: 'border-review-approve text-review-approve',
+  changes: 'border-review-changes text-review-changes',
+  comment: 'border-review-comment text-review-comment',
+  dim: 'border-panel-edge text-text-dim',
+  plain: 'border-panel-edge text-text',
+  strong: 'border-text-strong text-text-strong',
+} as const
+type Tone = keyof typeof TONES
 
 export type OnAct = (job: () => Promise<void>) => void
 
@@ -95,11 +126,14 @@ function Shell({
 }
 
 function Line1({
+  dot,
   extra,
   number,
   repo,
   title,
 }: {
+  // The colour class of the dot before the repository, or no dot.
+  dot?: string | null
   extra?: React.ReactNode
   number: number
   repo: string
@@ -107,6 +141,13 @@ function Line1({
 }): React.JSX.Element {
   return (
     <div className='relative flex items-baseline gap-1.5 overflow-hidden whitespace-nowrap'>
+      {dot != null && (
+        <span
+          aria-hidden={true}
+          className={cx('size-1.5 shrink-0 self-center', dot)}
+          data-review-dot={true}
+        />
+      )}
       <span className='shrink-0 text-text'>{repo}</span>
       <span className='shrink-0 text-text-dim'>#{number}</span>
       <span className='min-w-0 truncate text-text-strong'>{title}</span>
@@ -127,19 +168,19 @@ function RowButton({
   disabled,
   label,
   onClick,
-  strong,
   tip,
+  tone = 'plain',
 }: {
   disabled?: boolean
   label: string
   onClick?: () => void
-  strong?: boolean
-  tip?: string
+  tip?: string | null
+  tone?: Tone
 }): React.JSX.Element {
   return (
     <Tip label={tip ?? null}>
       <Button
-        className={cx(SMALL_BUTTON, strong && 'border-text-strong text-text-strong')}
+        className={cx(SMALL_BUTTON, TONES[tone])}
         disabled={disabled}
         focusableWhenDisabled={true}
         onClick={e => {
@@ -154,20 +195,97 @@ function RowButton({
   )
 }
 
-const HAS_REVIEW_BUTTON: readonly string[] = [
-  'new',
-  'waiting',
-  'approved-by-others',
-  'team',
-  'reviewed',
-  'failed',
-]
+// The colour of the dot of each result of Claude, as in the approved mock (user decision,
+// 2026-11-13).
+const RESULT_DOT: Record<RowResult, string> = {
+  approve: 'bg-review-approve',
+  changes: 'bg-review-changes',
+  comment: 'bg-review-comment',
+  deleted: 'bg-text-dim',
+  others: 'bg-text-dim',
+}
 
-// The colour of the right text of a To review row.
-function textColour(state: ToReviewRow['state']): string | undefined {
-  if (state === 'failed') return 'text-box-red'
-  if (state === 'draft-ready' || state === 'reviewed') return 'text-svc-ok'
+// The colour of the right text of each result of Claude.
+const RESULT_COLOUR: Record<RowResult, string> = {
+  approve: 'text-review-approve',
+  changes: 'text-review-changes',
+  comment: 'text-review-comment',
+  deleted: 'text-text-dim',
+  others: 'text-text-dim',
+}
+
+// The colour of the right text of a To review row. An Approve click or an action of the Review
+// panel that did not work is red.
+function textColour(row: ToReviewRow): string | undefined {
+  if (row.approveIssue !== null || row.draftIssue !== null) return 'text-box-red'
+  if (row.state === 'failed') return 'text-box-red'
+  const result = resultOf(row)
+  if (result !== null) return RESULT_COLOUR[result]
+  if (row.state === 'you-approved') return 'text-review-approve'
   return undefined
+}
+
+// The tone of each button of a To review row.
+function buttonTone(id: RowButtonId, row: ToReviewRow): Tone {
+  switch (id) {
+    case 'Approve':
+      return 'approve'
+    case 'Comment':
+      return 'comment'
+    case 'Request changes':
+      return 'changes'
+    case 'Remove':
+      return 'dim'
+    case 'Review':
+      return row.state === 'new' ? 'strong' : 'plain'
+    default:
+      return 'plain'
+  }
+}
+
+// Open the Review panel for the draft of a row.
+function useOpenDraft(): (key: string) => void {
+  const { dispatch } = useWmControls()
+  return key => {
+    setDraftKey(key)
+    dispatch({ panelId: 'review-draft', type: 'open' })
+  }
+}
+
+// The action of one button of a To review row.
+function pressButton(
+  id: RowButtonId,
+  row: ToReviewRow,
+  onAct: OnAct,
+  openDraft: (key: string) => void,
+): void {
+  const api = window.bifrost.reviews
+  switch (id) {
+    case 'Approve':
+      onAct(() => api.approve(row.key))
+      break
+    case 'Comment':
+    case 'Request changes':
+      openDraft(row.key)
+      break
+    case 'Remove':
+      onAct(() => api.remove(row.key))
+      break
+    case 'Review':
+    case 'Try again':
+      onAct(() => api.review(row.key))
+      break
+    case 'Pause':
+      onAct(() => api.pause(row.key))
+      break
+  }
+}
+
+// A button is disabled while its write runs.
+function buttonDisabled(id: RowButtonId, row: ToReviewRow): boolean {
+  if (id === 'Approve') return row.approve === 'running'
+  if (id === 'Comment' || id === 'Request changes') return row.draft === 'running'
+  return false
 }
 
 // The action of one menu item of a To review row.
@@ -176,12 +294,20 @@ function selectItem(
   row: ToReviewRow,
   onAct: OnAct,
   run: (action: 'open', sessionId: string) => void,
+  openDraft: (key: string) => void,
 ): void {
   const api = window.bifrost.reviews
   let job: (() => Promise<void>) | null = null
   switch (id) {
+    case 'Approve':
+      job = () => api.approve(row.key)
+      break
     case 'Cancel review':
       job = () => api.cancel(row.key)
+      break
+    case 'Comment':
+    case 'Request changes':
+      openDraft(row.key)
       break
     case 'End pause now':
       job = () => api.endPause(row.key)
@@ -194,6 +320,9 @@ function selectItem(
       break
     case 'Pause':
       job = () => api.pause(row.key)
+      break
+    case 'Remove':
+      job = () => api.remove(row.key)
       break
     case 'Review':
       job = () => api.review(row.key)
@@ -211,17 +340,21 @@ export function ToReviewItem({
   row,
 }: Common & { now: number; row: ToReviewRow }): React.JSX.Element {
   const { run } = useActions()
+  const openDraft = useOpenDraft()
   const text = rightText(row, now)
+  const line = resultLine(row)
+  const result = resultOf(row)
   const menu = (
     <>
       {menuItems(row).map(id => (
-        <MenuItem key={id} label={id} onSelect={() => selectItem(id, row, onAct, run)} />
+        <MenuItem key={id} label={id} onSelect={() => selectItem(id, row, onAct, run, openDraft)} />
       ))}
     </>
   )
   return (
     <Shell flash={row.flash} menu={menu} onAct={onAct} prKey={row.key} sessionId={row.sessionId}>
       <Line1
+        dot={result === null ? null : RESULT_DOT[result]}
         extra={
           row.team && (
             <span className='shrink-0 border border-panel-edge px-0.5 text-[10px] text-text-dim'>
@@ -233,30 +366,35 @@ export function ToReviewItem({
         repo={row.repo}
         title={row.title}
       />
-      {/* Line 2 cuts the author first, so the state on the right always shows. */}
+      {/* Line 2 cuts the author or the result line first, so the state on the right always
+          shows. A row with a result of Claude says what Claude did (ruling B1). */}
       <div className='relative flex min-w-0 items-center gap-2.5 overflow-hidden whitespace-nowrap text-text-dim'>
-        <span className='min-w-0 truncate'>{row.author}</span>
-        <span className='shrink-0'>{sizeText(row.additions, row.deletions)}</span>
-        <span className='shrink-0'>{ageText(now - row.requestedAt)}</span>
+        {line === null ? (
+          <>
+            <span className='min-w-0 truncate'>{row.author}</span>
+            <span className='shrink-0'>{sizeText(row.additions, row.deletions)}</span>
+            <span className='shrink-0'>{ageText(now - row.requestedAt)}</span>
+          </>
+        ) : (
+          <span className='min-w-0 truncate'>{line}</span>
+        )}
+        {/* The state text and the buttons are centred on one line (ruling B2). */}
         <span className='ml-auto flex shrink-0 items-center gap-1.5 text-text'>
           {text !== '' && (
             <Tip label={rowTip(row)}>
-              <span className={cx(textColour(row.state))}>{text}</span>
+              <span className={cx('leading-4', textColour(row))}>{text}</span>
             </Tip>
           )}
-          {HAS_REVIEW_BUTTON.includes(row.state) && (
+          {rowButtons(row).map(id => (
             <RowButton
-              label={row.state === 'failed' ? 'Try again' : 'Review'}
-              onClick={() => onAct(() => window.bifrost.reviews.review(row.key))}
-              strong={row.state === 'new'}
+              disabled={buttonDisabled(id, row)}
+              key={id}
+              label={id}
+              onClick={() => pressButton(id, row, onAct, openDraft)}
+              tip={id === 'Approve' ? approveTip(row) : buttonTip(id, row)}
+              tone={buttonTone(id, row)}
             />
-          )}
-          {row.state === 'new' && (
-            <RowButton
-              label='Pause'
-              onClick={() => onAct(() => window.bifrost.reviews.pause(row.key))}
-            />
-          )}
+          ))}
         </span>
       </div>
     </Shell>
@@ -306,6 +444,30 @@ function selectMine(
       break
   }
   if (job !== null) onAct(job)
+}
+
+// The colour of a reviewer name by stance. It matches the status colours (user decision,
+// 2026-11-13).
+const STANCE_TEXT: Record<ReviewerStance, string> = {
+  approved: 'text-svc-ok',
+  changes: 'text-review-changes',
+  commented: 'text-review-comment',
+  none: 'text-text-dim',
+}
+
+// The reviewer names of line 2. The separator stays dim.
+export function ReviewerNames({ reviewers }: { reviewers: Reviewer[] }): React.JSX.Element | null {
+  if (reviewers.length === 0) return null
+  return (
+    <span className='min-w-0 truncate'>
+      {reviewers.map((r, i) => (
+        <Fragment key={r.name}>
+          {i > 0 && <span className='text-text-dim'>{', '}</span>}
+          <span className={cx(STANCE_TEXT[r.stance])}>{r.name}</span>
+        </Fragment>
+      ))}
+    </span>
+  )
 }
 
 export function MyPrItem({ onAct, row }: Common & { row: MyPrRow }): React.JSX.Element {
@@ -362,9 +524,7 @@ export function MyPrItem({ onAct, row }: Common & { row: MyPrRow }): React.JSX.E
             {statusText(row.status)}
           </span>
         </Tip>
-        {row.reviewers.length > 0 && (
-          <span className='min-w-0 truncate'>{row.reviewers.join(', ')}</span>
-        )}
+        <ReviewerNames reviewers={row.reviewers} />
         {later !== null && <span className='shrink-0'>{later}</span>}
         {older !== null && <span className='shrink-0'>{older}</span>}
         <Tip label={claudeTip(row)}>

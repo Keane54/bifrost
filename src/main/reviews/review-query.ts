@@ -32,6 +32,8 @@ export interface ReviewContext {
   owner: string
   repo: string
   number: number
+  // The node ID of the PR. The Approve write with no draft needs it.
+  prId: string
   url: string
   title: string
   body: string
@@ -52,6 +54,7 @@ const CONTEXT_QUERY = `query ReviewContext(
 ) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
+      id @include(if: $head)
       title @include(if: $head)
       body @include(if: $head)
       url @include(if: $head)
@@ -286,6 +289,7 @@ export async function fetchReviewContext(
       number: pr.number,
       owner: pr.owner,
       pending,
+      prId: asString(head.id),
       repo: pr.repo,
       reviews,
       state,

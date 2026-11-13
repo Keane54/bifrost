@@ -131,7 +131,9 @@ const COMMIT_ON_BRANCH = `mutation CommitOnBranch($input: CreateCommitOnBranchIn
   }
 }`
 
-type Failure = { ok: false; message: string; unknown: boolean; detail?: string }
+// notFound is true when GitHub found no node for the ID of the write. The Review panel counts the
+// delete of a node that is gone as done.
+type Failure = { ok: false; message: string; unknown: boolean; detail?: string; notFound?: true }
 
 const isId = (x: unknown): x is string => typeof x === 'string' && x !== ''
 const unreadable: Failure = { message: REASON_WRITE_UNREADABLE, ok: false, unknown: true }
@@ -169,8 +171,8 @@ function writeFailure(result: ExecResult): Failure | null {
   return { message: failure.message, ok: false, unknown: !known }
 }
 
-// Run one write with -f fields.
-async function send(
+// Run one write with -f fields. approve-review.ts and draft-writes.ts use it for their writes.
+export async function send(
   gh: Gh,
   query: string,
   fields: Record<string, string>,
@@ -190,8 +192,10 @@ function answerOf(result: ExecResult): { ok: true; data: Rec } | Failure {
   if (errors.length > 0) {
     const first = asString(asRec(errors[0]).message).trim().split('\n')[0]?.trim() ?? ''
     const detail = first.slice(0, MESSAGE_MAX)
-    if (detail === '') return { message: REASON_WRITE_UNREADABLE, ok: false, unknown: false }
-    return { detail, message: REASON_WRITE_FAILED, ok: false, unknown: false }
+    const gone = asRec(errors[0]).type === 'NOT_FOUND' ? { notFound: true as const } : {}
+    if (detail === '')
+      return { message: REASON_WRITE_UNREADABLE, ok: false, unknown: false, ...gone }
+    return { detail, message: REASON_WRITE_FAILED, ok: false, unknown: false, ...gone }
   }
   const failure = writeFailure(result)
   if (failure !== null) return failure

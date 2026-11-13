@@ -1,20 +1,32 @@
-// The smoke test of a review round (R2). It starts Bifrost with a fake claude, a fake gh and a
-// test home. The test home holds a bare git repository as the remote of acme/api, so the clone
-// comes from a file:// URL and never from GitHub. The test turns on Watch GitHub, trusts the
-// clone in the trust terminal, starts a review and waits for the draft. Then it checks the one
-// GitHub write of the fake gh, the flags of the review session, the unknown calls, and that the
-// app uses only the test home.
+// The smoke tests of a review round (R2), of the Approve button and of the Review panel (user
+// decision, 2026-11-13). Each test starts Bifrost with a fake claude, a fake gh and a test home.
+// The test home holds a bare git repository as the remote of acme/api, so the clone comes from a
+// file:// URL and never from GitHub. The test turns on Watch GitHub, trusts the clone in the trust
+// terminal, starts a review and waits for the draft. The first test then checks the one GitHub
+// write of the fake gh and the flags of the review session. Then it opens the draft in the Review
+// panel, changes the summary and sends the review. It checks the two more writes, the unknown
+// calls and that the app uses only the test home. The second test gets an
+// Approve result, clicks Approve, and checks that the one more write submits the draft as an
+// approval. The third test gets an Approve result with nothing to post, and checks that the click
+// approves the reviewed commit with no text.
 //
-// The file gh-fixtures in the test home tells the fake gh to use the review-round fixtures. The
-// file smoke-head holds the head commit of the PR. The fake gh and the fake claude put it in place
-// of @HEAD@ in the fixtures.
+// The file gh-fixtures in the test home tells the fake gh which fixtures to use: review-round,
+// approve-round or approve-head-round. The file smoke-head holds the head commit of the PR. The
+// fake gh and the fake claude put it in place of @HEAD@ in the fixtures.
 
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { _electron, type ElectronApplication, expect, test } from '@playwright/test'
+import {
+  _electron,
+  type ElectronApplication,
+  expect,
+  type Locator,
+  type Page,
+  test,
+} from '@playwright/test'
 import { expectTestHomeOnly, launchOptions, readText, skipSetup, UNKNOWN_LOG } from './app.ts'
 
 const run = promisify(execFile)
@@ -83,63 +95,79 @@ async function stopFakeSession(testHome: string): Promise<void> {
   }
 }
 
-test('a review round trusts the clone, runs the session and posts one pending review', async () => {
+// Steps 2 to 4 of each test: start the app, turn on Watch GitHub, trust the clone and start the
+// review. started gets the app at once, so the caller can close it after a failure. Give the
+// page and the row of the PR.
+async function startReview(
+  testHome: string,
+  appOutput: string[],
+  started: (app: ElectronApplication) => void,
+): Promise<{ app: ElectronApplication; page: Page; row: Locator }> {
+  // Step 2: start the app. Turn on Watch GitHub and accept the confirm.
+  const app = await _electron.launch(await launchOptions(testHome))
+  started(app)
+  app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
+  app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
+  const page = await app.firstWindow()
+  // The app uses only the test home.
+  await expectTestHomeOnly(app, testHome)
+  await skipSetup(page)
+  await page.getByRole('button', { exact: true, name: 'Settings' }).click()
+  const settingsFrame = page.locator('[data-frame-id]', {
+    has: page.locator('[data-settings-section]'),
+  })
+  await settingsFrame.locator('[data-settings-tab="reviews"]').click()
+  await settingsFrame.getByRole('checkbox', { name: /Watch GitHub/ }).click()
+  const confirm = page.locator('[data-confirm-dialog]')
+  await expect(confirm).toBeVisible()
+  await confirm.locator('[data-confirm-ok]').click()
+  await expect(confirm).toBeHidden()
+  await settingsFrame.getByRole('button', { exact: true, name: 'Close' }).first().click()
+  await expect(settingsFrame).toHaveCount(0)
+
+  // Step 3: the set-up clones acme/api, and the strip asks for trust before any click. Review
+  // then allows one start. The fake claude refuses it for trust, so the PR goes back to the
+  // queue and the row shows Trust needed.
+  await page.getByRole('button', { exact: true, name: 'Reviews' }).click()
+  const strip = page.locator('[data-trust-strip]')
+  await expect(strip).toContainText('acme/api', { timeout: 30_000 })
+  await expect(strip).toContainText('1 pull request waiting')
+  const row = page.locator(`[data-review-row="${PR_KEY}"]`)
+  await expect(row).toBeVisible()
+  await row.getByRole('button', { exact: true, name: 'Review' }).click()
+  await expect(row).toContainText('Trust needed')
+
+  // Step 4: Trust opens the trust terminal. Enter answers the fake trust prompt, and the panel
+  // closes when Bifrost sees the trust in the .claude.json of the test home.
+  await strip.getByRole('button', { exact: true, name: 'Trust' }).click()
+  const terminal = page.locator('[data-trust-terminal]')
+  await expect(terminal).toBeVisible()
+  await expect(terminal).toContainText('FAKE TRUST PROMPT', { timeout: 15_000 })
+  await terminal.locator('textarea').focus()
+  await page.keyboard.press('Enter')
+  await expect(terminal).toHaveCount(0, { timeout: 15_000 })
+  return { app, page, row }
+}
+
+test('a review round posts one pending review, and the Review panel sends it', async () => {
   test.setTimeout(180_000)
   // Step 1: make the test home, the remote and the fixture files.
   const testHome = await mkdtemp(join(tmpdir(), 'bifrost-review-round-'))
   const appOutput: string[] = []
-  let app: ElectronApplication | null = null
+  let app = null as ElectronApplication | null
   try {
     const head = await makeRemote(testHome)
     await writeFile(join(testHome, 'smoke-head'), head)
     await writeFile(join(testHome, 'gh-fixtures'), 'review-round')
-
-    // Step 2: start the app. Turn on Watch GitHub and accept the confirm.
-    app = await _electron.launch(await launchOptions(testHome))
-    app.process().stdout?.on('data', chunk => appOutput.push(String(chunk)))
-    app.process().stderr?.on('data', chunk => appOutput.push(String(chunk)))
-    const page = await app.firstWindow()
-    // The app uses only the test home.
-    await expectTestHomeOnly(app, testHome)
-    await skipSetup(page)
-    await page.getByRole('button', { exact: true, name: 'Settings' }).click()
-    const settingsFrame = page.locator('[data-frame-id]', {
-      has: page.locator('[data-settings-section]'),
+    const started = await startReview(testHome, appOutput, launched => {
+      app = launched
     })
-    await settingsFrame.locator('[data-settings-tab="reviews"]').click()
-    await settingsFrame.getByRole('checkbox', { name: /Watch GitHub/ }).click()
-    const confirm = page.locator('[data-confirm-dialog]')
-    await expect(confirm).toBeVisible()
-    await confirm.locator('[data-confirm-ok]').click()
-    await expect(confirm).toBeHidden()
-    await settingsFrame.getByRole('button', { exact: true, name: 'Close' }).first().click()
-    await expect(settingsFrame).toHaveCount(0)
-
-    // Step 3: the set-up clones acme/api, and the strip asks for trust before any click. Review
-    // then allows one start. The fake claude refuses it for trust, so the PR goes back to the
-    // queue and the row shows Trust needed.
-    await page.getByRole('button', { exact: true, name: 'Reviews' }).click()
-    const strip = page.locator('[data-trust-strip]')
-    await expect(strip).toContainText('acme/api', { timeout: 30_000 })
-    await expect(strip).toContainText('1 pull request waiting')
-    const row = page.locator(`[data-review-row="${PR_KEY}"]`)
-    await expect(row).toBeVisible()
-    await row.getByRole('button', { exact: true, name: 'Review' }).click()
-    await expect(row).toContainText('Trust needed')
-
-    // Step 4: Trust opens the trust terminal. Enter answers the fake trust prompt, and the panel
-    // closes when Bifrost sees the trust in the .claude.json of the test home.
-    await strip.getByRole('button', { exact: true, name: 'Trust' }).click()
-    const terminal = page.locator('[data-trust-terminal]')
-    await expect(terminal).toBeVisible()
-    await expect(terminal).toContainText('FAKE TRUST PROMPT', { timeout: 15_000 })
-    await terminal.locator('textarea').focus()
-    await page.keyboard.press('Enter')
-    await expect(terminal).toHaveCount(0, { timeout: 15_000 })
+    const { row } = started
 
     // Step 5: the round runs, then the row shows the draft and the recommendation.
     await expect(row).toContainText('Reviewing', { timeout: 30_000 })
-    await expect(row).toContainText('Draft ready · Request changes', { timeout: 90_000 })
+    await expect(row).toContainText('Changes required', { timeout: 90_000 })
+    await expect(row).toContainText('Claude drafted a summary and 1 comment.')
 
     // Step 6: the pending review is on the reviewed commit, has no event and has one comment.
     // It is the only write call, and it ran one time.
@@ -164,8 +192,132 @@ test('a review round trusts the clone, runs the session and posts one pending re
       expect(args).toMatch(/ \/bifrost-review bifrost-input=\/\S+\/input\.json$/)
     }
 
+    // Step 8: Request changes opens the Review panel. The panel reads the draft from the fake gh
+    // and shows the summary and the comment of Claude. The user changes the summary and sends the
+    // review. Bifrost writes the new summary, then submits the draft with REQUEST_CHANGES.
+    const page = started.page
+    await row.getByRole('button', { exact: true, name: 'Request changes' }).click()
+    const panel = page.locator(`[data-review-draft="${PR_KEY}"]`)
+    await expect(panel).toBeVisible({ timeout: 30_000 })
+    await expect(panel.locator('[data-draft-comment="PRRC_fake1"]')).toContainText(
+      'src/limit.ts line 12',
+    )
+    const summary = panel.locator('[data-draft-summary]')
+    await expect(summary).toHaveValue(
+      'The limit goes from 12 to 1200. Please explain the new value, or keep it lower.',
+    )
+    await summary.fill('Please explain the new limit.')
+    await panel.locator('[data-draft-send]').click()
+    await expect(panel).toHaveCount(0, { timeout: 30_000 })
+    const writes = (await readText(join(testHome, 'gh-writes.log'))).trimEnd().split('\n')
+    expect(writes).toHaveLength(3)
+    expect(writes[0]).toBe(REVIEW_CREATE)
+    expect(writes[1]).toMatch(/^api graphql -f query=mutation EditBody\(/)
+    expect(writes[1]).toMatch(/ -f body=Please explain the new limit\. -f review=PRR_fake$/)
+    expect(writes[2]).toMatch(/^api graphql -f query=mutation SendChanges\(/)
+    expect(writes[2]).toContain(
+      'submitPullRequestReview(input: { pullRequestReviewId: $review, event: REQUEST_CHANGES })',
+    )
+    expect(writes[2]).toMatch(/ -f review=PRR_fake$/)
+
+    // Step 9: the next poll has no review request for the user, so the row goes. A poll comes
+    // at most one time in 5 seconds, so the test clicks Refresh until the fake gh got a poll
+    // after the send.
+    const tabs = page.locator('[role="tablist"]', { has: page.locator('[data-reviews-tab]') })
+    await expect
+      .poll(
+        async () => {
+          if ((await readText(join(testHome, 'gh-polls-sent'))) !== '') return true
+          await tabs.getByRole('button', { exact: true, name: 'Refresh' }).click()
+          return false
+        },
+        { intervals: [2_000], timeout: 30_000 },
+      )
+      .toBe(true)
+    await expect(row).toHaveCount(0)
+    expect((await readText(join(testHome, 'gh-writes.log'))).trimEnd().split('\n')).toHaveLength(3)
+
+    // Step 10: quit the app. The fakes got no unknown call.
+    await started.app.close()
+    app = null
+    expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
+  } catch (err) {
+    await test.info().attach('app-output.txt', {
+      body: appOutput.join(''),
+      contentType: 'text/plain',
+    })
+    throw err
+  } finally {
+    if (app !== null) await app.close().catch(() => {})
+    // Step 11: stop the sleep of the fake review session.
+    await stopFakeSession(testHome)
+    await rm(testHome, { force: true, recursive: true })
+  }
+})
+
+test('an Approve click submits the draft review of an Approve round as an approval', async () => {
+  test.setTimeout(180_000)
+  // Step 1: make the test home, the remote and the fixture files. The fake
+  // claude gives an Approve result with a summary, so Bifrost saves a draft review.
+  const testHome = await mkdtemp(join(tmpdir(), 'bifrost-approve-round-'))
+  const appOutput: string[] = []
+  let app = null as ElectronApplication | null
+  try {
+    const head = await makeRemote(testHome)
+    await writeFile(join(testHome, 'smoke-head'), head)
+    await writeFile(join(testHome, 'gh-fixtures'), 'approve-round')
+    const started = await startReview(testHome, appOutput, launched => {
+      app = launched
+    })
+    const { row } = started
+
+    // Step 5: the round runs, then the row shows the draft, the recommendation and the button.
+    await expect(row).toContainText('Reviewing', { timeout: 30_000 })
+    await expect(row).toContainText('Recommends approval', { timeout: 90_000 })
+    const approve = row.getByRole('button', { exact: true, name: 'Approve' })
+    await expect(approve).toBeEnabled()
+    const post = JSON.parse(await readText(join(testHome, 'review-post.json')))
+    expect(post.commit_id).toBe(head)
+    expect(post.body).toBe('The change is small, and the test covers it.')
+    expect(Object.hasOwn(post, 'event')).toBe(false)
+    expect(await readText(join(testHome, 'gh-writes.log'))).toBe(`${REVIEW_CREATE}\n`)
+
+    // Step 6: one click submits the draft review as an approval. The row shows that the user
+    // approved, and the button goes.
+    await approve.click()
+    await expect(row).toContainText('You approved', { timeout: 30_000 })
+    await expect(approve).toHaveCount(0)
+    const writes = (await readText(join(testHome, 'gh-writes.log'))).trimEnd().split('\n')
+    expect(writes).toHaveLength(2)
+    expect(writes[0]).toBe(REVIEW_CREATE)
+    expect(writes[1]).toMatch(/^api graphql -f query=mutation ApproveDraft\(/)
+    expect(writes[1]).toContain(
+      'submitPullRequestReview(input: { pullRequestReviewId: $review, event: APPROVE })',
+    )
+    expect(writes[1]).toMatch(/ -f review=PRR_fake$/)
+
+    // Step 7: the next poll shows the approval of the user on the head. The row still shows it,
+    // with no button, and Bifrost writes nothing more. A poll comes at most one time in 5
+    // seconds, so the test clicks Refresh until the fake gh got a poll after the write.
+    const tabs = started.page.locator('[role="tablist"]', {
+      has: started.page.locator('[data-reviews-tab]'),
+    })
+    await expect
+      .poll(
+        async () => {
+          if ((await readText(join(testHome, 'gh-polls-approved'))) !== '') return true
+          await tabs.getByRole('button', { exact: true, name: 'Refresh' }).click()
+          return false
+        },
+        { intervals: [2_000], timeout: 30_000 },
+      )
+      .toBe(true)
+    await expect(row).toContainText('You approved')
+    await expect(approve).toHaveCount(0)
+    expect((await readText(join(testHome, 'gh-writes.log'))).trimEnd().split('\n')).toHaveLength(2)
+
     // Step 8: quit the app. The fakes got no unknown call.
-    await app.close()
+    await started.app.close()
     app = null
     expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
   } catch (err) {
@@ -177,6 +329,62 @@ test('a review round trusts the clone, runs the session and posts one pending re
   } finally {
     if (app !== null) await app.close().catch(() => {})
     // Step 9: stop the sleep of the fake review session.
+    await stopFakeSession(testHome)
+    await rm(testHome, { force: true, recursive: true })
+  }
+})
+
+test('an Approve click with no draft approves the reviewed commit with no text', async () => {
+  test.setTimeout(180_000)
+  // Step 1: make the test home, the remote and the fixture files. The fake
+  // claude gives an Approve result with nothing to post, so Bifrost saves no draft review.
+  const testHome = await mkdtemp(join(tmpdir(), 'bifrost-approve-head-'))
+  const appOutput: string[] = []
+  let app = null as ElectronApplication | null
+  try {
+    const head = await makeRemote(testHome)
+    await writeFile(join(testHome, 'smoke-head'), head)
+    await writeFile(join(testHome, 'gh-fixtures'), 'approve-head-round')
+    const started = await startReview(testHome, appOutput, launched => {
+      app = launched
+    })
+    const { row } = started
+
+    // Step 5: the round runs. Nothing is posted, and the row shows the button.
+    await expect(row).toContainText('Reviewing', { timeout: 30_000 })
+    await expect(row).toContainText('Recommends approval', { timeout: 90_000 })
+    await expect(row).toContainText('Claude found nothing to change.')
+    const approve = row.getByRole('button', { exact: true, name: 'Approve' })
+    await expect(approve).toBeEnabled()
+    expect(await readText(join(testHome, 'gh-writes.log'))).toBe('')
+
+    // Step 6: one click approves the reviewed commit, with the PR ID of the fresh read and no
+    // text. It is the only write.
+    await approve.click()
+    await expect(row).toContainText('You approved', { timeout: 30_000 })
+    await expect(approve).toHaveCount(0)
+    const writes = (await readText(join(testHome, 'gh-writes.log'))).trimEnd().split('\n')
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toMatch(/^api graphql -f query=mutation ApproveHead\(/)
+    expect(writes[0]).toContain(
+      'addPullRequestReview(input: { pullRequestId: $pr, commitOID: $commit, event: APPROVE })',
+    )
+    expect(writes[0]).toMatch(new RegExp(` -f commit=${head} -f pr=PR_fake7$`))
+    expect(writes[0]).not.toContain('body')
+
+    // Step 7: quit the app. The fakes got no unknown call.
+    await started.app.close()
+    app = null
+    expect(await readText(join(testHome, UNKNOWN_LOG))).toBe('')
+  } catch (err) {
+    await test.info().attach('app-output.txt', {
+      body: appOutput.join(''),
+      contentType: 'text/plain',
+    })
+    throw err
+  } finally {
+    if (app !== null) await app.close().catch(() => {})
+    // Step 8: stop the sleep of the fake review session.
     await stopFakeSession(testHome)
     await rm(testHome, { force: true, recursive: true })
   }

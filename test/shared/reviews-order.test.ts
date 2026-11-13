@@ -5,8 +5,15 @@ import { MINE_ORDER, sortMine, sortToReview, TO_REVIEW_ORDER } from '../../src/s
 function tr(key: string, over: Partial<ToReviewRow>): ToReviewRow {
   return {
     additions: 0,
+    approvals: 0,
+    approve: null,
+    approveIssue: null,
     author: 'a',
     deletions: 0,
+    draft: null,
+    draftDeleted: false,
+    drafted: null,
+    draftIssue: null,
     error: null,
     flash: false,
     key,
@@ -63,6 +70,7 @@ describe('sortToReview', () => {
       tr('queued', { state: 'queued' }),
       tr('reviewing', { state: 'reviewing' }),
       tr('others', { state: 'approved-by-others' }),
+      tr('sent', { state: 'you-reviewed' }),
       tr('new-late', { requestedAt: 20, state: 'new' }),
       tr('new-early', { requestedAt: 10, state: 'new' }),
       tr('draft', { state: 'draft-ready' }),
@@ -78,6 +86,7 @@ describe('sortToReview', () => {
       'reviewing',
       'queued',
       'paused',
+      'sent',
       'others',
       'team',
     ])

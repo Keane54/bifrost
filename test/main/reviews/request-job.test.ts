@@ -274,6 +274,7 @@ const asComment = (n: Note) => ({
 function polled(hub: Hub, over: Partial<PrData> = {}): PrData {
   return {
     additions: 1,
+    approvals: 0,
     author: hub.author,
     baseRef: 'main',
     comments: hub.comments.map(asComment),
@@ -318,6 +319,7 @@ function polled(hub: Hub, over: Partial<PrData> = {}): PrData {
     updatedAt: hub.updatedAt,
     url: 'https://github.com/acme/api/pull/9',
     viewerPendingReviewId: null,
+    viewerReviews: [],
     ...over,
   }
 }

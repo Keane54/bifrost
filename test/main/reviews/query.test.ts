@@ -363,7 +363,8 @@ describe('POLL_QUERY lists of a busy PR', () => {
     expect(MINE_FRAGMENT).toMatch(
       /latestOpinionatedReviews\(first: 20\) \{[\s\S]*?author \{ login __typename \}[\s\S]*?state[\s\S]*?submittedAt/,
     )
-    expect(TO_REVIEW_FRAGMENT).not.toContain('latestOpinionatedReviews')
+    // The To review fragment reads only the latest opinions for the Approve button. See below.
+    expect(TO_REVIEW_FRAGMENT).not.toMatch(/latestOpinionatedReviews\(first: 20\) \{\s*pageInfo/)
   })
 })
 
@@ -381,5 +382,69 @@ describe('POLL_QUERY fragments', () => {
       expect(pr.threads).toEqual([])
       expect(pr.comments).toEqual([])
     }
+  })
+})
+
+describe('the latest opinions of the viewer (Approve button)', () => {
+  it('reads the latest opinions in the To review fragment only, with no other review field', () => {
+    const fields = 'nodes { author { login } state submittedAt commit { oid } }'
+    const flat = TO_REVIEW_FRAGMENT.replace(/\s+/g, ' ')
+    expect(flat).toContain(`latestOpinionatedReviews(first: 20) { ${fields} }`)
+    expect(MINE_FRAGMENT).not.toContain('viewerLatestReview')
+  })
+
+  it('keeps only the opinions of the viewer, with a known state', () => {
+    const raw = JSON.parse(fixture('poll-basic'))
+    const viewer = raw.data.viewer.login as string
+    const head = 'a'.repeat(40)
+    const node = (login: string, state: string) => ({
+      author: { login },
+      commit: { oid: head },
+      state,
+      submittedAt: '2026-11-13T09:00:00Z',
+    })
+    setAt(raw, ['data', 'toReview', 'nodes', 0, 'latestOpinionatedReviews'], {
+      nodes: [node('someone-else', 'APPROVED'), node(viewer.toUpperCase(), 'APPROVED')],
+    })
+    setAt(raw, ['data', 'toReview', 'nodes', 1, 'latestOpinionatedReviews'], {
+      nodes: [node(viewer, 'WRONG'), { state: 'APPROVED' }],
+    })
+    const r = parsePoll(JSON.stringify(raw))
+    if (!r.ok) throw new Error(r.message)
+    expect(r.data.toReview[0]?.viewerReviews).toEqual([
+      { commit: head, state: 'APPROVED', submittedAt: Date.parse('2026-11-13T09:00:00Z') },
+    ])
+    expect(r.data.toReview[1]?.viewerReviews).toEqual([])
+    expect(r.data.toReview[2]?.viewerReviews).toEqual([])
+    // A To review PR still reads no decisions, and a My PRs PR gets no viewer opinions.
+    expect(r.data.toReview[0]?.decisions).toEqual([])
+    expect(r.data.mine[0]?.viewerReviews).toEqual([])
+  })
+})
+
+describe('the approvals of others (Remove, user decision 2026-11-13)', () => {
+  it('counts the latest approvals of the other reviewers of a To review PR', () => {
+    const raw = JSON.parse(fixture('poll-basic'))
+    const viewer = raw.data.viewer.login as string
+    const node = (login: string, state: string) => ({
+      author: { login },
+      commit: { oid: 'a'.repeat(40) },
+      state,
+      submittedAt: '2026-11-13T09:00:00Z',
+    })
+    setAt(raw, ['data', 'toReview', 'nodes', 0, 'latestOpinionatedReviews'], {
+      nodes: [
+        node('erin', 'APPROVED'),
+        node('frank', 'APPROVED'),
+        node('gina', 'CHANGES_REQUESTED'),
+        node(viewer.toUpperCase(), 'APPROVED'),
+        { state: 'APPROVED' },
+      ],
+    })
+    const r = parsePoll(JSON.stringify(raw))
+    if (!r.ok) throw new Error(r.message)
+    expect(r.data.toReview[0]?.approvals).toBe(2)
+    expect(r.data.toReview[1]?.approvals).toBe(0)
+    expect(r.data.mine[0]?.approvals).toBe(0)
   })
 })

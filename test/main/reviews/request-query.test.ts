@@ -102,6 +102,7 @@ async function context() {
 function polled(over: Partial<PrData> = {}): PrData {
   return {
     additions: 1,
+    approvals: 0,
     author: VIEWER,
     baseRef: 'main',
     comments: [],
@@ -131,6 +132,7 @@ function polled(over: Partial<PrData> = {}): PrData {
     updatedAt: 5,
     url: 'https://github.com/acme/api/pull/9',
     viewerPendingReviewId: null,
+    viewerReviews: [],
     ...over,
   }
 }
