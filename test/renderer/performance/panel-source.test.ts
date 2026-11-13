@@ -12,6 +12,7 @@ const TREND = read('performance/TrendLine.tsx')
 const STORE = read('performance/use-performance.ts')
 const SNAPSHOT_STORE = read('lib/snapshot-store.ts')
 const SIDE_BAR = read('wm/SideBar.tsx')
+const PANEL_ICONS_SRC = read('wm/panel-icons.ts')
 const WM = read('wm/WindowManager.tsx')
 
 describe('PerformancePanel source', () => {
@@ -145,7 +146,8 @@ describe('one Performance subscription', () => {
 
 describe('Performance side bar button', () => {
   it('uses the HeartPulse icon and opens the panel', () => {
-    expect(SIDE_BAR).toContain('HeartPulse')
+    expect(PANEL_ICONS_SRC).toContain('performance: HeartPulse')
+    expect(SIDE_BAR).toContain('PANEL_ICONS.performance')
     expect(SIDE_BAR).toMatch(/label='Performance'/)
     expect(SIDE_BAR).toContain("open('performance')")
   })

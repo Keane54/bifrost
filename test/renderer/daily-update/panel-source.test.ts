@@ -11,6 +11,7 @@ const read = (name: string): string => readFileSync(join(SRC, name), 'utf8')
 const PANEL = read('daily-update/DailyUpdatePanel.tsx')
 const DRAFT = read('daily-update/DraftView.tsx')
 const SIDE_BAR = read('wm/SideBar.tsx')
+const PANEL_ICONS_SRC = read('wm/panel-icons.ts')
 const PANELS = read('panels/panels.tsx')
 const ACTIONS = read('actions/actions-context.tsx')
 
@@ -142,9 +143,9 @@ describe('the panel', () => {
 
 describe('the side bar button', () => {
   it('opens the panel with the MessageSquareText icon', () => {
-    expect(SIDE_BAR).toMatch(/import \{[^}]*\bMessageSquareText\b[^}]*\} from 'lucide-react'/)
+    expect(PANEL_ICONS_SRC).toMatch(/'daily-update': MessageSquareText/)
     expect(SIDE_BAR).toMatch(
-      /icon=\{MessageSquareText\}\s+label='Daily update'\s+onClick=\{\(\) => open\('daily-update'/,
+      /icon=\{PANEL_ICONS\['daily-update'\]\}\s+label='Daily update'\s+onClick=\{\(\) => open\('daily-update'/,
     )
   })
 

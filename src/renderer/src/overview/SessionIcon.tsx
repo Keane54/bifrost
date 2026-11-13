@@ -38,7 +38,16 @@ const CORNERS = [
 // The side is size px. Each arm of a bracket is 30% of the side.
 // An external row with a known terminal app shows the icon of the app (D7). While the icon
 // loads, and for an app without an icon, the row shows the terminal glyph.
-export function SessionIcon({ row, size }: { row: SessionRow; size: number }): React.JSX.Element {
+// With noTitle, the icon has no native tooltip. A parent tooltip gives the text.
+export function SessionIcon({
+  noTitle,
+  row,
+  size,
+}: {
+  noTitle?: boolean
+  row: SessionRow
+  size: number
+}): React.JSX.Element {
   const kind = iconKind(row)
   const appIcon = useTerminalIcon(row)
   const { settings } = useSettings()
@@ -53,7 +62,7 @@ export function SessionIcon({ row, size }: { row: SessionRow; size: number }): R
     <span
       className='relative inline-flex shrink-0 items-center justify-center'
       style={{ height: size, width: size }}
-      title={KIND_TITLE[kind]}
+      title={noTitle ? undefined : KIND_TITLE[kind]}
     >
       {kind === 'external' && appIcon !== null ? (
         <img
@@ -62,7 +71,7 @@ export function SessionIcon({ row, size }: { row: SessionRow; size: number }): R
           draggable={false}
           height={imageSize}
           src={appIcon}
-          title={row.terminalApp}
+          title={noTitle ? undefined : row.terminalApp}
           width={imageSize}
         />
       ) : kind === 'external' ? (

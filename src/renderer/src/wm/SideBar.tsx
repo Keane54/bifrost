@@ -1,23 +1,14 @@
 import { Button } from '@base-ui/react/button'
 import {
-  Activity,
   CircleArrowDown,
-  Crosshair,
-  Eye,
-  Gauge,
-  GitPullRequest,
-  HeartPulse,
-  List,
   ListPlus,
   type LucideIcon,
-  MessageSquareText,
   RotateCcw,
-  ScrollText,
-  Settings,
   SquarePlus,
   TriangleAlert,
 } from 'lucide-react'
 import { memo, useId } from 'react'
+import type { SessionRow } from '../../../shared/types'
 import { UPDATE_TEXTS } from '../../../shared/updates'
 import {
   actionLabel,
@@ -26,10 +17,14 @@ import {
   globalActionState,
 } from '../actions/action-model'
 import { useActions } from '../actions/actions-context'
+import { chatSessionId } from '../chat/views'
 import { useDailyMarker } from '../daily-update/use-daily-update'
 import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { Tip } from '../lib/menu'
+import { TONE_TEXT } from '../overview/cells'
+import { stateTone } from '../overview/format'
+import { SessionIcon } from '../overview/SessionIcon'
 import { panelTitle } from '../panels/panels'
 import { usePerformanceState } from '../performance/use-performance'
 import { useReviewsAttention } from '../reviews/use-reviews'
@@ -38,6 +33,7 @@ import { useSettingsNav } from '../settings/settings-nav'
 import { useUpdateButton } from '../updates/use-updates'
 import { useWmControls, useWmState } from './context'
 import LayoutMenu from './LayoutMenu'
+import { PANEL_ICONS } from './panel-icons'
 import { type Frame, frameOf, panelKind, type WmState } from './state'
 
 const MAX_OVERVIEW = 99
@@ -117,6 +113,33 @@ function SideButton(props: {
       </button>
     </Tip>
   )
+}
+
+// The icon of a minimised frame. A chat shows the icon of its session and the state dot, as the
+// chat title does. Every other panel shows the icon of its side bar button.
+function MinimisedIcon(props: { panelId: string; rows: SessionRow[] }): React.JSX.Element {
+  const kind = panelKind(props.panelId)
+  const id = kind === 'chat' ? chatSessionId(props.panelId) : undefined
+  const row = props.rows.find(r => r.sessionId === id)
+  if (row) {
+    return (
+      <>
+        <span className='pointer-events-none inline-flex'>
+          <SessionIcon noTitle={true} row={row} size={16} />
+        </span>
+        <span
+          aria-hidden={true}
+          className={cx(
+            'absolute right-1.5 bottom-1.5 size-1.5 bg-current',
+            TONE_TEXT[stateTone(row)],
+          )}
+          data-state-dot={row.state}
+        />
+      </>
+    )
+  }
+  const Icon = PANEL_ICONS[kind ?? 'chat']
+  return <Icon aria-hidden={true} className='pointer-events-none' size={16} />
 }
 
 // The update button shows only for a ready update (a pulsing green dot) or a failed update
@@ -208,7 +231,7 @@ function SideBar(): React.JSX.Element {
       className='flex w-10 shrink-0 flex-col items-center gap-1 border-r border-panel-edge bg-title py-2 select-none'
     >
       <SideButton
-        icon={List}
+        icon={PANEL_ICONS.overview}
         label='Overview'
         onClick={() => open(topOverview(state.frames) ?? 'overview:1')}
       />
@@ -218,27 +241,47 @@ function SideBar(): React.JSX.Element {
         label='New Overview'
         onClick={() => free && open(free)}
       />
-      <SideButton icon={Crosshair} label='Selected Item' onClick={() => open('selected-item')} />
-      <SideButton icon={Eye} label='Watchlist' onClick={() => open('watchlist')} />
-      <SideButton icon={ScrollText} label='Event log' onClick={() => open('event-log')} />
-      <SideButton icon={Gauge} label='Usage HUD' onClick={() => open('usage-hud')} />
-      <SideButton icon={Activity} label='Service status' onClick={() => open('service-status')} />
+      <SideButton
+        icon={PANEL_ICONS['selected-item']}
+        label='Selected Item'
+        onClick={() => open('selected-item')}
+      />
+      <SideButton
+        icon={PANEL_ICONS.watchlist}
+        label='Watchlist'
+        onClick={() => open('watchlist')}
+      />
+      <SideButton
+        icon={PANEL_ICONS['event-log']}
+        label='Event log'
+        onClick={() => open('event-log')}
+      />
+      <SideButton
+        icon={PANEL_ICONS['usage-hud']}
+        label='Usage HUD'
+        onClick={() => open('usage-hud')}
+      />
+      <SideButton
+        icon={PANEL_ICONS['service-status']}
+        label='Service status'
+        onClick={() => open('service-status')}
+      />
       <SideButton
         dot={reviewsAttention ? REVIEWS_ATTENTION : undefined}
-        icon={GitPullRequest}
+        icon={PANEL_ICONS.reviews}
         label='Reviews'
         onClick={() => open('reviews')}
       />
       <SideButton
         dot={dailyMarker ? DAILY_ATTENTION : undefined}
-        icon={MessageSquareText}
+        icon={PANEL_ICONS['daily-update']}
         label='Daily update'
         onClick={() => open('daily-update')}
       />
       <SideButton
         dot={health === 'ok' ? undefined : PERFORMANCE_ATTENTION[health]}
         dotClass={health === 'ok' ? undefined : PERFORMANCE_DOT[health]}
-        icon={HeartPulse}
+        icon={PANEL_ICONS.performance}
         label='Performance'
         onClick={() => open('performance')}
       />
@@ -253,14 +296,12 @@ function SideBar(): React.JSX.Element {
             <Tip key={frame.id} label={title} side='right'>
               <button
                 aria-label={`Restore ${title}`}
-                className={cx(
-                  BUTTON,
-                  'max-h-40 rotate-180 truncate py-2 [writing-mode:vertical-rl]',
-                )}
+                className={cx(BUTTON, 'relative h-8')}
+                data-minimised-frame={frame.id}
                 onClick={() => dispatch({ frameId: frame.id, type: 'restore' })}
                 type='button'
               >
-                {title}
+                <MinimisedIcon panelId={frame.active} rows={rows} />
               </button>
             </Tip>
           )
@@ -270,7 +311,7 @@ function SideBar(): React.JSX.Element {
       <LayoutMenu className={BUTTON} />
       <SideButton
         dot={warning ? SETTINGS_ATTENTION : undefined}
-        icon={Settings}
+        icon={PANEL_ICONS.settings}
         label='Settings'
         onClick={() => settingsNav.open()}
         size={15}

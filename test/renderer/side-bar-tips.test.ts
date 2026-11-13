@@ -23,4 +23,19 @@ describe('side bar tooltips', () => {
     expect(text).toMatch(/<Tip label='Layouts' side='right'>/)
     expect(text).not.toMatch(/title='Layouts'/)
   })
+
+  it('a minimised frame shows an icon button, with the title in the tooltip', () => {
+    const text = source('wm/SideBar.tsx')
+    expect(text).not.toMatch(/\[writing-mode:vertical-rl\]/)
+    expect(text).toMatch(/aria-label=\{`Restore \$\{title\}`\}/)
+    expect(text).toMatch(/PANEL_ICONS/)
+    expect(text).toMatch(/<SessionIcon /)
+  })
+
+  it('the minimised icon leaves out the native title and ignores the pointer', () => {
+    const text = source('wm/SideBar.tsx')
+    expect(text).toMatch(/<SessionIcon [^>]*noTitle=\{true\}/)
+    expect(text).toMatch(/pointer-events-none/)
+    expect(source('overview/SessionIcon.tsx')).toMatch(/noTitle/)
+  })
 })
