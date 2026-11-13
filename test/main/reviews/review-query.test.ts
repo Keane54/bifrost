@@ -200,6 +200,29 @@ describe('fetchReviewContext', () => {
     expect(queryOf(args)).not.toContain('api')
   })
 
+  it('reads the CI state of the head commit: failing, running, passed, or none', async () => {
+    const HEAD = 'b'.repeat(40)
+    const ci = async (commits: unknown) => {
+      const fx = loadFx('context-first')
+      fx.data.repository.pullRequest.commits = commits
+      const { gh } = fakeGh(() => ok(fx))
+      const r = await fetchReviewContext(gh, PR, 'me')
+      if (!r.ok) throw new Error(r.message)
+      return r.context.ci
+    }
+    const last = (state: string | null, oid = HEAD) => ({
+      nodes: [{ commit: { oid, statusCheckRollup: state === null ? null : { state } } }],
+    })
+    expect(await ci(last('FAILURE'))).toBe('failing')
+    expect(await ci(last('ERROR'))).toBe('failing')
+    expect(await ci(last('PENDING'))).toBe('running')
+    expect(await ci(last('EXPECTED'))).toBe('running')
+    expect(await ci(last('SUCCESS'))).toBe('passed')
+    expect(await ci(last(null))).toBeNull()
+    expect(await ci(undefined)).toBeNull()
+    expect(await ci(last('SUCCESS', 'f'.repeat(40)))).toBe('running')
+  })
+
   it('puts each directive before the selection set of its field', async () => {
     const pages = loadPages()
     const { gh, calls } = fakeGh((op, v) => {

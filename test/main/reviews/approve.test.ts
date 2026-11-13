@@ -5,6 +5,8 @@ import type { Gh } from '../../../src/main/reviews/gh'
 import type { PrData } from '../../../src/main/reviews/pr-data'
 import {
   REASON_APPROVE_CHANGED,
+  REASON_APPROVE_CI_FAILING,
+  REASON_APPROVE_CI_RUNNING,
   REASON_APPROVE_CLOSED,
   REASON_APPROVE_DONE,
   REASON_APPROVE_DRAFT_COMMIT,
@@ -43,6 +45,7 @@ function pr(over: Partial<PrData> = {}): PrData {
     approvals: 0,
     author: 'bob',
     baseRef: 'main',
+    ci: null,
     comments: [],
     createdAt: 1,
     decisions: [],
@@ -94,6 +97,9 @@ const stateWith = (
 })
 
 interface ContextOver {
+  // The state of the rollup of the head commit. Null is a PR with no CI.
+  ci?: string | null
+  ciCommit?: string
   state?: string
   author?: string
   head?: string
@@ -110,6 +116,16 @@ function context(over: ContextOver = {}): ExecResult {
     baseRefName: 'main',
     baseRefOid: 'c'.repeat(40),
     body: 'Raise the limit.',
+    commits: {
+      nodes: [
+        {
+          commit: {
+            oid: over.ciCommit ?? over.head ?? HEAD,
+            statusCheckRollup: over.ci == null ? null : { state: over.ci },
+          },
+        },
+      ],
+    },
     headRefName: 'raise-limit',
     headRefOid: over.head ?? HEAD,
     id: 'PR_7',
@@ -322,6 +338,22 @@ describe('the fresh check before the write (ruling A2)', () => {
     ['the PR is merged', mark(), { state: 'MERGED' }, REASON_APPROVE_CLOSED],
     ['the viewer is the author', mark(), { author: 'Dev-User' }, REASON_APPROVE_OWN],
     ['the viewer approved this commit already', mark(), { reviews: approved }, REASON_APPROVE_DONE],
+    ['CI is failing (FAILURE)', mark(), { ci: 'FAILURE' }, REASON_APPROVE_CI_FAILING],
+    ['CI is failing (ERROR)', mark(), { ci: 'ERROR' }, REASON_APPROVE_CI_FAILING],
+    ['CI is running (PENDING)', mark(), { ci: 'PENDING' }, REASON_APPROVE_CI_RUNNING],
+    ['CI is running (EXPECTED)', mark(), { ci: 'EXPECTED' }, REASON_APPROVE_CI_RUNNING],
+    [
+      'CI of another commit than the head counts as running',
+      mark(),
+      { ci: 'SUCCESS', ciCommit: OTHER },
+      REASON_APPROVE_CI_RUNNING,
+    ],
+    [
+      'draft: CI is failing',
+      mark({ reviewId: 'PRR_draft' }),
+      { ci: 'FAILURE', pending: { commit: HEAD, id: 'PRR_draft' } },
+      REASON_APPROVE_CI_FAILING,
+    ],
     [
       'no draft: the viewer has a pending review',
       mark(),
@@ -357,6 +389,26 @@ describe('the fresh check before the write (ruling A2)', () => {
     await approver.approve(KEY)
     expect(h.ops().filter(op => op === 'ApproveHead' || op === 'ApproveDraft')).toEqual([])
     expect(approver.entry(KEY)).toMatchObject({ message: text, phase: 'failed' })
+  })
+
+  it('approves when CI passed or when the PR has no CI', async () => {
+    for (const ci of ['SUCCESS', null]) {
+      const h = harness(stateWith(mark()), {
+        context: () => context({ ci }),
+        head: () => answer('addPullRequestReview'),
+      })
+      const approver = createApprover(h.deps)
+      await approver.approve(KEY)
+      expect(h.ops()).toContain('ApproveHead')
+      expect(approver.entry(KEY)?.phase).toBe('approved')
+    }
+  })
+
+  it('the texts for CI are friendly', () => {
+    expect(REASON_APPROVE_CI_FAILING).toBe(
+      "CI is failing on this pull request, so Bifrost didn't approve it.",
+    )
+    expect(REASON_APPROVE_CI_RUNNING).toBe('CI is still running. Approve when it has passed.')
   })
 
   it('a later comment of the viewer on the head does not end the approval', async () => {

@@ -36,6 +36,12 @@ describe('friendly errors', () => {
     expect(refusedCodes()).toContain('refused: the session has an open prompt')
   })
 
+  it('says in friendly words that a review does not start while CI fails', () => {
+    expect(friendlyError('refused: CI is failing on this pull request')).toBe(
+      "CI is failing on this pull request, so Bifrost didn't start a review.",
+    )
+  })
+
   it('has a friendly text for each refusal code of the main process', () => {
     const missing = refusedCodes().filter(code => !(code in FRIENDLY_ERRORS))
     expect(missing).toEqual([])

@@ -25,6 +25,8 @@ import type { WriteOutcome } from './request-writes'
 import { fetchReviewContext, type ReviewContext } from './review-query'
 import {
   REASON_APPROVE_CHANGED,
+  REASON_APPROVE_CI_FAILING,
+  REASON_APPROVE_CI_RUNNING,
   REASON_APPROVE_CLOSED,
   REASON_APPROVE_DONE,
   REASON_APPROVE_DRAFT_COMMIT,
@@ -77,6 +79,13 @@ export function prKeyOfUrl(url: string): string {
   return PR_KEY.test(key) ? key : ''
 }
 
+// The CI rule (user decision, 2026-11-13): no approval while CI fails or runs. The text for the
+// row, or null when CI passed or the PR has no CI. Approve instead of the Review panel uses it too.
+export function ciRefusal(c: Pick<ReviewContext, 'ci'>): string | null {
+  if (c.ci === 'failing') return REASON_APPROVE_CI_FAILING
+  return c.ci === 'running' ? REASON_APPROVE_CI_RUNNING : null
+}
+
 // The fresh check of ruling A2. The text for the row when Bifrost must not write, else null.
 export function approveRefusal(
   c: ReviewContext,
@@ -87,6 +96,8 @@ export function approveRefusal(
   if (c.author.toLowerCase() === viewer.toLowerCase()) return REASON_APPROVE_OWN
   if (!approvable(mark)) return REASON_APPROVE_NOT_SUGGESTED
   if (c.headSha !== mark.headSha) return REASON_APPROVE_CHANGED
+  const ci = ciRefusal(c)
+  if (ci !== null) return ci
   if (approvedOnHead(c.reviews, c.headSha)) return REASON_APPROVE_DONE
   // GitHub allows one pending review for each user. An approval with no draft cannot go next to it.
   if (mark.reviewId === null) return c.pending === null ? null : REASON_APPROVE_PENDING

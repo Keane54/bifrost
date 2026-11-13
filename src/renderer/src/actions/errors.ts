@@ -55,6 +55,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: bad terminal value': "Bifrost couldn't read that terminal input.",
   'refused: bad watch colour': "That isn't a colour for the watchlist.",
   'refused: bad watch move': "Bifrost couldn't move that session in the watchlist.",
+  'refused: CI is failing on this pull request':
+    "CI is failing on this pull request, so Bifrost didn't start a review.",
   'refused: claude rm kept the worktree':
     'Claude Code kept this session, because its worktree has commits that exist on no remote. Open the worktree to check them, then delete again.',
   'refused: claude rm took too long':

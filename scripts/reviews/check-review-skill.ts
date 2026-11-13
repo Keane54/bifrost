@@ -340,6 +340,7 @@ async function run(): Promise<void> {
     body:
       'Adds `sumFirst(values, n)`, which gives the sum of the first n values of a list. ' +
       'The test covers the normal case.',
+    ci: null,
     headRef: 'add-sum-first',
     headSha: head,
     number: PR_NUMBER,

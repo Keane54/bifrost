@@ -95,9 +95,10 @@ How it works:
 The Reviews panel shows the GitHub pull requests that need you. To start, turn on Watch GitHub in Settings > Reviews. Bifrost uses your `gh` login and checks GitHub every 2 minutes. You can change this interval.
 
 - **To review**: the pull requests that ask for your review. A new request flashes. When you click Review, Claude reviews the pull request in a read-only session. Bifrost then saves a draft review on GitHub. Only you can see the draft. The row shows the result of Claude in a colour, with one button:
-  - **Recommends approval** (green): click Approve to approve the pull request on GitHub, or to submit the draft review as an approval.
+  - **Approval recommended** (green): click Approve to approve the pull request on GitHub, or to submit the draft review as an approval.
   - **Draft ready** (amber) or **Changes required** (red): click Comment or Request changes to open the Review panel. The panel shows the summary and each comment of the draft, also the comments that you added on GitHub. You can change each text and remove a comment. Bifrost changes nothing on GitHub until you click Send review. "Send as" sets the type of the review. Discard draft deletes the draft on GitHub. Approve instead deletes the draft, then approves the pull request.
   - **Approved by others** (grey): click Remove to hide the row in Bifrost. Nothing changes on GitHub. The row comes back when someone asks for your review again.
+  - **CI failing** (red): Bifrost starts no review and does not approve the pull request. You can still send a draft as Comment or Request changes. **CI running** (grey, with a spinner): Claude can review, but Approve waits until CI has passed.
 - **My PRs**: your own pull requests. Claude fixes or answers each new comment from an owner, a member or a collaborator of the repository. It also handles the first Copilot review of the pull request. The session of Claude has no access to GitHub. Bifrost then commits the fix, pushes it to your branch, replies to the comment and resolves its thread. When Claude needs a decision from you, the row shows Needs you. Click the row and answer in the Answer panel. Each reviewer name has the colour of the latest review: green for approved, amber for comments only, red for changes requested, grey for no review.
 
 Rules:

@@ -13,6 +13,8 @@ import type { Gh } from '../../../src/main/reviews/gh'
 import type { ApproveEntry } from '../../../src/main/reviews/model'
 import type { PrData } from '../../../src/main/reviews/pr-data'
 import {
+  REASON_APPROVE_CI_FAILING,
+  REASON_APPROVE_CI_RUNNING,
   REASON_APPROVE_DONE,
   REASON_DISCARD_FAILED,
   REASON_DRAFT_BLANK,
@@ -51,6 +53,7 @@ function pr(over: Partial<PrData> = {}): PrData {
     approvals: 0,
     author: 'bob',
     baseRef: 'main',
+    ci: null,
     comments: [],
     createdAt: 1,
     decisions: [],
@@ -112,6 +115,8 @@ const stateWith = (
 })
 
 interface ContextOver {
+  // The state of the rollup of the head commit. Null or no value is a PR with no CI.
+  ci?: string | null
   state?: string
   author?: string
   head?: string
@@ -129,6 +134,16 @@ function context(over: ContextOver = {}): ExecResult {
     baseRefName: 'main',
     baseRefOid: 'c'.repeat(40),
     body: 'Keep the token.',
+    commits: {
+      nodes: [
+        {
+          commit: {
+            oid: over.head ?? HEAD,
+            statusCheckRollup: over.ci == null ? null : { state: over.ci },
+          },
+        },
+      ],
+    },
     headRefName: 'token',
     headRefOid: over.head ?? HEAD,
     id: 'PR_7',
@@ -890,6 +905,56 @@ describe('Approve instead (ruling B9)', () => {
     const a = approver(null, new Error('refused: this pull request cannot be approved now'))
     await (await openedEditor(h)).approveInstead(KEY, a.approver)
     expect(h.polls()).toBe(1)
+  })
+
+  it('failing or running CI stops Approve instead before the delete', async () => {
+    const cases: [string, string][] = [
+      ['FAILURE', REASON_APPROVE_CI_FAILING],
+      ['ERROR', REASON_APPROVE_CI_FAILING],
+      ['PENDING', REASON_APPROVE_CI_RUNNING],
+      ['EXPECTED', REASON_APPROVE_CI_RUNNING],
+    ]
+    for (const [ci, text] of cases) {
+      const h = harness(stateWith(mark()), {
+        DraftReview: [draftRead()],
+        ReviewContext: [context({ ci })],
+      })
+      const a = approver({ at: 2_000, phase: 'approved' })
+      expect(await (await openedEditor(h)).approveInstead(KEY, a.approver)).toEqual({
+        message: text,
+        ok: false,
+      })
+      expect(h.writes()).toEqual([])
+      expect(a.runs()).toBe(0)
+      expect(h.state().prs[KEY]?.recommendation).toEqual(mark())
+    }
+  })
+
+  it('Approve instead goes on when CI passed', async () => {
+    const h = harness(stateWith(mark()), {
+      DiscardDraft: [DISCARDED],
+      DraftReview: [draftRead()],
+      ReviewContext: [context({ ci: 'SUCCESS' })],
+    })
+    const a = approver({ at: 2_000, phase: 'approved' })
+    expect(await (await openedEditor(h)).approveInstead(KEY, a.approver)).toEqual({ ok: true })
+    expect(h.writes()).toEqual(['DiscardDraft'])
+  })
+
+  it('Send as Request changes and Discard draft stay allowed when CI fails', async () => {
+    const send = harness(stateWith(mark()), {
+      DraftReview: [draftRead()],
+      ReviewContext: [context({ ci: 'FAILURE' })],
+      SendChanges: [sentAs('CHANGES_REQUESTED')],
+    })
+    expect(await (await openedEditor(send)).send(KEY, edits())).toEqual({ ok: true })
+    expect(send.writes()).toEqual(['SendChanges'])
+    const discard = harness(stateWith(mark()), {
+      DiscardDraft: [DISCARDED],
+      DraftReview: [draftRead()],
+      ReviewContext: [context({ ci: 'FAILURE' })],
+    })
+    expect(await (await openedEditor(discard)).discard(KEY)).toEqual({ ok: true })
   })
 
   it('a PR that changed after the review stops before the delete', async () => {

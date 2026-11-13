@@ -52,6 +52,14 @@ test('the Reviews panel shows the PRs from the fake gh and flashes a new request
     await expect(page.locator('[data-review-flash]')).toHaveCount(0)
     await expect(page.locator('[data-reviews-count="to-review"]')).toHaveText('3')
 
+    // A PR with failing CI (acme/web#101 in the fake gh) shows "CI failing" and has no Review
+    // button. A PR with passing CI keeps its Review button (user decision, 2026-11-13).
+    const review = (key: string) => row(key).getByRole('button', { exact: true, name: 'Review' })
+    await expect(row('acme/web#101')).toContainText('CI failing')
+    await expect(review('acme/web#101')).toHaveCount(0)
+    await expect(row('acme/api#7')).not.toContainText('CI failing')
+    await expect(review('acme/api#7')).toHaveCount(1)
+
     // Step 4: Refresh gives one new row with the flash overlay and a red tab count. The watcher
     // ignores a Refresh during a poll and for a short time after a poll starts. So the test
     // clicks again once when the first click had no effect.

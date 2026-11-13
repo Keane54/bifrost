@@ -25,6 +25,44 @@ export function sizeText(add: number, del: number): string {
   return `+${add} −${del}`
 }
 
+// The states of a row that shows the CI text. A review session, a final state of the user and
+// approved-by-others show their own status (user decision, 2026-11-13).
+const CI_TEXT_STATES: readonly string[] = [
+  'new',
+  'waiting',
+  'team',
+  'failed',
+  'reviewed',
+  'draft-ready',
+  'paused',
+]
+
+// The CI status of a To review row: it replaces the status of the row, but not the second line.
+// Null when the row shows its own status.
+export function ciText(row: ToReviewRow): 'CI failing' | 'CI running' | null {
+  if (row.ci === null || !CI_TEXT_STATES.includes(row.state)) return null
+  return row.ci === 'failing' ? 'CI failing' : 'CI running'
+}
+
+// True when the row shows a spinner beside the CI text: only for running CI.
+export function showSpinner(row: ToReviewRow): boolean {
+  return ciText(row) === 'CI running'
+}
+
+const CI_FAILING_TIP =
+  "CI is failing on this pull request, so Bifrost won't review or approve it. " +
+  'It can be reviewed again when CI passes.'
+const CI_RUNNING_TIP =
+  'CI is still running. Claude can review now, but you can approve only when it has passed.'
+const APPROVE_WAIT_TIP = 'CI is still running. Approve when it has passed.'
+
+// The tip of the CI status of a row. Null when the row shows no CI status.
+export function ciTip(row: ToReviewRow): string | null {
+  const text = ciText(row)
+  if (text === null) return null
+  return text === 'CI failing' ? CI_FAILING_TIP : CI_RUNNING_TIP
+}
+
 // The state at the right of a To review row. A new row shows its buttons instead, so it has no text.
 export function toReviewText(row: ToReviewRow, now: number): string {
   switch (row.state) {
@@ -76,7 +114,7 @@ export function resultOf(row: ToReviewRow): RowResult | null {
 }
 
 const RESULT_TEXT: Record<RowResult, string> = {
-  approve: 'Recommends approval',
+  approve: 'Approval recommended',
   changes: 'Changes required',
   comment: 'Draft ready',
   deleted: 'Draft deleted',
@@ -100,6 +138,9 @@ export function rightText(row: ToReviewRow, now: number): string {
   if (row.draftIssue !== null) {
     return row.draftIssue.unknown ? 'Not confirmed' : ISSUE_TEXT[row.draftIssue.action]
   }
+  // CI that fails or runs replaces the status. The second line keeps the result of Claude.
+  const ci = ciText(row)
+  if (ci !== null) return ci
   const result = resultOf(row)
   return result === null ? toReviewText(row, now) : RESULT_TEXT[result]
 }
@@ -146,10 +187,11 @@ export function rowButtons(row: ToReviewRow): RowButtonId[] {
   if (row.draft !== null && result === 'comment') buttons.push('Comment')
   if (row.draft !== null && result === 'changes') buttons.push('Request changes')
   if (row.state === 'approved-by-others') buttons.push('Remove')
-  // A reviewed row whose Approve button is hidden gets Review back.
-  if (REVIEW_BUTTON.includes(row.state) || (row.state === 'reviewed' && row.approve === null)) {
-    buttons.push(row.state === 'failed' ? 'Try again' : 'Review')
-  }
+  // A reviewed row whose Approve button is hidden gets Review back. A PR with failing CI gets no
+  // review (user decision, 2026-11-13).
+  const review =
+    REVIEW_BUTTON.includes(row.state) || (row.state === 'reviewed' && row.approve === null)
+  if (review && row.ci !== 'failing') buttons.push(row.state === 'failed' ? 'Try again' : 'Review')
   if (row.state === 'new') buttons.push('Pause')
   return buttons
 }
@@ -178,6 +220,10 @@ export function buttonTip(id: RowButtonId, row: ToReviewRow): string | null {
 export function rowTip(row: ToReviewRow): string | null {
   if (row.approveIssue !== null) return row.approveIssue.message
   if (row.draftIssue !== null) return row.draftIssue.message
+  // A failed row keeps its note, for example a review that CI stopped.
+  if (row.state === 'failed' && row.error !== null) return row.error
+  const ci = ciTip(row)
+  if (ci !== null) return ci
   const why = row.why === null || row.why === '' ? '' : ` ${row.why}`
   if (resultOf(row) === 'deleted') {
     return "You deleted Claude's draft. Click Approve to approve this pull request."
@@ -217,6 +263,7 @@ export function rowTip(row: ToReviewRow): string | null {
 // The tip of the Approve button of a To review row.
 export function approveTip(row: ToReviewRow): string {
   if (row.approve === 'running') return 'Approving…'
+  if (row.approve === 'ci-running') return APPROVE_WAIT_TIP
   return row.state === 'draft-ready'
     ? "Submit Claude's draft review on GitHub as an approval."
     : 'Approve this pull request on GitHub.'
@@ -255,7 +302,7 @@ export function menuItems(row: ToReviewRow): MenuItemId[] {
   const result = resultOf(row)
   if (row.draft === 'ready' && result === 'comment') items.push('Comment')
   if (row.draft === 'ready' && result === 'changes') items.push('Request changes')
-  if (hasReview(row)) items.push('Review')
+  if (hasReview(row) && row.ci !== 'failing') items.push('Review')
   if (row.state === 'approved-by-others') items.push('Remove')
   if (row.state === 'queued' || row.state === 'trust-needed') items.push('Cancel review')
   if (row.sessionId !== null) items.push('Stop session')

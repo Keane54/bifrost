@@ -1,6 +1,8 @@
 // The data of one PR, as the poll reads it from GitHub. Main process only.
 // All times are milliseconds since the epoch.
 
+import type { CiState } from './ci'
+
 export interface Author {
   login: string
   bot: boolean
@@ -79,6 +81,8 @@ export interface PrData {
   threads: PrThread[]
   comments: PrComment[]
   failedChecks: number
+  // The combined CI result of the latest commit (ci.ts).
+  ci: CiState
   headRef: string
   headSha: string
   baseRef: string

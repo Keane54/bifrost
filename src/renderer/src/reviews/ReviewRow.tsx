@@ -15,11 +15,13 @@ import { MENU_ITEM, MENU_POPUP, Tip } from '../lib/menu'
 import { useSettings } from '../settings/settings-context'
 import { useWmControls } from '../wm/context'
 import { setAnswerKey } from './answer-key'
+import { CiSpinner } from './CiSpinner'
 import { setDraftKey } from './draft-key'
 import {
   ageText,
   approveTip,
   buttonTip,
+  ciText,
   claudeText,
   claudeTip,
   laterCopilotText,
@@ -35,14 +37,15 @@ import {
   rightText,
   rowButtons,
   rowTip,
+  showSpinner,
   sizeText,
   statusText,
   truncatedText,
 } from './row-text'
 
 // The colour of the status text of a My PRs row. Red is for the flash, for Needs you, for a
-// Changes required result of Claude on a To review row, and for a reviewer name with changes
-// requested (user decision, 2026-11-13).
+// Changes required result of Claude and for CI failing on a To review row, and for a reviewer
+// name with changes requested (user decision, 2026-11-13).
 const STATUS_TEXT: Record<ReviewStatus, string> = {
   approved: 'text-svc-ok',
   'changes-requested': 'text-review-changes',
@@ -52,7 +55,7 @@ const STATUS_TEXT: Record<ReviewStatus, string> = {
 
 // The base of a small button, with no colour. Each button adds the colour of its tone.
 const SMALL_BUTTON = cx(
-  'border bg-black/35 px-1.5 leading-4 hover:text-text-strong',
+  'border bg-black/35 px-1.5 leading-4 transition-colors duration-150 hover:text-text-strong',
   'not-data-disabled:active:bg-accent/12 data-disabled:opacity-40',
 )
 
@@ -218,6 +221,8 @@ const RESULT_COLOUR: Record<RowResult, string> = {
 // panel that did not work is red.
 function textColour(row: ToReviewRow): string | undefined {
   if (row.approveIssue !== null || row.draftIssue !== null) return 'text-box-red'
+  // Failing CI is red. Running CI is grey.
+  if (ciText(row) !== null) return row.ci === 'failing' ? 'text-box-red' : 'text-text-dim'
   if (row.state === 'failed') return 'text-box-red'
   const result = resultOf(row)
   if (result !== null) return RESULT_COLOUR[result]
@@ -283,7 +288,8 @@ function pressButton(
 
 // A button is disabled while its write runs.
 function buttonDisabled(id: RowButtonId, row: ToReviewRow): boolean {
-  if (id === 'Approve') return row.approve === 'running'
+  // The button waits while its write runs, and while CI runs.
+  if (id === 'Approve') return row.approve === 'running' || row.approve === 'ci-running'
   if (id === 'Comment' || id === 'Request changes') return row.draft === 'running'
   return false
 }
@@ -382,7 +388,10 @@ export function ToReviewItem({
         <span className='ml-auto flex shrink-0 items-center gap-1.5 text-text'>
           {text !== '' && (
             <Tip label={rowTip(row)}>
-              <span className={cx('leading-4', textColour(row))}>{text}</span>
+              <span className={cx('inline-flex items-center gap-1 leading-4', textColour(row))}>
+                {showSpinner(row) && <CiSpinner />}
+                {text}
+              </span>
             </Tip>
           )}
           {rowButtons(row).map(id => (

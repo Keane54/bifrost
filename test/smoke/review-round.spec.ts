@@ -273,7 +273,7 @@ test('an Approve click submits the draft review of an Approve round as an approv
 
     // Step 5: the round runs, then the row shows the draft, the recommendation and the button.
     await expect(row).toContainText('Reviewing', { timeout: 30_000 })
-    await expect(row).toContainText('Recommends approval', { timeout: 90_000 })
+    await expect(row).toContainText('Approval recommended', { timeout: 90_000 })
     const approve = row.getByRole('button', { exact: true, name: 'Approve' })
     await expect(approve).toBeEnabled()
     const post = JSON.parse(await readText(join(testHome, 'review-post.json')))
@@ -352,7 +352,7 @@ test('an Approve click with no draft approves the reviewed commit with no text',
 
     // Step 5: the round runs. Nothing is posted, and the row shows the button.
     await expect(row).toContainText('Reviewing', { timeout: 30_000 })
-    await expect(row).toContainText('Recommends approval', { timeout: 90_000 })
+    await expect(row).toContainText('Approval recommended', { timeout: 90_000 })
     await expect(row).toContainText('Claude found nothing to change.')
     const approve = row.getByRole('button', { exact: true, name: 'Approve' })
     await expect(approve).toBeEnabled()

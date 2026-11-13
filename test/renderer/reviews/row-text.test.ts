@@ -4,6 +4,8 @@ import {
   ageText,
   approveTip,
   buttonTip,
+  ciText,
+  ciTip,
   claudeText,
   claudeTip,
   laterCopilotText,
@@ -15,6 +17,7 @@ import {
   rightText,
   rowButtons,
   rowTip,
+  showSpinner,
   sizeText,
   statusText,
   toReviewText,
@@ -32,6 +35,7 @@ function to(patch: Partial<ToReviewRow>): ToReviewRow {
     approve: null,
     approveIssue: null,
     author: 'sam',
+    ci: null,
     deletions: 1,
     draft: null,
     draftDeleted: false,
@@ -155,10 +159,10 @@ describe('rightText', () => {
       'Draft ready',
     )
     expect(rightText(to({ recommendation: 'approve', state: 'draft-ready' }), NOW)).toBe(
-      'Recommends approval',
+      'Approval recommended',
     )
     expect(rightText(to({ recommendation: 'approve', state: 'reviewed' }), NOW)).toBe(
-      'Recommends approval',
+      'Approval recommended',
     )
     expect(rightText(to({ state: 'approved-by-others' }), NOW)).toBe('Approved by others')
     const deleted = { draftDeleted: true, recommendation: 'comment', state: 'reviewed' } as const
@@ -552,5 +556,114 @@ describe('the results of Claude on a row (ruling B1)', () => {
     expect(rightText(issue('approve', false), NOW)).toBe("Couldn't approve")
     expect(rightText(issue('send', true), NOW)).toBe('Not confirmed')
     expect(rowTip(issue('send', true))).toBe('Why.')
+  })
+})
+
+describe('CI state on a row (user decision, 2026-11-13)', () => {
+  const failing = (patch: Partial<ToReviewRow> = {}) => to({ ci: 'failing', ...patch })
+  const running = (patch: Partial<ToReviewRow> = {}) => to({ ci: 'running', ...patch })
+
+  it('gives the status text for failing and running CI, and null with no CI problem', () => {
+    expect(ciText(failing())).toBe('CI failing')
+    expect(ciText(running())).toBe('CI running')
+    expect(ciText(to({}))).toBeNull()
+  })
+
+  it('shows the CI text over the other statuses of a row that waits for the user', () => {
+    for (const state of ['new', 'waiting', 'team', 'failed', 'reviewed', 'draft-ready'] as const) {
+      expect(rightText(failing({ state }), NOW)).toBe('CI failing')
+      expect(rightText(running({ state }), NOW)).toBe('CI running')
+    }
+    expect(rightText(failing({ pauseEndsAt: NOW + 5 * MIN, state: 'paused' }), NOW)).toBe(
+      'CI failing',
+    )
+  })
+
+  it('keeps the status of a session, and of a row that needs no review', () => {
+    for (const state of ['reviewing', 'queued', 'trust-needed'] as const) {
+      expect(ciText(failing({ state }))).toBeNull()
+      expect(ciText(running({ state }))).toBeNull()
+    }
+    for (const state of ['you-approved', 'you-reviewed', 'approved-by-others'] as const) {
+      expect(ciText(failing({ state }))).toBeNull()
+    }
+    expect(rightText(failing({ state: 'reviewing' }), NOW)).toBe('Reviewing')
+    expect(rightText(failing({ state: 'approved-by-others' }), NOW)).toBe('Approved by others')
+  })
+
+  it('keeps the result of Claude on the second line when CI fails', () => {
+    const row = failing({
+      drafted: { comments: 2, summary: true },
+      recommendation: 'comment',
+      state: 'draft-ready',
+    })
+    expect(rightText(row, NOW)).toBe('CI failing')
+    expect(resultLine(row)).toBe('Claude drafted a summary and 2 comments.')
+    expect(resultOf(row)).toBe('comment')
+  })
+
+  it('an action that did not work still shows its own text', () => {
+    const row = failing({
+      approveIssue: { message: 'CI is failing on this pull request.', unknown: false },
+      state: 'reviewed',
+    })
+    expect(rightText(row, NOW)).toBe("Couldn't approve")
+  })
+
+  it('shows the spinner only for running CI', () => {
+    expect(showSpinner(running())).toBe(true)
+    expect(showSpinner(failing())).toBe(false)
+    expect(showSpinner(to({}))).toBe(false)
+    // No text, no spinner: a session row keeps its own status.
+    expect(showSpinner(running({ state: 'reviewing' }))).toBe(false)
+  })
+
+  it('gives a Review button to no row with failing CI, and keeps Pause', () => {
+    for (const state of ['new', 'waiting', 'team', 'failed', 'reviewed'] as const) {
+      expect(rowButtons(failing({ state }))).not.toContain('Review')
+      expect(rowButtons(failing({ state }))).not.toContain('Try again')
+    }
+    expect(rowButtons(failing({ state: 'new' }))).toEqual(['Pause'])
+    expect(rowButtons(failing({ state: 'waiting' }))).toEqual([])
+    expect(menuItems(failing({ state: 'new' }))).not.toContain('Review')
+    expect(menuItems(failing({ state: 'paused' }))).not.toContain('Review')
+    expect(menuItems(failing({ state: 'new' }))).toContain('Pause')
+  })
+
+  it('keeps the Review button for running CI', () => {
+    expect(rowButtons(running({ state: 'new' }))).toEqual(['Review', 'Pause'])
+    expect(rowButtons(running({ state: 'failed' }))).toEqual(['Try again'])
+    expect(menuItems(running({ state: 'new' }))).toContain('Review')
+  })
+
+  it('keeps the draft buttons and Remove when CI fails', () => {
+    const draft = failing({ draft: 'ready', recommendation: 'comment', state: 'draft-ready' })
+    expect(rowButtons(draft)).toEqual(['Comment'])
+    expect(rowButtons(failing({ state: 'approved-by-others' }))).toEqual(['Remove'])
+  })
+
+  it('disables the Approve button with a friendly tip while CI runs, and gives no menu item', () => {
+    const row = running({ approve: 'ci-running', recommendation: 'approve', state: 'reviewed' })
+    expect(rowButtons(row)).toContain('Approve')
+    expect(approveTip(row)).toBe('CI is still running. Approve when it has passed.')
+    expect(buttonTip('Approve', row)).toBe('CI is still running. Approve when it has passed.')
+    expect(menuItems(row)).not.toContain('Approve')
+  })
+
+  it('tips the note of a dropped review before the CI tip on a failed row', () => {
+    const row = failing({ error: 'CI started failing.', state: 'failed' })
+    expect(rowTip(row)).toBe('CI started failing.')
+  })
+
+  it('tips the CI text', () => {
+    expect(ciTip(failing())).toBe(
+      "CI is failing on this pull request, so Bifrost won't review or approve it. " +
+        'It can be reviewed again when CI passes.',
+    )
+    expect(ciTip(running())).toBe(
+      'CI is still running. Claude can review now, but you can approve only when it has passed.',
+    )
+    expect(ciTip(to({}))).toBeNull()
+    expect(rowTip(failing({ state: 'new' }))).toBe(ciTip(failing()))
   })
 })

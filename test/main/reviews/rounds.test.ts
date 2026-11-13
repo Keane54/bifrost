@@ -17,6 +17,7 @@ import {
 import {
   draftNotice,
   REASON_BLOCKED,
+  REASON_CI_DROPPED,
   REASON_CLOSED_WHILE_POSTING,
   REASON_END_FAILED,
   REASON_NO_RESULT,
@@ -42,6 +43,7 @@ import {
   IDLE_STOP_MS,
   NO_START_MS,
   PASS_MS,
+  REFUSED_CI_FAILING,
   REFUSED_NOT_REVIEWABLE,
   REFUSED_REVIEWS_BUSY,
   REFUSED_UNKNOWN_REPO,
@@ -125,6 +127,7 @@ function pr(number: number, repo = 'web', owner = 'acme'): PrData {
     approvals: 0,
     author: 'alice',
     baseRef: 'main',
+    ci: null,
     comments: [],
     createdAt: 1,
     decisions: [],
@@ -968,6 +971,44 @@ describe('the queue', () => {
     await expect(h.runner.review(KEY)).rejects.toThrow(REFUSED_NOT_REVIEWABLE)
     await expect(h.runner.review('acme/web#99')).rejects.toThrow(REFUSED_NOT_REVIEWABLE)
     expect(h.state().queue.map(e => e.key)).toEqual(['acme/web#8'])
+  })
+
+  it('a review of a PR with failing CI is refused, and nothing is queued or started', async () => {
+    const h = make()
+    await ready(h, [{ ...pr(7), ci: 'failing' }])
+    await expect(h.runner.review(KEY)).rejects.toThrow(REFUSED_CI_FAILING)
+    expect(h.state().queue).toEqual([])
+    expect(h.pr()?.actedAt ?? null).toBeNull()
+    expect(h.calls.starts).toHaveLength(0)
+  })
+
+  it('a review of a PR with running CI, passed CI or no CI starts', async () => {
+    for (const ci of ['running', 'passed', null] as const) {
+      const h = make()
+      await ready(h, [{ ...pr(7), ci }])
+      await review(h, KEY)
+      expect(h.pr()?.round?.phase).toBe('running')
+    }
+  })
+
+  it('a queued review does not start when CI fails before its turn', async () => {
+    const h = make({ max: 1 })
+    await ready(h, [pr(7), pr(8)])
+    await review(h, KEY)
+    await review(h, 'acme/web#8')
+    expect(h.runner.session('acme/web#8')).toBe('queued')
+    // The next poll shows failing CI on the queued PR, then the first round ends.
+    await h.poll(pollOf([pr(7), { ...pr(8), ci: 'failing' }]))
+    await endTurn(h, { result: APPROVE })
+    expect(h.calls.starts).toHaveLength(1)
+    expect(h.state().queue).toEqual([])
+    expect(h.pr('acme/web#8')?.round ?? null).toBeNull()
+    // The click no longer counts as an action, and the row gets a friendly note.
+    expect(h.pr('acme/web#8')?.actedAt ?? null).toBeNull()
+    expect(h.pr('acme/web#8')?.lastError).toBe(REASON_CI_DROPPED)
+    expect(REASON_CI_DROPPED).toBe(
+      "CI started failing, so Bifrost didn't review this pull request.",
+    )
   })
 
   it('a review request for a key that is queued adds no second entry', async () => {

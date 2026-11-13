@@ -70,6 +70,7 @@ function pr(number: number, repo = 'web'): PrData {
     approvals: 0,
     author: 'alice',
     baseRef: 'main',
+    ci: null,
     comments: [],
     createdAt: 1,
     decisions: [],

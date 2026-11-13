@@ -221,6 +221,28 @@ describe('parsePoll', () => {
     expect(rollup(null, [])).toBe(0)
   })
 
+  it('reads the CI state of the latest commit: failing, running, passed, or no CI', () => {
+    const ci = (state: string | null, oid = 'aaaa111') => {
+      const raw = JSON.parse(fixture('poll-basic'))
+      const commit = raw.data.toReview.nodes[0].commits.nodes[0].commit
+      commit.oid = oid
+      commit.statusCheckRollup = state === null ? null : { ...commit.statusCheckRollup, state }
+      const r = parsePoll(JSON.stringify(raw))
+      if (!r.ok) throw new Error(r.message)
+      return r.data.toReview[0]?.ci
+    }
+    expect(ci('FAILURE')).toBe('failing')
+    expect(ci('ERROR')).toBe('failing')
+    expect(ci('PENDING')).toBe('running')
+    expect(ci('EXPECTED')).toBe('running')
+    expect(ci('SUCCESS')).toBe('passed')
+    // A PR with no CI has no rollup.
+    expect(ci(null)).toBeNull()
+    expect(ci('SOMETHING_NEW')).toBeNull()
+    // A rollup of another commit than the head says nothing about the head: it counts as running.
+    expect(ci('SUCCESS', 'ffff999')).toBe('running')
+  })
+
   it('reads whether each search has more PRs than the first page', () => {
     expect(basic()).toMatchObject({ mineHasMore: false, toReviewHasMore: false })
     const raw = JSON.parse(fixture('poll-basic'))

@@ -70,8 +70,19 @@ describe('Reviews panel source', () => {
   it('approves only from the Approve button and the Approve menu item, on a click', () => {
     expect(ROW).toContain("case 'Approve':")
     expect(ROW.match(/\.approve\(row\.key\)/g)).toHaveLength(2)
-    expect(ROW).toMatch(/id === 'Approve'\) return row\.approve === 'running'/)
+    expect(ROW).toMatch(
+      /id === 'Approve'\) return row\.approve === 'running' \|\| row\.approve === 'ci-running'/,
+    )
     expect(ROW).toMatch(/tip=\{id === 'Approve' \? approveTip\(row\)/)
+  })
+
+  it('gives every row action button a short colour transition', () => {
+    expect(ROW).toMatch(/SMALL_BUTTON = cx\(\s*'[^']*transition-colors duration-150/)
+  })
+
+  it('colours the CI status from row.ci, not from the display text', () => {
+    expect(ROW).not.toContain("'CI failing'")
+    expect(ROW).toMatch(/row\.ci === 'failing'/)
   })
 
   it('renders the items of menuItems', () => {
@@ -106,7 +117,9 @@ describe('Reviews panel source', () => {
 
   it('centres the state text and the button of a row on one line (ruling B2)', () => {
     expect(ROW).toMatch(/<span className='ml-auto flex shrink-0 items-center gap-1\.5[^']*'>/)
-    expect(ROW).toMatch(/<span className=\{cx\('leading-4', textColour\(row\)\)\}>/)
+    expect(ROW).toMatch(
+      /<span className=\{cx\('inline-flex items-center gap-1 leading-4', textColour\(row\)\)\}>/,
+    )
     expect(ROW).toMatch(/SMALL_BUTTON = cx\(\s*'[^']*leading-4/)
   })
 

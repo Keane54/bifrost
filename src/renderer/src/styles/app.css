@@ -123,11 +123,11 @@
   --color-svc-critical: #d4730a;
   --color-svc-maint: #a5c8f5;
 
-  /* The results of Claude on a To review row (user decision, 2026-11-13): green for Recommends
-     approval, amber for a comment draft, red for Changes required. The Review panel uses the same
-     colours for its Send as switch and its Send review button. Each one is an alias of an existing
-     token, so the app gets no new colour value. */
-  --color-review-approve: var(--color-watch-green);
+  /* The results of Claude on a To review row (user decision, 2026-11-13): soft green (svc-ok)
+     for Approval recommended, amber for a comment draft, red for Changes required. The Review
+     panel uses the same colours for its Send as switch and its Send review button. Each one is
+     an alias of an existing token, so the app gets no new colour value. */
+  --color-review-approve: var(--color-svc-ok);
   --color-review-comment: var(--color-box-yellow);
   --color-review-changes: var(--color-watch-red);
 

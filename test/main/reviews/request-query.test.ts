@@ -105,6 +105,7 @@ function polled(over: Partial<PrData> = {}): PrData {
     approvals: 0,
     author: VIEWER,
     baseRef: 'main',
+    ci: null,
     comments: [],
     createdAt: 1,
     decisions: [],

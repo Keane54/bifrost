@@ -82,6 +82,7 @@ function pr(over: Partial<PrData> = {}): PrData {
     approvals: 0,
     author: VIEWER,
     baseRef: 'main',
+    ci: null,
     comments: [],
     createdAt: 1,
     decisions: [],
@@ -1724,5 +1725,96 @@ describe('the row results and the Review panel (user decision, 2026-11-13)', () 
       })
       expect(stances(p)).toEqual([['Copilot', 'none']])
     })
+  })
+})
+
+describe('CI state on To review rows (user decision, 2026-11-13)', () => {
+  const HEAD = 'a'.repeat(40)
+  const mk = (n: number, over: Partial<PrData> = {}) =>
+    pr({ headSha: HEAD, key: `acme/app#${n}`, number: n, requestedUsers: [VIEWER], ...over })
+  const pollOf = (toReview: PrData[]): PollData => ({
+    errors: [],
+    mine: [],
+    mineHasMore: false,
+    rateLimit: null,
+    toReview,
+    toReviewHasMore: false,
+    viewer: VIEWER,
+  })
+  const mark = (value: 'approve' | 'comment', reviewId: string | null) => ({
+    at: 100,
+    headSha: HEAD,
+    reviewId,
+    value,
+    why: 'Small and safe.',
+  })
+  const rowsOf = (poll: PollData, state = structuredClone(EMPTY_STATE)) =>
+    Object.fromEntries(buildSnapshot(snapshotInput(poll, state)).toReview.map(r => [r.key, r]))
+
+  it('gives the row the CI state: failing, running, or null for passed and no CI', () => {
+    const rows = rowsOf(
+      pollOf([
+        mk(1, { ci: 'failing' }),
+        mk(2, { ci: 'running' }),
+        mk(3, { ci: 'passed' }),
+        mk(4, { ci: null }),
+      ]),
+    )
+    expect(rows['acme/app#1']?.ci).toBe('failing')
+    expect(rows['acme/app#2']?.ci).toBe('running')
+    expect(rows['acme/app#3']?.ci).toBeNull()
+    expect(rows['acme/app#4']?.ci).toBeNull()
+  })
+
+  it('keeps the row state of Bifrost: the CI state does not change it', () => {
+    const state = structuredClone(EMPTY_STATE)
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('comment', null) }
+    const rows = rowsOf(pollOf([mk(1, { ci: 'failing' }), mk(2, { ci: 'failing' })]), state)
+    expect(rows['acme/app#1']).toMatchObject({ ci: 'failing', state: 'reviewed' })
+    expect(rows['acme/app#2']).toMatchObject({ ci: 'failing', state: 'new' })
+  })
+
+  it('shows no Approve button for failing CI', () => {
+    const state = structuredClone(EMPTY_STATE)
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('approve', null) }
+    state.prs['acme/app#2'] = { ...emptyPrState(), recommendation: mark('approve', 'r2') }
+    const rows = rowsOf(
+      pollOf([mk(1, { ci: 'failing' }), mk(2, { ci: 'failing', viewerPendingReviewId: 'r2' })]),
+      state,
+    )
+    expect(rows['acme/app#1']?.approve).toBeNull()
+    expect(rows['acme/app#2']?.approve).toBeNull()
+  })
+
+  it('disables the Approve button while CI runs, and enables it for passed and no CI', () => {
+    const state = structuredClone(EMPTY_STATE)
+    for (const n of [1, 2, 3]) {
+      state.prs[`acme/app#${n}`] = { ...emptyPrState(), recommendation: mark('approve', null) }
+    }
+    const rows = rowsOf(
+      pollOf([mk(1, { ci: 'running' }), mk(2, { ci: 'passed' }), mk(3, { ci: null })]),
+      state,
+    )
+    expect(rows['acme/app#1']?.approve).toBe('ci-running')
+    expect(rows['acme/app#2']?.approve).toBe('ready')
+    expect(rows['acme/app#3']?.approve).toBe('ready')
+  })
+
+  it('shows no button for a row that has no Approve mark, whatever the CI state', () => {
+    const state = structuredClone(EMPTY_STATE)
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('comment', null) }
+    const rows = rowsOf(pollOf([mk(1, { ci: 'running' }), mk(2, { ci: 'running' })]), state)
+    expect(rows['acme/app#1']?.approve).toBeNull()
+    expect(rows['acme/app#2']?.approve).toBeNull()
+  })
+
+  it('a running Approve write wins over the CI wait', () => {
+    const state = structuredClone(EMPTY_STATE)
+    state.prs['acme/app#1'] = { ...emptyPrState(), recommendation: mark('approve', null) }
+    const input = {
+      ...snapshotInput(pollOf([mk(1, { ci: 'running' })]), state),
+      approval: () => ({ at: 900, phase: 'running' as const }),
+    }
+    expect(buildSnapshot(input).toReview[0]?.approve).toBe('running')
   })
 })

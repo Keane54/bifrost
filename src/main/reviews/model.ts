@@ -15,6 +15,7 @@ import {
 } from '../../shared/reviews'
 import { sortMine, sortToReview } from '../../shared/reviews-order'
 import type { Settings } from '../../shared/settings'
+import type { CiState } from './ci'
 import type { Author, PollData, PrComment, PrData, PrReview } from './pr-data'
 import {
   type DraftComment,
@@ -404,10 +405,12 @@ export function approvable(mark: RecommendationMark): boolean {
 // an Approve mark for the head commit, with no approval of the viewer on that commit.
 export function canApprove(
   rowState: ToReviewState,
-  pr: Pick<PrData, 'headSha' | 'viewerReviews'>,
+  pr: Pick<PrData, 'headSha' | 'viewerReviews' | 'ci'>,
   mark: RecommendationMark | null,
 ): boolean {
   if (rowState !== 'reviewed' && rowState !== 'draft-ready') return false
+  // A PR with failing CI gets no approval (user decision, 2026-11-13).
+  if (pr.ci === 'failing') return false
   if (mark === null || !approvable(mark)) return false
   return mark.headSha === pr.headSha && !viewerApproved(pr)
 }
@@ -441,9 +444,15 @@ function draftedOf(
 
 // The Approve button of a row. A write that runs disables it. A result that is not known hides
 // it until the next poll. After a known failure, the user can click again.
-function approveButton(shown: boolean, entry: ApproveEntry | null): ToReviewRow['approve'] {
+function approveButton(
+  shown: boolean,
+  entry: ApproveEntry | null,
+  ci: CiState,
+): ToReviewRow['approve'] {
   if (!shown || entry?.phase === 'unknown' || entry?.phase === 'approved') return null
-  return entry?.phase === 'running' ? 'running' : 'ready'
+  if (entry?.phase === 'running') return 'running'
+  // The button waits until CI has passed.
+  return ci === 'running' ? 'ci-running' : 'ready'
 }
 
 // The ignore list holds "owner/*" or "owner/repo". The match ignores case.
@@ -571,12 +580,13 @@ export function buildSnapshot(input: SnapshotInput): ReviewsSnapshot {
     toReview.push({
       additions: pr.additions,
       approvals: pr.approvals,
-      approve: approveButton(shown, entry),
+      approve: approveButton(shown, entry, pr.ci),
       approveIssue:
         issue !== null && withMark
           ? { message: issue.message, unknown: issue.phase === 'unknown' }
           : null,
       author: pr.author,
+      ci: pr.ci === 'failing' || pr.ci === 'running' ? pr.ci : null,
       deletions: pr.deletions,
       draft: draftButton(canEditDraft(rowState, mark), draftEntry),
       draftDeleted: mark?.deleted === true,

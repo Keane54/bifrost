@@ -9,6 +9,7 @@ function tr(key: string, over: Partial<ToReviewRow>): ToReviewRow {
     approve: null,
     approveIssue: null,
     author: 'a',
+    ci: null,
     deletions: 0,
     draft: null,
     draftDeleted: false,

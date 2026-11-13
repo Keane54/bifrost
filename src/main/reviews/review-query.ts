@@ -2,6 +2,7 @@
 // threads of the viewer. Only reads. Each value goes as a variable, never inside the query text.
 
 import { isRecord } from '../../shared/plain-object'
+import { type CiState, ciOf } from './ci'
 import type { Gh } from './gh'
 import { ghFailure } from './gh'
 import type { ReviewState } from './pr-data'
@@ -43,6 +44,8 @@ export interface ReviewContext {
   baseSha: string
   headRef: string
   headSha: string
+  // The combined CI result of the head commit. The Approve write waits for passed or no CI.
+  ci: CiState
   reviews: ViewerReview[]
   threads: ViewerThread[]
   pending: { id: string; body: string; commit: string | null } | null
@@ -64,6 +67,9 @@ const CONTEXT_QUERY = `query ReviewContext(
       baseRefOid @include(if: $head)
       headRefName @include(if: $head)
       headRefOid @include(if: $head)
+      commits(last: 1) @include(if: $head) {
+        nodes { commit { oid statusCheckRollup { state } } }
+      }
       pending: reviews(states: PENDING, first: 10) @include(if: $head) {
         nodes { id body viewerDidAuthor commit { oid } }
       }
@@ -284,6 +290,7 @@ export async function fetchReviewContext(
       baseRef: asString(head.baseRefName),
       baseSha: asString(head.baseRefOid),
       body: asString(head.body),
+      ci: ciOf(nodesOf(head.commits)[0]?.commit, asString(head.headRefOid)),
       headRef: asString(head.headRefName),
       headSha: asString(head.headRefOid),
       number: pr.number,

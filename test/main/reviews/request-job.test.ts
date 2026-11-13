@@ -277,6 +277,7 @@ function polled(hub: Hub, over: Partial<PrData> = {}): PrData {
     approvals: 0,
     author: hub.author,
     baseRef: 'main',
+    ci: null,
     comments: hub.comments.map(asComment),
     createdAt: 1,
     decisions: [],

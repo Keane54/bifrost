@@ -253,6 +253,12 @@ export const REASON_APPROVE_CHANGED =
   "This pull request changed after Claude's review, so Bifrost didn't approve it. " +
   'It needs a new review.'
 export const REASON_APPROVE_DONE = 'You already approved this commit on GitHub.'
+// The CI rules (user decision, 2026-11-13). The fresh check refuses before any write.
+// A queued review that CI stopped before its turn. The row shows it as the note of the PR.
+export const REASON_CI_DROPPED = "CI started failing, so Bifrost didn't review this pull request."
+export const REASON_APPROVE_CI_FAILING =
+  "CI is failing on this pull request, so Bifrost didn't approve it."
+export const REASON_APPROVE_CI_RUNNING = 'CI is still running. Approve when it has passed.'
 export const REASON_APPROVE_PENDING =
   'You have a draft review on this pull request. Submit or delete it on GitHub first, ' +
   'then try again.'

@@ -86,8 +86,12 @@ export interface ToReviewRow {
   error: string | null
   // The Approve button (user decision, 2026-11-13). ready: the row shows it. running: the row
   // shows it disabled while the write runs. null: the row has no button. Only a reviewed or a
-  // draft-ready row with an Approve recommendation for the head commit has it.
-  approve: 'ready' | 'running' | null
+  // draft-ready row with an Approve recommendation for the head commit has it. ci-running: the
+  // row shows it disabled until CI has passed.
+  approve: 'ready' | 'running' | 'ci-running' | null
+  // The combined CI result of the latest commit (user decision, 2026-11-13). failing: no review
+  // and no approval. running: a review can run, and Approve waits. Null: CI passed, or no CI.
+  ci: 'failing' | 'running' | null
   // The friendly text of the last Approve click that did not approve, until the next poll.
   // unknown is true when GitHub can have saved the approval.
   approveIssue: { message: string; unknown: boolean } | null

@@ -121,6 +121,7 @@ const context = (extra: Partial<ReviewContext> = {}): ReviewContext => ({
   baseRef: 'main',
   baseSha: 'b'.repeat(40),
   body: 'Body text',
+  ci: null,
   headRef: 'feature',
   headSha: 'h'.repeat(40),
   number: 7,

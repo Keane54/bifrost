@@ -24,7 +24,7 @@ import {
 } from '../../shared/reviews'
 import { messageOf } from '../actions/session-actions'
 import { maskToken } from '../log/mask'
-import { prKeyOfUrl } from './approve'
+import { ciRefusal, prKeyOfUrl } from './approve'
 import { type DraftRead, fetchDraft } from './draft-query'
 import { type DraftScope, type DraftTarget, type DraftWrite, writeDraft } from './draft-writes'
 import type { Gh } from './gh'
@@ -472,6 +472,9 @@ export function createDraftEditor(deps: DraftDeps): DraftEditor {
       }
       if (approve && approvedOnHead(c.reviews, c.headSha))
         return failed(action, REASON_APPROVE_DONE)
+      // Approve instead waits for CI, so it refuses here, before the delete.
+      const ci = approve ? ciRefusal(c) : null
+      if (ci !== null) return failed(action, ci)
       sent.now = true
       const write: DraftWrite = { kind: 'discard' }
       const out = await writeDraft(deps.gh, targetOf(key, mark), read.fresh.scope, write)

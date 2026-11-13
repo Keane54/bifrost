@@ -31,7 +31,7 @@ import type { RepoStore } from './repo-store'
 import { dropOutbox, dropUnsentOutbox } from './request-job'
 import { createReviewJob } from './review-job'
 import type { ReviewSessions } from './review-session'
-import { REASON_FORK, REASON_REPLIES_WAITING, trustNotice } from './round-text'
+import { REASON_CI_DROPPED, REASON_FORK, REASON_REPLIES_WAITING, trustNotice } from './round-text'
 import {
   type ActiveRound,
   emptyPrState,
@@ -60,6 +60,8 @@ export const CLONE_RETRY_MS = 60 * 60_000
 export const PASS_MS = 5_000
 
 export const REFUSED_NOT_REVIEWABLE = 'refused: this pull request cannot get a review now'
+// A PR with failing CI gets no review (user decision, 2026-11-13).
+export const REFUSED_CI_FAILING = 'refused: CI is failing on this pull request'
 export const REFUSED_REVIEWS_BUSY = 'refused: reviews are busy'
 export const REFUSED_UNKNOWN_REPO = 'refused: unknown repository'
 export const REFUSED_NOT_HANDLEABLE = 'refused: this pull request cannot be handled now'
@@ -512,6 +514,18 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   // Step 3 starts: save the phase preparing and remove the queue entry.
   async function begin(entry: QueueEntry, job: Job): Promise<void> {
     const { key } = entry
+    // A queued review does not start when CI fails before its turn (user decision, 2026-11-13).
+    // The entry goes, and the next entry can use the slot.
+    if (entry.kind === 'review' && deps.toReviewPr(key)?.ci === 'failing') {
+      // The click no longer counts as an action, and the row says why nothing started.
+      await store.change(s => ({
+        ...changePr(s, key, p => ({ ...p, actedAt: null, lastError: REASON_CI_DROPPED })),
+        queue: s.queue.filter(e => !(e.key === key && e.kind === entry.kind)),
+      }))
+      deps.changed()
+      pumpAgain = true
+      return
+    }
     const token = ++tokenCount
     const now = deps.now()
     let begun = false
@@ -1340,9 +1354,9 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
 
     async review(key) {
       if (removing) throw new Error(REFUSED_REVIEWS_BUSY)
-      if (!PR_KEY.test(key) || deps.toReviewPr(key) === null || session(key) !== null) {
-        throw new Error(REFUSED_NOT_REVIEWABLE)
-      }
+      const polled = PR_KEY.test(key) ? deps.toReviewPr(key) : null
+      if (polled === null || session(key) !== null) throw new Error(REFUSED_NOT_REVIEWABLE)
+      if (polled.ci === 'failing') throw new Error(REFUSED_CI_FAILING)
       const now = deps.now()
       // The mark stays until the round ends. The round uses it to find the draft review of
       // Bifrost (isOwnDraft).

@@ -1,6 +1,7 @@
 // The one GraphQL query of a poll, and the reader of its answer.
 import { isRecord } from '../../shared/plain-object'
 import { PR_KEY, prKey } from '../../shared/reviews'
+import { ciOf } from './ci'
 import type {
   Author,
   PollData,
@@ -363,6 +364,7 @@ function readPr(v: unknown, viewer: string, toReview: boolean): PrData | null {
     approvals: toReview ? otherApprovals(o.latestOpinionatedReviews, viewer) : 0,
     author: str(obj(o.author)?.login) ?? 'ghost',
     baseRef: str(o.baseRefName) ?? '',
+    ci: ciOf(commit, str(o.headRefOid) ?? ''),
     comments: readComments(o.comments),
     createdAt,
     decisions: toReview ? [] : nodes(o.latestOpinionatedReviews).flatMap(r => readReview(r) ?? []),
