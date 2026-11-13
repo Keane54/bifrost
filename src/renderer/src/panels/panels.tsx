@@ -15,6 +15,7 @@ import OverviewSettingsPanel from '../overview/OverviewSettingsPanel'
 import { useOverview } from '../overview/overviews-context'
 import { SessionIcon } from '../overview/SessionIcon'
 import PerformancePanel from '../performance/PerformancePanel'
+import AnswerPanel from '../reviews/AnswerPanel'
 import ReviewsPanel from '../reviews/ReviewsPanel'
 import TrustPanel from '../reviews/TrustPanel'
 import ServiceStatusPanel from '../service/ServiceStatusPanel'
@@ -59,6 +60,8 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
       return 'Daily update'
     case 'trust':
       return 'Trust a repository'
+    case 'answer':
+      return 'Answer Claude'
     case 'show-info': {
       const id = showInfoSessionId(panelId)
       const name = rows?.find(r => r.sessionId === id)?.name
@@ -162,6 +165,8 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <DailyUpdatePanel />
     case 'trust':
       return <TrustPanel />
+    case 'answer':
+      return <AnswerPanel />
     default:
       return <div className='p-3 text-[13px] text-text-dim'>This panel is not known.</div>
   }

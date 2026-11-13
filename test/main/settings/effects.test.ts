@@ -73,6 +73,19 @@ describe('settingsEffects', () => {
     expect(settingsEffects(prev, { ...prev, reviewsMaxSessions: 5 })).toEqual([])
   })
 
+  test('a change of reviewsAutoFix gives the reviews-autofix effect', () => {
+    const prev = base()
+    expect(settingsEffects(prev, { ...prev, reviewsAutoFix: false })).toEqual([
+      { kind: 'reviews-autofix', on: false },
+    ])
+    expect(
+      settingsEffects(
+        { ...prev, reviewsAutoFix: false },
+        { ...prev, reviewsAutoFix: true, reviewsPollMinutes: 9 },
+      ),
+    ).toEqual([{ kind: 'reviews-poll' }, { kind: 'reviews-autofix', on: true }])
+  })
+
   test('a key change gives a menu effect only for a menu slot', () => {
     const prev = base()
     expect(settingsEffects(prev, { ...prev, keys: { 'open:mod': 'Mod+K' } })).toEqual([])

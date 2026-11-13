@@ -12,6 +12,7 @@ export type SettingsEffect =
   | { kind: 'reviews'; on: boolean }
   | { kind: 'reviews-view' }
   | { kind: 'reviews-poll' }
+  | { kind: 'reviews-autofix'; on: boolean }
   | { kind: 'updates'; on: boolean }
 
 // The slots of the menu accelerators (D7).
@@ -31,7 +32,7 @@ function sameList(a: readonly string[], b: readonly string[]): boolean {
 }
 
 // Return the effects of a change, in this order: escalation, poll, login item, menu, zoom,
-// account usage, reviews, reviews view, reviews poll, updates.
+// account usage, reviews, reviews view, reviews poll, reviews autofix, updates.
 // A change of the terminal app needs no effect here. The main process finds the apps at each
 // call and keeps no cache.
 export function settingsEffects(prev: Settings, next: Settings): SettingsEffect[] {
@@ -63,6 +64,9 @@ export function settingsEffects(prev: Settings, next: Settings): SettingsEffect[
   }
   // The watcher sets its next poll again from the new interval.
   if (prev.reviewsPollMinutes !== next.reviewsPollMinutes) effects.push({ kind: 'reviews-poll' })
+  if (prev.reviewsAutoFix !== next.reviewsAutoFix) {
+    effects.push({ kind: 'reviews-autofix', on: next.reviewsAutoFix })
+  }
   if (prev.autoUpdate !== next.autoUpdate) effects.push({ kind: 'updates', on: next.autoUpdate })
   return effects
 }

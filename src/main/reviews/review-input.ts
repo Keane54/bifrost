@@ -35,6 +35,22 @@ export function cutText(text: string, max: number): string {
   return `${text.slice(0, end)}${CUT_MARKER}`
 }
 
+// Copy the mode file and the humanise rules into the input folder as mode.md and
+// humanise-rules.md, with mode 0600. modeSource is the path of the mode file in skillsDir.
+export async function copyRuleFiles(
+  skillsDir: string,
+  io: string,
+  modeSource: string,
+): Promise<{ mode: string; rules: string }> {
+  const mode = join(io, 'mode.md')
+  const rules = join(io, 'humanise-rules.md')
+  await copyFile(join(skillsDir, modeSource), mode)
+  await copyFile(join(skillsDir, 'skills/bifrost-humanise/rules.md'), rules)
+  await chmod(mode, 0o600)
+  await chmod(rules, 0o600)
+  return { mode, rules }
+}
+
 export interface ReviewInput {
   version: 1
   pr: {
@@ -139,12 +155,11 @@ async function build(
     }
   }
 
-  const mode = join(io, 'mode.md')
-  const rules = join(io, 'humanise-rules.md')
-  await copyFile(join(skillsDir, 'skills/bifrost-review/bifrost-mode.md'), mode)
-  await copyFile(join(skillsDir, 'skills/bifrost-humanise/rules.md'), rules)
-  await chmod(mode, 0o600)
-  await chmod(rules, 0o600)
+  const { mode, rules } = await copyRuleFiles(
+    skillsDir,
+    io,
+    'skills/bifrost-review/bifrost-mode.md',
+  )
 
   const files = parseDiff(await readFile(fullDiff, 'utf8'))
   // A rewritten history gets the full diff, but the session must still check the earlier

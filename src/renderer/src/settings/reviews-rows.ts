@@ -9,6 +9,7 @@ export const REVIEWS_ROWS = {
   removeClones: 'Remove all clones',
   requestModel: 'Model for request sessions',
   reviewModel: 'Model for review sessions',
+  signedCommits: 'Sign commits through GitHub',
   teamRequests: 'Show team requests',
   watch: 'Watch GitHub',
 } as const

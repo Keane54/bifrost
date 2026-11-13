@@ -34,7 +34,7 @@ import electronUpdater from 'electron-updater'
 import { checkAliasRequest } from '../shared/alias'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
 import { isPriority } from '../shared/priority'
-import { REPO_KEY } from '../shared/reviews'
+import { ITEM_ID, MAX_ANSWERS, REPO_KEY } from '../shared/reviews'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
 import { SKILLS_MARKETPLACE, SKILLS_PLUGIN_ID, type SkillsStatus } from '../shared/skills'
 import type { ClaudeVersion, DisplayMode, LiveStatus, WatchColour } from '../shared/types'
@@ -128,16 +128,32 @@ import { createWhatsNew } from './release-notes/whats-new'
 import { friendlyFailure } from './reviews/friendly-failure'
 import { createGh, type Gh } from './reviews/gh'
 import { createRepoGit } from './reviews/repo-git'
+import { reposRoot } from './reviews/repo-paths'
 import { createRepoStore, remoteBase } from './reviews/repo-store'
+import { createRequestJob } from './reviews/request-job'
+import { createFixPusher, createSignedPusher } from './reviews/request-push'
+import { claudeSettingsFile } from './reviews/request-session'
+import { createReviewJob } from './reviews/review-job'
 import { createReviewSessions } from './reviews/review-session'
-import { createReviewRunner, REFUSED_UNKNOWN_REPO, type ReviewRunner } from './reviews/rounds'
+import {
+  createReviewRunner,
+  REFUSED_BAD_ANSWER,
+  REFUSED_NOT_HANDLEABLE,
+  REFUSED_UNKNOWN_REPO,
+  type ReviewRunner,
+} from './reviews/rounds'
+import { MAX_ANSWER } from './reviews/state'
 import { openReviewsStateStore, reviewsStateFile } from './reviews/state-store'
 import { createTrustWindow, TRUST_VIEW, type TrustWindow, trustedDirs } from './reviews/trust'
 import {
   checkPrKey,
+  commentUrlToOpen,
   createReviewsWatcher,
+  IDLE_MINE,
+  mineKey,
   type RequestNotice,
   type ReviewsWatcher,
+  rowKey,
   toReviewKey,
   urlToOpen,
   whileOn,
@@ -253,6 +269,13 @@ let trustWindow: TrustWindow | null = null
 // The most bytes of text that the page may write to the trust terminal in one call.
 const MAX_TRUST_WRITE = 64 * 1024
 const REFUSED_BAD_TERMINAL = 'refused: bad terminal value'
+// A test home has no git identity, because GIT_CONFIG_GLOBAL is /dev/null. A fix commit needs one.
+const TEST_GIT_IDENTITY = [
+  '-c',
+  'user.name=Bifrost Test',
+  '-c',
+  'user.email=bifrost-test@example.invalid',
+]
 const REVIEW_FAILED = "Bifrost couldn't do that. Please try again."
 const REMOVE_CLONES_FAILED = "Bifrost couldn't delete the clones. Please try again."
 const NO_RUNNER = "Bifrost couldn't start the review rounds. Please restart Bifrost."
@@ -397,8 +420,14 @@ function runSettingsEffect(effect: SettingsEffect): void {
       return
     case 'reviews':
       if (effect.on) {
-        reviewRunner?.start()
-        reviewsWatcher?.start()
+        // Save fixFrom first. Then start the runner and the watcher, if Watch is still on.
+        void (reviewRunner?.watchTurnedOn() ?? Promise.resolve())
+          .catch(() => console.error('The round runner could not save the turn-on time.'))
+          .finally(() => {
+            if (!getSettings().reviewsWatch) return
+            reviewRunner?.start()
+            reviewsWatcher?.start()
+          })
       } else {
         reviewRunner?.stop()
         reviewsWatcher?.stop()
@@ -411,6 +440,12 @@ function runSettingsEffect(effect: SettingsEffect): void {
       return
     case 'reviews-poll':
       reviewsWatcher?.reschedule()
+      return
+    case 'reviews-autofix':
+      // The runner saves the new start time first. Then the rows show the new counts.
+      void (reviewRunner?.autoFixChanged(effect.on) ?? Promise.resolve())
+        .catch(() => console.error('The round runner could not apply the automatic setting.'))
+        .finally(() => reviewsWatcher?.rebuild())
       return
     case 'updates':
       updater?.setAuto(effect.on)
@@ -509,6 +544,29 @@ function startUsageAlerts(
   })
 }
 
+// The answers that the page sent: 1 to MAX_ANSWERS objects with exactly an id and a text. The id
+// matches ITEM_ID. The text is MAX_ANSWER characters or less, or null.
+function checkAnswers(value: unknown): { id: string; text: string | null }[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_ANSWERS) {
+    throw new Error(REFUSED_BAD_ANSWER)
+  }
+  return value.map((item: unknown) => {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+      throw new Error(REFUSED_BAD_ANSWER)
+    }
+    const keys = Object.keys(item)
+    const { id, text } = item as { id?: unknown; text?: unknown }
+    if (keys.length !== 2 || !keys.includes('id') || !keys.includes('text')) {
+      throw new Error(REFUSED_BAD_ANSWER)
+    }
+    if (typeof id !== 'string' || !ITEM_ID.test(id)) throw new Error(REFUSED_BAD_ANSWER)
+    if (text !== null && (typeof text !== 'string' || text.length > MAX_ANSWER)) {
+      throw new Error(REFUSED_BAD_ANSWER)
+    }
+    return { id, text }
+  })
+}
+
 // What startReviews needs besides the state: the runner of the review rounds works with the
 // registry service, claude and the PTYs.
 interface ReviewsParts {
@@ -551,6 +609,7 @@ async function startReviews(
     now: () => Date.now(),
     reviews: {
       afterPoll: poll => reviewRunner?.afterPoll(poll),
+      mine: key => reviewRunner?.mine(key) ?? IDLE_MINE,
       session: key => reviewRunner?.session(key) ?? null,
       sessionOf: key => reviewRunner?.sessionOf(key) ?? null,
       trust: () => reviewRunner?.trust() ?? [],
@@ -564,15 +623,25 @@ async function startReviews(
     return watcher
   }
   const claudeJson = claudeJsonFile(home?.home ?? homedir())
+  const claudeSettings = claudeSettingsFile(home?.home ?? homedir())
   const repoGit = createRepoGit({
     env: async () => ({
       ...childEnv(await parts.loginEnv, { pty: false }),
       ...(home === null ? {} : { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }),
     }),
     exec: execFile,
+    extraConfig: home === null ? [] : TEST_GIT_IDENTITY,
   })
   const repos = createRepoStore({
     bifrostHome,
+    git: repoGit,
+    remoteBase: remoteBase(home?.home ?? null),
+  })
+  // The push of a fix of a request round. It is the only git write to GitHub.
+  const pusher = createFixPusher({ git: repoGit, remoteBase: remoteBase(home?.home ?? null) })
+  // With signed commits on, the fix goes to GitHub with createCommitOnBranch, and GitHub signs it.
+  const signedPusher = createSignedPusher({
+    gh,
     git: repoGit,
     remoteBase: remoteBase(home?.home ?? null),
   })
@@ -589,9 +658,12 @@ async function startReviews(
     bifrostHome,
     changed: () => watcher.rebuild(),
     claudeJson,
+    claudeSettings,
     eventNotice: text => eventBatcher.push([eventLog.line(text, Date.now())]),
     gh,
+    jobs: [createReviewJob(), createRequestJob({ pusher, signedPusher })],
     log: message => console.error(message),
+    minePr: key => watcher.minePr(key),
     notify: notifyReviewRequest,
     now: () => Date.now(),
     repos,
@@ -603,6 +675,10 @@ async function startReviews(
     store,
     testHome: home !== null,
     toReviewPr: key => watcher.toReviewPr(key),
+    // Ruling S20: the row of the setting then shows that the automatic fixes are off.
+    turnOffAutoFix: async () => {
+      await settings.update({ reviewsAutoFix: false })
+    },
     viewer: () => watcher.viewer(),
   })
   reviewRunner = runner
@@ -610,7 +686,7 @@ async function startReviews(
     try {
       runner.onRows(rows)
     } catch {
-      console.error('The review runner failed on a session update.')
+      console.error('The round runner failed on a session update.')
     }
   })
   trustWindow = createTrustWindow({
@@ -905,10 +981,12 @@ function startPerformance(
 // The service sends each update of the rows to the current window.
 // If the store cannot be read, the service runs with an empty store and does not save.
 // The escalation time and the poll interval come from the settings.
+// The branch read runs no git in the reviews folder of bifrostHome, where a PR session can write.
 async function startService(
   run: Promise<RunClaude | null>,
   settingsReady: Promise<SettingsStore>,
   health: HealthLog,
+  bifrostHome: string,
 ): Promise<RegistryService> {
   const [opened, settings] = await Promise.all([
     openStore(join(app.getPath('userData'), 'registry.json')),
@@ -920,7 +998,8 @@ async function startService(
     return listAgents(runClaude, { all })
   }
   const now = (): number => Date.now()
-  const branchReader = createBranchReader(execFile)
+  // Read no HEAD file and run no git in the folders that a PR session can write.
+  const branchReader = createBranchReader(execFile, { skipRoot: reposRoot(bifrostHome) })
   const deps: ServiceDeps = {
     health,
     listActive: () => list(false),
@@ -1089,7 +1168,7 @@ export function registerIpc(home: TestHome | null = null): void {
   // The settings store opens one time. Each user gets the same store.
   const settings = openSettings(join(app.getPath('userData'), 'settings.json'), health)
   usageAlerts = startUsageAlerts(home, settings)
-  const service = startService(run, settings, health)
+  const service = startService(run, settings, health, paths.bifrostHome)
   // gh gets the login-shell env. In a test home, that is the env of the process, so the PATH of
   // the smoke test decides which gh runs.
   const gh = createGh({ env: async () => childEnv(await loginEnv, { pty: false }), exec: execFile })
@@ -1220,6 +1299,11 @@ export function registerIpc(home: TestHome | null = null): void {
   ipcMain.handle('reviews:open-pr', (e, key: unknown) =>
     fromPage(e, async () => shell.openExternal(urlToOpen(await reviews, key))),
   )
+  // View on GitHub in the Answer panel. The page sends a PR key and an item ID. The main process
+  // finds the saved link and checks it.
+  ipcMain.handle('reviews:open-comment', (e, key: unknown, itemId: unknown) =>
+    fromPage(e, async () => shell.openExternal(commentUrlToOpen(await reviews, key, itemId))),
+  )
   // The review rounds. The page sends a PR key of a To review row, a repository key of the trust
   // list, terminal text and sizes, or nothing. It never sends a path, a URL or a command.
   ipcMain.handle('reviews:review', (e, key: unknown) =>
@@ -1232,7 +1316,7 @@ export function registerIpc(home: TestHome | null = null): void {
   )
   ipcMain.handle('reviews:cancel', (e, key: unknown) =>
     fromPage(e, async () => {
-      const k = toReviewKey(whileOn(await reviews), checkPrKey(key))
+      const k = rowKey(whileOn(await reviews), key)
       const runner = reviewRunner
       if (runner === null) throw new Error(NO_RUNNER)
       await friendlyFailure(() => runner.cancel(k), REVIEW_FAILED, reviewLog)
@@ -1240,10 +1324,38 @@ export function registerIpc(home: TestHome | null = null): void {
   )
   ipcMain.handle('reviews:stop-session', (e, key: unknown) =>
     fromPage(e, async () => {
-      const k = toReviewKey(whileOn(await reviews), checkPrKey(key))
+      const k = rowKey(whileOn(await reviews), key)
       const runner = reviewRunner
       if (runner === null) throw new Error(NO_RUNNER)
       await friendlyFailure(() => runner.stopSession(k), REVIEW_FAILED, reviewLog)
+    }),
+  )
+  // The request rounds. The page sends the key of a My PRs row, a fixed word, or answers. Each
+  // answer has an item ID and a text or null.
+  ipcMain.handle('reviews:handle', (e, key: unknown, what: unknown) =>
+    fromPage(e, async () => {
+      const k = mineKey(whileOn(await reviews), key)
+      if (what !== 'all' && what !== 'copilot') throw new Error(REFUSED_NOT_HANDLEABLE)
+      const runner = reviewRunner
+      if (runner === null) throw new Error(NO_RUNNER)
+      await friendlyFailure(() => runner.handle(k, what), REVIEW_FAILED, reviewLog)
+    }),
+  )
+  ipcMain.handle('reviews:retry', (e, key: unknown) =>
+    fromPage(e, async () => {
+      const k = mineKey(whileOn(await reviews), key)
+      const runner = reviewRunner
+      if (runner === null) throw new Error(NO_RUNNER)
+      await friendlyFailure(() => runner.retry(k), REVIEW_FAILED, reviewLog)
+    }),
+  )
+  ipcMain.handle('reviews:answer', (e, key: unknown, answers: unknown) =>
+    fromPage(e, async () => {
+      const k = mineKey(whileOn(await reviews), key)
+      const checked = checkAnswers(answers)
+      const runner = reviewRunner
+      if (runner === null) throw new Error(NO_RUNNER)
+      await friendlyFailure(() => runner.answer(k, checked), REVIEW_FAILED, reviewLog)
     }),
   )
   ipcMain.handle('reviews:trust-open', (e, repo: unknown) =>

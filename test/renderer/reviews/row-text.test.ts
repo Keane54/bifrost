@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AUTO_FIX_HINT,
   ageText,
   claudeText,
+  claudeTip,
   laterCopilotText,
   menuItems,
+  mineMenuItems,
+  olderText,
   rightText,
   rowTip,
   sizeText,
@@ -46,16 +50,19 @@ function mine(patch: Partial<MyPrRow>): MyPrRow {
     failedChecks: 0,
     fixing: 0,
     key: 'a/b#1',
+    lastError: null,
     laterCopilot: 0,
     number: 1,
     olderOpen: 0,
     owner: 'a',
+    questions: [],
     repo: 'b',
     reviewers: [],
     sessionId: null,
     status: 'pending',
     title: 't',
     truncated: false,
+    unsent: false,
     updatedAt: NOW,
     ...patch,
   }
@@ -107,6 +114,10 @@ describe('row text', () => {
     expect(claudeText(mine({ claude: 'cloning' }))).toBe('Cloning')
     expect(claudeText(mine({ claude: 'waiting' }))).toBe('Waiting')
     expect(claudeText(mine({ claude: 'error' }))).toBe('Error')
+  })
+
+  it('claudeText gives Fork for a fork row', () => {
+    expect(claudeText(mine({ claude: 'fork' }))).toBe('Fork')
   })
 
   it('truncatedText gives the tip only for a row that GitHub cut', () => {
@@ -225,5 +236,113 @@ describe('menuItems', () => {
       'Cancel review',
       'Stop session',
     ])
+  })
+})
+
+describe('olderText', () => {
+  it('uses the singular and the plural form', () => {
+    expect(olderText(0)).toBeNull()
+    expect(olderText(1)).toBe('1 older comment')
+    expect(olderText(3)).toBe('3 older comments')
+  })
+})
+
+describe('claudeTip', () => {
+  const q = (id: string) => ({ id, question: 'q', where: 'w' })
+  it('gives the tip of each state', () => {
+    expect(claudeTip(mine({ claude: 'needs-you', questions: [q('a')] }))).toBe(
+      'Claude needs your answer on 1 comment. Click to answer.',
+    )
+    expect(claudeTip(mine({ claude: 'needs-you', questions: [q('a'), q('b')] }))).toBe(
+      'Claude needs your answer on 2 comments. Click to answer.',
+    )
+    expect(claudeTip(mine({ claude: 'fixing', fixing: 1 }))).toBe('Claude is working on 1 comment.')
+    expect(claudeTip(mine({ claude: 'fixing', fixing: 4 }))).toBe(
+      'Claude is working on 4 comments.',
+    )
+    expect(claudeTip(mine({ claude: 'queued' }))).toBe('Waiting for a free session slot.')
+    expect(claudeTip(mine({ claude: 'trust-needed' }))).toBe(
+      'Bifrost needs you to trust this repository first. Click Trust at the top of the panel.',
+    )
+    expect(claudeTip(mine({ claude: 'cloning' }))).toBe('Bifrost is copying this repository.')
+    expect(claudeTip(mine({ claude: 'error', error: 'It broke.' }))).toBe('It broke.')
+    expect(claudeTip(mine({ claude: 'fork', error: 'A fork.' }))).toBe('A fork.')
+    expect(claudeTip(mine({ claude: 'waiting' }))).toBeNull()
+  })
+})
+
+describe('mineMenuItems', () => {
+  const q = { id: 'a', question: 'q', where: 'w' }
+  it('gives only Open on GitHub to a plain row and to a fork row', () => {
+    expect(mineMenuItems(mine({}))).toEqual(['Open on GitHub'])
+    expect(
+      mineMenuItems(mine({ claude: 'fork', laterCopilot: 1, olderOpen: 2, sessionId: 's' })),
+    ).toEqual(['Open on GitHub'])
+  })
+
+  it('adds Handle now and Handle Copilot comments in the three states', () => {
+    for (const claude of ['waiting', 'needs-you', 'error'] as const) {
+      expect(mineMenuItems(mine({ claude, laterCopilot: 1, olderOpen: 2 }))).toEqual(
+        expect.arrayContaining(['Handle now', 'Handle Copilot comments']),
+      )
+    }
+    for (const claude of ['fixing', 'queued', 'cloning', 'trust-needed'] as const) {
+      const items = mineMenuItems(mine({ claude, laterCopilot: 1, olderOpen: 2 }))
+      expect(items).not.toContain('Handle now')
+      expect(items).not.toContain('Handle Copilot comments')
+    }
+    expect(mineMenuItems(mine({ olderOpen: 1 }))).toEqual(['Open on GitHub', 'Handle now'])
+    expect(mineMenuItems(mine({ laterCopilot: 1 }))).toEqual([
+      'Open on GitHub',
+      'Handle Copilot comments',
+    ])
+  })
+
+  it('lists the items in order', () => {
+    expect(
+      mineMenuItems(mine({ claude: 'needs-you', olderOpen: 1, questions: [q], sessionId: 's' })),
+    ).toEqual(['Open on GitHub', 'Open session', 'Answer Claude', 'Handle now'])
+    expect(mineMenuItems(mine({ claude: 'error', olderOpen: 1, sessionId: 's' }))).toEqual([
+      'Open on GitHub',
+      'Open session',
+      'Handle now',
+      'Try again',
+    ])
+    expect(mineMenuItems(mine({ claude: 'fixing', sessionId: 's' }))).toEqual([
+      'Open on GitHub',
+      'Open session',
+      'Stop session',
+    ])
+    expect(mineMenuItems(mine({ claude: 'fixing' }))).toEqual(['Open on GitHub'])
+  })
+
+  it('adds Cancel for queued, trust-needed and cloning', () => {
+    for (const claude of ['queued', 'trust-needed', 'cloning'] as const) {
+      expect(mineMenuItems(mine({ claude }))).toEqual(['Open on GitHub', 'Cancel'])
+    }
+  })
+
+  it('adds Cancel to an error row with posts that Bifrost did not send', () => {
+    expect(mineMenuItems(mine({ claude: 'error', unsent: true }))).toEqual([
+      'Open on GitHub',
+      'Try again',
+      'Cancel',
+    ])
+    expect(mineMenuItems(mine({ claude: 'error' }))).toEqual(['Open on GitHub', 'Try again'])
+    // A row that posts now has no Cancel.
+    expect(mineMenuItems(mine({ claude: 'fixing', unsent: true }))).toEqual(['Open on GitHub'])
+  })
+})
+
+describe('AUTO_FIX_HINT', () => {
+  it('says how to turn on the automatic fixes', () => {
+    expect(AUTO_FIX_HINT).toBe(
+      'Want Claude to fix and answer new review comments for you? ' +
+        'Turn on Handle comments on my PRs automatically in Settings.',
+    )
+  })
+
+  it('shows Open session only with a session ID', () => {
+    expect(mineMenuItems(mine({ sessionId: 's' }))).toEqual(['Open on GitHub', 'Open session'])
   })
 })

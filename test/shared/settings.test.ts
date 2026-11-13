@@ -58,6 +58,7 @@ describe('parseSettings', () => {
       reviewsPollMinutes: 2,
       reviewsRequestModel: '',
       reviewsReviewModel: '',
+      reviewsSignedCommits: false,
       reviewsTeamRequests: true,
       reviewsWatch: false,
       rowFlash: true,
@@ -75,6 +76,20 @@ describe('parseSettings', () => {
     copy.terminalFont.size = 20
     expect(DEFAULT_SETTINGS.slashCommands).toEqual(['/compact', '/clear', '/context'])
     expect(DEFAULT_SETTINGS.terminalFont.size).toBe(13)
+  })
+
+  test('Sign commits through GitHub is off by default and takes true or false only', () => {
+    expect(defaults().reviewsSignedCommits).toBe(false)
+    expect(parseSettings({ reviewsSignedCommits: true, version: 1 }).reviewsSignedCommits).toBe(
+      true,
+    )
+    expect(parseSettings({ reviewsSignedCommits: 'yes', version: 1 }).reviewsSignedCommits).toBe(
+      false,
+    )
+    expect(reasonOf(defaults(), { reviewsSignedCommits: true })).toBe('ok')
+    expect(reasonOf(defaults(), { reviewsSignedCommits: 1 })).toBe(
+      'refused: bad reviewsSignedCommits',
+    )
   })
 
   test('settings load an old file with no dailyUpdate as DEFAULT_DAILY_UPDATE', () => {

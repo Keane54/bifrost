@@ -7,15 +7,19 @@ import { EMPTY_STATE, emptyPrState, type ReviewsState } from '../../../src/main/
 import type { ReviewsStateStore } from '../../../src/main/reviews/state-store'
 import {
   checkPrKey,
+  commentUrlToOpen,
   createReviewsWatcher,
+  mineKey,
   POLL_DEADLINE_MS,
   REFRESH_GAP_MS,
+  REFUSED_NO_COMMENT_LINK,
   REFUSED_REVIEWS_OFF,
   REFUSED_UNKNOWN_PR,
   type RequestNotice,
   type ReviewsWatcher,
   requestNotice,
   requestNotices,
+  rowKey,
   toReviewKey,
   urlToOpen,
   type WatcherDeps,
@@ -172,6 +176,7 @@ function setup(
   })
   const { change, store } = memoryStore({ ...structuredClone(EMPTY_STATE), ...opts.state })
   const settings = {
+    reviewsAutoFix: true,
     reviewsIgnore: [] as string[],
     reviewsPauseMinutes: 60,
     reviewsPollMinutes: 2,
@@ -198,6 +203,8 @@ function setup(
 function row(watcher: ReviewsWatcher, key: string): ToReviewRow | undefined {
   return watcher.current().toReview.find(r => r.key === key)
 }
+
+const NO_MINE = { claude: 'waiting' as const, error: null, fixing: 0, sessionId: null }
 
 const K101 = 'acme/web#101'
 const K102 = 'acme/web#102'
@@ -1207,6 +1214,39 @@ describe('IPC helpers', () => {
     t.watcher.stop()
   })
 
+  test('commentUrlToOpen gives the saved GitHub URL of a question and refuses the rest', () => {
+    const question = (id: string, url?: string) => ({ id, question: 'q', url, where: 'w' })
+    const fake = (availability: 'on' | 'off') =>
+      ({
+        current: () => ({
+          availability,
+          mine: [
+            {
+              key: K101,
+              questions: [
+                question('PRRT_1', 'https://github.com/acme/web/pull/101#r1'),
+                question('PRRT_2', 'http://github.com/acme/web/pull/101#r2'),
+                question('PRRT_3', 'https://github.com.evil.example/x'),
+                question('PRRT_4'),
+              ],
+            },
+          ],
+        }),
+      }) as unknown as Parameters<typeof commentUrlToOpen>[0]
+    const on = fake('on')
+    expect(commentUrlToOpen(on, K101, 'PRRT_1')).toBe('https://github.com/acme/web/pull/101#r1')
+    for (const id of ['PRRT_2', 'PRRT_3', 'PRRT_4']) {
+      expect(() => commentUrlToOpen(on, K101, id), id).toThrow(REFUSED_NO_COMMENT_LINK)
+    }
+    for (const id of ['PRRT_9', 'bad id', 7, null]) {
+      expect(() => commentUrlToOpen(on, K101, id), String(id)).toThrow(REFUSED_UNKNOWN_PR)
+    }
+    expect(() => commentUrlToOpen(on, 'acme/web#999', 'PRRT_1')).toThrow(REFUSED_UNKNOWN_PR)
+    expect(() => commentUrlToOpen(on, { key: K101 }, 'PRRT_1')).toThrow(REFUSED_UNKNOWN_PR)
+    expect(() => commentUrlToOpen(fake('off'), K101, 'PRRT_1')).toThrow(REFUSED_REVIEWS_OFF)
+    expect(() => commentUrlToOpen(null, K101, 'PRRT_1')).toThrow(REFUSED_REVIEWS_OFF)
+  })
+
   test('requestNotice gives the title and the body of the notification', () => {
     const notice = requestNotice({
       additions: 1,
@@ -1287,6 +1327,7 @@ describe('the review runner in the watcher', () => {
     async () => {
       const reviews = {
         afterPoll: vi.fn(),
+        mine: () => NO_MINE,
         session: (key: string) => (key === K101 ? ('reviewing' as const) : null),
         sessionOf: (key: string) => (key === K101 ? 'sess-1' : null),
         trust: () => [{ repo: 'acme/web', waiting: 2 }],
@@ -1303,6 +1344,67 @@ describe('the review runner in the watcher', () => {
       expect(t.watcher.viewer()).toBeNull()
     },
   )
+
+  test('minePr gives the PR of the last poll', async () => {
+    const t = setup({ replies: [answer([{ number: 101 }], [{ number: 102 }])] })
+    expect(t.watcher.minePr(K102)).toBeNull()
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.watcher.minePr(K102)?.key).toBe(K102)
+    expect(t.watcher.minePr(K101)).toBeNull()
+    t.watcher.stop()
+    expect(t.watcher.minePr(K102)).toBeNull()
+  })
+
+  test('the My PRs rows show the Claude state, the count and the runner session', async () => {
+    const mine = vi.fn((key: string) =>
+      key === K102
+        ? { claude: 'fixing' as const, error: 'It failed.', fixing: 2, sessionId: 'sess-9' }
+        : NO_MINE,
+    )
+    const reviews = {
+      afterPoll: vi.fn(),
+      mine,
+      session: () => null,
+      sessionOf: () => null,
+      trust: () => [],
+    }
+    const t = setup({ replies: [answer([], [{ number: 102 }])], reviews })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.watcher.current().mine[0]).toMatchObject({
+      claude: 'fixing',
+      error: 'It failed.',
+      fixing: 2,
+      key: K102,
+      sessionId: 'sess-9',
+    })
+    t.watcher.stop()
+  })
+
+  test('without a runner a My PRs row waits', async () => {
+    const t = setup({ replies: [answer([], [{ number: 102 }])] })
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(t.watcher.current().mine[0]).toMatchObject({ claude: 'waiting', fixing: 0 })
+    t.watcher.stop()
+  })
+
+  test('rowKey takes a row of either tab, and mineKey only a My PRs row', async () => {
+    const t = setup({ replies: [answer([{ number: 101 }], [{ number: 102 }])] })
+    expect(() => rowKey(t.watcher, K101)).toThrow(REFUSED_UNKNOWN_PR)
+    t.watcher.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(rowKey(t.watcher, K101)).toBe(K101)
+    expect(rowKey(t.watcher, K102)).toBe(K102)
+    expect(mineKey(t.watcher, K102)).toBe(K102)
+    expect(() => mineKey(t.watcher, K101)).toThrow(REFUSED_UNKNOWN_PR)
+    for (const bad of [K103, 42, null, '../x#1', { key: K102 }]) {
+      expect(() => rowKey(t.watcher, bad)).toThrow(REFUSED_UNKNOWN_PR)
+      expect(() => mineKey(t.watcher, bad)).toThrow(REFUSED_UNKNOWN_PR)
+    }
+    t.watcher.stop()
+  })
 
   test('a re-request clears the recommendation and the error', async () => {
     const before = Date.now() - 60 * MIN
@@ -1332,7 +1434,13 @@ describe('the review runner in the watcher', () => {
     'afterPoll runs after each good poll, also a partial ' + 'one, and not after a failed poll',
     async () => {
       const afterPoll = vi.fn()
-      const reviews = { afterPoll, session: () => null, sessionOf: () => null, trust: () => [] }
+      const reviews = {
+        afterPoll,
+        mine: () => NO_MINE,
+        session: () => null,
+        sessionOf: () => null,
+        trust: () => [],
+      }
       const t = setup({
         replies: [
           answer([{ number: 101 }]),
@@ -1381,6 +1489,7 @@ describe('the review runner in the watcher', () => {
       afterPoll: () => {
         throw new Error('boom')
       },
+      mine: () => NO_MINE,
       session: () => null,
       sessionOf: () => null,
       trust: () => [],

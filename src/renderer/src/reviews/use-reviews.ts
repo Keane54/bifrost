@@ -1,5 +1,5 @@
 // The app-wide store of the Reviews snapshot. The Reviews panel and the side bar read it, so the
-// app has one subscription. The side bar reads only the flash flag.
+// app has one subscription. The side bar reads only the attention flag.
 import { useSyncExternalStore } from 'react'
 import { EMPTY_REVIEWS, type ReviewsSnapshot } from '../../../shared/reviews'
 import { createSnapshotStore, type SnapshotApi, type SnapshotStore } from '../lib/snapshot-store'
@@ -17,12 +17,17 @@ export function useReviews(): ReviewsSnapshot {
   return useSyncExternalStore(store.subscribe, store.get)
 }
 
-// True when a To review row flashes.
+// True when a To review row flashes, or when a My PRs row needs the user: it has an open
+// question or the needs-you state. Such a row waits for the user (ruling M1).
 export function reviewsAttention(s: ReviewsSnapshot): boolean {
-  return s.toReview.some(r => r.flash)
+  return (
+    s.toReview.some(r => r.flash) ||
+    s.mine.some(r => r.claude === 'needs-you' || r.questions.length > 0)
+  )
 }
 
-// The flash flag only, for the side bar. A new snapshot with the same flag does not render it.
+// The attention flag only, for the side bar. A new snapshot with the same flag does not render
+// it.
 export function useReviewsAttention(): boolean {
   return useSyncExternalStore(store.subscribe, () => reviewsAttention(store.get()))
 }

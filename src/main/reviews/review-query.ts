@@ -98,7 +98,7 @@ const THREADS_QUERY = `query ReviewThreads(
   }
 }`
 
-type Rec = Record<string, unknown>
+export type Rec = Record<string, unknown>
 // detail is the raw text from gh or GitHub. The caller writes it to the Event log.
 type Fail = { ok: false; message: string; detail?: string }
 
@@ -110,39 +110,48 @@ const REVIEW_STATES: readonly string[] = [
   'DISMISSED',
   'PENDING',
 ]
-const PR_STATES: readonly string[] = ['OPEN', 'CLOSED', 'MERGED']
+export const PR_STATES: readonly string[] = ['OPEN', 'CLOSED', 'MERGED']
 
 // The answer of GitHub is not typed. Each read checks the type of its value.
-const asRec = (x: unknown): Rec => (isRecord(x) ? x : {})
+// request-query.ts uses the same reads.
+export const asRec = (x: unknown): Rec => (isRecord(x) ? x : {})
 const asArray = (x: unknown): unknown[] => (Array.isArray(x) ? x : [])
-const asString = (x: unknown): string => (typeof x === 'string' ? x : '')
-const nodesOf = (x: unknown): Rec[] => asArray(asRec(x).nodes).filter(isRecord)
+export const asString = (x: unknown): string => (typeof x === 'string' ? x : '')
+export const nodesOf = (x: unknown): Rec[] => asArray(asRec(x).nodes).filter(isRecord)
 const oidOf = (x: unknown): string | null => {
   const oid = asRec(x).oid
   return typeof oid === 'string' ? oid : null
 }
 
-interface Vars {
-  owner: string
-  repo: string
-  number: number
+// The variables of one operation. A PR operation names the PR. A node operation (for example the
+// comments of one thread) names the node ID only.
+export type Vars = ({ owner: string; repo: string; number: number } | { id: string }) & {
   login?: string
   after?: string | null
   // Page 1 of the context reads the PR fields. Later pages read only the reviews.
   head?: boolean
 }
 
-function args(query: string, v: Vars): string[] {
-  const out = ['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${v.owner}`]
-  out.push('-f', `repo=${v.repo}`, '-F', `number=${v.number}`)
+export function args(query: string, v: Vars): string[] {
+  const out = ['api', 'graphql', '-f', `query=${query}`]
+  if ('id' in v) out.push('-f', `id=${v.id}`)
+  else out.push('-f', `owner=${v.owner}`, '-f', `repo=${v.repo}`, '-F', `number=${v.number}`)
   if (v.login !== undefined) out.push('-f', `login=${v.login}`)
   if (v.head !== undefined) out.push('-F', `head=${v.head}`)
   if (v.after) out.push('-f', `after=${v.after}`)
   return out
 }
 
-// Run one operation and give the pull request object of the answer.
-async function call(gh: Gh, query: string, v: Vars): Promise<{ ok: true; pr: Rec } | Fail> {
+const pullRequestOf = (data: Rec): unknown => asRec(data.repository).pullRequest
+
+// Run one operation. Give the object that pick finds in the data of the answer. The default
+// is the pull request object.
+export async function call(
+  gh: Gh,
+  query: string,
+  v: Vars,
+  pick: (data: Rec) => unknown = pullRequestOf,
+): Promise<{ ok: true; pr: Rec } | Fail> {
   const result = await gh.run(args(query, v))
   const failure = ghFailure(result)
   if (failure) {
@@ -163,7 +172,7 @@ async function call(gh: Gh, query: string, v: Vars): Promise<{ ok: true; pr: Rec
     if (!first) return { message: BAD_ANSWER, ok: false }
     return { detail: first, message: REASON_PR_READ_FAILED, ok: false }
   }
-  const pr = asRec(asRec(top.data).repository).pullRequest
+  const pr = pick(asRec(top.data))
   if (!isRecord(pr)) return { message: BAD_ANSWER, ok: false }
   return { ok: true, pr }
 }
@@ -203,7 +212,7 @@ function readThread(n: Rec): ViewerThread {
 }
 
 // The next cursor of a page, or null when the list ends.
-function nextCursor(list: unknown): string | null {
+export function nextCursor(list: unknown): string | null {
   const info = asRec(asRec(list).pageInfo)
   const cursor = info.endCursor
   return info.hasNextPage === true && typeof cursor === 'string' ? cursor : null

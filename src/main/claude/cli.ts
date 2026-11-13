@@ -36,6 +36,9 @@ export type ExecFn = (
     maxBuffer?: number
     // The text for stdin. Only gh gets it. A claude run never gets it (see execFile).
     input?: string
+    // The encoding of stdout and stderr. The default is utf8. latin1 keeps each byte as one
+    // character, so the output of a binary file comes back with no change.
+    encoding?: 'utf8' | 'latin1'
     // An abort stops the program with the kill signal.
     signal?: AbortSignal
   },
@@ -67,7 +70,7 @@ export const execFile: ExecFn = (file, args, opts) =>
       args,
       {
         cwd: opts?.cwd,
-        encoding: 'utf8',
+        encoding: opts?.encoding ?? 'utf8',
         env: opts?.env,
         killSignal: opts?.killSignal ?? 'SIGKILL',
         maxBuffer: opts?.maxBuffer,

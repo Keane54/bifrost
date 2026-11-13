@@ -5,6 +5,7 @@ import {
   type ReviewStatus,
   type ToReviewRow,
 } from '../../../shared/reviews'
+import { REVIEWS_ROWS } from '../settings/reviews-rows'
 
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
@@ -151,12 +152,85 @@ export function claudeText(row: MyPrRow): string {
       return 'Waiting'
     case 'error':
       return 'Error'
+    case 'fork':
+      return 'Fork'
   }
 }
 
 // The tip of the status of a My PRs row that GitHub cut. Null for a row with all its items.
 export function truncatedText(row: MyPrRow): string | null {
   return row.truncated ? 'Bifrost read only the newest items of this PR.' : null
+}
+
+const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many)
+
+// The count of older open comments on a My PRs row. Null for none.
+export function olderText(n: number): string | null {
+  if (n <= 0) return null
+  return `${n} older ${plural(n, 'comment', 'comments')}`
+}
+
+// The tip of the Claude state of a My PRs row. Null for a waiting row.
+export function claudeTip(row: MyPrRow): string | null {
+  switch (row.claude) {
+    case 'needs-you': {
+      const n = row.questions.length
+      return `Claude needs your answer on ${n} ${plural(n, 'comment', 'comments')}. Click to answer.`
+    }
+    case 'fixing':
+      return `Claude is working on ${row.fixing} ${plural(row.fixing, 'comment', 'comments')}.`
+    case 'queued':
+      return 'Waiting for a free session slot.'
+    case 'trust-needed':
+      return (
+        'Bifrost needs you to trust this repository first. ' +
+        'Click Trust at the top of the panel.'
+      )
+    case 'cloning':
+      return 'Bifrost is copying this repository.'
+    case 'error':
+    case 'fork':
+      return row.error
+    case 'waiting':
+      return null
+  }
+}
+
+export type MineMenuItemId =
+  | 'Open on GitHub'
+  | 'Open session'
+  | 'Answer Claude'
+  | 'Handle now'
+  | 'Handle Copilot comments'
+  | 'Try again'
+  | 'Cancel'
+  | 'Stop session'
+
+const CAN_HANDLE: readonly string[] = ['waiting', 'needs-you', 'error']
+const CAN_CANCEL: readonly string[] = ['queued', 'trust-needed', 'cloning']
+
+// The hint of the My PRs tab while the automatic fixes wait for the confirm of the user
+// (ruling S20).
+export const AUTO_FIX_HINT =
+  'Want Claude to fix and answer new review comments for you? ' +
+  `Turn on ${REVIEWS_ROWS.autoFix} in Settings.`
+
+// The menu items of a My PRs row, in order. A fork row has Open on GitHub only.
+export function mineMenuItems(row: MyPrRow): MineMenuItemId[] {
+  const items: MineMenuItemId[] = ['Open on GitHub']
+  if (row.claude === 'fork') return items
+  if (row.sessionId !== null) items.push('Open session')
+  if (row.questions.length > 0) items.push('Answer Claude')
+  const handle = CAN_HANDLE.includes(row.claude)
+  if (handle && row.olderOpen > 0) items.push('Handle now')
+  if (handle && row.laterCopilot > 0) items.push('Handle Copilot comments')
+  if (row.claude === 'error') items.push('Try again')
+  // On an error row, Cancel drops the posts that Bifrost did not send.
+  if (CAN_CANCEL.includes(row.claude) || (row.claude === 'error' && row.unsent)) {
+    items.push('Cancel')
+  }
+  if (row.sessionId !== null && row.claude === 'fixing') items.push('Stop session')
+  return items
 }
 
 export function laterCopilotText(n: number): string | null {

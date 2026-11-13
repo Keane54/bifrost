@@ -42,6 +42,12 @@ describe('wm state', () => {
     expect(run([open('service-status')]).frames[0]?.rect).toMatchObject({ h: 240, w: 420 })
   })
 
+  it('panelKind accepts answer', () => {
+    expect(panelKind('answer')).toBe('answer')
+    expect(DEFAULT_SIZES.answer).toEqual({ h: 420, w: 560 })
+    expect(run([open('answer')]).frames[0]?.rect).toMatchObject({ h: 420, w: 560 })
+  })
+
   it('panelKind accepts trust', () => {
     expect(panelKind('trust')).toBe('trust')
     expect(DEFAULT_SIZES.trust).toEqual({ h: 380, w: 640 })

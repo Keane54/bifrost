@@ -1,6 +1,7 @@
 // The texts of a review round. The strings go to the user as given.
 
 import { RECOMMENDATION_TEXT, type Recommendation } from '../../shared/reviews'
+import type { UnsafeRule } from './repo-store'
 import { count, MAX_REVIEW_BODY } from './result-file'
 import type { RequestNotice } from './watcher'
 
@@ -32,6 +33,13 @@ export const REASON_OWN_DRAFT =
 export const REASON_PR_READ_FAILED =
   "Bifrost couldn't load this pull request from GitHub, so nothing was posted. Try again. " +
   'The Event log has the details.'
+
+// Ruling P6: a new request round first sends the waiting updates of an earlier round. When the
+// read of the PR after them fails, those updates are on GitHub, so the text must not say that
+// nothing was posted.
+export const REASON_READ_AFTER_POSTS =
+  "Bifrost sent the waiting updates, then couldn't load this pull request from GitHub. " +
+  'Try again. The Event log has the details.'
 
 // The fixed texts for an error of Node, git or claude in a round. The log gets the error. The
 // row never shows the error, because it can hold a path.
@@ -80,6 +88,160 @@ export const reasonSummaryFailed = (message: string): string =>
   "Bifrost added the comments to your draft review, but GitHub didn't add the summary: " +
   `${message} Check your draft review on GitHub.`
 
+// The texts of the fix commit and the push of a request round. Bifrost refuses the push before
+// any network call.
+export const REASON_PUSH_TARGET = "Bifrost won't push to this branch, so it posted nothing."
+export const REASON_PUSH_CONFLICT =
+  "Someone pushed to this branch, and Claude's fix doesn't merge cleanly. " +
+  'Bifrost posted the other replies. Choose Try again to let Claude fix it on the new code.'
+export const REASON_PUSH_MOVED =
+  'The branch kept changing while Bifrost pushed. Bifrost posted the other replies. ' +
+  'Choose Try again.'
+
+// The push went to GitHub, but the branch was gone. A push cannot delete a branch.
+export const REASON_PUSH_NEW_BRANCH =
+  'The branch was deleted on GitHub while Bifrost pushed, so the push made it again. ' +
+  "Delete it on GitHub if you don't need it."
+
+export const reasonPushFailed = (line: string): string => `GitHub didn't take the push: ${line}`
+// A git command of the push or of the fix commit failed. The row gets this text after
+// reasonPushFailed or reasonCommitFailed. The Event log gets the line of git.
+export const REASON_PUSH_GIT_FAILED = 'git stopped with an error. The Event log has the details.'
+
+// The texts of a fix commit that Bifrost does not send through GitHub with signed commits on.
+// GitHub makes each file of that commit a plain file (ruling S22), and takes at most 4 MB of
+// files (ruling S23). Bifrost refuses before any write, and Try again starts a new round.
+export const REASON_SIGNED_EXECUTABLE =
+  "Claude's fix changes a file that must stay executable, and GitHub can't keep that in a " +
+  'commit it signs. Nothing was posted. Turn off Sign commits through GitHub for this fix ' +
+  'and choose Try again, or make the change yourself.'
+export const REASON_SIGNED_LINK =
+  "Claude's fix changes a link or a submodule, and GitHub can't keep that in a commit it " +
+  'signs. Nothing was posted. Turn off Sign commits through GitHub for this fix and choose ' +
+  'Try again, or make the change yourself.'
+export const REASON_SIGNED_TOO_LARGE =
+  "Claude's fix is over 4 MB, which is too large for a commit that GitHub signs. Nothing " +
+  'was posted. Turn off Sign commits through GitHub for this fix and choose Try again, ' +
+  'or make the change yourself.'
+
+export const reasonCommitFailed = (line: string): string =>
+  `Bifrost couldn't commit Claude's fix: ${line}`
+
+// A git filter, for example Git LFS, can change the file that goes into the commit. Bifrost could
+// then push an LFS pointer with no object, because no hook of a filter runs.
+export const REASON_FILTER_CHANGE =
+  'Claude changed a file that Git LFS or another git filter handles. ' +
+  "Bifrost can't push that safely, so nothing was posted. Make this change yourself."
+
+const UNSAFE_CHANGE: Record<Exclude<UnsafeRule, 'filter'>, string> = {
+  claude: 'a file in a .claude folder',
+  large: 'a file over 1 MB',
+  link: 'a file link',
+  outside: 'a file outside its folder',
+  submodule: 'a submodule',
+  unchanged: "a file list that doesn't match its changes",
+  workflow: 'a GitHub workflow or action file',
+}
+
+export const reasonUnsafeChange = (rule: UnsafeRule): string =>
+  rule === 'filter'
+    ? REASON_FILTER_CHANGE
+    : `Claude changed ${UNSAFE_CHANGE[rule]}, which Bifrost doesn't push. Nothing was posted.`
+
+// The texts of the GitHub writes of a request round. Bifrost refuses these PRs before any write.
+export const REASON_FIX_PR_CLOSED = 'This pull request was closed, so Bifrost stopped posting.'
+export const REASON_NOT_YOURS = "This pull request isn't yours, so Bifrost stopped."
+export const REASON_FORK =
+  "This pull request comes from a fork. Bifrost can't push there, so Claude leaves its comments " +
+  'to you.'
+export const REASON_OWN_PENDING =
+  "You have a draft review on this pull request, and Bifrost's replies would go into it. " +
+  'Submit or delete the draft on GitHub, then choose Try again.'
+export const REASON_REPLY_PENDING =
+  'A reply went into a draft review on GitHub. Submit or delete the draft, then choose Try again.'
+
+// The checks of the user settings of Claude Code before a request session starts. The user
+// settings load in the session, so Bifrost starts no session when they change the sandbox. A
+// text names no value of the file.
+export const REASON_USER_SANDBOX =
+  "Your Claude Code sandbox settings change the network or file rules, so Bifrost can't keep " +
+  'this request session safe. Remove them from ~/.claude/settings.json to let Bifrost fix ' +
+  'comments.'
+export const REASON_USER_SANDBOX_OFF =
+  "Your Claude Code settings turn the sandbox off, so Bifrost can't keep this request session " +
+  'safe. Remove sandbox.enabled from ~/.claude/settings.json to let Bifrost fix comments.'
+export const REASON_USER_FOLDERS =
+  "Your Claude Code settings give Claude more folders to work in, so Bifrost can't keep this " +
+  'request session safe. Remove additionalDirectories from ~/.claude/settings.json to let ' +
+  'Bifrost fix comments.'
+export const REASON_USER_SETTINGS_UNREADABLE =
+  "Bifrost couldn't read ~/.claude/settings.json, so it can't check that this request session " +
+  'is safe. Fix the file to let Bifrost fix comments.'
+
+// A cut context cannot show a sent reply or a deleted thread, so Bifrost writes nothing.
+export const REASON_TOO_MANY_COMMENTS =
+  'This pull request has too many comments for Bifrost to check, so nothing was posted. ' +
+  'Reply to them on GitHub.'
+
+// The reasons of a failed write. They come after the text of reasonPostsStopped, so they do not
+// name GitHub again. GitHub can have saved a write that did not answer in time. The next run
+// checks GitHub before it sends that write again.
+export const REASON_WRITE_TIMEOUT = 'it took too long to answer.'
+export const REASON_WRITE_UNREADABLE = "Bifrost couldn't read the answer."
+export const REASON_NOT_RESOLVED = "the thread didn't get resolved."
+// gh or GitHub gave an error text for a write. The Event log gets that text, because it can be
+// long or technical.
+export const REASON_WRITE_FAILED = 'it sent back an error. The Event log has the details.'
+// A read of the PR failed while Bifrost posts. Updates of the outbox can be on GitHub already,
+// so the text does not say that nothing was posted. The Event log gets the error text.
+export const REASON_POSTS_READ_FAILED =
+  "Bifrost couldn't load the pull request. The Event log has the details."
+// GitHub refused the signed commit with a text that quotes a file of the fix. That text never
+// shows.
+export const REASON_FILES_REFUSED = 'it refused the files of the fix.'
+
+export const reasonPostsStopped = (done: number, total: number, message: string): string =>
+  `GitHub stopped after ${done} of ${total} updates: ${message} Choose Try again to send the rest.`
+
+// The user chose Stop session while Bifrost posted. Bifrost sends no more updates.
+export const reasonUserStoppedPosts = (done: number, total: number): string =>
+  `You stopped Bifrost after ${done} of ${total} updates. Choose Try again to send the rest.`
+
+// Remove all clones kept an outbox whose fix is on GitHub already. Try again needs no clone.
+export const REASON_REPLIES_WAITING =
+  'Bifrost removed its copies of your repositories before it posted every reply. ' +
+  'Choose Try again to post the rest.'
+
+// The texts of a request round. A failed round posts nothing, and the row shows the text.
+export const REASON_FIX_STOPPED =
+  'You stopped Claude, so Bifrost posted nothing. Choose Try again to start over.'
+export const REASON_FIX_TIMEOUT =
+  'Claude took more than 30 minutes, so Bifrost stopped it and posted nothing.'
+export const REASON_FIX_NO_RESULT = 'Claude finished without a result, so Bifrost posted nothing.'
+export const reasonFixBadResult = (why: string): string =>
+  `Claude wrote a result Bifrost couldn't use (${why}), so Bifrost posted nothing.`
+// A request session must never ask. Bifrost stops a session that shows a prompt.
+export const REASON_FIX_BLOCKED =
+  'Claude got stuck waiting for an answer, so Bifrost stopped it and posted nothing.'
+
+// The fixed texts for an error of Node, git or claude in a request round. The log gets the error.
+// The row never shows the error, because it can hold a path.
+export const REASON_FIX_PREPARE_FAILED =
+  "Bifrost couldn't get this pull request ready for Claude, so it posted nothing. " +
+  'Choose Try again.'
+export const REASON_FIX_START_FAILED =
+  "Bifrost couldn't start Claude's session, so it posted nothing. Choose Try again."
+// GitHub can have saved a write before the error. So this text does not say that nothing was
+// posted.
+export const REASON_FIX_END_FAILED =
+  "Bifrost couldn't finish this round. Check the pull request on GitHub, then choose Try again."
+// The place of a question about a comment that is gone from GitHub, for the Answer panel.
+export const WHERE_DELETED = 'A deleted comment'
+// The commit failed with an error that can hold a path.
+export const REASON_COMMIT_ERROR = reasonCommitFailed(
+  'an error stopped it. The log has the details.',
+)
+
 interface NoticePr {
   repo: string
   number: number
@@ -105,4 +267,10 @@ export function trustNotice(repo: string): RequestNotice {
     body: `Trust ${repo} in Bifrost so Claude can work on its pull requests.`,
     title: 'Trust needed',
   }
+}
+
+// One notification when a request round has new questions for the user.
+export function needsYouNotice(pr: NoticePr, n: number): RequestNotice {
+  const comments = n === 1 ? '1 comment' : `${n} comments`
+  return { body: `Claude needs your answer on ${comments}.`, title: `${pr.repo} #${pr.number}` }
 }

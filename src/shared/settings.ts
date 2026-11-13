@@ -72,6 +72,9 @@ export interface Settings {
   // '' means the default model of Claude Code.
   reviewsRequestModel: ModelChoice
   reviewsReviewModel: ModelChoice
+  // Send the fix commit of a request round to GitHub with createCommitOnBranch. GitHub then signs
+  // the commit. Off by default: Bifrost pushes the commit with git.
+  reviewsSignedCommits: boolean
   // Entries of the form owner/repo or owner/*. The Reviews panel hides them.
   reviewsIgnore: string[]
   terminalFont: TerminalFont
@@ -139,6 +142,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   reviewsPollMinutes: 2,
   reviewsRequestModel: '',
   reviewsReviewModel: '',
+  reviewsSignedCommits: false,
   reviewsTeamRequests: true,
   reviewsWatch: false,
   rowFlash: true,
@@ -224,6 +228,7 @@ const SIMPLE_CHECKS: { readonly [K in SimpleKey]: Guard<Settings[K]> } = {
   reviewsPollMinutes: oneOf([1, 2, 5, 10]),
   reviewsRequestModel: oneOf(MODEL_VALUES),
   reviewsReviewModel: oneOf(MODEL_VALUES),
+  reviewsSignedCommits: isBoolean,
   reviewsTeamRequests: isBoolean,
   reviewsWatch: isBoolean,
   rowFlash: isBoolean,

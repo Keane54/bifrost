@@ -1,0 +1,47 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "This has no upper limit. Please add one.",
+                    "createdAt": "@CREATED@",
+                    "databaseId": 1,
+                    "diffHunk": "@@ -0,0 +1,4 @@\n+export function limit(n: number): number {\n+  if (n < 0) return 0\n+  return n\n+}",
+                    "id": "PRRC_fake1",
+                    "pullRequestReview": {
+                      "id": "PRR_fake1"
+                    }
+                  }
+                ],
+                "pageInfo": {
+                  "endCursor": null,
+                  "hasNextPage": false
+                }
+              },
+              "id": "PRRT_fake1",
+              "isOutdated": false,
+              "isResolved": false,
+              "line": 3,
+              "path": "src/limit.ts",
+              "viewerCanReply": true
+            }
+          ],
+          "pageInfo": {
+            "endCursor": null,
+            "hasNextPage": false
+          }
+        }
+      }
+    }
+  }
+}

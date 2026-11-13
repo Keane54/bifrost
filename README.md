@@ -64,7 +64,7 @@ The side bar on the left edge has one button for each panel. It also holds the p
 | Event log | The live events of the sessions, with their times. |
 | Usage HUD | The use of the 5-hour limit and the 7-day limit. |
 | Service status | The status of Claude, GitHub and Sentry. |
-| Reviews | The GitHub pull requests that need you, in two tabs: To review and My PRs. In this version, the panel only shows the pull requests. |
+| Reviews | The GitHub pull requests that need you, in two tabs: To review and My PRs. See the Reviews section. |
 | Daily update | One tab for each work area. Each tab shows the tickets and PRs that moved since your last update, and the draft of your daily update. |
 | Settings | The tabs General, Slash commands, Keys, Reviews, Daily update, Live details, Skills and Updates. |
 
@@ -89,6 +89,30 @@ How it works:
 - The reminders stop when you mark each area as sent, or when you click Skip today. Copy does not stop them.
 - The run only reads the board. It gets the Read and Skill tools of Claude Code and the read tools that you confirmed. Bifrost denies all other tools of the server and all other MCP servers. A tool with a name that can change things, for example `update_item` or `deleteItem`, is always denied. Settings does not let you tick it.
 - The Send button comes with the Slack app. Until then, copy the draft and paste it in Slack.
+
+## Reviews
+
+The Reviews panel shows the GitHub pull requests that need you. To start, turn on Watch GitHub in Settings > Reviews. Bifrost uses your `gh` login and checks GitHub every 2 minutes. You can change this interval.
+
+- **To review**: the pull requests that ask for your review. A new request flashes. When you click Review, Claude reviews the pull request in a read-only session. Bifrost then saves a draft review on GitHub. Only you can see the draft. You read it and submit it.
+- **My PRs**: your own pull requests. Claude fixes or answers each new comment from an owner, a member or a collaborator of the repository. It also handles the first Copilot review of the pull request. The session of Claude has no access to GitHub. Bifrost then commits the fix, pushes it to your branch, replies to the comment and resolves its thread. When Claude needs a decision from you, the row shows Needs you. Click the row and answer in the Answer panel.
+
+Rules:
+
+- Bifrost makes its own copy of each repository and asks you to trust each copy one time. It never uses your checkouts.
+- Bifrost never submits a review, approves or merges a pull request. It never force-pushes. Bifrost
+  itself never signs a commit.
+- To get signed fix commits, turn on "Sign commits through GitHub" in Settings > Reviews. Bifrost
+  then sends each fix to GitHub with your `gh` login, and does not push it with git. GitHub makes
+  the commit and signs it, so the commit shows as Verified. You are its author. Bifrost does not
+  send a fix that changes an executable file, a link or a submodule, or a fix that has more than 4
+  MB of files. When Bifrost refuses a fix, turn the setting off and select Try again, or make the
+  change yourself.
+- Bifrost never pushes a change to a GitHub workflow, a GitHub action or a `.claude` folder.
+- Comments from before the turn-on wait until you select Handle now in the menu of the row.
+- To stop the automatic fixes, turn off "Handle comments on my PRs automatically" in Settings > Reviews.
+- If Watch GitHub was on before the update that added the automatic fixes, Bifrost turns the automatic fixes off one time. The My PRs tab then shows how to turn them on.
+- When Bifrost stops before it posts all the replies, the row shows Error. Select Try again to send the rest. Select Cancel to drop them. After Cancel, the comments wait for Handle now.
 
 ## Skills
 

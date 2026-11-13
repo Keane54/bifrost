@@ -32,16 +32,19 @@ function mp(key: string, over: Partial<MyPrRow>): MyPrRow {
     failedChecks: 0,
     fixing: 0,
     key,
+    lastError: null,
     laterCopilot: 0,
     number: 1,
     olderOpen: 0,
     owner: 'o',
+    questions: [],
     repo: 'r',
     reviewers: [],
     sessionId: null,
     status: 'pending',
     title: 't',
     truncated: false,
+    unsent: false,
     updatedAt: 0,
     ...over,
   }
@@ -107,6 +110,23 @@ describe('sortMine', () => {
       'pending-new',
       'pending-old',
       'approved',
+    ])
+  })
+})
+
+describe('sortMine with a fork row', () => {
+  it('sortMine puts needs-you first, also before a fork row', () => {
+    const rows = [
+      mp('fork-changes', { claude: 'fork', status: 'changes-requested', updatedAt: 9 }),
+      mp('fork-pending', { claude: 'fork', status: 'pending', updatedAt: 9 }),
+      mp('needs', { claude: 'needs-you', status: 'approved', updatedAt: 1 }),
+      mp('comments', { status: 'comments', updatedAt: 5 }),
+    ]
+    expect(sortMine(rows).map(r => r.key)).toEqual([
+      'needs',
+      'fork-changes',
+      'comments',
+      'fork-pending',
     ])
   })
 })

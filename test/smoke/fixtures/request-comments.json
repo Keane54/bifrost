@@ -1,0 +1,15 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "comments": {
+          "nodes": [],
+          "pageInfo": {
+            "endCursor": null,
+            "hasNextPage": false
+          }
+        }
+      }
+    }
+  }
+}

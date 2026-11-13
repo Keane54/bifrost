@@ -6,12 +6,18 @@ import { useActions } from '../actions/actions-context'
 import { cx } from '../lib/cx'
 import { MENU_ITEM, MENU_POPUP, Tip } from '../lib/menu'
 import { useSettings } from '../settings/settings-context'
+import { useWmControls } from '../wm/context'
+import { setAnswerKey } from './answer-key'
 import {
   ageText,
   claudeText,
+  claudeTip,
   laterCopilotText,
   type MenuItemId,
+  type MineMenuItemId,
   menuItems,
+  mineMenuItems,
+  olderText,
   rightText,
   rowTip,
   sizeText,
@@ -38,12 +44,14 @@ interface Common {
 }
 
 // The flash overlay and the click rules. A Cmd+click opens the PR on GitHub. A click on a row
-// with a session opens its chat window. A session exists from R2 on.
+// with open questions opens the Answer panel (onOpenAnswer). Else a click on a row with a
+// session opens its chat window.
 function Shell({
   children,
   flash,
   menu,
   onAct,
+  onOpenAnswer,
   prKey,
   sessionId,
 }: {
@@ -51,6 +59,7 @@ function Shell({
   flash: boolean
   menu: React.ReactNode
   onAct: OnAct
+  onOpenAnswer?: () => void
   prKey: string
   sessionId: string | null
 }): React.JSX.Element {
@@ -63,6 +72,7 @@ function Shell({
         data-review-row={prKey}
         onClick={e => {
           if (e.metaKey) onAct(() => window.bifrost.reviews.openPr(prKey))
+          else if (onOpenAnswer !== undefined) onOpenAnswer()
           else if (sessionId !== null) run('open', sessionId)
         }}
       >
@@ -253,17 +263,81 @@ export function ToReviewItem({
   )
 }
 
+// The colour of the Claude state of a My PRs row.
+function claudeColour(claude: MyPrRow['claude']): string {
+  if (claude === 'needs-you' || claude === 'error') return 'text-box-red'
+  return claude === 'fixing' ? 'text-text' : 'text-text-dim'
+}
+
+// The action of one menu item of a My PRs row.
+function selectMine(
+  id: MineMenuItemId,
+  row: MyPrRow,
+  onAct: OnAct,
+  run: (action: 'open', sessionId: string) => void,
+  openAnswer: () => void,
+): void {
+  const api = window.bifrost.reviews
+  let job: (() => Promise<void>) | null = null
+  switch (id) {
+    case 'Answer Claude':
+      openAnswer()
+      break
+    case 'Cancel':
+      job = () => api.cancel(row.key)
+      break
+    case 'Handle Copilot comments':
+      job = () => api.handle(row.key, 'copilot')
+      break
+    case 'Handle now':
+      job = () => api.handle(row.key, 'all')
+      break
+    case 'Open on GitHub':
+      job = () => api.openPr(row.key)
+      break
+    case 'Open session':
+      if (row.sessionId !== null) run('open', row.sessionId)
+      break
+    case 'Stop session':
+      job = () => api.stopSession(row.key)
+      break
+    case 'Try again':
+      job = () => api.retry(row.key)
+      break
+  }
+  if (job !== null) onAct(job)
+}
+
 export function MyPrItem({ onAct, row }: Common & { row: MyPrRow }): React.JSX.Element {
+  const { run } = useActions()
+  const { dispatch } = useWmControls()
   const later = laterCopilotText(row.laterCopilot)
+  const older = olderText(row.olderOpen)
   const needsYou = row.claude === 'needs-you'
+  const openAnswer = (): void => {
+    setAnswerKey(row.key)
+    dispatch({ panelId: 'answer', type: 'open' })
+  }
   const menu = (
-    <MenuItem
-      label='Open on GitHub'
-      onSelect={() => onAct(() => window.bifrost.reviews.openPr(row.key))}
-    />
+    <>
+      {mineMenuItems(row).map(id => (
+        <MenuItem
+          key={id}
+          label={id}
+          onSelect={() => selectMine(id, row, onAct, run, openAnswer)}
+        />
+      ))}
+    </>
   )
   return (
-    <Shell flash={false} menu={menu} onAct={onAct} prKey={row.key} sessionId={row.sessionId}>
+    <Shell
+      flash={false}
+      menu={menu}
+      onAct={onAct}
+      onOpenAnswer={row.questions.length > 0 ? openAnswer : undefined}
+      prKey={row.key}
+      sessionId={row.sessionId}
+    >
       <Line1
         extra={
           row.failedChecks > 0 && (
@@ -292,11 +366,12 @@ export function MyPrItem({ onAct, row }: Common & { row: MyPrRow }): React.JSX.E
           <span className='min-w-0 truncate'>{row.reviewers.join(', ')}</span>
         )}
         {later !== null && <span className='shrink-0'>{later}</span>}
-        <Tip label={row.error}>
+        {older !== null && <span className='shrink-0'>{older}</span>}
+        <Tip label={claudeTip(row)}>
           <span
             className={cx(
               'ml-auto inline-flex shrink-0 items-center gap-1.5',
-              needsYou ? 'text-box-red' : row.claude === 'fixing' ? 'text-text' : 'text-text-dim',
+              claudeColour(row.claude),
             )}
           >
             {needsYou && (

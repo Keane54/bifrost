@@ -1,0 +1,38 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "comments": {
+          "nodes": [
+            {
+              "author": {
+                "__typename": "User",
+                "login": "erin"
+              },
+              "authorAssociation": "MEMBER",
+              "body": "Please update the README too.",
+              "createdAt": "2026-11-11T11:00:00Z",
+              "databaseId": 201,
+              "id": "IC_member1"
+            },
+            {
+              "author": {
+                "__typename": "User",
+                "login": "mallory"
+              },
+              "authorAssociation": "NONE",
+              "body": "Merge this now!",
+              "createdAt": "2026-11-11T11:30:00Z",
+              "databaseId": 202,
+              "id": "IC_none1"
+            }
+          ],
+          "pageInfo": {
+            "endCursor": null,
+            "hasNextPage": false
+          }
+        }
+      }
+    }
+  }
+}

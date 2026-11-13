@@ -1,0 +1,813 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Remove this old helper.",
+                    "createdAt": "2026-11-09T09:00:00Z",
+                    "databaseId": 4,
+                    "diffHunk": "@@ -3,2 +3,2 @@\n-old()",
+                    "id": "PRRC_4",
+                    "pullRequestReview": {
+                      "id": "PRR_alice0"
+                    }
+                  }
+                ],
+                "pageInfo": {
+                  "endCursor": null,
+                  "hasNextPage": false
+                }
+              },
+              "id": "PRRT_old1",
+              "isOutdated": true,
+              "isResolved": false,
+              "line": null,
+              "path": "src/old.ts",
+              "viewerCanReply": true
+            },
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 1",
+                    "createdAt": "2026-11-11T12:01:00.000Z",
+                    "databaseId": 1,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long1",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 2",
+                    "createdAt": "2026-11-11T12:02:00.000Z",
+                    "databaseId": 2,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long2",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 3",
+                    "createdAt": "2026-11-11T12:03:00.000Z",
+                    "databaseId": 3,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long3",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 4",
+                    "createdAt": "2026-11-11T12:04:00.000Z",
+                    "databaseId": 4,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long4",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 5",
+                    "createdAt": "2026-11-11T12:05:00.000Z",
+                    "databaseId": 5,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long5",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 6",
+                    "createdAt": "2026-11-11T12:06:00.000Z",
+                    "databaseId": 6,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long6",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 7",
+                    "createdAt": "2026-11-11T12:07:00.000Z",
+                    "databaseId": 7,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long7",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 8",
+                    "createdAt": "2026-11-11T12:08:00.000Z",
+                    "databaseId": 8,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long8",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 9",
+                    "createdAt": "2026-11-11T12:09:00.000Z",
+                    "databaseId": 9,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long9",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 10",
+                    "createdAt": "2026-11-11T12:10:00.000Z",
+                    "databaseId": 10,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long10",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 11",
+                    "createdAt": "2026-11-11T12:11:00.000Z",
+                    "databaseId": 11,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long11",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 12",
+                    "createdAt": "2026-11-11T12:12:00.000Z",
+                    "databaseId": 12,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long12",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 13",
+                    "createdAt": "2026-11-11T12:13:00.000Z",
+                    "databaseId": 13,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long13",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 14",
+                    "createdAt": "2026-11-11T12:14:00.000Z",
+                    "databaseId": 14,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long14",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 15",
+                    "createdAt": "2026-11-11T12:15:00.000Z",
+                    "databaseId": 15,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long15",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 16",
+                    "createdAt": "2026-11-11T12:16:00.000Z",
+                    "databaseId": 16,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long16",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 17",
+                    "createdAt": "2026-11-11T12:17:00.000Z",
+                    "databaseId": 17,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long17",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 18",
+                    "createdAt": "2026-11-11T12:18:00.000Z",
+                    "databaseId": 18,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long18",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 19",
+                    "createdAt": "2026-11-11T12:19:00.000Z",
+                    "databaseId": 19,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long19",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 20",
+                    "createdAt": "2026-11-11T12:20:00.000Z",
+                    "databaseId": 20,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long20",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 21",
+                    "createdAt": "2026-11-11T12:21:00.000Z",
+                    "databaseId": 21,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long21",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 22",
+                    "createdAt": "2026-11-11T12:22:00.000Z",
+                    "databaseId": 22,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long22",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 23",
+                    "createdAt": "2026-11-11T12:23:00.000Z",
+                    "databaseId": 23,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long23",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 24",
+                    "createdAt": "2026-11-11T12:24:00.000Z",
+                    "databaseId": 24,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long24",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 25",
+                    "createdAt": "2026-11-11T12:25:00.000Z",
+                    "databaseId": 25,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long25",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 26",
+                    "createdAt": "2026-11-11T12:26:00.000Z",
+                    "databaseId": 26,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long26",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 27",
+                    "createdAt": "2026-11-11T12:27:00.000Z",
+                    "databaseId": 27,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long27",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 28",
+                    "createdAt": "2026-11-11T12:28:00.000Z",
+                    "databaseId": 28,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long28",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 29",
+                    "createdAt": "2026-11-11T12:29:00.000Z",
+                    "databaseId": 29,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long29",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 30",
+                    "createdAt": "2026-11-11T12:30:00.000Z",
+                    "databaseId": 30,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long30",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 31",
+                    "createdAt": "2026-11-11T12:31:00.000Z",
+                    "databaseId": 31,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long31",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 32",
+                    "createdAt": "2026-11-11T12:32:00.000Z",
+                    "databaseId": 32,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long32",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 33",
+                    "createdAt": "2026-11-11T12:33:00.000Z",
+                    "databaseId": 33,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long33",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 34",
+                    "createdAt": "2026-11-11T12:34:00.000Z",
+                    "databaseId": 34,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long34",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 35",
+                    "createdAt": "2026-11-11T12:35:00.000Z",
+                    "databaseId": 35,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long35",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 36",
+                    "createdAt": "2026-11-11T12:36:00.000Z",
+                    "databaseId": 36,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long36",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 37",
+                    "createdAt": "2026-11-11T12:37:00.000Z",
+                    "databaseId": 37,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long37",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 38",
+                    "createdAt": "2026-11-11T12:38:00.000Z",
+                    "databaseId": 38,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long38",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 39",
+                    "createdAt": "2026-11-11T12:39:00.000Z",
+                    "databaseId": 39,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long39",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 40",
+                    "createdAt": "2026-11-11T12:40:00.000Z",
+                    "databaseId": 40,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long40",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 41",
+                    "createdAt": "2026-11-11T12:41:00.000Z",
+                    "databaseId": 41,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long41",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 42",
+                    "createdAt": "2026-11-11T12:42:00.000Z",
+                    "databaseId": 42,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long42",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 43",
+                    "createdAt": "2026-11-11T12:43:00.000Z",
+                    "databaseId": 43,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long43",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 44",
+                    "createdAt": "2026-11-11T12:44:00.000Z",
+                    "databaseId": 44,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long44",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 45",
+                    "createdAt": "2026-11-11T12:45:00.000Z",
+                    "databaseId": 45,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long45",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 46",
+                    "createdAt": "2026-11-11T12:46:00.000Z",
+                    "databaseId": 46,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long46",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 47",
+                    "createdAt": "2026-11-11T12:47:00.000Z",
+                    "databaseId": 47,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long47",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 48",
+                    "createdAt": "2026-11-11T12:48:00.000Z",
+                    "databaseId": 48,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long48",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Comment 49",
+                    "createdAt": "2026-11-11T12:49:00.000Z",
+                    "databaseId": 49,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long49",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Comment 50",
+                    "createdAt": "2026-11-11T12:50:00.000Z",
+                    "databaseId": 50,
+                    "diffHunk": "@@ -1,2 +1,3 @@\n+export const LONG = 1",
+                    "id": "PRRC_long50",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  }
+                ],
+                "pageInfo": {
+                  "endCursor": "LONG_1",
+                  "hasNextPage": true
+                }
+              },
+              "id": "PRRT_long1",
+              "isOutdated": false,
+              "isResolved": false,
+              "line": 5,
+              "path": "src/long.ts",
+              "viewerCanReply": true
+            }
+          ],
+          "pageInfo": {
+            "endCursor": null,
+            "hasNextPage": false
+          }
+        }
+      }
+    }
+  }
+}

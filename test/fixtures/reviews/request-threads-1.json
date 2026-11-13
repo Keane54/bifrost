@@ -1,0 +1,93 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "alice"
+                    },
+                    "authorAssociation": "MEMBER",
+                    "body": "Check the upper limit here.",
+                    "createdAt": "2026-11-11T09:00:00Z",
+                    "databaseId": 1,
+                    "diffHunk": "@@ -10,3 +10,4 @@ export function limit(n: number) {\n   if (n < 0) return 0\n+  return n\n }",
+                    "id": "PRRC_1",
+                    "pullRequestReview": {
+                      "id": "PRR_alice1"
+                    }
+                  },
+                  {
+                    "author": {
+                      "__typename": "User",
+                      "login": "dana"
+                    },
+                    "authorAssociation": "OWNER",
+                    "body": "Good point, I will look.",
+                    "createdAt": "2026-11-11T10:00:00Z",
+                    "databaseId": 2,
+                    "diffHunk": "@@ -10,3 +10,4 @@ export function limit(n: number) {\n   if (n < 0) return 0\n+  return n\n }",
+                    "id": "PRRC_2",
+                    "pullRequestReview": {
+                      "id": "PRR_dana1"
+                    }
+                  }
+                ],
+                "pageInfo": {
+                  "endCursor": null,
+                  "hasNextPage": false
+                }
+              },
+              "id": "PRRT_alice1",
+              "isOutdated": false,
+              "isResolved": false,
+              "line": 12,
+              "path": "src/limit.ts",
+              "viewerCanReply": true
+            },
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": {
+                      "__typename": "Bot",
+                      "login": "copilot-pull-request-reviewer"
+                    },
+                    "authorAssociation": "NONE",
+                    "body": "This call has no timeout.",
+                    "createdAt": "2026-11-10T09:00:00Z",
+                    "databaseId": 3,
+                    "diffHunk": "@@ -28,2 +28,3 @@\n+  await fetch(url)",
+                    "id": "PRRC_3",
+                    "pullRequestReview": {
+                      "id": "PRR_copilot1"
+                    }
+                  }
+                ],
+                "pageInfo": {
+                  "endCursor": null,
+                  "hasNextPage": false
+                }
+              },
+              "id": "PRRT_copilot1",
+              "isOutdated": false,
+              "isResolved": false,
+              "line": 30,
+              "path": "src/client.ts",
+              "viewerCanReply": true
+            }
+          ],
+          "pageInfo": {
+            "endCursor": "THREADS_1",
+            "hasNextPage": true
+          }
+        }
+      }
+    }
+  }
+}

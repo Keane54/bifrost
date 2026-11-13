@@ -13,6 +13,8 @@ export interface PrComment {
   author: Author
   body: string
   createdAt: number
+  // The GitHub link of the comment, when the query read it.
+  url?: string
 }
 
 export interface PrThread {
@@ -35,6 +37,8 @@ export interface PrReview {
   body: string
   submittedAt: number | null
   commit: string | null
+  // The GitHub link of the review, when the query read it.
+  url?: string
 }
 
 // In R1, a To review PR carries no reviews, decisions, threads or comments: these lists are

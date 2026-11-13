@@ -1,0 +1,16 @@
+{
+  "checks": "none",
+  "commit": {
+    "message": "fix: check the upper limit",
+    "paths": ["src/limit.ts"]
+  },
+  "headSha": "@HEAD@",
+  "items": [
+    {
+      "id": "PRRT_fake1",
+      "outcome": "fixed"
+    }
+  ],
+  "pr": "acme/api#9",
+  "version": 1
+}

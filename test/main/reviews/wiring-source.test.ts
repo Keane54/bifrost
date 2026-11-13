@@ -22,6 +22,9 @@ const NEW_CHANNELS = [
   'reviews:trust-resize',
   'reviews:trust-close',
   'reviews:remove-clones',
+  'reviews:handle',
+  'reviews:retry',
+  'reviews:answer',
 ]
 
 describe('the review wiring in ipc.ts', () => {
@@ -29,12 +32,60 @@ describe('the review wiring in ipc.ts', () => {
     expect(handler(channel)).toMatch(/fromPage\(/)
   })
 
-  test.each(['reviews:review', 'reviews:cancel', 'reviews:stop-session'])(
-    '%s checks the PR key',
-    channel => {
-      expect(handler(channel)).toMatch(/checkPrKey\(/)
-    },
-  )
+  test('reviews:review checks the PR key', () => {
+    expect(handler('reviews:review')).toMatch(/checkPrKey\(/)
+  })
+
+  test('the request channels use the PR key of the right tab', () => {
+    for (const channel of ['reviews:handle', 'reviews:retry', 'reviews:answer']) {
+      expect(handler(channel), channel).toMatch(/mineKey\(/)
+    }
+    for (const channel of ['reviews:cancel', 'reviews:stop-session']) {
+      expect(handler(channel), channel).toMatch(/rowKey\(/)
+    }
+    expect(handler('reviews:review')).toMatch(/toReviewKey\(/)
+  })
+
+  test('reviews:handle takes only the fixed words', () => {
+    const text = handler('reviews:handle')
+    expect(text).toMatch(/'all'/)
+    expect(text).toMatch(/'copilot'/)
+    expect(text).toMatch(/REFUSED_NOT_HANDLEABLE/)
+  })
+
+  test('reviews:answer checks the count, the item ID and the length', () => {
+    expect(handler('reviews:answer')).toMatch(/checkAnswers\(answers\)/)
+    const check = code.slice(code.indexOf('function checkAnswers'))
+    const body = check.slice(0, check.indexOf('\n}\n'))
+    expect(body).toMatch(/ITEM_ID\.test\(/)
+    expect(body).toMatch(/text\.length > MAX_ANSWER/)
+    expect(body).toMatch(/MAX_ANSWERS/)
+    expect(body).toMatch(/REFUSED_BAD_ANSWER/)
+    expect(body).toMatch(/Object\.keys\(/)
+  })
+
+  test('a test home gives git a user name and an email', () => {
+    expect(code).toMatch(/extraConfig: home === null \? \[\] : TEST_GIT_IDENTITY/)
+    expect(code).toMatch(/user\.name=Bifrost Test/)
+    expect(code).toMatch(/user\.email=bifrost-test@example\.invalid/)
+  })
+
+  test('the reviews-autofix effect calls the runner and then rebuilds the watcher', () => {
+    const re = /case 'reviews-autofix':[\s\S]*?autoFixChanged\(effect\.on\)[\s\S]*?rebuild\(\)/
+    expect(code).toMatch(re)
+  })
+
+  test('the turn-on saves fixFrom before the runner and the watcher start', () => {
+    const on = code.slice(code.indexOf("case 'reviews':"), code.indexOf("case 'reviews-view':"))
+    const saved = on.indexOf('watchTurnedOn()')
+    expect(saved).toBeGreaterThan(-1)
+    expect(on.indexOf('reviewRunner?.start()')).toBeGreaterThan(saved)
+    expect(on.indexOf('reviewsWatcher?.start()')).toBeGreaterThan(saved)
+  })
+
+  test('the watcher gets the Claude state of the runner', () => {
+    expect(code).toMatch(/mine: key => reviewRunner\?\.mine\(key\)/)
+  })
 
   test('reviews:trust-open checks the repository key', () => {
     expect(handler('reviews:trust-open')).toMatch(/REPO_KEY\.test\(/)
@@ -88,6 +139,26 @@ describe('the review wiring in ipc.ts', () => {
 
   test('a service callback of the runner cannot throw into the registry', () => {
     expect(code).toMatch(/service\.onUpdate\(rows => \{\s*try \{\s*runner\.onRows\(rows\)/)
+  })
+
+  test('the runner gets the review job, the request job with both pushers, and minePr', () => {
+    expect(code).toMatch(/createFixPusher\(\{ git: repoGit, remoteBase: remoteBase\(/)
+    expect(code).toMatch(/createSignedPusher\(\{\s*gh,\s*git: repoGit,\s*remoteBase: /)
+    expect(code).toMatch(
+      /jobs: \[createReviewJob\(\), createRequestJob\(\{ pusher, signedPusher \}\)\]/,
+    )
+    expect(code).toMatch(/minePr: key => watcher\.minePr\(key\)/)
+  })
+
+  test('the runner can turn off the automatic setting at the first poll of R3', () => {
+    expect(code).toMatch(
+      /turnOffAutoFix: async \(\) => \{\s*await settings\.update\(\{ reviewsAutoFix: false \}\)/,
+    )
+  })
+
+  test('the branch read skips the reviews folder, where a PR session can write', () => {
+    expect(code).toMatch(/createBranchReader\(execFile, \{ skipRoot: reposRoot\(bifrostHome\) \}\)/)
+    expect(code).toMatch(/readBranch: cwd => branchReader\.read\(cwd\)/)
   })
 
   test('Reviews run with no runner when the registry service fails', () => {

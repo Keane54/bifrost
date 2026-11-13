@@ -1,0 +1,130 @@
+{
+  "data": {
+    "mine": {
+      "nodes": [
+        {
+          "additions": 4,
+          "author": {
+            "login": "dev-user"
+          },
+          "baseRefName": "main",
+          "comments": {
+            "nodes": [],
+            "pageInfo": {
+              "hasPreviousPage": false
+            }
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "@HEAD@",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [],
+                      "pageInfo": {
+                        "hasNextPage": false,
+                        "hasPreviousPage": false
+                      }
+                    },
+                    "state": "SUCCESS"
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-01T09:00:00Z",
+          "deletions": 0,
+          "headRefName": "feature",
+          "headRefOid": "@HEAD@",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "latestOpinionatedReviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false
+            }
+          },
+          "number": 9,
+          "pendingReviews": {
+            "nodes": []
+          },
+          "repository": {
+            "name": "api",
+            "owner": {
+              "login": "acme"
+            }
+          },
+          "reviewDecision": null,
+          "reviewRequests": {
+            "nodes": []
+          },
+          "reviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false
+            }
+          },
+          "reviewThreads": {
+            "nodes": [
+              {
+                "comments": {
+                  "nodes": [
+                    {
+                      "author": {
+                        "__typename": "User",
+                        "login": "alice"
+                      },
+                      "authorAssociation": "MEMBER",
+                      "body": "This has no upper limit. Please add one.",
+                      "createdAt": "@CREATED@",
+                      "databaseId": 1,
+                      "id": "PRRC_fake1",
+                      "pullRequestReview": {
+                        "id": "PRR_fake1"
+                      }
+                    }
+                  ],
+                  "pageInfo": {
+                    "hasNextPage": false
+                  }
+                },
+                "id": "PRRT_fake1",
+                "isResolved": false,
+                "line": 3,
+                "path": "src/limit.ts"
+              }
+            ],
+            "pageInfo": {
+              "hasPreviousPage": false
+            }
+          },
+          "timelineItems": {
+            "nodes": []
+          },
+          "title": "Add the limit",
+          "updatedAt": "@CREATED@",
+          "url": "https://github.com/acme/api/pull/9"
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false
+      }
+    },
+    "rateLimit": {
+      "cost": 11,
+      "limit": 5000,
+      "remaining": 4930,
+      "resetAt": "2026-11-09T11:00:00Z"
+    },
+    "toReview": {
+      "nodes": [],
+      "pageInfo": {
+        "hasNextPage": false
+      }
+    },
+    "viewer": {
+      "login": "dev-user"
+    }
+  }
+}

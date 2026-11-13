@@ -1,7 +1,14 @@
-// The app-wide Reviews store: one subscription, and the flash flag for the side bar.
+// The app-wide Reviews store: one subscription, and the attention flag for the side bar.
 import { describe, expect, it, vi } from 'vitest'
 import { createReviewsStore, reviewsAttention } from '../../../src/renderer/src/reviews/use-reviews'
-import { EMPTY_REVIEWS, type ReviewsSnapshot, type ToReviewRow } from '../../../src/shared/reviews'
+import {
+  type ClaudeState,
+  EMPTY_REVIEWS,
+  type MyPrRow,
+  type QuestionRow,
+  type ReviewsSnapshot,
+  type ToReviewRow,
+} from '../../../src/shared/reviews'
 
 function row(flash: boolean): ToReviewRow {
   return {
@@ -25,6 +32,32 @@ function row(flash: boolean): ToReviewRow {
   } as ToReviewRow
 }
 
+function mine(claude: ClaudeState, questions: QuestionRow[] = []): MyPrRow {
+  return {
+    claude,
+    error: null,
+    failedChecks: 0,
+    fixing: 0,
+    key: 'o/r#2',
+    lastError: null,
+    laterCopilot: 0,
+    number: 2,
+    olderOpen: 0,
+    owner: 'o',
+    questions,
+    repo: 'r',
+    reviewers: [],
+    sessionId: null,
+    status: 'pending',
+    title: 't',
+    truncated: false,
+    unsent: false,
+    updatedAt: 0,
+  }
+}
+
+const QUESTION: QuestionRow = { id: 'PRRT_1', question: 'Which name?', where: 'src/a.ts line 3' }
+
 function fakeApi() {
   const off = vi.fn()
   const api = {
@@ -39,6 +72,14 @@ describe('reviews store', () => {
     expect(reviewsAttention(EMPTY_REVIEWS)).toBe(false)
     expect(reviewsAttention({ ...EMPTY_REVIEWS, toReview: [row(false)] })).toBe(false)
     expect(reviewsAttention({ ...EMPTY_REVIEWS, toReview: [row(false), row(true)] })).toBe(true)
+  })
+
+  it('reviewsAttention is true for a My PRs row that needs the user (ruling M1)', () => {
+    const of = (...rows: MyPrRow[]): ReviewsSnapshot => ({ ...EMPTY_REVIEWS, mine: rows })
+    expect(reviewsAttention(of(mine('waiting'), mine('fixing'), mine('error')))).toBe(false)
+    expect(reviewsAttention(of(mine('waiting'), mine('needs-you')))).toBe(true)
+    // An open question waits for the user, also while a round runs.
+    expect(reviewsAttention(of(mine('fixing', [QUESTION])))).toBe(true)
   })
 
   it('two listeners share one subscription', () => {

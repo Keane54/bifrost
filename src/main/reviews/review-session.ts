@@ -14,6 +14,7 @@ import {
   TrustNeededError,
 } from '../actions/session-actions'
 import type { RunClaude } from '../claude/cli'
+import type { JobKind } from './state'
 
 // The tools of a review session. It can read, search and write its result file.
 export const REVIEW_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep', 'Write', 'Skill']
@@ -29,15 +30,16 @@ export const REVIEW_SETTINGS = JSON.stringify({
 // A test home starts each PR session name with this text.
 export const TEST_PREFIX = 'bifrost-test-'
 
-// The name of a review session: <repo>-<number>-review. On a clash with a name in use, the owner
+// The name of a PR session: <repo>-<number>-<kind>. On a clash with a name in use, the owner
 // comes first. The repository part is cut so that the name has MAX_NAME characters or less.
-export function reviewSessionName(
+export function prSessionName(
   pr: { owner: string; repo: string; number: number },
+  kind: JobKind,
   names: ReadonlySet<string>,
   testHome: boolean,
 ): string {
   const prefix = testHome ? TEST_PREFIX : ''
-  const tail = `-${pr.number}-review`
+  const tail = `-${pr.number}-${kind}`
   const build = (head: string): string => {
     const room = MAX_NAME - prefix.length - tail.length
     return `${prefix}${head.slice(0, Math.max(room, 0))}${tail}`
@@ -45,6 +47,15 @@ export function reviewSessionName(
   const plain = build(pr.repo)
   if (!names.has(plain)) return plain
   return build(`${pr.owner}-${pr.repo}`)
+}
+
+// The name of a review session: <repo>-<number>-review.
+export function reviewSessionName(
+  pr: { owner: string; repo: string; number: number },
+  names: ReadonlySet<string>,
+  testHome: boolean,
+): string {
+  return prSessionName(pr, 'review', names, testHome)
 }
 
 // The prompt of a review session. It names the input file.

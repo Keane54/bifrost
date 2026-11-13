@@ -1,73 +1,54 @@
-// The review runner (design 11 and 12). It makes the clones of the repositories, keeps the queue
-// and runs each review round: it gets the worktree and the input files ready, starts a read-only
-// review session, waits for the end of the session, checks the result file and writes a pending
-// review on GitHub. Only the user submits the review. A failed round never posts, and nothing
-// tries a failed round again by itself.
+// The runner core (design 11 and 12). It makes the clones of the repositories, keeps the queue
+// and the slots, checks the end of each running round, and keeps the sessions of the rounds. The
+// steps of a round are in its job: review-job.ts for a review round, request-job.ts for a request
+// round. The core picks the job of a queue entry by its kind, and the job of a round by the kind
+// of the round.
 
 import { lstatSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
-import {
-  PR_KEY,
-  prKey,
-  REASON_GH_FAILED,
-  REPO_KEY,
-  repoOf,
-  type TrustNeed,
-} from '../../shared/reviews'
+import { type ClaudeState, PR_KEY, REPO_KEY, repoOf, type TrustNeed } from '../../shared/reviews'
 import type { Settings } from '../../shared/settings'
 import type { SessionRow } from '../../shared/types'
 import { messageOf } from '../actions/session-actions'
 import { maskToken } from '../log/mask'
-import { type DiffFile, parseDiff } from './diff-lines'
+import type { DiffFile } from './diff-lines'
 import type { Gh } from './gh'
+import {
+  changePr,
+  type EndCheck,
+  type Job,
+  type JobContext,
+  kindOf,
+  partsOf,
+  type ReadFailure,
+  type Recovery,
+  resultFileOf,
+  rowOf,
+} from './jobs'
 import { isIgnored } from './model'
-import { postPendingReview } from './pending-review'
 import type { PollData, PrData } from './pr-data'
 import { enqueue, pickNext } from './queue'
-import { clonePath, ioPath, isInside } from './repo-paths'
 import type { RepoStore } from './repo-store'
-import { parseReviewResult, placeComments, readResultFile } from './result-file'
-import { REASON_INPUT_FAILED, writeRoundFiles } from './review-input'
-import { fetchReviewContext, type ReviewContext } from './review-query'
-import {
-  type ReviewSessions,
-  reviewPrompt,
-  reviewSessionArgs,
-  reviewSessionName,
-  type StartOutcome,
-} from './review-session'
-import {
-  draftNotice,
-  REASON_BLOCKED,
-  REASON_CLOSED_WHILE_POSTING,
-  REASON_END_FAILED,
-  REASON_NO_RESULT,
-  REASON_OWN_DRAFT,
-  REASON_PR_CHANGED,
-  REASON_PR_CLOSED,
-  REASON_PREPARE_FAILED,
-  REASON_START_FAILED,
-  REASON_STOPPED,
-  REASON_TIMEOUT,
-  reasonBadResult,
-  reviewedNotice,
-  trustNotice,
-} from './round-text'
+import { dropOutbox, dropUnsentOutbox } from './request-job'
+import { createReviewJob } from './review-job'
+import type { ReviewSessions } from './review-session'
+import { REASON_FORK, REASON_REPLIES_WAITING, trustNotice } from './round-text'
 import {
   type ActiveRound,
-  type DraftComment,
   emptyPrState,
-  MAX_DRAFTS,
+  handledEntry,
+  type JobKind,
+  MAX_ANSWER,
   type PrState,
+  type Question,
   type QueueEntry,
-  type RecommendationMark,
   type ReviewsState,
   type SessionRef,
 } from './state'
 import type { ReviewsStateStore } from './state-store'
 import { trustedDirs } from './trust'
 import type { RequestNotice } from './watcher'
+
+export type { EndCheck } from './jobs'
 
 export const ROUND_LIMIT_MS = 30 * 60_000
 export const IDLE_STOP_MS = 10 * 60_000
@@ -81,9 +62,9 @@ export const PASS_MS = 5_000
 export const REFUSED_NOT_REVIEWABLE = 'refused: this pull request cannot get a review now'
 export const REFUSED_REVIEWS_BUSY = 'refused: reviews are busy'
 export const REFUSED_UNKNOWN_REPO = 'refused: unknown repository'
-
-// blocked: the session shows a permission prompt or a question.
-export type EndCheck = 'wait' | 'ended' | 'gone' | 'timeout' | 'blocked'
+export const REFUSED_NOT_HANDLEABLE = 'refused: this pull request cannot be handled now'
+export const REFUSED_UNKNOWN_QUESTION = 'refused: unknown question'
+export const REFUSED_BAD_ANSWER = 'refused: bad answer'
 
 const isPromptBox = (row: SessionRow): boolean => row.box === 'red' && row.boxReason === 'prompt'
 
@@ -101,7 +82,7 @@ export interface RoundEndInput {
 
 // The end check of a running round. The first rule that matches gives the result.
 export function roundEnd(o: RoundEndInput): EndCheck {
-  // A review session must never ask. So a prompt ends the round at once.
+  // A session of a round must never ask. So a prompt ends the round at once.
   if (o.row !== undefined && isPromptBox(o.row)) return 'blocked'
   if (o.now - o.startedAt >= ROUND_LIMIT_MS) return pastLimit(o)
   if (o.row === undefined) return o.now - o.rowsSince >= GONE_GRACE_MS ? 'gone' : 'wait'
@@ -127,16 +108,29 @@ function pastLimit(o: RoundEndInput): EndCheck {
 
 export interface RunnerDeps {
   store: ReviewsStateStore
-  settings(): Pick<Settings, 'reviewsMaxSessions' | 'reviewsReviewModel' | 'reviewsIgnore'>
+  settings(): Pick<
+    Settings,
+    | 'reviewsMaxSessions'
+    | 'reviewsReviewModel'
+    | 'reviewsIgnore'
+    | 'reviewsAutoFix'
+    | 'reviewsRequestModel'
+    | 'reviewsSignedCommits'
+  >
   testHome: boolean
   bifrostHome: string
   skillsDir: string
   claudeJson: string
+  // The user settings file of Claude Code (claudeSettingsFile). The request job checks it with
+  // readUserSandboxProblem before each session start. Bifrost only reads it.
+  claudeSettings: string
   repos: RepoStore
   gh: Gh
   sessions: ReviewSessions
   rows(): SessionRow[]
   toReviewPr(key: string): PrData | null
+  // The My PRs PR with this key from the last poll, or null.
+  minePr(key: string): PrData | null
   viewer(): string | null
   now(): number
   // A change that the panel shows. The caller builds the snapshot again.
@@ -146,12 +140,42 @@ export interface RunnerDeps {
   log(m: string): void
   // A line for the Event log.
   eventNotice(text: string): void
+  // Turn Handle comments automatically off in the settings (ruling S20). The settings effect
+  // then calls autoFixChanged(false).
+  turnOffAutoFix?(): Promise<void>
+  // The jobs of the runner. The default is the review job only.
+  jobs?: readonly Job[]
+}
+
+// The Claude state of a My PRs row, from the request round, the queue and the PR state.
+export interface MineState {
+  claude: ClaudeState
+  fixing: number
+  error: string | null
+  sessionId: string | null
 }
 
 export interface ReviewRunner {
   start(): void
   stop(): void
   review(key: string): Promise<void>
+  // Queue a request round for a PR of the user: all older and held items, or the later Copilot
+  // items.
+  handle(key: string, what: 'all' | 'copilot'): Promise<void>
+  // Send the rest of the outbox of the PR, with no session and no slot. With no outbox, handle
+  // all items.
+  retry(key: string): Promise<void>
+  // Save the answers of the user to the open questions of the PR. A null text means that the user
+  // handles the item. One or more texts queue a request round.
+  answer(key: string, answers: readonly { id: string; text: string | null }[]): Promise<void>
+  // Handle comments on my PRs automatically changed. A turn-on comes after its confirm, so it
+  // also saves the consent of ruling S20.
+  autoFixChanged(on: boolean): Promise<void>
+  // Watch GitHub was turned on. Comments from before wait for Handle now (fixFrom is now).
+  watchTurnedOn(): Promise<void>
+  mine(key: string): MineState
+  // A queue entry of either job. With no entry, the outbox of a request round that stopped: it
+  // goes, and its items wait in held.
   cancel(key: string): Promise<void>
   stopSession(key: string): Promise<void>
   onRows(rows: readonly SessionRow[]): void
@@ -168,43 +192,32 @@ export interface ReviewRunner {
   settled(): Promise<void>
 }
 
-interface PrRef {
-  owner: string
-  repo: string
-  number: number
+// The session references of a PR state: the review session, then the request session.
+function refsOf(pr: PrState): { field: 'review' | 'request'; ref: SessionRef }[] {
+  const refs: { field: 'review' | 'request'; ref: SessionRef }[] = []
+  if (pr.review !== null) refs.push({ field: 'review', ref: pr.review })
+  if (pr.request !== null) refs.push({ field: 'request', ref: pr.request })
+  return refs
 }
 
-// The parts of a PR key (PR_KEY). The poll makes the key with prKey from the same parts.
-function prOf(key: string): PrRef {
-  const slash = key.indexOf('/')
-  const hash = key.lastIndexOf('#')
+// The PR state without the rounds and the sessions of both jobs.
+function clearRounds(p: PrState): PrState {
   return {
-    number: Number(key.slice(hash + 1)),
-    owner: key.slice(0, slash),
-    repo: key.slice(slash + 1, hash),
+    ...p,
+    actedAt: null,
+    lastError: null,
+    recommendation: null,
+    request: null,
+    review: null,
+    round: null,
   }
 }
 
-// The two parts of a repository key (owner/repo).
-function partsOf(repo: string): { owner: string; name: string } {
-  const slash = repo.indexOf('/')
-  return { name: repo.slice(slash + 1), owner: repo.slice(0, slash) }
-}
-
-function changePr(s: ReviewsState, key: string, fn: (p: PrState) => PrState): ReviewsState {
-  return { ...s, prs: { ...s.prs, [key]: fn(s.prs[key] ?? emptyPrState()) } }
-}
-
-// The PR state without the fields of the review rounds.
-function clearReview(p: PrState): PrState {
-  return { ...p, actedAt: null, lastError: null, recommendation: null, review: null, round: null }
-}
-
-// The row of a session. A reference with an empty session ID comes from a start that gave no row
-// in time. Its row has the name of the reference.
-function rowOf(ref: SessionRef, rows: readonly SessionRow[]): SessionRow | undefined {
-  if (ref.sessionId !== '') return rows.find(r => r.sessionId === ref.sessionId)
-  return rows.find(r => r.kind === 'owned' && r.claudeName === ref.name)
+// The answer of the job of a saved round at the start.
+interface Plan {
+  job: Job
+  recovery: Recovery
+  round: ActiveRound
 }
 
 // What the runner knows of a running round. It is not saved, so a restart starts it again.
@@ -214,10 +227,10 @@ interface RoundWatch {
   rowsSince: number | null
 }
 
-type Ended = Exclude<EndCheck, 'wait'>
-
 export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   const { store, repos } = deps
+  const jobs: readonly Job[] = deps.jobs ?? [createReviewJob()]
+  const jobOf = (kind: JobKind): Job | undefined => jobs.find(job => job.kind === kind)
   let running = false
   // Each start, stop and remove of the clones makes a new generation. The clone order of an older
   // generation ends.
@@ -230,8 +243,8 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   // The clones where claude refused the start for trust. They stay untrusted until the trust step
   // of the user (trustChanged), so a refused start does not run again at each poll.
   const refused = new Set<string>()
-  // The clones where a review session started. Claude Code trusts them, so they count as trusted
-  // also when the trust read says no.
+  // The clones where a session of a round started. Claude Code trusts them, so they count as
+  // trusted also when the trust read says no.
   const startedIn = new Set<string>()
   // The clones that get one start although the trust read says no: after a Review click or after
   // the trust step. The trust error of that start is the real check.
@@ -241,19 +254,24 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   // The clone order: repository keys, one clone at a time.
   const order: string[] = []
   let cloning = false
+  // The repositories whose clone runs now, with the count of the clone calls.
+  const clonesNow = new Map<string, number>()
   // The time of the last failed clone of each repository.
   const failedAt = new Map<string, number>()
   // One token for each round that this process runs. A step of a round whose token changed
   // stops, and it saves and posts nothing.
   const tokens = new Map<string, number>()
   let tokenCount = 0
-  // The diff files of each running round, from writeRoundFiles. The session can change the files
-  // in its input folder, so the check of the result uses these.
+  // The diff files of each running round. The session can change the files in its input folder,
+  // so the check of the result uses these.
   const diffs = new Map<string, DiffFile[]>()
   const watches = new Map<string, RoundWatch>()
-  // The rounds whose end runs now.
+  // The rounds whose end, or whose resume, runs now.
   const ending = new Set<string>()
-  // The review sessions that got the idle stop, by row ID.
+  // The rounds that go on after a restart (Job.resume). A resume can post, so each one waits for
+  // a poll that gives the viewer and lists its PR as open.
+  const resumes = new Map<string, { job: Job; token: number; round: ActiveRound }>()
+  // The sessions that got the idle stop, by row ID.
   const idleStopped = new Set<string>()
   // The names of late sessions that no PR state holds any more: a start gave no row in time, and
   // then the request went or a new round replaced the session. When the row of such a session
@@ -269,7 +287,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   // Run a task in the background. A failure goes to the log.
   function bg(task: Promise<unknown>): void {
     const done: Promise<unknown> = task.catch(error => {
-      deps.log(`The review runner failed: ${messageOf(error)}`)
+      deps.log(`The round runner failed: ${messageOf(error)}`)
     })
     work.add(done)
     void done.finally(() => work.delete(done))
@@ -277,13 +295,18 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
 
   const alive = (key: string, token: number): boolean => tokens.get(key) === token
 
-  // Forget the memory of a round, when the token is still the token of that round.
-  function release(key: string, token: number): void {
-    if (!alive(key, token)) return
+  // Forget the memory of the round of the key.
+  function forget(key: string): void {
     tokens.delete(key)
     diffs.delete(key)
     watches.delete(key)
     ending.delete(key)
+    resumes.delete(key)
+  }
+
+  // Forget the memory of a round, when the token is still the token of that round.
+  function release(key: string, token: number): void {
+    if (alive(key, token)) forget(key)
   }
 
   function cloneOfRepo(repo: string): string | null {
@@ -298,9 +321,10 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   const isTrusted = (clone: string): boolean =>
     (trusted.has(clone) || startedIn.has(clone)) && !refused.has(clone)
 
-  // An entry is ready when its clone does not exist yet, when its clone is trusted, or when its
-  // clone gets one start (tryOnce).
+  // An entry is ready when its key has no round, and its clone does not exist yet, is trusted,
+  // or gets one start (tryOnce).
   function ready(key: string): boolean {
+    if (store.get().prs[key]?.round != null) return false
     const clone = cloneOfRepo(repoOf(key))
     return clone === null || isTrusted(clone) || tryOnce.has(clone)
   }
@@ -308,6 +332,11 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   function recentlyFailed(repo: string): boolean {
     const at = failedAt.get(repo)
     return at !== undefined && deps.now() - at < CLONE_RETRY_MS
+  }
+
+  const isCloning = (repo: string): boolean => {
+    const name = repo.toLowerCase()
+    return order.includes(name) || clonesNow.has(name)
   }
 
   // The repositories of the last poll, without the ignored ones, in the order of the poll.
@@ -378,6 +407,8 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   async function cloneRepo(repo: string): Promise<string> {
     const { owner, name } = partsOf(repo)
     const gen = generation
+    const busy = repo.toLowerCase()
+    clonesNow.set(busy, (clonesNow.get(busy) ?? 0) + 1)
     let clone: string
     try {
       clone = await repos.ensureClone(owner, name)
@@ -385,6 +416,10 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
       if (!failedAt.has(repo)) deps.log(`The clone of ${repo} failed. ${messageOf(error)}`)
       failedAt.set(repo, deps.now())
       throw error
+    } finally {
+      const left = (clonesNow.get(busy) ?? 1) - 1
+      if (left > 0) clonesNow.set(busy, left)
+      else clonesNow.delete(busy)
     }
     failedAt.delete(repo)
     if (gen === generation) {
@@ -403,7 +438,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     deps.changed()
   }
 
-  // Run the clone order, one clone at a time. A clone uses no review slot.
+  // Run the clone order, one clone at a time. A clone uses no slot.
   async function runClones(): Promise<void> {
     if (cloning) return
     cloning = true
@@ -426,14 +461,16 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     if (running && order.length > 0) bg(runClones())
   }
 
-  // The running rounds. A round whose session has a red prompt box ends at the next end check,
-  // so it does not count.
+  // The running rounds of all kinds. A round whose session has a red prompt box ends at the next
+  // end check, so it does not count.
   function countRunning(s: ReviewsState): number {
     const rows = deps.rows()
     let count = 0
     for (const pr of Object.values(s.prs)) {
       const round = pr.round
       if (round === null) continue
+      // A request round that posts has no session that works.
+      if (kindOf(round) === 'request' && round.phase === 'posting') continue
       const row =
         round.sessionId === null ? undefined : rows.find(r => r.sessionId === round.sessionId)
       if (row !== undefined && isPromptBox(row)) continue
@@ -443,7 +480,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   }
 
   // Start the oldest ready entries while slots are free. One pump runs at a time. A call during a
-  // pump makes the pump run one more time.
+  // pump makes the pump run one more time. An entry with no job stays and blocks nothing.
   async function pump(): Promise<void> {
     if (pumping) {
       pumpAgain = true
@@ -458,11 +495,14 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
         const s = store.get()
         const picked = pickNext({
           max: deps.settings().reviewsMaxSessions,
-          queue: s.queue,
+          queue: s.queue.filter(entry => jobOf(entry.kind) !== undefined),
           ready,
           running: countRunning(s),
         })
-        for (const entry of picked) await begin(entry)
+        for (const entry of picked) {
+          const job = jobOf(entry.kind)
+          if (job !== undefined) await begin(entry, job)
+        }
       } while (pumpAgain)
     } finally {
       pumping = false
@@ -470,7 +510,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   }
 
   // Step 3 starts: save the phase preparing and remove the queue entry.
-  async function begin(entry: QueueEntry): Promise<void> {
+  async function begin(entry: QueueEntry, job: Job): Promise<void> {
     const { key } = entry
     const token = ++tokenCount
     const now = deps.now()
@@ -484,6 +524,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
       const round: ActiveRound = {
         at: entry.at,
         headSha: null,
+        kind: entry.kind,
         phase: 'preparing',
         sessionId: null,
         shortId: null,
@@ -497,7 +538,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     })
     if (!begun) return
     deps.changed()
-    bg(runRound(key, token, entry.at))
+    bg(job.run(contextOf(job), key, token, entry.at))
   }
 
   // Change the PR state of a round that is still alive. Give false when the round went.
@@ -517,13 +558,19 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   }
 
   // A failed round saves the error and clears the round. It never posts.
-  async function fail(key: string, token: number, message: string, review?: SessionRef) {
-    const saved = await changeRound(key, token, p => ({
-      ...p,
-      lastError: message,
-      round: null,
-      ...(review === undefined ? {} : { review }),
-    }))
+  async function fail(
+    key: string,
+    token: number,
+    message: string,
+    fn: (p: PrState) => PrState = p => p,
+    more?: (s: ReviewsState) => ReviewsState,
+  ): Promise<void> {
+    const saved = await changeRound(
+      key,
+      token,
+      p => ({ ...fn(p), lastError: message, round: null }),
+      more,
+    )
     release(key, token)
     if (saved) deps.changed()
     bg(pump())
@@ -531,22 +578,28 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
 
   // A failed read of the pull request. The raw gh line goes to the Event log. The row gets
   // the friendly text.
-  async function failRead(key: string, token: number, read: { message: string; detail?: string }) {
+  async function failRead(
+    key: string,
+    token: number,
+    read: ReadFailure,
+    fn?: (p: PrState) => PrState,
+    more?: (s: ReviewsState) => ReviewsState,
+  ): Promise<void> {
     if (read.detail !== undefined) {
       deps.eventNotice(
         `Reviews: GitHub couldn't load ${key}. It said: ${maskToken(read.detail, null)}`,
       )
     }
-    return await fail(key, token, read.message)
+    return await fail(key, token, read.message, fn, more)
   }
 
   // The entry goes back to the queue with its first time. The row then shows Trust needed.
-  async function putBack(key: string, token: number, at: number): Promise<void> {
+  async function putBack(key: string, token: number, at: number, kind: JobKind): Promise<void> {
     const saved = await changeRound(
       key,
       token,
       p => ({ ...p, round: null }),
-      s => ({ ...s, queue: enqueue(s.queue, { at, key, kind: 'review' }) }),
+      s => ({ ...s, queue: enqueue(s.queue, { at, key, kind }) }),
     )
     release(key, token)
     if (saved) deps.changed()
@@ -557,16 +610,14 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   async function succeed(
     key: string,
     token: number,
-    head: string,
-    mark: RecommendationMark,
-    drafts: DraftComment[],
+    fn: (p: PrState) => PrState,
+    more?: (s: ReviewsState) => ReviewsState,
   ): Promise<boolean> {
     const saved = await changeRound(
       key,
       token,
-      p => ({ ...p, lastError: null, lastReviewedCommit: head, recommendation: mark, round: null }),
-      s =>
-        drafts.length === 0 ? s : { ...s, drafts: [...s.drafts, ...drafts].slice(-MAX_DRAFTS) },
+      p => ({ ...fn(p), lastError: null, round: null }),
+      more,
     )
     release(key, token)
     if (saved) deps.changed()
@@ -578,12 +629,12 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     try {
       await deps.sessions.stop(shortId)
     } catch (error) {
-      deps.log(`Bifrost couldn't stop the review session ${shortId}. ${messageOf(error)}`)
+      deps.log(`Bifrost couldn't stop the PR session ${shortId}. ${messageOf(error)}`)
     }
   }
 
-  // Stop and remove a review session. With no short ID, there is nothing to remove. A late session
-  // with no row yet keeps its name in late, so it goes when its row shows.
+  // Stop and remove a session. With no short ID, there is nothing to remove. A late session with
+  // no row yet keeps its name in late, so it goes when its row shows.
   async function removeSession(ref: SessionRef): Promise<void> {
     const row = rowOf(ref, deps.rows())
     const shortId = ref.shortId ?? row?.shortId
@@ -597,7 +648,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     try {
       await deps.sessions.remove({ name: ref.name, sessionId, shortId })
     } catch (error) {
-      deps.log(`Bifrost couldn't remove the review session ${shortId}. ${messageOf(error)}`)
+      deps.log(`Bifrost couldn't remove the PR session ${shortId}. ${messageOf(error)}`)
     }
   }
 
@@ -605,7 +656,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     try {
       await repos.removeWorktree(clone, number)
     } catch (error) {
-      deps.log(`Bifrost couldn't remove the worktree of a review. ${messageOf(error)}`)
+      deps.log(`Bifrost couldn't remove the worktree of a pull request. ${messageOf(error)}`)
     }
   }
 
@@ -614,9 +665,9 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     if (head === null) return
     try {
       const { changed } = await repos.checkAndClean(clone, number, head)
-      if (changed > 0) deps.log(`The review session changed ${changed} files in its worktree.`)
+      if (changed > 0) deps.log(`The PR session changed ${changed} files in its worktree.`)
     } catch (error) {
-      deps.log(`Bifrost couldn't clean the worktree of a review. ${messageOf(error)}`)
+      deps.log(`Bifrost couldn't clean the worktree of a pull request. ${messageOf(error)}`)
     }
   }
 
@@ -629,153 +680,65 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
       names.add(row.claudeName)
     }
     for (const pr of Object.values(store.get().prs)) {
-      if (pr.review?.sessionId === '') names.add(pr.review.name)
+      for (const { ref } of refsOf(pr)) if (ref.sessionId === '') names.add(ref.name)
     }
     return names
   }
 
-  // True when the pending review of the user is the draft review that Bifrost made on this head.
-  // A new round would add each comment and the summary to it a second time.
-  function isOwnDraft(key: string, context: ReviewContext): boolean {
-    const own = store.get().prs[key]?.recommendation?.reviewId ?? null
-    const { pending } = context
-    return own !== null && pending?.id === own && pending.commit === context.headSha
-  }
-
-  // Steps 3 and 4: get the worktree and the input files ready, then start the session.
-  async function runRound(key: string, token: number, at: number): Promise<void> {
-    const pr = prOf(key)
-    const gen = generation
-    let clone: string | null = null
-    let prepared = false
-    // A round that went (the request went) removes what it made.
-    const gone = async (): Promise<void> => {
-      if (prepared && clone !== null) await removeWorktree(clone, pr.number)
-    }
-    // True when the round must stop: it went, or the runner stopped (Watch GitHub off) or started
-    // again.
-    const halted = (): boolean => !alive(key, token) || !running || gen !== generation
-    // Stop the round and start no session. A round that is still alive goes back to the queue,
-    // as after a restart. A round that the user stopped fails.
-    const halt = async (): Promise<void> => {
-      await gone()
-      if (!alive(key, token)) return
-      if (store.get().prs[key]?.round?.stoppedByUser === true) {
-        return await fail(key, token, REASON_STOPPED)
-      }
-      await putBack(key, token, at)
-    }
-    try {
-      clone = cloneOfRepo(repoOf(key)) ?? (await cloneRepo(repoOf(key)))
-      if (halted()) return await halt()
-      const viewer = deps.viewer()
-      if (viewer === null) return await putBack(key, token, at)
-      // An untrusted clone gets a start only when it has its one try.
-      if (!isTrusted(clone) && !tryOnce.delete(clone)) return await putBack(key, token, at)
-      const first = await fetchReviewContext(deps.gh, pr, viewer)
-      if (halted()) return await halt()
-      if (!first.ok) return await failRead(key, token, first)
-      const { context } = first
-      if (context.state !== 'OPEN') return await fail(key, token, REASON_PR_CLOSED)
-      if (isOwnDraft(key, context)) return await fail(key, token, REASON_OWN_DRAFT)
-      const fetched = await repos.fetchPr(clone, pr.number, context.baseRef)
-      if (halted()) return await halt()
-      if (fetched.head !== context.headSha) return await fail(key, token, REASON_PR_CHANGED)
-      const earlier = store.get().prs[key]?.review ?? null
-      if (earlier !== null) {
-        await removeSession(earlier)
-        await changeRound(key, token, p => ({ ...p, review: null }))
-      }
-      if (halted()) return await halt()
-      const worktree = await repos.prepareWorktree(clone, pr.number, fetched.head)
-      prepared = true
-      if (halted()) return await halt()
-      const files = await writeRoundFiles(
-        { repos, skillsDir: deps.skillsDir },
-        { clone, context, fetched, number: pr.number, viewer },
-      )
-      if (halted()) return await halt()
-      if (!files.ok) return await fail(key, token, files.message)
-      if (store.get().prs[key]?.round?.stoppedByUser === true) {
-        return await fail(key, token, REASON_STOPPED)
-      }
-      const name = reviewSessionName(pr, namesInUse(), deps.testHome)
-      const args = reviewSessionArgs({
-        ioDir: ioPath(clone, pr.number),
-        model: deps.testHome ? 'haiku' : deps.settings().reviewsReviewModel,
-        name,
-        pluginDir: deps.skillsDir,
-        prompt: reviewPrompt(files.inputFile),
-      })
-      starting.add(key)
-      let started: StartOutcome
-      try {
-        started = await deps.sessions.start({ args, cwd: worktree, name })
-      } finally {
-        starting.delete(key)
-      }
-      if (!alive(key, token)) {
-        if (started.ok) {
-          await removeSession({ name, sessionId: started.sessionId, shortId: started.shortId })
-        } else if (!started.trust) {
-          // The session can still run. Remove it when its row shows.
-          late.add(name)
-        }
-        return await gone()
-      }
-      if (!started.ok && started.trust) {
-        // A trust error acts as an untrusted clone.
+  // The context of a job. Only putBack knows the job: it queues the entry with the kind of the
+  // job.
+  const contexts = new Map<JobKind, JobContext>()
+  function contextOf(job: Job): JobContext {
+    const known = contexts.get(job.kind)
+    if (known !== undefined) return known
+    const ctx: JobContext = {
+      addLate: name => {
+        late.add(name)
+      },
+      alive,
+      changeRound,
+      clean,
+      cloneOfRepo,
+      cloneRepo,
+      deps,
+      diffs,
+      fail,
+      failRead,
+      forget,
+      generation: () => generation,
+      isCloning,
+      isTrusted,
+      markStarting: (key, on) => {
+        if (on) starting.add(key)
+        else starting.delete(key)
+      },
+      namesInUse,
+      pump,
+      putBack: (key, token, at) => putBack(key, token, at, job.kind),
+      refusedTrust: clone => {
         refused.add(clone)
         startedIn.delete(clone)
-        return await putBack(key, token, at)
-      }
-      if (!started.ok) {
-        // The session can still run. The name stays, so Bifrost finds its row later. The row
-        // gets a fixed text, because the message of claude can hold a path.
-        deps.log(`The review session of ${key} did not start. ${started.message}`)
-        await clean(clone, pr.number, fetched.head)
-        return await fail(key, token, REASON_START_FAILED, { name, sessionId: '' })
-      }
-      // Claude Code started a session in the clone, so it trusts the clone.
-      if (!isTrusted(clone)) {
+      },
+      release,
+      removeSession,
+      removeWorktree,
+      stopped: gen => !running || gen !== generation,
+      stopQuietly,
+      store,
+      succeed,
+      takeTryOnce: clone => tryOnce.delete(clone),
+      trustedByStart: clone => {
+        if (isTrusted(clone)) return
         startedIn.add(clone)
         refused.delete(clone)
         bg(pump())
-      }
-      diffs.set(key, files.files)
-      watches.set(key, { idleSince: null, rowsSince: null, seenWorking: false })
-      const review: SessionRef = { name, sessionId: started.sessionId, shortId: started.shortId }
-      const saved = await changeRound(key, token, p => ({
-        ...p,
-        review,
-        round:
-          p.round === null
-            ? null
-            : {
-                ...p.round,
-                baseSha: fetched.base,
-                headSha: fetched.head,
-                phase: 'running',
-                sessionId: started.sessionId,
-                shortId: started.shortId,
-                // The time limit counts from the start of the session, so a slow clone or
-                // checkout does not take time from the session.
-                startedAt: deps.now(),
-              },
-      }))
-      if (!saved) {
-        await removeSession(review)
-        return await gone()
-      }
-      deps.changed()
-      // A stop of the user during the start.
-      if (store.get().prs[key]?.round?.stoppedByUser === true) await stopQuietly(started.shortId)
-    } catch (error) {
-      if (!alive(key, token)) return await gone()
-      // The row gets a fixed text, because a Node or git error can hold a path.
-      deps.log(`A review round of ${key} failed. ${messageOf(error)}`)
-      await fail(key, token, REASON_PREPARE_FAILED)
+      },
+      watchRound: key => {
+        watches.set(key, { idleSince: null, rowsSince: null, seenWorking: false })
+      },
     }
+    contexts.set(job.kind, ctx)
+    return ctx
   }
 
   function watchOf(key: string): RoundWatch {
@@ -787,26 +750,23 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     return watch
   }
 
-  function resultFile(key: string): string {
-    const pr = prOf(key)
-    return join(ioPath(clonePath(deps.bifrostHome, pr.owner, pr.repo), pr.number), 'result.json')
-  }
-
   function resultExists(key: string): boolean {
     try {
-      lstatSync(resultFile(key))
+      lstatSync(resultFileOf(deps.bifrostHome, key))
       return true
     } catch {
       return false
     }
   }
 
-  // Step 5: check the end of each running round.
+  // Step 5: check the end of each running round. The job of the round ends it.
   function pass(rows: readonly SessionRow[]): void {
     const now = deps.now()
     for (const [key, pr] of Object.entries(store.get().prs)) {
       const round = pr.round
       if (round === null || round.phase !== 'running' || ending.has(key)) continue
+      const job = jobOf(kindOf(round))
+      if (job === undefined) continue
       const token = tokens.get(key)
       if (token === undefined) continue
       const watch = watchOf(key)
@@ -833,209 +793,89 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
       const posts = check === 'ended' || (check === 'blocked' && exists)
       if (posts && deps.viewer() === null) continue
       ending.add(key)
-      bg(endRound(key, token, check))
+      bg(job.end(contextOf(job), key, token, check))
     }
   }
 
-  async function endRound(key: string, token: number, check: Ended): Promise<void> {
-    const round = store.get().prs[key]?.round
-    if (!alive(key, token) || round == null) return
-    const pr = prOf(key)
-    const clone = clonePath(deps.bifrostHome, pr.owner, pr.repo)
-    try {
-      // A session past the time limit, or a session that asks, gets a stop first.
-      const stop = check === 'timeout' || check === 'blocked'
-      if (stop && round.shortId !== null) await stopQuietly(round.shortId)
-      // Step 7. The clean comes before the post, so the save of a good round is one step.
-      await clean(clone, pr.number, round.headSha)
-      if (!alive(key, token)) return
-      if (check === 'timeout') return await fail(key, token, REASON_TIMEOUT)
-      if (check === 'gone') return await fail(key, token, REASON_STOPPED)
-      // A session that asks ends with its result only when the result is valid.
-      await finish(key, token, pr, clone, check === 'blocked' ? REASON_BLOCKED : null)
-    } catch (error) {
-      if (!alive(key, token)) return
-      // The row gets a fixed text, because a Node error can hold a path.
-      deps.log(`The end of a review round of ${key} failed. ${messageOf(error)}`)
-      await fail(key, token, REASON_END_FAILED)
-    }
-  }
-
-  // After a restart, make the diff of the round again from the clone, in a folder of Bifrost.
-  // Never from the input folder, because the session can change the files there.
-  async function rebuildDiff(clone: string, round: ActiveRound): Promise<DiffFile[] | null> {
-    if (round.baseSha === undefined || round.headSha === null) return null
-    const root = join(deps.bifrostHome, 'reviews')
-    let folder: string | null = null
-    try {
-      await mkdir(root, { mode: 0o700, recursive: true })
-      folder = await mkdtemp(join(root, 'diff-'))
-      const file = join(folder, 'full.diff')
-      await repos.writeDiff(clone, round.baseSha, round.headSha, file, 'merge-base')
-      return parseDiff(await readFile(file, 'utf8'))
-    } catch (error) {
-      deps.log(`Bifrost couldn't make the diff of a review again. ${messageOf(error)}`)
-      return null
-    } finally {
-      if (folder !== null && isInside(root, folder)) {
-        await rm(folder, { force: true, recursive: true }).catch(() => undefined)
-      }
-    }
-  }
-
-  // Steps 5 and 6: read and check the result, then post the pending review. blocked is the
-  // reason for a missing or bad result, when the session ended at a prompt.
-  async function finish(
-    key: string,
-    token: number,
-    pr: PrRef,
-    clone: string,
-    blocked: string | null,
-  ): Promise<void> {
-    const round = store.get().prs[key]?.round
-    if (round == null || round.headSha === null) return await fail(key, token, REASON_NO_RESULT)
-    const head = round.headSha
-    // The user stopped the review. Nothing goes to GitHub.
-    if (round.stoppedByUser) return await fail(key, token, REASON_STOPPED)
-    const read = await readResultFile(resultFile(key))
-    if (!alive(key, token)) return
-    if (!read.ok) {
-      if (blocked !== null) return await fail(key, token, blocked)
-      const missing = read.reason === 'missing'
-      return await fail(key, token, missing ? REASON_NO_RESULT : reasonBadResult(read.reason))
-    }
-    const files = diffs.get(key) ?? (await rebuildDiff(clone, round))
-    if (!alive(key, token)) return
-    if (files === null) return await fail(key, token, REASON_INPUT_FAILED)
-    const expect = { files, headSha: head, pr: prKey(pr.owner, pr.repo, pr.number) }
-    const parsed = parseReviewResult(read.text, expect)
-    if (!parsed.ok) return await fail(key, token, blocked ?? reasonBadResult(parsed.reason))
-    const { result } = parsed
-    const placed = placeComments(result, files)
-    const mark = (reviewId: string | null): RecommendationMark => ({
-      at: deps.now(),
-      headSha: head,
-      reviewId,
-      value: result.recommendation,
-      why: result.why,
-    })
-    const notice = { number: pr.number, repo: pr.repo }
-    if (
-      result.recommendation === 'approve' &&
-      placed.summary === '' &&
-      placed.comments.length === 0
-    ) {
-      if (await succeed(key, token, head, mark(null), [])) deps.notify(reviewedNotice(notice))
-      return
-    }
-    const posting = await changeRound(key, token, p => ({
-      ...p,
-      round: p.round === null ? null : { ...p.round, phase: 'posting' },
-    }))
-    if (!posting) return
-    const viewer = deps.viewer()
-    if (viewer === null) return await fail(key, token, REASON_GH_FAILED)
-    const again = await fetchReviewContext(deps.gh, pr, viewer)
-    if (!alive(key, token)) return
-    if (!again.ok) return await failRead(key, token, again)
-    if (again.context.state !== 'OPEN') return await fail(key, token, REASON_PR_CLOSED)
-    if (store.get().prs[key]?.round?.stoppedByUser === true) {
-      return await fail(key, token, REASON_STOPPED)
-    }
-    // The pending review of the user, if any, comes from this second read. The commit is the
-    // reviewed commit, also when the author pushed during the round.
-    const outcome = await postPendingReview(deps.gh, {
-      comments: placed.comments,
-      headSha: head,
-      number: pr.number,
-      owner: pr.owner,
-      pending: again.context.pending,
-      repo: pr.repo,
-      summary: placed.summary,
-    })
-    // Any failed post ends the round. The message of an unknown result says that Bifrost cannot
-    // tell if GitHub saved the draft. Nothing posts again by itself.
-    if (!outcome.ok) return await fail(key, token, outcome.message)
-    const at = deps.now()
-    const draft = (path: string, line: number, body: string): DraftComment => ({
-      at,
-      body,
-      line,
-      path,
-      prKey: key,
-      reviewId: outcome.reviewId,
-    })
-    const drafts = placed.comments.map(c => draft(c.path, c.line, c.body))
-    if (placed.summary !== '') drafts.push(draft('', 0, placed.summary))
-    if (await succeed(key, token, head, mark(outcome.reviewId), drafts)) {
-      deps.requestPoll()
-      deps.notify(draftNotice(notice, result.recommendation))
-    }
-  }
-
-  // Step 12: the request of the key went. Stop its round, remove its session, its worktree and
-  // its queue entry, and clear its review fields. Nothing posts.
-  async function dropKey(key: string): Promise<void> {
-    tokens.delete(key)
-    diffs.delete(key)
-    watches.delete(key)
-    ending.delete(key)
-    const pr = store.get().prs[key]
-    const refs: SessionRef[] = []
-    if (pr?.review) refs.push(pr.review)
-    const round = pr?.round ?? null
-    if (round?.sessionId != null && round.sessionId !== pr?.review?.sessionId) {
-      refs.push({
-        name: pr?.review?.name ?? '',
-        sessionId: round.sessionId,
-        ...(round.shortId === null ? {} : { shortId: round.shortId }),
-      })
-    }
-    for (const ref of refs) await removeSession(ref)
-    const { number } = prOf(key)
-    const clone = cloneOfRepo(repoOf(key))
-    if (clone !== null) await removeWorktree(clone, number)
-    await store.change(s => {
-      tokens.delete(key)
-      const p = s.prs[key]
-      return {
-        ...s,
-        prs: p === undefined ? s.prs : { ...s.prs, [key]: clearReview(p) },
-        queue: s.queue.filter(e => e.key !== key),
-      }
-    })
-    deps.changed()
-  }
-
-  async function dropGone(poll: PollData): Promise<void> {
-    const open = new Set(poll.toReview.map(p => p.key))
+  // The keys of a job: a queue entry of its kind, a round of its kind, or a PR state with its
+  // session.
+  function keysOf(job: Job): Set<string> {
     const s = store.get()
     const keys = new Set<string>()
     for (const [key, pr] of Object.entries(s.prs)) {
-      if (pr.round !== null || pr.review !== null) keys.add(key)
+      const own = pr.round !== null && kindOf(pr.round) === job.kind
+      if (own || pr[job.ref] !== null) keys.add(key)
     }
-    for (const entry of s.queue) keys.add(entry.key)
-    for (const key of keys) if (!open.has(key)) await dropKey(key)
+    for (const entry of s.queue) if (entry.kind === job.kind) keys.add(entry.key)
+    return keys
+  }
+
+  // Go on with a round of a job after a restart, or at Try again. A throw releases the round, so
+  // it does not stay busy for ever.
+  function runResume(job: Job, key: string, token: number, round: ActiveRound): void {
+    ending.add(key)
+    bg(
+      job.resume(contextOf(job), key, token, round).catch(error => {
+        deps.log(`Bifrost couldn't go on with the round of ${key}. ${messageOf(error)}`)
+        release(key, token)
+      }),
+    )
+  }
+
+  // Start each waiting resume whose PR the poll lists. Each list of a poll holds only open PRs.
+  function startResumes(poll: PollData): void {
+    if (deps.viewer() === null) return
+    const listed = new Set([...poll.toReview, ...poll.mine].map(pr => pr.key))
+    for (const [key, held] of [...resumes]) {
+      if (!listed.has(key)) continue
+      resumes.delete(key)
+      if (alive(key, held.token)) runResume(held.job, key, held.token, held.round)
+    }
+  }
+
+  // Step 12 for each job whose list is complete: drop the keys that are not open. Then the waiting
+  // resumes, the hook of each job, and the pump.
+  async function afterPollJobs(poll: PollData): Promise<void> {
+    // A drop that throws stops the drops of its job only.
+    for (const job of jobs) {
+      try {
+        const open = job.openKeys(poll)
+        if (open === null) continue
+        for (const key of keysOf(job)) if (!open.has(key)) await job.drop(contextOf(job), key)
+      } catch (error) {
+        deps.log(`The round runner failed: ${messageOf(error)}`)
+      }
+    }
+    startResumes(poll)
+    for (const job of jobs) {
+      try {
+        await job.afterPoll?.(contextOf(job), poll)
+      } catch (error) {
+        deps.log(`The round runner failed: ${messageOf(error)}`)
+      }
+    }
     await pump()
   }
 
-  // Step 11: one stop for a review session with no round that is idle for IDLE_STOP_MS.
+  // Step 11: one stop for a session with no round that is idle for IDLE_STOP_MS.
   function idleStops(rows: readonly SessionRow[], now: number): void {
     for (const pr of Object.values(store.get().prs)) {
-      const ref = pr.review
-      if (pr.round !== null || ref === null || ref.sessionId === '') continue
-      const row = rows.find(r => r.sessionId === ref.sessionId)
-      if (row === undefined) continue
-      if (row.state === 'working') {
-        idleStopped.delete(row.sessionId)
-        continue
+      if (pr.round !== null) continue
+      for (const { ref } of refsOf(pr)) {
+        if (ref.sessionId === '') continue
+        const row = rows.find(r => r.sessionId === ref.sessionId)
+        if (row === undefined) continue
+        if (row.state === 'working') {
+          idleStopped.delete(row.sessionId)
+          continue
+        }
+        if (row.state !== 'idle' || row.box !== 'none' || idleStopped.has(row.sessionId)) continue
+        if (now - row.lastActivity < IDLE_STOP_MS) continue
+        const shortId = ref.shortId ?? row.shortId
+        if (shortId === undefined) continue
+        idleStopped.add(row.sessionId)
+        bg(stopQuietly(shortId))
       }
-      if (row.state !== 'idle' || row.box !== 'none' || idleStopped.has(row.sessionId)) continue
-      if (now - row.lastActivity < IDLE_STOP_MS) continue
-      const shortId = ref.shortId ?? row.shortId
-      if (shortId === undefined) continue
-      idleStopped.add(row.sessionId)
-      bg(stopQuietly(shortId))
     }
   }
 
@@ -1043,24 +883,25 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
   // reference gets the row, and the session gets one stop when its round is over.
   function bindLate(rows: readonly SessionRow[]): void {
     for (const [key, pr] of Object.entries(store.get().prs)) {
-      const ref = pr.review
-      if (ref === null || ref.sessionId !== '') continue
-      const row = rowOf(ref, rows)
-      if (row?.shortId === undefined) continue
-      const bound: SessionRef = { name: ref.name, sessionId: row.sessionId, shortId: row.shortId }
-      bg(bind(key, bound))
+      for (const { field, ref } of refsOf(pr)) {
+        if (ref.sessionId !== '') continue
+        const row = rowOf(ref, rows)
+        if (row?.shortId === undefined) continue
+        const bound: SessionRef = { name: ref.name, sessionId: row.sessionId, shortId: row.shortId }
+        bg(bind(key, field, bound))
+      }
     }
   }
 
-  async function bind(key: string, bound: SessionRef): Promise<void> {
+  async function bind(key: string, field: 'review' | 'request', bound: SessionRef): Promise<void> {
     let done = false
     let stop = false
     await store.change(s => {
-      const ref = s.prs[key]?.review
+      const ref = s.prs[key]?.[field]
       if (ref?.sessionId !== '' || ref.name !== bound.name) return s
       done = true
       stop = s.prs[key]?.round == null
-      return changePr(s, key, p => ({ ...p, review: bound }))
+      return changePr(s, key, p => ({ ...p, [field]: bound }))
     })
     if (!done) return
     if (stop && bound.shortId !== undefined) await stopQuietly(bound.shortId)
@@ -1077,19 +918,173 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     }
   }
 
+  // The row ID of the session of the PR when it is not parked: the review session, else the
+  // request session.
   function sessionOf(key: string): string | null {
-    const ref = store.get().prs[key]?.review
-    if (!ref) return null
-    const row = rowOf(ref, deps.rows())
+    const pr = store.get().prs[key]
+    if (pr === undefined) return null
+    const first = refsOf(pr)[0]
+    if (first === undefined) return null
+    const row = rowOf(first.ref, deps.rows())
     return row !== undefined && row.state !== 'parked' ? row.sessionId : null
   }
 
   // A text of the session IDs of the PRs. A change of it is a change on the panel.
   function sessionsText(): string {
     return Object.entries(store.get().prs)
-      .filter(([, pr]) => pr.review !== null)
+      .filter(([, pr]) => refsOf(pr).length > 0)
       .map(([key]) => `${key}=${sessionOf(key) ?? ''}`)
       .join('|')
+  }
+
+  // A request round or a request entry of the key.
+  const requestBusy = (s: ReviewsState, key: string): boolean =>
+    s.prs[key]?.round != null || s.queue.some(e => e.key === key && e.kind === 'request')
+
+  // A click gives one start to a clone that the trust read gives as untrusted.
+  function giveTryOnce(key: string): void {
+    const clone = cloneOfRepo(repoOf(key))
+    if (clone !== null && !isTrusted(clone)) tryOnce.add(clone)
+  }
+
+  // A round of a job refuses with the code of that job.
+  const refusedFor = (round: ActiveRound): string =>
+    kindOf(round) === 'request' ? REFUSED_NOT_HANDLEABLE : REFUSED_NOT_REVIEWABLE
+
+  async function handle(key: string, what: 'all' | 'copilot'): Promise<void> {
+    if (removing) throw new Error(REFUSED_REVIEWS_BUSY)
+    const pr = PR_KEY.test(key) ? deps.minePr(key) : null
+    const known = what === 'all' || what === 'copilot'
+    if (pr === null || pr.isCrossRepository || !known || requestBusy(store.get(), key)) {
+      throw new Error(REFUSED_NOT_HANDLEABLE)
+    }
+    const now = deps.now()
+    const flag = what === 'all' ? { handleOlder: true } : { handleCopilot: true }
+    await store.change(s => {
+      if (requestBusy(s, key)) throw new Error(REFUSED_NOT_HANDLEABLE)
+      return {
+        ...changePr(s, key, p => ({ ...p, ...flag, lastError: null })),
+        queue: enqueue(s.queue, { at: now, key, kind: 'request' }),
+      }
+    })
+    giveTryOnce(key)
+    deps.changed()
+    bg(pump())
+  }
+
+  // Try again with an outbox: a round in the posting phase sends the rest, as after a restart.
+  // It needs no session and no slot. The last poll must give the viewer and list the PR.
+  async function retry(key: string): Promise<void> {
+    if (removing) throw new Error(REFUSED_REVIEWS_BUSY)
+    const outbox = store.get().prs[key]?.outbox ?? null
+    if (outbox === null) return handle(key, 'all')
+    const job = jobOf('request')
+    const listed = PR_KEY.test(key) && deps.minePr(key) !== null && deps.viewer() !== null
+    if (job === undefined || !running || !listed || requestBusy(store.get(), key)) {
+      throw new Error(REFUSED_NOT_HANDLEABLE)
+    }
+    const token = ++tokenCount
+    const now = deps.now()
+    const round: ActiveRound = {
+      at: now,
+      baseSha: outbox.mergeBase,
+      headSha: outbox.headSha,
+      items: { ...outbox.seen },
+      kind: 'request',
+      phase: 'posting',
+      sessionId: null,
+      shortId: null,
+      startedAt: now,
+      stoppedByUser: false,
+    }
+    await store.change(s => {
+      if (s.prs[key]?.outbox !== outbox || requestBusy(s, key)) {
+        throw new Error(REFUSED_NOT_HANDLEABLE)
+      }
+      tokens.set(key, token)
+      return changePr(s, key, p => ({ ...p, lastError: null, round }))
+    })
+    deps.changed()
+    runResume(job, key, token, round)
+  }
+
+  // Check all answers first, so that a bad answer changes nothing.
+  async function answer(
+    key: string,
+    answers: readonly { id: string; text: string | null }[],
+  ): Promise<void> {
+    if (removing) throw new Error(REFUSED_REVIEWS_BUSY)
+    if (answers.length === 0) return
+    const now = deps.now()
+    let texts = 0
+    await store.change(s => {
+      const p = s.prs[key] ?? emptyPrState()
+      let questions: Record<string, Question> = { ...p.questions }
+      const handled = { ...p.handled }
+      const ids = new Set<string>()
+      texts = 0
+      for (const { id, text } of answers) {
+        const asked = Object.hasOwn(p.questions, id) ? p.questions[id] : undefined
+        if (asked === undefined || asked.answer !== null || ids.has(id)) {
+          throw new Error(REFUSED_UNKNOWN_QUESTION)
+        }
+        ids.add(id)
+        if (text === null) {
+          // The user handles the item.
+          questions = Object.fromEntries(Object.entries(questions).filter(([k]) => k !== id))
+          handled[id] = handledEntry(now, asked.seenUntil)
+          continue
+        }
+        const value = typeof text === 'string' ? text.trim() : ''
+        if (value.length === 0 || value.length > MAX_ANSWER) throw new Error(REFUSED_BAD_ANSWER)
+        questions[id] = { ...asked, answer: value }
+        texts++
+      }
+      // Ruling P12: an answered item leaves held, so the round finds it as work.
+      const next = changePr(s, key, x => ({
+        ...x,
+        handled,
+        held: x.held.filter(id => !ids.has(id)),
+        questions,
+      }))
+      if (texts === 0) return next
+      return { ...next, queue: enqueue(next.queue, { at: now, key, kind: 'request' }) }
+    })
+    deps.changed()
+    if (texts === 0) return
+    giveTryOnce(key)
+    bg(pump())
+  }
+
+  // The row ID of the request session of the PR when it is not parked.
+  function requestSessionOf(pr: PrState | undefined): string | null {
+    if (pr?.request == null) return null
+    const row = rowOf(pr.request, deps.rows())
+    return row !== undefined && row.state !== 'parked' ? row.sessionId : null
+  }
+
+  // Step 15. The first match wins.
+  function mine(key: string): MineState {
+    const s = store.get()
+    const pr = s.prs[key]
+    const sessionId = requestSessionOf(pr)
+    const out = (claude: ClaudeState, fixing = 0, error: string | null = null): MineState => ({
+      claude,
+      error,
+      fixing,
+      sessionId,
+    })
+    if (pr?.round != null) return out('fixing', Object.keys(pr.round.items ?? {}).length)
+    if (s.queue.some(e => e.key === key && e.kind === 'request')) {
+      const repo = repoOf(key)
+      const clone = cloneOfRepo(repo)
+      if (clone === null) return out(isCloning(repo) ? 'cloning' : 'queued')
+      return out(isTrusted(clone) || tryOnce.has(clone) ? 'queued' : 'trust-needed')
+    }
+    if (Object.values(pr?.questions ?? {}).some(q => q.answer === null)) return out('needs-you')
+    if (pr?.lastError != null) return out('error', 0, pr.lastError)
+    if (deps.minePr(key)?.isCrossRepository === true) return out('fork', 0, REASON_FORK)
+    return out('waiting')
   }
 
   function session(key: string): 'reviewing' | 'queued' | 'trust-needed' | null {
@@ -1099,37 +1094,58 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
     return ready(key) ? 'queued' : 'trust-needed'
   }
 
-  // Step 13: recover each saved round that this process does not run.
+  // The answer of the job of each saved round that this process does not run. A round with no job
+  // stays as it is. A round that is the same object as in known keeps the answer of known, so the
+  // job answers one time for each round.
+  function recoveries(s: ReviewsState, known: ReadonlyMap<string, Plan>): Map<string, Plan> {
+    const plans = new Map<string, Plan>()
+    for (const [key, pr] of Object.entries(s.prs)) {
+      const round = pr.round
+      if (round === null || tokens.has(key)) continue
+      const job = jobOf(kindOf(round))
+      if (job === undefined) continue
+      const old = known.get(key)
+      const recovery = old?.round === round ? old.recovery : job.recover(contextOf(job), key, round)
+      plans.set(key, { job, recovery, round })
+    }
+    return plans
+  }
+
+  // Step 13: recover each saved round that this process does not run. Its job tells what to do.
+  // The queue and fail results apply in one save, and only these results save, as in R2. After a
+  // failed save, those rounds stay as they are until the next start, and the running rounds still
+  // get their tokens.
   async function boot(): Promise<void> {
-    const lost = Object.entries(store.get().prs).filter(
-      ([key, pr]) => pr.round !== null && pr.round.phase !== 'running' && !tokens.has(key),
-    )
-    if (lost.length > 0) {
-      await store.change(s => {
-        let next = s
-        for (const [key] of lost) {
-          const round = next.prs[key]?.round
-          if (round == null || tokens.has(key)) continue
-          if (round.phase === 'preparing' && round.stoppedByUser) {
-            // The user stopped the round. It must not start again.
-            next = changePr(next, key, p => ({ ...p, lastError: REASON_STOPPED, round: null }))
-          } else if (round.phase === 'preparing') {
-            next = changePr(next, key, p => ({ ...p, round: null }))
-            next = { ...next, queue: enqueue(next.queue, { at: round.at, key, kind: 'review' }) }
-          } else if (round.phase === 'posting') {
-            next = changePr(next, key, p => ({
-              ...p,
-              lastError: REASON_CLOSED_WHILE_POSTING,
-              round: null,
-            }))
+    const first = recoveries(store.get(), new Map())
+    const saves = (r: Recovery): boolean => r !== 'wait' && r !== 'resume'
+    if ([...first.values()].some(plan => saves(plan.recovery))) {
+      try {
+        await store.change(s => {
+          let next = s
+          for (const [key, { job, recovery, round }] of recoveries(s, first)) {
+            if (recovery === 'queue') {
+              next = changePr(next, key, p => ({ ...p, round: null }))
+              const entry: QueueEntry = { at: round.at, key, kind: job.kind }
+              next = { ...next, queue: enqueue(next.queue, entry) }
+            } else if (typeof recovery === 'object') {
+              next = changePr(next, key, p => ({ ...p, lastError: recovery.fail, round: null }))
+            }
           }
-        }
-        return next
-      })
+          return next
+        })
+      } catch (error) {
+        deps.log(`Bifrost couldn't save the rounds at the start. ${messageOf(error)}`)
+      }
     }
-    for (const [key, pr] of Object.entries(store.get().prs)) {
-      if (pr.round?.phase === 'running' && !tokens.has(key)) tokens.set(key, ++tokenCount)
+    for (const [key, { job, recovery, round }] of recoveries(store.get(), first)) {
+      if (saves(recovery)) continue
+      const token = ++tokenCount
+      tokens.set(key, token)
+      if (recovery === 'wait') continue
+      resumes.set(key, { job, round, token })
     }
+    // A poll can come during the start.
+    if (lastPoll !== null) startResumes(lastPoll)
     await readTrust()
     deps.changed()
     await pump()
@@ -1147,7 +1163,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
         // The registry sends rows only when they change, and an idle session changes nothing.
         idleStops(rows, deps.now())
       } catch (error) {
-        deps.log(`The review runner failed: ${messageOf(error)}`)
+        deps.log(`The round runner failed: ${messageOf(error)}`)
       }
       if (running) schedule()
     }, PASS_MS)
@@ -1199,32 +1215,75 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
       }
       bg(runClones())
       if (needsTrust()) bg(readTrust())
-      // Only a complete answer shows that a request went.
-      if (!poll.toReviewHasMore && poll.errors.length === 0) bg(dropGone(poll))
-      else bg(pump())
+      bg(afterPollJobs(poll))
+    },
+
+    answer,
+
+    async autoFixChanged(on) {
+      const now = deps.now()
+      // On: the comments from before wait for Handle now. Off: a running round goes on. The
+      // click of Handle now or Handle Copilot comments goes with its entry, as at cancel.
+      await store.change(s => {
+        if (on) return { ...s, autoFixConsent: true, fixFrom: now }
+        let next: ReviewsState = { ...s, queue: s.queue.filter(e => e.kind !== 'request') }
+        for (const entry of s.queue) {
+          if (entry.kind !== 'request') continue
+          next = changePr(next, entry.key, p => ({
+            ...p,
+            handleCopilot: false,
+            handleOlder: false,
+          }))
+        }
+        return next
+      })
+      deps.changed()
     },
 
     busy: () => Object.values(store.get().prs).some(pr => pr.round !== null),
 
     async cancel(key) {
       const s = store.get()
-      if (s.prs[key]?.round != null) throw new Error(REFUSED_NOT_REVIEWABLE)
-      if (!s.queue.some(e => e.key === key)) return
+      const round = s.prs[key]?.round
+      if (round != null) throw new Error(refusedFor(round))
+      if (!s.queue.some(e => e.key === key)) {
+        if (s.prs[key]?.outbox == null) return
+        // An error row with posts that Bifrost did not send. The user drops them. The error goes
+        // with them, and the items wait for Handle now.
+        const now = deps.now()
+        await store.change(x => {
+          const p = x.prs[key]
+          if (p?.round != null) throw new Error(refusedFor(p.round))
+          if (p?.outbox == null) return x
+          return changePr(x, key, q => ({ ...dropOutbox(q, now), lastError: null }))
+        })
+        deps.changed()
+        return
+      }
       await store.change(x => {
-        if (x.prs[key]?.round != null) throw new Error(REFUSED_NOT_REVIEWABLE)
-        return { ...x, queue: x.queue.filter(e => e.key !== key) }
+        const now = x.prs[key]?.round
+        if (now != null) throw new Error(refusedFor(now))
+        const request = x.queue.some(e => e.key === key && e.kind === 'request')
+        const next = { ...x, queue: x.queue.filter(e => e.key !== key) }
+        // The click of Handle now or Handle Copilot comments goes with its entry.
+        if (!request) return next
+        return changePr(next, key, p => ({ ...p, handleCopilot: false, handleOlder: false }))
       })
       deps.changed()
     },
 
     clonePathOf,
 
+    handle,
+
+    mine,
+
     onRows(rows) {
       // The registry calls this. A throw must not reach the registry or its other callbacks.
       try {
         onRowsNow(rows)
       } catch {
-        deps.log('The review runner failed on a session update.')
+        deps.log('The round runner failed on a session update.')
       }
     },
 
@@ -1245,15 +1304,22 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
         tokens.delete(key)
         diffs.delete(key)
         watches.delete(key)
+        resumes.delete(key)
       }
       try {
         for (const pr of Object.values(store.get().prs)) {
-          if (pr.review !== null) await removeSession(pr.review)
+          for (const { ref } of refsOf(pr)) await removeSession(ref)
         }
         await repos.removeAll()
+        const now = deps.now()
+        // An outbox whose fix is on GitHub stays, and Try again sends the rest of it.
+        const keep = (p: PrState): PrState => {
+          const next = dropUnsentOutbox(clearRounds(p), now)
+          return next.outbox === null ? next : { ...next, lastError: REASON_REPLIES_WAITING }
+        }
         await store.change(s => ({
           ...s,
-          prs: Object.fromEntries(Object.entries(s.prs).map(([k, p]) => [k, clearReview(p)])),
+          prs: Object.fromEntries(Object.entries(s.prs).map(([k, p]) => [k, keep(p)])),
           queue: [],
           repos: {},
           setUpAt: null,
@@ -1269,6 +1335,8 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
         removing = false
       }
     },
+
+    retry,
 
     async review(key) {
       if (removing) throw new Error(REFUSED_REVIEWS_BUSY)
@@ -1335,7 +1403,7 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
         if (shortId !== null) await deps.sessions.stop(shortId)
         return
       }
-      const ref = pr?.review ?? null
+      const ref = pr?.review ?? pr?.request ?? null
       if (ref === null) return
       const shortId = ref.shortId ?? rowOf(ref, deps.rows())?.shortId
       if (shortId !== undefined) await deps.sessions.stop(shortId)
@@ -1371,6 +1439,11 @@ export function createReviewRunner(deps: RunnerDeps): ReviewRunner {
           await pump()
         }),
       )
+    },
+
+    async watchTurnedOn() {
+      const now = deps.now()
+      await store.change(s => ({ ...s, fixFrom: now }))
     },
   }
 }

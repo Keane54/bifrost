@@ -56,6 +56,12 @@ describe('Reviews panel source', () => {
     expect(PANEL).toContain('useSettingsNav')
   })
 
+  it('shows the hint of the automatic fixes on the My PRs tab only', () => {
+    expect(PANEL).toMatch(/tab === 'mine' && snapshot\.autoFixConfirm/)
+    expect(PANEL).toContain('{AUTO_FIX_HINT}')
+    expect(PANEL).toMatch(/AUTO_FIX_HINT[\s\S]{0,600}settingsNav\.open\('reviews'\)/)
+  })
+
   it('starts a review with the Review button and has no Coming soon tip', () => {
     expect(ROW).toMatch(/(reviews|api)\.review\(row\.key\)/)
     expect(ROW).not.toContain('Coming soon')
@@ -85,5 +91,45 @@ describe('Reviews panel source', () => {
     expect(ROW).toMatch(/state === 'draft-ready' \|\| state === 'reviewed'\) return 'text-svc-ok'/)
     expect(ROW).toMatch(/state === 'failed'\) return 'text-box-red'/)
     expect(ROW).toMatch(/<Tip label=\{rowTip\(row\)\}>/)
+  })
+
+  it('renders the items of mineMenuItems with the eight labels', () => {
+    expect(ROW).toContain('mineMenuItems(row)')
+    for (const label of [
+      'Open on GitHub',
+      'Open session',
+      'Answer Claude',
+      'Handle now',
+      'Handle Copilot comments',
+      'Try again',
+      'Cancel',
+      'Stop session',
+    ]) {
+      expect(ROW).toContain(`'${label}'`)
+    }
+  })
+
+  it('calls the Reviews API for the actions of a My PRs row', () => {
+    expect(ROW).toMatch(/api\.handle\(row\.key, 'all'\)/)
+    expect(ROW).toMatch(/api\.handle\(row\.key, 'copilot'\)/)
+    expect(ROW).toMatch(/api\.retry\(row\.key\)/)
+    expect(ROW).toMatch(/api\.cancel\(row\.key\)/)
+    expect(ROW).toMatch(/api\.stopSession\(row\.key\)/)
+  })
+
+  it('opens the answer panel from the menu and from a click on a row with questions', () => {
+    expect(ROW).toContain('setAnswerKey(')
+    expect(ROW).toMatch(/panelId: 'answer'/)
+    expect(ROW).toMatch(/row\.questions\.length > 0/)
+    expect(ROW).toContain('onOpenAnswer')
+  })
+
+  it('shows olderText after the Copilot count and tips the Claude state', () => {
+    expect(ROW).toContain('olderText(row.olderOpen)')
+    expect(ROW.indexOf('olderText(row.olderOpen)')).toBeGreaterThan(
+      ROW.indexOf('laterCopilotText('),
+    )
+    expect(ROW).toMatch(/<Tip label=\{claudeTip\(row\)\}>/)
+    expect(ROW).toContain("claude === 'error'")
   })
 })

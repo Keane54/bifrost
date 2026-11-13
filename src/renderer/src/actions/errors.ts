@@ -37,6 +37,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
     'Another action is still running on this session. Try again in a moment.',
   'refused: Bifrost does not delete an external session':
     "Bifrost can't delete a session that runs in another terminal.",
+  'refused: bad answer': 'That answer is too long.',
   'refused: bad chat panel': "Bifrost couldn't read the list of chat windows.",
   'refused: bad input': "Bifrost couldn't read that request.",
   'refused: bad keys': "One of those keys isn't valid.",
@@ -58,6 +59,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: claude rm took too long':
     'Claude Code took too long to delete this session. Check the worktree, then delete again.',
   'refused: Delete needs a confirmation': 'Delete needs your confirmation first.',
+  'refused: no GitHub link for this comment': "That comment doesn't have a link on GitHub.",
   'refused: no terminal app is installed': REASON_NO_TERMINAL,
   'refused: no window': "The Bifrost window isn't ready.",
   'refused: not a chat view': "That isn't a chat window.",
@@ -110,6 +112,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the worktree has uncommitted changes':
     "This worktree has changes that aren't committed, so Claude Code won't delete it. Open the worktree, commit or discard them, then delete again.",
   'refused: the worktree option is off': "The worktree option isn't available.",
+  'refused: this pull request cannot be handled now':
+    "This pull request can't be handled right now.",
   'refused: this pull request cannot get a review now':
     "This pull request can't get a review right now.",
   'refused: two keys have the same binding': "Two actions can't share the same key.",
@@ -117,6 +121,7 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: unknown model': "Bifrost doesn't know that model.",
   'refused: unknown permission mode': "Bifrost doesn't know that permission mode.",
   'refused: unknown pull request': "That pull request isn't in the list any more.",
+  'refused: unknown question': 'That question has already been answered.',
   'refused: unknown release': "That release isn't in the list of release notes.",
   'refused: unknown repository': "That repository doesn't need trust any more.",
   'refused: unknown service': "Bifrost doesn't know that service.",

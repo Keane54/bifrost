@@ -322,6 +322,8 @@ function make(o: Options = {}) {
   let last: PollData | null = null
 
   const repos: RepoStore = {
+    // The review round makes no fix commit. request-job.test.ts tests these two.
+    changedPaths: async () => [],
     async checkAndClean(_clone, number) {
       calls.cleaned.push(number)
       return { changed: fake.changed }
@@ -329,6 +331,9 @@ function make(o: Options = {}) {
     cloneOf(owner, repo) {
       const path = clonePath(home, owner, repo)
       return fake.cloned.has(path) ? path : null
+    },
+    commitFix: async () => {
+      throw new Error('A review round makes no fix commit.')
     },
     async ensureClone(owner, repo) {
       const name = `${owner}/${repo}`.toLowerCase()
@@ -412,9 +417,12 @@ function make(o: Options = {}) {
       calls.changed++
     },
     claudeJson,
+    claudeSettings: join(base, 'settings.json'),
     eventNotice: t => calls.events.push(t),
     gh,
     log: m => calls.logs.push(m),
+    // The review round needs no My PRs PR.
+    minePr: () => null,
     notify: n => calls.notices.push(n),
     now: () => Date.now(),
     repos,
@@ -424,9 +432,12 @@ function make(o: Options = {}) {
     rows: () => rows,
     sessions,
     settings: () => ({
+      reviewsAutoFix: false,
       reviewsIgnore: o.ignore ?? [],
       reviewsMaxSessions: o.max ?? 3,
+      reviewsRequestModel: '',
       reviewsReviewModel: o.model ?? '',
+      reviewsSignedCommits: false,
     }),
     skillsDir,
     store,
@@ -1387,7 +1398,7 @@ describe('the review round', () => {
     await review(h)
     await endTurn(h, { result: APPROVE })
     expect(h.calls.cleaned).toEqual([7])
-    expect(h.calls.logs).toContain('The review session changed 3 files in its worktree.')
+    expect(h.calls.logs).toContain('The PR session changed 3 files in its worktree.')
     // A failed round cleans too. No change gives no log line.
     h.fake.changed = 0
     const lines = h.calls.logs.length
@@ -2029,6 +2040,6 @@ describe('the review round', () => {
       },
     })
     expect(() => h.runner.onRows(bad)).not.toThrow()
-    expect(h.calls.logs).toContain('The review runner failed on a session update.')
+    expect(h.calls.logs).toContain('The round runner failed on a session update.')
   })
 })

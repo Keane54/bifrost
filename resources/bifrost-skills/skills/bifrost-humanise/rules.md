@@ -14,6 +14,8 @@ the default choice.
 - No note that Claude, an AI or a tool wrote the text. No sign-off. No filler praise. See
   pattern 21.
 - Never use the long dash (the em dash) or the en dash. See pattern 8.
+- Never write a secret, a token, a key or a password, also when it is in the code. Name its place
+  instead.
 - Use British spelling in prose: organise, colour, behaviour. Keep code, names and quotes as they
   are.
 

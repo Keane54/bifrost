@@ -1,10 +1,14 @@
-// The only GitHub write of R2 is a pending review: create one with POST
+// The GitHub writes of src/main. R2 writes a pending review: create one with POST
 // repos/<owner>/<repo>/pulls/<n>/reviews and no event field, or add threads to the pending review
-// of the user and set its body. Bifrost never submits, approves, requests changes, dismisses,
-// deletes or merges. This test reads each .ts file of src/main and fails when a call or a field
-// for one of these shows up. Where it can, a rule allows a known form, and refuses all others.
-// If a pattern finds a harmless text in a file, make the pattern more exact. Never remove a
-// pattern.
+// of the user and set its body. R3 replies to a thread, resolves a thread, adds a PR comment and
+// asks a reviewer for a new review, each in reviews/request-writes.ts. When the user turns on
+// signed commits, R3 also sends the fix commit with createCommitOnBranch, in the same file, with
+// its body on stdin. Only reviews/request-push.ts calls that write. Bifrost never submits,
+// approves, requests changes, dismisses, deletes, edits, hides, unresolves or merges, and it never
+// closes, reopens, changes or converts a PR. This test reads each .ts file of src/main and fails
+// when a call or a field for one of these shows up. Where it can, a rule allows a known form, and
+// refuses all others. If a pattern finds a harmless text in a file, make the pattern more exact.
+// Never remove a pattern.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -12,15 +16,54 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const MAIN = fileURLToPath(new URL('../../../src/main/', import.meta.url))
-// The path of each file is relative to src/main, with forward slashes.
+// The path of each file is relative to src/main, with forward slashes. POSTERS gives each file
+// that holds a GraphQL mutation, with the mutation fields that it can use.
+const POSTERS: Record<string, readonly string[]> = {
+  'reviews/pending-review.ts': ['addPullRequestReviewThread', 'updatePullRequestReview'],
+  'reviews/request-writes.ts': [
+    'addPullRequestReviewThreadReply',
+    'resolveReviewThread',
+    'addComment',
+    'requestReviews',
+    'createCommitOnBranch',
+  ],
+}
+// The only file with the REST create call of a pending review.
 const POSTER = 'reviews/pending-review.ts'
-const MUTATIONS = ['addPullRequestReviewThread', 'updatePullRequestReview']
+const REQUEST_WRITES = 'reviews/request-writes.ts'
+// The only file that calls the signed commit write of request-writes.ts.
+const SIGNED_PUSHER = 'reviews/request-push.ts'
+// The one gh call of request-writes.ts that sends its body on stdin: the signed commit.
+const COMMIT_CALL = /\[\s*'api'\s*,\s*'graphql'\s*,\s*'--input'\s*,\s*'-'\s*,?\s*\]/g
+const isPoster = (file: string): boolean => Object.hasOwn(POSTERS, file)
+const fieldsOf = (file: string): readonly string[] => (isPoster(file) ? (POSTERS[file] ?? []) : [])
 const FORBIDDEN_NAMES = [
   'submitPullRequestReview',
   'dismissPullRequestReview',
   'deletePullRequestReview',
   'mergePullRequest',
   'enablePullRequestAutoMerge',
+]
+// Each of these names is matched as a whole word, so updatePullRequest does not find
+// updatePullRequestReview.
+const FORBIDDEN_WORDS = [
+  'unresolveReviewThread',
+  'deleteIssueComment',
+  'updateIssueComment',
+  'deletePullRequestReviewComment',
+  'updatePullRequestReviewComment',
+  'minimizeComment',
+  'closePullRequest',
+  'reopenPullRequest',
+  'updatePullRequest',
+  'updatePullRequestBranch',
+  'convertPullRequestToDraft',
+  'markPullRequestReadyForReview',
+  'addPullRequestReview',
+  'requestReviewsByLogin',
+  'createRef',
+  'updateRef',
+  'deleteRef',
 ]
 // The event values of a GitHub review (REST and GraphQL).
 const REVIEW_EVENT = 'APPROVE|REQUEST_CHANGES|COMMENT|DISMISS'
@@ -145,13 +188,18 @@ const RULE = {
   firstField: 'a mutation whose first field is not allowed',
   ghCall: 'a gh call that is not one of the known forms',
   ghText: 'a gh command in a text',
-  input: '--input outside the create call of pending-review.ts',
+  input:
+    '--input outside the create call of pending-review.ts and the commit call of ' +
+    'request-writes.ts',
   inputField: 'a mutation field that is not allowed',
   merge: 'the /merge path',
   method: '--method outside pending-review.ts, or with another method than POST',
-  mutationWord: 'a GraphQL mutation outside pending-review.ts',
+  mutationWord: 'a GraphQL mutation outside the files of POSTERS',
   prReviewMerge: "an argument list with 'pr' and then 'review' or 'merge'",
   quotedEvent: 'a quoted event key',
+  requestInput:
+    'a requestReviews field with another input than one pull request, one user and union: true',
+  requestUnion: 'a requestReviews field without union: true in its input',
   secondField: 'a mutation with more than one field',
   setEvent: 'a set of an event property',
   shortEvent: 'an event key in the short form',
@@ -163,8 +211,20 @@ interface Rule {
   finds(code: string, file: string): boolean
 }
 
+// The input of each requestReviews field: the text up to its closing bracket.
+const REQUEST_REVIEWS = /\brequestReviews\s*\(([^)]*)/g
+// The only input of requestReviews: one pull request, one user and union: true.
+const REQUEST_INPUT = new RegExp(
+  String.raw`^input\s*:\s*\{\s*pullRequestId\s*:\s*\$\w+\s*,\s*userIds\s*:\s*\[\s*\$\w+\s*\]` +
+    String.raw`\s*,\s*union\s*:\s*true\s*\}\s*$`,
+)
+
 const RULES: Rule[] = [
   ...FORBIDDEN_NAMES.map(name => ({ finds: (code: string) => code.includes(name), name })),
+  ...FORBIDDEN_WORDS.map(name => ({
+    finds: (code: string) => new RegExp(`\\b${name}\\b`).test(code),
+    name,
+  })),
   // A folder such as './events/event-log' is not the REST path.
   { finds: code => /\/events(?![\w/.-])/.test(code), name: RULE.events },
   { finds: code => /\/dismissals/.test(code), name: RULE.dismissals },
@@ -210,35 +270,47 @@ const RULES: Rule[] = [
   {
     finds: (code, file) => {
       const all = count(code, /--input/g)
+      // request-writes.ts has at most one --input: the commit call, in its exact form.
+      if (file === REQUEST_WRITES) return all > 1 || all !== count(code, COMMIT_CALL)
       return file === POSTER ? all !== ghCalls(code, file).create : all > 0
     },
     name: RULE.input,
   },
   // -X is the short form of --method, also with the method in the same item (-XPUT).
   { finds: code => /(?:^|['"`\s])-X/m.test(code), name: RULE.x },
-  { finds: (code, file) => file !== POSTER && /\bmutation\b/.test(code), name: RULE.mutationWord },
+  { finds: (code, file) => !isPoster(file) && /\bmutation\b/.test(code), name: RULE.mutationWord },
   {
     finds: (code, file) => {
-      if (file !== POSTER) return false
+      if (!isPoster(file)) return false
       const fields = [...code.matchAll(/\bmutation\b[^{]*\{\s*(\w+)/g)].map(m => m[1])
-      return fields.some(name => !MUTATIONS.includes(name))
+      return fields.some(name => !fieldsOf(file).includes(name))
     },
     name: RULE.firstField,
   },
   {
     finds: (code, file) =>
-      file === POSTER && [...code.matchAll(INPUT_FIELD)].some(m => !MUTATIONS.includes(m[1])),
+      isPoster(file) && [...code.matchAll(INPUT_FIELD)].some(m => !fieldsOf(file).includes(m[1])),
     name: RULE.inputField,
   },
   {
-    finds: (code, file) => file === POSTER && /\b\w+\s*:\s*\w+\s*\(\s*input\s*:/.test(code),
+    finds: (code, file) => isPoster(file) && /\b\w+\s*:\s*\w+\s*\(\s*input\s*:/.test(code),
     name: RULE.alias,
   },
   {
     // Each mutation has one field. So the count of input fields is the count of mutations.
     finds: (code, file) =>
-      file === POSTER && count(code, INPUT_FIELD) !== count(code, /\bmutation\b/g),
+      isPoster(file) && count(code, INPUT_FIELD) !== count(code, /\bmutation\b/g),
     name: RULE.secondField,
+  },
+  {
+    // union: true keeps the other review requests. Without it, GitHub removes them.
+    finds: code =>
+      [...code.matchAll(REQUEST_REVIEWS)].some(m => !/\bunion\s*:\s*true\b/.test(m[1] ?? '')),
+    name: RULE.requestUnion,
+  },
+  {
+    finds: code => [...code.matchAll(REQUEST_REVIEWS)].some(m => !REQUEST_INPUT.test(m[1] ?? '')),
+    name: RULE.requestInput,
   },
 ]
 
@@ -263,9 +335,9 @@ function sourceFiles(): string[] {
 }
 
 describe('GitHub writes in src/main', () => {
-  it('reads the files of src/main, with pending-review.ts and gh.ts', () => {
+  it('reads the files of src/main, with the files of POSTERS and gh.ts', () => {
     const files = sourceFiles()
-    expect(files).toContain(POSTER)
+    for (const file of Object.keys(POSTERS)) expect(files).toContain(file)
     expect(files).toContain('reviews/gh.ts')
     expect(files).toContain('info/pr-info.ts')
     expect(files.length).toBeGreaterThan(50)
@@ -276,6 +348,32 @@ describe('GitHub writes in src/main', () => {
       ruleNames(readFileSync(join(MAIN, file), 'utf8'), file).map(name => `${file}: ${name}`),
     )
     expect(found).toEqual([])
+  })
+
+  it('has each write of a request round one time in request-writes.ts, as GraphQL only', () => {
+    const code = codeOf(readFileSync(join(MAIN, REQUEST_WRITES), 'utf8'))
+    const fields = [...code.matchAll(INPUT_FIELD)].map(m => m[1])
+    expect(fields.sort()).toEqual([...fieldsOf(REQUEST_WRITES)].sort())
+    // One call with -f fields for the four writes, and one call with stdin for the commit.
+    expect(ghCalls(code, REQUEST_WRITES)).toEqual({ allowed: 2, create: 0, refused: 0 })
+    expect(count(code, COMMIT_CALL)).toBe(1)
+  })
+
+  it('calls the signed commit write only from request-push.ts', () => {
+    const users = sourceFiles().filter(file =>
+      /\bcommitOnBranch\b/.test(codeOf(readFileSync(join(MAIN, file), 'utf8'))),
+    )
+    expect(users).toEqual([SIGNED_PUSHER, REQUEST_WRITES])
+    // The pusher sends no GraphQL text of its own.
+    const pusher = codeOf(readFileSync(join(MAIN, SIGNED_PUSHER), 'utf8'))
+    expect(pusher).not.toMatch(/\bmutation\b|createCommitOnBranch|'graphql'/)
+  })
+
+  it('has exactly the five write queries of the plan in request-writes.ts', () => {
+    const code = codeOf(readFileSync(join(MAIN, REQUEST_WRITES), 'utf8'))
+    const queries = [...code.matchAll(/`(\s*mutation\b[^`]*)`/g)].map(m => flat(m[1] ?? ''))
+    expect(queries.sort()).toEqual(WRITE_QUERIES.map(query => flat(query.slice(1, -1))).sort())
+    expect(count(code, /\bmutation\b/g)).toBe(WRITE_QUERIES.length)
   })
 
   it('creates the pending review only with POST and no event', () => {
@@ -305,6 +403,40 @@ const APPROVE_STDIN = tpl(
     '{ input: JSON.stringify({ commit_id, event: verdict }) })',
 )
 const PUT_MERGE = tpl("gh.run(['api', '-XPUT', `repos/%{o}/%{r}/pulls/%{n}/merge`])")
+const REPLY =
+  '`mutation ReplyToThread($thread: ID!, $body: String!) {\n' +
+  '  addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $thread, body: $body })' +
+  ' {\n    comment { id createdAt state }\n  }\n}`'
+const RESOLVE =
+  '`mutation ResolveThread($thread: ID!) {\n' +
+  '  resolveReviewThread(input: { threadId: $thread }) { thread { id isResolved } }\n}`'
+const COMMENT =
+  '`mutation CommentOnPr($subject: ID!, $body: String!) {\n' +
+  '  addComment(input: { subjectId: $subject, body: $body }) {\n' +
+  '    commentEdge { node { id createdAt } }\n  }\n}`'
+const REVIEWS =
+  '`mutation RequestReviewer($pr: ID!, $user: ID!) {\n' +
+  '  requestReviews(input: { pullRequestId: $pr, userIds: [$user], union: true }) {\n' +
+  '    pullRequest { id }\n  }\n}`'
+const COMMIT_ON_BRANCH =
+  '`mutation CommitOnBranch($input: CreateCommitOnBranchInput!) {\n' +
+  '  createCommitOnBranch(input: $input) {\n    commit { oid }\n  }\n}`'
+// The five writes of request-writes.ts, as the plan and the signed commits decision give them.
+// White space does not count.
+const WRITE_QUERIES = [REPLY, RESOLVE, COMMENT, REVIEWS, COMMIT_ON_BRANCH]
+const flat = (text: string): string => text.replace(/\s+/g, ' ').trim()
+const REVIEWS_TEAMS = REVIEWS.replace('union: true', 'teamIds: [$t], union: true')
+const REVIEWS_TWO_USERS = REVIEWS.replace('userIds: [$user]', 'userIds: [$user, $other]')
+const REVIEWS_NO_UNION = REVIEWS.replace(', union: true', '')
+const REVIEWS_UNION_FALSE = REVIEWS.replace('union: true', 'union: false')
+const REVIEWS_BY_VARIABLE =
+  '`mutation R($input: RequestReviewsInput!) { requestReviews(input: $input) { a } }`'
+const REPLY_ALIAS =
+  '`mutation A($t: ID!) { addPullRequestReviewThreadReply: ' +
+  'unresolveReviewThread(input: { threadId: $t }) { a } }`'
+const REPLY_AND_RESOLVE =
+  '`mutation A { addPullRequestReviewThreadReply(input: {}) { a } ' +
+  'resolveReviewThread(input: {}) { a } }`'
 
 // Each bad text names the rule that must find it. So one rule cannot hide a broken other rule.
 describe('the rules', () => {
@@ -314,6 +446,47 @@ describe('the rules', () => {
       `mutation { ${name}(input: $i) }`,
       POSTER,
     ]),
+    ...FORBIDDEN_WORDS.map((name): [string, string, string] => [
+      name,
+      `mutation { ${name}(input: $i) }`,
+      REQUEST_WRITES,
+    ]),
+    // A name outside a mutation, for example a call through another tool.
+    ['closePullRequest', "const op = 'closePullRequest'", 'live/x.ts'],
+    ['updatePullRequest', 'run({ field: updatePullRequest })', 'reviews/x.ts'],
+    ['createRef', 'createRef(input: { name: $n })', 'info/x.ts'],
+    [RULE.requestUnion, REVIEWS_NO_UNION, REQUEST_WRITES],
+    [RULE.requestUnion, REVIEWS_UNION_FALSE, REQUEST_WRITES],
+    [RULE.requestUnion, REVIEWS_BY_VARIABLE, REQUEST_WRITES],
+    [RULE.requestInput, REVIEWS_TEAMS, REQUEST_WRITES],
+    [RULE.requestInput, REVIEWS_TWO_USERS, REQUEST_WRITES],
+    [RULE.requestInput, REVIEWS_NO_UNION, REQUEST_WRITES],
+    [RULE.requestInput, REVIEWS_BY_VARIABLE, 'live/x.ts'],
+    [RULE.mutationWord, REPLY, 'reviews/request-posts.ts'],
+    [RULE.firstField, ADD, REQUEST_WRITES],
+    [RULE.inputField, ADD, REQUEST_WRITES],
+    [RULE.firstField, RESOLVE, POSTER],
+    [RULE.inputField, RESOLVE, POSTER],
+    [RULE.alias, REPLY_ALIAS, REQUEST_WRITES],
+    [RULE.secondField, REPLY_AND_RESOLVE, REQUEST_WRITES],
+    [RULE.method, "gh.run(['api', '--method', 'POST', path])", REQUEST_WRITES],
+    [
+      RULE.input,
+      "gh.run(['api', 'graphql', '--input', '-'], { input: x })\n" +
+        "gh.run(['api', 'graphql', '--input', '-'], { input: y })",
+      REQUEST_WRITES,
+    ],
+    [RULE.input, "gh.run(['api', path, '--input', '-'], { input: x })", REQUEST_WRITES],
+    [RULE.input, "gh.run(['api', 'graphql', '--input', file])", REQUEST_WRITES],
+    [RULE.ghCall, tpl("gh.run(['api', `repos/%{o}/%{r}/issues/%{n}/comments`])"), REQUEST_WRITES],
+    [
+      RULE.ghCall,
+      tpl(
+        "gh.run(['api', '--method', 'POST', `repos/%{owner}/%{repo}/pulls/%{number}/reviews`, " +
+          "'--input', '-'])",
+      ),
+      REQUEST_WRITES,
+    ],
     [RULE.events, '`repos/acme/tool/pulls/7/reviews/9/events`', 'reviews/x.ts'],
     [RULE.events, "'repos/o/r/pulls/1/reviews/2/events'", 'live/x.ts'],
     [RULE.dismissals, '`repos/acme/tool/pulls/7/reviews/9/dismissals`', 'reviews/x.ts'],
@@ -410,6 +583,17 @@ describe('the rules', () => {
       POSTER,
     ],
     [tpl("gh.run(['api', 'graphql', '-f', `query=%{query}`, ...fields])"), POSTER],
+    [tpl("gh.run(['api', 'graphql', '-f', `query=%{query}`, ...fields])"), REQUEST_WRITES],
+    [REPLY, REQUEST_WRITES],
+    [RESOLVE, REQUEST_WRITES],
+    [COMMENT, REQUEST_WRITES],
+    [REVIEWS, REQUEST_WRITES],
+    [COMMIT_ON_BRANCH, REQUEST_WRITES],
+    // The commit call sends its body on stdin.
+    ["gh.run(['api', 'graphql', '--input', '-'], { input: body })", REQUEST_WRITES],
+    // The R2 field and the R3 field start with a forbidden name, but are other words.
+    ['`mutation A { addPullRequestReviewThread(input: {}) { a } }`', POSTER],
+    ["const KIND = 'resolveReviewThread'", 'reviews/request-posts.ts'],
     ['`mutation Add($id: ID!) {\n  addPullRequestReviewThread(input: {}) { a }\n}`', POSTER],
     ['`mutation Set($id: ID!) { updatePullRequestReview(input: {}) { a } }`', POSTER],
     ["const GH_ARGS = ['pr', 'view', '--json', 'number']", 'info/pr-info.ts'],

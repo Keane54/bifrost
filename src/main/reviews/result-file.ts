@@ -88,7 +88,7 @@ const SIDES: readonly string[] = ['LEFT', 'RIGHT']
 const UNKNOWN_FIELD = 'an unknown field'
 // A control character, or a character that changes the direction of the text (Bidi_Control:
 // U+061C, U+200E, U+200F, U+202A to U+202E and U+2066 to U+2069).
-const CONTROL = /[\p{Cc}\p{Bidi_Control}]/u
+export const CONTROL = /[\p{Cc}\p{Bidi_Control}]/u
 
 type Parsed = { ok: true; result: ReviewResult } | { ok: false; reason: string }
 type Checked<T> = { ok: true; value: T } | { ok: false; reason: string }

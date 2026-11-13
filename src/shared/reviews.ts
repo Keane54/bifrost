@@ -18,6 +18,10 @@ export function prKey(owner: string, repo: string, number: number): string {
   return `${owner}/${repo}#${number}`
 }
 
+// An item ID has the form of a GitHub node ID, for example PRRT_kwDOexample1. A legacy node ID
+// is base64, so it can end with one or two = signs. The renderer sends only this ID for an item.
+export const ITEM_ID = /^[A-Za-z0-9_-]{1,100}={0,2}$/
+
 // The GraphQL login of the Copilot review bot.
 export const COPILOT_LOGIN = 'copilot-pull-request-reviewer'
 // Only these authors may give instructions to a session.
@@ -52,6 +56,7 @@ export type ClaudeState =
   | 'cloning'
   | 'waiting'
   | 'error'
+  | 'fork'
 
 export interface ToReviewRow {
   key: string
@@ -77,6 +82,25 @@ export interface ToReviewRow {
   error: string | null
 }
 
+// An open question of a request round. `where` names the file and line, or the author.
+// The longest answer to a question of Claude, in characters.
+export const MAX_ANSWER = 2_000
+// The most answers in one call of reviews.answer.
+export const MAX_ANSWERS = 50
+
+export interface QuestionRow {
+  id: string
+  where: string
+  question: string
+  // The comment of the reviewer. These are missing for a question that was saved before the quote
+  // was added, and for a comment that GitHub no longer has.
+  author?: string
+  body?: string
+  url?: string
+  // The kind of comment: a review thread or a PR comment or review.
+  kind?: 'thread' | 'comment'
+}
+
 export interface MyPrRow {
   key: string
   owner: string
@@ -87,6 +111,9 @@ export interface MyPrRow {
   reviewers: string[]
   failedChecks: number
   laterCopilot: number
+  // The last error of the PR. The row error hides it while a question is open, so the Answer
+  // panel shows it.
+  lastError: string | null
   olderOpen: number
   claude: ClaudeState
   fixing: number
@@ -95,6 +122,11 @@ export interface MyPrRow {
   updatedAt: number
   // True when GitHub has more items of the PR than the poll reads (final review I2).
   truncated: boolean
+  // True when a request round left posts that Bifrost did not send. Cancel on an error row drops
+  // them, and their comments wait for Handle now.
+  unsent: boolean
+  // The open questions of the PR, oldest first.
+  questions: QuestionRow[]
 }
 
 export interface TrustNeed {
@@ -103,6 +135,9 @@ export interface TrustNeed {
 }
 
 export interface ReviewsSnapshot {
+  // True when automatic fixes wait for the confirm of the user (ruling S20). The My PRs tab shows
+  // how to turn them on.
+  autoFixConfirm: boolean
   availability: ReviewsAvailability
   message: string | null
   polledAt: number | null
@@ -112,6 +147,7 @@ export interface ReviewsSnapshot {
 }
 
 export const EMPTY_REVIEWS: ReviewsSnapshot = {
+  autoFixConfirm: false,
   availability: 'off',
   message: null,
   mine: [],

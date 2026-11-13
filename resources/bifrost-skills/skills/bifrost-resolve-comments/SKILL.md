@@ -11,6 +11,20 @@ Handle the review comments on the user's own pull request (PR) `$ARGUMENTS`. If 
 the PR of the current branch. Take each comment on its own merits: fix it, answer it, or ask the
 user.
 
+## Started by Bifrost
+
+If `$ARGUMENTS` starts with `bifrost-input=`, Bifrost started this session, and the rest of the
+arguments is the path of the input file. The path can hold spaces. Read `mode.md` in the folder of
+that file, and obey it.
+
+`mode.md` replaces steps 1, 2, 3, 7, 8, 9 and 10, the reference file, and the rules about the
+push, the replies and the resolve. Steps 4, 5 and 6 still apply, with the changes of `mode.md`.
+Where the two files differ, `mode.md` applies.
+
+## Started by hand
+
+If `$ARGUMENTS` does not start with `bifrost-input=`, the user started this session.
+
 The exact `gh`, `git` and GraphQL calls are in `${CLAUDE_SKILL_DIR}/reference.md`. Read it before
 you call GitHub.
 

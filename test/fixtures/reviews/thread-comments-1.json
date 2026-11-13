@@ -1,0 +1,42 @@
+{
+  "data": {
+    "node": {
+      "comments": {
+        "nodes": [
+          {
+            "author": {
+              "__typename": "User",
+              "login": "alice"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Comment 51",
+            "createdAt": "2026-11-11T13:51:00.000Z",
+            "databaseId": 51,
+            "id": "PRRC_long51",
+            "pullRequestReview": {
+              "id": "PRR_alice2"
+            }
+          },
+          {
+            "author": {
+              "__typename": "User",
+              "login": "dana"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Comment 52",
+            "createdAt": "2026-11-11T13:52:00.000Z",
+            "databaseId": 52,
+            "id": "PRRC_long52",
+            "pullRequestReview": {
+              "id": "PRR_dana2"
+            }
+          }
+        ],
+        "pageInfo": {
+          "endCursor": null,
+          "hasNextPage": false
+        }
+      }
+    }
+  }
+}

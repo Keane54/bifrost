@@ -18,6 +18,7 @@ describe('Settings > Reviews', () => {
       removeClones: 'Remove all clones',
       requestModel: 'Model for request sessions',
       reviewModel: 'Model for review sessions',
+      signedCommits: 'Sign commits through GitHub',
       teamRequests: 'Show team requests',
       watch: 'Watch GitHub',
     })
@@ -52,14 +53,50 @@ describe('Settings > Reviews', () => {
     return SECTION.slice(SECTION.lastIndexOf('<', at), SECTION.indexOf('/>', at))
   }
 
-  it('shows the later-version hint only on the two R3 rows', () => {
-    for (const row of ['autoFix', 'requestModel'])
-      expect(rowElement(row), row).toContain('hint={LATER}')
-    for (const row of ['maxSessions', 'reviewModel']) {
+  it('has no later-version hint and the new hint on the auto-fix row', () => {
+    expect(SECTION).not.toContain('Comes in a later version.')
+    expect(SECTION).not.toContain('LATER')
+    expect(SECTION).not.toContain('they have no effect yet')
+    expect(rowElement('autoFix')).toContain(
+      "hint='Claude fixes or answers new review comments on your pull requests. Bifrost then pushes the fixes and posts the replies.'",
+    )
+    for (const row of ['maxSessions', 'reviewModel', 'requestModel']) {
       expect(rowElement(row), row).not.toContain('hint=')
     }
-    expect(SECTION).toContain("const LATER = 'Comes in a later version.'")
     expect(SECTION).toMatch(/<SettingRow[\s\S]*?hint=\{props\.hint\}[\s\S]*?label=\{props\.label\}/)
+  })
+
+  it('asks with useConfirm before it saves each turn-on of the auto-fix row', () => {
+    const start = SECTION.indexOf('label={REVIEWS_ROWS.autoFix}')
+    const body = SECTION.slice(start, SECTION.indexOf('/>', start))
+    const ask = body.indexOf('await confirm(AUTO_FIX_CONFIRM)')
+    const save = body.indexOf('update({ reviewsAutoFix: true })')
+    expect(ask).toBeGreaterThan(-1)
+    expect(save).toBeGreaterThan(ask)
+    expect(body).toContain('!settings.reviewsAutoFix')
+    expect(SECTION).toContain("title: 'Handle comments automatically?'")
+    expect(SECTION).toContain(
+      "body: 'When someone reviews one of your pull requests, Claude fixes or answers each new comment. Bifrost then pushes the fixes to your branch, replies to each comment and resolves its thread. It never force-pushes, merges or approves. Comments from before now wait until you choose Handle now.'",
+    )
+  })
+
+  it('has the Sign commits through GitHub row after the auto-fix row, with its hint', () => {
+    const row = rowElement('signedCommits')
+    expect(row).toContain('<CheckRow')
+    expect(row).toContain('checked={settings.reviewsSignedCommits}')
+    expect(row).toContain('save={value => update({ reviewsSignedCommits: value })}')
+    expect(row).toContain('hint={SIGNED_COMMITS_HINT}')
+    expect(SECTION).toContain(
+      'const SIGNED_COMMITS_HINT =\n' +
+        "  'Bifrost sends each fix to GitHub with your gh login, and GitHub signs the commit, " +
+        "so it ' +\n" +
+        `  "shows as Verified. You don't need a signing key."`,
+    )
+    for (const line of SECTION.split('\n')) {
+      if (line.includes('SIGNED_COMMITS_HINT')) expect(line.length).toBeLessThanOrEqual(100)
+    }
+    const autoFix = SECTION.indexOf('label={REVIEWS_ROWS.autoFix}')
+    expect(SECTION.indexOf('label={REVIEWS_ROWS.signedCommits}')).toBeGreaterThan(autoFix)
   })
 
   it('has the Remove all clones row with its hint and a Remove button', () => {
@@ -99,7 +136,7 @@ describe('Settings > Reviews', () => {
 
   it('has the new body in the Watch GitHub confirm', () => {
     expect(SECTION).toContain(
-      'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It makes its own copy of each of their repositories, and asks you to trust each copy once. When you click Review, Claude reviews the pull request and Bifrost saves a draft review on GitHub that only you can see. Nothing is ever submitted for you.',
+      'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It makes its own copy of each of their repositories, and asks you to trust each copy once. When you click Review, Claude reviews the pull request and Bifrost saves a draft review that only you can see. On your own pull requests, Claude fixes or answers new review comments, and Bifrost pushes the fixes and posts the replies. Bifrost never submits a review, approves or merges.',
     )
     expect(SECTION).not.toContain('It only reads for now')
   })

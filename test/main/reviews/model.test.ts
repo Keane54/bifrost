@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
+  autoFixOn,
   baselineOf,
   buildSnapshot,
   isCopilot,
   isIgnored,
   isTrustedHuman,
+  needsRound,
   outcomeOf,
-  type RequestContext,
   reviewStatus,
   splitWork,
+  type ToReviewContext,
   toReviewState,
+  workSince,
 } from '../../../src/main/reviews/model'
 import type {
   Author,
@@ -19,7 +22,14 @@ import type {
   PrReview,
   PrThread,
 } from '../../../src/main/reviews/pr-data'
-import { EMPTY_STATE, emptyPrState, type PrState } from '../../../src/main/reviews/state'
+import {
+  EMPTY_STATE,
+  emptyPrState,
+  handledEntry,
+  type Outbox,
+  type PrState,
+  type Question,
+} from '../../../src/main/reviews/state'
 import { COPILOT_LOGIN, PR_KEY, REPO_KEY, repoOf } from '../../../src/shared/reviews'
 
 const VIEWER = 'dev-user'
@@ -112,6 +122,14 @@ describe('author tests', () => {
     expect(isTrustedHuman(copilot, VIEWER)).toBe(false)
     expect(isTrustedHuman(outsider, VIEWER)).toBe(false)
     expect(isTrustedHuman(viewer, VIEWER)).toBe(false)
+  })
+
+  it('a comment of the viewer with another case of the login is never trusted work', () => {
+    const upper = { ...viewer, login: viewer.login.toUpperCase() }
+    expect(isTrustedHuman(upper, VIEWER)).toBe(false)
+    expect(isTrustedHuman(viewer, VIEWER.toUpperCase())).toBe(false)
+    const p = pr({ threads: [thread('t1', upper)] })
+    expect(splitWork(p, VIEWER, prState(), NONE, null).work).toEqual([])
   })
 })
 
@@ -346,7 +364,7 @@ function snapshotInput(poll: PollData, state: typeof EMPTY_STATE) {
     pollStartedAt: 0,
     session: () => null,
     sessionOf: () => null,
-    settings: { reviewsIgnore: [] as string[], reviewsTeamRequests: true },
+    settings: { reviewsAutoFix: true, reviewsIgnore: [] as string[], reviewsTeamRequests: true },
     state,
     trust: [],
   }
@@ -354,7 +372,7 @@ function snapshotInput(poll: PollData, state: typeof EMPTY_STATE) {
 
 describe('toReviewState', () => {
   const direct = pr({ requestedUsers: [VIEWER] })
-  const ctx = (over: Partial<RequestContext> = {}): RequestContext => ({
+  const ctx = (over: Partial<ToReviewContext> = {}): ToReviewContext => ({
     acted: false,
     known: undefined,
     now: 1000,
@@ -475,7 +493,11 @@ describe('isIgnored', () => {
 })
 
 describe('buildSnapshot', () => {
-  const settings = { reviewsIgnore: [] as string[], reviewsTeamRequests: true }
+  const settings = {
+    reviewsAutoFix: true,
+    reviewsIgnore: [] as string[],
+    reviewsTeamRequests: true,
+  }
   const waiting = { claude: 'waiting' as const, error: null, fixing: 0, sessionId: null }
 
   function input(poll: PollData, over: Partial<Parameters<typeof buildSnapshot>[0]> = {}) {
@@ -586,7 +608,7 @@ describe('buildSnapshot team flag', () => {
       pollStartedAt: 0,
       session: () => null,
       sessionOf: () => null,
-      settings: { reviewsIgnore: [], reviewsTeamRequests: true },
+      settings: { reviewsAutoFix: true, reviewsIgnore: [], reviewsTeamRequests: true },
       state,
       trust: [],
     })
@@ -730,7 +752,7 @@ describe('buildSnapshot of a busy PR', () => {
     pollStartedAt: 0,
     session: () => null,
     sessionOf: () => null,
-    settings: { reviewsIgnore: [] as string[], reviewsTeamRequests: true },
+    settings: { reviewsAutoFix: true, reviewsIgnore: [] as string[], reviewsTeamRequests: true },
     state: structuredClone(EMPTY_STATE),
     trust: [],
   })
@@ -851,7 +873,8 @@ describe('splitWork pins', () => {
     const ap = pr({
       decisions: [review('r1', member, { state: 'APPROVED', submittedAt: 1 }), ...later],
     })
-    const st = (p: PrData) => reviewStatus(p, VIEWER, { laterCopilot: [], older: [], work: [] })
+    const st = (p: PrData) =>
+      reviewStatus(p, VIEWER, { laterCopilot: [], older: [], posting: [], questions: [], work: [] })
     expect(st(cr)).toBe('changes-requested')
     expect(st(ap)).toBe('approved')
   })
@@ -864,5 +887,357 @@ describe('splitWork pins', () => {
     const split = splitWork(p, VIEWER, prState(), new Set(['pc1']), null)
     expect(ids(split.older)).toEqual(['pc1'])
     expect(reviewStatus(p, VIEWER, split)).toBe('approved')
+  })
+})
+
+const SHA = 'a'.repeat(40)
+
+function question(over: Partial<Question> = {}): Question {
+  return {
+    answer: null,
+    at: 1,
+    question: 'Which limit?',
+    seenUntil: 200,
+    where: 'a.ts line 1',
+    ...over,
+  }
+}
+
+describe('splitWork R3', () => {
+  it('an open question is neither work nor older', () => {
+    const p = pr({
+      comments: [comment('pc1', member)],
+      threads: [thread('t1', member), thread('t2', member)],
+    })
+    const state = prState({ questions: { pc1: question(), t1: question() } })
+    const split = splitWork(p, VIEWER, state, new Set(['t1']), null)
+    expect(ids(split.work)).toEqual(['t2'])
+    expect(split.older).toEqual([])
+    expect(split.questions).toEqual([
+      { id: 't1', kind: 'thread' },
+      { id: 'pc1', kind: 'comment' },
+    ])
+    // The thread of the question is still open, so the PR shows Comments.
+    const approved = pr({
+      decisions: [review('r1', member, { state: 'APPROVED' })],
+      threads: [thread('t1', member)],
+    })
+    expect(reviewStatus(approved, VIEWER, splitWork(approved, VIEWER, state, NONE, null))).toBe(
+      'comments',
+    )
+  })
+
+  it('an answered question is work, also when it is older', () => {
+    const p = pr({
+      comments: [comment('pc1', member, 50)],
+      threads: [thread('t1', member, { comments: [comment('c1', member, 50)] })],
+    })
+    const state = prState({
+      questions: { pc1: question({ answer: 'Use 10.' }), t1: question({ answer: 'Yes.' }) },
+    })
+    const split = splitWork(p, VIEWER, state, new Set(['t1', 'pc1']), 100)
+    expect(ids(split.work).sort()).toEqual(['pc1', 't1'])
+    expect(split.older).toEqual([])
+    expect(split.questions).toEqual([])
+  })
+
+  it('a trusted comment after seenUntil reopens a question', () => {
+    const t = (late: Author, at: number) =>
+      thread('t1', member, { comments: [comment('c1', member, 100), comment('c2', late, at)] })
+    const state = prState({ questions: { t1: question({ seenUntil: 200 }) } })
+    const split = (p: PrData) => splitWork(p, VIEWER, state, NONE, null)
+    expect(ids(split(pr({ threads: [t(member, 300)] })).work)).toEqual(['t1'])
+    expect(ids(split(pr({ threads: [t(member, 200)] })).questions)).toEqual(['t1'])
+    expect(ids(split(pr({ threads: [t(outsider, 300)] })).questions)).toEqual(['t1'])
+    expect(ids(split(pr({ threads: [t(viewer, 300)] })).questions)).toEqual(['t1'])
+  })
+
+  it('an open question stays a question, also when it is held', () => {
+    const t = (at: number) =>
+      thread('t1', member, { comments: [comment('c1', member, 100), comment('c2', member, at)] })
+    const state = prState({ checkedAt: 300, held: ['t1'], questions: { t1: question() } })
+    // No trusted comment after seenUntil (200): the item waits for the answer.
+    const waiting = splitWork(pr({ threads: [t(150)] }), VIEWER, state, NONE, null)
+    expect(ids(waiting.questions)).toEqual(['t1'])
+    expect(waiting.older).toEqual([])
+    expect(waiting.work).toEqual([])
+    // A comment after seenUntil reopens it. The hold then applies: the failed round saw that
+    // comment, so the item waits for Handle now.
+    const seen = splitWork(pr({ threads: [t(250)] }), VIEWER, state, NONE, null)
+    expect(ids(seen.older)).toEqual(['t1'])
+    expect(ids(splitWork(pr({ threads: [t(400)] }), VIEWER, state, NONE, null).work)).toEqual([
+      't1',
+    ])
+  })
+
+  it('a held item is older until Handle now', () => {
+    const p = pr({
+      comments: [comment('pc1', member, 500)],
+      reviews: [review('r1', member, { body: 'Fix it', state: 'CHANGES_REQUESTED' })],
+      threads: [thread('t1', member, { comments: [comment('c1', member, 500)] })],
+    })
+    const held = prState({ held: ['t1', 'pc1', 'r1'] })
+    const split = splitWork(p, VIEWER, held, NONE, 100)
+    expect(split.work).toEqual([])
+    expect(ids(split.older).sort()).toEqual(['pc1', 'r1', 't1'])
+    const now = splitWork(p, VIEWER, { ...held, handleOlder: true }, NONE, 100)
+    expect(ids(now.work).sort()).toEqual(['pc1', 'r1', 't1'])
+    expect(now.older).toEqual([])
+    // A held answered question waits too, so a failed round does not start again by itself.
+    const answered = { ...held, questions: { t1: question({ answer: 'Yes.' }) } }
+    expect(ids(splitWork(p, VIEWER, answered, NONE, 100).older)).toContain('t1')
+  })
+
+  it('a trusted comment after checkedAt reopens a held thread', () => {
+    const t = (at: number) =>
+      thread('t1', member, { comments: [comment('c1', member, 100), comment('c2', member, at)] })
+    // A handled thread with a reply after lastReplyAt stays held: the failed round saw it.
+    const state = prState({
+      checkedAt: 300,
+      handled: { t1: handledEntry(150, 150) },
+      held: ['t1'],
+    })
+    expect(ids(splitWork(pr({ threads: [t(250)] }), VIEWER, state, NONE, null).older)).toEqual([
+      't1',
+    ])
+    expect(ids(splitWork(pr({ threads: [t(400)] }), VIEWER, state, NONE, null).work)).toEqual([
+      't1',
+    ])
+    const unread = { ...state, checkedAt: null }
+    expect(ids(splitWork(pr({ threads: [t(400)] }), VIEWER, unread, NONE, null).older)).toEqual([
+      't1',
+    ])
+  })
+
+  it('an item in the outbox is neither work nor older', () => {
+    const p = pr({
+      comments: [comment('pc1', member), comment('pc2', member)],
+      threads: [thread('t1', member), thread('t2', member), thread('t3', member)],
+    })
+    const outbox: Outbox = {
+      headSha: SHA,
+      mergeBase: SHA,
+      posts: [
+        { id: 'reply:t1', itemId: 't1', kind: 'reply', state: 'done', text: null },
+        { id: 'resolve:t1', itemId: 't1', kind: 'resolve', state: 'todo' },
+        {
+          id: 'comment:pc1',
+          itemId: 'pc1',
+          kind: 'comment',
+          quote: '> x',
+          state: 'todo',
+          text: 'y',
+        },
+        { id: 'resolve:t2', itemId: 't2', kind: 'resolve', state: 'dropped' },
+      ],
+      seen: {},
+      startedAt: 1,
+    }
+    const state = prState({ held: ['t2'], outbox, questions: { t1: question() } })
+    const split = splitWork(p, VIEWER, state, new Set(['t3']), null)
+    expect(ids(split.work)).toEqual(['pc2'])
+    expect(ids(split.older)).toEqual(['t3'])
+    expect(split.questions).toEqual([])
+    expect(ids(split.posting)).toEqual(['t1', 't2', 'pc1'])
+  })
+
+  it('an open thread in the outbox still gives Comments', () => {
+    const p = pr({
+      comments: [comment('pc1', member)],
+      decisions: [review('r1', member, { state: 'APPROVED' })],
+      threads: [thread('t1', member)],
+    })
+    const outbox: Outbox = {
+      headSha: SHA,
+      mergeBase: SHA,
+      posts: [
+        { id: 'reply:t1', itemId: 't1', kind: 'reply', state: 'dropped', text: null },
+        {
+          id: 'comment:pc1',
+          itemId: 'pc1',
+          kind: 'comment',
+          quote: '> x',
+          state: 'todo',
+          text: 'y',
+        },
+      ],
+      seen: {},
+      startedAt: 1,
+    }
+    const split = splitWork(p, VIEWER, prState({ outbox }), NONE, null)
+    expect(reviewStatus(p, VIEWER, split)).toBe('comments')
+    // A PR comment in the outbox alone does not change the status word.
+    const top = pr({ comments: p.comments, decisions: p.decisions })
+    expect(reviewStatus(top, VIEWER, splitWork(top, VIEWER, prState({ outbox }), NONE, null))).toBe(
+      'approved',
+    )
+  })
+
+  it('a No action item that a trusted human answers later is work again', () => {
+    const state = prState({
+      handled: { pc1: handledEntry(150, null), t1: handledEntry(150, null) },
+    })
+    const t = (extra: PrComment[]) =>
+      thread('t1', member, { comments: [comment('c1', member, 100), ...extra] })
+    expect(splitWork(pr({ threads: [t([])] }), VIEWER, state, NONE, null).work).toEqual([])
+    const later = pr({ threads: [t([comment('c2', member, 200)])] })
+    expect(ids(splitWork(later, VIEWER, state, NONE, null).work)).toEqual(['t1'])
+    // A PR comment has no thread. A new trusted PR comment is a new item.
+    const top = pr({ comments: [comment('pc1', member, 100), comment('pc2', member, 200)] })
+    expect(ids(splitWork(top, VIEWER, state, NONE, null).work)).toEqual(['pc2'])
+  })
+
+  it('the saved first Copilot review wins over an earlier review that shows later', () => {
+    const p = pr({
+      reviews: [
+        review('r1', copilot, { submittedAt: 1000 }),
+        review('r2', copilot, { submittedAt: 2000 }),
+      ],
+      threads: [
+        thread('t1', copilot, { reviewId: 'r1' }),
+        thread('t2', copilot, { reviewId: 'r2' }),
+      ],
+    })
+    const fresh = splitWork(p, VIEWER, prState(), NONE, null)
+    expect(ids(fresh.work)).toEqual(['t1'])
+    const saved = splitWork(p, VIEWER, prState({ firstCopilotReview: 'r2' }), NONE, null)
+    expect(ids(saved.work)).toEqual(['t2'])
+    expect(ids(saved.laterCopilot)).toEqual(['t1'])
+    // A saved first review that GitHub deleted makes no later review the first.
+    const gone = splitWork(p, VIEWER, prState({ firstCopilotReview: 'r0' }), NONE, null)
+    expect(gone.work).toEqual([])
+    expect(ids(gone.laterCopilot)).toEqual(['t1', 't2'])
+  })
+
+  it('an item from before fixFrom is older', () => {
+    const p = pr({ comments: [comment('pc1', member, 200), comment('pc2', member, 400)] })
+    const state = { ...structuredClone(EMPTY_STATE), fixFrom: 300, turnedOnAt: 100 }
+    expect(workSince(state)).toBe(300)
+    expect(workSince({ ...state, fixFrom: null })).toBe(100)
+    expect(workSince({ ...state, fixFrom: null, turnedOnAt: null })).toBeNull()
+    const split = splitWork(p, VIEWER, prState(), NONE, workSince(state))
+    expect(ids(split.older)).toEqual(['pc1'])
+    expect(ids(split.work)).toEqual(['pc2'])
+    const poll: PollData = {
+      errors: [],
+      mine: [p],
+      mineHasMore: false,
+      rateLimit: null,
+      toReview: [],
+      toReviewHasMore: false,
+      viewer: VIEWER,
+    }
+    expect(buildSnapshot({ ...snapshotInput(poll, state) }).mine[0]?.olderOpen).toBe(1)
+  })
+})
+
+describe('needsRound', () => {
+  const work = (n: number) => ({
+    laterCopilot: [],
+    older: [],
+    posting: [],
+    questions: [],
+    work: Array.from({ length: n }, (_, i) => ({ id: `t${i}`, kind: 'thread' as const })),
+  })
+
+  it('needsRound: no for a fork or autoFix off, yes for work or a newer cut thread list', () => {
+    expect(needsRound(pr(), work(1), prState(), true)).toBe(true)
+    expect(needsRound(pr(), work(0), prState(), true)).toBe(false)
+    expect(needsRound(pr({ isCrossRepository: true }), work(1), prState(), true)).toBe(false)
+    expect(needsRound(pr(), work(1), prState(), false)).toBe(false)
+    const cut = pr({ truncatedThreads: true, updatedAt: 500 })
+    expect(needsRound(cut, work(0), prState(), true)).toBe(true)
+    expect(needsRound(cut, work(0), prState({ checkedAt: 400 }), true)).toBe(true)
+    expect(needsRound(cut, work(0), prState({ checkedAt: 500 }), true)).toBe(false)
+    expect(needsRound(cut, work(0), prState(), false)).toBe(false)
+    expect(needsRound({ ...cut, isCrossRepository: true }, work(0), prState(), true)).toBe(false)
+    // Only a cut thread list asks for a full read.
+    const comments = pr({ truncatedComments: true, updatedAt: 500 })
+    expect(needsRound(comments, work(0), prState(), true)).toBe(false)
+  })
+})
+
+describe('buildSnapshot R3', () => {
+  const poll = (mine: PrData[]): PollData => ({
+    errors: [],
+    mine,
+    mineHasMore: false,
+    rateLimit: null,
+    toReview: [],
+    toReviewHasMore: false,
+    viewer: VIEWER,
+  })
+
+  it('olderOpen counts the work too while autoFix is off', () => {
+    const p = pr({ threads: [thread('t1', member), thread('t2', member)] })
+    const state = { ...structuredClone(EMPTY_STATE), baseline: ['t1'] }
+    const input = snapshotInput(poll([p]), state)
+    expect(buildSnapshot(input).mine[0]?.olderOpen).toBe(1)
+    const off = { ...input, settings: { ...input.settings, reviewsAutoFix: false } }
+    expect(buildSnapshot(off).mine[0]?.olderOpen).toBe(2)
+  })
+
+  it('buildSnapshot gives the open questions with where and question', () => {
+    const p = pr({ threads: [thread('t1', member)] })
+    const state = structuredClone(EMPTY_STATE)
+    state.prs[p.key] = prState({
+      questions: {
+        pc1: question({ at: 30, question: 'Is the README in scope?', where: 'Comment from alice' }),
+        t1: question({ at: 10, question: 'Which limit?', where: 'a.ts line 1' }),
+        t9: question({ answer: 'Ten.', at: 5 }),
+      },
+    })
+    const row = buildSnapshot(snapshotInput(poll([p]), state)).mine[0]
+    expect(row?.questions).toEqual([
+      { id: 't1', question: 'Which limit?', where: 'a.ts line 1' },
+      { id: 'pc1', question: 'Is the README in scope?', where: 'Comment from alice' },
+    ])
+    const empty = buildSnapshot(snapshotInput(poll([p]), structuredClone(EMPTY_STATE))).mine[0]
+    expect(empty?.questions).toEqual([])
+  })
+
+  it('a saved flag of ruling S20 counts the work as waiting and asks for the hint', () => {
+    const p = pr({ threads: [thread('t1', member), thread('t2', member)] })
+    const state = { ...structuredClone(EMPTY_STATE), autoFixConsent: false, baseline: ['t1'] }
+    const snap = buildSnapshot(snapshotInput(poll([p]), state))
+    expect(snap.autoFixConfirm).toBe(true)
+    expect(snap.mine[0]?.olderOpen).toBe(2)
+    for (const autoFixConsent of [null, true]) {
+      const on = buildSnapshot(snapshotInput(poll([p]), { ...state, autoFixConsent }))
+      expect(on.autoFixConfirm).toBe(false)
+      expect(on.mine[0]?.olderOpen).toBe(1)
+    }
+  })
+
+  it('autoFixOn needs the setting and no saved flag of ruling S20', () => {
+    expect(autoFixOn({ reviewsAutoFix: true }, { autoFixConsent: null })).toBe(true)
+    expect(autoFixOn({ reviewsAutoFix: true }, { autoFixConsent: true })).toBe(true)
+    expect(autoFixOn({ reviewsAutoFix: true }, { autoFixConsent: false })).toBe(false)
+    expect(autoFixOn({ reviewsAutoFix: false }, { autoFixConsent: true })).toBe(false)
+  })
+
+  it('buildSnapshot marks a row with an outbox as unsent', () => {
+    const p = pr({ threads: [thread('t1', member)] })
+    const state = structuredClone(EMPTY_STATE)
+    const outbox = {
+      headSha: 'a'.repeat(40),
+      mergeBase: 'b'.repeat(40),
+      posts: [],
+      seen: {},
+      startedAt: 1,
+    }
+    state.prs[p.key] = prState({ outbox })
+    expect(buildSnapshot(snapshotInput(poll([p]), state)).mine[0]?.unsent).toBe(true)
+    const none = buildSnapshot(snapshotInput(poll([p]), structuredClone(EMPTY_STATE))).mine[0]
+    expect(none?.unsent).toBe(false)
+  })
+
+  it('buildSnapshot gives the last error of the PR', () => {
+    const p = pr({ threads: [thread('t1', member)] })
+    const state = structuredClone(EMPTY_STATE)
+    state.prs[p.key] = prState({ lastError: 'It broke.' })
+    expect(buildSnapshot(snapshotInput(poll([p]), state)).mine[0]?.lastError).toBe('It broke.')
+    const none = buildSnapshot(snapshotInput(poll([p]), structuredClone(EMPTY_STATE))).mine[0]
+    expect(none?.lastError).toBeNull()
   })
 })

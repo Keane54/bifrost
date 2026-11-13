@@ -2,6 +2,8 @@
 // GitHub with gh, keeps the Reviews state, and sends each new snapshot to the page.
 // It has the shape of the account usage poller: a generation counter, a busy flag, a deadline
 // for each poll, and the next poll after the end of a poll.
+
+import { githubCommentUrl } from '../../shared/github-url'
 import {
   type ClaudeState,
   EMPTY_REVIEWS,
@@ -26,14 +28,20 @@ import type { ReviewsStateStore } from './state-store'
 export const POLL_DEADLINE_MS = 60_000
 // Refresh polls at once, but not more than one time in 5 seconds.
 export const REFRESH_GAP_MS = 5_000
+export const REFUSED_NO_COMMENT_LINK = 'refused: no GitHub link for this comment'
 export const REFUSED_UNKNOWN_PR = 'refused: unknown pull request'
 export const REFUSED_REVIEWS_OFF = 'refused: reviews are off'
 
 // Bifrost opens only a PR URL that starts with this text.
 const GITHUB_URL = 'https://github.com/'
 
-// The fixing state is for R3. R2 has no fixing session.
-const R1_CLAUDE: { claude: ClaudeState; fixing: number; error: string | null; sessionId: null } = {
+// The state of a My PRs row when no runner gives one.
+export const IDLE_MINE: {
+  claude: ClaudeState
+  fixing: number
+  error: string | null
+  sessionId: null
+} = {
   claude: 'waiting',
   error: null,
   fixing: 0,
@@ -55,7 +63,11 @@ export interface WatcherDeps {
   // The watcher reads the settings at each use, so a change applies at once.
   settings(): Pick<
     Settings,
-    'reviewsTeamRequests' | 'reviewsIgnore' | 'reviewsPollMinutes' | 'reviewsPauseMinutes'
+    | 'reviewsTeamRequests'
+    | 'reviewsIgnore'
+    | 'reviewsPollMinutes'
+    | 'reviewsPauseMinutes'
+    | 'reviewsAutoFix'
   >
   // Milliseconds since the epoch (Date.now in the app).
   now(): number
@@ -67,7 +79,7 @@ export interface WatcherDeps {
   // The health log gets the result of each poll and the stop (P5, P7). The default does nothing.
   health?: Pick<HealthEvents, 'poll' | 'stopped'>
   // The review runner. Without it, no PR has a session.
-  reviews?: Pick<ReviewRunner, 'session' | 'sessionOf' | 'trust' | 'afterPoll'>
+  reviews?: Pick<ReviewRunner, 'session' | 'sessionOf' | 'trust' | 'afterPoll' | 'mine'>
 }
 
 export interface ReviewsWatcher {
@@ -96,6 +108,8 @@ export interface ReviewsWatcher {
   rateLimit(): RateLimit | null
   // The To review PR with this key from the last poll, or null.
   toReviewPr(key: string): PrData | null
+  // The My PRs PR with this key from the last poll, or null.
+  minePr(key: string): PrData | null
   // The login of the user from the last poll, or null before the first good poll and after stop.
   viewer(): string | null
 }
@@ -212,7 +226,7 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
     const failed = failure === null ? {} : { ...failure }
     if (lastPoll === null) return { ...EMPTY_REVIEWS, availability: 'starting', ...failed }
     const built = buildSnapshot({
-      claude: () => R1_CLAUDE,
+      claude: key => deps.reviews?.mine(key) ?? IDLE_MINE,
       now: deps.now(),
       poll: lastPoll,
       pollStartedAt,
@@ -399,6 +413,7 @@ export function createReviewsWatcher(deps: WatcherDeps): ReviewsWatcher {
         pauses: Object.fromEntries(Object.entries(s.pauses).filter(([k]) => k !== key)),
       }))
     },
+    minePr: key => lastPoll?.mine.find(p => p.key === key) ?? null,
     async pause(key) {
       requestRow(key)
       const until = deps.now() + deps.settings().reviewsPauseMinutes * 60_000
@@ -479,11 +494,50 @@ export function whileOn(watcher: ReviewsWatcher | null): ReviewsWatcher {
   return watcher
 }
 
+// The PR key that the page sent, when it is a row of either tab of the current snapshot. Else
+// refuse with REFUSED_UNKNOWN_PR.
+export function rowKey(watcher: ReviewsWatcher, value: unknown): string {
+  const key = checkPrKey(value)
+  const snapshot = watcher.current()
+  if (![...snapshot.toReview, ...snapshot.mine].some(row => row.key === key)) {
+    throw new Error(REFUSED_UNKNOWN_PR)
+  }
+  return key
+}
+
+// The PR key that the page sent, when it is a My PRs row of the current snapshot. Else refuse
+// with REFUSED_UNKNOWN_PR.
+export function mineKey(watcher: ReviewsWatcher, value: unknown): string {
+  const key = checkPrKey(value)
+  if (!watcher.current().mine.some(row => row.key === key)) throw new Error(REFUSED_UNKNOWN_PR)
+  return key
+}
+
 // The URL that Open on GitHub opens for the key that the page sent. Refuse while the watcher is
 // off, and for a key with no PR or no GitHub URL.
 export function urlToOpen(watcher: ReviewsWatcher | null, key: unknown): string {
   const url = whileOn(watcher).urlOf(checkPrKey(key))
   if (url === null) throw new Error(REFUSED_UNKNOWN_PR)
+  return url
+}
+
+// The link that View on GitHub opens for a question of the Answer panel. The page sends the PR
+// key and the item ID only. The link is the one that Bifrost saved with the question. Refuse
+// while the watcher is off, for an unknown PR or question, and for a link that is not a https
+// link on github.com.
+export function commentUrlToOpen(
+  watcher: ReviewsWatcher | null,
+  key: unknown,
+  itemId: unknown,
+): string {
+  const on = whileOn(watcher)
+  const prKey = checkPrKey(key)
+  const row = on.current().mine.find(r => r.key === prKey)
+  const question =
+    typeof itemId === 'string' ? row?.questions.find(q => q.id === itemId) : undefined
+  if (question === undefined) throw new Error(REFUSED_UNKNOWN_PR)
+  const url = githubCommentUrl(question.url)
+  if (url === null) throw new Error(REFUSED_NO_COMMENT_LINK)
   return url
 }
 

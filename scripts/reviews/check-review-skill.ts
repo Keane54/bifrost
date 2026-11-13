@@ -282,8 +282,10 @@ function makeRepos(): RepoStore {
   })
   const unused = (): never => fail('the check does not use this function of the store')
   return {
+    changedPaths: unused,
     checkAndClean: unused,
     cloneOf: unused,
+    commitFix: unused,
     ensureClone: unused,
     fetchPr: unused,
     hasCommit: product.hasCommit,

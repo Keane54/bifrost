@@ -1,0 +1,105 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "author": {
+          "login": "dana"
+        },
+        "baseRefName": "main",
+        "baseRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "body": "This adds a rate limit to the client.",
+        "headRefName": "feature",
+        "headRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "id": "PR_kwDOacme9",
+        "isCrossRepository": false,
+        "latestOpinionatedReviews": {
+          "nodes": [
+            {
+              "author": {
+                "__typename": "User",
+                "id": "U_kgDOalice",
+                "login": "alice"
+              },
+              "state": "CHANGES_REQUESTED"
+            }
+          ],
+          "pageInfo": {
+            "hasNextPage": false
+          }
+        },
+        "pending": {
+          "nodes": [
+            {
+              "viewerDidAuthor": false
+            }
+          ]
+        },
+        "repository": {
+          "defaultBranchRef": {
+            "name": "main"
+          }
+        },
+        "reviewRequests": {
+          "nodes": [
+            {
+              "requestedReviewer": {
+                "__typename": "User",
+                "login": "carol"
+              }
+            },
+            {
+              "requestedReviewer": {
+                "__typename": "Team"
+              }
+            }
+          ],
+          "pageInfo": {
+            "hasNextPage": false
+          }
+        },
+        "reviews": {
+          "nodes": [
+            {
+              "author": {
+                "__typename": "Bot",
+                "login": "copilot-pull-request-reviewer"
+              },
+              "authorAssociation": "NONE",
+              "body": "Copilot reviewed 3 files.",
+              "commit": {
+                "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "databaseId": 101,
+              "id": "PRR_copilot1",
+              "state": "COMMENTED",
+              "submittedAt": "2026-11-10T09:00:00Z"
+            },
+            {
+              "author": {
+                "__typename": "User",
+                "login": "alice"
+              },
+              "authorAssociation": "MEMBER",
+              "body": "Please add a limit check.",
+              "commit": {
+                "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+              },
+              "databaseId": 102,
+              "id": "PRR_alice1",
+              "state": "CHANGES_REQUESTED",
+              "submittedAt": "2026-11-11T09:00:00Z"
+            }
+          ],
+          "pageInfo": {
+            "endCursor": null,
+            "hasNextPage": false
+          }
+        },
+        "state": "OPEN",
+        "title": "Add the rate limit",
+        "updatedAt": "2026-11-12T10:00:00Z",
+        "url": "https://github.com/acme/api/pull/9"
+      }
+    }
+  }
+}

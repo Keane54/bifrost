@@ -1,4 +1,5 @@
 // The one GraphQL query of a poll, and the reader of its answer.
+import { isRecord } from '../../shared/plain-object'
 import { PR_KEY, prKey } from '../../shared/reviews'
 import type {
   Author,
@@ -15,9 +16,11 @@ const SEARCH_OPEN = 'is:pr is:open archived:false'
 
 // A thread reads 10 comments. With 50, GitHub refuses the query: more than 500,000 nodes.
 const AUTHOR = 'author { login __typename } authorAssociation'
+// The request context query (request-query.ts) reads the same fields, so these are exported.
 // IssueComment (top level) has no pullRequestReview. Only a thread comment has it.
-const COMMENT_FIELDS = `id databaseId ${AUTHOR} body createdAt`
-const THREAD_COMMENT_FIELDS = `${COMMENT_FIELDS} pullRequestReview { id }`
+export const COMMENT_FIELDS = `id databaseId ${AUTHOR} body createdAt url`
+export const THREAD_COMMENT_FIELDS = `${COMMENT_FIELDS} pullRequestReview { id }`
+export const REVIEW_FIELDS = `id databaseId ${AUTHOR} state body submittedAt commit { oid } url`
 
 // The fields of both fragments. A fragment of To review PRs has no reviews, threads or comments.
 const PR_HEAD = `
@@ -74,7 +77,7 @@ const prChecks = (contexts: number): string => `
 const PR_CONVERSATION = `
   reviews(first: 30) {
     pageInfo { hasNextPage }
-    nodes { id databaseId ${AUTHOR} state body submittedAt commit { oid } }
+    nodes { ${REVIEW_FIELDS} }
   }
   latestOpinionatedReviews(first: 20) {
     pageInfo { hasNextPage }
@@ -150,9 +153,7 @@ export function countFailed(contexts: unknown[]): number {
 }
 
 function obj(v: unknown): Record<string, unknown> | null {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : null
+  return isRecord(v) ? v : null
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null)
@@ -184,7 +185,13 @@ function authorOf(node: Record<string, unknown>): Author {
   return { ...author(node.author), association: str(node.authorAssociation) ?? 'NONE' }
 }
 
-function readComment(v: unknown): PrComment | null {
+// The optional link of a comment or a review.
+function urlField(o: Record<string, unknown>): { url?: string } {
+  const url = str(o.url)
+  return url === null ? {} : { url }
+}
+
+export function readComment(v: unknown): PrComment | null {
   const o = obj(v)
   const id = str(o?.id)
   if (!o || id === null) return null
@@ -194,6 +201,7 @@ function readComment(v: unknown): PrComment | null {
     createdAt: time(o.createdAt) ?? 0,
     databaseId: num(o.databaseId),
     id,
+    ...urlField(o),
   }
 }
 
@@ -201,7 +209,7 @@ function readComments(v: unknown): PrComment[] {
   return nodes(v).flatMap(c => readComment(c) ?? [])
 }
 
-const REVIEW_STATES: readonly string[] = [
+export const REVIEW_STATES: readonly string[] = [
   'APPROVED',
   'CHANGES_REQUESTED',
   'COMMENTED',
@@ -209,7 +217,7 @@ const REVIEW_STATES: readonly string[] = [
   'PENDING',
 ]
 
-function readReview(v: unknown): PrReview | null {
+export function readReview(v: unknown): PrReview | null {
   const o = obj(v)
   const id = str(o?.id)
   const state = str(o?.state)
@@ -222,10 +230,11 @@ function readReview(v: unknown): PrReview | null {
     id,
     state: state as ReviewState,
     submittedAt: time(o.submittedAt),
+    ...urlField(o),
   }
 }
 
-function readThread(v: unknown): { thread: PrThread; truncated: boolean } | null {
+export function readThread(v: unknown): { thread: PrThread; truncated: boolean } | null {
   const o = obj(v)
   const id = str(o?.id)
   if (!o || id === null) return null

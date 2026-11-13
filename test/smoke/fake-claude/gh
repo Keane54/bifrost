@@ -14,17 +14,30 @@
 # ReviewContext query gets review-context.json. The create of a pending review saves stdin to
 # review-post.json. Each fixture gets the content of smoke-head in place of @HEAD@.
 #
-# Each write call goes to gh-writes.log in the test home, in both modes. A write call is an api
+# The request-round mode applies when gh-fixtures holds request-round. The first poll gets
+# request-round-poll-1.json. Each later poll gets request-round-poll-2.json, which has one new
+# review thread. The script puts the time of the first later poll in place of @CREATED@, and it
+# keeps that time in the test home. The RequestContext, RequestThreads and RequestComments
+# queries get their fixtures. After the ResolveThread write, the poll and RequestThreads show the
+# thread as resolved. The four writes of a request round get a good answer.
+#
+# In the request-round mode, the signed commit write (api graphql --input -) acts as GitHub with
+# createCommitOnBranch. The script saves stdin to gh-commit.json. It makes the commit in the bare
+# remote of acme/api with git: one parent (expectedHeadOid), one added file as a regular file, and
+# the headline as the message. The ref moves only from expectedHeadOid. The script reads the JSON
+# with sed, so it knows only the form that Bifrost sends for one added file and no delete.
+#
+# Each write call goes to gh-writes.log in the test home, in all modes. A write call is an api
 # call with a method that is not GET, an api call with a field or an input and no method (gh sends
 # it as POST), a GraphQL mutation (the word mutation in a query field, in any case), or a pr call
-# that is not pr view. The Poll and ReviewContext queries of Bifrost send their fields as POST
-# too. Only their exact forms are reads.
+# that is not pr view. The read queries of Bifrost send their fields as POST too. Only their exact
+# forms are reads.
 
 dir=$(cd "$(dirname "$0")" && pwd)
 home=${BIFROST_TEST_HOME:-}
 
-# True for the exact form of the Poll query or of the ReviewContext query: the query field, then
-# only the known fields of ReviewContext.
+# True for the exact form of a read query of Bifrost: the Poll query with no field, or the query
+# field of a PR query or of the ThreadComments query, then only the known fields of that query.
 is_read_query() {
   [ "$#" -ge 4 ] && [ "$1 $2 $3" = 'api graphql -f' ] || return 1
   case "$4" in
@@ -32,18 +45,73 @@ is_read_query() {
       [ "$#" -eq 4 ]
       return
       ;;
-    'query=query ReviewContext('*) ;;
+    'query=query ReviewContext('* | 'query=query RequestContext('*) known=pr ;;
+    'query=query RequestThreads('* | 'query=query RequestComments('*) known=pr ;;
+    'query=query ThreadComments('*) known=node ;;
     *) return 1 ;;
   esac
   shift 4
   while [ "$#" -ge 2 ]; do
-    case "$1 $2" in
-      '-f owner='* | '-f repo='* | '-F number='* | '-f login='* | '-F head='* | '-f after='*) ;;
+    case "$known:$1 $2" in
+      'pr:-f owner='* | 'pr:-f repo='* | 'pr:-F number='* | 'pr:-f login='*) ;;
+      'pr:-F head='* | 'pr:-f after='* | 'node:-f id='* | 'node:-f after='*) ;;
       *) return 1 ;;
     esac
     shift 2
   done
   [ "$#" -eq 0 ]
+}
+
+# Do the signed commit write of the request-round mode on the bare remote, and print the answer.
+signed_commit() {
+  body=$(cat)
+  printf '%s' "$body" >"$home/gh-commit.json"
+  expected=$(printf '%s\n' "$body" | sed -n 's/.*"expectedHeadOid":"\([0-9a-f]*\)".*/\1/p')
+  contents=$(printf '%s\n' "$body" | sed -n 's/.*"additions":\[{"contents":"\([^"]*\)".*/\1/p')
+  pattern='s/.*"additions":\[{"contents":"[^"]*","path":"\([^"]*\)"}\].*/\1/p'
+  path=$(printf '%s\n' "$body" | sed -n "$pattern")
+  headline=$(printf '%s\n' "$body" | sed -n 's/.*"headline":"\([^"]*\)".*/\1/p')
+  bare="$home/git-remotes/acme/api.git"
+  index="$home/gh-commit-index"
+  GIT_CONFIG_GLOBAL=/dev/null
+  GIT_CONFIG_NOSYSTEM=1
+  GIT_AUTHOR_NAME='Fake GitHub'
+  GIT_AUTHOR_EMAIL=fake-github@example.invalid
+  GIT_COMMITTER_NAME='Fake GitHub'
+  GIT_COMMITTER_EMAIL=fake-github@example.invalid
+  export GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL
+  export GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+  now=$(git --git-dir="$bare" rev-parse --verify refs/heads/feature)
+  if [ -z "$expected" ] || [ -z "$path" ] || [ -z "$headline" ] || [ "$now" != "$expected" ]; then
+    echo '{"data":{"createCommitOnBranch":null},"errors":[{"message":"Expected another head."}]}'
+    return 1
+  fi
+  printf '%s' "$contents" | base64 --decode >"$home/gh-commit-blob" || return 1
+  blob=$(git --git-dir="$bare" hash-object -w --no-filters -- "$home/gh-commit-blob") || return 1
+  GIT_INDEX_FILE=$index git --git-dir="$bare" read-tree "$now" || return 1
+  GIT_INDEX_FILE=$index git --git-dir="$bare" update-index --add --cacheinfo "100644,$blob,$path" ||
+    return 1
+  tree=$(GIT_INDEX_FILE=$index git --git-dir="$bare" write-tree) || return 1
+  oid=$(git --git-dir="$bare" commit-tree "$tree" -p "$now" -m "$headline") || return 1
+  git --git-dir="$bare" update-ref refs/heads/feature "$oid" "$now" || return 1
+  printf '{"data":{"createCommitOnBranch":{"commit":{"oid":"%s"}}}}\n' "$oid"
+}
+
+# Print a fixture of the request-round mode with the head commit and the time of the new thread
+# in place. The first call after the first poll saves that time in the test home. After the
+# ResolveThread write, the thread shows as resolved.
+request_fixture() {
+  stamp="$home/gh-created"
+  if [ ! -f "$stamp" ]; then
+    date -u +%Y-%m-%dT%H:%M:%SZ >"$stamp"
+  fi
+  created=$(cat "$stamp")
+  resolved=false
+  if [ -f "$home/gh-resolved" ]; then
+    resolved=true
+  fi
+  sed -e "s/@HEAD@/$(cat "$home/smoke-head")/g" -e "s/@CREATED@/$created/g" \
+    -e "s/\"isResolved\": false/\"isResolved\": $resolved/" "$dir/../fixtures/$1"
 }
 
 write=no
@@ -112,6 +180,60 @@ if [ "$mode" = review-round ]; then
     cat >"$home/review-post.json"
     echo '{"node_id":"PRR_fake","state":"PENDING","html_url":"https://github.com/acme/api/pull/7"}'
     exit 0
+  fi
+elif [ "$mode" = request-round ]; then
+  if [ "$*" = 'api graphql --input -' ]; then
+    signed_commit
+    exit
+  fi
+  if [ "$#" -ge 4 ] && [ "$1 $2 $3" = 'api graphql -f' ]; then
+    case "$4" in
+      'query=query Poll {'*)
+        # A counter file in the test home tells the first poll from a later poll. The smoke test
+        # reads it to wait for a poll.
+        count=$(cat "$home/gh-polls" 2>/dev/null)
+        count=$((${count:-0} + 1))
+        if [ "$count" -eq 1 ]; then
+          sed "s/@HEAD@/$(cat "$home/smoke-head")/g" "$dir/../fixtures/request-round-poll-1.json"
+        else
+          request_fixture request-round-poll-2.json
+        fi
+        echo "$count" >"$home/gh-polls"
+        exit 0
+        ;;
+      'query=query RequestContext('*)
+        request_fixture request-context.json
+        exit 0
+        ;;
+      'query=query RequestThreads('*)
+        request_fixture request-threads.json
+        exit 0
+        ;;
+      'query=query RequestComments('*)
+        request_fixture request-comments.json
+        exit 0
+        ;;
+      'query=mutation ReplyToThread('*)
+        comment="{\"createdAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"id\":\"PRRC_fake\","
+        comment="$comment\"state\":\"SUBMITTED\"}"
+        printf '{"data":{"addPullRequestReviewThreadReply":{"comment":%s}}}\n' "$comment"
+        exit 0
+        ;;
+      'query=mutation ResolveThread('*)
+        : >"$home/gh-resolved"
+        echo '{"data":{"resolveReviewThread":{"thread":{"id":"PRRT_fake1","isResolved":true}}}}'
+        exit 0
+        ;;
+      'query=mutation CommentOnPr('*)
+        node="{\"createdAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"id\":\"IC_fake\"}"
+        printf '{"data":{"addComment":{"commentEdge":{"node":%s}}}}\n' "$node"
+        exit 0
+        ;;
+      'query=mutation RequestReviewer('*)
+        echo '{"data":{"requestReviews":{"pullRequest":{"id":"PR_fake9"}}}}'
+        exit 0
+        ;;
+    esac
   fi
 elif [ "$#" -ge 3 ] && [ "$1 $2 $3" = 'api graphql -f' ]; then
   # A counter file in the test home tells the first poll from a later poll.

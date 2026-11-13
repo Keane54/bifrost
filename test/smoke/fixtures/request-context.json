@@ -1,0 +1,49 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "author": {
+          "login": "dev-user"
+        },
+        "baseRefName": "main",
+        "baseRefOid": "1111111111111111111111111111111111111111",
+        "body": "This adds a limit function.",
+        "headRefName": "feature",
+        "headRefOid": "@HEAD@",
+        "id": "PR_fake9",
+        "isCrossRepository": false,
+        "latestOpinionatedReviews": {
+          "nodes": [],
+          "pageInfo": {
+            "hasNextPage": false
+          }
+        },
+        "pending": {
+          "nodes": []
+        },
+        "repository": {
+          "defaultBranchRef": {
+            "name": "main"
+          }
+        },
+        "reviewRequests": {
+          "nodes": [],
+          "pageInfo": {
+            "hasNextPage": false
+          }
+        },
+        "reviews": {
+          "nodes": [],
+          "pageInfo": {
+            "endCursor": null,
+            "hasNextPage": false
+          }
+        },
+        "state": "OPEN",
+        "title": "Add the limit",
+        "updatedAt": "@CREATED@",
+        "url": "https://github.com/acme/api/pull/9"
+      }
+    }
+  }
+}

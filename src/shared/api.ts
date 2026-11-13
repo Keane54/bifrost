@@ -181,14 +181,27 @@ export interface BifrostApi {
     // Open the PR page on GitHub. The main process finds the URL. This rejects for a key with no
     // PR in the last poll.
     openPr(key: string): Promise<void>
+    // Open the comment of a question of the Answer panel on GitHub. The main process finds the
+    // link. This rejects for an unknown PR or question, and for a link that is not on github.com.
+    openComment(key: string, itemId: string): Promise<void>
     // A click on a notification of a new review request.
     onOpen(cb: () => void): () => void
     // Start a review of a To review PR. This rejects for a key that is not a To review row.
     review(key: string): Promise<void>
-    // Take a PR out of the queue, or stop its round. This rejects as review does.
+    // Take a PR out of the queue, or stop its round. This works on a row of either tab.
     cancel(key: string): Promise<void>
-    // Stop the review session of a PR. This rejects as review does.
+    // Stop the session of a PR. This works on a row of either tab. It rejects for a key that is
+    // not a row of the snapshot.
     stopSession(key: string): Promise<void>
+    // Queue a request round for a My PRs row: all older and held items, or the later Copilot
+    // items. This rejects for a key that is not a My PRs row.
+    handle(key: string, what: 'all' | 'copilot'): Promise<void>
+    // Send the rest of the outbox of a My PRs row. With no outbox, handle all items.
+    retry(key: string): Promise<void>
+    // Save the answers to the open questions of a My PRs row. A null text means that the user
+    // handles the item. This rejects for 0 or more than 50 answers, a bad item ID, or a text of
+    // more than 2000 characters.
+    answer(key: string, answers: { id: string; text: string | null }[]): Promise<void>
     // Open the trust terminal for a repository in the trust list of the snapshot. This rejects
     // for any other value, and when the terminal cannot start.
     trust(repo: string): Promise<void>

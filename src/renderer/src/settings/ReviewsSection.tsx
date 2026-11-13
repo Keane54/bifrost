@@ -18,7 +18,7 @@ import { useSettings } from './settings-context'
 
 // Each turn-on of Watch GitHub asks first.
 const WATCH_CONFIRM: ConfirmText = {
-  body: 'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It makes its own copy of each of their repositories, and asks you to trust each copy once. When you click Review, Claude reviews the pull request and Bifrost saves a draft review on GitHub that only you can see. Nothing is ever submitted for you.',
+  body: 'Bifrost will use your gh login to check your review requests and your pull requests every few minutes. It makes its own copy of each of their repositories, and asks you to trust each copy once. When you click Review, Claude reviews the pull request and Bifrost saves a draft review that only you can see. On your own pull requests, Claude fixes or answers new review comments, and Bifrost pushes the fixes and posts the replies. Bifrost never submits a review, approves or merges.',
   confirm: 'Turn on',
   title: 'Watch GitHub?',
 }
@@ -30,12 +30,21 @@ const REMOVE_CLONES_CONFIRM: ConfirmText = {
   title: 'Remove all clones?',
 }
 
+// Each turn-on of the automatic comment handling asks first.
+const AUTO_FIX_CONFIRM: ConfirmText = {
+  body: 'When someone reviews one of your pull requests, Claude fixes or answers each new comment. Bifrost then pushes the fixes to your branch, replies to each comment and resolves its thread. It never force-pushes, merges or approves. Comments from before now wait until you choose Handle now.',
+  confirm: 'Turn on',
+  title: 'Handle comments automatically?',
+}
+
+// The hint of the row of signed commits.
+const SIGNED_COMMITS_HINT =
+  'Bifrost sends each fix to GitHub with your gh login, and GitHub signs the commit, so it ' +
+  "shows as Verified. You don't need a signing key."
+
 // The minutes that Pause time and the poll interval offer. They match the settings checks.
 const PAUSE_CHOICES = [15, 30, 60, 120, 240, 480] as const
 const POLL_CHOICES = [1, 2, 5, 10] as const
-
-// The hint of a row that saves but has no effect yet.
-const LATER = 'Comes in a later version.'
 
 const MODEL_OPTIONS = modelOptions()
 
@@ -241,13 +250,25 @@ function ReviewsRows(): React.JSX.Element {
           await update({ reviewsWatch: value })
         }}
       />
-      {/* These settings save, but they have no effect yet: automatic comments and the model for
-          request sessions. */}
       <CheckRow
         checked={settings.reviewsAutoFix}
-        hint={LATER}
+        hint='Claude fixes or answers new review comments on your pull requests. Bifrost then pushes the fixes and posts the replies.'
         label={REVIEWS_ROWS.autoFix}
-        save={value => update({ reviewsAutoFix: value })}
+        save={async value => {
+          // Each turn-on asks first. A Cancel saves nothing.
+          if (value && !settings.reviewsAutoFix) {
+            if (!(await confirm(AUTO_FIX_CONFIRM))) return
+            await update({ reviewsAutoFix: true })
+            return
+          }
+          await update({ reviewsAutoFix: value })
+        }}
+      />
+      <CheckRow
+        checked={settings.reviewsSignedCommits}
+        hint={SIGNED_COMMITS_HINT}
+        label={REVIEWS_ROWS.signedCommits}
+        save={value => update({ reviewsSignedCommits: value })}
       />
       <CheckRow
         checked={settings.reviewsTeamRequests}
@@ -277,7 +298,6 @@ function ReviewsRows(): React.JSX.Element {
         value={settings.reviewsPollMinutes}
       />
       <ModelRow
-        hint={LATER}
         label={REVIEWS_ROWS.requestModel}
         save={value => update({ reviewsRequestModel: value as ModelChoice })}
         value={settings.reviewsRequestModel}

@@ -12,6 +12,7 @@ import { useSettingsNav } from '../settings/settings-nav'
 import { panelBody } from './panel-body'
 import { MyPrItem, ToReviewItem } from './ReviewRow'
 import { type ReviewsTab, setReviewsTab, useReviewsTab } from './reviews-tab'
+import { AUTO_FIX_HINT } from './row-text'
 import { TrustStrip } from './TrustStrip'
 import { useReviews } from './use-reviews'
 
@@ -85,6 +86,9 @@ export default function ReviewsPanel(): React.JSX.Element {
   }
 
   const showTabs = availability !== 'off' && availability !== 'starting'
+  // Ruling S20: the automatic fixes wait for the confirm of the user in Settings.
+  const showHint =
+    tab === 'mine' && snapshot.autoFixConfirm && (kind === 'rows' || kind === 'empty')
   return (
     <div className='flex h-full min-h-0 flex-col'>
       {showTabs && (
@@ -131,6 +135,18 @@ export default function ReviewsPanel(): React.JSX.Element {
         </div>
       )}
       <TrustStrip needs={snapshot.trust} />
+      {showHint && (
+        <div className='flex shrink-0 items-start gap-2 border-b border-panel-edge px-3 py-2'>
+          <p className='min-w-0 flex-1 text-xs text-text-dim'>{AUTO_FIX_HINT}</p>
+          <button
+            className='shrink-0 border border-panel-edge bg-black/35 px-1.5 text-xs leading-4 text-text hover:text-text-strong active:bg-accent/12'
+            onClick={() => settingsNav.open('reviews')}
+            type='button'
+          >
+            Open Settings
+          </button>
+        </div>
+      )}
       <div className='min-h-0 flex-1 overflow-auto select-none'>{body}</div>
       {availability === 'error' && snapshot.message !== null && (
         <ErrorLine message={snapshot.message} />

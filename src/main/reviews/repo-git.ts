@@ -27,6 +27,18 @@ export const GIT_CONFIG: readonly string[] = [
   'submodule.recurse=false',
 ]
 
+// The config of each git command of a request round that reaches the network: the fetch of the
+// PR and the push. With no gh login, git runs the askpass program of core.askPass or SSH_ASKPASS,
+// although GIT_TERMINAL_PROMPT is 0. An empty core.askPass stops both. ssh is never allowed,
+// because an SSH agent or a key can show a prompt. GIT_CONFIG does not have these items, because
+// an R2 review can need SSH.
+export const NO_PROMPT_CONFIG: readonly string[] = [
+  '-c',
+  'core.askPass=',
+  '-c',
+  'protocol.ssh.allow=never',
+]
+
 export const GIT_TIMEOUT_MS = 120_000
 export const CLONE_TIMEOUT_MS = 900_000
 // The limit of stdout and of stderr. The status of a worktree with many new files can be long.
@@ -46,22 +58,31 @@ function cleanEnv(env: Record<string, string>): Record<string, string> {
 }
 
 export interface RepoGit {
-  run(args: string[], opts?: { cwd?: string; timeoutMs?: number }): Promise<ExecResult>
+  // encoding latin1 gives the bytes of a binary output with no change (Buffer.from(x, 'latin1')).
+  run(
+    args: string[],
+    opts?: { cwd?: string; timeoutMs?: number; encoding?: 'latin1' },
+  ): Promise<ExecResult>
 }
 
 export interface RepoGitDeps {
   exec: ExecFn
   // The env for git. Node finds git through the PATH of this env.
   env(): Promise<Record<string, string>>
+  // More -c items. They come after GIT_CONFIG. A test home gives the git identity with them.
+  extraConfig?: readonly string[]
 }
 
-// Run git with GIT_CONFIG before the arguments. git never asks for a password, and it does not
-// download the files of Git LFS. Of the GIT_ variables of the env, only KEEP_GIT_VARS stay.
+// Run git with GIT_CONFIG and extraConfig before the arguments. git never asks for a password,
+// and it does not download the files of Git LFS. Of the GIT_ variables of the env, only
+// KEEP_GIT_VARS stay.
 export function createRepoGit(deps: RepoGitDeps): RepoGit {
+  const config = [...GIT_CONFIG, ...(deps.extraConfig ?? [])]
   return {
     async run(args, opts) {
-      return deps.exec('git', [...GIT_CONFIG, ...args], {
+      return deps.exec('git', [...config, ...args], {
         ...(opts?.cwd === undefined ? {} : { cwd: opts.cwd }),
+        ...(opts?.encoding === undefined ? {} : { encoding: opts.encoding }),
         env: {
           ...cleanEnv(await deps.env()),
           GCM_INTERACTIVE: 'never',
