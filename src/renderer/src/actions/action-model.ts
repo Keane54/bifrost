@@ -263,6 +263,11 @@ export const SELECTED_ITEM_ACTIONS: ActionId[] = [
   'stop',
 ]
 
+// The buttons of the Selected Item panel. Open shows only while the chat window is closed.
+export function selectedItemActions(chatOpen: boolean): ActionId[] {
+  return chatOpen ? SELECTED_ITEM_ACTIONS.filter(id => id !== 'open') : SELECTED_ITEM_ACTIONS
+}
+
 // The number of recent slash commands in the submenu.
 export const SLASH_MENU_RECENT = 5
 
@@ -341,7 +346,7 @@ export function rowMenu(row: SessionRow, ctx: ActionContext): MenuEntry[] {
   const sep: MenuEntry = { type: 'separator' }
   const cls = rowClass(row)
   return [
-    entry('open'),
+    ...(ctx.chatOpen ? [] : [entry('open')]),
     entry('send-message'),
     entry('run-slash'),
     entry('compact'),

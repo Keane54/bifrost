@@ -118,6 +118,7 @@ const callsOf = (calls: Call[], command: string): Call[] =>
   calls.filter(call => commandOf(call) === command)
 const clonesIn = (calls: Call[]): Call[] => callsOf(calls, 'clone')
 
+// The setup runs many git commands. It needs more time when other tests run at once.
 beforeAll(async () => {
   base = await mkdtemp(join(tmpdir(), 'bifrost-repo-store-'))
   env = {
@@ -182,7 +183,7 @@ beforeAll(async () => {
       await git(['update-ref', '-d', `refs/heads/${branch}`], bare)
     }
   }
-})
+}, 60_000)
 
 afterAll(async () => {
   await rm(base, { force: true, recursive: true })

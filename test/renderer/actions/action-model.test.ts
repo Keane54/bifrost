@@ -12,6 +12,7 @@ import {
   type MenuEntry,
   rowMenu,
   SELECTED_ITEM_ACTIONS,
+  selectedItemActions,
 } from '../../../src/renderer/src/actions/action-model'
 import { friendlyError } from '../../../src/renderer/src/actions/errors'
 import * as R from '../../../src/renderer/src/actions/reasons'
@@ -51,7 +52,6 @@ describe('action model', () => {
 
   it('rowMenu gives the order of spec 9.5 for an owned row with an open chat window', () => {
     expect(labels(rowMenu(owned, ctx()))).toEqual([
-      'Open',
       'Send message...',
       'Run slash command',
       'Compact',
@@ -162,6 +162,21 @@ describe('action model', () => {
   it('rowMenu shows Close window only when the chat window is open', () => {
     expect(find(rowMenu(owned, ctx({ chatOpen: false })), 'close-window')).toBeUndefined()
     expect(find(rowMenu(owned, ctx({ chatOpen: true })), 'close-window')).toBeDefined()
+  })
+
+  it('rowMenu shows Open only when the chat window is closed', () => {
+    const open = rowMenu(owned, ctx({ chatOpen: true }))
+    expect(find(open, 'open')).toBeUndefined()
+    expect(find(open, 'close-window')).toBeDefined()
+    const closed = rowMenu(owned, ctx({ chatOpen: false }))
+    expect(find(closed, 'open')).toBeDefined()
+    expect(find(closed, 'close-window')).toBeUndefined()
+  })
+
+  it('selectedItemActions hides Open while the chat window is open', () => {
+    expect(selectedItemActions(true)).not.toContain('open')
+    expect(selectedItemActions(true)).toEqual(SELECTED_ITEM_ACTIONS.filter(id => id !== 'open'))
+    expect(selectedItemActions(false)).toEqual(SELECTED_ITEM_ACTIONS)
   })
 
   it('the M3 actions are enabled for an owned row', () => {
@@ -419,7 +434,7 @@ describe('action model', () => {
   })
 
   it('space labels change each label', () => {
-    const m = labels(rowMenu(owned, ctx({ labels: 'space' })))
+    const m = labels(rowMenu(owned, ctx({ chatOpen: false, labels: 'space' })))
     expect(m).toContain('Warp to')
     expect(m).toContain('Hail...')
     expect(m).toContain('Power down...')

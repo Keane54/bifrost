@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react'
 import { aliasTip } from '../../../shared/alias'
 import type { SessionRow } from '../../../shared/types'
 import ActionButton from '../actions/ActionButton'
-import { SELECTED_ITEM_ACTIONS } from '../actions/action-model'
+import { selectedItemActions } from '../actions/action-model'
 import { useActions } from '../actions/actions-context'
 import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
@@ -44,7 +44,8 @@ const STATUS_BUTTON =
   'flex size-4 shrink-0 items-center justify-center hover:bg-hover active:bg-accent/12'
 
 function Details({ row }: { row: SessionRow }): React.JSX.Element {
-  const { closeError, error, notice } = useActions()
+  const { closeError, contextFor, error, notice } = useActions()
+  const chatOpen = contextFor(row.sessionId).chatOpen
   const [sendLine, setSendLine] = useState<SendLine | null>(null)
   const onLine = useCallback((line: SendLine | null) => setSendLine(line), [])
   const { kind, lines } = statusTexts({
@@ -100,7 +101,7 @@ function Details({ row }: { row: SessionRow }): React.JSX.Element {
       </div>
       {/* 2. The action buttons. */}
       <div className='flex gap-1' data-selected-actions={true}>
-        {SELECTED_ITEM_ACTIONS.map(id => (
+        {selectedItemActions(chatOpen).map(id => (
           <ActionButton action={id} key={id} sessionId={row.sessionId} />
         ))}
         {/* A watched row gets the Remove button. Any other row gets the Add button. */}

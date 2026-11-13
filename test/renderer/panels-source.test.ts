@@ -79,7 +79,7 @@ describe('Compact button and menu entry source', () => {
   })
 
   it('makes a button for each Selected Item action, Compact too', () => {
-    expect(PANEL).toContain('{SELECTED_ITEM_ACTIONS.map(id => (')
+    expect(PANEL).toContain('{selectedItemActions(chatOpen).map(id => (')
     expect(PANEL).toContain('<ActionButton action={id} key={id} sessionId={row.sessionId} />')
   })
 
