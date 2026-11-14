@@ -147,12 +147,17 @@ function fakeRunner() {
   }
 }
 
-// Wait until the condition holds. Each step lets the file system and the promises run.
+// Wait until the condition holds. Each step lets the file system and the promises run. The limit
+// is a time, not a count of steps: on a busy CI machine the file work needs many more steps. The
+// clock is process.hrtime, which the fake timers of these tests do not change.
+const UNTIL_MS = 10_000
 async function until(condition: () => boolean): Promise<void> {
-  for (let i = 0; i < 5000; i += 1) {
+  const end = process.hrtime.bigint() + BigInt(UNTIL_MS) * 1_000_000n
+  while (process.hrtime.bigint() < end) {
     if (condition()) return
     await new Promise(resolve => setImmediate(resolve))
   }
+  if (condition()) return
   throw new Error('The condition did not hold.')
 }
 
