@@ -39,8 +39,8 @@ describe('SkillsSection', () => {
 })
 
 describe('the tab and the providers', () => {
-  it('puts the skills tab between live and updates', () => {
-    expect(PANEL).toContain("'daily-update',\n  'live',\n  'skills',\n  'updates',")
+  it('puts the skills tab between live and modules', () => {
+    expect(PANEL).toContain("'daily-update',\n  'live',\n  'skills',\n  'modules',\n  'updates',")
     expect(PANEL).toContain('<SkillsSection readStatus={readSkills} />')
     expect(NAV).toContain("| 'skills'")
   })

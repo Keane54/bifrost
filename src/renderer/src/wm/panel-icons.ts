@@ -14,8 +14,10 @@ import {
   MessageCircleQuestionMark,
   MessageSquare,
   MessageSquareText,
+  Puzzle,
   ScrollText,
   Settings,
+  Shield,
   ShieldCheck,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -26,6 +28,9 @@ export const PANEL_ICONS: Record<PanelKind, LucideIcon> = {
   chat: MessageSquare,
   'daily-update': MessageSquareText,
   'event-log': ScrollText,
+  heimdall: Shield,
+  // A module panel shows the icon of its manifest. This icon is for a module that is gone.
+  module: Puzzle,
   overview: List,
   'overview-settings': SlidersHorizontal,
   performance: HeartPulse,

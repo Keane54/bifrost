@@ -191,6 +191,8 @@ interface Match {
 export class SessionRegistry {
   // The time from a yellow box to the escalation to red. 0 stops the escalation.
   private escalationMs: number
+  // The listeners of onGone.
+  private readonly goneListeners: ((sessionId: string) => void)[] = []
   private readonly names: Map<string, string>
   private readonly started: Set<string>
   // The row IDs of the PR sessions. A PR session gets no yellow box and no escalation.
@@ -1269,9 +1271,17 @@ export class SessionRegistry {
         continue
       }
       const missing = (this.missing.get(id) ?? 0) + 1
-      if (missing >= GONE_LISTS) this.forget(id)
-      else this.missing.set(id, missing)
+      if (missing >= GONE_LISTS) {
+        this.forget(id)
+        for (const listener of [...this.goneListeners]) listener(id)
+      } else this.missing.set(id, missing)
     }
+  }
+
+  // Call the listener with the row ID of each session that the registry forgets because the
+  // counted lists no longer have it. A failed list, a partial list and a defer never call it.
+  onGone(listener: (sessionId: string) => void): void {
+    this.goneListeners.push(listener)
   }
 
   // True when the registry knows an owned session without a process: a parked owned row, or a

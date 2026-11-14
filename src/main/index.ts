@@ -1,5 +1,16 @@
+import { readFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, Menu, screen, systemPreferences } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  protocol,
+  screen,
+  session,
+  systemPreferences,
+  type WebContents,
+} from 'electron'
 import icon from '../../resources/icon.png?asset'
 import devIcon from '../../resources/icon-dev.png?asset'
 import { effectiveKeys } from '../shared/keys'
@@ -10,6 +21,8 @@ import {
   getHealthLog,
   getSettings,
   isKeyRecording,
+  moduleFilesDir,
+  modulesState,
   registerIpc,
   send,
   setMenuRebuild,
@@ -17,7 +30,17 @@ import {
   setWindowShower,
   stopRegistry,
 } from './ipc'
+import { hostResolverRules, readSystemProxyHosts } from './main-network'
 import { buildMenuTemplate, menuKeys, modeHandlers, zoomStep } from './menu'
+import {
+  allowFrameNavigation,
+  createModuleHandler,
+  isModulePermission,
+  MODULE_PRIVILEGES,
+  MODULE_SCHEME,
+  moduleApiFile,
+  moduleProxyConfig,
+} from './modules/module-protocol'
 import { NO_HEALTH } from './performance/health-log'
 import { refusedTestHome, testHeadless, testHomeConfig, testHomeError } from './test-home'
 import { createModeController, type ModeController } from './window/display-mode'
@@ -159,6 +182,7 @@ async function createWindow(): Promise<void> {
     if (e.url !== mainWindow.webContents.getURL()) e.preventDefault()
   })
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  guardModuleFrames(mainWindow.webContents)
 
   // In development, F12 opens or closes the DevTools. Bifrost sets no other key handler here,
   // so Cmd+R (Resume) and Cmd+- (Zoom Out) reach the app menu and the renderer.
@@ -179,6 +203,59 @@ async function createWindow(): Promise<void> {
   } else {
     mainWindow.loadFile(join(import.meta.dirname, '../renderer/index.html'))
   }
+}
+
+// A module frame cannot move itself or another frame (ruling S-A3). A subframe loads only a
+// module URL, and only when the Bifrost page starts the load.
+function guardModuleFrames(wc: WebContents): void {
+  wc.on('will-frame-navigate', e => {
+    const byTop = e.initiator != null && e.initiator === wc.mainFrame
+    if (!allowFrameNavigation({ byTop, isMainFrame: e.isMainFrame, url: e.url })) {
+      e.preventDefault()
+    }
+  })
+}
+
+// The client library of the module frames, built from src/module-api/api.ts. Bifrost reads it
+// one time. If the read fails, the protocol gives 404 for it.
+let apiScript: Promise<Uint8Array | null> | null = null
+
+function moduleApiScript(): Promise<Uint8Array | null> {
+  apiScript ??= readFile(moduleApiFile(import.meta.dirname)).then(
+    bytes => new Uint8Array(bytes),
+    err => {
+      console.error('Bifrost cannot read the client library of the modules.', err)
+      return null
+    },
+  )
+  return apiScript
+}
+
+// Lock the default session before the first window opens (Modules design 8.1). Refuse each
+// permission of a module frame (ruling S-A3). Send each request of the session to a dead proxy
+// (ruling S-A1). The session holds only Bifrost's page and the module frames, and Bifrost's own
+// requests use their own session (main-network.ts). The protocol serves modules only after the
+// proxy is set.
+async function startModuleSandbox(): Promise<void> {
+  const ses = session.defaultSession
+  ses.setPermissionRequestHandler((_wc, _permission, callback, details) => {
+    callback(!isModulePermission(details))
+  })
+  ses.setPermissionCheckHandler(
+    (_wc, _permission, origin, details) => !isModulePermission({ ...details, origin }),
+  )
+  // In a dev run, the page comes from the dev server. Only that host bypasses the proxy.
+  const devUrl = app.isPackaged ? null : (process.env.ELECTRON_RENDERER_URL ?? null)
+  await ses.setProxy(moduleProxyConfig(devUrl))
+  protocol.handle(
+    MODULE_SCHEME,
+    createModuleHandler({
+      apiScript: moduleApiScript,
+      codeDir: moduleFilesDir,
+      devAllowed: !app.isPackaged,
+      state: modulesState,
+    }),
+  )
 }
 
 // Open the window. An error goes to the console.
@@ -211,6 +288,35 @@ function startApp(): void {
   // A second start of Bifrost shows the window of this instance.
   app.on('second-instance', () => showWindow())
 
+  // The module protocol (Modules design 8.1). Register the scheme before the app is ready.
+  protocol.registerSchemesAsPrivileged([
+    { privileges: { ...MODULE_PRIVILEGES }, scheme: MODULE_SCHEME },
+  ])
+  // The app resolves only the hosts of MAIN_NETWORK_HOSTS and the system proxy hosts (fix
+  // rounds 3 and 4). A name hint in a module frame sends a DNS query past the dead proxy, so every
+  // other host is "not found" and no query goes out. Ruling S-A7 allows this flag, and the netLog
+  // smoke check ("a module frame makes no DNS request") proves that it works.
+  // The rules also block a proxy host and a PAC host, so Bifrost reads the system proxy settings
+  // once and excludes each proxy host (ruling S-A8). A failed read starts with the plain list.
+  // Not covered: a PAC script that returns other proxy hosts, proxy auto discovery (WPAD), and a
+  // proxy change while Bifrost runs (it needs a restart).
+  // A test home can give the scutil output in a file (BIFROST_TEST_PROXY_FILE), so a smoke test
+  // can check a proxy host with no change to the settings of the Mac.
+  const proxyFile = testHome ? process.env.BIFROST_TEST_PROXY_FILE : undefined
+  const proxy = readSystemProxyHosts(proxyFile ? () => readFileSync(proxyFile, 'utf8') : undefined)
+  if (proxy.error !== null) {
+    console.error(`Bifrost cannot read the system proxy settings. ${proxy.error}`)
+  }
+  if (proxy.refused.length > 0) {
+    console.error(`Bifrost ignores proxy hosts that are not plain host names: ${proxy.refused}`)
+  }
+  app.commandLine.appendSwitch('host-resolver-rules', hostResolverRules(proxy.hosts))
+  // WebRTC sends no UDP outside the proxy, and the proxy does not exist (ruling S-A1). So a
+  // module frame cannot send a packet with WebRTC.
+  app.on('web-contents-created', (_e, wc) => {
+    wc.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
+  })
+
   // A GPU process that stops with a reason other than clean-exit is a crash (P8). Before
   // registerIpc, no health log exists, so Bifrost ignores the event.
   app.on('child-process-gone', (_e, details) => {
@@ -220,7 +326,7 @@ function startApp(): void {
   })
 
   // Electron fires this event when it is ready to create windows.
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     // A dev start shows the Bifrost icon with a "dev" badge in the Dock, not the Electron icon.
     const dockIcon = devDockIcon(process.platform, app.isPackaged, devIcon)
     if (dockIcon) app.dock?.setIcon(dockIcon)
@@ -234,6 +340,10 @@ function startApp(): void {
     // This also opens the settings store and starts the registry service.
     registerIpc(testHome, headless)
 
+    // If the lock fails, the protocol serves no module. The window still opens.
+    await startModuleSandbox().catch(err =>
+      console.error('Bifrost cannot lock the module sandbox. Modules stay off.', err),
+    )
     openWindow()
 
     // On macOS, a click on the Dock icon opens a window if none is open.

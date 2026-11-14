@@ -32,6 +32,8 @@ const SETTING_TEXT = "That setting isn't valid."
 export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'claude not found':
     "Bifrost can't find Claude Code. Check that the claude command works in a terminal.",
+  'refused: a discuss request is open':
+    'Heimdall is already showing a Discuss request. Finish or cancel it first.',
   'refused: a review session cannot be resumed': REASON_PR_RESUME,
   'refused: an action on this session runs':
     'Another action is still running on this session. Try again in a moment.',
@@ -39,8 +41,10 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
     "Bifrost can't delete a session that runs in another terminal.",
   'refused: bad answer': 'That answer is too long.',
   'refused: bad chat panel': "Bifrost couldn't read the list of chat windows.",
+  'refused: bad daily cap': 'The daily cap must be a whole number from 1 to 500.',
   'refused: bad input': "Bifrost couldn't read that request.",
   'refused: bad keys': "One of those keys isn't valid.",
+  'refused: bad module input': "Bifrost couldn't read that module request.",
   'refused: bad name': "That name isn't valid.",
   'refused: bad new session data': "Some of the New session values aren't valid.",
   'refused: bad priority': "That priority isn't valid.",
@@ -62,13 +66,30 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: claude rm took too long':
     'Claude Code took too long to delete this session. Check the worktree, then delete again.',
   'refused: Delete needs a confirmation': 'Delete needs your confirmation first.',
+  'refused: daily job cap reached': 'This module has used all of its module jobs for today.',
+  'refused: developer modules need a development build':
+    'Load from folder only works in a development build of Bifrost.',
+  'refused: discuss asked too soon':
+    'This module asked again too soon after a cancel. Wait a few seconds, then try again.',
+  'refused: job cancelled': 'That module job was cancelled.',
+  'refused: module already installed':
+    'This module is already installed. Use Check for updates to get a new version.',
+  'refused: module call failed':
+    "Bifrost couldn't finish that module request. Try again in a moment.",
+  'refused: module message too large': 'That module request is too large.',
+  'refused: module off': 'This module is off or no longer installed.',
+  'refused: module storage is full': 'This module has used all of its storage space.',
   'refused: no GitHub link for this comment': "That comment doesn't have a link on GitHub.",
+  'refused: no such module request': "That request isn't open any more.",
   'refused: no terminal app is installed': REASON_NO_TERMINAL,
   'refused: no window': "The Bifrost window isn't ready.",
   'refused: not a chat view': "That isn't a chat window.",
   'refused: not a display mode': "That isn't a display mode.",
+  'refused: not a GitHub repository URL':
+    'Use a GitHub address like https://github.com/owner/repo.',
   'refused: not a System Settings pane of dictation':
     'Bifrost can open only the Microphone or the Speech Recognition settings.',
+  'refused: not allowed for this module': "This module doesn't have permission to do that.",
   'refused: not an attach to an owned session that is not parked':
     'A chat window can only attach to a Bifrost session that is running.',
   'refused: not the Bifrost page': "That request didn't come from the Bifrost window.",
@@ -85,9 +106,15 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: the chat window has no terminal':
     "This chat window isn't connected to its session, so dictation can't start.",
   'refused: the draft is too long': 'That draft is too long. Make it shorter, then try again.',
+  'refused: the git clone failed':
+    "Bifrost couldn't get that repository. Check the address, and check that gh is signed in.",
   'refused: the ID that resumes this session is not known yet':
     "Bifrost doesn't know which ID resumes this session yet. Try again in 30 seconds.",
   'refused: the item has no link to open': "That item doesn't have a link that Bifrost can open.",
+  'refused: the job failed': "That module job didn't finish. Try again in a moment.",
+  'refused: the job result is not JSON': "The answer to that module job wasn't valid JSON.",
+  'refused: the job took too long': 'That module job took too long, so Bifrost stopped it.',
+  'refused: the module changed': 'The module changed after Bifrost checked it. Please try again.',
   'refused: the page that asked for the PTY is gone':
     'The window that asked for the terminal has closed.',
   'refused: the project directory is not known': REASON_NO_CWD,
@@ -129,9 +156,13 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
     "This pull request can't be handled right now.",
   'refused: this pull request cannot get a review now':
     "This pull request can't get a review right now.",
+  'refused: too many module calls':
+    'This module is sending too many requests. Try again in a moment.',
   'refused: two keys have the same binding': "Two actions can't share the same key.",
   'refused: unknown app': "Bifrost doesn't know that app.",
   'refused: unknown model': "Bifrost doesn't know that model.",
+  'refused: unknown module': "That module isn't installed.",
+  'refused: unknown module call': "Bifrost doesn't know that module request.",
   'refused: unknown permission mode': "Bifrost doesn't know that permission mode.",
   'refused: unknown pull request': "That pull request isn't in the list any more.",
   'refused: unknown question': 'That question has already been answered.',

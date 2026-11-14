@@ -1,6 +1,6 @@
 // Source checks of the release notes wiring (ipc.ts, preload, API). ipc.ts imports Electron, so a
 // unit test cannot load it. These checks read its text.
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -33,11 +33,28 @@ describe('the release notes wiring in ipc.ts', () => {
     expect(text).toMatch(/createWhatsNew\(\{[^}]*\}\) : null/)
   })
 
-  it('reads GitHub with net.fetch, and a file of the test home in a test home', () => {
+  // Bifrost's own requests use their own session (mainFetch). The default session has the dead
+  // proxy of the module sandbox (ruling S-A1).
+  it('reads GitHub with mainFetch, and a file of the test home in a test home', () => {
     expect(flat(ipc)).toContain(
-      "fetch: home ? fileFetch(join(home.home, 'github-releases.json')) : " +
-        '(url, init) => net.fetch(url, init)',
+      "fetch: home ? fileFetch(join(home.home, 'github-releases.json')) : mainFetch",
     )
+  })
+
+  // A request on the default session goes to the dead proxy. Only main-network.ts may make a
+  // main-process request, on its own session. The scan reads code and comments.
+  it('makes no request on the default session in src/main', () => {
+    const files = readdirSync(join(ROOT, 'src/main'), { recursive: true })
+      .map(String)
+      .filter(f => /\.tsx?$/.test(f) && f !== 'main-network.ts')
+    expect(files.length).toBeGreaterThan(50)
+    const found = files.flatMap(f => {
+      const text = read(join('src/main', f))
+      return ['net.fetch', 'net.request', 'defaultSession.fetch']
+        .filter(call => text.includes(call))
+        .map(call => `${f}: ${call}`)
+    })
+    expect(found).toEqual([])
   })
 
   it('runs each release notes handler only for the Bifrost page', () => {

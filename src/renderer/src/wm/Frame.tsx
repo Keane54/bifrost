@@ -13,10 +13,11 @@ import {
 } from '../chat/dictation-look'
 import { useDictating, useVoiceLevel } from '../chat/use-voice-level'
 import { cx } from '../lib/cx'
+import ModuleRefresh from '../modules/ModuleRefresh'
 import { PanelContent, PanelTitle, panelScrolls } from '../panels/panels'
 import { type Edge, TITLE_H } from './geometry'
 import PanelMenu, { type Anchor } from './PanelMenu'
-import type { Frame, WmAction } from './state'
+import { type Frame, panelKind, type WmAction } from './state'
 
 // A drag moves the frame, or it resizes the frame at one edge or corner.
 // A drag that starts on a tab of a stack can tear that tab out of the stack.
@@ -109,6 +110,9 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
   const [menu, setMenu] = useState<Anchor | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
   const stacked = frame.panels.length > 1
+  // Heimdall's panel has the purple frame and title bar (Modules design 8.4). Only Bifrost draws
+  // them. A module draws only inside its own sandboxed frame.
+  const heimdall = panelKind(frame.active) === 'heimdall'
   // True while the chat of the active panel listens. A panel that is no chat gives false.
   const dictating = useDictating(frame.active)
   // One smoothed level for the edge, the glow and the meter.
@@ -147,11 +151,21 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
         !dictating && 'transition-[background-color,border-color,box-shadow] duration-250 ease-out',
         blur && 'backdrop-blur-panel',
         frame.minimised ? 'hidden' : 'flex',
-        top
-          ? 'border-text-strong/30 border-t-accent bg-panel-focus shadow-[0_-6px_12px_-6px_var(--color-accent-glow)]'
-          : 'border-panel-edge border-t-accent/35 bg-panel',
+        heimdall &&
+          cx(
+            'border-heimdall/55',
+            top ? 'bg-panel-focus shadow-[0_0_0_1px_var(--color-heimdall-glow)]' : 'bg-panel',
+          ),
+        !heimdall &&
+          (top
+            ? cx(
+                'border-text-strong/30 border-t-accent bg-panel-focus',
+                'shadow-[0_-6px_12px_-6px_var(--color-accent-glow)]',
+              )
+            : 'border-panel-edge border-t-accent/35 bg-panel'),
       )}
       data-frame-id={id}
+      data-heimdall-frame={heimdall || undefined}
       onPointerDownCapture={() => dispatch({ frameId: id, type: 'focus' })}
       style={{
         // The green top line of dictation: this border and the 1 px edge inside the frame.
@@ -164,7 +178,10 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
       }}
     >
       <div
-        className={cx('flex shrink-0 touch-none items-center gap-1 bg-title pr-3 pl-1 select-none')}
+        className={cx(
+          'flex shrink-0 touch-none items-center gap-1 pr-3 pl-1 select-none',
+          heimdall ? 'bg-heimdall-title' : 'bg-title',
+        )}
         data-title-bar={true}
         onPointerDown={onTitleDown}
         style={{ height: TITLE_H }}
@@ -201,6 +218,7 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
             </div>
           </div>
         )}
+        {panelKind(frame.active) === 'module' && <ModuleRefresh panelId={frame.active} />}
         {frame.locked && <LockGlyph />}
         <button
           aria-expanded={menu !== null}

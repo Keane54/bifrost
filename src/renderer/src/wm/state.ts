@@ -1,5 +1,5 @@
 // The state of the window manager. A pure reducer keeps the frames, the stacks and the memory.
-import { CHAT_VIEW, SHOW_INFO_PANEL } from '../../../shared/view-id'
+import { CHAT_VIEW, MODULE_PANEL, SHOW_INFO_PANEL } from '../../../shared/view-id'
 import { centreRect, clampRect, MIN_SIZE, type Rect, type Size, shownRect } from './geometry'
 
 export type PanelKind =
@@ -19,12 +19,18 @@ export type PanelKind =
   | 'answer'
   | 'review-draft'
   | 'daily-update'
+  // A panel of a module (plan Task 6).
+  | 'module'
+  // Heimdall's panel: the approval of a module and Discuss with Claude (plan Tasks 9 and 10).
+  | 'heimdall'
 
 export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   answer: { h: 420, w: 560 },
   chat: { h: 480, w: 720 },
   'daily-update': { h: 520, w: 560 },
   'event-log': { h: 360, w: 640 },
+  heimdall: { h: 520, w: 520 },
+  module: { h: 420, w: 560 },
   overview: { h: 360, w: 760 },
   'overview-settings': { h: 420, w: 360 },
   performance: { h: 460, w: 520 },
@@ -32,7 +38,8 @@ export const DEFAULT_SIZES: Record<PanelKind, Size> = {
   reviews: { h: 420, w: 480 },
   'selected-item': { h: 300, w: 360 },
   'service-status': { h: 240, w: 420 },
-  settings: { h: 540, w: 640 },
+  // Wide enough for the nine section tabs with no cut label (plan Task 9 adds Modules).
+  settings: { h: 540, w: 720 },
   'show-info': { h: 560, w: 460 },
   trust: { h: 380, w: 640 },
   'usage-hud': { h: 180, w: 360 },
@@ -94,7 +101,8 @@ export function panelKind(panelId: string): PanelKind | null {
     panelId === 'trust' ||
     panelId === 'answer' ||
     panelId === 'review-draft' ||
-    panelId === 'daily-update'
+    panelId === 'daily-update' ||
+    panelId === 'heimdall'
   ) {
     return panelId
   }
@@ -102,6 +110,7 @@ export function panelKind(panelId: string): PanelKind | null {
   if (OVERVIEW_SETTINGS.test(panelId)) return 'overview-settings'
   if (CHAT_VIEW.test(panelId)) return 'chat'
   if (SHOW_INFO_PANEL.test(panelId)) return 'show-info'
+  if (MODULE_PANEL.test(panelId)) return 'module'
   return null
 }
 

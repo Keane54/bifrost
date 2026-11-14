@@ -27,6 +27,7 @@ import { chatPanelId } from '../chat/views'
 import { openDaily } from '../daily-update/use-daily-update'
 import { useRegistry } from '../data/registry'
 import { errorMessage } from '../lib/error-message'
+import { showDiscuss } from '../modules/HeimdallPanel'
 import { setReviewsTab } from '../reviews/reviews-tab'
 import { rememberSlash } from '../sessions/history'
 import { useHistory } from '../sessions/history-context'
@@ -572,6 +573,12 @@ export function ActionsProvider({ children }: { children: React.ReactNode }): Re
         setReviewsTab('to-review')
         dispatch({ panelId: 'reviews', type: 'open' })
       }),
+    [dispatch],
+  )
+
+  // A module asks for Discuss with Claude. Heimdall's panel opens with the request.
+  useEffect(
+    () => window.bifrost.modules.onDiscuss(discuss => showDiscuss(discuss, dispatch)),
     [dispatch],
   )
 

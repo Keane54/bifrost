@@ -34,7 +34,8 @@ export type ExecFn = (
     killSignal?: KillSignal
     // The limit of stdout and of stderr in bytes. The default is the default of Node.
     maxBuffer?: number
-    // The text for stdin. Only gh gets it. A claude run never gets it (see execFile).
+    // The text for stdin. Only gh gets it. A claude run never gets it (see execFile). The Claude
+    // job of a module has its own runner (job-runner.ts).
     input?: string
     // The encoding of stdout and stderr. The default is utf8. latin1 keeps each byte as one
     // character, so the output of a binary file comes back with no change.

@@ -1,0 +1,12 @@
+{
+  "description": "A module that the smoke test installs from a folder.",
+  "id": "greeter",
+  "minBifrost": "0.1.0",
+  "name": "Greeter",
+  "panels": [
+    { "entry": "panels/main.html", "icon": "bell", "id": "main", "title": "Greeter board" }
+  ],
+  "permissions": [{ "id": "notify", "reason": "To say hello when the panel opens." }],
+  "suggests": { "dailyCap": 5, "model": "haiku" },
+  "version": "1.0.0"
+}

@@ -12,6 +12,7 @@ export type SettingsSection =
   | 'daily-update'
   | 'live'
   | 'skills'
+  | 'modules'
   | 'updates'
 
 export interface SettingsNav {

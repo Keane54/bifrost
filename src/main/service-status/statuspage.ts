@@ -33,7 +33,7 @@ export const NO_ANSWER = "The status page didn't answer."
 
 export type FetchJson = (url: string) => Promise<unknown>
 
-// The fetch of the main process (net.fetch). A test passes a fake.
+// The fetch of the main process (mainFetch, on Bifrost's own session). A test passes a fake.
 export type FetchFn = (url: string, init: RequestInit) => Promise<Response>
 
 // Bifrost reads at most this many bytes of one answer. A status page answer has a few kB.

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>DNS probe</title>
+    <!-- The HTML parser sees these hints. The test writes the nonce host in place of the token,
+         so the parse-time case uses the same host as the script-added case. -->
+    <link href="//__DNS_HOST__" rel="dns-prefetch" />
+    <link href="http://__DNS_HOST__/" rel="preconnect" />
+  </head>
+  <body>
+    <p id="who">probe</p>
+    <script src="probe.js"></script>
+  </body>
+</html>

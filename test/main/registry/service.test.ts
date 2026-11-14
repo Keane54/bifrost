@@ -858,6 +858,63 @@ describe('a session that is gone (Task 17 bug 3)', () => {
   })
 })
 
+// Discuss with Claude saves the ids of its sessions, and drops an id only when Bifrost forgets
+// that session for good (ruling P12, fix round 3 of Task 10). A failed or empty list never
+// counts, and a deferred delete does not count, because the session can come back.
+describe('the forget signal', () => {
+  const other = bg({ id: 'bb', pid: undefined, sessionId: 'o1', status: '' })
+  const withStarted = (...started: string[]) =>
+    newRegistry({ lastActive: [], names: {}, priorities: {}, started, watch: [] })
+
+  test('tells the row ID of a session that is gone from the lists', async () => {
+    const listAll = vi.fn(async () => ({ entries: [other] }))
+    const { service } = startService(fakeDeps({ listAll }), withStarted('s9'))
+    const forgot: string[] = []
+    service.onForget(id => forgot.push(id))
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(3 * SERVICE_TIMING.allMs)
+    expect(forgot).toEqual(['s9'])
+  })
+
+  test('tells the row ID of a Delete', async () => {
+    const { service } = startService(fakeDeps(), withStarted('s9'))
+    const forgot: string[] = []
+    service.onForget(id => forgot.push(id))
+    await vi.advanceTimersByTimeAsync(0)
+    service.forget('s9')
+    expect(forgot).toEqual(['s9'])
+  })
+
+  test('tells nothing after a failed first poll, an empty first list and a good poll', async () => {
+    const failed = { entries: [], error: 'Command failed: claude agents --json' }
+    const listActive = vi.fn<() => Promise<AgentList>>()
+    listActive.mockResolvedValueOnce(failed)
+    listActive.mockRejectedValueOnce(new Error('spawn failed'))
+    listActive.mockResolvedValue({ entries: [bg({ sessionId: 'd1' })] })
+    const listAll = vi.fn(async () => ({ entries: [bg({ sessionId: 'd1' })] }))
+    const { service, updates } = startService(fakeDeps({ listActive, listAll }), withStarted('d1'))
+    const forgot: string[] = []
+    service.onForget(id => forgot.push(id))
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(4 * SERVICE_TIMING.allMs)
+    expect(listActive.mock.calls.length).toBeGreaterThan(2)
+    expect(updates.some(u => u.error !== null)).toBe(true)
+    expect(service.rows().map(row => row.sessionId)).toContain('d1')
+    expect(forgot).toEqual([])
+  })
+
+  test('tells nothing for a deferred delete', async () => {
+    const { service } = startService(fakeDeps(), withStarted('s9'))
+    const forgot: string[] = []
+    service.onForget(id => forgot.push(id))
+    await vi.advanceTimersByTimeAsync(0)
+    service.defer({ sessionId: 's9', shortId: 'aa', worktree: '/p/.claude/worktrees/w' })
+    // The defer removed the row, but the session can come back.
+    expect(service.rows().map(row => row.sessionId)).not.toContain('s9')
+    expect(forgot).toEqual([])
+  })
+})
+
 describe('live lines (Task 4)', () => {
   const ready = async () => {
     const deps = fakeDeps({ listActive: async () => ({ entries: [bg()] }) })

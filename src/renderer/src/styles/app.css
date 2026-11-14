@@ -131,6 +131,18 @@
   --color-review-comment: var(--color-box-yellow);
   --color-review-changes: var(--color-box-red);
 
+  /* Heimdall's own UI (Modules design 8.4): the purple frame, the title bar and the main button of
+     its panel. A module never draws them. */
+  --color-heimdall: #b9a4ff;
+  --color-heimdall-title: #231f33;
+  --color-heimdall-glow: rgb(185 164 255 / 0.15);
+
+  /* The tier badges of a module and the line of an update that waits (Modules design 7). Each
+     one is an alias of an existing token, so the app gets no new colour value. */
+  --color-tier-standard: var(--color-tab-1);
+  --color-tier-permissive: var(--color-box-yellow);
+  --color-module-update: var(--color-box-yellow);
+
   --font-ui: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
 

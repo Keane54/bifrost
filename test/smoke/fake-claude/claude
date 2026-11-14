@@ -1,9 +1,10 @@
 #!/bin/sh
 # The fake claude of the smoke test (spec 15, D23). The smoke test puts this folder first on the
 # PATH of Bifrost. The script gives fixed answers to the commands that Bifrost runs at the start,
-# to the attach of a chat window, to the trust terminal, to a review session, to a request session
-# and to the probe and the draft run of the Daily update. It writes files only in the test home,
-# in the input folder of a round and in the worktree of a request round.
+# to the attach of a chat window, to the trust terminal, to a review session, to a request session,
+# to the probe and the draft run of the Daily update, and to the module job of a module. It writes
+# files only in the test home, in the input folder of a round and in the worktree of a request
+# round.
 #
 # A review session (claude --bg with --restricted) writes the result file of the review and
 # starts a sleep as the process of the session. When gh-fixtures in the test home holds
@@ -16,6 +17,10 @@
 # A request session (claude --bg with --setting-sources) adds one line to src/limit.ts in its
 # cwd, the worktree of the PR. Then it writes the result file of the round and starts a sleep in
 # the same way.
+#
+# A new session (claude --bg with the statusline override and a name), for example from Discuss
+# with Claude, writes its folder and its arguments to session-args.log in the test home. Then it
+# starts a sleep in the same way.
 
 dir=$(cd "$(dirname "$0")" && pwd)
 home=${BIFROST_TEST_HOME:-}
@@ -180,6 +185,30 @@ if [ "$#" -eq 13 ] && [ "$*" = "$probe" ]; then
   exit 0
 fi
 
+# The module job of a module (plan Task 7): the argument list of Spike B with
+# --no-session-persistence, --disable-slash-commands, the settings of ruling S-A10 and the model
+# haiku. The job log in the test home gets the arguments, the folder, the files in the folder and
+# the text on stdin. The job writes one file in its folder in the test home, as claude can. It
+# prints the JSON output of a good claude -p run.
+job='-p --no-session-persistence --disable-slash-commands --output-format json --tools '
+job="$job"' --strict-mcp-config --mcp-config {"mcpServers":{}} --setting-sources  --settings'
+job="$job"' {"disableAllHooks":true,"autoMemoryEnabled":false,"disableSkillShellExecution":true}'
+job="$job"' --permission-mode dontAsk'
+if [ "$#" -eq 18 ] && [ "$*" = "$job --model haiku" ] && [ -n "$home" ]; then
+  {
+    printf 'args: %s\n' "$*"
+    printf 'cwd: %s\n' "$(pwd -P)"
+    printf 'files: %s\n' "$(ls -A)"
+    printf 'stdin:\n'
+    cat
+    printf '\nend\n'
+  } >>"$home/job.log"
+  echo 'a file of the job' >left.txt
+  result='"result":"Hello from the fake job."'
+  printf '{"type":"result","subtype":"success","is_error":false,%s}\n' "$result"
+  exit 0
+fi
+
 # The draft run of the Daily update. The log gets one line for each run. The run prints the JSON
 # output of a good claude -p run. Its result holds the drafts of the work areas area-a and area-b.
 if [ "${1:-} ${2:-} ${3:-}" = '-p --output-format json' ] && [ -n "$home" ] &&
@@ -216,6 +245,21 @@ if [ "${1:-}" = --bg ] && [ "$sources" = yes ] && [ -n "$home" ]; then
   result=$(sed -n 's/^ *"result": "\(.*\)",*$/\1/p' "$input")
   echo 'export const MAX_LIMIT = 100' >>src/limit.ts
   sed "s/@HEAD@/$head/g" "$dir/../fixtures/request-result.json" >"$result"
+  start_session
+  exit 0
+fi
+
+# A new session of Discuss with Claude (plan Task 10) or of New session: claude --bg with the
+# statusline override, a name and no other settings. The log gets each argument on its own line.
+statusline='{"statusLine":{"type":"command","command":"true"}}'
+if [ "${1:-} ${2:-}" = '--bg --settings' ] && [ "${3:-}" = "$statusline" ] && [ -n "$name" ] &&
+  [ "$restricted" = no ] && [ "$sources" = no ] && [ -n "$home" ]; then
+  {
+    printf 'cwd: %s\n' "$(pwd -P)"
+    for arg in "$@"; do
+      printf 'arg: %s\n' "$arg"
+    done
+  } >>"$home/session-args.log"
   start_session
   exit 0
 fi

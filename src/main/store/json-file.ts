@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { closeSync, fsyncSync, openSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -6,12 +7,17 @@ import { dirname } from 'node:path'
 // So a crash during the write cannot leave a part of a file.
 // Sync the data to disk before the rename. So a power cut cannot leave an empty file.
 export async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
+  await writeTextAtomic(file, `${JSON.stringify(data, null, 2)}\n`)
+}
+
+// Write the text as writeJsonAtomic does. The file gets the mode 0600.
+export async function writeTextAtomic(file: string, text: string): Promise<void> {
   await mkdir(dirname(file), { recursive: true })
   const temporary = `${file}.${randomUUID()}.tmp`
   try {
     const handle = await open(temporary, 'wx', 0o600)
     try {
-      await handle.writeFile(`${JSON.stringify(data, null, 2)}\n`)
+      await handle.writeFile(text)
       await handle.sync()
     } finally {
       await handle.close()
@@ -20,6 +26,24 @@ export async function writeJsonAtomic(file: string, data: unknown): Promise<void
   } catch (error) {
     // A failed clean-up must not hide the first error.
     await rm(temporary, { force: true }).catch(() => {})
+    throw error
+  }
+}
+
+// The same write with no wait, for the quit of the app. The folder must exist.
+export function writeTextAtomicSync(file: string, text: string): void {
+  const temporary = `${file}.${randomUUID()}.tmp`
+  try {
+    const fd = openSync(temporary, 'wx', 0o600)
+    try {
+      writeFileSync(fd, text)
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
+    renameSync(temporary, file)
+  } catch (error) {
+    rmSync(temporary, { force: true })
     throw error
   }
 }

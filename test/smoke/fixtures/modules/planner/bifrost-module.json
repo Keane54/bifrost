@@ -1,0 +1,12 @@
+{
+  "description": "A module that asks Heimdall for Discuss with Claude.",
+  "id": "planner",
+  "minBifrost": "0.1.0",
+  "name": "Planner",
+  "panels": [
+    { "entry": "panels/main.html", "icon": "calendar", "id": "main", "title": "Planner board" }
+  ],
+  "permissions": [{ "id": "discuss", "reason": "To plan the week with you and Claude." }],
+  "suggests": { "dailyCap": null, "model": null },
+  "version": "1.0.0"
+}

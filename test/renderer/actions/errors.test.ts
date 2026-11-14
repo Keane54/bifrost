@@ -73,6 +73,22 @@ describe('friendly errors', () => {
     expect(friendlyError('claude stop failed: exit 1')).toBe('claude stop failed: exit 1')
   })
 
+  it('gives the exact texts of the module job refusals of a module (plan Task 7)', () => {
+    expect(friendlyError('refused: daily job cap reached')).toBe(
+      'This module has used all of its module jobs for today.',
+    )
+    expect(friendlyError('refused: job cancelled')).toBe('That module job was cancelled.')
+    expect(friendlyError('refused: the job took too long')).toBe(
+      'That module job took too long, so Bifrost stopped it.',
+    )
+    expect(friendlyError('refused: the job failed')).toBe(
+      "That module job didn't finish. Try again in a moment.",
+    )
+    expect(friendlyError('refused: the job result is not JSON')).toBe(
+      "The answer to that module job wasn't valid JSON.",
+    )
+  })
+
   it('gives the exact texts of the Delete and Take control refusals of Task 15', () => {
     expect(friendlyError('refused: claude rm kept the worktree')).toBe(
       'Claude Code kept this session, because its worktree has commits that exist on no remote. Open the worktree to check them, then delete again.',

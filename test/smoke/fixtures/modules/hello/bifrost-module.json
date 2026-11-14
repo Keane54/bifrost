@@ -1,0 +1,9 @@
+{
+  "description": "A module that calls Heimdall from its panel.",
+  "id": "hello",
+  "minBifrost": "0.1.0",
+  "name": "Hello",
+  "panels": [{ "entry": "panels/main.html", "icon": "star", "id": "main", "title": "Hello board" }],
+  "permissions": [],
+  "version": "1.0.0"
+}

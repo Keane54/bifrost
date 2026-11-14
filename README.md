@@ -49,6 +49,7 @@ Built with [Electron](https://www.electronjs.org/), [React](https://react.dev/) 
 - Hand over moves the work of a session to a new session. Bifrost asks the session for a short note and saves it in `~/.bifrost/handovers`. Then Bifrost starts a new session that continues from the note. The new name is the old name with " (2)". When that name is taken, the number goes up to " (3)" or higher. The chat window shows the new session, and Bifrost parks the old session. Hand over moves the watchlist entry, its colour and the priority to the new session. The button gets the warning colour when the context use is 80% or more. Only Live details gives the context use, so the colour needs Live details. When you delete a session whose folder another session uses, Bifrost removes the session from the list at once and keeps the folder. Bifrost removes the session from Claude Code when you delete the last session in that folder. This applies only to a worktree, not to a plain folder.
 - Bifrost updates itself. It checks GitHub for a new version and downloads it. When the update is ready, a button shows above Layouts in the side bar.
 - Bifrost shows the release notes from GitHub. After an update, the "What's new" dialog shows the changes since your last version. The "Release notes" button in Settings > Updates shows the last 10 releases.
+- Modules add your own panels to Bifrost. A module never gets a secret. See the Modules section.
 
 ## Panels
 
@@ -66,7 +67,8 @@ The side bar on the left edge has one button for each panel. It also holds the p
 | Service status | The status of Claude, GitHub and Sentry. |
 | Reviews | The GitHub pull requests that need you, in two tabs: To review and My PRs. See the Reviews section. |
 | Daily update | One tab for each work area. Each tab shows the tickets and PRs that moved since your last update, and the draft of your daily update. |
-| Settings | The tabs General, Slash commands, Keys, Reviews, Daily update, Live details, Skills and Updates. |
+| Settings | The tabs General, Slash commands, Keys, Reviews, Daily update, Live details, Skills, Modules and Updates. |
+| Module panels | The panels of the modules that you installed. See the Modules section. |
 
 ## Dictation
 
@@ -178,6 +180,34 @@ Listed skills are in the skill list of Claude, so Claude can start them by itsel
 
 `bifrost-humanise` comes from `blader/humanizer`. `bifrost-grill` comes from `mattpocock/skills`. Both are MIT licensed.
 
+## Modules
+
+A module adds your own panels to Bifrost. A module is a folder of static web files with a manifest. You can keep a module in your own repository, also in a private repository. The [author guide](docs/modules.md) tells you how to write a module.
+
+Each panel of a module runs in a sandboxed frame. The frames of a module run in a process of their own, apart from Bifrost and from the other modules. A frame has no Node, no network and no clipboard read. One known limit: if a browser bug takes over the process of a module, that process can send UDP to a fixed IP address. HTTP, TCP and DNS stay blocked. Bifrost tracks a browser-side block for UDP. The panel talks only to Heimdall, the secure core of Bifrost. Heimdall runs in the main process. It checks each call of a module against the permissions that you gave to the module.
+
+A module never gets a secret. Heimdall keeps the tokens, the logins and the keys, and it never gives them to a module. Heimdall filters each value that it gives to a module. Each text that looks like a token or a private key becomes `***`.
+
+A module cannot read the files on your Mac by itself. It can read a file only when you pick the file in a file dialog of its panel, or drop the file on its panel. The module can then give the content of the file to a module job, and the job sends it to Claude. Before each module job, the secret filter masks the known token and key formats in its input. So pick or drop only a file that you want the module to have.
+
+Each module has a tier. Bifrost has two tiers:
+
+- **Standard**: the panels of the module, its own storage, notifications, the session list, the plan usage, the service status, module jobs and Discuss with Claude. This version of Bifrost has only the Standard tier.
+- **Permissive**: more access, for example Slack reads, GitHub reads and web reads, each to a target that you approve. A later version of Bifrost adds this tier. This version refuses a module that asks for a Permissive permission, with "This module needs a newer version of Bifrost."
+
+To install a module:
+
+1. Open Settings > Modules.
+2. Click "Install from a folder" or "Install from a git repo". For a git repo, Bifrost accepts only an address of the form `https://github.com/<owner>/<repo>`. It uses your `gh` login, so a private repository works.
+3. Read Heimdall's window. It shows the tier, each permission with the reason of the module, and what a module can never do.
+4. Click "Allow". The module runs only after this step.
+
+The side bar then shows a button for each panel of the module. In Settings > Modules, you can turn a module off, remove a permission, check for updates or remove the module. A new version that asks for a new permission does not run until you allow it.
+
+A module job is a short Claude Code run that Heimdall starts for a module. The job has no tools, no MCP servers, no skills and no memory. You choose the model and the daily cap of the module jobs for each module. Without the permission "Run module jobs automatically", a job waits until you click Refresh in the title bar of a panel of the module.
+
+With Discuss with Claude, a module can ask you to start a Claude session. Heimdall opens its own panel. The module can show text cards with Copy buttons there, but Claude does not see the cards. The prompt box always starts empty. You write the prompt and pick the folder. Only your text goes to Claude. The module cannot see or change the session.
+
 ## Requirements
 
 - A Mac with Apple silicon and macOS 13 or later. The DMG has arm64 code only.
@@ -198,6 +228,7 @@ After the first install, you do not need to download a DMG again. Bifrost checks
 
 The [`docs`](docs) folder and the root folder have the other documents:
 
+- [Modules](docs/modules.md): the author guide. It tells you how to write a module for Bifrost.
 - [Electron, Tauri or GPUI](docs/electron-or-tauri.md): why Bifrost stays on Electron.
 - [Slack app](docs/slack/README.md): the Slack app for a later milestone.
 - [Releasing](RELEASING.md): the secrets and the steps of a signed release.

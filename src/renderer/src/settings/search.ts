@@ -15,6 +15,7 @@ export const SECTION_TITLES: Readonly<Record<SettingsSection, string>> = {
   general: 'General',
   keys: 'Keys',
   live: 'Live details',
+  modules: 'Modules',
   reviews: 'Reviews',
   skills: 'Skills',
   slash: 'Slash commands',
@@ -28,6 +29,7 @@ const SECTION_ORDER: readonly SettingsSection[] = [
   'daily-update',
   'live',
   'skills',
+  'modules',
   'updates',
 ]
 
@@ -169,6 +171,8 @@ export function settingsIndex(input: {
   live: readonly string[]
   // The words of the skills: the title, 'plugin', the state line, the buttons and the names.
   skills: readonly string[]
+  // The words of Settings > Modules: the title, the buttons and the names of the modules.
+  modules?: readonly string[]
 }): SearchSection[] {
   const rows: Record<SettingsSection, SearchRow[]> = {
     'daily-update': Object.values(DAILY_ROWS).map(label => ({ id: label, text: label })),
@@ -177,6 +181,7 @@ export function settingsIndex(input: {
       group.rows.map(row => ({ binding: row.binding, id: row.slot.id, text: row.label })),
     ),
     live: [{ id: 'live', text: input.live.join(' ') }],
+    modules: [{ id: 'modules', text: (input.modules ?? [SECTION_TITLES.modules]).join(' ') }],
     reviews: Object.values(REVIEWS_ROWS).map(label => ({ id: label, text: label })),
     skills: [{ id: 'skills', text: input.skills.join(' ') }],
     slash: input.slash.map(command => ({ id: command, text: command })),

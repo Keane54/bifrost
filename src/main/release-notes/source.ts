@@ -1,7 +1,7 @@
 // The release notes source. It reads the GitHub releases of Bifrost only when a release notes view
 // opens, and keeps the last good answer in memory for CACHE_MS. The releases are in a public repo,
-// so the request has no token. This file has no Electron import. ipc.ts gives it net.fetch, or
-// fileFetch in a test home.
+// so the request has no token. This file has no Electron import. ipc.ts gives it mainFetch (on
+// Bifrost's own session), or fileFetch in a test home.
 import { readFile } from 'node:fs/promises'
 import type { Release, ReleaseNotesResult } from '../../shared/release-notes'
 import { cappedText, type FetchFn } from '../service-status/statuspage'

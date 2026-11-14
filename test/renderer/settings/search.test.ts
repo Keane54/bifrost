@@ -90,11 +90,12 @@ describe('the index of all sections', () => {
   const index = settingsIndex({
     keys: keyGroups({}, 'plain'),
     live: ['Live details', 'Off.', 'Turn on', 'Remove'],
+    modules: ['Modules', 'Install from a folder', 'Hello'],
     skills: ['Skills', 'plugin', 'Not installed.', 'Install', 'bifrost-hand-over'],
     slash: ['/compact', '/clear'],
   })
 
-  it('has the eight sections in the order of the tabs, with their titles', () => {
+  it('has the nine sections in the order of the tabs, with their titles', () => {
     expect(index.map(s => s.id)).toEqual([
       'general',
       'slash',
@@ -103,6 +104,7 @@ describe('the index of all sections', () => {
       'daily-update',
       'live',
       'skills',
+      'modules',
       'updates',
     ])
     expect(index.map(s => s.title)).toEqual([
@@ -113,6 +115,7 @@ describe('the index of all sections', () => {
       'Daily update',
       'Live details',
       'Skills',
+      'Modules',
       'Updates',
     ])
     expect(SECTION_TITLES.keys).toBe('Keys')
@@ -138,12 +141,18 @@ describe('the index of all sections', () => {
     expect(index[6].rows).toEqual([
       { id: 'skills', text: 'Skills plugin Not installed. Install bifrost-hand-over' },
     ])
-    expect(index[7].rows).toEqual([{ id: UPDATES_ROWS.auto, text: UPDATES_ROWS.auto }])
+    expect(index[7].rows).toEqual([{ id: 'modules', text: 'Modules Install from a folder Hello' }])
+    expect(index[8].rows).toEqual([{ id: UPDATES_ROWS.auto, text: UPDATES_ROWS.auto }])
   })
 
   it('finds the Skills section with the query hand-over', () => {
     const hits = searchSettings('hand-over', index)
     expect(hits?.map(hit => hit.id)).toEqual(['skills'])
+  })
+
+  it('finds the Modules section by the name of a module', () => {
+    const hits = searchSettings('hello', index)
+    expect(hits?.map(hit => hit.id)).toEqual(['modules'])
   })
 
   it('finds the Updates switch with the word updates', () => {

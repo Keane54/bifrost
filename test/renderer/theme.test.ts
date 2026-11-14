@@ -310,7 +310,7 @@ describe('theme', () => {
   it('makes the top frame less transparent, with a 250 ms change', () => {
     expect(CSS).toContain('--color-panel-focus: rgb(8 8 8 / calc(var(--panel-alpha) + 0.1));')
     const frame = source('wm/Frame.tsx')
-    expect(frame).toMatch(/border-t-accent bg-panel-focus /)
+    expect(frame).toMatch(/border-t-accent bg-panel-focus['\s]/)
     expect(frame).toMatch(/border-t-accent\/35 bg-panel'/)
     expect(frame).toContain('transition-[background-color,border-color,box-shadow] duration-250')
   })

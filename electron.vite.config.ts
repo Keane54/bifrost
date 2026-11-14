@@ -1,11 +1,13 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
+import { moduleApiPlugin } from './scripts/module-api/build'
 
 const FONT_FILE = /\.(woff2?|ttf|otf)$/i
 
 export default defineConfig({
-  main: {},
+  // The main build also compiles the client library of the modules (ruling P10).
+  main: { plugins: [moduleApiPlugin()] },
   preload: {
     build: {
       rollupOptions: {

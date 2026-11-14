@@ -1,0 +1,10 @@
+{
+  "description": "A module that asks Heimdall for a module job.",
+  "id": "jobs",
+  "minBifrost": "0.1.0",
+  "name": "Jobs",
+  "panels": [{ "entry": "panels/main.html", "icon": "bot", "id": "main", "title": "Jobs board" }],
+  "permissions": [{ "id": "claude-jobs", "reason": "To ask Claude for a short text." }],
+  "suggests": { "dailyCap": null, "model": null },
+  "version": "1.0.0"
+}

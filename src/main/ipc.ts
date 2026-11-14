@@ -6,6 +6,7 @@ import {
   appendFile,
   mkdir,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
@@ -20,7 +21,6 @@ import {
   type BrowserWindow,
   clipboard,
   dialog,
-  type IpcMainInvokeEvent,
   ipcMain,
   nativeImage,
   autoUpdater as nativeUpdater,
@@ -32,7 +32,9 @@ import {
 } from 'electron'
 import electronUpdater from 'electron-updater'
 import { checkAliasRequest } from '../shared/alias'
+import { localDate } from '../shared/daily-schedule'
 import { LIVE_MIN_CLAUDE_VERSION } from '../shared/live'
+import { type ModulesSnapshot, REFUSED_BAD_MODULE_INPUT } from '../shared/modules'
 import { isPriority } from '../shared/priority'
 import { ITEM_ID, MAX_ANSWERS, REPO_KEY } from '../shared/reviews'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '../shared/settings'
@@ -64,6 +66,7 @@ import {
   type RunClaude,
   resolveClaudePath,
 } from './claude/cli'
+import { createRunClaudeJob } from './claude/job-runner'
 import { createSpawnLines, type SpawnLines } from './claude/spawn-lines'
 import { checkClaudeVersion, MIN_CLAUDE_VERSION } from './claude/version'
 import {
@@ -102,6 +105,23 @@ import { createLiveServer } from './live/live-server'
 import { modSourceDir } from './live/mod-folder'
 import { createPluginCli } from './live/plugin-cli'
 import { createRotatingLog } from './log/rotating-log'
+import { mainFetch } from './main-network'
+import { createDiscuss, type Discuss } from './modules/discuss'
+import { activeModule, createHeimdall, type ModuleNotice } from './modules/heimdall'
+import { createJobs, type Jobs, moduleJobsRoot, watchLocalDay } from './modules/jobs'
+import { createModuleDataStore, type ModuleDataStore } from './modules/module-data'
+import { modulesSnapshot } from './modules/module-rows'
+import { createModuleService, moduleCodeRoot } from './modules/module-service'
+import {
+  carriedDiscussSession,
+  type ModulesState,
+  type ModulesStateStore,
+  modulesStateFile,
+  openModulesStateStore,
+  withDiscussSession,
+  withoutDiscussSession,
+} from './modules/module-state'
+import { createFromPage } from './page-guard'
 import {
   checkFps,
   checkView,
@@ -282,6 +302,71 @@ export function getHealthLog(): HealthLog | null {
   return healthLog
 }
 
+// The modules state (Modules design 7). registerIpc opens the store. Until the store is open, the
+// state has no module, so the module protocol serves no file.
+let modulesStore: ModulesStateStore | null = null
+// The Bifrost folder of the modules. registerIpc sets it.
+let modulesHome: string | null = null
+// The module jobs of the modules (plan Task 7). registerIpc makes them. stopRegistry stops them.
+let moduleJobs: Jobs | null = null
+// Discuss with Claude (plan Task 10). registerIpc makes it. The end of a page drops its open
+// request.
+let moduleDiscuss: Discuss | null = null
+// The timer that sends the rows of the modules at local midnight, so the rows show the jobs of
+// the new day. registerIpc starts it. stopRegistry stops it.
+let stopModulesDay: (() => void) | null = null
+
+// The newest modules state. index.ts gives it to the module protocol.
+export function modulesState(): ModulesState {
+  return modulesStore?.get() ?? { modules: {} }
+}
+
+// The rows of the modules for the page (plan Task 6). A packaged app treats a dev module as off.
+function moduleRows(): ModulesSnapshot {
+  return modulesSnapshot(modulesState(), {
+    devAllowed: !app.isPackaged,
+    home: homedir(),
+    today: localDate(new Date()),
+    waiting: id => moduleJobs?.waiting(id) ?? 0,
+  })
+}
+
+// The registry forgot a session for good (a Delete, or gone from the counted lists). Its id
+// leaves the saved sessions of Discuss with Claude (ruling P12), so the list stays small. A
+// failed or empty poll never comes here, so a session that comes back stays hidden. Before the
+// modules state opens, the id stays: it only hides a session that does not exist.
+function forgetDiscussSession(sessionId: string): void {
+  const store = modulesStore
+  if (store === null || !(store.get().discussSessions ?? []).includes(sessionId)) return
+  store
+    .change(s => withoutDiscussSession(s, sessionId))
+    .catch(err => {
+      console.error('Bifrost cannot save the sessions of Discuss with Claude.', err)
+    })
+}
+
+// Send the rows of the modules to the page. A failed send must not throw, for example while the
+// window closes.
+function sendModules(): void {
+  try {
+    send('modules:changed', moduleRows())
+  } catch (err) {
+    console.error('Bifrost cannot send the modules to the window.', err)
+  }
+}
+
+// The code folder of a module: the approved copy, or the folder of a dev module. It is "" before
+// registerIpc, and the protocol refuses a path that is not absolute.
+export function moduleFilesDir(id: string): string {
+  if (modulesHome === null) return ''
+  const modules = modulesState().modules
+  return moduleCodeRoot(modulesHome, id, Object.hasOwn(modules, id) ? modules[id] : undefined)
+}
+
+// The storage of the modules (Modules design 8.2). registerIpc makes it. stopRegistry writes its
+// changes before the app quits.
+let moduleDataStore: ModuleDataStore | null = null
+
 // The account usage poller (spec 8.8). It runs only while the setting accountUsage is on. A test
 // home creates none, so a test never reads the Keychain.
 let accountUsage: AccountUsagePoller | null = null
@@ -352,7 +437,7 @@ let stopDaily: (() => void) | null = null
 // gives its events to the chat view that dictates. stopRegistry stops the helper.
 let dictation: DictationService | null = null
 
-const fetchJson = createFetchJson((url, init) => net.fetch(url, init))
+const fetchJson = createFetchJson(mainFetch)
 
 // Bifrost sets the login item only in the packaged app, and never in a test home (D2, D12).
 // A dev Electron binary must not become a login item.
@@ -368,13 +453,22 @@ function isLivePage(sender: WebContents, token: number): boolean {
   return sender.id === currentWindow.webContents.id
 }
 
-// Run a call only when the sender is the page that the current window shows now.
-// Another webContents must not read or change the integration of the user.
-function fromPage<T>(e: IpcMainInvokeEvent, fn: () => Promise<T>): Promise<T> {
-  if (!isLivePage(e.sender, page.token())) {
-    return Promise.reject(new Error('refused: not the Bifrost page'))
+// Run a call only when the sender is the top frame of the page that the current window shows
+// now. Another webContents must not read or change the integration of the user. A frame inside
+// the page, for example a module frame, gets a refusal on each channel (main/page-guard.ts).
+const fromPage = createFromPage<WebContents>(sender => isLivePage(sender, page.token()))
+
+// The folder dialog of an install from a folder. null when the user closes it.
+async function pickModuleFolder(): Promise<string | null> {
+  const options: OpenDialogOptions = {
+    buttonLabel: 'Choose',
+    defaultPath: homedir(),
+    message: 'Choose the folder of the module.',
+    properties: ['openDirectory'],
   }
-  return fn()
+  const win = currentWindow && !currentWindow.isDestroyed() ? currentWindow : null
+  const result = await (win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options))
+  return result.canceled ? null : (result.filePaths[0] ?? null)
 }
 
 const reviewLog = (m: string): void => console.error(m)
@@ -557,6 +651,22 @@ function notifyUsageLimit(text: { title: string; body: string }): void {
       // With no loaded page, the open waits for the did-finish-load of the next page.
       if (pendingUsageOpen.click(USAGE_OPEN) !== null) send('usage:open')
     },
+    logRefusedNotification,
+  )
+}
+
+// A notification of a module (Modules design 8.2). It shows only when the Notifications setting is
+// on. The title starts with the name of the module. A click shows the window.
+function notifyForModule(notice: ModuleNotice): void {
+  if (!getSettings().notifications) return
+  showNotification(
+    {
+      body: notice.body,
+      label: `the module ${notice.moduleId}`,
+      sessionId: null,
+      title: `${notice.moduleName}: ${notice.title}`,
+    },
+    () => showWindowFn?.(),
     logRefusedNotification,
   )
 }
@@ -1009,12 +1119,7 @@ function startPerformance(
     network: home === null,
     now: () => Date.now(),
     online: () => net.isOnline(),
-    probe: url =>
-      probeUrl(
-        (u, init) => net.fetch(u, init),
-        url,
-        () => performance.now(),
-      ),
+    probe: url => probeUrl(mainFetch, url, () => performance.now()),
     ptys: () => liveManager?.list() ?? [],
     rateLimit: () => reviewsWatcher?.rateLimit() ?? null,
     rows: () => liveService?.rows() ?? [],
@@ -1112,6 +1217,7 @@ async function startService(
     send('registry:update', rows, error)
     alerts.update(rows)
   })
+  service.onForget(forgetDiscussSession)
   service.onUsage(usage => {
     send('usage:update', usage)
     usageAlerts?.session(usage)
@@ -1165,7 +1271,7 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
         send('usage:account-update', value)
         usageAlerts?.account(value)
       },
-      fetch: (url, init) => net.fetch(url, init),
+      fetch: mainFetch,
       health,
       now: () => Date.now(),
       readToken: () => readAccessToken(execFile, Date.now()),
@@ -1182,6 +1288,11 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
     : loadLoginEnv(execFile, { execPath: process.execPath, fallback: process.env })
   const run = Promise.all([claudePath, loginEnv]).then(([path, env]) =>
     path ? createRunClaude(execFile, path, env) : null,
+  )
+  // The module jobs of the modules get their own runner, because only a job gets stdin, and a
+  // timeout stops the whole process group of a job. It uses the same env as run.
+  const jobRun = Promise.all([claudePath, loginEnv]).then(([path, env]) =>
+    path ? createRunClaudeJob(path, env) : null,
   )
   // The claude plugin commands of Live details get their own run (D25). In a test home, they
   // get HOME and CLAUDE_CONFIG_DIR of the test home. So they change only files under the test
@@ -1251,6 +1362,17 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
     return m
   })
   const paths = defaultPaths(home?.home ?? homedir())
+  modulesHome = paths.bifrostHome
+  // The page gets the rows after the store opens, and again after each change of the state.
+  const modulesReady = openModulesStateStore(modulesStateFile(paths.bifrostHome)).then(
+    store => {
+      modulesStore = store
+      store.onChange(sendModules)
+      sendModules()
+    },
+    err => console.error('Bifrost cannot open the modules state.', err),
+  )
+  stopModulesDay = watchLocalDay(sendModules, { log: message => console.error(message) })
   // A smoke test reads these paths and checks that each one is in the test home.
   recordTestPaths(home, {
     bifrostHome: paths.bifrostHome,
@@ -1295,9 +1417,7 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
   // only when a view opens. A test home reads the file github-releases.json of the test home, so a
   // test never calls GitHub.
   const releaseNotes = createReleaseNotesSource({
-    fetch: home
-      ? fileFetch(join(home.home, 'github-releases.json'))
-      : (url, init) => net.fetch(url, init),
+    fetch: home ? fileFetch(join(home.home, 'github-releases.json')) : mainFetch,
     log: line => console.error(line),
     now: () => Date.now(),
   })
@@ -1778,8 +1898,10 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
       writeNoteFile(join(paths.bifrostHome, 'handovers'), noteFileName(name, at), note),
   })
   const sessions = createSessionActions({
+    // A hand-over of a session that Discuss started gives a session that modules also cannot see.
     carryOver: (from, to) => {
       liveService?.carryOver(from, to)
+      moduleDiscuss?.carryOver(from, to)
     },
     checkWorktree: worktree => checkWorktreeHead(worktree, execFile),
     defer: entry => liveService?.defer(entry),
@@ -1844,6 +1966,202 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
       if (url !== null) await shell.openExternal(url)
     }),
   )
+  // The storage of the modules. stopRegistry writes its changes at the quit. Settings > Modules
+  // (the module service) calls flush when the user turns a module off or updates it, and drop
+  // before it deletes the data file of a removed module.
+  const moduleData = createModuleDataStore(paths.bifrostHome)
+  moduleDataStore = moduleData
+  // Heimdall's call check (Modules design 8). The bridge of a module frame sends each call with
+  // the module id of the frame. Heimdall checks the module, the caps and the permission, and
+  // filters each answer. The storage of each module goes to modules-data in the Bifrost folder.
+  // The module jobs (plan Task 7) run claude with no tools, no skills and no saved session, each
+  // in the empty fixed job folder of its module in the system temp folder (ruling S-A10). That
+  // path holds no user name. A test home keeps the job folders in the test home.
+  // The rows show the count of the jobs that wait for Refresh. Heimdall sends the refresh event,
+  // so the event passes its checks and its filter.
+  const jobs = createJobs({
+    changed: sendModules,
+    devAllowed: !app.isPackaged,
+    emit: (moduleId, name, data) => heimdall.event(moduleId, name, data),
+    jobsRoot: moduleJobsRoot(home ? home.home : app.getPath('temp')),
+    log: message => console.error(message),
+    now: () => Date.now(),
+    runner: () => jobRun,
+    store: {
+      change: async fn => {
+        await modulesReady
+        if (modulesStore === null) throw new Error('Bifrost cannot open the modules state.')
+        return modulesStore.change(fn)
+      },
+      get: modulesState,
+    },
+  })
+  moduleJobs = jobs
+  // A change of the modules state for Discuss with Claude. A failure goes to the log only.
+  const saveModules = (fn: (s: ModulesState) => ModulesState): void => {
+    modulesReady
+      .then(() => {
+        if (modulesStore === null) throw new Error('Bifrost cannot open the modules state.')
+        return modulesStore.change(fn)
+      })
+      .catch(err => console.error('Bifrost cannot save the sessions of Discuss with Claude.', err))
+  }
+  // Discuss with Claude (plan Task 10). A module can only ask, and Heimdall's panel shows the
+  // request. Only the main process copies a card. A session starts through the New session path
+  // with the prompt of the user, never in a folder that a module can write or that the module
+  // jobs use. A test home also blocks the job folders in the system temp folder.
+  const discuss = createDiscuss({
+    blockedFolders: [
+      join(paths.bifrostHome, 'modules'),
+      join(paths.bifrostHome, 'modules-data'),
+      moduleJobsRoot(home ? home.home : app.getPath('temp')),
+      moduleJobsRoot(app.getPath('temp')),
+    ],
+    carrySession: (from, to) => saveModules(s => carriedDiscussSession(s, from, to)),
+    createSession: spec => sessions.create(spec),
+    moduleName: id => {
+      const entry = activeModule(modulesState(), id, !app.isPackaged)
+      return entry?.granted.includes('discuss') ? entry.manifest.name : null
+    },
+    now: () => performance.now(),
+    open: view => send('modules:discuss', view),
+    realpath: path => realpath(path),
+    requestId: () => randomUUID(),
+    // The saved ids hide the sessions from every module after a restart too (ruling P12).
+    saveSession: id => saveModules(s => withDiscussSession(s, id)),
+    // The folder check compares the device and the inode, so a firmlink form cannot get past it.
+    stat: async path => {
+      const info = await stat(path, { bigint: true })
+      return { dev: info.dev, ino: info.ino }
+    },
+    writeClipboard: text => clipboard.writeText(text),
+  })
+  moduleDiscuss = discuss
+  const heimdall = createHeimdall({
+    devAllowed: !app.isPackaged,
+    discuss,
+    emit: (moduleId, name, data) => send('modules:event', moduleId, name, data),
+    jobs,
+    notify: notifyForModule,
+    now: () => Date.now(),
+    serviceStatus: () => serviceList(serviceMonitor),
+    sessions: {
+      pr: row => prs.lookup(row.cwd, row.branch),
+      rows: () => liveService?.rows() ?? [],
+    },
+    state: modulesState,
+    store: moduleData,
+    usage: async () => ({
+      account: accountUsage?.current() ?? null,
+      snapshot: (await service).usage(),
+    }),
+  })
+  // Only the top frame of the Bifrost page sends a module call. fromPage checks the frame.
+  const moduleCall = async (moduleId: unknown, name: unknown, args: unknown): Promise<unknown> => {
+    if (typeof moduleId !== 'string' || typeof name !== 'string') {
+      throw new Error(REFUSED_BAD_MODULE_INPUT)
+    }
+    return heimdall.call(moduleId, name, args)
+  }
+  ipcMain.handle('modules:call', (e, moduleId: unknown, name: unknown, args: unknown) =>
+    fromPage(e, () => moduleCall(moduleId, name, args)),
+  )
+  // A click on Refresh in the title bar of a module panel. Only Bifrost's own title bar sends it,
+  // never a module frame. The waiting jobs of the module run, and the module gets the refresh
+  // event.
+  ipcMain.handle('modules:refresh', (e, moduleId: unknown) =>
+    fromPage(e, async () => {
+      if (typeof moduleId !== 'string') throw new Error(REFUSED_BAD_MODULE_INPUT)
+      moduleJobs?.refresh(moduleId)
+    }),
+  )
+  // Start, Copy and Cancel of Discuss with Claude come only from Heimdall's panel, which is
+  // Bifrost's own UI. The page sends the request id, the prompt and the folder only.
+  ipcMain.handle('modules:discuss-start', (e, requestId: unknown, input: unknown) =>
+    fromPage(e, () => discuss.start(requestId, input)),
+  )
+  ipcMain.handle('modules:discuss-copy', (e, requestId: unknown, cardIndex: unknown) =>
+    fromPage(e, () => discuss.copy(requestId, cardIndex)),
+  )
+  ipcMain.handle('modules:discuss-cancel', (e, requestId: unknown) =>
+    fromPage(e, async () => discuss.cancel(requestId)),
+  )
+  // The rows of the modules. The answer waits until the state opens, so a module panel of a saved
+  // layout does not show the notice for a module that is on.
+  ipcMain.handle('modules:snapshot', e =>
+    fromPage(e, async () => {
+      await modulesReady
+      return moduleRows()
+    }),
+  )
+  // The install, the update and the removal of modules (plan Task 9). A git install clones only
+  // a GitHub repository, through the gh login of the user and with no prompt. A test home reads
+  // no git config of the user, and clones from its local remotes.
+  const modulesGit = createRepoGit({
+    env: async () => ({
+      ...childEnv(await loginEnv, { pty: false }),
+      ...(home === null ? {} : { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }),
+    }),
+    exec: execFile,
+    extraConfig: home === null ? [] : TEST_GIT_IDENTITY,
+  })
+  const moduleService = createModuleService({
+    bifrostHome: paths.bifrostHome,
+    bifrostVersion: app.getVersion(),
+    data: moduleData,
+    devAllowed: !app.isPackaged,
+    git: modulesGit,
+    jobs: { cancel: id => jobs.cancel(id) },
+    log: message => console.error(message),
+    pickFolder: pickModuleFolder,
+    remoteBase: remoteBase(home?.home ?? null),
+    store: {
+      change: async fn => {
+        await modulesReady
+        if (modulesStore === null) throw new Error('Bifrost cannot open the modules state.')
+        return modulesStore.change(fn)
+      },
+      get: modulesState,
+    },
+  })
+  // Remove the old temporary clones and copies after the state opens.
+  void modulesReady
+    .then(() => moduleService.cleanup())
+    .catch(err => {
+      console.error('Bifrost cannot clean the modules folder.', err)
+    })
+  ipcMain.handle('modules:install-folder', e => fromPage(e, () => moduleService.installFolder()))
+  ipcMain.handle('modules:install-git', (e, url: unknown) =>
+    fromPage(e, () => moduleService.installGit(url)),
+  )
+  ipcMain.handle('modules:install-dev', e => fromPage(e, () => moduleService.installDev()))
+  ipcMain.handle('modules:check-updates', e => fromPage(e, () => moduleService.checkUpdates()))
+  ipcMain.handle('modules:review-update', (e, id: unknown) =>
+    fromPage(e, () => moduleService.reviewUpdate(id)),
+  )
+  // Allow and Cancel come only from Heimdall's panel, which is Bifrost's own UI.
+  ipcMain.handle('modules:approve', (e, requestId: unknown) =>
+    fromPage(e, () => moduleService.allow(requestId)),
+  )
+  ipcMain.handle('modules:decline', (e, requestId: unknown) =>
+    fromPage(e, () => moduleService.decline(requestId)),
+  )
+  ipcMain.handle('modules:set-enabled', (e, id: unknown, on: unknown) =>
+    fromPage(e, () => moduleService.setEnabled(id, on)),
+  )
+  ipcMain.handle('modules:revoke', (e, id: unknown, permission: unknown) =>
+    fromPage(e, () => moduleService.revoke(id, permission)),
+  )
+  ipcMain.handle('modules:grant', (e, id: unknown, permission: unknown) =>
+    fromPage(e, () => moduleService.grant(id, permission)),
+  )
+  ipcMain.handle('modules:set-model', (e, id: unknown, model: unknown) =>
+    fromPage(e, () => moduleService.setModel(id, model)),
+  )
+  ipcMain.handle('modules:set-cap', (e, id: unknown, cap: unknown) =>
+    fromPage(e, () => moduleService.setCap(id, cap)),
+  )
+  ipcMain.handle('modules:remove', (e, id: unknown) => fromPage(e, () => moduleService.remove(id)))
   ipcMain.handle('sessions:create', (e, spec: unknown) => fromPage(e, () => sessions.create(spec)))
   ipcMain.handle('sessions:stop', (e, sessionId: unknown) =>
     fromPage(e, () => sessions.stop(sessionId)),
@@ -2139,6 +2457,7 @@ export function attachWindow(win: BrowserWindow): void {
 function endPage(): void {
   page.end()
   perfMonitor?.pageGone()
+  moduleDiscuss?.clear()
 }
 
 // No page is loaded now. A notification click waits for the next page.
@@ -2155,8 +2474,8 @@ export function closeAllPtys(): void {
 }
 
 // Stop the registry service, the server of Live details, the pollers, the updater, the Performance
-// monitor and its delay histogram, the Daily update and the speech helper. Call it when the app
-// quits.
+// monitor and its delay histogram, the Daily update, the module jobs of the modules and their
+// midnight timer, and the speech helper. Call it when the app quits.
 export function stopRegistry(): void {
   serviceStopped = true
   stopDaily?.()
@@ -2173,4 +2492,8 @@ export function stopRegistry(): void {
   updater?.stop()
   perfMonitor?.stop()
   loopDelay?.stop()
+  moduleJobs?.stop()
+  stopModulesDay?.()
+  stopModulesDay = null
+  moduleDataStore?.flushSync()
 }

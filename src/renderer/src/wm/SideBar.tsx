@@ -8,6 +8,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { memo, useId } from 'react'
+import type { ModuleRow } from '../../../shared/modules'
 import type { SessionRow } from '../../../shared/types'
 import { UPDATE_TEXTS } from '../../../shared/updates'
 import {
@@ -22,6 +23,9 @@ import { useDailyMarker } from '../daily-update/use-daily-update'
 import { useRegistry } from '../data/registry'
 import { cx } from '../lib/cx'
 import { Tip } from '../lib/menu'
+import { MODULE_ICON_COMPONENTS } from '../modules/module-icons'
+import { modulePanelOf, moduleSideButtons } from '../modules/module-panels'
+import { useModules } from '../modules/use-modules'
 import { TONE_TEXT } from '../overview/cells'
 import { stateTone } from '../overview/format'
 import { SessionIcon } from '../overview/SessionIcon'
@@ -116,8 +120,13 @@ function SideButton(props: {
 }
 
 // The icon of a minimised frame. A chat shows the icon of its session and the state dot, as the
-// chat title does. Every other panel shows the icon of its side bar button.
-function MinimisedIcon(props: { panelId: string; rows: SessionRow[] }): React.JSX.Element {
+// chat title does. A module panel shows the icon of its manifest. Every other panel shows the icon
+// of its side bar button.
+function MinimisedIcon(props: {
+  panelId: string
+  rows: SessionRow[]
+  modules: readonly ModuleRow[]
+}): React.JSX.Element {
   const kind = panelKind(props.panelId)
   const id = kind === 'chat' ? chatSessionId(props.panelId) : undefined
   const row = props.rows.find(r => r.sessionId === id)
@@ -138,8 +147,38 @@ function MinimisedIcon(props: { panelId: string; rows: SessionRow[] }): React.JS
       </>
     )
   }
-  const Icon = PANEL_ICONS[kind ?? 'chat']
+  const found = kind === 'module' ? modulePanelOf(props.modules, props.panelId) : null
+  const Icon = found ? MODULE_ICON_COMPONENTS[found.panel.icon] : PANEL_ICONS[kind ?? 'chat']
   return <Icon aria-hidden={true} className='pointer-events-none' size={16} />
+}
+
+// One button for each panel of each enabled module, with the icon and the title of its manifest.
+// The label and the tooltip also give the module name. A divider comes before the buttons. With
+// no enabled module, nothing shows. Many buttons scroll, as the minimised frames do.
+export function ModuleButtons(props: {
+  modules: readonly ModuleRow[]
+  open(panelId: string): void
+}): React.JSX.Element | null {
+  const buttons = moduleSideButtons(props.modules)
+  if (buttons.length === 0) return null
+  return (
+    <>
+      <div className={cx('my-1 h-px w-6 shrink-0 bg-panel-edge')} />
+      <div
+        className={cx('flex min-h-0 flex-col items-center gap-1 overflow-y-auto')}
+        data-module-buttons={true}
+      >
+        {buttons.map(b => (
+          <SideButton
+            icon={MODULE_ICON_COMPONENTS[b.icon]}
+            key={b.panelId}
+            label={b.label}
+            onClick={() => props.open(b.panelId)}
+          />
+        ))}
+      </div>
+    </>
+  )
 }
 
 // The update button shows only for a ready update (a pulsing green dot) or a failed update
@@ -210,8 +249,9 @@ function GlobalButton(props: { action: GlobalActionId; icon: LucideIcon }): Reac
   )
 }
 
-// The thin bar on the left edge: one button for each panel type, the actions that need no row,
-// then the minimised frames. The Layouts button is at the bottom.
+// The thin bar on the left edge: one button for each panel type, one button for each panel of each
+// enabled module, the actions that need no row, then the minimised frames. The Layouts button is
+// at the bottom.
 function SideBar(): React.JSX.Element {
   const state = useWmState()
   const { dispatch } = useWmControls()
@@ -221,6 +261,7 @@ function SideBar(): React.JSX.Element {
   const reviewsAttention = useReviewsAttention()
   const health = usePerformanceState()
   const dailyMarker = useDailyMarker()
+  const { modules } = useModules()
   const open = (panelId: string): void => dispatch({ panelId, type: 'open' })
   const free = freeOverview(state)
   const minimised = state.frames.filter(f => f.minimised)
@@ -285,13 +326,14 @@ function SideBar(): React.JSX.Element {
         label='Performance'
         onClick={() => open('performance')}
       />
+      <ModuleButtons modules={modules} open={open} />
       <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />
       <GlobalButton action='new-session' icon={SquarePlus} />
       <GlobalButton action='resume-all' icon={RotateCcw} />
       {minimised.length > 0 && <div className='my-1 h-px w-6 shrink-0 bg-panel-edge' />}
       <div className='flex min-h-0 flex-col items-center gap-1 overflow-y-auto'>
         {minimised.map(frame => {
-          const title = panelTitle(frame.active, rows)
+          const title = panelTitle(frame.active, rows, modules)
           return (
             <Tip key={frame.id} label={title} side='right'>
               <button
@@ -301,7 +343,7 @@ function SideBar(): React.JSX.Element {
                 onClick={() => dispatch({ frameId: frame.id, type: 'restore' })}
                 type='button'
               >
-                <MinimisedIcon panelId={frame.active} rows={rows} />
+                <MinimisedIcon modules={modules} panelId={frame.active} rows={rows} />
               </button>
             </Tip>
           )
@@ -321,7 +363,7 @@ function SideBar(): React.JSX.Element {
 }
 
 // The side bar has no props. It renders only when a context value changes, when the health
-// state of the Performance store changes, or when the Daily update marker changes. A drag step
-// changes no context value, and a new snapshot with the same health state or the same marker
-// gives the same value. So these do not render the side bar.
+// state of the Performance store changes, when the Daily update marker changes, or when the rows
+// of the modules change. A drag step changes no context value, and a new snapshot with the same
+// health state or the same marker gives the same value. So these do not render the side bar.
 export default memo(SideBar)

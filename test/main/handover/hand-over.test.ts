@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { NO_STATUSLINE_SETTINGS } from '../../../src/main/actions/session-actions'
 import {
@@ -6,6 +7,7 @@ import {
   HANDOVER_TIMEOUT_MS,
   type HandOverDeps,
 } from '../../../src/main/handover/hand-over'
+import { noteFileName } from '../../../src/main/handover/naming'
 import {
   continuePrompt,
   handOverPrompt,
@@ -13,7 +15,9 @@ import {
   NOTE_START,
   requestLine,
 } from '../../../src/main/handover/prompt'
+import { createDiscuss } from '../../../src/main/modules/discuss'
 import { MAX_TEXT } from '../../../src/shared/input'
+import type { NewSessionSpec } from '../../../src/shared/new-session'
 import type { SessionRow } from '../../../src/shared/types'
 
 const S = 'f3a9c2d1-4b5e-4c6d-8e7f-0a1b2c3d4e5f'
@@ -207,6 +211,69 @@ function goodTimeline(note = '# Hand-over: fix login\n\n## Goal and scope\nfix t
   f.writes(3000, noteReply(note))
   f.status(4000, 'idle')
 }
+
+// Ruling P13: a Hand over puts the session name into the note path, and the new session gets
+// the path in its first prompt. So the name of a Discuss session must hold no text of the module.
+describe('the hand-over of a Discuss session', () => {
+  // Distinct words, so a check finds them also in a slug of the name.
+  const TITLE = 'Zebra quokka narwhal'
+
+  // Start a Discuss session with the fakes of the Discuss tests, and give its name.
+  async function discussName(): Promise<string> {
+    const created: NewSessionSpec[] = []
+    const discuss = createDiscuss({
+      blockedFolders: [],
+      carrySession: () => {},
+      createSession: async spec => {
+        created.push(spec)
+        return { sessionId: S }
+      },
+      moduleName: () => 'Planner',
+      now: () => BASE,
+      open: () => {},
+      realpath: async path => path,
+      requestId: () => 'req-1',
+      saveSession: () => {},
+      stat: async () => ({ dev: 1, ino: 1 }),
+      writeClipboard: () => {},
+    })
+    await discuss.request('planner', { cards: [{ label: 'Notes', text: 'Card' }], title: TITLE })
+    await discuss.start('req-1', { cwd: '/p', prompt: 'Help me plan my week.' })
+    return created[0]?.name ?? ''
+  }
+
+  test('puts no module title in the new prompt, the new name or the note path', async () => {
+    const name = await discussName()
+    expect(name).toBe('Planner: Help me plan my week.')
+    f.rows = [row({ claudeName: name, name })]
+    goodTimeline('the note text')
+    // The note path as Bifrost makes it, from the session name.
+    const paths: string[] = []
+    const deps: HandOverDeps = {
+      ...f.deps(),
+      writeNote: async (sessionName, _note, at) => {
+        const path = join('/h/.bifrost/handovers', noteFileName(sessionName, at))
+        paths.push(path)
+        return path
+      },
+    }
+    const result = await createHandOver(deps)(f.rows[0], f.start)
+    // The note is saved 4 seconds after the start, in the local time.
+    const at = new Date(BASE + 4000)
+    expect(paths).toEqual([join('/h/.bifrost/handovers', noteFileName(name, at))])
+    expect(paths[0]).toContain('/handovers/Planner-Help-me-plan-my-week.-')
+    const start = f.ops('start')
+    expect(start).toHaveLength(1)
+    const args = JSON.parse(start[0].split(' ').slice(2, -1).join(' ')) as string[]
+    expect(args.at(-1)).toBe(continuePrompt('the note text', paths[0]))
+    expect(args).toContain('Planner: Help me plan my week. (2)')
+    for (const text of [...args, ...paths, ...f.sent, JSON.stringify(result)]) {
+      for (const word of TITLE.split(' ')) {
+        expect(text.toLowerCase()).not.toContain(word.toLowerCase())
+      }
+    }
+  })
+})
 
 describe('the hand-over run: the good path', () => {
   test('the limits are 5 minutes and 1 second', () => {

@@ -1,7 +1,9 @@
 import type { DailySnapshot } from './daily-state'
 import type { McpInventory } from './daily-update'
 import type { DictationViewEvent, PrivacyPane } from './dictation-protocol'
-import type { DirInfo, NewSessionSpec } from './new-session'
+import type { PermissionId } from './module-manifest'
+import type { ModuleApproval, ModuleDiscuss, ModulesSnapshot, ModuleUpdateResult } from './modules'
+import type { DirInfo, ModelChoice, NewSessionSpec } from './new-session'
 import type { PerformanceSnapshot } from './performance'
 import type { ReleaseNotesResult, WhatsNewStart } from './release-notes'
 import type { DraftEdits, DraftOpen, DraftResult, ReviewsSnapshot } from './reviews'
@@ -327,6 +329,61 @@ export interface BifrostApi {
     // Open the update log in its default app (Console). This rejects with a message when it
     // cannot open the log.
     showLog(): Promise<void>
+  }
+  // Modules (Modules design 8). A module frame talks to Heimdall only through the bridge of its
+  // ModuleFrame. The bridge gives the module id of the frame, never an id from a message.
+  modules: {
+    // Send a call of a module to Heimdall. This resolves with the value, after the secret
+    // filter. It rejects with a "refused: ..." code.
+    call(moduleId: string, name: string, args: unknown): Promise<unknown>
+    // An event of Heimdall for the frames of a module. The returned function removes only this
+    // listener.
+    onEvent(cb: (moduleId: string, event: string, data: unknown) => void): () => void
+    // The rows of the installed modules. A packaged app gives a dev module as off, with the
+    // reason in offReason.
+    snapshot(): Promise<ModulesSnapshot>
+    // The main process sends the rows after each change of the modules state. The returned
+    // function removes only this listener.
+    onUpdate(cb: (s: ModulesSnapshot) => void): () => void
+    // A click on Refresh in the title bar of a module panel (Modules design 8.5). The waiting
+    // module jobs of the module run, and the module gets the refresh event. A module that is off
+    // gets nothing.
+    refresh(moduleId: string): Promise<void>
+    // The install, the update and the settings of modules (Modules design 7). Only Settings and
+    // Heimdall's panel call them, never a module frame. Each call rejects with a reason or a
+    // "refused: ..." code.
+    // An install gives the approval for Heimdall's panel. The module runs only after approve.
+    // installFolder and installDev give null when the user closes the folder dialog.
+    installFolder(): Promise<ModuleApproval | null>
+    // Only https://github.com/<owner>/<repo>, with or without .git.
+    installGit(url: string): Promise<ModuleApproval>
+    // Load from folder (developer). A packaged app refuses it.
+    installDev(): Promise<ModuleApproval | null>
+    checkUpdates(): Promise<ModuleUpdateResult[]>
+    // The approval of the waiting update of a module.
+    reviewUpdate(id: string): Promise<ModuleApproval>
+    approve(requestId: string): Promise<void>
+    decline(requestId: string): Promise<void>
+    setEnabled(id: string, on: boolean): Promise<void>
+    // Remove a permission of a module, or give back a permission that its manifest asks for.
+    revoke(id: string, permission: PermissionId): Promise<void>
+    grant(id: string, permission: PermissionId): Promise<void>
+    // The model and the daily cap of the module jobs of a module.
+    setModel(id: string, model: ModelChoice): Promise<void>
+    setCap(id: string, cap: number): Promise<void>
+    // Remove the module, its code and its storage.
+    remove(id: string): Promise<void>
+    // Discuss with Claude (Modules design 8.4). The main process sends the request of a module.
+    // Only Heimdall's panel calls the actions. Start sends only the prompt and the folder of the
+    // user. Its answer goes to the page, never to the module. Copy writes the text of a card to
+    // the clipboard in the main process. A cancel of a request that is not open does nothing.
+    onDiscuss(cb: (request: ModuleDiscuss) => void): () => void
+    discussStart(
+      requestId: string,
+      input: { prompt: string; cwd: string },
+    ): Promise<{ sessionId: string }>
+    discussCopy(requestId: string, cardIndex: number): Promise<void>
+    discussCancel(requestId: string): Promise<void>
   }
   // Live details (D11). Each action resolves with the new status. It rejects with the message
   // of its failure. A switch calls install when plugin is not-installed, else enable or disable.

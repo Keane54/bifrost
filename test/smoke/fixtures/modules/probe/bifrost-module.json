@@ -1,0 +1,9 @@
+{
+  "description": "A probe that checks the module sandbox.",
+  "id": "probe",
+  "minBifrost": "0.1.0",
+  "name": "Sandbox probe",
+  "panels": [{ "entry": "panels/probe.html", "icon": "wrench", "id": "main", "title": "Probe" }],
+  "permissions": [],
+  "version": "1.0.0"
+}

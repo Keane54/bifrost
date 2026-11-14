@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DIALOG_BUTTON } from '../actions/ConfirmDialog'
 import { cx } from '../lib/cx'
 import { once } from '../lib/once'
+import { useModules } from '../modules/use-modules'
 import { useUpdatesFailed } from '../updates/use-updates'
 import { useWmControls } from '../wm/context'
 import DailyUpdateSection from './DailyUpdateSection'
@@ -15,6 +16,8 @@ import { keyGroups } from './key-editor'
 import LiveSection from './LiveSection'
 import { useLive } from './live-context'
 import { claudeVersionLine, LIVE_ACTION_LABELS, liveActions, liveStateLine } from './live-notice'
+import ModulesSection from './ModulesSection'
+import { modulesSearchWords } from './modules-rows'
 import ReviewsSection from './ReviewsSection'
 import { ROW_FIELD } from './SettingRow'
 import SkillsSection from './SkillsSection'
@@ -46,6 +49,7 @@ const TABS: SettingsSection[] = [
   'daily-update',
   'live',
   'skills',
+  'modules',
   'updates',
 ]
 
@@ -96,6 +100,7 @@ function Hit({
       {hit.id === 'daily-update' && <DailyUpdateSection only={only} />}
       {hit.id === 'live' && <LiveSection readStatus={readLive} />}
       {hit.id === 'skills' && <SkillsSection readStatus={readSkills} />}
+      {hit.id === 'modules' && <ModulesSection />}
       {hit.id === 'updates' && <UpdatesSection only={only} />}
     </section>
   )
@@ -106,6 +111,7 @@ export default function SettingsPanel(): React.JSX.Element {
   const { dispatch } = useWmControls()
   const { settings } = useSettings()
   const updatesFailed = useUpdatesFailed()
+  const { modules } = useModules()
   // The Live details tab shows the same dot as the side bar Settings button (D11).
   const { notice, refresh, status, version, versionFailed, warning } = useLive()
   // Live details reads its status one time for each view of Settings (review Minor 1). A search
@@ -141,6 +147,7 @@ export default function SettingsPanel(): React.JSX.Element {
           ...liveActions(status).map(id => LIVE_ACTION_LABELS[id]),
           claudeVersionLine(version, versionFailed) ?? 'Claude Code',
         ],
+        modules: [SECTION_TITLES.modules, ...modulesSearchWords(modules)],
         skills: [
           SECTION_TITLES.skills,
           'plugin',
@@ -151,6 +158,7 @@ export default function SettingsPanel(): React.JSX.Element {
         slash: settings.slashCommands,
       }),
     [
+      modules,
       notice,
       settings.keys,
       settings.labels,
@@ -305,6 +313,7 @@ export default function SettingsPanel(): React.JSX.Element {
           {hits === null && section === 'daily-update' && <DailyUpdateSection />}
           {hits === null && section === 'live' && <LiveSection readStatus={readLive} />}
           {hits === null && section === 'skills' && <SkillsSection readStatus={readSkills} />}
+          {hits === null && section === 'modules' && <ModulesSection />}
           {hits === null && section === 'updates' && <UpdatesSection />}
           {hits !== null && (
             <section aria-label='Search results' data-search-results={true}>

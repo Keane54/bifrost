@@ -57,6 +57,7 @@ export class RegistryService {
   private readonly callbacks: UpdateCallback[] = []
   private readonly usageCallbacks: UsageCallback[] = []
   private readonly eventCallbacks: EventsCallback[] = []
+  private readonly forgetCallbacks: ((sessionId: string) => void)[] = []
   // The newest rate limits of the last onUsage call, as JSON. The JSON has updatedAt, so a newer
   // line with the same limits is a change. The start value is that of no rate limits.
   private lastUsage = 'null'
@@ -108,6 +109,7 @@ export class RegistryService {
   ) {
     this.activeMs = timing.activeMs
     this.health = deps.health ?? NO_HEALTH
+    registry.onGone(sessionId => this.tellForget(sessionId))
   }
 
   // Start all loops. A second call does nothing.
@@ -228,6 +230,25 @@ export class RegistryService {
     this.registry.forget(sessionId)
     this.changed()
     this.checkUsage()
+    this.tellForget(sessionId)
+  }
+
+  // Call cb with the row ID of each session that Bifrost forgets for good: a Delete, or a session
+  // that the counted lists no longer have. A failed or empty poll and a deferred delete never
+  // call it, because such a session can come back.
+  onForget(cb: (sessionId: string) => void): void {
+    this.forgetCallbacks.push(cb)
+  }
+
+  // A listener that fails does not stop the registry or the next listener.
+  private tellForget(sessionId: string): void {
+    for (const cb of [...this.forgetCallbacks]) {
+      try {
+        cb(sessionId)
+      } catch (error) {
+        console.error('Bifrost: a listener of a forgotten session failed.', error)
+      }
+    }
   }
 
   markStarted(sessionId: string): void {

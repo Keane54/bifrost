@@ -1,4 +1,5 @@
 // The title and the content of each panel kind.
+import type { ModuleRow } from '../../../shared/modules'
 import type { SessionRow } from '../../../shared/types'
 import ChatPanel from '../chat/ChatPanel'
 import { chatSessionId } from '../chat/views'
@@ -8,6 +9,11 @@ import EventLogPanel from '../events/EventLogPanel'
 import ShowInfoPanel from '../info/ShowInfoPanel'
 import { showInfoSessionId } from '../info/show-info'
 import { cx } from '../lib/cx'
+import HeimdallPanel, { heimdallTitle } from '../modules/HeimdallPanel'
+import { useHeimdallRequest } from '../modules/heimdall-key'
+import ModulePanel, { ModulePanelTitle } from '../modules/ModulePanel'
+import { modulePanelLabel, modulePanelOf } from '../modules/module-panels'
+import { useModules } from '../modules/use-modules'
 import { PRIO_TEXT, TONE_TEXT } from '../overview/cells'
 import { stateLabel, stateTone } from '../overview/format'
 import OverviewPanel from '../overview/OverviewPanel'
@@ -26,8 +32,13 @@ import WatchlistPanel from '../watch/WatchlistPanel'
 import { panelKind } from '../wm/state'
 import SelectedItemPanel from './SelectedItemPanel'
 
-// The title as plain text. A chat panel with a row gives the name of the row.
-export function panelTitle(panelId: string, rows?: SessionRow[]): string {
+// The title as plain text. A chat panel with a row gives the name of the row. A module panel gives
+// the title of its manifest and the module name, also while the module is off.
+export function panelTitle(
+  panelId: string,
+  rows?: SessionRow[],
+  modules?: readonly ModuleRow[],
+): string {
   switch (panelKind(panelId)) {
     case 'overview': {
       const n = panelId.slice('overview:'.length)
@@ -70,6 +81,12 @@ export function panelTitle(panelId: string, rows?: SessionRow[]): string {
       const name = rows?.find(r => r.sessionId === id)?.name
       return name === undefined ? 'Show Info' : `Show Info: ${name}`
     }
+    case 'module': {
+      const found = modulePanelOf(modules ?? [], panelId)
+      return found ? modulePanelLabel(found.row, found.panel) : 'Module'
+    }
+    case 'heimdall':
+      return 'Heimdall'
     default:
       return panelId
   }
@@ -117,6 +134,25 @@ function ShowInfoTitle({ panelId }: { panelId: string }): React.JSX.Element {
   return <>{panelTitle(panelId, rows)}</>
 }
 
+// The module title follows the rows of the modules.
+function ModuleTitle({ panelId }: { panelId: string }): React.JSX.Element {
+  const { modules } = useModules()
+  return <ModulePanelTitle modules={modules} panelId={panelId} />
+}
+
+// Heimdall's title: its name in purple, then the module of the request. Only Bifrost writes it.
+function HeimdallTitle(): React.JSX.Element {
+  const request = useHeimdallRequest()
+  return (
+    <span className={cx('inline-flex max-w-full min-w-0 items-center')}>
+      <span className={cx('shrink-0 text-heimdall')}>◆ Heimdall</span>
+      {request !== null && (
+        <span className={cx('min-w-0 truncate')}>{` · ${heimdallTitle(request)}`}</span>
+      )}
+    </span>
+  )
+}
+
 // The title content with live data. It renders when its data changes, not with its frame.
 export function PanelTitle({ panelId }: { panelId: string }): React.JSX.Element {
   switch (panelKind(panelId)) {
@@ -128,6 +164,10 @@ export function PanelTitle({ panelId }: { panelId: string }): React.JSX.Element 
       return <ShowInfoTitle panelId={panelId} />
     case 'review-draft':
       return <ReviewTitle />
+    case 'module':
+      return <ModuleTitle panelId={panelId} />
+    case 'heimdall':
+      return <HeimdallTitle />
     default:
       return <>{panelTitle(panelId)}</>
   }
@@ -135,9 +175,10 @@ export function PanelTitle({ panelId }: { panelId: string }): React.JSX.Element 
 
 // The content area of the frame scrolls, except for a chat panel. Its terminal fills the area.
 export function panelScrolls(panelId: string): boolean {
-  // The Event log has its own scroll area for the virtual list.
+  // The Event log has its own scroll area for the virtual list. The frame of a module panel fills
+  // the area, and the module page scrolls in its frame.
   const kind = panelKind(panelId)
-  return kind !== 'chat' && kind !== 'event-log'
+  return kind !== 'chat' && kind !== 'event-log' && kind !== 'module'
 }
 
 export function PanelContent({ panelId }: { panelId: string }): React.JSX.Element {
@@ -174,6 +215,10 @@ export function PanelContent({ panelId }: { panelId: string }): React.JSX.Elemen
       return <AnswerPanel />
     case 'review-draft':
       return <ReviewPanel />
+    case 'module':
+      return <ModulePanel panelId={panelId} />
+    case 'heimdall':
+      return <HeimdallPanel />
     default:
       return <div className='p-3 text-[13px] text-text-dim'>This panel is not known.</div>
   }

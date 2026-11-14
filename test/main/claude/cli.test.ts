@@ -207,3 +207,8 @@ test('createRunClaude passes the signal to exec', async () => {
   await createRunClaude(exec, '/bin/claude', {})(['-p'], { signal: controller.signal })
   expect(exec.mock.calls[0][2].signal).toBe(controller.signal)
 })
+
+test('execFile gives the input text to the program on stdin', async () => {
+  const result = await execFile('/bin/cat', [], { input: 'a job text', timeoutMs: 2000 })
+  expect(result).toEqual({ code: 0, stderr: '', stdout: 'a job text' })
+})

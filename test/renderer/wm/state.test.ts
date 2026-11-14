@@ -170,10 +170,10 @@ describe('wm state', () => {
     expect(panelKind('settings:2')).toBeNull()
   })
 
-  it('open settings uses the default size 640 x 540', () => {
-    expect(DEFAULT_SIZES.settings).toEqual({ h: 540, w: 640 })
+  it('open settings uses the default size 720 x 540', () => {
+    expect(DEFAULT_SIZES.settings).toEqual({ h: 540, w: 720 })
     const s = run([open('settings')])
-    expect(s.frames[0]?.rect).toEqual(centreRect({ h: 540, w: 640 }, bounds))
+    expect(s.frames[0]?.rect).toEqual(centreRect({ h: 540, w: 720 }, bounds))
   })
 
   it('open uses the saved position from memory and clamps it', () => {
