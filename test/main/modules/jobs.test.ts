@@ -167,7 +167,9 @@ beforeEach(async () => {
 afterEach(async () => {
   for (const stop of stops.splice(0)) stop()
   vi.useRealTimers()
-  await rm(root, { force: true, recursive: true })
+  // stop() aborts a running job, and that job empties its own folder later. So this remove can
+  // meet a folder that is not empty yet (ENOTEMPTY). rm tries again for that error.
+  await rm(root, { force: true, maxRetries: 10, recursive: true, retryDelay: 20 })
 })
 
 async function setup(
