@@ -214,12 +214,12 @@ describe('the app build config of the speech helper', () => {
     expect(extendInfo).toContain(SPEECH_USAGE)
   })
 
-  it('gives the helper no own entitlements file, so it keeps the default inherit file', () => {
+  it('signs the helper with the inherit file, which has the microphone entitlement', () => {
     const mac = releaseConfig({ APPLE_SIGNING_IDENTITY: 'Jane Doe (ABCDE12345)' }).mac
     expect(mac?.entitlements).toBe('build/entitlements.mac.plist')
-    expect(mac?.entitlementsInherit).toBeUndefined()
+    expect(mac?.entitlementsInherit).toBe('build/entitlements.mac.inherit.plist')
+    // The release config keeps the helper list of the base config (mac.binaries).
     expect(mac?.binaries).toBeUndefined()
-    expect(yaml).not.toContain('entitlementsInherit')
   })
 })
 

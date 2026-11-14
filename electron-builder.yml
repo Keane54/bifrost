@@ -38,9 +38,9 @@ mac:
   identity: '-'
   hardenedRuntime: false
   gatekeeperAssess: false
-  # electron-builder signs the speech helper with the app. The helper keeps the default inherit
-  # entitlements. It needs no microphone entitlement, because macOS checks the app that started it.
-  # A path here is relative to Bifrost.app.
+  # electron-builder signs the speech helper with the app. The helper gets the inherit file
+  # build/entitlements.mac.inherit.plist, which has the audio-input entitlement: the helper opens
+  # the microphone itself. A path here is relative to Bifrost.app.
   binaries:
     - Contents/MacOS/bifrost-dictation
   # macOS shows these texts in its prompts. Dictation needs the microphone. On macOS 13 to 15,

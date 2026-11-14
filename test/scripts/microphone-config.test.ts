@@ -22,11 +22,31 @@ describe('the microphone permission of the build', () => {
     )
   })
 
-  it('gives the entitlements file to the app, and keeps the default inherit file of the helpers', () => {
+  it('gives the entitlements file to the app, and the inherit file to the helpers', () => {
     const mac = releaseConfig({ APPLE_SIGNING_IDENTITY: 'Jane Doe (ABCDE12345)' }).mac
     expect(mac?.entitlements).toBe('build/entitlements.mac.plist')
-    expect(mac?.entitlementsInherit).toBeUndefined()
+    expect(mac?.entitlementsInherit).toBe('build/entitlements.mac.inherit.plist')
     expect(mac?.hardenedRuntime).toBe(true)
+  })
+
+  // The speech helper opens the microphone itself. Under the hardened runtime, macOS refuses the
+  // microphone with no prompt when the program that opens it has no audio-input entitlement.
+  it('has the audio-input entitlement in the inherit file of the helpers', () => {
+    const inherit = read('build/entitlements.mac.inherit.plist')
+    expect(inherit).toMatch(/<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\/>/)
+    // The helpers of Electron itself still need the entitlements of electron-builder's template.
+    for (const key of [
+      'com.apple.security.cs.allow-jit',
+      'com.apple.security.cs.allow-unsigned-executable-memory',
+      'com.apple.security.cs.disable-library-validation',
+    ]) {
+      expect(inherit).toMatch(new RegExp(`<key>${key.replaceAll('.', '\\.')}</key>\\s*<true/>`))
+    }
+  })
+
+  it('makes verify:release check the microphone entitlement of the speech helper', () => {
+    const script = read('scripts/verify-release.ts')
+    expect(script).toContain('the speech helper has the microphone entitlement')
   })
 
   it('makes verify:release check the entitlement and the usage text of the signed app', () => {

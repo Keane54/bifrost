@@ -87,9 +87,10 @@ check('the app has the microphone usage text', usage.ok && usage.text.trim() !==
 
 // The speech helper of dictation. electron-builder signs it with the app (mac.binaries). Apple
 // notarises only code that has the Developer ID signature and the hardened runtime. The helper
-// needs no entitlement of its own. It reads its bundle ID and its usage texts from the Info.plist
-// that the linker puts into it. On macOS 13 to 15, the Speech Recognition prompt shows the usage
-// text of the app. All commands only read.
+// opens the microphone itself, so it needs the audio-input entitlement (the inherit file). It
+// reads its bundle ID and its usage texts from the Info.plist that the linker puts into it. On
+// macOS 13 to 15, the Speech Recognition prompt shows the usage text of the app. All commands only
+// read.
 const HELPER = `${APP}/Contents/MacOS/bifrost-dictation`
 check('the speech helper is in the app', existsSync(HELPER), `${HELPER} does not exist.`)
 const helperVerify = run('codesign', ['--verify', '--strict', '--verbose=2', HELPER])
@@ -102,6 +103,13 @@ check(
     helper.text.includes('Authority=Developer ID Application') &&
     /flags=0x[0-9a-f]*\(.*runtime.*\)/.test(helper.text),
   `${helperVerify.text}${helper.text}`,
+)
+const helperEntitlements = run('codesign', ['--display', '--entitlements', '-', '--xml', HELPER])
+check(
+  'the speech helper has the microphone entitlement',
+  helperEntitlements.ok &&
+    new RegExp(`<key>${AUDIO_INPUT}</key>\\s*<true/>`).test(helperEntitlements.text),
+  helperEntitlements.text,
 )
 check(
   'the speech helper has its Info.plist',

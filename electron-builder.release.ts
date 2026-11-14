@@ -13,6 +13,7 @@ import type { Configuration } from 'electron-builder'
 
 const PREFIX = 'Developer ID Application:'
 const ENTITLEMENTS = 'build/entitlements.mac.plist'
+const ENTITLEMENTS_INHERIT = 'build/entitlements.mac.inherit.plist'
 
 export function releaseConfig(
   env: Record<string, string | undefined> = process.env,
@@ -32,12 +33,12 @@ export function releaseConfig(
   return {
     extends: './electron-builder.yml',
     // The entitlements file has the audio-input entitlement. The hardened runtime blocks the
-    // microphone without it. The helpers keep the default inherit file of electron-builder. They
-    // need no microphone, because macOS gives it to the main app. This is also true for the speech
-    // helper of dictation (mac.binaries in electron-builder.yml): macOS checks the microphone
-    // permission of Bifrost, the app that starts the helper.
+    // microphone without it. The helper programs get the inherit file. It has the entitlements of
+    // electron-builder's template and the audio-input entitlement, because the speech helper of
+    // dictation (mac.binaries in electron-builder.yml) opens the microphone itself.
     mac: {
       entitlements: ENTITLEMENTS,
+      entitlementsInherit: ENTITLEMENTS_INHERIT,
       hardenedRuntime: true,
       identity,
       notarize: true,
