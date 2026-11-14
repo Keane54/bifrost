@@ -1,5 +1,17 @@
-import { EllipsisVertical } from 'lucide-react'
+import { EllipsisVertical, Mic } from 'lucide-react'
 import { type Dispatch, memo, useCallback, useRef, useState } from 'react'
+import {
+  BAR_WIDTH,
+  EDGE_CLASS,
+  edgeStyleOf,
+  frameEdgeStyleOf,
+  GLOW_CLASS,
+  GREEN_VAR,
+  glowStyleOf,
+  type Look,
+  lookOf,
+} from '../chat/dictation-look'
+import { useDictating, useVoiceLevel } from '../chat/use-voice-level'
 import { cx } from '../lib/cx'
 import { PanelContent, PanelTitle, panelScrolls } from '../panels/panels'
 import { type Edge, TITLE_H } from './geometry'
@@ -60,12 +72,47 @@ function LockGlyph(): React.JSX.Element {
   )
 }
 
+// The inner edge of the top line and the glow that falls down into the window. They take no
+// pointer input.
+function DictationEdge({ look }: { look: Look }): React.JSX.Element {
+  return (
+    <>
+      <div className={EDGE_CLASS} data-dictation-edge={true} style={edgeStyleOf(look)} />
+      <div className={GLOW_CLASS} data-dictation-glow={true} style={glowStyleOf(look)} />
+    </>
+  )
+}
+
+// The mic icon and the level bar of 44 by 3 px, before the chat name.
+function DictationMeter({ look }: { look: Look }): React.JSX.Element {
+  return (
+    <div className='flex shrink-0 items-center gap-2 pl-2' data-dictation-meter={true}>
+      <Mic aria-hidden='true' className='size-3.25' style={{ color: GREEN_VAR }} />
+      <div
+        aria-label='Voice level'
+        className='relative h-[3px] shrink-0 bg-white/8'
+        role='img'
+        style={{ width: BAR_WIDTH }}
+      >
+        <div
+          className='absolute inset-y-0 left-0'
+          style={{ background: GREEN_VAR, width: look.barWidth }}
+        />
+      </div>
+    </div>
+  )
+}
+
 function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React.JSX.Element {
   const { id, rect } = frame
   const menuButton = useRef<HTMLButtonElement>(null)
   const [menu, setMenu] = useState<Anchor | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
   const stacked = frame.panels.length > 1
+  // True while the chat of the active panel listens. A panel that is no chat gives false.
+  const dictating = useDictating(frame.active)
+  // One smoothed level for the edge, the glow and the meter.
+  const look = lookOf(useVoiceLevel(frame.active))
 
   function onTitleDown(e: React.PointerEvent<HTMLElement>): void {
     if (e.button !== 0) return
@@ -95,7 +142,9 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
   return (
     <div
       className={cx(
-        'absolute flex-col overflow-hidden border transition-[background-color,border-color,box-shadow] duration-250 ease-out',
+        'absolute flex-col overflow-hidden border',
+        // The level moves the border and the shadow at once, so no transition while dictating.
+        !dictating && 'transition-[background-color,border-color,box-shadow] duration-250 ease-out',
         blur && 'backdrop-blur-panel',
         frame.minimised ? 'hidden' : 'flex',
         top
@@ -105,6 +154,8 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
       data-frame-id={id}
       onPointerDownCapture={() => dispatch({ frameId: id, type: 'focus' })}
       style={{
+        // The green top line of dictation: this border and the 1 px edge inside the frame.
+        ...(dictating ? frameEdgeStyleOf(look) : null),
         height: rect.h,
         left: rect.x,
         top: rect.y,
@@ -118,6 +169,7 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
         onPointerDown={onTitleDown}
         style={{ height: TITLE_H }}
       >
+        {dictating && <DictationMeter look={look} />}
         {stacked ? (
           <div className='flex min-w-0 flex-1 items-stretch self-stretch' role='tablist'>
             {frame.panels.map(panelId => {
@@ -192,6 +244,7 @@ function FrameView({ frame, z, top, blur, dispatch, onDrag }: FrameProps): React
       >
         <Content panelId={frame.active} />
       </div>
+      {dictating && <DictationEdge look={look} />}
       {!frame.locked &&
         EDGES.map(edge => (
           <div

@@ -143,7 +143,8 @@ jobs:
     needs: check
     # A release needs a next version. A dry run always builds.
     if: needs.check.outputs.version != '' || inputs.mode == 'dry-run'
-    runs-on: macos-latest
+    # The speech helper needs Xcode 26 and the macOS 26 SDK.
+    runs-on: macos-26
     # The signing secrets live only in this environment. It allows only main.
     environment: release
 
@@ -182,6 +183,15 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # electron-builder signs the speech helper with the app, so it must exist first. The helper
+      # needs Xcode 26 or later. The script stops with a clear message when the SDK is older. It
+      # needs no secret, so it runs before the steps that use the secrets.
+      - name: Build the speech helper
+        run: |
+          xcodebuild -version
+          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+          pnpm build:dictation
 
       # notarytool reads the App Store Connect key from a file. The runner deletes RUNNER_TEMP
       # at the end of the job.

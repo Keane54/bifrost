@@ -102,6 +102,11 @@ if [ "$#" -eq 2 ] && [ "$1" = attach ]; then
   # reads this file in the test home.
   if [ -n "$home" ]; then
     echo "FAKE ATTACH $2" >>"$home/attach.log"
+    # The input of the chat window goes to a file in the test home at once, with no echo and no
+    # wait for a new line. The smoke test of dictation reads it. The SIGHUP of a closed chat
+    # window stops cat.
+    stty raw -echo
+    exec cat >>"$home/attach-input-$2.log"
   fi
   # The SIGHUP of a closed chat window stops the sleep.
   exec sleep 600

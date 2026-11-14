@@ -3,6 +3,7 @@
 // or end an attach. So a stack, a tab change, a minimise or a tear-out keeps the attach.
 import { createContext, useContext, useEffect, useLayoutEffect, useState } from 'react'
 import type { BifrostApi } from '../../../shared/api'
+import { DICTATION_SLOT, effectiveKeys } from '../../../shared/keys'
 import type { TerminalFont } from '../../../shared/settings'
 import { DEFAULT_SETTINGS } from '../../../shared/settings'
 import type { SessionRow } from '../../../shared/types'
@@ -31,6 +32,7 @@ import {
 
 interface ChatTerminalsDeps {
   pty: BifrostApi['pty']
+  dictation: BifrostApi['dictation']
 }
 
 export class ChatTerminals {
@@ -47,6 +49,8 @@ export class ChatTerminals {
   private readonly loaderTimers = new Map<string, number>()
   private views = new Map<string, ChatView>()
   private font: TerminalFont = DEFAULT_SETTINGS.terminalFont
+  // The dictation key of the settings, or null when it is Off.
+  private dictationKey: string | null = null
   private unsubscribe: Array<() => void> = []
   private mounted = false
   private disposed = false
@@ -72,11 +76,12 @@ export class ChatTerminals {
     if (this.mounted || this.disposed) return
     this.mounted = true
     root.append(this.parking)
-    const { pty } = this.deps
+    const { dictation, pty } = this.deps
     this.unsubscribe = [
       pty.onData((viewId, chunk) => this.terminalOf(viewId)?.write(chunk)),
       pty.onExit((viewId, exitCode) => this.terminalOf(viewId)?.exited(exitCode)),
       pty.onSize((viewId, size) => this.terminalOf(viewId)?.setSessionSize(size)),
+      dictation.onEvent((viewId, event) => this.terminalOf(viewId)?.dictationEvent(event)),
     ]
   }
 
@@ -96,6 +101,7 @@ export class ChatTerminals {
     for (const id of openIds) {
       if (this.terminals.has(id)) continue
       const terminal: ChatTerminal = new ChatTerminal(id, {
+        dictation: this.deps.dictation,
         font: this.font,
         history: this.historyOf(id),
         onShown: () => {
@@ -109,6 +115,7 @@ export class ChatTerminals {
           return current !== undefined && current !== terminal
         },
       })
+      terminal.setDictationKey(this.dictationKey)
       this.terminals.set(id, terminal)
       changed = true
     }
@@ -132,6 +139,13 @@ export class ChatTerminals {
     if (this.disposed) return
     this.font = font
     for (const terminal of this.terminals.values()) terminal.setFont(font)
+  }
+
+  // Use the dictation key of the settings in each open terminal and in each new one.
+  setDictationKey(binding: string | null): void {
+    if (this.disposed) return
+    this.dictationKey = binding
+    for (const terminal of this.terminals.values()) terminal.setDictationKey(binding)
   }
 
   get(sessionId: string): ChatTerminal | undefined {
@@ -262,7 +276,9 @@ export function ChatsProvider({ children }: { children: React.ReactNode }): Reac
   const { frames } = useWmState()
   const { loaded, rows } = useRegistry()
   const { settings } = useSettings()
-  const [chats] = useState(() => new ChatTerminals({ pty: window.bifrost.pty }))
+  const [chats] = useState(
+    () => new ChatTerminals({ dictation: window.bifrost.dictation, pty: window.bifrost.pty }),
+  )
 
   useLayoutEffect(() => {
     chats.mount(document.getElementById('root') ?? document.body)
@@ -273,6 +289,11 @@ export function ChatsProvider({ children }: { children: React.ReactNode }): Reac
   useLayoutEffect(() => {
     chats.setFont(settings.terminalFont)
   }, [chats, settings.terminalFont])
+
+  // The dictation key follows Settings > Keys. Off gives null.
+  useLayoutEffect(() => {
+    chats.setDictationKey(effectiveKeys(settings.keys)[DICTATION_SLOT] ?? null)
+  }, [chats, settings.keys])
 
   // The lifecycle keys on the open chat panels, not on the React mounts (Review Focus 1).
   useEffect(() => {

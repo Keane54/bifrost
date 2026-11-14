@@ -18,6 +18,7 @@ describe('slotLabel', () => {
     expect(label('select-row.4:mod', 'plain')).toBe('Select row 4')
     expect(label('load-layout.2:mod', 'plain')).toBe('Load layout 2')
     expect(label('escape:key', 'plain')).toBe('Open or close Settings, or leave the send box')
+    expect(label('dictation:hold', 'plain')).toBe('Dictation key')
   })
 
   it('has no trailing dots', () => {
@@ -39,5 +40,6 @@ describe('groupTitle', () => {
     expect(groupTitle('always')).toBe('Shortcuts that work at all times')
     expect(groupTitle('single')).toBe('Single keys (not in a chat window or a text box)')
     expect(groupTitle('hold')).toBe('Hold a key and click a row')
+    expect(groupTitle('dictation')).toBe('Hold to dictate in a chat window')
   })
 })

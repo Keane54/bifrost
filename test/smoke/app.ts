@@ -18,6 +18,8 @@ type LaunchOptions = NonNullable<Parameters<typeof _electron.launch>[0]>
 
 const ROOT = join(import.meta.dirname, '..', '..')
 const FAKE_DIR = join(import.meta.dirname, 'fake-claude')
+// The fake speech helper. In a test home, Bifrost runs the first bifrost-dictation on the PATH.
+const FAKE_DICTATION_DIR = join(import.meta.dirname, 'fake-dictation')
 // The fixtures give each sample session a folder under this folder. node-pty starts the attach
 // in the folder of the session, and it cannot start in a folder that does not exist.
 export const SESSION_ROOT = '/tmp/bifrost-smoke'
@@ -89,7 +91,7 @@ export async function makeSessionFolders(): Promise<void> {
 
 // The env of the app. It has only these variables. So no CLAUDE* variable, no
 // ELECTRON_RUN_AS_NODE and no BIFROST_LIVE_LISTEN gets to the app. The fake claude is the first
-// claude on the PATH.
+// claude on the PATH, and the fake speech helper is the first bifrost-dictation.
 //
 // HOME is the test home (user decision, 2026-11-13). The app and its child processes then read
 // and write only in the test home. No ZDOTDIR, XDG_* or CLAUDE_CONFIG_DIR variable gets to the
@@ -101,7 +103,7 @@ function launchEnv(testHome: string): Record<string, string> {
   const env: Record<string, string> = {
     BIFROST_TEST_HOME: testHome,
     HOME: testHome,
-    PATH: `${FAKE_DIR}:/usr/bin:/bin:/usr/sbin:/sbin`,
+    PATH: `${FAKE_DIR}:${FAKE_DICTATION_DIR}:/usr/bin:/bin:/usr/sbin:/sbin`,
   }
   if (process.env.BIFROST_SMOKE_HEADED !== '1') env.BIFROST_TEST_HEADLESS = '1'
   for (const key of ['USER', 'LANG', 'TMPDIR']) {

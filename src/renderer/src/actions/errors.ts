@@ -67,6 +67,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: no window': "The Bifrost window isn't ready.",
   'refused: not a chat view': "That isn't a chat window.",
   'refused: not a display mode': "That isn't a display mode.",
+  'refused: not a System Settings pane of dictation':
+    'Bifrost can open only the Microphone or the Speech Recognition settings.',
   'refused: not an attach to an owned session that is not parked':
     'A chat window can only attach to a Bifrost session that is running.',
   'refused: not the Bifrost page': "That request didn't come from the Bifrost window.",
@@ -80,6 +82,8 @@ export const FRIENDLY_ERRORS: Readonly<Record<string, string>> = {
   'refused: Take control needs a confirmation': 'Take control needs your confirmation first.',
   'refused: the attach is not for the session of the chat view':
     "That connection doesn't match the session of this chat window.",
+  'refused: the chat window has no terminal':
+    "This chat window isn't connected to its session, so dictation can't start.",
   'refused: the draft is too long': 'That draft is too long. Make it shorter, then try again.',
   'refused: the ID that resumes this session is not known yet':
     "Bifrost doesn't know which ID resumes this session yet. Try again in 30 seconds.",

@@ -54,6 +54,14 @@ const api: BifrostApi = {
     undoSent: areaId => invoke('daily-update:undo-sent', areaId),
     usePending: areaId => invoke('daily-update:use-pending', areaId),
   },
+  dictation: {
+    onEvent: cb => subscribe('dictation:event', cb),
+    openSettings: pane => invoke('dictation:open-settings', pane),
+    start: viewId => invoke('dictation:start', viewId),
+    stop: viewId => invoke('dictation:stop', viewId),
+    vimMode: () => invoke('dictation:vim-mode'),
+    warm: () => invoke('dictation:warm'),
+  },
   display: {
     get: () => invoke('display:get'),
     onChange: cb => subscribe('display:changed', cb),

@@ -35,9 +35,10 @@ export type KeyCommandId =
   | 'settings'
   | 'toggle-fullscreen'
   | 'escape'
+  | 'dictation'
 
-// The three tables of spec 9.4.
-export type SlotGroup = 'always' | 'single' | 'hold'
+// The three tables of spec 9.4, and the dictation key (dictation design 5).
+export type SlotGroup = 'always' | 'single' | 'hold' | 'dictation'
 
 export interface KeySlot {
   id: string
@@ -90,7 +91,10 @@ function hold(command: KeyCommandId, def: string): KeySlot {
   return slot(command, 'hold', 'hold', def)
 }
 
-// The 83 key slots of spec 9.4, in the order of the spec.
+// The ID of the dictation slot.
+export const DICTATION_SLOT = 'dictation:hold'
+
+// The 83 key slots of spec 9.4, in the order of the spec, then the dictation slot.
 export const KEY_SLOTS: readonly KeySlot[] = [
   // Always (49).
   always('new-session', 'Mod+N'),
@@ -150,6 +154,9 @@ export const KEY_SLOTS: readonly KeySlot[] = [
   hold('open-in-terminal', 'J'),
   hold('interrupt', 'X'),
   ...range('set-priority', 1, 5, n => `${n}`, 'hold', 'hold'),
+  // Dictation (dictation design 5): hold the key in a chat window to speak. The chat terminal
+  // reads this key itself. The ID keeps the variant hold.
+  slot('dictation', 'hold', 'dictation', 'Space'),
 ]
 
 const SLOT_MAP: ReadonlyMap<string, KeySlot> = new Map(KEY_SLOTS.map(item => [item.id, item]))
@@ -274,6 +281,19 @@ const CODE_CHARS: Readonly<Record<string, string>> = {
   Slash: '/',
 }
 
+// Return the physical code of a binding with no modifier, for example "KeyS" for "S", or null.
+// Only Space, a letter, a digit and a punctuation key have a code here.
+export function physicalCode(binding: string): string | null {
+  const chord = parseBinding(binding)
+  if (!chord || chord.mod || chord.ctrl || chord.alt || chord.shift) return null
+  const { key } = chord
+  if (key === 'Space') return 'Space'
+  if (/^[A-Z]$/.test(key)) return `Key${key}`
+  if (/^[0-9]$/.test(key)) return `Digit${key}`
+  for (const [code, char] of Object.entries(CODE_CHARS)) if (char === key) return code
+  return null
+}
+
 // Change a recorded text with physical codes, like "Mod+[KeyS]", to a binding.
 export function recordedToBinding(recorded: string): string | null {
   const tokens = recorded.split('+').map(token => {
@@ -300,6 +320,8 @@ export const REASON_MAC_KEEPS = 'macOS keeps this shortcut for itself.'
 export const REASON_MENU_KEEPS = 'A Bifrost menu already uses this shortcut.'
 export const REASON_HOLD_FORM =
   'A hold key must be a single letter or number, without Cmd, Ctrl, Option or Shift.'
+export const REASON_DICTATION_FORM =
+  'For dictation, use Space, a letter, a number or a symbol, without Cmd, Ctrl, Option or Shift.'
 export const REASON_BAD_KEY = "Bifrost can't use this key."
 // The menu gets the key of a menu slot. A key without Cmd would act in a chat window and in a text
 // box, against spec 9.3. So a menu slot needs Mod (final review Important 3).
@@ -348,15 +370,33 @@ export type BindingCheck =
   | { ok: true; binding: string }
   | { ok: false; reason: string; conflict?: string }
 
-// The two classes of slots. A hold slot and another slot can share a key.
 function isHold(item: KeySlot): boolean {
   return item.group === 'hold'
+}
+
+function isDictation(item: KeySlot): boolean {
+  return item.group === 'dictation'
+}
+
+// The classes of slots. Two slots of one class cannot share a key. Slots of two classes can. The
+// dictation key acts only in a chat window, and has no modifier. No other key without a modifier
+// acts there. So the dictation slot has a class of its own.
+function keyClass(item: KeySlot): 'key' | 'hold' | 'dictation' {
+  if (isDictation(item)) return 'dictation'
+  return isHold(item) ? 'hold' : 'key'
+}
+
+// A dictation key types a character when it is not held: Space, a letter, a digit or a
+// punctuation key.
+function isDictationKey(key: string): boolean {
+  if (key === 'Space' || /^[A-Z0-9]$/.test(key)) return true
+  return key.length === 1 && PUNCTUATION.includes(key)
 }
 
 // Return the ID of the first other slot of the same class that has this binding, or undefined.
 function findConflict(item: KeySlot, binding: string, keys: KeyMap): string | undefined {
   for (const other of KEY_SLOTS) {
-    if (other.id === item.id || isHold(other) !== isHold(item)) continue
+    if (other.id === item.id || keyClass(other) !== keyClass(item)) continue
     const value = keys[other.id]
     if (typeof value === 'string' && canonicalBinding(value) === binding) return other.id
   }
@@ -369,8 +409,10 @@ export function checkBinding(slotId: string, binding: string, keys: KeyMap): Bin
   const chord = item ? parseBinding(binding) : null
   if (!item || !chord) return { ok: false, reason: REASON_BAD_KEY }
   const canonical = formatBinding(chord)
-  if (isHold(item)) {
-    const plain = !chord.mod && !chord.ctrl && !chord.alt && !chord.shift
+  const plain = !chord.mod && !chord.ctrl && !chord.alt && !chord.shift
+  if (isDictation(item)) {
+    if (!plain || !isDictationKey(chord.key)) return { ok: false, reason: REASON_DICTATION_FORM }
+  } else if (isHold(item)) {
     if (!plain || !/^[A-Z0-9]$/.test(chord.key)) return { ok: false, reason: REASON_HOLD_FORM }
   } else if (item.menu && !chord.mod) {
     return { ok: false, reason: REASON_MENU_NEEDS_MOD }
@@ -434,7 +476,7 @@ export function keyConflicts(keys: KeyMap): Array<[string, string]> {
     for (let j = i + 1; j < bound.length; j++) {
       if (
         bound[i].binding === bound[j].binding &&
-        isHold(bound[i].item) === isHold(bound[j].item)
+        keyClass(bound[i].item) === keyClass(bound[j].item)
       ) {
         pairs.push([bound[i].item.id, bound[j].item.id])
       }
@@ -443,17 +485,19 @@ export function keyConflicts(keys: KeyMap): Array<[string, string]> {
   return pairs
 }
 
-// Return the bindings that the renderer registers. Menu slots and null keys are not in the list.
+// Return the bindings that the renderer registers. Menu slots, the dictation slot and null keys
+// are not in the list. The chat terminal reads the dictation key itself.
 // When two slots of one class have a binding, the first slot in KEY_SLOTS order keeps it.
 // A menu slot also keeps its binding, because Electron gives the key to the menu first.
 export function activeBindings(keys: KeyMap): Array<{ slot: KeySlot; binding: string }> {
   const taken = new Set<string>()
   const list: Array<{ slot: KeySlot; binding: string }> = []
   for (const item of KEY_SLOTS) {
+    if (isDictation(item)) continue
     const value = keys[item.id]
     const binding = typeof value === 'string' ? canonicalBinding(value) : null
     if (binding === null) continue
-    const token = `${isHold(item) ? 'hold' : 'key'}:${binding}`
+    const token = `${keyClass(item)}:${binding}`
     if (taken.has(token)) continue
     taken.add(token)
     if (!item.menu) list.push({ binding, slot: item })
@@ -481,6 +525,8 @@ const CONTROL_KEYS: ReadonlySet<string> = new Set([
 // Return true when a binding may act while the focus is in this zone.
 export function keyAllowed(item: KeySlot, binding: string, zone: FocusZone): boolean {
   if (zone === 'modal') return false
+  // The dictation key acts only in a chat window (dictation design 5).
+  if (isDictation(item)) return zone === 'chat'
   // A hold key acts only in the other zone (ruling C3, D8).
   if (isHold(item)) return zone === 'other'
   const chord = parseBinding(binding)

@@ -3,6 +3,7 @@
 import {
   type CustomKeys,
   checkBinding,
+  DICTATION_SLOT,
   effectiveKeys,
   KEY_SLOTS,
   type KeySlot,
@@ -23,9 +24,9 @@ export interface KeyRow {
   changed: boolean
 }
 
-const GROUP_ORDER: readonly SlotGroup[] = ['always', 'single', 'hold']
+const GROUP_ORDER: readonly SlotGroup[] = ['always', 'single', 'hold', 'dictation']
 
-// Return the three groups in order. The rows of a group keep the KEY_SLOTS order.
+// Return the groups in order. The rows of a group keep the KEY_SLOTS order.
 export function keyGroups(
   custom: CustomKeys,
   labels: LabelSet,
@@ -43,6 +44,14 @@ export function keyGroups(
   }))
 }
 
+// The recorder gives "[Space]" for the space bar. Only the dictation key can be Space, because a
+// tap of it still types a space. For the other slots, "[Space]" stays a key that Bifrost cannot
+// use.
+function bindingOf(slotId: string, recorded: string): string | null {
+  if (slotId !== DICTATION_SLOT) return recordedToBinding(recorded)
+  return recordedToBinding(recorded.replace(/\[Space\]$/, 'Space'))
+}
+
 // Check a key from the recorder. The recorder gives physical codes, like "Mod+[KeyK]".
 export function checkRecorded(
   slotId: string,
@@ -50,7 +59,7 @@ export function checkRecorded(
   custom: CustomKeys,
   labels: LabelSet,
 ): { ok: true; binding: string } | { ok: false; message: string } {
-  const binding = recordedToBinding(recorded)
+  const binding = bindingOf(slotId, recorded)
   if (binding === null) return { message: REASON_BAD_KEY, ok: false }
   const check = checkBinding(slotId, binding, effectiveKeys(custom))
   if (check.ok) return { binding: check.binding, ok: true }

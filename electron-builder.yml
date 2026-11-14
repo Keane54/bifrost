@@ -7,17 +7,24 @@ files:
   - out/**
   - resources/**
   - '!resources/icon-dev.png'
+  # The speech helper goes to Contents/MacOS (extraFiles), not into app.asar.
+  - '!resources/bin/**'
   - '!resources/live-mod/tests/**'
   - '!resources/live-mod/tsconfig.json'
   - '!resources/live-mod/.claude-plugin/types/**'
   - '!**/node_modules/node-pty/prebuilds/win32-*/**'
   - '!**/node_modules/node-pty/prebuilds/darwin-x64/**'
   - '!**/node_modules/node-pty/build/**'
+# The speech helper (pnpm build:dictation) goes next to the app executable, in Contents/MacOS. So
+# the signature of the app covers it.
+extraFiles:
+  - from: resources/bin/bifrost-dictation
+    to: MacOS/bifrost-dictation
 asarUnpack:
   - resources/**
   - '**/node_modules/node-pty/**'
-# Keep only the English locale folders (.lproj) of Electron. The app text is English. electron-builder
-# also keeps each folder whose name starts with "en_", for example en_GB.lproj.
+# Keep only the English locale folders (.lproj) of Electron. The app text is English.
+# electron-builder also keeps each folder whose name starts with "en_", for example en_GB.lproj.
 electronLanguages:
   - en
 mac:
@@ -31,9 +38,16 @@ mac:
   identity: '-'
   hardenedRuntime: false
   gatekeeperAssess: false
-  # macOS shows this text in the microphone prompt. Dictation needs the microphone.
+  # electron-builder signs the speech helper with the app. The helper keeps the default inherit
+  # entitlements. It needs no microphone entitlement, because macOS checks the app that started it.
+  # A path here is relative to Bifrost.app.
+  binaries:
+    - Contents/MacOS/bifrost-dictation
+  # macOS shows these texts in its prompts. Dictation needs the microphone. On macOS 13 to 15,
+  # dictation also needs Speech Recognition.
   extendInfo:
     NSMicrophoneUsageDescription: Bifrost uses the microphone when you talk to Claude.
+    NSSpeechRecognitionUsageDescription: Bifrost turns your speech into text on this Mac.
   notarize: false
 dmg:
   # The DMG name has no version. So the link

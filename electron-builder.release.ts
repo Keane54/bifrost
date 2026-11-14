@@ -33,7 +33,9 @@ export function releaseConfig(
     extends: './electron-builder.yml',
     // The entitlements file has the audio-input entitlement. The hardened runtime blocks the
     // microphone without it. The helpers keep the default inherit file of electron-builder. They
-    // need no microphone, because macOS gives it to the main app.
+    // need no microphone, because macOS gives it to the main app. This is also true for the speech
+    // helper of dictation (mac.binaries in electron-builder.yml): macOS checks the microphone
+    // permission of Bifrost, the app that starts the helper.
     mac: {
       entitlements: ENTITLEMENTS,
       hardenedRuntime: true,

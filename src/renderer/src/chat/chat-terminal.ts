@@ -4,6 +4,8 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { BifrostApi } from '../../../shared/api'
+import type { DictationViewEvent } from '../../../shared/dictation-protocol'
+import { promptBlocks } from '../../../shared/input'
 import { cssFontFamily, DEFAULT_SETTINGS, type TerminalFont } from '../../../shared/settings'
 import type { SessionRow, TermSize } from '../../../shared/types'
 import { CHAT_ATTR } from '../keys/focus-zone'
@@ -20,7 +22,18 @@ import {
   type ScreenRow,
   stepBlocks,
 } from './agent-view'
-import { keyOverride } from './key-rules'
+import {
+  type ChatInput,
+  createChatInput,
+  createHoldKey,
+  type HoldKey,
+  typedTail,
+} from './dictation-keys'
+import {
+  createDictationSession,
+  type DictationSession,
+  type DictationView,
+} from './dictation-session'
 import { HISTORY_ATTR, hasHistory } from './scroll-history'
 import {
   BUMP_GAP_MS,
@@ -45,6 +58,8 @@ export interface AttachHistory {
 
 export interface ChatTerminalDeps {
   pty: BifrostApi['pty']
+  // The speech helper of the main process (dictation design).
+  dictation: Pick<BifrostApi['dictation'], 'start' | 'stop' | 'vimMode' | 'warm'>
   // The element that keeps the terminal when no panel shows it.
   parking: HTMLElement
   // The terminal font of the settings at the time of the open. Default: the settings default.
@@ -83,6 +98,7 @@ export class ChatTerminal {
   private webglBroken = false
 
   private target: AttachTarget = attachTarget(undefined, false)
+  private row: SessionRow | undefined = undefined
   private view: ChatView = HIDDEN_VIEW
   private panel: Px | null = null
   private session: TermSize | null = null
@@ -116,6 +132,17 @@ export class ChatTerminal {
   // The time of the first chunk after the last agent view check, or null.
   private uncheckedSince: number | null = null
   private focusFrame = 0
+
+  // Dictation (dictation design). The key of the settings, or null when it is Off.
+  private dictationKey: string | null = null
+  private readonly holdKey: HoldKey
+  private readonly dictation: DictationSession
+  private readonly chatInput: ChatInput
+  private readonly dictationListeners = new Set<() => void>()
+  // The last raw voice level of the speech helper.
+  private level = 0
+  // The end of the text that the user typed into the PTY of this attach (typedTail).
+  private typed = ''
 
   constructor(sessionId: string, deps: ChatTerminalDeps) {
     this.sessionId = sessionId
@@ -155,17 +182,63 @@ export class ChatTerminal {
     this.term = new Terminal(terminalOptions(font, theme, openLink))
     this.term.loadAddon(this.fit)
     this.term.open(this.host)
-    // The keys and the xterm.js replies go to the PTY.
-    this.term.onData(data => this.input(data))
-    // Shift+Enter gives a new line in Claude Code, not a submit (spec 8.5). The text goes through
-    // the normal input, so the input rules still apply. xterm.js and the browser do not handle it.
-    this.term.attachCustomKeyEventHandler(event => {
-      const text = keyOverride(event)
-      if (text === null) return true
-      event.preventDefault()
-      if (text !== '') this.input(text)
-      return false
+    // The keys and the xterm.js replies go to the PTY through the input rules (createChatInput).
+    // They wait while dictation types its final text (ruling D9).
+    this.term.onData(data => this.chatInput.data(data))
+    // Dictation types through the same input as the keys, and only into this window.
+    this.dictation = createDictationSession({
+      after: (ms, fn) => {
+        const timer = window.setTimeout(fn, ms)
+        return () => window.clearTimeout(timer)
+      },
+      api: deps.dictation,
+      changed: () => {
+        for (const listener of this.dictationListeners) listener()
+      },
+      fallback: () => this.holdKey.fallback(),
+      lastSent: () => this.typed,
+      now: () => Date.now(),
+      viewId: this.viewId,
+      write: data => this.input(data),
     })
+    this.holdKey = createHoldKey<number>({
+      blocked: () => this.dictationBlocked(),
+      cancel: () => this.dictation.cancel(),
+      clearTimeout: timer => window.clearTimeout(timer),
+      heard: () => this.dictation.heard(),
+      key: () => this.dictationKey,
+      setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+      start: () => this.dictation.start(),
+      stop: () => this.dictation.stop(),
+      // A key that goes to the PTY stops a dictation and its typer first. While a final text
+      // types, the key waits for it (ruling D9).
+      typeKey: text => {
+        if (!this.dictation.waits()) this.dictation.interrupt()
+        this.dictation.input(text)
+      },
+    })
+    // The focus of the terminal keeps the speech helper ready. A blur stops a hold.
+    this.term.textarea?.addEventListener('focus', () => this.warm())
+    this.term.textarea?.addEventListener('blur', () => {
+      if (!this.disposed) this.holdKey.blur()
+    })
+    // The input rules of the window (createChatInput): the dictation key, the stop of a
+    // dictation at other input, and Shift+Enter. The text of Shift+Enter goes through the normal
+    // input, so the input rules still apply.
+    this.chatInput = createChatInput({
+      block: () => this.dictation.block(),
+      hold: this.holdKey,
+      input: text => this.dictation.input(text),
+      interrupt: () => this.dictation.interrupt(),
+      waits: () => this.dictation.waits(),
+      warm: () => this.warm(),
+    })
+    this.term.attachCustomKeyEventHandler(event => this.chatInput.key(event))
+    // A click report, a paste or a drop goes to the PTY with no key down. The capture phase runs
+    // before xterm.js.
+    for (const type of ['mousedown', 'paste', 'drop']) {
+      this.element.addEventListener(type, () => this.chatInput.other(), true)
+    }
     // A write adds lines. A resize moves lines between the screen and the scrollback. A write can
     // also change to the alternate buffer. So each of these events can change the history.
     this.term.onWriteParsed(() => this.showHistory())
@@ -192,6 +265,9 @@ export class ChatTerminal {
   // Each registry update calls this. A waiting window attaches when its row can attach.
   setRow(row: SessionRow | undefined, loaded: boolean): void {
     if (this.disposed) return
+    this.row = row
+    // A choice that typed text can answer stops a dictation and its typer at once.
+    this.chatInput.row(row)
     this.target = attachTarget(row, loaded)
     this.maybeAttach()
     // The agent view waits for the row. Now the row can attach, so check the screen again.
@@ -280,6 +356,56 @@ export class ChatTerminal {
     return Array.from(this.host.querySelectorAll('canvas'))
   }
 
+  // The dictation key of the settings, or null when it is Off.
+  setDictationKey(binding: string | null): void {
+    if (this.disposed) return
+    this.dictationKey = binding
+  }
+
+  // An event of the dictation of the view of this terminal.
+  dictationEvent(event: DictationViewEvent): void {
+    if (this.disposed) return
+    if (event.t === 'level') this.level = event.v
+    this.dictation.event(event)
+    // The level of an older dictation never shows in a new one.
+    if (this.dictation.view().phase !== 'listening') this.level = 0
+  }
+
+  // The last raw voice level of the speech helper, 0 to 1. It is 0 while the window is not
+  // listening.
+  dictationLevel(): number {
+    return this.level
+  }
+
+  // The dictation state of the window. The object changes only when the state changes.
+  dictationView = (): DictationView => this.dictation.view()
+
+  // For useSyncExternalStore. The listener runs when the dictation state changes.
+  onDictation = (listener: () => void): (() => void) => {
+    this.dictationListeners.add(listener)
+    return () => {
+      this.dictationListeners.delete(listener)
+    }
+  }
+
+  // Keep the speech helper ready while the window has the focus (dictation design 10).
+  private warm(): void {
+    if (this.disposed || this.dictationKey === null) return
+    this.deps.dictation.warm().catch(err => {
+      console.warn('Bifrost cannot warm the speech helper.', err)
+    })
+  }
+
+  // True when Claude shows a choice that typed text can answer (spec 8.4).
+  private rowBlocks(): boolean {
+    return this.row !== undefined && promptBlocks(this.row)
+  }
+
+  // True when the dictation key must act as a normal key.
+  private dictationBlocked(): boolean {
+    return this.disposed || !this.attached || this.inputBlocked || this.rowBlocks()
+  }
+
   write(chunk: string): void {
     // Without an attach, a chunk comes from an old PTY of this view. Ignore it.
     if (this.disposed || !this.attached) return
@@ -308,6 +434,10 @@ export class ChatTerminal {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    // The close stops a dictation (Review Focus 3).
+    this.holdKey.close()
+    this.dictation.dispose()
+    this.dictationListeners.clear()
     this.stopTimers()
     cancelAnimationFrame(this.focusFrame)
     this.deps.pty.close(this.viewId).catch(err => {
@@ -347,6 +477,7 @@ export class ChatTerminal {
   private setInputBlocked(blocked: boolean): void {
     if (this.inputBlocked === blocked) return
     this.inputBlocked = blocked
+    if (blocked) this.dictation.block()
     this.deps.pty.setBlocked(this.viewId, blocked).catch(err => {
       console.warn('Bifrost cannot report the agent view of a chat window.', this.viewId, err)
     })
@@ -354,6 +485,7 @@ export class ChatTerminal {
 
   private input(data: string): void {
     if (!this.attached || this.inputBlocked) return
+    this.typed = typedTail(this.typed, data)
     const attach = this.attachCount
     // The main process gives false when the view has no PTY. Then the attach is gone.
     this.deps.pty.write(this.viewId, data).then(
@@ -379,6 +511,8 @@ export class ChatTerminal {
 
   // Mark the terminal as ended and write one line. It does not attach again by itself.
   private end(line: string): void {
+    // A dictation of the ended PTY stops, and types nothing more.
+    this.dictation.block()
     this.attached = false
     this.ended = true
     this.agentWaiting = false
@@ -455,6 +589,7 @@ export class ChatTerminal {
         }
         this.attached = true
         this.attachCount += 1
+        this.typed = ''
         // A reattach after the agent view blocked the input. The new attach unblocks it.
         this.setInputBlocked(false)
         this.showNote()
@@ -628,6 +763,8 @@ export class ChatTerminal {
     }
     this.agentWaiting = false
     history.times.push(now)
+    // The old PTY closes. Its dictation stops, and types nothing more.
+    this.dictation.block()
     this.attached = false
     this.term.reset()
     this.showHistory()

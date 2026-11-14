@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.keyholding.bifrost.dictation</string>
+    <key>CFBundleName</key>
+    <string>bifrost-dictation</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Bifrost uses the microphone when you talk to Claude.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Bifrost turns your speech into text on this Mac.</string>
+  </dict>
+</plist>

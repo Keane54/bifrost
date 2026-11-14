@@ -121,7 +121,12 @@ describe('the index of all sections', () => {
   it('has a row for each General label, slash command and key slot, and one Live details row', () => {
     expect(index[0].rows.map(r => r.id)).toEqual([...GENERAL_LABELS])
     expect(index[1].rows.map(r => r.id)).toEqual(['/compact', '/clear'])
-    expect(index[2].rows).toHaveLength(83)
+    expect(index[2].rows).toHaveLength(84)
+    expect(index[2].rows.find(r => r.id === 'dictation:hold')).toEqual({
+      binding: 'Space',
+      id: 'dictation:hold',
+      text: 'Dictation key',
+    })
     expect(index[2].rows.find(r => r.id === 'take-control:mod')).toEqual({
       binding: 'Mod+Shift+T',
       id: 'take-control:mod',

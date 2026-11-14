@@ -78,6 +78,10 @@ import {
 } from './daily-update/service'
 import { skillExportFile, writeSkillExport } from './daily-update/skill-export'
 import { dailyStateFile, openDailyStateStore } from './daily-update/state-store'
+import { chatEventSender, registerDictationIpc } from './dictation/dictation-ipc'
+import { createDictationService, type DictationService } from './dictation/dictation-service'
+import { helperToRun } from './dictation/helper-path'
+import { createVimModeCheck, fileStamp } from './dictation/vim-mode'
 import { loadLoginEnv, stringValues } from './env/login-env'
 import { createBatcher, EventLog, NOTIFICATION_REFUSED } from './events/event-log'
 import { createHandOver } from './handover/hand-over'
@@ -177,7 +181,7 @@ import { appBundlePath } from './updates/rules'
 import { openUpdateStateStore } from './updates/state-store'
 import { createUpdateLog, type UpdateLog, updateLogPath } from './updates/update-log'
 import { createUpdater, type Updater } from './updates/updater'
-import { claudeJsonFile, readExtraUsageFlag } from './usage-alerts/claude-json'
+import { claudeJsonFile, readClaudeJson, readExtraUsageFlag } from './usage-alerts/claude-json'
 import { createUsageAlertMonitor, type UsageAlertMonitor } from './usage-alerts/monitor'
 import { openUsageAlertStore, usageAlertsFile } from './usage-alerts/state-store'
 import type { ModeController } from './window/display-mode'
@@ -343,6 +347,10 @@ const pendingDailyOpen = new PendingOpen()
 const DAILY_NO_AREA = ''
 const DAILY_FAILED = "Bifrost couldn't do that. Please try again."
 let stopDaily: (() => void) | null = null
+
+// The dictation service (dictation design). registerIpc makes it. It runs the speech helper and
+// gives its events to the chat view that dictates. stopRegistry stops the helper.
+let dictation: DictationService | null = null
 
 const fetchJson = createFetchJson((url, init) => net.fetch(url, init))
 
@@ -1187,6 +1195,21 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
     path ? createSpawnLines(spawn, path, env) : null,
   )
   const getManager = (): Promise<PtyManager | null> => managerPromise as Promise<PtyManager | null>
+  // A test home runs the fake helper of the smoke tests (helperToRun). An event goes only to a
+  // chat view that has a terminal. So no event goes to a chat window that closed.
+  const hasTerminal = (viewId: string): boolean => liveManager?.has(viewId) ?? false
+  dictation = createDictationService({
+    clearTimeout: timer => clearTimeout(timer),
+    now: () => Date.now(),
+    path: () => helperToRun(home !== null, process.env.PATH, defaultIsExecutable),
+    send: chatEventSender(hasTerminal, send),
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    spawn: path =>
+      spawn(path, [], {
+        env: childEnv(process.env, { pty: false }),
+        stdio: ['pipe', 'pipe', 'ignore'],
+      }),
+  })
   // All text and keys that Bifrost types into a session go through this object (D1).
   // A hidden attach opens at the current size of the session (M3).
   const input = new SessionInput({
@@ -1209,15 +1232,18 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
       if (chunk.includes(FULL_REDRAW)) sizeWatcher.poke(viewId)
     })
     // close, closeAll and a replacing open do not run the exit callback. So forget here too.
+    // The end of the terminal of a chat also stops its dictation.
     m.onClose(viewId => {
       batcher.flush(viewId)
       sizeWatcher.forget(viewId)
       input.ended(viewId)
+      dictation?.stop(viewId)
     })
     m.onExit((viewId, exitCode, signal) => {
       batcher.flush(viewId)
       sizeWatcher.forget(viewId)
       input.ended(viewId)
+      dictation?.stop(viewId)
       if (CHAT_VIEW.test(viewId)) send('pty:exit', viewId, exitCode, signal)
       if (viewId === TRUST_VIEW) trustWindow?.exited()
     })
@@ -2029,6 +2055,21 @@ export function registerIpc(home: TestHome | null = null, hidden = false): void 
   ipcMain.handle('input:interrupt', (e, sessionId: unknown) =>
     fromPage(e, () => input.interrupt(sessionId)),
   )
+  // Dictation (dictation design): warm, start, stop and the System Settings panes of a notice
+  // (main/dictation/dictation-ipc.ts).
+  // The vim mode check reads ~/.claude.json and ~/.claude/settings.json of the home. A test home
+  // uses its own files. It parses a file again only after a change.
+  const claudeHome = home?.home ?? homedir()
+  const vimFiles = [claudeJsonFile(claudeHome), claudeSettingsFile(claudeHome)]
+  const vimMode = createVimModeCheck(vimFiles, { read: readClaudeJson, stat: fileStamp })
+  registerDictationIpc({
+    fromPage,
+    handle: (channel, listener) => ipcMain.handle(channel, listener),
+    hasTerminal,
+    openExternal: url => shell.openExternal(url),
+    service: () => dictation,
+    vimMode: () => vimMode(),
+  })
   // The size of the session TTY. The row must be owned and have a PID. Bifrost only reads it.
   ipcMain.handle('pty:session-size', (e, sessionId: unknown) =>
     fromPage(e, async () => {
@@ -2114,11 +2155,13 @@ export function closeAllPtys(): void {
 }
 
 // Stop the registry service, the server of Live details, the pollers, the updater, the Performance
-// monitor and its delay histogram, and the Daily update. Call it when the app quits.
+// monitor and its delay histogram, the Daily update and the speech helper. Call it when the app
+// quits.
 export function stopRegistry(): void {
   serviceStopped = true
   stopDaily?.()
   stopDaily = null
+  dictation?.stopAll()
   liveService?.stop()
   eventBatcher.stop()
   liveControl?.stop()

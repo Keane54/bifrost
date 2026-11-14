@@ -1,16 +1,18 @@
 import { expect, test } from 'vitest'
 import { checkRecorded, keyGroups } from '../../../src/renderer/src/settings/key-editor'
 import {
+  DICTATION_SLOT,
   REASON_BAD_KEY,
+  REASON_DICTATION_FORM,
   REASON_HOLD_FORM,
   REASON_MAC_KEEPS,
   REASON_MENU_NEEDS_MOD,
 } from '../../../src/shared/keys'
 
-test('keyGroups gives the three groups of spec 9.4 in order', () => {
+test('keyGroups gives the three groups of spec 9.4 in order, then the dictation group', () => {
   const groups = keyGroups({}, 'plain')
-  expect(groups.map(g => g.group)).toEqual(['always', 'single', 'hold'])
-  expect(groups.map(g => g.rows.length)).toEqual([49, 24, 10])
+  expect(groups.map(g => g.group)).toEqual(['always', 'single', 'hold', 'dictation'])
+  expect(groups.map(g => g.rows.length)).toEqual([49, 24, 10, 1])
   expect(groups[0].rows[0].label).toBe('New session')
   expect(groups[0].rows[0].binding).toBe('Mod+N')
   expect(groups[0].rows[0].changed).toBe(false)
@@ -89,4 +91,37 @@ test('checkRecorded refuses a menu key without Cmd', () => {
     binding: 'Mod+Shift+W',
     ok: true,
   })
+})
+
+test('keyGroups gives the dictation key a heading of its own', () => {
+  const dictation = keyGroups({}, 'plain').find(g => g.group === 'dictation')
+  expect(dictation?.title).toBe('Hold to dictate in a chat window')
+  expect(dictation?.rows.map(r => [r.slot.id, r.label, r.binding])).toEqual([
+    [DICTATION_SLOT, 'Dictation key', 'Space'],
+  ])
+  const off = keyGroups({ [DICTATION_SLOT]: null }, 'plain').find(g => g.group === 'dictation')
+  expect(off?.rows[0].binding).toBeNull()
+})
+
+test('checkRecorded takes a plain Space for the dictation key only', () => {
+  expect(checkRecorded(DICTATION_SLOT, '[Space]', { [DICTATION_SLOT]: null }, 'plain')).toEqual({
+    binding: 'Space',
+    ok: true,
+  })
+  expect(checkRecorded(DICTATION_SLOT, '[KeyK]', {}, 'plain')).toEqual({ binding: 'K', ok: true })
+  expect(checkRecorded(DICTATION_SLOT, 'Shift+[Space]', {}, 'plain')).toEqual({
+    message: REASON_DICTATION_FORM,
+    ok: false,
+  })
+  expect(checkRecorded(DICTATION_SLOT, 'Mod+[Space]', {}, 'plain')).toEqual({
+    message: REASON_DICTATION_FORM,
+    ok: false,
+  })
+  // The other slots still refuse Space.
+  for (const slotId of ['open:hold', 'copy-id:key', 'open:mod']) {
+    expect(checkRecorded(slotId, '[Space]', {}, 'plain')).toEqual({
+      message: REASON_BAD_KEY,
+      ok: false,
+    })
+  }
 })

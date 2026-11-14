@@ -51,10 +51,16 @@ describe('the chat terminal uses the key rule', () => {
     'utf8',
   )
 
+  // The chat input (dictation-keys.ts) runs the rule. Its tests check the input of Shift+Enter.
+  const chatInput = readFileSync(
+    join(__dirname, '../../../src/renderer/src/chat/dictation-keys.ts'),
+    'utf8',
+  )
+
   it('sends the override through the normal input and stops xterm.js for the key', () => {
-    expect(source).toMatch(/attachCustomKeyEventHandler\(/)
-    expect(source).toMatch(/keyOverride\(event\)/)
-    expect(source).toMatch(/event\.preventDefault\(\)/)
-    expect(source).toMatch(/this\.input\(text\)/)
+    expect(source).toMatch(/attachCustomKeyEventHandler\(event => this\.chatInput\.key\(event\)\)/)
+    expect(source).toMatch(/input: text => this\.dictation\.input\(text\)/)
+    expect(chatInput).toMatch(/keyOverride\(event\)/)
+    expect(chatInput).toMatch(/event\.preventDefault\(\)/)
   })
 })

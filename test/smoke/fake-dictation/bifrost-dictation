@@ -1,0 +1,44 @@
+#!/bin/sh
+# The fake speech helper of the smoke tests. The smoke tests put this folder on the PATH of
+# Bifrost. In a test home, Bifrost runs the first bifrost-dictation on the PATH, so it runs this
+# script and never the real helper. The script never opens the microphone and never records or
+# plays audio. It reads the commands of src/shared/dictation-protocol.ts on stdin and prints fixed
+# events on stdout:
+# - At the start: ready, for en-US with no fallback.
+# - start: two level lines and two text lines. The second text line has the final text.
+# - stop: end with the final text. A stop with no session gives an empty end.
+# - quit or the end of stdin: exit with no end.
+
+FINAL='Hello from the fake helper.'
+
+event() {
+  printf '%s\n' "$1"
+}
+
+event '{"fallback":false,"language":"en-US","t":"ready"}'
+session=''
+while IFS= read -r command; do
+  case "$command" in
+    start)
+      if [ -z "$session" ]; then
+        session=1
+        event '{"t":"level","v":0.4}'
+        event '{"final":"","t":"text","volatile":"Hello from"}'
+        event '{"t":"level","v":0.7}'
+        event "{\"final\":\"$FINAL\",\"t\":\"text\",\"volatile\":\"\"}"
+      fi
+      ;;
+    stop)
+      if [ -n "$session" ]; then
+        session=''
+        event "{\"final\":\"$FINAL\",\"t\":\"end\"}"
+      else
+        event '{"final":"","t":"end"}'
+      fi
+      ;;
+    quit)
+      exit 0
+      ;;
+  esac
+done
+exit 0

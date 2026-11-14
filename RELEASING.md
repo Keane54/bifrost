@@ -9,6 +9,9 @@ GitHub macOS runner. A person starts the workflow manually.
   make it.
 - An App Store Connect API key, for notarisation.
 - A GitHub environment named `release`. Set it to allow only the `main` branch.
+- The `macos-26` runner of GitHub, with Xcode 26 or later. The speech helper of dictation uses the
+  speech API of macOS 26. The step "Build the speech helper" prints the Xcode and SDK versions. It
+  stops when the SDK is older.
 
 ## Make the certificate and the key
 
@@ -85,5 +88,7 @@ A unit test checks that the three files agree.
 ## Local builds
 
 `pnpm dist` signs the app ad hoc. It needs no certificate.
+`pnpm dist` builds the speech helper of dictation first (`pnpm build:dictation`). The helper needs
+Xcode 26 or later.
 Do not run `pnpm dist:release` on your Mac.
 It needs the secrets and a keychain with the certificate.

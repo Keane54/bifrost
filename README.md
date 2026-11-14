@@ -58,7 +58,7 @@ The side bar on the left edge has one button for each panel. It also holds the p
 | --- | --- |
 | Overview | The list of sessions. Each tab has its own filters, columns and sort order. You can open more than one Overview. |
 | Selected Item | The selected session, its action buttons (Hand over is one of them) and a send box. |
-| Chat window | The Claude Code terminal of one session. |
+| Chat window | The Claude Code terminal of one session. You can dictate into it. See the Dictation section. |
 | Show Info | All the details of one session. |
 | Watchlist | The sessions that you track, in your order and colours. |
 | Event log | The live events of the sessions, with their times. |
@@ -67,6 +67,42 @@ The side bar on the left edge has one button for each panel. It also holds the p
 | Reviews | The GitHub pull requests that need you, in two tabs: To review and My PRs. See the Reviews section. |
 | Daily update | One tab for each work area. Each tab shows the tickets and PRs that moved since your last update, and the draft of your daily update. |
 | Settings | The tabs General, Slash commands, Keys, Reviews, Daily update, Live details, Skills and Updates. |
+
+## Dictation
+
+You can speak to Claude in a chat window. Bifrost types your words into the prompt of Claude
+while you speak.
+
+1. Click in a chat window.
+2. Hold Space. After a short time, the top line of the window becomes green. A microphone icon
+   and a level bar show in the header.
+3. Speak. Your words show in the prompt. While you speak, Bifrost can change the last words.
+4. Release Space. Bifrost types the final text.
+5. Read the text. Press Enter to send it. Bifrost never presses Enter.
+
+Rules:
+
+- A tap of Space types a space. The microphone opens only when you hold the key.
+- Speech recognition runs on your Mac. The audio and the text stay on your Mac. Bifrost saves no
+  audio. Bifrost can download the speech model of your language from Apple one time. During the
+  download, a hold shows the progress. When the model is ready, hold the key again. If you
+  release the key before the download ends, the chat window does not tell you that the model is
+  ready. Your next hold after the download dictates.
+- macOS asks one time for access to the microphone. On macOS 13 to 15, macOS also asks for
+  Speech Recognition. Answer each prompt. Then hold the key again. If you do not give access, the
+  chat window shows a notice with an "Open System Settings" button. Use this button to give
+  access.
+- When macOS has no speech model for your language, Bifrost uses English.
+- Dictation stops at these times. The text that Bifrost typed stays.
+  - You press another key.
+  - The window loses the focus.
+  - The chat window closes.
+  - The dictation is 2 minutes long.
+- Dictation does not start when Claude shows a choice, for example a permission prompt. Then
+  Space types a space.
+- Dictation does not work with the vim mode of Claude Code.
+- To change the key, go to Settings > Keys > Dictation key. The key can be Space, a letter, a
+  number or a symbol, with no Cmd, Ctrl, Option or Shift. To turn dictation off, click Clear.
 
 ## Daily update
 

@@ -5,6 +5,7 @@ import { ACTIONS, type ActionId, actionLabel } from '../actions/action-model'
 
 const FIXED: Partial<Record<KeyCommandId, string>> = {
   'close-panel': 'Close the focused panel',
+  dictation: 'Dictation key',
   escape: 'Open or close Settings, or leave the send box',
   'event-log': 'Event log',
   'focus-overview': 'Move focus to the Overview',
@@ -22,6 +23,7 @@ const FIXED: Partial<Record<KeyCommandId, string>> = {
 
 const GROUP_TITLES: Record<SlotGroup, string> = {
   always: 'Shortcuts that work at all times',
+  dictation: 'Hold to dictate in a chat window',
   hold: 'Hold a key and click a row',
   single: 'Single keys (not in a chat window or a text box)',
 }

@@ -85,6 +85,42 @@ const usage = run('/usr/libexec/PlistBuddy', [
 ])
 check('the app has the microphone usage text', usage.ok && usage.text.trim() !== '', usage.text)
 
+// The speech helper of dictation. electron-builder signs it with the app (mac.binaries). Apple
+// notarises only code that has the Developer ID signature and the hardened runtime. The helper
+// needs no entitlement of its own. It reads its bundle ID and its usage texts from the Info.plist
+// that the linker puts into it. On macOS 13 to 15, the Speech Recognition prompt shows the usage
+// text of the app. All commands only read.
+const HELPER = `${APP}/Contents/MacOS/bifrost-dictation`
+check('the speech helper is in the app', existsSync(HELPER), `${HELPER} does not exist.`)
+const helperVerify = run('codesign', ['--verify', '--strict', '--verbose=2', HELPER])
+const helper = run('codesign', ['--display', '--verbose=4', HELPER])
+check(
+  'the speech helper is signed by the team, with the hardened runtime',
+  helperVerify.ok &&
+    helper.ok &&
+    helper.text.includes(`TeamIdentifier=${TEAM_ID}`) &&
+    helper.text.includes('Authority=Developer ID Application') &&
+    /flags=0x[0-9a-f]*\(.*runtime.*\)/.test(helper.text),
+  `${helperVerify.text}${helper.text}`,
+)
+check(
+  'the speech helper has its Info.plist',
+  helper.ok &&
+    helper.text.includes('Identifier=com.keyholding.bifrost.dictation') &&
+    /Info\.plist entries=[1-9]/.test(helper.text),
+  helper.text,
+)
+const speechUsage = run('/usr/libexec/PlistBuddy', [
+  '-c',
+  'Print :NSSpeechRecognitionUsageDescription',
+  `${APP}/Contents/Info.plist`,
+])
+check(
+  'the app has the Speech Recognition usage text',
+  speechUsage.ok && speechUsage.text.trim() !== '',
+  speechUsage.text,
+)
+
 // Step 3: the notarisation ticket is stapled to the app, so macOS can check it with no network.
 const stapler = run('xcrun', ['stapler', 'validate', APP])
 check('the notarisation ticket is stapled', stapler.ok, stapler.text)

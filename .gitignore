@@ -3,6 +3,8 @@ node_modules/
 dist/
 out/
 *.tsbuildinfo
+# The speech helper from pnpm build:dictation
+resources/bin/
 
 # Test output
 test-results/

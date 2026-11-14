@@ -1,5 +1,6 @@
 import type { DailySnapshot } from './daily-state'
 import type { McpInventory } from './daily-update'
+import type { DictationViewEvent, PrivacyPane } from './dictation-protocol'
 import type { DirInfo, NewSessionSpec } from './new-session'
 import type { PerformanceSnapshot } from './performance'
 import type { ReleaseNotesResult, WhatsNewStart } from './release-notes'
@@ -415,5 +416,32 @@ export interface BifrostApi {
     // Open a link of a chat window outside Bifrost: a web link in the default browser, a file
     // link in its default app. The main process refuses other links (main/pty/open-link.ts).
     openLink(uri: string): Promise<void>
+  }
+  // Dictation (dictation design). The speech helper runs in the main process. One chat view
+  // dictates at a time.
+  dictation: {
+    // Keep the speech helper ready. A chat window calls this when it gets the focus. The helper
+    // stops when 5 minutes pass with no call.
+    warm(): Promise<void>
+    // Start the dictation of the chat view. The dictation of another view stops first. This
+    // rejects for a view that is not a chat view or that has no terminal.
+    start(viewId: string): Promise<void>
+    // Stop the dictation of the view. The view then gets one end event, in 2 s or less.
+    stop(viewId: string): Promise<void>
+    // True when the settings of Claude turn vim mode on. Then dictation stays off, because a
+    // dictated letter can run as a vim command (ruling D7).
+    vimMode(): Promise<boolean>
+    // Open the pane of System Settings for the microphone or for Speech Recognition. The main
+    // process has the address of each pane. This rejects for another value.
+    openSettings(pane: PrivacyPane): Promise<void>
+    // The events of the dictation of a view, with the shape of the helper events: ready,
+    // downloading, level and text after a start, then one end after the stop. A start during a
+    // model download gets downloading events and no ready, because the microphone stays closed.
+    // At the end of the download, it gets model-ready. A new start after ready opens the
+    // microphone. When the helper opens a session after all, ready comes before the first level
+    // or text. An error ends a dictation in place of the end. After the end or the error, the
+    // view gets no more events of that dictation. A new start of the view before its end drops
+    // that end. The returned function removes only this listener.
+    onEvent(cb: (viewId: string, event: DictationViewEvent) => void): () => void
   }
 }

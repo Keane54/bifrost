@@ -4,6 +4,7 @@ import {
   type CustomKeys,
   canonicalBinding,
   checkBinding,
+  DICTATION_SLOT,
   effectiveKeys,
   type FocusZone,
   KEY_SLOTS,
@@ -12,7 +13,9 @@ import {
   keyConflicts,
   parseBinding,
   parseCustomKeys,
+  physicalCode,
   REASON_BAD_KEY,
+  REASON_DICTATION_FORM,
   REASON_HOLD_FORM,
   REASON_MAC_KEEPS,
   REASON_MENU_KEEPS,
@@ -33,12 +36,13 @@ function allowedZones(slotId: string, binding: string): FocusZone[] {
   return ZONES.filter(zone => keyAllowed(slot, binding, zone))
 }
 
-test('KEY_SLOTS has the 83 slots of spec 9.4 with unique IDs', () => {
-  expect(KEY_SLOTS).toHaveLength(83)
-  expect(new Set(KEY_SLOTS.map(slot => slot.id)).size).toBe(83)
+test('KEY_SLOTS has the 83 slots of spec 9.4 and the dictation slot, with unique IDs', () => {
+  expect(KEY_SLOTS).toHaveLength(84)
+  expect(new Set(KEY_SLOTS.map(slot => slot.id)).size).toBe(84)
   expect(KEY_SLOTS.filter(slot => slot.group === 'always')).toHaveLength(49)
   expect(KEY_SLOTS.filter(slot => slot.group === 'single')).toHaveLength(24)
   expect(KEY_SLOTS.filter(slot => slot.group === 'hold')).toHaveLength(10)
+  expect(KEY_SLOTS.filter(slot => slot.group === 'dictation')).toHaveLength(1)
   expect(
     KEY_SLOTS.filter(slot => slot.menu)
       .map(slot => slot.id)
@@ -56,6 +60,13 @@ test('KEY_SLOTS keeps the order and the defaults of spec 9.4', () => {
   expect(ids[72]).toBe('escape:key')
   expect(ids[73]).toBe('open:hold')
   expect(ids[82]).toBe('set-priority.5:hold')
+  expect(ids[83]).toBe('dictation:hold')
+  expect(DICTATION_SLOT).toBe('dictation:hold')
+  expect(slotById(DICTATION_SLOT)).toMatchObject({
+    command: 'dictation',
+    default: 'Space',
+    group: 'dictation',
+  })
   expect(slotById('select-row.3:mod')).toMatchObject({
     arg: 3,
     command: 'select-row',
@@ -280,7 +291,7 @@ test('effectiveKeys applies the changes and null removes a key', () => {
   expect(keys['open:mod']).toBe('Mod+K')
   expect(keys['stop:mod']).toBeNull()
   expect(keys['new-session:mod']).toBe('Mod+N')
-  expect(Object.keys(keys)).toHaveLength(83)
+  expect(Object.keys(keys)).toHaveLength(84)
 })
 
 test('setSlotKey removes an entry that equals the default and keeps the object when nothing changes', () => {
@@ -357,6 +368,65 @@ test('keyAllowed keeps the arrow keys, Home and End with a control', () => {
 test('keyAllowed lets a hold key act only in the other zone (ruling C3)', () => {
   expect(allowedZones('open:hold', 'O')).toEqual(['other'])
   expect(allowedZones('set-priority.3:hold', '3')).toEqual(['other'])
+})
+
+describe('the dictation slot (dictation design 5)', () => {
+  const keys = effectiveKeys({})
+
+  test('takes Space, a letter, a digit or a punctuation key with no modifier', () => {
+    for (const [binding, canonical] of [
+      ['Space', 'Space'],
+      ['space', 'Space'],
+      ['k', 'K'],
+      ['7', '7'],
+      ['/', '/'],
+      ['`', '`'],
+    ]) {
+      expect(checkBinding(DICTATION_SLOT, binding, keys)).toEqual({ binding: canonical, ok: true })
+    }
+  })
+
+  test('refuses a modifier and a key that types no character', () => {
+    for (const binding of ['Shift+Space', 'Mod+K', 'Alt+7', 'Control+/', 'Enter', 'F5', 'Tab']) {
+      expect(checkBinding(DICTATION_SLOT, binding, keys)).toEqual({
+        ok: false,
+        reason: REASON_DICTATION_FORM,
+      })
+    }
+  })
+
+  test('shares a key with any other slot, because it acts only in a chat window', () => {
+    expect(checkBinding(DICTATION_SLOT, 'O', keys)).toEqual({ binding: 'O', ok: true })
+    expect(checkBinding(DICTATION_SLOT, '1', keys)).toEqual({ binding: '1', ok: true })
+    expect(checkBinding('open:hold', 'Space', effectiveKeys({}))).toEqual({
+      ok: false,
+      reason: REASON_HOLD_FORM,
+    })
+    expect(keyConflicts(effectiveKeys({ [DICTATION_SLOT]: 'O' }))).toEqual([])
+  })
+
+  test('can be Off, and the stored key stays', () => {
+    expect(parseCustomKeys({ [DICTATION_SLOT]: null })).toEqual({ [DICTATION_SLOT]: null })
+    expect(parseCustomKeys({ [DICTATION_SLOT]: '/' })).toEqual({ [DICTATION_SLOT]: '/' })
+    expect(parseCustomKeys({ [DICTATION_SLOT]: 'Shift+K' })).toEqual({})
+    expect(effectiveKeys({ [DICTATION_SLOT]: null })[DICTATION_SLOT]).toBeNull()
+  })
+
+  test('is not a binding that the renderer registers, and acts only in a chat window', () => {
+    expect(activeBindings(keys).some(entry => entry.slot.id === DICTATION_SLOT)).toBe(false)
+    expect(allowedZones(DICTATION_SLOT, 'Space')).toEqual(['chat'])
+  })
+
+  test('physicalCode gives the code of a key with no modifier', () => {
+    expect(physicalCode('Space')).toBe('Space')
+    expect(physicalCode('K')).toBe('KeyK')
+    expect(physicalCode('7')).toBe('Digit7')
+    expect(physicalCode('/')).toBe('Slash')
+    expect(physicalCode('\\')).toBe('Backslash')
+    expect(physicalCode('Shift+K')).toBeNull()
+    expect(physicalCode('Enter')).toBeNull()
+    expect(physicalCode('nope')).toBeNull()
+  })
 })
 
 test('toAccelerator gives Electron accelerators', () => {
