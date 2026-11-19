@@ -96,12 +96,22 @@ struct NewSessionFormTests {
         #expect(applying(.cwd("/p/app"), to: start) == start)
     }
 
-    // A name that the user types counts as edited, also when it is the suggested name.
+    // A name that the user types counts as edited, also when it ends as the suggested name: each
+    // key changes the text on the way.
     @Test func eachNameChangeMarksTheNameAsEdited() {
         let start = form(History(recentDirs: ["/p/app"]))
+        let typed = applying(.name("app-a1b2"), to: applying(.name("app-a1b"), to: start))
+        #expect(typed.nameEdited)
+        #expect(applying(.cwd("/p/web"), to: typed).name == "app-a1b2")
+    }
+
+    // The name field writes its text again when it gets the focus or a Tab moves through it. The
+    // same name is no change, so the suggested name still follows the folder.
+    @Test func aWriteOfTheSameNameKeepsTheSuggestedName() {
+        let start = form(History(recentDirs: ["/p/app"]))
         let same = applying(.name("app-a1b2"), to: start)
-        #expect(same.nameEdited)
-        #expect(applying(.cwd("/p/web"), to: same).name == "app-a1b2")
+        #expect(!same.nameEdited)
+        #expect(applying(.cwd("/p/web"), to: same).name == "web-a1b2")
     }
 
     @Test func aNewFolderTurnsTheWorktreeOptionOff() {

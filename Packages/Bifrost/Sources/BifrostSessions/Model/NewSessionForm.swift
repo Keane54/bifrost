@@ -48,6 +48,8 @@ package struct NewSessionForm: Sendable, Equatable {
 
     // A new folder gives the suggested name of the folder, while the user did not change the
     // name, and turns the worktree option off. Each change of the name marks the name as edited.
+    // The same name changes nothing: the name field writes its text again, for example when it
+    // gets the focus.
     package mutating func apply(_ action: FormAction) {
         switch action {
         case .cwd(let next):
@@ -56,6 +58,7 @@ package struct NewSessionForm: Sendable, Equatable {
             if !nameEdited { name = Self.suggestName(next, suffix: suffix) }
             worktree = false
         case .name(let next):
+            guard next != name else { return }
             name = next
             nameEdited = true
         case .model(let next): model = next
