@@ -137,6 +137,39 @@ struct LoaderLayerTests {
         await chat.close()
     }
 
+    // While Take control runs, the chat does not attach, also when its row can attach. The
+    // finish ends that hold: the chat attaches, and its first output ends the loader.
+    @Test func theChatAttachesOnlyWhenTakeControlEnds() async throws {
+        let chat = try ChatFixture(
+            rows: { [FakeSession.row(folder: $0, kind: .external)] }, fakePTY: true)
+        chat.open()
+        chat.chats.startLoader(id)
+        let terminal = try chat.terminal()
+        chat.rows = [FakeSession.row(folder: chat.home)]
+        chat.sync()
+        #expect({ if case .waiting = terminal.attachState { true } else { false } }())
+        #expect(terminal.state.note == nil)
+        chat.chats.finishLoader(id)
+        try #require(await chat.waitForAttach())
+        #expect(chat.fakes.spawns.count == 1)
+        await waitUntil { !chat.chats.showsLoader(id) }
+        await chat.close()
+    }
+
+    // A failed Take control also ends the hold: a chat that stays open attaches when its row can
+    // attach.
+    @Test func aStopEndsTheHoldOfTheAttach() async throws {
+        let chat = try ChatFixture(fakePTY: true)
+        chat.chats.startLoader(id)
+        chat.open()
+        let terminal = try chat.terminal()
+        #expect({ if case .waiting = terminal.attachState { true } else { false } }())
+        chat.chats.stopLoader(id)
+        await waitUntil { terminal.state.attached }
+        #expect(chat.fakes.spawns.count == 1)
+        await chat.close()
+    }
+
     // A window that cannot attach (an external row) shows no output, so the time limit of 20 s
     // ends the loader. The window then shows its note.
     @Test func theTimeLimitEndsALoaderThatWaitsForTheFirstOutput() async throws {

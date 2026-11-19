@@ -30,6 +30,14 @@
 // the watch gets no change for each chunk. Each path ends the loader: a stop, a shown after the
 // finish, the time limit of 20 s after the finish, a finish with no terminal, and the close of the
 // chat while the loader waits for the first output.
+//
+// While Take control runs, the chat of the session does not attach (holdsAttach). Take control
+// ends the process in the other terminal and starts the session again in the background. The row
+// can show the new process as an owned session before Take control checks that the process stays,
+// and an attach at that time can stay on a session that the move did not finish. The restart of
+// the action runner after a good Take control acts only on a chat that ended, so it does not
+// replace such an attach. Thus the chat attaches when Take control ends: a stop or a finish of
+// the loader.
 import AppKit
 import BifrostDictation
 import BifrostFoundation
@@ -283,7 +291,14 @@ public final class ChatTerminals: PanelBodiesPart {
     }
     #endif
 
+    // True while Take control of the session runs. The chat of the session does not attach until
+    // Take control ends.
+    func holdsAttach(_ sessionId: String) -> Bool {
+        loaders.runs(sessionId)
+    }
+
     private func stepLoader(_ id: String, _ step: (inout TakeControlLoader) -> Void) {
+        let held = loaders.runs(id)
         step(&loaders)
         // Only a loader that waits for the first output has the time limit.
         if !loaders.waits(id) {
@@ -302,6 +317,8 @@ public final class ChatTerminals: PanelBodiesPart {
             shownWatches.removeValue(forKey: id)?.task.cancel()
         }
         applyLoader(id)
+        // Take control ended: a chat that waits attaches now, to the moved session.
+        if held && !loaders.runs(id) { terminals[id]?.takeControlEnded() }
     }
 
     // The terminal of the session went. A loader that waits only for the first output of that

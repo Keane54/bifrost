@@ -167,6 +167,11 @@ sessions with New session, and give each new session a `bifrost-test-` name.
   loader, the middle colours may look a little darker. Turn on Reduce motion (System Settings >
   Accessibility > Display) and take control again: the rainbow should stay still.
   ([chat C25](ports/chat/DELIBERATE-DIFFERENCES.md))
+- [ ] Open the chat window of an external `bifrost-test-` session, then take control of it. When
+  the takeover is done, the same window should show the session by itself, with no need to close
+  it and open it again. Try it once more from the row menu with no chat window open: the window
+  that Take control opens should also show the session at the end.
+  ([chat C26](ports/chat/DELIBERATE-DIFFERENCES.md))
 
 ## Links
 

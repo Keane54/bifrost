@@ -152,7 +152,7 @@ final class ActionsHarness {
     let clipboard = FakeClipboard()
     let list = SessionListModel()
     let selection: SelectionModel
-    let layout = WindowLayoutModel(layout: WindowLayout(bounds: LayoutSize(w: 1200, h: 800)))
+    let layout: WindowLayoutModel
     let folder: TemporaryFolder
     let store: UIStateStore
     let look = PanelLook()
@@ -178,13 +178,16 @@ final class ActionsHarness {
     // harness does not record the steps. confirmAll: false keeps the new rows of the first --all
     // list unconfirmed (FakeActionDeps.start). With handOver, the runner gets a hand-over on the
     // session input and the registry, with the projects folder, a rules file and a notes folder
-    // in the folder of the harness, and the clock handOverClock.
+    // in the folder of the harness, and the clock handOverClock. layout: the layout of the runner,
+    // for example the layout of a ChatFixture; nil gives a new layout.
     init(
         store registryStore: RegistryStore = RegistryStore(), active: [AgentEntry] = [],
         all: [AgentEntry] = [], projects: URL? = nil, chats: ChatTerminals? = nil,
-        confirmAll: Bool = true, handOver: Bool = false
+        confirmAll: Bool = true, handOver: Bool = false, layout: WindowLayoutModel? = nil
     ) async throws {
         UITestApp.prepare()
+        self.layout =
+            layout ?? WindowLayoutModel(layout: WindowLayout(bounds: LayoutSize(w: 1200, h: 800)))
         deps = FakeActionDeps(store: registryStore, active: active, all: all)
         actions = deps.makeActions(projects: projects)
         let registry = deps.registry
@@ -225,7 +228,7 @@ final class ActionsHarness {
         }
         runner = ActionRunner(
             actions: actions, input: input, registry: registry, apps: apps,
-            terminals: terminals, layout: layout, selection: selection, chats: chats,
+            terminals: terminals, layout: self.layout, selection: selection, chats: chats,
             dialogs: dialogs, uiState: store, settings: { values.settings },
             installedApps: { values.apps }, clock: deps.clock, handOver: handOverRun)
         if chats == nil {

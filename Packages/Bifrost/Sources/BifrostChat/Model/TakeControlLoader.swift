@@ -66,6 +66,12 @@ package struct TakeControlLoader: Sendable, Equatable {
         states[sessionId].map { !$0.running } ?? false
     }
 
+    // True while Take control of the session runs. The chat window of the session does not
+    // attach then, so its first attach comes after the move.
+    package func runs(_ sessionId: String) -> Bool {
+        states[sessionId]?.running ?? false
+    }
+
     // The session IDs with a loader, in order.
     package var sessionIds: [String] { states.keys.sorted() }
 

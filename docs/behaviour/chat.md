@@ -28,7 +28,8 @@ can't attach.
   for a different session from the one the window shows.
 - The folder always comes from the row, never from whoever asked for the open. A row with no
   folder attaches in the root folder (`/`).
-- A window that waits attaches by itself as soon as its row can attach.
+- A window that waits attaches by itself as soon as its row can attach, except while Take control
+  of its session runs (see "The Take control loader").
 - A failed open isn't retried, which stops a loop of errors. You close the window and open it
   again.
 - Closing a window sends SIGHUP to the attach child only, so the session keeps running.
@@ -253,10 +254,14 @@ these rules:
 
 - It shows from the start of Take control. If Take control fails, the loader goes and the window
   closes.
+- The window doesn't attach while Take control runs. The row can show the new background process
+  as a running owned session a few seconds before Take control has checked that the process
+  stays, and an attach from that moment might not be the moved session. So the window attaches
+  when Take control ends, by itself, and you never have to close it and open it again.
 - Once Take control has worked, the loader stays until the terminal shows Claude: the first text
   of the new attach, or the line that says why the window ended, so that line is never hidden. If
-  the terminal showed Claude before Take control finished, the loader goes as soon as it
-  finishes.
+  the terminal showed Claude while Take control was still running, which only an attach that had
+  started before it can do, the loader goes as soon as Take control finishes.
 - A loader that's only waiting for that first text gives up after 20 seconds, and the window then
   shows the terminal, with its note if it can't attach. While Take control is still running, there's
   no time limit.

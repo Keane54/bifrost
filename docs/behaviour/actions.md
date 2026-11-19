@@ -218,7 +218,8 @@ Once it has a plan, it opens the chat, the panel or the dialog, or runs the call
   Delete, the chat window closes and the row is no longer selected.
 - Take control selects the row and opens its chat window with the loader before the takeover
   starts. If it fails, the loader goes and the window closes. If it works, the chat restarts, and
-  the loader waits for the chat's first output.
+  the loader waits for the chat's first output. The chat doesn't attach while the takeover runs,
+  so its first attach is to the session that the takeover moved.
 - Resume restarts the chat, so an open window attaches again.
 - Hand over shows "Writing the hand-over note..." in the notice line while it waits for the note,
   and the session counts as running the whole time. After a good hand-over, the old session's

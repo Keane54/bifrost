@@ -272,6 +272,13 @@ public final class ChatTerminal {
         attachIfReady()
     }
 
+    // Take control of the session ended (ChatTerminals.holdsAttach). A window that waits attaches
+    // now when its row can attach.
+    func takeControlEnded() {
+        guard !isClosed else { return }
+        attachIfReady()
+    }
+
     // The window closes. Close the attach (SIGHUP to the attach child). The session continues.
     func dispose() {
         guard !isClosed else { return }
@@ -434,6 +441,9 @@ public final class ChatTerminal {
     // A window that waits attaches when its row can attach.
     private func attachIfReady() {
         guard case .waiting = attachState, case .ready(let shortId, _) = target else { return }
+        // While Take control of the session runs, the row can already show the new process, but
+        // the move is not done. The window attaches when Take control ends (takeControlEnded).
+        guard owner?.holdsAttach(sessionId) != true else { return }
         // A visible window waits for the size of its panel, so the attach gets the right size.
         guard !sizing.waitsForPanel else { return }
         if sizing.needsSessionSize {

@@ -26,7 +26,9 @@ struct TakeControlLoaderTests {
         loader.start(id)
         #expect(loader.shows(id))
         #expect(!loader.waits(id))
+        #expect(loader.runs(id))
         #expect(!loader.shows(other))
+        #expect(!loader.runs(other))
         #expect(loader.sessionIds == [id])
     }
 
@@ -37,6 +39,7 @@ struct TakeControlLoaderTests {
         finishedFirst.finish(id)
         #expect(finishedFirst.shows(id))
         #expect(finishedFirst.waits(id))
+        #expect(!finishedFirst.runs(id))
         finishedFirst.shown(id)
         #expect(!finishedFirst.shows(id))
 
@@ -45,6 +48,7 @@ struct TakeControlLoaderTests {
         shownFirst.shown(id)
         #expect(shownFirst.shows(id))
         #expect(!shownFirst.waits(id))
+        #expect(shownFirst.runs(id))
         shownFirst.finish(id)
         #expect(!shownFirst.shows(id))
     }
