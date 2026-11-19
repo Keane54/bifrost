@@ -743,7 +743,8 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   GitHub should show your approval on the commit Claude reviewed, and nothing else on the PR
   should change. ([reviews R24](ports/reviews/DELIBERATE-DIFFERENCES.md))
 - [ ] Click Approve on a test PR where Claude suggests Approve. The button should turn straight
-  into a spinning loader with "Approving…", then into a green check with "Approved", and the row
+  into a spinning loader with "Approving…", and "Approval recommended" should go at the same time.
+  Then a green check with "Approved" should show, and the row
   should stay for about 3 seconds before it goes (or moves to You approved). With Reduce Motion on
   in System Settings, the loader should stay still. Does it feel clear that the approval worked?
   ([reviews R30](ports/reviews/DELIBERATE-DIFFERENCES.md))

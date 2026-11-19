@@ -307,10 +307,13 @@ struct ReviewDraftPanelTests {
         f.github.onWrite = { _ in await gate.pass() }
         let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
         #expect(model.approveProgress(f.pr) == nil && model.isEnabled(.approve, f.row))
+        #expect(!f.row.status.text.isEmpty && model.shownStatus(f.row) == f.row.status)
         model.approve(f.pr, click: UserClick())
         let first = try #require(model.approval)
         #expect(await gate.waitUntilHolding(1))
         #expect(model.approveProgress(f.pr) == .approving)
+        // The progress takes the place of the state text.
+        #expect(model.shownStatus(f.row) == nil)
         #expect(!model.isEnabled(.approve, f.row))
         #expect(model.menuItems(f.pr) == [.openOnGitHub])
         model.approve(f.pr, click: UserClick())
@@ -323,6 +326,7 @@ struct ReviewDraftPanelTests {
         await first.value
         #expect(f.written == [write] && model.error == nil)
         #expect(model.approveProgress(f.pr) == .approved)
+        #expect(model.shownStatus(f.row) == nil)
         #expect(model.menuItems(f.pr) == [.openOnGitHub])
         let row = f.row
         f.row.status = RowLabel(text: "You approved", tone: .green, tip: nil)
@@ -340,6 +344,7 @@ struct ReviewDraftPanelTests {
         #expect(model.approveProgress(f.pr) == .approving)
         await model.approval?.value
         #expect(model.approveProgress(f.pr) == nil)
+        #expect(model.shownStatus(f.row) == f.row.status)
         #expect(model.error == ApproveRefusal.draftMissing.message)
         #expect(f.written == [write])
         #expect(ReviewsPanelModel.approvingText == "Approving\u{2026}")

@@ -355,6 +355,14 @@ package final class ReviewsPanelModel {
         links.approver()?.progress(pr)
     }
 
+    // The state text that the row shows, or nil. While the approval of the PR has a progress,
+    // the row shows no state text: a text such as "Approval recommended" is old once you click
+    // Approve, and the progress tells what happens (user decision, 2026-11-19).
+    package func shownStatus(_ row: ReviewRow) -> RowLabel? {
+        guard approveProgress(row.id) == nil, !row.status.text.isEmpty else { return nil }
+        return row.status
+    }
+
     // True when a button of the row acts now: Approve waits while CI runs and while its approval
     // has a progress. Each other button acts.
     package func isEnabled(_ item: ReviewsMenuItem, _ row: ReviewRow) -> Bool {

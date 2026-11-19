@@ -1240,12 +1240,14 @@ is.
 
 The row shows how the approval is going, so a click never looks stuck. As soon as you click, the
 button gives way to a spinning loader and "Approving…", so there's nothing to click a second time,
-and Approve leaves the row menu. With Reduce Motion on in System Settings, the loader stays still.
-Once GitHub confirms the approval, a soft green check and "Approved" take its place for 3 seconds.
-Bifrost polls straight away, and GitHub usually drops the review request once you've approved,
-which would make the row vanish at once. Bifrost keeps the row in place until the 3 seconds are
-up, and then it goes, or moves to You approved if GitHub still lists the request. If the approval
-doesn't go through, the Approve button comes back at once and the reason shows in the error line.
+and Approve leaves the row menu. The state text, such as "Approval recommended", goes too, because
+it no longer fits once you've clicked; it comes back only if the approval fails. With Reduce Motion
+on in System Settings, the loader stays still. Once GitHub confirms the approval, a soft green check
+and "Approved" take its place for 3 seconds. Bifrost polls straight away, and GitHub usually drops
+the review request once you've approved, which would make the row vanish at once. Bifrost keeps the
+row in place until the 3 seconds are up, and then it goes, or moves to You approved if GitHub still
+lists the request. If the approval doesn't go through, the Approve button comes back at once and the
+reason shows in the error line.
 
 When Bifrost doesn't approve, the reason shows in the error line at the bottom of the Reviews
 panel:

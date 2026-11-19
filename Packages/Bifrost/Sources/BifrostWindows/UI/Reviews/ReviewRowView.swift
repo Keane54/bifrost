@@ -11,7 +11,7 @@
 //   others approved, Review (Try again on a failed row) while a round can start, and Pause for a
 //   new request. Review on a new request has the strong text colour. Approve makes the click of
 //   the user in its action, and waits while CI runs. While the approval has a progress, the
-//   progress takes the place of the buttons (ApproveProgressLabel).
+//   progress takes the place of the state text and the buttons (ApproveProgressLabel).
 // - Line 2 of My PRs: the review status with its square, the reviewers in the colours of their
 //   opinions, the notes (later Copilot comments, older comments), then at the right the Claude
 //   state with its tip. Needs you has the red box of the Overview before its text.
@@ -111,7 +111,7 @@ struct ReviewRowView: View {
             notes
             Spacer(minLength: 0)
             HStack(spacing: style.points(6)) {
-                if !row.status.text.isEmpty { label(row.status) }
+                if let status = model.shownStatus(row) { label(status) }
                 if let progress = model.approveProgress(row.id) {
                     ApproveProgressLabel(progress: progress, style: style)
                 } else {
