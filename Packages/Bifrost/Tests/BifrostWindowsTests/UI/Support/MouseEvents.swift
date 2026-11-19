@@ -70,6 +70,19 @@ final class MouseDriver {
         return hit
     }
 
+    // A press in a window that is not the key window, as NSWindow gives it: AppKit asks the hit
+    // view if it takes the first mouse. A view that refuses gets no event, and the press only
+    // makes the window key (the tests never make a window key). The result is the view that got
+    // the press, or nil.
+    @discardableResult
+    func firstDown(at point: CGPoint, in view: NSView) -> NSView? {
+        guard let hit = hitView(at: point, in: view),
+            let event = event(.leftMouseDown, at: view.convert(point, to: nil)),
+            hit.acceptsFirstMouse(for: event)
+        else { return nil }
+        return down(at: point, in: view)
+    }
+
     // A move with the button down, to a point in the coordinates of the view.
     func drag(to point: CGPoint, in view: NSView) {
         guard let target, let event = event(.leftMouseDragged, at: view.convert(point, to: nil))

@@ -4,10 +4,11 @@
 //
 // The look: the fill of the panel colour (only the background is translucent), a border of 1 unit,
 // a top line of the accent colour, and the backdrop blur only while the frame covers a lower frame.
-// The top frame has the darker focus fill, a stronger border, the full accent top line and a soft
-// cyan glow above its top edge (EdgeGlow). The fill, the border and the glow change in 250 ms,
-// ease-out. The body is a view that PanelBodies gives: an AppKit view, or an NSHostingView with a
-// SwiftUI body. The body view moves between frames, but it is the same view.
+// The frame that has the focus (the top frame, until a press on the background of the canvas) has
+// the darker focus fill, a stronger border, the full accent top line and a soft cyan glow above
+// its top edge (EdgeGlow). The fill, the border and the glow change in 250 ms, ease-out. The body
+// is a view that PanelBodies gives: an AppKit view, or an NSHostingView with a SwiftUI body. The
+// body view moves between frames, but it is the same view.
 //
 // While the chat of the active panel listens (DictationGlow.swift), the top line is green with the
 // border alpha of the look, a green shadow above the top edge takes the place of the cyan glow, the
@@ -292,8 +293,8 @@ final class FrameView: NSView {
         for view in bodyHost.subviews where view !== shownBody { view.removeFromSuperview() }
     }
 
-    // The focus state: the top frame is less transparent, has a stronger border, the full accent
-    // top line and the glow. The change takes 250 ms, ease-out.
+    // The focus state: the frame that has the focus is less transparent, has a stronger border, the
+    // full accent top line and the glow. The change takes 250 ms, ease-out.
     private func setTop(_ top: Bool, animated: Bool) {
         guard top != isTop else { return }
         isTop = top

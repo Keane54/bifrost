@@ -109,8 +109,9 @@ package final class ChatFixture {
     package let dictation: DictationService?
     var vimMode = false
     package private(set) var openedURLs: [URL] = []
-    // The commands of the Bifrost keys that the key filter ran.
+    // The commands of the Bifrost keys that the key filter ran, and the intents of each Esc.
     package private(set) var commands: [String] = []
+    package private(set) var escapes: [EscapeIntent] = []
     package private(set) var links: [LinkAction] = []
     // The link opener of the chats.
     package let linkOpener: LinkOpener
@@ -176,7 +177,7 @@ package final class ChatFixture {
         }
         let sinks = KeySinks(
             run: { [weak self] in self?.commands.append($0.description) }, hold: { _, _ in },
-            escape: { _ in }, settingsOnTop: { false })
+            escape: { [weak self] in self?.escapes.append($0) }, settingsOnTop: { false })
         filter = WindowKeyFilter(
             window: window, selection: SelectionModel(list: SessionListModel()),
             keys: KeyMap([.dictation: dictationKey]), sinks: sinks)
@@ -399,6 +400,40 @@ package final class ChatFixture {
                 view.mouseUp(with: event)
             }
         }
+    }
+
+    // A click of the left button at a point of the canvas, as the window gives it: the gesture
+    // recognizers of the hit view and of its superviews see the press first, then the hit view
+    // gets the press and the release. NSWindow drops the mouse events of a window that was never
+    // ordered in, so the fixture does this dispatch itself. The result is the hit view.
+    @discardableResult
+    package func press(at point: CGPoint) -> NSView? {
+        let location = canvas.convert(point, to: nil)
+        guard let content = window.contentView,
+            let hit = content.hitTest(content.superview?.convert(location, from: nil) ?? location)
+        else { return nil }
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            guard
+                let event = NSEvent.mouseEvent(
+                    with: type, location: location, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                    clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)
+            else { continue }
+            guard type == .leftMouseDown else {
+                hit.mouseUp(with: event)
+                continue
+            }
+            var ancestor: NSView? = hit
+            while let current = ancestor {
+                for recognizer in current.gestureRecognizers where recognizer.isEnabled {
+                    recognizer.mouseDown(with: event)
+                }
+                ancestor = current.superview
+            }
+            hit.mouseDown(with: event)
+        }
+        return hit
     }
 
     // A drag of the left button on the terminal view, from a cell to a cell, in 8 steps.

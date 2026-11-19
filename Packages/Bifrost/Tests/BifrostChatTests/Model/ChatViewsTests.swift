@@ -75,6 +75,18 @@ struct ChatViewsTests {
         // The minimised frame is on top but is not the top frame.
         #expect(views[a] == ChatView(visible: true, focused: true))
     }
+
+    // After a click on the background, no frame has the focus: the chat of the top frame stays
+    // visible, but it is not focused. A focus of its frame makes it focused again.
+    @Test func noChatIsFocusedAfterAClickOnTheBackground() {
+        var dropped = layout([frame(1, [chat(a)], chat(a)), frame(2, [chat(b)], chat(b))])
+        dropped.apply(.dropFocus)
+        let views = ChatViews.views(dropped)
+        #expect(views[b] == ChatView(visible: true, focused: false))
+        #expect(views[a] == ChatView(visible: true, focused: false))
+        dropped.apply(.focus(frameID(2)))
+        #expect(ChatViews.views(dropped)[b] == ChatView(visible: true, focused: true))
+    }
 }
 
 @Suite("gaining focus")

@@ -44,6 +44,22 @@ that a panel opens again where the user left it.
   never passes the edge of the canvas (row W16).
 - A locked frame can't move, be resized or give its tabs away. A minimised frame doesn't show and
   isn't a target for anything. Focusing a frame moves it to the top of the z-order.
+- The frame on top has the focus, which it shows with a darker fill, a stronger border and the
+  cyan glow, and only a chat in that frame counts as focused. A click on the empty background of
+  the canvas, with any mouse button, takes the focus away from every panel (row W21). The window
+  itself gets the keyboard focus, so no chat terminal or field keeps it, and the top frame loses
+  its focus look but keeps its place. Esc and the other keys then act as they do with no panel
+  focused (`docs/behaviour/keys.md`), so Esc opens Settings rather than interrupting a chat. The
+  keys that work on the top frame, such as Close Panel and the previous and next tab, still act
+  on it, even without its focus look.
+- This also works on the click that brings Bifrost back from another app, but only on the
+  background: a first click on a frame just makes the window active, as everywhere in macOS.
+- Clicking a frame, even the one on top, gives the focus back, and so does anything else that
+  brings a frame to the front: opening a panel, restoring a minimised frame, or stacking or
+  tearing out a tab. While a dialog is showing, a click on the background changes nothing. A
+  click outside the Panel menu closes the menu and then counts as a click on the background,
+  while a click outside a right-click menu only closes that menu (`WindowLayout.focusedFrame`,
+  `CanvasView`).
 - Each frame has a Panel menu, which opens below the menu button of its title bar. It's a Bifrost
   menu with the check box Lock, and for an Overview also "Overview settings…" and the name of its
   tab set. `docs/behaviour/menu.md` covers the menu and its rows.

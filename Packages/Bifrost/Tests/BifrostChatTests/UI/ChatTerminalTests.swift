@@ -503,6 +503,25 @@ struct ChatTerminalTests {
         await chat.close()
     }
 
+    // A press on the background of the canvas takes the keyboard from the chat. The window gets
+    // it, so Esc is the Esc of the window (it opens Settings) and does not go to the session. A
+    // press on the chat panel then gives the keyboard to the terminal again.
+    @Test func aPressOnTheBackgroundTakesTheKeyboardFromTheChat() async throws {
+        let chat = try ChatFixture(fakePTY: true)
+        let terminal = try await attached(chat)
+        await waitUntil { chat.window.firstResponder === terminal.view }
+        #expect(chat.press(at: CGPoint(x: 1000, y: 600)) === chat.canvas)
+        #expect(chat.window.firstResponder === chat.window)
+        #expect(chat.chats.focusedSession == nil)
+        chat.key("Escape")
+        #expect(chat.escapes == [.openSettings])
+        #expect(chat.press(at: CGPoint(x: 320, y: 200))?.isDescendant(of: terminal.view) == true)
+        await waitUntil { chat.window.firstResponder === terminal.view }
+        // The session got no byte before the marker key: no Esc reached it.
+        #expect(await chat.inputBeforeMarker().isEmpty)
+        await chat.close()
+    }
+
     // A close sends SIGHUP to the attach child only. The stand-in session process
     // has the pid of the row, in its own process group, and lives on.
     @Test func closingAChatLeavesTheSessionRunning() async throws {

@@ -18,6 +18,9 @@
 // Observations: a new name of a session row or of the tab set of an Overview shows in its tab and
 // its title bar at once.
 //
+// The frame that has the focus (WindowLayout.focusedFrame) shows the focus look. A press on the
+// background of the canvas takes the focus from all panels (pressed(_:)).
+//
 // From the start of a drag or a resize to its end, the window does not update its cursor rects (row
 // W15 of the windows port). Each step of a drag moves the frame view, and a move marks the cursor
 // rects as not valid. AppKit then makes all cursor rects of the window again at each display cycle,
@@ -189,10 +192,11 @@ public final class CanvasView: NSView {
         shownLabels = currentLabels(shown)
         let titles = shownLabels.mapValues(\.title)
         let suffixes = shownLabels.compactMapValues(\.suffix)
-        let top = layout.topFrame?.id
+        let focused = layout.focusedFrame?.id
         for frame in shown {
             frameViews[frame.id]?.update(
-                frame, titles: titles, suffixes: suffixes, top: frame.id == top, animated: false)
+                frame, titles: titles, suffixes: suffixes, top: frame.id == focused,
+                animated: false)
         }
     }
 
@@ -259,7 +263,7 @@ public final class CanvasView: NSView {
         for frame in shown where frameViews[frame.id] == nil {
             addSubview(makeView(frame.id), positioned: .below, relativeTo: marks)
         }
-        let top = layout.topFrame?.id
+        let focused = layout.focusedFrame?.id
         var ordered: [NSView] = []
         shownLabels = currentLabels(shown)
         let titles = shownLabels.mapValues(\.title)
@@ -269,7 +273,7 @@ public final class CanvasView: NSView {
         for frame in shown {
             guard let view = frameViews[frame.id] else { continue }
             view.update(
-                frame, titles: titles, suffixes: suffixes, top: frame.id == top,
+                frame, titles: titles, suffixes: suffixes, top: frame.id == focused,
                 animated: animated)
             let rect = model.drag.flatMap { $0.frame == frame.id ? $0.live : nil } ?? frame.rect
             let target = aligned(rect)
@@ -456,6 +460,60 @@ public final class CanvasView: NSView {
         heldCursorRects = nil
         window.enableCursorRects()
         window.resetCursorRects()
+    }
+
+    // MARK: - A press on the background
+
+    // A press of each mouse button on the canvas. The canvas gets a press on its background, and
+    // also a press on a frame that a view gives to the next responder (for example a right press
+    // on a frame). The press then goes on up the responder chain.
+    override public func mouseDown(with event: NSEvent) {
+        pressed(event)
+        super.mouseDown(with: event)
+    }
+
+    override public func rightMouseDown(with event: NSEvent) {
+        pressed(event)
+        super.rightMouseDown(with: event)
+    }
+
+    override public func otherMouseDown(with event: NSEvent) {
+        pressed(event)
+        super.otherMouseDown(with: event)
+    }
+
+    // A click on the background also acts when the window is not the key window, for example the
+    // click that brings Bifrost to the front from another app. AppKit asks only the hit view, so
+    // a click on a frame keeps the rule of macOS: that click only makes the window key.
+    override public func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        event.map(isOnBackground) ?? false
+    }
+
+    // A press on the background takes the key focus from all panels (docs/behaviour/windows.md,
+    // "Frames and panels"). The window becomes the first responder, so no chat terminal and no
+    // field of a panel gets a later key, and the keys of the window act (for example Esc opens
+    // Settings). Then no frame has the focus, so the top frame loses the focus look and no chat is
+    // focused.
+    private func pressed(_ event: NSEvent) {
+        guard let window, isOnBackground(event) else { return }
+        // A dialog that opens shows its overlay, but SwiftUI draws the backdrop only at its next
+        // update. A press that comes before that update can have the canvas as its hit view. Such
+        // a press must not take the focus from the frames: at the close, the dialog gives the old
+        // first responder (for example a chat terminal) the focus again.
+        if (window as? BifrostWindow)?.dialogIsOpen == true { return }
+        // A field that does not end its edit keeps the focus, and then its frame keeps it too.
+        guard window.makeFirstResponder(nil) else { return }
+        model.apply(.dropFocus)
+    }
+
+    // True when the hit view of the event is the canvas itself. A press on a frame is not on the
+    // background. While a dialog shows, its overlay covers the canvas, so no press is on the
+    // background. A press outside a Bifrost menu closes the menu first (BifrostMenu): the press
+    // outside the Panel menu then goes on and can be on the background, and the press outside a
+    // context menu stops at the close.
+    private func isOnBackground(_ event: NSEvent) -> Bool {
+        guard let superview else { return false }
+        return hitTest(superview.convert(event.locationInWindow, from: nil)) === self
     }
 
     // MARK: - The title bar buttons

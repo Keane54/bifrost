@@ -5,7 +5,8 @@ import BifrostLayout
 // AttachRules.target (AttachRules.swift).
 
 // The view of a chat window. visible: the window shows the chat (the frame is not minimised and
-// the chat is its active tab). focused: the chat is visible in the top frame.
+// the chat is its active tab). focused: the chat is visible in the frame that has the focus (the
+// top frame, until a click on the background of the canvas).
 package struct ChatView: Sendable, Equatable {
     package var visible: Bool
     package var focused: Bool
@@ -34,14 +35,14 @@ package enum ChatViews {
 
     // The view of each chat panel of the layout, by session ID.
     package static func views(_ layout: WindowLayout) -> [String: ChatView] {
-        let top = layout.topFrame?.id
+        let focused = layout.focusedFrame?.id
         var views: [String: ChatView] = [:]
         for frame in layout.frames {
             for panel in frame.panels {
                 guard case .chat(let session) = panel else { continue }
                 let visible = !frame.minimised && frame.active == panel
                 views[session.text] = ChatView(
-                    visible: visible, focused: visible && frame.id == top)
+                    visible: visible, focused: visible && frame.id == focused)
             }
         }
         return views

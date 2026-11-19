@@ -85,7 +85,7 @@ private struct Source {
     }
 
     mutating func action(_ layout: WindowLayout) -> WindowAction {
-        switch int(0...13) {
+        switch int(0...14) {
         case 0: .open(panel())
         case 1: .close(panel())
         case 2: .replace(panel(), with: panel())
@@ -99,6 +99,7 @@ private struct Source {
         case 10: .restore(frame(layout))
         case 11: .lock(frame(layout), chance(50))
         case 12: .bounds(bounds())
+        case 13: .dropFocus
         default: .load(snapshot(layout))
         }
     }
@@ -165,6 +166,7 @@ private func frameOf(_ layout: WindowLayout, _ id: FrameID) -> LayoutFrame? {
 private func actionRule(
     _ before: WindowLayout, _ action: WindowAction, _ changed: Bool, _ after: WindowLayout
 ) -> String? {
+    if let rule = focusRule(before, action, changed, after) { return rule }
     switch action {
     case .open(let panel):
         guard let frame = after.frame(of: panel), after.frames.last?.id == frame.id,
@@ -234,7 +236,34 @@ private func actionRule(
         if after.frames.contains(where: { $0.id.number < before.nextFrame }) {
             return "load reused a frame ID"
         }
+    case .dropFocus:
+        if after.frames != before.frames { return "dropFocus changed the frames" }
+        if changed != before.hasFocus { return "dropFocus reported a wrong change" }
     }
+    return nil
+}
+
+// The focus of the frames: dropFocus takes it, an action that brings a frame to the front gives
+// it back, and each other action keeps it. A focus of a minimised frame does not give it back.
+private func focusRule(
+    _ before: WindowLayout, _ action: WindowAction, _ changed: Bool, _ after: WindowLayout
+) -> String? {
+    let expected: Bool
+    switch action {
+    case .dropFocus:
+        expected = false
+    case .open:
+        expected = true
+    case .focus(let id):
+        expected = frameOf(before, id).map { !$0.minimised } == true || before.hasFocus
+    case .restore(let id):
+        expected = frameOf(before, id) != nil || before.hasFocus
+    case .stack, .unstack:
+        expected = changed || before.hasFocus
+    case .close, .replace, .closeActive, .setRect, .activate, .minimise, .lock, .bounds, .load:
+        expected = before.hasFocus
+    }
+    if after.hasFocus != expected { return "the focus is \(after.hasFocus) after \(action)" }
     return nil
 }
 

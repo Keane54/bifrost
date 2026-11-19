@@ -251,7 +251,9 @@ Escape follows the Esc rule (user decision, 2026-11-06):
 - In the other zone or on a control, Esc closes Settings when Settings is the active panel of the
   top frame, and otherwise opens Settings and brings it to the front. It waits until every view
   has had the key, and acts only if nothing else took it first, such as a popover or a drag.
-- A chat, a text field, a dialog, a menu and the key recorder keep their own Esc.
+- A chat, a text field, a dialog, a menu and the key recorder keep their own Esc. A click on the
+  empty background of the canvas takes the focus out of a chat, a text field or the key recorder
+  (`docs/behaviour/windows.md`), so the next Esc is the window's Esc.
 - A key repeat of a held Esc does nothing, and Esc never clears the selection.
 
 An Esc or a Tab that nothing used goes on to AppKit, so Esc can still leave full screen and Tab

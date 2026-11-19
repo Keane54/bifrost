@@ -71,6 +71,8 @@ public enum WindowAction: Sendable, Equatable {
     case focus(FrameID), setRect(FrameID, LayoutRect), stack(FrameID, onto: FrameID)
     case unstack(PanelID, LayoutRect), activate(PanelID), minimise(FrameID), restore(FrameID)
     case lock(FrameID, Bool), bounds(LayoutSize), load(LayoutSnapshot)
+    // A click on the background of the canvas: no frame has the focus now.
+    case dropFocus
 }
 
 public struct WindowLayout: Sendable, Equatable {
@@ -84,6 +86,11 @@ public struct WindowLayout: Sendable, Equatable {
     package private(set) var memory: [PanelID: LayoutRect] = [:]
     package private(set) var bounds: LayoutSize
     package private(set) var nextFrame = 1
+    // False after a click on the background of the canvas (dropFocus): the frames keep their
+    // z-order, but no frame has the focus. An action that brings a frame to the front (focus,
+    // open, stack, unstack and restore) gives the focus back. Each other action keeps the value,
+    // also a close, a minimise and a load.
+    package private(set) var hasFocus = true
 
     public init(bounds: LayoutSize) {
         self.bounds = bounds
@@ -108,11 +115,16 @@ public struct WindowLayout: Sendable, Equatable {
         case .lock(let id, let locked): lock(id, locked)
         case .bounds(let size): setBounds(size)
         case .load(let snapshot): load(snapshot)
+        case .dropFocus: dropFocus()
         }
     }
 
     // The top frame that shows (not minimised).
     package var topFrame: LayoutFrame? { frames.last { !$0.minimised } }
+
+    // The frame that has the focus: the top frame that shows, or nil after a click on the
+    // background. The focus look of the frames and the focus of the chats follow it.
+    package var focusedFrame: LayoutFrame? { hasFocus ? topFrame : nil }
 
     // The frame that holds the panel.
     package func frame(of panel: PanelID) -> LayoutFrame? {
@@ -152,10 +164,24 @@ public struct WindowLayout: Sendable, Equatable {
         frames.append(frame)
     }
 
+    // Give the focus back to the frames. True when they did not have it.
+    private mutating func takeFocus() -> Bool {
+        guard !hasFocus else { return false }
+        hasFocus = true
+        return true
+    }
+
+    private mutating func dropFocus() -> Bool {
+        guard hasFocus else { return false }
+        hasFocus = false
+        return true
+    }
+
     private mutating func open(_ panel: PanelID) -> Bool {
+        let gained = takeFocus()
         if let i = index(holding: panel) {
             var frame = frames[i]
-            if frame.active == panel && !frame.minimised && i == lastIndex { return false }
+            if frame.active == panel && !frame.minimised && i == lastIndex { return gained }
             frame.active = panel
             frame.minimised = false
             moveToTop(i, as: frame)
@@ -217,8 +243,11 @@ public struct WindowLayout: Sendable, Equatable {
         return true
     }
 
+    // A minimised frame moves in the z-order, but it does not show, so it does not get the focus.
     private mutating func focus(_ id: FrameID) -> Bool {
-        guard let i = index(of: id), i != lastIndex else { return false }
+        guard let i = index(of: id) else { return false }
+        let gained = frames[i].minimised ? false : takeFocus()
+        guard i != lastIndex else { return gained }
         let frame = frames[i]
         moveToTop(i, as: frame)
         return true
@@ -247,6 +276,7 @@ public struct WindowLayout: Sendable, Equatable {
         for panel in source.panels { memory[panel] = source.rect }
         frames.removeAll { $0.id == id || $0.id == targetID }
         frames.append(target)
+        _ = takeFocus()
         return true
     }
 
@@ -261,6 +291,7 @@ public struct WindowLayout: Sendable, Equatable {
                 id: FrameID(number: nextFrame), panels: [panel], active: panel,
                 rect: Geometry.clampRect(rect, bounds: bounds), minimised: false, locked: false))
         nextFrame += 1
+        _ = takeFocus()
         return true
     }
 
@@ -278,7 +309,8 @@ public struct WindowLayout: Sendable, Equatable {
 
     private mutating func restore(_ id: FrameID) -> Bool {
         guard let i = index(of: id) else { return false }
-        if !frames[i].minimised && i == lastIndex { return false }
+        let gained = takeFocus()
+        if !frames[i].minimised && i == lastIndex { return gained }
         var frame = frames[i]
         frame.minimised = false
         moveToTop(i, as: frame)

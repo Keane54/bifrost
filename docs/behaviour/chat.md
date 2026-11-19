@@ -104,7 +104,8 @@ the window you're using decides it. Every resize makes Claude Code redraw the wh
 is why Bifrost sends as few as it can.
 
 - Only the focused window sends a resize. Other windows take the session's size, or zoom the
-  terminal to fit their panel, never below 10 %.
+  terminal to fit their panel, never below 10 %. After a click on the canvas background no window
+  is focused, so none sends a resize until you click one (`docs/behaviour/windows.md`).
 - A window that isn't focused reads the session size once before its first open, so it opens at
   the size the session already has. A visible window waits until its panel has a size, so its
   attach opens at the right size.

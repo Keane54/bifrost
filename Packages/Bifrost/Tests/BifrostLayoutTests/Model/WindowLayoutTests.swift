@@ -306,6 +306,51 @@ struct WindowLayoutTests {
         #expect(s.frames.map(\.id) == [frameID(2), frameID(1)])
     }
 
+    // A click on the background takes the focus from the frames. The frames keep their z-order.
+    // A second drop changes nothing. A close, a minimise, a tab change, a load and a focus of a
+    // minimised frame keep the frames without the focus. A focus, an open and a restore give the
+    // focus back, also for the frame that is on top already.
+    @Test func aDroppedFocusStaysUntilAFrameComesToTheFront() {
+        // Frame 2 is on top, with the tabs overview:2 and settings (active).
+        let s = run([
+            open("overview:1"), open("overview:2"), open("settings"),
+            .stack(frameID(3), onto: frameID(2)),
+        ])
+        #expect(s.hasFocus)
+        #expect(s.focusedFrame?.id == frameID(2))
+        let dropped = run([.dropFocus], from: s)
+        #expect(!dropped.hasFocus)
+        #expect(dropped.focusedFrame == nil)
+        #expect(dropped.topFrame?.id == frameID(2))
+        #expect(dropped.frames == s.frames)
+        #expect(unchanged(dropped, .dropFocus))
+        let kept: [WindowAction] = [
+            .close(panel("settings")), .closeActive, .minimise(frameID(2)),
+            .activate(panel("overview:2")), .load(s.snapshot),
+        ]
+        for action in kept {
+            var next = dropped
+            let changed = next.apply(action)
+            #expect(changed)
+            #expect(!next.hasFocus)
+        }
+        var hidden = run([.minimise(frameID(1))], from: dropped)
+        hidden.apply(.focus(frameID(1)))
+        #expect(!hidden.hasFocus)
+        let back: [WindowAction] = [
+            .focus(frameID(2)), .focus(frameID(1)), open("settings"), open("event-log"),
+            .restore(frameID(2)),
+        ]
+        for action in back {
+            var next = dropped
+            let changed = next.apply(action)
+            #expect(changed)
+            #expect(next.focusedFrame != nil)
+            #expect(next.focusedFrame == next.topFrame)
+        }
+        #expect(unchanged(dropped, .focus(frameID(99))))
+    }
+
     @Test("setting a rect clamps it and ignores a locked or minimised frame")
     func setRect() {
         var s = run([open("overview:1")])

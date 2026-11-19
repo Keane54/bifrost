@@ -20,6 +20,16 @@ sessions with New session, and give each new session a `bifrost-test-` name.
 - [ ] Click between two frames and look at the cyan glow above the top edge of the frame on top.
   It should be a soft haze that fades upwards and out towards both ends of the edge, with no hard
   sides, as in the Electron app. ([windows W20](ports/windows/DELIBERATE-DIFFERENCES.md))
+- [ ] Ask a `bifrost-test-` session something that takes a while, and while Claude answers, click
+  the empty background of the canvas and press Esc. The chat frame should lose its focus look
+  (the glow and the darker fill fade out), Settings should open, and Claude should keep
+  answering. Try a right-click on the background too. Then click the chat: it should get its
+  focus look back, and what you type should go to the session again.
+  ([windows W21](ports/windows/DELIBERATE-DIFFERENCES.md))
+- [ ] With the chat focused, click another app such as Finder, then click the empty background of
+  Bifrost once and press Esc. Settings should open and Claude should keep answering. Then click
+  another app again and click once on a frame: Bifrost should only come to the front, and the
+  frame's focus should stay as it was. ([windows W21](ports/windows/DELIBERATE-DIFFERENCES.md))
 - [ ] Open the Panel menu of a frame. It should be a dark Bifrost box with a border, 208 units
   wide, just below the menu button and lined up with its right edge. Compared with the Electron
   box, its rows are tighter (20 high, where the Electron box had a padding and gaps of 12) and
