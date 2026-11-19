@@ -9,7 +9,8 @@
 //   zone while a dialog shows, so no key of Bifrost acts. At the open, a Bifrost menu of the
 //   window closes, and then the overlay takes the key focus. The focus stays in the overlay until
 //   the close (BifrostWindow.makeFirstResponder), also when a save or the checks of a start turn
-//   the fields off. At the close, the old first responder of the window gets the focus back.
+//   the fields off. Then a view in the overlay holds it (DialogLayerView.focusHolder). At the
+//   close, the old first responder of the window gets the focus back.
 // - Esc cancels the dialog. A click on the backdrop closes Rename and New session, and does
 //   nothing for a confirmation. While a save runs, Rename stays open, and while the checks of a
 //   start run, New session stays open.
@@ -167,10 +168,11 @@ package final class DialogHost {
         }
     }
 
-    // A save or a start begins: the focus must stay in the overlay while the fields are off.
+    // A save or a start begins: the focus must stay in the overlay while the fields are off. The
+    // focus holder of the overlay takes it (DialogLayerView.focusHolder).
     func holdFocus() {
         guard let window = view.window, !view.holdsFocus(of: window) else { return }
-        window.makeFirstResponder(view)
+        window.makeFirstResponder(view.focusHolder)
     }
 
     // A Bifrost menu of the window closes first, so it does not stay over the dialog. Its close
@@ -233,6 +235,14 @@ package final class DialogHost {
 // dialog has the focus (cancelOperation comes up the responder chain).
 package final class DialogLayerView: NSHostingView<DialogLayer> {
     private(set) weak var host: DialogHost?
+    // The view that holds the key focus in the overlay while no field of the dialog has it: when
+    // a save or the checks of a start turn the fields off, and when the window keeps the focus in
+    // the overlay (BifrostWindow.makeFirstResponder). It is not the overlay itself. While the
+    // overlay is the first responder, the focus state of the last field with the focus stays
+    // true in SwiftUI. Then the request for the focus after a failed save changes no value, and
+    // the field does not get the focus. While the holder has the focus, SwiftUI sets that focus
+    // state to false. A key at the holder goes up the responder chain to the overlay.
+    let focusHolder = DialogFocusHolder()
 
     package convenience init(host: DialogHost) {
         self.init(rootView: DialogLayer(ref: DialogHostRef(host)))
@@ -242,6 +252,7 @@ package final class DialogLayerView: NSHostingView<DialogLayer> {
         identifier = FocusMark.modal
         isHidden = true
         autoresizingMask = [.width, .height]
+        addSubview(focusHolder)
     }
 
     override package var acceptsFirstResponder: Bool { true }
@@ -308,6 +319,12 @@ package final class DialogLayerView: NSHostingView<DialogLayer> {
         let field = (view as? NSText)?.delegate as? NSView
         return field?.isDescendant(of: self) ?? false
     }
+}
+
+// The holder of the key focus in the overlay (DialogLayerView.focusHolder). It has no size and
+// draws nothing.
+final class DialogFocusHolder: NSView {
+    override var acceptsFirstResponder: Bool { true }
 }
 
 // The host of the overlay, as a weak reference: the host owns the overlay.

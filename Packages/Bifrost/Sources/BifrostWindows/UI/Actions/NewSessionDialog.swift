@@ -103,17 +103,17 @@ package final class NewSessionDialogModel {
         return .start
     }
 
-    // A change of a field. A new folder starts a new folder check. A change of the folder, the
-    // name or the prompt clears the reason.
+    // A change of a field. A new folder starts a new folder check. A new folder, name or prompt
+    // clears the reason. A field can write the same text again, for example when it gets the
+    // focus after a failed start, and that keeps the reason.
     package func apply(_ action: FormAction) {
         guard !busy else { return }
-        let folder = form.cwd
+        let before = form
         form.apply(action)
-        switch action {
-        case .cwd, .name, .prompt: reason = nil
-        case .model, .mode, .worktree: break
+        if form.cwd != before.cwd || form.name != before.name || form.prompt != before.prompt {
+            reason = nil
         }
-        if form.cwd != folder { startCheck() }
+        if form.cwd != before.cwd { startCheck() }
     }
 
     // The start: the values are checked again first. The first value that fails gives the
