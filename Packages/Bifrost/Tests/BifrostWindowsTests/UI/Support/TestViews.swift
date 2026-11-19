@@ -111,7 +111,7 @@ final class RowsView: LoggingView {
 }
 
 // A window that counts the calls of cancelOperation(_:): the Esc key that gets to AppKit.
-final class RecordingWindow: BifrostWindow {
+final class RecordingWindow: SnapshotBifrostWindow {
     private(set) var cancelOperations = 0
 
     override func cancelOperation(_ sender: Any?) {

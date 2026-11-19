@@ -29,7 +29,7 @@ struct GlowLookTests {
     private func topFrame(
         width: Double = 600, height: Double = 80
     ) -> (view: FrameView, window: NSWindow) {
-        let window = NSWindow(
+        let window = SnapshotWindow(
             contentRect: NSRect(x: 0, y: 0, width: width + 100, height: height + 100),
             styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

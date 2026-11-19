@@ -78,9 +78,9 @@ final class CanvasFixture {
         let rect = NSRect(origin: .zero, size: size)
         window =
             bifrostWindow
-            ? BifrostWindow(
+            ? SnapshotBifrostWindow(
                 contentRect: rect, styleMask: [.borderless], backing: .buffered, defer: false)
-            : NSWindow(
+            : SnapshotWindow(
                 contentRect: rect, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         model = WindowLayoutModel(layout: WindowLayout(bounds: LayoutSize(w: 1, h: 1)))

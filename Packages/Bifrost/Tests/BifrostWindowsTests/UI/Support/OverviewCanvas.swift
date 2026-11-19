@@ -61,7 +61,7 @@ final class OverviewCanvas {
             parts: [panels], look: PanelLook(), rows: { sessions.rows })
         canvas = CanvasView(model: layout, bodies: bodies, settings: CanvasSettings())
         canvas.overviews = panels.model
-        window = BifrostWindow(
+        window = SnapshotBifrostWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800), styleMask: [.titled],
             backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

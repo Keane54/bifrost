@@ -3,8 +3,12 @@
 // a PNG in Fixtures/Snapshots/ of its test target (a resource, read through Bundle.module).
 //
 // - The inputs of the drawing are fixed, so one set of PNGs works on each Mac and on the CI
-//   runner: scale 2 for the image and for each layer (drawAtScale), the sRGB colour space, the
-//   dark appearance of Bifrost and no window on screen.
+//   runner: scale 2 for the image and for the window (SnapshotWindow), the sRGB colour space, the
+//   dark appearance of Bifrost and no window on screen. A view in no window, or in a window that
+//   is not SnapshotScaled (for example the panel of a menu, which the app makes), draws in a
+//   SnapshotWindow for the time of the draw and then goes back to its place with its frame.
+//   Constraints to its old superview do not come back, so a snapshot is the last step of a
+//   test.
 // - Two pixels are equal when their colours look the same: no channel differs by more than
 //   channelTolerance of 255, or the CIEDE2000 difference is at most perceptualTolerance
 //   (ColourDifference). Another GPU or another anti-aliasing changes the pixels a little, below
@@ -189,6 +193,8 @@ package struct Snapshot {
             Issue.record("No dark appearance.", sourceLocation: sourceLocation)
             return nil
         }
+        let host = view.window is any SnapshotScaled ? nil : Self.host(view)
+        defer { host?.end() }
         view.appearance = appearance
         var image: CGImage?
         appearance.performAsCurrentDrawingAppearance {
@@ -197,12 +203,54 @@ package struct Snapshot {
         return image
     }
 
+    // The SnapshotWindow of a view for the time of the draw. A view in no window moves with its
+    // top ancestor, so its ancestors still draw around it. A view in another window moves alone.
+    // end puts the moved view back in its superview, at its place among the subviews, with its
+    // frame.
+    private struct Host {
+        let window: SnapshotWindow
+        let moved: NSView
+        let frame: NSRect
+        let superview: NSView?
+        let below: NSView?
+
+        func end() {
+            window.contentView = nil
+            moved.frame = frame
+            if let superview {
+                superview.addSubview(moved, positioned: .below, relativeTo: below)
+            }
+            window.close()
+        }
+    }
+
+    private static func host(_ view: NSView) -> Host {
+        var moved = view
+        if view.window == nil {
+            while let parent = moved.superview { moved = parent }
+        }
+        let frame = moved.frame
+        let superview = moved.window == nil ? nil : moved.superview
+        let below = superview.flatMap { parent in
+            parent.subviews.firstIndex(of: moved).flatMap { index in
+                parent.subviews.indices.contains(index + 1) ? parent.subviews[index + 1] : nil
+            }
+        }
+        moved.removeFromSuperview()
+        let window = SnapshotWindow(
+            contentRect: NSRect(origin: .zero, size: frame.size), styleMask: [.borderless],
+            backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = moved
+        moved.frame = NSRect(origin: .zero, size: frame.size)
+        return Host(window: window, moved: moved, frame: frame, superview: superview, below: below)
+    }
+
     // The drawing of image(of:background:), in the current drawing appearance.
     private static func drawn(
         _ view: NSView, background: NSColor, _ sourceLocation: SourceLocation
     ) -> CGImage? {
         view.layoutSubtreeIfNeeded()
-        drawAtScale(view)
         let size = view.bounds.size
         let width = max(1, Int((size.width * CGFloat(scale)).rounded()))
         let height = max(1, Int((size.height * CGFloat(scale)).rounded()))
@@ -302,35 +350,6 @@ package struct Snapshot {
 
     package static func png(_ image: CGImage) -> Data? {
         NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
-    }
-
-    // Draw each layer of the views at the scale of the snapshots (drawAtScale of a layer).
-    package static func drawAtScale(_ view: NSView) {
-        if let layer = view.layer {
-            drawAtScale(layer)
-        } else {
-            view.subviews.forEach(drawAtScale)
-        }
-    }
-
-    // Draw each layer of the tree at the scale of the snapshots. A layer draws its text and its
-    // images at its contentsScale, which macOS takes from the screen: 2 on a Retina Mac, 1 on the
-    // virtual screen of a CI runner. At 1, the image scales the drawing up, and each glyph is
-    // soft. A layer at another scale gets the scale of the snapshots, and a layer that draws
-    // itself (a view, text, a shape or a gradient) draws again. A layer with contents that its
-    // code set keeps them. On a Retina Mac nothing changes.
-    package static func drawAtScale(_ layer: CALayer) {
-        let target = CGFloat(scale)
-        if layer.contentsScale != target {
-            layer.contentsScale = target
-            if layer.delegate != nil || layer is CATextLayer || layer is CAShapeLayer
-                || layer is CAGradientLayer
-            {
-                layer.setNeedsDisplay()
-            }
-        }
-        layer.sublayers?.forEach(drawAtScale)
-        layer.displayIfNeeded()
     }
 
     // The RGBA bytes of the image in sRGB, the top row first.

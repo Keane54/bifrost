@@ -1,7 +1,8 @@
 // The image of a layer tree as Core Animation draws it on the screen: with the gradients, the
 // shadows and the filters, which cacheDisplay does not draw. A CARenderer draws the tree into a
 // Metal texture at the scale of the snapshots (Snapshot.scale). The image has the top row first.
-// The tests never order a window front, and the render needs no window.
+// The tests never order a window front, and the render needs no window. The view of the layer
+// is in a SnapshotWindow, so its text and icons draw at the scale of the image.
 import AppKit
 import Metal
 import QuartzCore
@@ -20,8 +21,6 @@ package enum LayerImage {
         of layer: CALayer, margins: NSEdgeInsets = NSEdgeInsets(), background: NSColor? = nil,
         _ sourceLocation: SourceLocation = #_sourceLocation
     ) -> CGImage? {
-        // Each layer draws at the scale of the image, also on a screen at 1x (a CI runner).
-        Snapshot.drawAtScale(layer)
         // The area in the coordinates of Core Animation, with y up.
         let frame = layer.frame
         let area = CGRect(

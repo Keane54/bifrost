@@ -41,7 +41,7 @@ final class MenuDriver {
     // A window that is never ordered front, at the origin of the screen, so its coordinates are
     // screen coordinates. It gives each key down to an open menu, as the main window does.
     static func window() -> BifrostWindow {
-        let window = BifrostWindow(
+        let window = SnapshotBifrostWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800), styleMask: [.borderless],
             backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

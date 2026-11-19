@@ -1,6 +1,7 @@
 import AppKit
 import BifrostSessions
 import BifrostTestSupport
+import SwiftUI
 import Testing
 
 @testable import BifrostLook
@@ -123,6 +124,56 @@ struct OverviewSnapshotTests {
         #expect(Snapshot.pixels(dark).first.map { $0 > 200 } == true)
     }
 
+    // A view in a window that is not SnapshotScaled draws in a SnapshotWindow for the time of
+    // the draw, then goes back to its place in its window with its frame.
+    @Test func aViewInAnotherWindowDrawsInASnapshotWindowAndGoesBack() throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 60, height: 60), styleMask: [.borderless],
+            backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 60, height: 60))
+        window.contentView = content
+        let first = NSView(frame: NSRect(x: 0, y: 0, width: 10, height: 10))
+        let view = Block(frame: NSRect(x: 5, y: 5, width: 40, height: 40))
+        let last = NSView(frame: NSRect(x: 0, y: 0, width: 10, height: 10))
+        for subview in [first, view, last] { content.addSubview(subview) }
+        let image = try #require(Snapshot.image(of: view, background: .black))
+        #expect(image.width == 80 && image.height == 80)
+        #expect(view.window === window && content.subviews == [first, view, last])
+        #expect(view.frame == NSRect(x: 5, y: 5, width: 40, height: 40))
+    }
+
+    // The backing scale of the window decides the scale of the text: SwiftUI text in a window that
+    // reports 1, as on the screen of a CI runner, differs from the same text in a SnapshotWindow.
+    // So the SnapshotWindow, which reports 2, draws the same text on each screen.
+    @Test func theBackingScaleOfTheWindowDecidesTheScaleOfTheText() throws {
+        #expect(
+            SnapshotWindow(
+                contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false
+            ).backingScaleFactor == 2)
+        func image(in window: NSWindow) throws -> CGImage {
+            window.isReleasedWhenClosed = false
+            defer { window.close() }
+            let text = NSHostingView(
+                rootView: Text("Open project 0123").font(.system(size: 13))
+                    .foregroundStyle(.white))
+            text.frame = NSRect(x: 0, y: 0, width: 140, height: 20)
+            window.contentView = text
+            text.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            return try #require(Snapshot.image(of: text, background: .black))
+        }
+        let frame = NSRect(x: 0, y: 0, width: 140, height: 20)
+        let sharp = try image(
+            in: SnapshotWindow(
+                contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false))
+        let soft = try image(
+            in: OneXWindow(
+                contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false))
+        #expect((Snapshot.differingPixels(sharp, soft) ?? 0) > 50)
+    }
+
     // The CIEDE2000 differences of pairs from the test data of Sharma, Wu and Dalal (2005), and
     // the CIELAB colours of black, white and a mid grey of sRGB.
     @Test func theColourDifferenceIsCIEDE2000() {
@@ -182,4 +233,10 @@ private final class SystemText: NSView {
         NSColor.textColor.setFill()
         bounds.fill()
     }
+}
+
+
+// A snapshot window that reports the backing scale of a 1x screen, as on a CI runner.
+private final class OneXWindow: NSWindow, SnapshotScaled {
+    override var backingScaleFactor: CGFloat { 1 }
 }

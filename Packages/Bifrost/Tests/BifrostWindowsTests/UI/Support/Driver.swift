@@ -208,7 +208,7 @@ final class ScenarioRun {
         self.state = state
         self.selection = selection
         self.clock = clock
-        window = BifrostWindow(
+        window = SnapshotBifrostWindow(
             contentRect: NSRect(x: 80, y: 80, width: 780, height: 560), styleMask: [.titled],
             backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
