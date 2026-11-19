@@ -3,9 +3,10 @@
 #
 # Rule: the self-test never writes in the real home. A temp folder is the denied folder
 # (BIFROST_SANDBOX_DENY). For the real paths, the script reads the concrete profile of a run,
-# and it runs a stat of each real path in the profile. A stat reads no content and writes
-# nothing. No case sends data out of the Mac: the IP connection goes to the loopback address,
-# and the name lookup is for localhost.
+# and it runs a stat of each real path in the profile that exists. A temp home with each
+# protected path proves the refusal on every machine, also on a new CI runner where the real
+# paths do not exist. A stat reads no content and writes nothing. No case sends data out of the
+# Mac: the IP connection goes to the loopback address, and the name lookup is for localhost.
 #
 # Each case prints "ok <case>" or "FAIL <case>: <reason>".
 # Exit 0: all cases pass, and the script prints PASS. Exit 1: a case failed.
@@ -464,25 +465,60 @@ $(home_rules "$other")"); then
 fi
 finish
 
-start aStatOfEachRealPathIsRefused
-# A path that does not exist gives "No such file or directory": it has no content to read.
-# At least one path must give the refusal, so a run with no profile cannot pass.
+# Prints the protected paths of the home in $1, one on each line.
+protected_paths() {
+    printf '%s\n' "$1/.claude" "$1/.claude.json" "$1/.bifrost" "$1/.bifrost-native-dev" \
+        "$1/Library/Application Support/Bifrost" \
+        "$1/Library/Application Support/Bifrost Native Dev"
+}
+
+start aStatOfEachProtectedPathOfAHomeIsRefused
+# macOS gives the refusal only for a path that exists: for a missing path, the lookup ends with
+# "No such file or directory" first. So this case makes each protected path in a temp home and
+# runs with that HOME, so the profile has the rules of that home. Each stat must give the
+# refusal. A run with no profile, or a profile with a missing rule, cannot pass.
+stat_home="$tmp/stat-home"
+mkdir -p "$stat_home/.claude" "$stat_home/.bifrost" "$stat_home/.bifrost-native-dev" \
+    "$stat_home/Library/Application Support/Bifrost" \
+    "$stat_home/Library/Application Support/Bifrost Native Dev" || exit 1
+: >"$stat_home/.claude.json" || exit 1
+while IFS= read -r path; do
+    out=$(HOME="$stat_home" "$run" /usr/bin/stat -f %N "$path" 2>&1)
+    code=$?
+    if [ "$code" -eq 0 ]; then
+        fail "the stat of $path passed"
+    elif ! printf '%s\n' "$out" | grep -q "Operation not permitted"; then
+        fail "the stat of $path gave exit $code with no refusal: $out"
+    fi
+done <<PATHS
+$(protected_paths "$stat_home")
+PATHS
+finish
+
+start aStatOfEachRealPathThatExistsIsRefused
+# Each real path that exists must give the refusal. A missing path holds no data, so the case
+# skips it and names it. theProfileNamesEachRealPath proves that the profile has the rule of each
+# real path, and aStatOfEachProtectedPathOfAHomeIsRefused proves that such a rule refuses.
 refused=0
-for path in "$real_home/.claude" "$real_home/.claude.json" "$real_home/.bifrost" \
-    "$real_home/.bifrost-native-dev" "$real_home/Library/Application Support/Bifrost" \
-    "$real_home/Library/Application Support/Bifrost Native Dev"; do
+missing=""
+while IFS= read -r path; do
+    if [ ! -e "$path" ]; then
+        missing="$missing${missing:+, }$path"
+        continue
+    fi
     out=$("$run" /usr/bin/stat -f %N "$path" 2>&1)
     code=$?
     if [ "$code" -eq 0 ]; then
         fail "the stat of $path passed"
     elif printf '%s\n' "$out" | grep -q "Operation not permitted"; then
         refused=$((refused + 1))
-    elif ! printf '%s\n' "$out" | grep -q "No such file or directory"; then
+    else
         fail "the stat of $path gave exit $code with no refusal: $out"
     fi
-done
-[ "$refused" -ge 1 ] || fail "no stat was refused"
-finish "$refused paths refused"
+done <<PATHS
+$(protected_paths "$real_home")
+PATHS
+finish "$refused paths refused${missing:+; not on this machine: $missing}"
 
 if [ "$failed" -ne 0 ]; then
     exit 1
