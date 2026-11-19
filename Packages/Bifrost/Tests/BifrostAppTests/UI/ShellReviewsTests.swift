@@ -31,7 +31,7 @@ private enum Poll {
     // team true.
     static func pr(
         _ number: Int, owner: String = "owner-a", repo: String = "repo-a",
-        requested: String = "2026-11-02T10:00:00Z", team: Bool = false
+        requested: String = "2026-11-02T10:00:00Z", team: Bool = false, head: String = "aaaa"
     ) -> [String: Any] {
         let reviewer: [String: Any] =
             team
@@ -41,7 +41,7 @@ private enum Poll {
             "deletions": 1, "createdAt": "2026-11-01T09:00:00Z",
             "updatedAt": "2026-11-01T09:00:00Z",
             "repository": ["name": repo, "owner": ["login": owner]], "author": ["login": "user-b"],
-            "headRefOid": "aaaa", "headRefName": "change-\(number)", "baseRefName": "main",
+            "headRefOid": head, "headRefName": "change-\(number)", "baseRefName": "main",
             "reviewRequests": ["nodes": [["requestedReviewer": reviewer]]],
             "timelineItems": ["nodes": [["createdAt": requested, "requestedReviewer": reviewer]]],
         ]
@@ -623,6 +623,42 @@ struct ShellReviewsTests {
         await hold.value
         #expect(approver.progress(pr) == nil && h.toReview().isEmpty)
         #expect(h.github.calls.filter { $0 == .read("poll") }.count == 2)
+        await h.end()
+    }
+
+    // GitHub can still list the request for a moment after it confirmed the approval. After the
+    // hold, the row then says You approved and offers no Approve: it never goes back to the
+    // state before the click.
+    @Test func aConfirmedApprovalShowsYouApprovedWhileThePollIsBehind() async throws {
+        let h = try await Harness()
+        try await h.watch()
+        let pr = try #require(PRKey(text: "owner-a/repo-a#101"))
+        let head = try #require(CommitID(String(repeating: "a", count: 40)))
+        let store = try #require(h.parts.store)
+        let at = h.wall.date
+        await store.update { state in
+            var prState = state.prs[pr] ?? PRState()
+            prState.recommendation = RecommendationMark(
+                value: .approve, why: "Nothing to change.", headSHA: head, reviewID: nil, at: at)
+            state.prs[pr] = prState
+        }
+        h.github.answers[DraftQueries.freshName] = .success(DraftAnswers.fresh(pr, head: head))
+        let write = GitHubWrite.approveCommit(
+            pr: try #require(NodeID("PR_node7")), commit: head, click: UserClick())
+        h.github.answers[FakeGitHub.key(write)] = .success(
+            DraftAnswers.written(write, state: "APPROVED"))
+        // The poll after the approval still lists the request, with no review of the viewer.
+        h.github.answers["poll"] = .success(try Poll.answer([Poll.pr(101, head: head.hex)]))
+        let approver = try #require(h.parts.approver)
+        try await approver.approve(pr, click: UserClick())
+        await h.settle()
+        #expect(approver.progress(pr) == .approved)
+        let hold = try #require(approver.holdTask(pr))
+        h.clock.advance(by: ApproveFlow.hold)
+        await hold.value
+        #expect(approver.progress(pr) == nil)
+        let row = try #require(h.parts.watcher?.toReview.first)
+        #expect(row.id == pr && row.status.text == "You approved" && row.approve == nil)
         await h.end()
     }
 

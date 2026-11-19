@@ -215,9 +215,10 @@ package enum ReviewRows {
     // sort by the end of the pause.
     package static func toReview(
         _ answer: PollAnswer, _ state: ReviewsState, _ config: ReviewsConfig,
-        clones: CloneStates = CloneStates(), now: Date
+        clones: CloneStates = CloneStates(), approvedHere: [PRKey: String] = [:], now: Date
     ) -> [ReviewRow] {
-        ToReviewRules.rows(answer, state, config, clones: clones, now: now)
+        ToReviewRules.rows(
+            answer, state, config, clones: clones, approvedHere: approvedHere, now: now)
     }
 
     // The My PRs rows: the PRs of the user that are not ignored. A row that needs the user comes

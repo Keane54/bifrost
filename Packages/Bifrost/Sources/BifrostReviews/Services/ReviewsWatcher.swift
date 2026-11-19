@@ -17,6 +17,9 @@
 //   the rows read the clone states (clones), so a queued round shows why it waits.
 // - A To review row whose PR has an approval progress (held: ApproveFlow.held) stays when a poll
 //   drops the PR, so the row shows the progress to its end (ReviewRows.holding).
+// - A To review row of an approval that GitHub confirmed says You approved until a poll shows the
+//   approval (approvedHere: ApproveFlow.approvedHere), so a poll that is behind GitHub never
+//   brings Approve back.
 import BifrostFoundation
 import BifrostSessions
 import Foundation
@@ -93,6 +96,11 @@ package final class ReviewsWatcher {
     // The PRs whose To review row stays when a poll drops them (ApproveFlow.held). The default
     // holds no row.
     @ObservationIgnored package var held: @MainActor () -> Set<PRKey> = { [] }
+    // The approvals of the user that GitHub confirmed and that the answer does not show yet
+    // (ApproveFlow.approvedHere). Their rows say You approved. The default has none.
+    @ObservationIgnored package var approvedHere: @MainActor (PollAnswer) -> [PRKey: String] = {
+        _ in [:]
+    }
 
     // store is the result of the open of the store. A store that did not open gives a watcher
     // that does nothing on GitHub.
@@ -287,7 +295,9 @@ package final class ReviewsWatcher {
         let clones = clones()
         let rows = ReviewRows.holding(
             held(), old: toReview,
-            new: ReviewRows.toReview(answer, store.state, config, clones: clones, now: time))
+            new: ReviewRows.toReview(
+                answer, store.state, config, clones: clones, approvedHere: approvedHere(answer),
+                now: time))
         if rows != toReview { toReview = rows }
         let own = ReviewRows.mine(answer, store.state, config, clones: clones, now: time)
         if own != mine { mine = own }

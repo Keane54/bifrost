@@ -25,12 +25,13 @@ enum ToReviewRules {
 
     static func rows(
         _ answer: PollAnswer, _ state: ReviewsState, _ config: ReviewsConfig,
-        clones: CloneStates = CloneStates(), now: Date
+        clones: CloneStates = CloneStates(), approvedHere: [PRKey: String] = [:], now: Date
     ) -> [ReviewRow] {
         let shown = answer.toReview.compactMap { pr -> (PullRequest, ToReviewState)? in
             guard !IgnoreRule.matches(config.ignore, pr.key.repo), state.hidden[pr.key] == nil,
                 let rowState = Self.state(
-                    pr, state, teamRequests: config.teamRequests, clones: clones, now: now)
+                    pr, state, teamRequests: config.teamRequests, clones: clones,
+                    approvedHere: approvedHere[pr.key], now: now)
             else { return nil }
             return (pr, rowState)
         }
@@ -42,10 +43,12 @@ enum ToReviewRules {
     // The state of the row of the PR, or nil when the team filter hides it. The first rule that
     // holds wins. A session shows in each case. A queued review of a repository whose clone
     // needs the trust of the user waits for it. A queued review of a repository with no clone
-    // yet stays queued: its start makes the clone.
+    // yet stays queued: its start makes the clone. approvedHere is the head commit that the user
+    // approved in Bifrost, after GitHub confirmed the write (ApproveFlow.approvedHere): the answer
+    // can be from before that approval, and the row must not offer Approve again.
     static func state(
         _ pr: PullRequest, _ state: ReviewsState, teamRequests: Bool,
-        clones: CloneStates = CloneStates(), now: Date
+        clones: CloneStates = CloneStates(), approvedHere: String? = nil, now: Date
     ) -> ToReviewState? {
         let prState = state.prs[pr.key]
         if prState?.round != nil { return .reviewing }
@@ -54,6 +57,7 @@ enum ToReviewRules {
         }
         let direct = pr.isDirectRequest
         guard direct || teamRequests else { return nil }
+        if let approvedHere, approvedHere == pr.headSHA { return .youApproved }
         if pr.viewerPendingReviewID != nil { return .draftReady }
         let mark = state.requests[pr.key]
         // The user acted on the request (a Review click or the posts of a round) after its first

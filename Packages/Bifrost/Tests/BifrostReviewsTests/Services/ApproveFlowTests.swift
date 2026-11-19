@@ -195,6 +195,40 @@ struct ApproveFlowTests {
     // The progress of a click: approving while the write runs, then approved when GitHub
     // confirmed it, for the time of the hold and not less. At the end of the hold the progress
     // goes, and the rows build again one time.
+    // After GitHub confirmed the approval, approvedHere has the PR with its head until an answer
+    // shows the approval. A PR with a new head and a PR that left the answer leave it too.
+    @Test func aConfirmedApprovalStaysUntilAnAnswerShowsIt() async throws {
+        let f = try await FlowFixture()
+        await f.setMark(try f.mark(.approve, draft: false))
+        f.answerFresh(pending: .some(nil))
+        let write = GitHubWrite.approveCommit(
+            pr: try ReviewData.node("PR_node7"), commit: f.head, click: UserClick())
+        f.answerWrite(write, state: "APPROVED")
+        var request = try Rows.pull(f.pr.text)
+        request.headSHA = f.head.hex
+        let behind = Rows.answer(toReview: [request])
+        #expect(f.approver.approvedHere(behind).isEmpty)
+        try await f.approver.approve(f.pr, click: UserClick())
+        #expect(f.approver.approvedHere(behind) == [f.pr: f.head.hex])
+        #expect(f.approver.approvedHere(behind) == [f.pr: f.head.hex])
+        // An answer that shows the approval: the polls decide from then on.
+        var shown = request
+        shown.viewerReviews = [
+            ViewerOpinion(state: .approved, commit: f.head.hex, submittedAt: Rows.now)
+        ]
+        #expect(f.approver.approvedHere(Rows.answer(toReview: [shown])).isEmpty)
+        #expect(f.approver.approvedHere(behind).isEmpty)
+        // A new head.
+        try await f.approver.approve(f.pr, click: UserClick())
+        var moved = request
+        moved.headSHA = ReviewData.oldHex
+        #expect(f.approver.approvedHere(Rows.answer(toReview: [moved])).isEmpty)
+        // A PR that left the answer.
+        try await f.approver.approve(f.pr, click: UserClick())
+        #expect(f.approver.approvedHere(Rows.answer()).isEmpty)
+        await f.end()
+    }
+
     @Test func theProgressGoesFromApprovingToApprovedAndEndsAfterTheHold() async throws {
         let f = try await FlowFixture()
         await f.setMark(try f.mark(.approve, draft: false))

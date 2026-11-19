@@ -503,6 +503,7 @@ package final class ReviewsParts {
                 progressEnded: { [weak watcher] in watcher?.refreshTimes() },
                 eventLine: eventLine)
             watcher.held = { [weak approver] in approver?.held ?? [] }
+            watcher.approvedHere = { [weak approver] in approver?.approvedHere($0) ?? [:] }
             phase = .on(
                 OpenParts(
                     store: store, watcher: watcher, setup: setup,

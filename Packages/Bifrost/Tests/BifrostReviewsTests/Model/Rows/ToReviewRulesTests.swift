@@ -212,6 +212,25 @@ struct ToReviewRulesTests {
     // the head commit, with no approval of the user on it. Failing CI gives none, and running CI
     // gives one that waits. The Review panel: a Draft ready row with Claude's Comment or Request
     // changes draft.
+    // An approval that GitHub confirmed in Bifrost shows You approved before a poll shows it, so
+    // the row never offers Approve again. Only the approved head counts.
+    @Test func anApprovalConfirmedHereShowsYouApprovedBeforeAPoll() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        var state = seen(key)
+        state.prs[key, default: PRState()].recommendation = RecommendationMark(
+            value: .approve, why: "", headSHA: try R.commit("a"), reviewID: nil, at: R.at(-5))
+        let pr = try R.pull(key.text)
+        func row(_ here: [PRKey: String]) -> ReviewRow? {
+            ReviewRows.toReview(
+                R.answer(toReview: [pr]), state, ReviewsConfig(), approvedHere: here, now: R.now
+            ).first
+        }
+        #expect(row([:])?.toReviewState == .reviewed && row([:])?.approve == .ready)
+        let approved = row([key: pr.headSHA])
+        #expect(approved?.toReviewState == .youApproved && approved?.approve == nil)
+        #expect(row([key: String(repeating: "b", count: 40)])?.toReviewState == .reviewed)
+    }
+
     @Test func theApproveButtonAndTheReviewPanelFollowTheMark() throws {
         let key = try R.key("owner-a/repo-a#1")
         var state = seen(key)

@@ -1246,8 +1246,10 @@ on in System Settings, the loader stays still. Once GitHub confirms the approval
 and "Approved" take its place for 3 seconds. Bifrost polls straight away, and GitHub usually drops
 the review request once you've approved, which would make the row vanish at once. Bifrost keeps the
 row in place until the 3 seconds are up, and then it goes, or moves to You approved if GitHub still
-lists the request. If the approval doesn't go through, the Approve button comes back at once and the
-reason shows in the error line.
+lists the request. GitHub can take a moment to list a new review, so Bifrost remembers the approval
+that GitHub confirmed, and the row says You approved until a poll shows the review too: it never
+goes back to offering Approve. If the approval doesn't go through, the Approve button comes back at
+once and the reason shows in the error line.
 
 When Bifrost doesn't approve, the reason shows in the error line at the bottom of the Reviews
 panel:
