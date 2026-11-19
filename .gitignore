@@ -1,38 +1,17 @@
-# Dependencies and build output
-node_modules/
-dist/
-out/
-*.tsbuildinfo
-# The speech helper from pnpm build:dictation
-resources/bin/
-
-# Test output
-test-results/
-playwright-report/
-
-# Local folders. Only this Mac uses them.
-.m0-sandbox/
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.swiftpm/
+.DS_Store
 .worktrees/
 .superpowers/
-.claude/settings.local.json
-.claude/worktrees/
-.claude/.cc-writes/
+# The release tooling (package.json) and the files of a release (scripts/release/prepare.sh).
+node_modules/
+dist/
+.release-version
 
-# Secrets
-.env
-.env.*
-
-# Files that Claude Code can write into the live mod folder
-resources/live-mod/.claude-plugin/types/
-resources/live-mod/tsconfig.json
-
-# Other
-.DS_Store
-*.log*
-
-# Specs and plans stay local: they are working documents, not part of the repo.
+# The design, the plans and the phase records stay on the machine that writes them.
 docs/specs/
 docs/plans/
-
-# The next version from the dry run of semantic-release (Release workflow).
-.release-version
+docs/archive/

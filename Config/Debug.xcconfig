@@ -1,0 +1,22 @@
+// Build settings of the app target for the Debug configuration: the development app.
+// The development app has its own bundle ID and its own data folders.
+
+#include "Base.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = $(BIFROST_RELEASE_BUNDLE_ID).native-dev
+PRODUCT_NAME = Bifrost Dev
+
+// Xcode turns off the hardened runtime for this ad hoc build. An ad hoc signature has no team ID,
+// so library validation does not let the app load a library that is not a part of macOS.
+// The signed gate builds in CI will prove the hardened runtime.
+
+// The development app never starts the updater.
+// If the updater starts, it must not do automatic checks.
+// Xcode adds an INFOPLIST_KEY_ setting to the Info.plist only for a key that macOS defines.
+// Thus the Sparkle key is in Config/Debug-Info.plist, and Xcode adds the generated keys to it.
+// That file also gives the debug test port the path of the fake claude of this repo
+// (BifrostFakeClaude, from SRCROOT). The bench runs only with that claude. The Release app has no
+// such key.
+INFOPLIST_FILE = Config/Debug-Info.plist
+BIFROST_APP_ICON = AppIconDev
+EXCLUDED_SOURCE_FILE_NAMES = AppIcon.icns

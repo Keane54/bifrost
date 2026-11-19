@@ -1,0 +1,2 @@
+A short line.
+The app has the bundle ID com.example.app.native-dev in Debug.

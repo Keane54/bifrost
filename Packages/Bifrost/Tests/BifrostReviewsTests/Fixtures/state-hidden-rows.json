@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "turnedOnAt": 1794000000000,
+  "baseline": [],
+  "requests": {
+    "owner-a/repo-a#20": { "firstSeen": 1794000100000, "baseline": false },
+    "owner-b/repo-d#21": { "firstSeen": 1794000200000, "baseline": false }
+  },
+  "pauses": { "owner-b/repo-d#21": 1794009000000 },
+  "prs": {},
+  "posted": [],
+  "drafts": [],
+  "voicePairs": [],
+  "queue": [],
+  "repos": {},
+  "setUpAt": null,
+  "fixFrom": 1794000000000,
+  "autoFixConsent": null,
+  "hidden": {
+    "owner-a/repo-a#20": 1794005000000,
+    "owner-b/repo-d#21": 1794006000000
+  }
+}

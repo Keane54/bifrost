@@ -1,0 +1,27 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "title": "Add a second line to the notes",
+        "body": "This adds a second line to the notes.",
+        "url": "https://github.com/smoke-owner/smoke-repo/pull/7",
+        "state": "OPEN",
+        "author": {
+          "login": "smoke-author"
+        },
+        "baseRefName": "main",
+        "headRefName": "smoke-notes",
+        "headRefOid": "@HEAD@",
+        "pending": {
+          "nodes": []
+        },
+        "reviews": {
+          "pageInfo": {
+            "hasNextPage": false
+          },
+          "nodes": []
+        }
+      }
+    }
+  }
+}

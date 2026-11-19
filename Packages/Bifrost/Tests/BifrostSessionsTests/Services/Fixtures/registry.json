@@ -1,0 +1,80 @@
+{
+  "aliases" : {
+    "2f493bf0-1598-4b3b-b419-8acb9cb11bcb" : "Login fix"
+  },
+  "current" : {
+    "2f493bf0-1598-4b3b-b419-8acb9cb11bcb" : "1db82d17-d5fd-4e53-a042-7dd67ea654d8"
+  },
+  "deferred" : [
+    {
+      "job" : "d4e5f6a7",
+      "sessionId" : "d4e5f6a7-1111-4222-8333-444455556666",
+      "shortId" : "d4e5f6a7",
+      "worktree" : "/Users/user/Developer/app/.claude/worktrees/old-spike"
+    },
+    {
+      "sessionId" : "0b1c2d3e-7777-4888-8999-aaaabbbbcccc",
+      "shortId" : "0b1c2d3e",
+      "worktree" : "/Users/user/Developer/app/.claude/worktrees/old-spike"
+    }
+  ],
+  "futureField" : {
+    "level" : 3,
+    "tags" : [
+      "a",
+      true,
+      null
+    ]
+  },
+  "jobs" : {
+    "2f493bf0-1598-4b3b-b419-8acb9cb11bcb" : "2f493bf0",
+    "8a1d4c55-0e2b-4c3e-8f6a-7b9d0e1f2a34" : "8a1d4c55",
+    "c3b2a190-7e6d-4f5c-8b4a-392817160514" : "c3b2a190"
+  },
+  "lastActive" : [
+    "2f493bf0-1598-4b3b-b419-8acb9cb11bcb",
+    "c3b2a190-7e6d-4f5c-8b4a-392817160514"
+  ],
+  "names" : {
+    "2f493bf0-1598-4b3b-b419-8acb9cb11bcb" : "fix-login-flow",
+    "5c0e7a3e-6b8d-4f0f-9a51-3d2f4e8b7c11" : "notes",
+    "8a1d4c55-0e2b-4c3e-8f6a-7b9d0e1f2a34" : "app-42-review",
+    "c3b2a190-7e6d-4f5c-8b4a-392817160514" : "nightly-tests"
+  },
+  "prNames" : [
+    "app-42-review",
+    "app-43-review"
+  ],
+  "prSessions" : [
+    "8a1d4c55-0e2b-4c3e-8f6a-7b9d0e1f2a34"
+  ],
+  "priorities" : {
+    "2f493bf0-1598-4b3b-b419-8acb9cb11bcb" : 2,
+    "5c0e7a3e-6b8d-4f0f-9a51-3d2f4e8b7c11" : 4
+  },
+  "schema" : 2,
+  "started" : [
+    "2f493bf0-1598-4b3b-b419-8acb9cb11bcb",
+    "8a1d4c55-0e2b-4c3e-8f6a-7b9d0e1f2a34"
+  ],
+  "watch" : [
+    {
+      "colour" : "red",
+      "sessionId" : "5c0e7a3e-6b8d-4f0f-9a51-3d2f4e8b7c11"
+    },
+    {
+      "colour" : "amber",
+      "sessionId" : "2f493bf0-1598-4b3b-b419-8acb9cb11bcb"
+    }
+  ],
+  "worktrees" : [
+    {
+      "path" : "/Users/user/Developer/app/.claude/worktrees/fix-login",
+      "sessionId" : "2f493bf0-1598-4b3b-b419-8acb9cb11bcb"
+    },
+    {
+      "path" : "/Users/user/Developer/app/.claude/worktrees/docs-pass",
+      "sessionId" : "5c0e7a3e-6b8d-4f0f-9a51-3d2f4e8b7c11"
+    }
+  ]
+}

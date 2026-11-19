@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canvas and panels</title>
+<style>
+  :root { --bg:#0a0a0a; --panel:#141414; --panel2:#1a1a1a; --edge:rgba(255,255,255,.12); --text:#d2d2d2;
+          --dim:#8a8a8a; --strong:#fff; --cyan:#8fdcec; --purple:#a78bfa; --green:#4ade80; --red:#f87171;
+          --amber:#fbbf24; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif;
+         font-size:14px; line-height:1.55; padding:32px 24px 72px; }
+  .wrap { max-width:1080px; margin:0 auto; } a { color:var(--cyan); }
+  h1 { font-size:24px; margin:0 0 6px; color:var(--strong); } h2 { font-size:17px; margin:44px 0 4px; color:var(--strong); }
+  h3 { font-size:14px; margin:0 0 6px; color:var(--strong); } p { margin:0 0 10px; max-width:82ch; }
+  .sub { color:#a8a8a8; font-size:15px; max-width:84ch; margin-bottom:18px; } .lead { color:var(--dim); max-width:86ch; }
+  code { font-family:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace; font-size:12.5px; color:var(--cyan); }
+  a.g { color:inherit; text-decoration:underline dotted rgba(255,255,255,.38); text-underline-offset:3px; }
+  a.g:hover { color:var(--cyan); text-decoration-color:var(--cyan); }
+  .toc { font-size:13px; color:var(--dim); margin:0 0 24px; }
+  .toc ol { list-style:none; margin:6px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:6px 18px; }
+  .toc a { color:var(--text); text-decoration:none; border-bottom:1px solid var(--edge); }
+  .toc a:hover { color:var(--cyan); border-bottom-color:var(--cyan); }
+  h2[id], #code-map, dt[id] { scroll-margin-top:16px; }
+  .grid2, .grid3 { display:grid; gap:14px; margin-top:12px; } .grid2 { grid-template-columns:1fr 1fr; }
+  .grid3 { grid-template-columns:repeat(3,1fr); }
+  .card, .box { border:1px solid var(--edge); background:var(--panel); padding:12px 14px; min-width:0; }
+  .card p, .card li, .box li { font-size:13px; margin:0; } .card p + p { margin-top:6px; }
+  .card.c { border-left:3px solid var(--cyan); } .card.p { border-left:3px solid var(--purple); }
+  .card.g { border-left:3px solid var(--green); } .card.a { border-left:3px solid var(--amber); }
+  .fig { border:1px solid var(--edge); background:var(--panel); padding:14px; margin-top:12px; overflow-x:auto; }
+  .fig svg { display:block; width:100%; height:auto; min-width:640px; } .fig.small svg { min-width:520px; }
+  .legend { margin:12px 0 0; padding-left:22px; font-size:13px; columns:2; column-gap:32px; }
+  .legend li { margin-bottom:6px; break-inside:avoid; }
+  svg text { fill:var(--text); font-size:12px; font-family:system-ui,-apple-system,sans-serif; }
+  svg .td { fill:var(--dim); font-size:10.5px; } svg .ts { fill:var(--strong); font-weight:600; }
+  svg .tm { font-family:"Geist Mono",ui-monospace,Menlo,monospace; font-size:10.5px; } svg .tc { fill:var(--cyan); }
+  svg .tr { fill:var(--red); } svg .box { fill:var(--panel2); stroke:rgba(255,255,255,.22); }
+  svg .wait { stroke:var(--amber); stroke-dasharray:5 3; } svg .full { stroke:var(--cyan); }
+  svg .group { fill:none; stroke:var(--edge); stroke-dasharray:4 4; } svg .head { fill:var(--dim); } svg .headr { fill:var(--red); }
+  svg .ln { stroke:var(--dim); stroke-width:1.3; fill:none; } svg .fail { stroke:var(--red); stroke-dasharray:4 3; }
+  svg .win { fill:#0d0d0d; stroke:rgba(255,255,255,.28); } svg .sep { stroke:rgba(255,255,255,.12); }
+  svg .frm { fill:rgba(20,20,20,.86); stroke:rgba(255,255,255,.16); } svg .tbar { fill:rgba(255,255,255,.04); }
+  svg .top { stroke:rgba(255,255,255,.34); fill:rgba(14,14,14,.93); } svg .dots { fill:var(--dim); }
+  svg .glyph { stroke:var(--dim); fill:none; stroke-width:1.3; } svg .sbtn { fill:rgba(255,255,255,.05); stroke:rgba(255,255,255,.1); }
+  svg .num { fill:var(--purple); } svg .numt { fill:#0a0a0a; font-weight:700; font-size:11px; }
+  svg .area { fill:rgba(255,255,255,.03); stroke:rgba(255,255,255,.25); } svg .ghost { fill:none; stroke:var(--amber); stroke-dasharray:4 3; }
+  .layers { display:grid; grid-template-columns:1fr 54px 1fr 54px 1fr; margin-top:12px; }
+  .box .where { color:var(--dim); font-size:12px; margin-bottom:8px; } .box ul { margin:0; padding-left:16px; }
+  .box li { margin-bottom:3px; } .box.in { border-color:rgba(251,191,36,.55); }
+  .box.mo { border:2px solid var(--purple); } .box.co { border:2px dashed var(--cyan); }
+  .arrow { display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--dim);
+           font-size:11px; text-align:center; gap:2px; } .arrow b { color:var(--strong); font-size:20px; font-weight:400; }
+  .swim { display:grid; grid-template-columns:76px repeat(4,minmax(0,1fr)); grid-template-rows:repeat(6,auto);
+          grid-auto-flow:column; gap:6px; margin-top:12px; font-size:12.5px; }
+  .swim .ph { color:var(--strong); font-weight:600; padding:4px 2px; border-bottom:1px solid var(--edge); }
+  .swim .lane { font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:8px 0; }
+  .swim .c { background:var(--panel); border:1px solid var(--edge); border-left-width:3px; padding:7px 9px; }
+  .e { color:var(--amber); } .m { color:var(--purple); } .r { color:var(--cyan); } .v { color:var(--green); } .s { color:var(--dim); }
+  .swim .c.e { border-left-color:var(--amber); } .swim .c.m { border-left-color:var(--purple); }
+  .swim .c.r { border-left-color:var(--cyan); } .swim .c.v { border-left-color:var(--green); }
+  .swim .c.s { border-left-color:var(--dim); } .swim .c { color:var(--text); } .swim .none { background:none; border:none; }
+  .pipe { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:10px 0 0; font-size:12.5px; }
+  .pipe .k { color:var(--strong); width:96px; flex:none; } .pipe i { color:var(--dim); font-style:normal; }
+  .pipe span.n { border:1px solid var(--edge); background:var(--panel2); padding:3px 8px; }
+  .pipe span.f { border-color:rgba(143,220,236,.55); }
+  ol.steps { margin:8px 0 0; padding-left:20px; font-size:13px; } ol.steps li { margin-bottom:5px; }
+  .scroll { overflow-x:auto; } table { border-collapse:collapse; width:100%; margin-top:12px; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--edge); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; font-size:12px; white-space:nowrap; }
+  .note { color:var(--dim); font-size:12.5px; margin-top:10px; max-width:100ch; }
+  dl.gloss { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:7px 20px; margin:12px 0 0; font-size:13px; }
+  dl.gloss dt { color:var(--strong); font-weight:600; } dl.gloss dd { margin:0; max-width:86ch; }
+  dl.gloss dt:target, dl.gloss dt:target + dd { color:var(--cyan); }
+  @media (max-width:820px) {
+    body { padding:24px 16px 56px; } .grid2, .grid3, .layers { grid-template-columns:1fr; } .legend { columns:1; }
+    .arrow { padding:6px 0; } .arrow b { transform:rotate(90deg); }
+    .swim { display:block; } .swim .lane, .swim .none { display:none; } .swim .ph { margin-top:14px; } .swim .c { margin-top:6px; }
+    .swim .c::before { content:attr(data-l); display:block; font-size:10.5px; color:var(--dim);
+                       text-transform:uppercase; letter-spacing:.05em; }
+    .pipe .k { width:100%; }
+    .stack, .stack tbody, .stack tr, .stack td { display:block; } .stack tr:first-child { display:none; }
+    .stack tr { border-bottom:1px solid var(--edge); padding:6px 0; } .stack td { border:none; padding:2px 10px; }
+    dl.gloss { grid-template-columns:1fr; gap:1px; } dl.gloss dd { margin-bottom:9px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+
+<h1>Canvas and panels</h1>
+<p class="sub">Bifrost's interface is made up of a few parts, and at the centre of it all is the main window, which
+holds a thin side bar on the left and a <a class="g" href="#g-canvas">canvas</a> that fills the rest of the space. On
+the canvas, <a class="g" href="#g-frame">frames</a> can overlap or <a class="g" href="#g-snap">snap</a> together, and
+each frame shows a <a class="g" href="#g-panel">panel</a>, like a chat or the session list, or even several panels
+stacked together as <a class="g" href="#g-tab">tabs</a> (a <a class="g" href="#g-stack">stack</a>). This page covers
+how Bifrost models that layout, how a change to it reaches the screen, and how it's saved and brought back the next
+time Bifrost starts.</p>
+
+<nav class="toc" aria-label="Contents">On this page<ol>
+  <li><a href="#screen">What's on the screen</a></li>
+  <li><a href="#flow">How a change flows</a></li>
+  <li><a href="#panels">Panels and their bodies</a></li>
+  <li><a href="#rules">The layout rules</a></li>
+  <li><a href="#drag">Dragging a frame</a></li>
+  <li><a href="#modes">Display modes</a></li>
+  <li><a href="#sidebar">The side bar</a></li>
+  <li><a href="#menus">Menus</a></li>
+  <li><a href="#dialogs">Dialogs</a></li>
+  <li><a href="#saving">Saving and restoring</a></li>
+  <li><a href="#code-map">Where the code is</a></li>
+  <li><a href="#glossary">Glossary</a></li>
+</ol></nav>
+
+<div class="grid3">
+  <div class="card c"><h3>One value holds the layout</h3><p>The whole layout lives in a single value,
+  <code>WindowLayout</code> in the <a class="g" href="#g-bifrostlayout">BifrostLayout</a> module, which lists every
+  frame from back to front. Anything that changes the layout does it through an action
+  (<code>WindowAction</code>).</p></div>
+  <div class="card p"><h3>The views follow it</h3><p><code>WindowLayoutModel</code> owns that value, and whenever it
+  changes, the model passes the change on to the canvas, then the chats, then the store.</p></div>
+  <div class="card g"><h3>Two files bring it back</h3><p>The frames and your named layouts are saved in
+  <code>ui-state.json</code>, and the window's position, size and display mode in <code>window-state.json</code>, so
+  everything is back where you left it when Bifrost starts again.</p></div>
+</div>
+
+<h2 id="screen">What's on the screen</h2>
+<div class="fig">
+<svg viewBox="0 0 760 380" role="img" aria-label="The main window, with the side bar on the left and a canvas holding three overlapping frames, the top one a stack of two chat tabs">
+  <defs>
+    <clipPath id="wc"><rect x="1" y="1" width="758" height="378" rx="10"/></clipPath>
+    <linearGradient id="bg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0f1a20"/><stop offset="1" stop-color="#171021"/></linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fdcec" stop-opacity="0"/><stop offset="1" stop-color="#8fdcec" stop-opacity=".45"/></linearGradient>
+  </defs>
+  <rect x="1" y="1" width="758" height="378" rx="10" class="win"/>
+  <g clip-path="url(#wc)">
+    <rect x="45" y="30" width="715" height="350" fill="url(#bg1)"/>
+    <rect x="1" y="30" width="44" height="350" fill="#121212"/>
+  </g>
+  <line x1="1" y1="30" x2="759" y2="30" class="sep"/><line x1="45" y1="30" x2="45" y2="379" class="sep"/>
+  <circle cx="18" cy="15" r="5" fill="#ff5f57"/><circle cx="36" cy="15" r="5" fill="#febc2e"/><circle cx="54" cy="15" r="5" fill="#28c840"/>
+  <text x="380" y="19" text-anchor="middle" class="td">Bifrost</text>
+  <rect x="9" y="36" width="28" height="28" rx="4" class="sbtn"/><path d="M16,44h14M16,50h14M16,56h14" class="glyph"/>
+  <rect x="9" y="68" width="28" height="28" rx="4" class="sbtn"/><path d="M23,75v14M16,82h14" class="glyph"/>
+  <rect x="9" y="100" width="28" height="28" rx="4" class="sbtn"/><rect x="16" y="107" width="14" height="14" rx="2" class="glyph"/><path d="M19,112h8M19,116h5" class="glyph"/>
+  <line x1="13" y1="134" x2="33" y2="134" class="sep"/>
+  <rect x="9" y="140" width="28" height="28" rx="4" class="sbtn"/><circle cx="23" cy="154" r="6" class="glyph"/><path d="M23,151v6M20,154h6" class="glyph"/>
+  <g opacity=".4"><rect x="9" y="172" width="28" height="28" rx="4" class="sbtn"/><path d="M19,180l9,6l-9,6z" class="glyph"/></g>
+  <line x1="13" y1="206" x2="33" y2="206" class="sep"/>
+  <rect x="9" y="212" width="28" height="28" rx="4" class="sbtn"/><rect x="16" y="220" width="14" height="12" rx="1" class="glyph"/>
+  <rect x="9" y="308" width="28" height="28" rx="4" class="sbtn"/><path d="M16,315h6v6h-6zM24,315h6v6h-6zM16,323h6v6h-6zM24,323h6v6h-6z" class="glyph"/>
+  <rect x="9" y="341" width="28" height="28" rx="4" class="sbtn"/><circle cx="23" cy="355" r="5.5" class="glyph"/><circle cx="23" cy="355" r="2" class="glyph"/>
+  <rect x="70" y="50" width="300" height="160" class="frm"/><rect x="70" y="50" width="300" height="24" class="tbar"/>
+  <line x1="70" y1="50.5" x2="370" y2="50.5" stroke="#8fdcec" stroke-opacity=".35"/>
+  <text x="80" y="66" font-size="11">Overview</text><g transform="translate(307,62)"><circle cx="0" cy="0" r="1.4" class="dots"/><circle cx="5" cy="0" r="1.4" class="dots"/><circle cx="10" cy="0" r="1.4" class="dots"/><path d="M24,0h9M44,-4l8,8M52,-4l-8,8" class="glyph"/></g>
+  <path d="M82,92h200M82,110h170M82,128h185M82,146h150M82,164h190" class="sep" stroke-width="6"/>
+  <rect x="470" y="56" width="260" height="120" class="frm"/><rect x="470" y="56" width="260" height="24" class="tbar"/>
+  <line x1="470" y1="56.5" x2="730" y2="56.5" stroke="#8fdcec" stroke-opacity=".35"/>
+  <text x="480" y="72" font-size="11">Settings</text><g transform="translate(667,68)"><circle cx="0" cy="0" r="1.4" class="dots"/><circle cx="5" cy="0" r="1.4" class="dots"/><circle cx="10" cy="0" r="1.4" class="dots"/><path d="M24,0h9M44,-4l8,8M52,-4l-8,8" class="glyph"/></g>
+  <rect x="482" y="88" width="236" height="14" rx="3" class="sbtn"/><text x="488" y="98" class="td">Search settings</text>
+  <text x="482" y="120" class="ts" font-size="10.5">General</text><text x="530" y="120" class="td">Keys</text><text x="563" y="120" class="td">Slash commands</text>
+  <path d="M482,130h150" class="sep" stroke-width="5"/>
+  <rect x="300" y="138" width="330" height="12" fill="url(#glow)"/>
+  <rect x="300" y="150" width="330" height="205" class="frm top"/><rect x="300" y="150" width="330" height="24" class="tbar"/>
+  <line x1="300" y1="150.5" x2="630" y2="150.5" stroke="#8fdcec" stroke-width="1.5"/>
+  <text x="312" y="166" font-size="11" class="ts">api-server</text><line x1="306" y1="173" x2="376" y2="173" stroke="#fff" stroke-width="2"/>
+  <text x="392" y="166" font-size="11" class="td">docs-site</text><g transform="translate(567,162)"><circle cx="0" cy="0" r="1.4" class="dots"/><circle cx="5" cy="0" r="1.4" class="dots"/><circle cx="10" cy="0" r="1.4" class="dots"/><path d="M24,0h9M44,-4l8,8M52,-4l-8,8" class="glyph"/></g>
+  <text x="312" y="198" class="tm"><tspan class="tc">&gt;</tspan> fix the flaky snapshot test</text>
+  <text x="312" y="216" class="tm td">Reading SnapshotTests.swift</text>
+  <text x="312" y="234" class="tm td">Running swift test</text>
+  <g><circle cx="98" cy="15" r="9" class="num"/><text x="98" y="19" text-anchor="middle" class="numt">1</text>
+  <circle cx="23" cy="272" r="9" class="num"/><text x="23" y="276" text-anchor="middle" class="numt">2</text>
+  <circle cx="130" cy="300" r="9" class="num"/><text x="130" y="304" text-anchor="middle" class="numt">3</text>
+  <circle cx="84" cy="226" r="9" class="num"/><text x="84" y="230" text-anchor="middle" class="numt">4</text>
+  <circle cx="520" cy="162" r="9" class="num"/><text x="520" y="166" text-anchor="middle" class="numt">5</text>
+  <circle cx="610" cy="335" r="9" class="num"/><text x="610" y="339" text-anchor="middle" class="numt">6</text>
+  <circle cx="58" cy="240" r="9" class="num"/><text x="58" y="244" text-anchor="middle" class="numt">7</text></g>
+</svg>
+</div>
+<ol class="legend">
+  <li>The main window (<code>ShellWindow</code>), which can't be made smaller than 800 × 500. Bifrost's own key handling
+  sees every key press before anything else does, as <a href="../behaviour/keys.md">keys.md</a> describes.</li>
+  <li>The side bar (<code>SideBarView</code>), which is 40 units wide. From the top, it has the Overview, New Overview and
+  Selected Item buttons, then New session and Resume all, which is faded here because no parked session is waiting to
+  resume. The buttons of minimised frames come next, and Layouts and Settings sit at the bottom.</li>
+  <li>The <a class="g" href="#g-canvas">canvas</a> (<code>CanvasView</code>), which draws the frames from back to front
+  (their z-order) over the animated background and tells the layout how much space it has.</li>
+  <li>A <a class="g" href="#g-frame">frame</a> (<code>FrameView</code>). The chat frame overlaps two frames below it, so it
+  gets the backdrop blur, while Settings doesn't overlap any frame below it, so it has none.</li>
+  <li>The title bar (<code>TitleBarView</code>), which shows the panel's title or the frame's
+  <a class="g" href="#g-tab">tabs</a>, followed by the Panel menu and the minimise and close buttons. An
+  <a class="g" href="#g-overview">Overview</a>'s title ends with the name of its tab set in dim brackets, such as
+  "Overview (Default)", which the Overview part gives through <code>PanelBodies.titleSuffix(for:)</code>.</li>
+  <li>The <a class="g" href="#g-body">body</a>, the view that draws the active panel, which here is a chat's terminal.
+  The frame on top gets the bright accent line along its top edge and a cyan glow.</li>
+  <li>The side bar button for a minimised frame, which brings the frame back when you click it.</li>
+</ol>
+
+<h2 id="flow">How a change flows</h2>
+<p class="lead">Everything you do to the layout, whether that's dragging a frame, clicking the side bar or pressing
+Cmd+W, becomes an action, which is applied according to a set of layout rules. Once the layout has changed, the views
+update to match it.</p>
+<div class="layers">
+  <div class="box in"><h3>1. Input</h3><div class="where">The mouse, keys, menus and the side bar</div><ul>
+    <li>Clicks and drags on title bars and frame edges</li>
+    <li>Side bar buttons: the Overview, a new Overview, the panel buttons, restoring a minimised frame, loading a
+    layout</li>
+    <li>Keys and menu items, such as Close Panel (Cmd+W) or opening a chat</li>
+    <li><code>CanvasView</code>, when its own size changes</li></ul></div>
+  <div class="arrow"><b>→</b>actions</div>
+  <div class="box mo"><h3>2. <code>WindowLayoutModel</code></h3><div class="where">In BifrostLayout, on the
+  <a class="g" href="#g-main-actor">main actor</a></div><ul>
+    <li>Holds the current layout and any drag in progress</li>
+    <li>Reports a change only when something has really changed</li>
+    <li>Ends a drag if its <a class="g" href="#g-frame">frame</a> closes, is minimised or gets locked part-way
+    through</li></ul></div>
+  <div class="arrow"><b>→</b>apply</div>
+  <div class="box co"><h3>3. The rules</h3><div class="where">In <a class="g" href="#g-bifrostlayout">BifrostLayout</a></div><ul>
+    <li><code>WindowLayout</code> applies each action</li>
+    <li><code>FrameDrag</code> follows a single drag from press to release</li>
+    <li><code>Geometry</code> and <code>Hit</code> handle clamping, snapping, tear-out and blur</li></ul></div>
+</div>
+<p class="note">After every change, a single handler (<code>Shell.layoutChanged</code>) passes it on to three places,
+always in this order:</p>
+<div class="grid3" style="margin-top:6px">
+  <div class="card g"><h3>1. <code>CanvasView</code></h3><p>Puts each panel's body into its frame and redraws.</p></div>
+  <div class="card g"><h3>2. <code>ChatTerminals.sync</code></h3><p>Creates a terminal for each chat that has just
+  opened and gets rid of the terminal of each chat that closed, then sets whether each chat is visible and focused. It
+  runs after the canvas so that a chat is already in the window by the time it gets focus.</p></div>
+  <div class="card g"><h3>3. <code>WindowLayoutModel.save</code></h3><p>Hands a snapshot of the layout to
+  <code>UIStateStore</code> to be saved. While you're dragging a frame, saves wait until you let go.</p></div>
+</div>
+
+<h2 id="panels">Panels and their bodies</h2>
+<p class="lead">A <a class="g" href="#g-panel">panel</a> is anything you can open on the canvas. Each one has an ID
+(<code>PanelID</code>) that says exactly which panel it is, such as the chat for one particular session, and a kind
+(<code>PanelKind</code>) that says what sort of panel it is and sets its default size. There are 18 kinds in all. In
+a chat or Show Info ID, the session ID can be written in upper or lower case.</p>
+<div class="scroll"><table class="stack">
+  <tr><th>Panel ID</th><th>Kind</th><th>Default size</th><th>What it shows now</th></tr>
+  <tr><td><code>overview:1</code> to <code>overview:99</code></td><td>Overview</td><td>760 × 360</td><td>The Overview: its tabs, its table of sessions and its error line (<code>OverviewPanels</code>)</td></tr>
+  <tr><td><code>chat:&lt;session ID&gt;</code></td><td>Chat</td><td>720 × 480</td><td>A live terminal (<code>ChatTerminals</code>)</td></tr>
+  <tr><td><code>show-info:&lt;session ID&gt;</code></td><td>Show Info</td><td>460 × 560</td><td>The details of the session and the pull request of its branch (<code>ShowInfoPanels</code>)</td></tr>
+  <tr><td><code>overview-settings:&lt;n&gt;</code></td><td>Overview Settings</td><td>360 × 420</td><td>The tab settings of <code>overview:&lt;n&gt;</code> (<code>OverviewSettingsPanels</code>)</td></tr>
+  <tr><td><code>module:&lt;module&gt;:&lt;panel&gt;</code></td><td>Module</td><td>560 × 420</td><td>A placeholder for now (<code>LaterPanel</code>)</td></tr>
+  <tr><td><code>selected-item</code></td><td>Selected Item</td><td>360 × 300</td><td>The selected session with its actions and its send box (<code>SelectedItemPanels</code>). The panel stays empty until Bifrost has found <code>claude</code>, because its actions need the session commands</td></tr>
+  <tr><td><code>settings</code></td><td>Settings</td><td>720 × 540</td><td>Settings, with its search and its tabs (<code>SettingsPanels</code>)</td></tr>
+  <tr><td><code>event-log</code></td><td>Event log</td><td>640 × 360</td><td>The newest events of the sessions, newest first, with a session filter (<code>EventLogPanels</code>)</td></tr>
+  <tr><td><code>usage-hud</code></td><td>Usage HUD</td><td>360 × 180</td><td>A bar for each usage limit and where the values come from (<code>UsageHUDPanels</code>)</td></tr>
+  <tr><td><code>watchlist</code></td><td>Watchlist</td><td>320 × 280</td><td>The watched sessions in their colours, in an order you set by dragging (<code>WatchlistPanels</code>)</td></tr>
+  <tr><td><code>reviews</code>, <code>service-status</code> and 6 more</td><td>One kind each</td><td>Listed in <code>PanelKind.defaultSize</code></td><td>A placeholder for now (<code>LaterPanel</code>)</td></tr>
+</table></div>
+<div class="grid2">
+  <div class="card c"><h3>A body lives as long as its panel</h3><p>The first time a panel appears, the canvas asks
+  <code>PanelBodiesHub</code> for its <a class="g" href="#g-body">body</a>, the view that draws the panel's content.
+  From then on, <a class="g" href="#g-stack">stacking</a> it, switching <a class="g" href="#g-tab">tabs</a>,
+  minimising it or <a class="g" href="#g-tear-out">tearing it out</a> only moves that same view around, so a chat's
+  terminal keeps its state and focus through all of it.</p></div>
+  <div class="card c"><h3>Chat panels</h3><p>You open a session's chat by double-clicking it in an
+  <a class="g" href="#g-overview">Overview</a>, which works for any <a class="g" href="#g-owned">owned session</a> that
+  isn't <a class="g" href="#g-parked">parked</a>. If the chat is already open, the double-click brings it to the front
+  instead. A chat keeps its terminal even when it's in a back tab or a minimised <a class="g" href="#g-frame">frame</a>
+  (<code>ChatTerminals.sync</code> takes care of this), and its title follows the session's name.</p></div>
+  <div class="card c"><h3>The session panels read one list</h3><p>The Event log, the Watchlist and Show Info all read
+  the session rows from the one session list, so none of them keeps a copy that could fall behind. Each body follows
+  the values it shows with <code>Observations</code>: the Event log follows its log and the names of the rows, the
+  Usage HUD follows the session usage and the <a class="g" href="#g-account-poller">account poller</a>, and Show Info
+  follows its row and asks the PR lookup for the pull request of the branch.</p></div>
+  <div class="card c"><h3>Panels that never take the focus</h3><p>The Event log, the Usage HUD, the Watchlist and Show
+  Info show information and take no keyboard focus, so a click on them leaves the keys where they were. The Usage HUD
+  asks the account poller for fresh values each time it shows, and the poller polls at most once a minute.</p></div>
+</div>
+
+<h2 id="rules">The layout rules</h2>
+<p class="lead">Every position and size on the canvas is a whole number of
+<a class="g" href="#g-layout-unit">layout units</a>. One unit is <code>interfaceScale / 100</code> points
+(<code>CanvasMetrics</code>), so it's exactly one point at the default Interface scale of 100% and grows or shrinks
+with that setting. The cards below cover the main rules, and <a href="../behaviour/windows.md">windows.md</a> lists
+every edge case.</p>
+<div class="grid2">
+  <div class="card"><h3>Open</h3><p>Opening a <a class="g" href="#g-panel">panel</a> that's already open restores its
+  <a class="g" href="#g-frame">frame</a> if it was minimised, brings it to the front and switches to its
+  <a class="g" href="#g-tab">tab</a>. A new panel opens where it was last time, or, if it has no saved place, centred
+  at its default size. If a frame already sits in exactly that spot, the new one steps 24 units down and to the right
+  until it's clear.</p></div>
+  <div class="card"><h3>Close</h3><p>Closing the active tab switches the frame to the tab on its left, or to the first
+  tab if there's nothing to the left. Closing the last tab closes the whole frame, and the panel remembers where the
+  frame was so it can open there again.</p></div>
+  <div class="card"><h3>Limits</h3><p>A frame is never smaller than 200 × 120 and always stays inside the
+  <a class="g" href="#g-canvas">canvas</a>. Rects are rounded to whole units and clamped to the canvas, so even a stray
+  half unit in a saved file can't push a frame past an edge.</p></div>
+  <div class="card"><h3>Snap</h3><p>When you let go of a frame, it <a class="g" href="#g-snap">snaps</a> on each axis
+  to the nearest canvas edge or neighbouring frame edge within 8 units, a distance you can set anywhere from 0 to 32 in
+  Settings. While you drag, small arrow marks show where the frame is going to snap.</p></div>
+  <div class="card"><h3>Stack and tear out</h3><p>Dropping one frame's title bar onto another's
+  <a class="g" href="#g-stack">stacks</a> the two frames into one. The drag has to move at least 4 units first, so
+  nudging a frame whose title bar already sits over another one doesn't stack them by accident. To split a tab back
+  out, drag it more than 12 units away from the title bar and it <a class="g" href="#g-tear-out">tears out</a> into a
+  frame of its own.</p></div>
+  <div class="card"><h3>Z-order and focus</h3><p>The frames are drawn in the order the layout lists them, so the last
+  one in the list is on top (this order is the z-order). Clicking anywhere in a frame, even inside a chat's terminal,
+  brings it to the front.</p></div>
+  <div class="card"><h3>Minimise and lock</h3><p>A minimised frame keeps its place in that order but is hidden, and
+  nothing snaps or stacks onto it while it's hidden. A frame you've locked from its Panel menu can't be moved or
+  resized, and it won't give up any of its tabs, either by tearing one out or by stacking onto another frame. When
+  the frame shows an <a class="g" href="#g-overview">Overview</a>, the same menu also opens that Overview's settings
+  and holds a field for renaming its set of tabs (<code>FrameMenu</code>).</p></div>
+  <div class="card"><h3>Blur</h3><p>A frame only gets the backdrop blur while it overlaps a visible frame below it, so
+  a frame over nothing but the background has none. The graphics card has to redo every blur each time the animated
+  background redraws, which means the fewer frames that blur, the less it costs.</p></div>
+</div>
+<div class="fig small">
+<svg viewBox="0 0 812 180" role="img" aria-label="A saved rect stays the same when the window narrows, the screen shows it squeezed into the space, and it goes back to the saved rect when the window grows">
+  <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" class="head"/></marker></defs>
+  <text x="120" y="16" text-anchor="middle" class="td">wide window</text>
+  <rect x="10" y="26" width="220" height="130" class="area"/><rect x="120" y="56" width="90" height="70" class="frm"/>
+  <text x="165" y="95" text-anchor="middle" class="tm">rect</text>
+  <line x1="240" y1="91" x2="290" y2="91" class="ln" marker-end="url(#ah3)"/><text x="265" y="80" text-anchor="middle" class="td">narrower</text>
+  <text x="375" y="16" text-anchor="middle" class="td">narrow window</text>
+  <rect x="300" y="26" width="150" height="130" class="area"/><rect x="410" y="56" width="90" height="70" class="ghost"/>
+  <rect x="360" y="56" width="90" height="70" class="frm"/><text x="405" y="95" text-anchor="middle" class="tm">shownRect</text>
+  <text x="470" y="173" text-anchor="middle" class="td">the saved rect, unchanged</text>
+  <line x1="520" y1="91" x2="570" y2="91" class="ln" marker-end="url(#ah3)"/><text x="545" y="80" text-anchor="middle" class="td">wider</text>
+  <text x="690" y="16" text-anchor="middle" class="td">back at the saved rect</text>
+  <rect x="580" y="26" width="220" height="130" class="area"/><rect x="690" y="56" width="90" height="70" class="frm"/>
+  <text x="735" y="95" text-anchor="middle" class="tm">rect</text>
+</svg>
+</div>
+<p class="note">The layout always keeps the rect you gave a frame, even when it no longer fits. If the window gets
+smaller or you raise the Interface scale, the canvas squeezes each frame into the space it has
+(<code>Geometry.shownRect</code>), which only changes where the frame is drawn, and once there's room again the frame
+goes back to its saved place.</p>
+
+<h2 id="drag">Dragging a frame</h2>
+<p class="lead">Dragging a <a class="g" href="#g-frame">frame</a> doesn't change the layout until you let go. While
+the drag is in progress, <code>FrameDrag</code> works out where the frame would land, and the
+<a class="g" href="#g-canvas">canvas</a> moves just that one view to follow the pointer. The only exception is a
+<a class="g" href="#g-tear-out">tear-out</a>, which changes the layout part-way through the drag because the tab
+needs a frame of its own to carry on with.</p>
+<div class="swim">
+  <div></div><div class="lane e">Event</div><div class="lane m">Model</div><div class="lane r">Rules</div><div class="lane v">Canvas</div><div class="lane s">Store</div>
+  <div class="ph">1. Press</div>
+  <div class="c e" data-l="Event">A press on the title bar starts a move, or a <a class="g" href="#g-tab">tab</a> press if it lands on a tab. A press on an edge starts a resize.</div>
+  <div class="c m" data-l="Model">Brings the frame to the front and starts the drag.</div>
+  <div class="c r" data-l="Rules">Starts from the rect shown on screen, and refuses to drag a locked or minimised frame.</div>
+  <div class="c v" data-l="Canvas">Turns off <a class="g" href="#g-cursor-rect">cursor rects</a> for the drag.</div>
+  <div class="c s" data-l="Store">Holds back saves until the drag ends.</div>
+  <div class="ph">2. Each move</div>
+  <div class="c e" data-l="Event">A <code>mouseDragged</code> event, converted to <a class="g" href="#g-layout-unit">layout units</a>.</div>
+  <div class="c m" data-l="Model"><code>moveDrag</code>, which leaves the layout as it is.</div>
+  <div class="c r" data-l="Rules">Works out a raw rect and a <a class="g" href="#g-snap">snapped</a> one from the start rect plus the total distance moved, which keeps the snap steady. It returns a <code>DragView</code> holding the live rect, the snap marks and any drop target.</div>
+  <div class="c v" data-l="Canvas">Moves the dragged view and draws the snap marks, the drop outline and the blur.</div>
+  <div class="c none"></div>
+  <div class="ph">3. Release</div>
+  <div class="c e" data-l="Event"><code>mouseUp</code></div>
+  <div class="c m" data-l="Model"><code>endDrag</code> applies the new rect or the <a class="g" href="#g-stack">stack</a>.</div>
+  <div class="c r" data-l="Rules">If the pointer is over another title bar, the frames stack. Otherwise the frame takes the snapped rect, clamped to the canvas.</div>
+  <div class="c v" data-l="Canvas">Redraws everything, clears the marks and turns cursor rects back on.</div>
+  <div class="c s" data-l="Store">Takes the new snapshot and starts the save timer.</div>
+  <div class="ph">4. 500 ms later</div>
+  <div class="c none"></div><div class="c none"></div><div class="c none"></div><div class="c none"></div>
+  <div class="c s" data-l="Store"><code>SaveQueue</code> writes <code>ui-state.json</code> in the background.</div>
+</div>
+<div class="grid2">
+  <div class="card a"><h3>Tear-out</h3><p>Pressing a tab in a stack doesn't move anything at first. Once the pointer
+  is more than 12 units away from the title bar, the tab becomes a frame of its own and the drag carries on with that
+  new frame. If you let go before then, it counts as a click and simply makes that tab the active one.</p></div>
+  <div class="card a"><h3>Why cursor rects go off</h3><p><a class="g" href="#g-appkit">AppKit</a> rebuilds every cursor
+  rect in the window each time a view moves, and during a drag the dragged view moves on every step. Switching cursor
+  rects off until you let go means a drag runs without dropping any display frames.</p></div>
+</div>
+
+<h2 id="modes">Display modes</h2>
+<p class="lead">The window can be in one of three display modes: Window, Borderless or Fullscreen. Borderless is a window
+style, where the window has no title bar and fills the screen with the menu bar and Dock hidden, so Bifrost can switch
+into it and back straight away. Fullscreen is macOS's own full-screen mode, which takes a moment and
+can fail, so <code>DisplayModeController</code> follows the six callbacks <a class="g" href="#g-appkit">AppKit</a>
+sends around a full-screen change. Because it listens to those, it also notices when you use the green button or press
+Esc without going through the menu.</p>
+<div class="fig">
+<svg viewBox="0 36 760 300" role="img" aria-label="The display mode state machine: Window and Borderless, entering full screen, full screen, and exiting full screen">
+  <defs>
+    <marker id="ah5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" class="head"/></marker>
+    <marker id="ah5r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" class="headr"/></marker>
+  </defs>
+  <rect x="10" y="40" width="190" height="280" rx="8" class="group"/><text x="105" y="60" text-anchor="middle" class="td">not full screen</text>
+  <rect x="30" y="80" width="150" height="56" rx="6" class="box"/><text x="105" y="104" text-anchor="middle" class="ts">Window</text>
+  <text x="105" y="122" text-anchor="middle" class="td">has a title bar, can move</text>
+  <rect x="30" y="240" width="150" height="56" rx="6" class="box"/><text x="105" y="264" text-anchor="middle" class="ts">Borderless</text>
+  <text x="105" y="282" text-anchor="middle" class="td">fills the screen</text>
+  <line x1="105" y1="138" x2="105" y2="238" class="ln" marker-start="url(#ah5)" marker-end="url(#ah5)"/>
+  <text x="114" y="184" class="td">setBorderless</text><text x="114" y="198" class="td">switches straight away</text>
+  <rect x="300" y="60" width="190" height="60" rx="6" class="box wait"/><text x="395" y="85" text-anchor="middle" class="ts">Entering full screen</text>
+  <text x="395" y="104" text-anchor="middle" class="td">the menu still shows the old mode</text>
+  <rect x="590" y="150" width="160" height="60" rx="6" class="box full"/><text x="670" y="175" text-anchor="middle" class="ts">Full screen</text>
+  <text x="670" y="194" text-anchor="middle" class="td">remembers the mode before</text>
+  <rect x="300" y="240" width="190" height="60" rx="6" class="box wait"/><text x="395" y="265" text-anchor="middle" class="ts">Exiting full screen</text>
+  <text x="395" y="284" text-anchor="middle" class="td">the menu still shows Fullscreen</text>
+  <line x1="200" y1="78" x2="298" y2="78" class="ln" marker-end="url(#ah5)"/>
+  <text x="250" y="57" text-anchor="middle" class="td">request, toggle,</text><text x="250" y="70" text-anchor="middle" class="td">green button</text>
+  <line x1="300" y1="104" x2="202" y2="104" class="ln fail" marker-end="url(#ah5r)"/><text x="250" y="121" text-anchor="middle" class="td tr">didFailToEnter</text>
+  <line x1="490" y1="92" x2="588" y2="168" class="ln" marker-end="url(#ah5)"/><text x="552" y="118" class="td">didEnter</text>
+  <line x1="610" y1="212" x2="492" y2="262" class="ln" marker-end="url(#ah5)"/>
+  <text x="618" y="234" class="td">request, toggle,</text><text x="618" y="247" class="td">Esc, green button</text>
+  <path d="M492,290 C610,315 738,300 738,213" class="ln fail" marker-end="url(#ah5r)"/><text x="610" y="328" text-anchor="middle" class="td tr">didFailToExit</text>
+  <line x1="300" y1="270" x2="202" y2="270" class="ln" marker-end="url(#ah5)"/>
+  <text x="250" y="262" text-anchor="middle" class="td">didExit</text><text x="250" y="288" text-anchor="middle" class="td">to the mode</text><text x="250" y="301" text-anchor="middle" class="td">you asked for</text>
+</svg>
+</div>
+<div class="grid3">
+  <div class="card p"><h3>One change at a time</h3><p>Only one change runs at once. A request that arrives during a
+  change waits its turn, a newer request replaces one that's already waiting, and two toggles in a row cancel each
+  other out. Toggling out of full screen takes you back to the mode you were in before, Borderless included, while
+  leaving with Esc or the green button always gives you Window.</p></div>
+  <div class="card p"><h3>What the menu shows</h3><p>While a change is in progress, the View menu and the saved file
+  both keep the old mode, and they only switch once the change has finished.</p></div>
+  <div class="card p"><h3>When nothing happens</h3><p>AppKit ignores a full-screen request for a window that's hidden
+  or minimised, so the request changes nothing. A test run (one with a test home folder) never restores a saved full
+  screen either, because native full screen would move the window to a Space of its own and bring it to the
+  front.</p></div>
+</div>
+
+<h2 id="sidebar">The side bar</h2>
+<p>The Overview button at the top brings the topmost <a class="g" href="#g-overview">Overview</a> to the front,
+restoring it first if it's minimised, or opens <code>overview:1</code> if there isn't one. The New Overview button
+under it opens another Overview with the lowest free number, and it's greyed out once all 99 are in frames. Below
+those there's a button for each minimised <a class="g" href="#g-frame">frame</a>, which brings that frame back. At the bottom, the Layouts
+button (Cmd+Option+S) lets you save, load and delete up to 20 named layouts, each with a name of 1 to 40 characters.
+Loading a named layout replaces every frame on the canvas with the ones it saved, and <code>SideBarModel</code> is the
+only part of Bifrost that writes these layouts.</p>
+
+<h2 id="menus">Menus</h2>
+<p class="lead">Every menu inside the window is a <a class="g" href="#g-bifrost-menu">Bifrost menu</a>: a small dark
+box in the app's own colours and font, with the look and the keys of the Electron app's menus. The Panel menu of a
+frame uses it, and so do the right-click menu of an Overview row and the Overview's tab menu. Only the menu bar at the
+top of the screen stays a standard macOS menu. The Panel menu of each
+<a class="g" href="#g-frame">frame</a> opens below the frame's menu button, 208 units wide, and holds the Lock check
+box, plus "Overview settings…" and the name of the tab set for an <a class="g" href="#g-overview">Overview</a>.
+<a href="../behaviour/menu.md">menu.md</a> has the full rules.</p>
+<div class="fig small">
+<svg viewBox="0 0 680 270" role="img" aria-label="A frame near the bottom edge of the window, with its Panel menu below the menu button as a separate panel that reaches past the window edge">
+  <rect x="1" y="1" width="520" height="170" rx="10" class="win"/>
+  <rect x="300" y="110" width="210" height="58" class="frm"/><rect x="300" y="110" width="210" height="24" class="tbar"/>
+  <line x1="300" y1="110.5" x2="510" y2="110.5" stroke="#8fdcec" stroke-opacity=".35"/>
+  <text x="310" y="126" font-size="11">Overview</text>
+  <g transform="translate(447,122)"><circle cx="0" cy="0" r="1.4" class="dots"/><circle cx="5" cy="0" r="1.4" class="dots"/><circle cx="10" cy="0" r="1.4" class="dots"/><path d="M24,0h9M44,-4l8,8M52,-4l-8,8" class="glyph"/></g>
+  <rect x="268" y="138" width="190" height="118" fill="#2a2a2a" stroke="rgba(255,255,255,.2)"/>
+  <text x="280" y="158" font-size="11">Overview settings…</text>
+  <rect x="269" y="166" width="188" height="20" fill="rgba(255,255,255,.1)"/>
+  <path d="M281,176l3,3 6,-6" class="glyph"/><text x="300" y="180" font-size="11">Lock</text>
+  <text x="280" y="204" font-size="11">Tab set name</text>
+  <rect x="280" y="212" width="166" height="26" fill="#0a0a0a" stroke="rgba(255,255,255,.2)"/>
+  <text x="288" y="229" font-size="11" class="tm">Default</text>
+  <text x="530" y="196" class="td">its own panel, which can</text><text x="530" y="210" class="td">reach past the window</text>
+  <path d="M462,200 h62" class="ln"/>
+  <text x="140" y="132" class="td" text-anchor="middle">the focus comes back</text>
+  <text x="140" y="146" class="td" text-anchor="middle">to the window at the close</text>
+  <path d="M232,140 h62" class="ln wait"/>
+</svg>
+</div>
+<div class="grid2">
+  <div class="card c"><h3>A panel above the window</h3><p>A menu is a borderless panel of its own
+  (<code>MenuPanel</code>) that floats above the main window, and each open submenu is one more panel. The rows are
+  drawn in SwiftUI, while <a class="g" href="#g-appkit">AppKit</a> views over them take the pointer and tell VoiceOver
+  that this is a menu. Because it's a separate window, a menu stays inside the screen rather than the window, so near
+  the window's edge it can reach past it.</p></div>
+  <div class="card g"><h3>The focus stays with the window</h3><p>As with every macOS menu, the main window stays the
+  <a class="g" href="#g-key-window">key window</a> while a menu is open, and it passes each key press to the menu: the
+  arrows, Return, Esc and typing to jump to a row. Only the text box of a field takes the key focus into the menu's
+  panel while it edits, and hands it back afterwards. A press outside, Esc, a choice, switching to another app or
+  the window losing the focus closes the menu, and the old
+  <a class="g" href="#g-first-responder">first responder</a>, such as a chat's terminal, keeps or gets back the keys.
+  A chosen row acts after the close, so a dialog it opens keeps the focus.</p></div>
+  <div class="card c"><h3>The row menu of an Overview</h3><p>Right-clicking a row opens its menu at the pointer
+  (<code>RowMenu</code>). Its entries come from the action model of the session actions, so an entry that's off keeps
+  its place, greyed out, with the reason in its tooltip. The menu shows the row as it was at the right-click, but a
+  choice hands the <a class="g" href="#g-action-runner">action runner</a> only the row's ID, and the runner checks the
+  row as it is now before anything happens.</p></div>
+  <div class="card g"><h3>The tab menu of an Overview</h3><p>Right-clicking a tab of an Overview opens its tab menu
+  at the pointer. The tab bar knows where each tab is, so it finds the tab under the click. A filter or a column is a
+  check box row that keeps the menu open, so you can change several in one go, and the table changes straight
+  away.</p></div>
+</div>
+
+<h2 id="dialogs">Dialogs</h2>
+<p class="lead">The confirmations of the session actions, Rename, New session and the question of Reset all keys are
+Bifrost boxes inside the window, never sheets, alerts or windows of their own. They all show in one
+<a class="g" href="#g-dialog-layer">dialog layer</a> (<code>DialogHost</code>), a SwiftUI view that the
+<a class="g" href="#g-canvas">canvas</a> keeps above every frame. While a dialog is open, the layer dims the canvas
+with the background colour at 40 % and puts the box in the middle. The side bar stays as it is.
+<a href="../behaviour/actions.md">actions.md</a> has the full rules.</p>
+<div class="fig small">
+<svg viewBox="0 0 680 245" role="img" aria-label="The main window with the side bar on the left and the canvas dimmed by the dialog layer, with a Delete confirmation box in the middle of the canvas">
+  <rect x="1" y="1" width="560" height="220" rx="10" class="win"/>
+  <rect x="1" y="1" width="44" height="220" rx="10" class="sbtn"/>
+  <rect x="60" y="20" width="230" height="120" class="frm"/><rect x="60" y="20" width="230" height="24" class="tbar"/>
+  <text x="70" y="36" font-size="11">Overview</text>
+  <rect x="320" y="40" width="220" height="150" class="frm"/><rect x="320" y="40" width="220" height="24" class="tbar"/>
+  <text x="330" y="56" font-size="11">Chat</text>
+  <rect x="45" y="1" width="516" height="220" fill="#0a0a0a" fill-opacity=".4"/>
+  <rect x="150" y="62" width="320" height="104" fill="#2a2a2a" stroke="rgba(255,255,255,.2)"/>
+  <text x="166" y="86" class="ts">Delete fix-a</text>
+  <text x="166" y="106" font-size="11">This session has 2 commits that are not merged</text>
+  <text x="166" y="120" font-size="11">on worktree-w1. Are you sure you want to delete this?</text>
+  <rect x="166" y="136" width="96" height="20" fill="none" stroke="rgba(255,255,255,.2)"/>
+  <text x="174" y="150" font-size="11">Open worktree</text>
+  <rect x="318" y="136" width="52" height="20" fill="none" stroke="rgba(255,255,255,.2)"/>
+  <text x="326" y="150" font-size="11">Cancel</text>
+  <rect x="376" y="136" width="80" height="20" fill="none" stroke="rgba(255,255,255,.2)"/>
+  <text x="384" y="150" font-size="11">Delete session</text>
+  <text x="580" y="100" class="td">the dialog layer</text><text x="580" y="114" class="td">dims the canvas</text>
+  <path d="M566,104 h-40" class="ln"/>
+  <text x="22" y="236" class="td" text-anchor="middle">side bar</text>
+</svg>
+</div>
+<div class="grid2">
+  <div class="card c"><h3>One dialog at a time</h3><p>Only one dialog shows at once. A confirmation that's asked for
+  while another dialog is open doesn't show, so its action doesn't run, and the notice line says "Another dialog is
+  open. Finish that one first.". Rename and New session do the same. A confirmation that asks twice, such as a Delete
+  with unmerged work, changes its button on the first click and only takes a second click half a second or more
+  later.</p></div>
+  <div class="card g"><h3>The focus and the keys</h3><p>When a dialog opens, the layer takes the keyboard focus, and it
+  carries the dialog mark, so the window's key rules treat everything as happening in a dialog and none of Bifrost's
+  own keys act. The focus stays in the dialog while a save or a start runs, and a held key repeats in a field as
+  usual. Esc cancels the dialog. Clicking the dimmed canvas closes Rename and New session but leaves a confirmation
+  open. When the dialog closes, the old <a class="g" href="#g-first-responder">first responder</a>, such
+  as the rows of an Overview, gets the focus back.</p></div>
+</div>
+
+<h2 id="saving">Saving and restoring</h2>
+<p class="lead">Bifrost keeps the layout and the window's state in two files in Application Support. Every save writes
+a temporary file, flushes it to disk and then renames it into place, so a file is never left half-written. When
+Bifrost loads a file, it skips any item it can't read and keeps the rest, and when it saves again, it keeps any fields
+it doesn't recognise, so a file written by a newer build isn't damaged by an older one.
+<a href="../behaviour/stores.md">stores.md</a> has the full details.</p>
+<div class="card">
+  <div class="pipe"><span class="k">Layout</span><span class="n">any change</span><i>→</i><span class="n">500 ms after the last change, held during a drag</span><i>→</i><span class="n"><code>SaveQueue</code></span><i>→</i><span class="n f"><code>ui-state.json</code></span></div>
+  <div class="pipe"><span class="k">Bounds</span><span class="n">the window moves or resizes</span><i>→</i><span class="n">normal window only</span><i>→</i><span class="n">after 500 ms</span><i>→</i><span class="n f"><code>window-state.json</code></span></div>
+  <div class="pipe"><span class="k">Mode</span><span class="n">a new display mode</span><i>→</i><span class="n">saved straight away</span><i>→</i><span class="n f"><code>window-state.json</code></span></div>
+  <div class="pipe"><span class="k">Close, quit</span><span class="n">closing saves at once</span><i>→</i><span class="n">quitting waits up to 2 s for the last saves (<code>QuitWait</code>)</span><i>→</i><span class="n">chats detach, and the sessions keep running</span></div>
+</div>
+<p class="note">Full screen, Borderless and a zoomed window don't update the saved bounds, so only the plain window's
+size and position are kept. The file measures from the top-left corner of the primary screen, and
+<code>WindowPlacement</code> converts to and from <a class="g" href="#g-appkit">AppKit</a>, which measures from the
+bottom-left.</p>
+<div class="grid2">
+  <div class="card g"><h3>Start-up, in order</h3><ol class="steps">
+    <li>Read both files in the background (<code>AppServices.openUIStores()</code>).</li>
+    <li>Place the window (<code>WindowPlacement.restore</code>). It goes back to its saved bounds as long as at least
+    100 × 40 of its top strip lands in a screen's work area (the part the menu bar and Dock don't cover), so you can
+    still grab it. Otherwise it opens centred at 1440 × 900. Saved bounds smaller than 400 × 300 are ignored.</li>
+    <li>Build the canvas and the window, giving the canvas its size first so the layout has real bounds to work
+    with.</li>
+    <li>Load the saved layout, or if there isn't one, open <code>overview:1</code> at 16, 16 with a size of
+    760 × 360.</li>
+    <li>Show the window, apply the saved display mode, then start the services.</li></ol></div>
+  <div class="card g"><h3>What each file holds</h3><p><code>ui-state.json</code> holds a snapshot of the current
+  layout and up to 20 named layouts. It also carries data for features that aren't built yet (each Overview's settings,
+  the history of recent folders, models and slash commands, and the Performance panel's state), which Bifrost keeps
+  exactly as it found it.
+  <code>window-state.json</code> holds the display mode and the window's bounds.</p>
+  <p>Because Bifrost restores the window itself, macOS's own window restoration is switched off
+  (<code>isRestorable = false</code>). Closing the window detaches its chats, and clicking the Dock icon brings the
+  window and its chats back.</p></div>
+</div>
+<div id="code-map"></div>
+
+<h2>Where the code is</h2>
+<p class="lead">Most of these paths are under <code>Packages/Bifrost/Sources/</code>. The last row is the app itself,
+which lives in <code>App/Bifrost/</code> at the top of the repository.</p>
+<div class="scroll"><table class="stack">
+  <tr><th>File</th><th>What it holds</th></tr>
+  <tr><td><code>BifrostLayout/Model/WindowLayout.swift</code></td><td>The layout (<code>WindowLayout</code>) and its frames (<code>LayoutFrame</code>), the actions that change it (<code>WindowAction</code>) and the form it's saved in (<code>LayoutSnapshot</code>)</td></tr>
+  <tr><td><code>BifrostLayout/Model/PanelID.swift</code></td><td>The panel kinds and their default sizes (<code>PanelKind</code>), along with <code>PanelID</code> and <code>FrameID</code></td></tr>
+  <tr><td><code>BifrostLayout/Model/Geometry.swift</code>, <code>Hit.swift</code>, <code>Overlap.swift</code></td><td>Layout units, clamping, moving and resizing, snap marks, title bar hit tests, tear-out and blur</td></tr>
+  <tr><td><code>BifrostLayout/Model/FrameDrag.swift</code></td><td>A single drag from start to finish: moving, resizing, tab presses and tear-out</td></tr>
+  <tr><td><code>BifrostLayout/Model/UIState.swift</code>, <code>BifrostWindows/Model/WindowState.swift</code>, <code>WindowShow.swift</code></td><td>The formats of the two files, where the window is placed, and how the window first appears at start-up</td></tr>
+  <tr><td><code>BifrostLayout/UI/WindowLayoutModel.swift</code></td><td>The main-actor model that owns the layout, along with drags, the starting layout and the save hook</td></tr>
+  <tr><td><code>BifrostWindows/UI/CanvasView.swift</code>, <code>FrameView.swift</code>, <code>TitleBarView.swift</code></td><td>Drawing, pointer input and moving bodies between frames</td></tr>
+  <tr><td><code>BifrostLayout/UI/PanelBodies.swift</code>, <code>BifrostWindows/UI/PanelBodiesHub.swift</code></td><td>Where each panel's body comes from</td></tr>
+  <tr><td><code>BifrostWindows/Model/MenuRow.swift</code>, <code>MenuNavigation.swift</code>, <code>BifrostWindows/UI/BifrostMenu.swift</code>, <code>MenuPanel.swift</code>, <code>MenuView.swift</code>, <code>MenuRowViews.swift</code>, <code>FrameMenu.swift</code></td><td>The Bifrost menu: its rows, the rules of its keys and pointer, the presenter that shows it, its panel and SwiftUI rows, and the Panel menu of a frame (Lock, plus the Overview settings item and the tab set name field for an Overview)</td></tr>
+  <tr><td><code>BifrostWindows/UI/Actions/ActionRunner.swift</code>, <code>TimedLine.swift</code>, <code>RowMenu.swift</code></td><td>The action runner with its notice and error lines, and the row menu of an Overview</td></tr>
+  <tr><td><code>BifrostWindows/UI/Actions/WorkspaceApps.swift</code></td><td>Opening a folder in an app, bringing an app to the front and the clipboard, with the check of what's at a path</td></tr>
+  <tr><td><code>BifrostWindows/UI/Actions/DialogHost.swift</code>, <code>ConfirmDialog.swift</code>, <code>RenameDialog.swift</code>, <code>NewSessionDialog.swift</code></td><td>The dialog layer over the canvas and the dialogs it shows</td></tr>
+  <tr><td><code>BifrostWindows/UI/SelectedItem/SelectedItemPanel.swift</code>, <code>SelectedItemView.swift</code>, <code>ActionButton.swift</code>, <code>SendBoxModel.swift</code>, <code>SendBoxView.swift</code></td><td>The Selected Item panel: the facts and the action buttons of the selected row, and the send box with a draft for each session</td></tr>
+  <tr><td><code>BifrostWindows/UI/SideBar*.swift</code>, <code>LayoutPopover.swift</code></td><td>The side bar's model and view and the Layouts popover (<code>SideBarModel</code>, <code>SideBarView</code>, <code>LayoutPopover</code>)</td></tr>
+  <tr><td><code>BifrostWindows/UI/ShellWindow.swift</code>, <code>BifrostWindow.swift</code></td><td>The <code>NSWindow</code> itself, its bounds, Borderless mode and the AppKit window callbacks</td></tr>
+  <tr><td><code>BifrostWindows/UI/DisplayModeController.swift</code></td><td>The state machine that tracks the display mode</td></tr>
+  <tr><td><code>BifrostApp/UI/Shell.swift</code>, <code>App/Bifrost/AppDelegate.swift</code></td><td>Wiring everything together, the start-up order, and what happens when you close the window or quit</td></tr>
+</table></div>
+<p class="note"><a href="../behaviour/windows.md">windows.md</a>, <a href="../behaviour/menu.md">menu.md</a> and
+<a href="../behaviour/stores.md">stores.md</a> have the complete rules, and
+<a href="../ports/windows/DELIBERATE-DIFFERENCES.md">ports/windows/DELIBERATE-DIFFERENCES.md</a> lists the places
+where the native app deliberately behaves differently from the Electron app.</p>
+
+<section id="glossary">
+<h2 id="glossary-terms">Glossary</h2>
+<dl class="gloss">
+  <dt id="g-account-poller">Account poller</dt><dd>The part of Bifrost that asks Anthropic for the usage of your
+  account every five minutes while Account usage from Anthropic is on in Settings
+  (<code>AccountPoller</code>). A test home has none.</dd>
+  <dt id="g-action-runner">Action runner</dt><dd>The part of the window that carries out a session action, such as
+  Stop or Delete, for the row as it is at that moment: it asks first where the action needs it, runs the command and
+  shows how it went in the notice or error line.</dd>
+  <dt id="g-appkit">AppKit</dt><dd>Apple's framework for the windows, views and menus of a Mac app, and for the mouse
+  and keyboard events that reach them.</dd>
+  <dt id="g-bifrostlayout">BifrostLayout</dt><dd>The Swift module that holds the layout model and the rules for
+  changing it. The views that draw the layout live in a separate module, BifrostWindows.</dd>
+  <dt id="g-bifrost-menu">Bifrost menu</dt><dd>The one menu type of the menus inside the window: the Panel menu of a
+  frame, the row menu that a right-click on an Overview row opens, and the tab menu of an Overview tab. It's a box in
+  Bifrost's own colours and font that floats above the window in a panel of its own. The pop-up pickers of the New
+  session dialog and of Settings are the only menus in the window that are standard macOS menus for now.</dd>
+  <dt id="g-body">Body</dt><dd>The view that draws a panel's content inside its frame, such as a chat's terminal. A
+  panel keeps the same body for as long as it's open.</dd>
+  <dt id="g-canvas">Canvas</dt><dd>The open area of the main window, to the right of the side bar, where all the
+  frames sit.</dd>
+  <dt id="g-cursor-rect">Cursor rect</dt><dd>An area of a window where AppKit changes the pointer's shape, such as the
+  resize arrows at the edge of a frame.</dd>
+  <dt id="g-dialog-layer">Dialog layer</dt><dd>The one view above every frame of the canvas that shows Bifrost's
+  dialogs. It's hidden until a dialog opens, and then it dims the canvas and holds the dialog's box.</dd>
+  <dt id="g-first-responder">First responder</dt><dd>The view in a window that gets the keys first, such as a chat's
+  terminal or a text field. Each window has its own.</dd>
+  <dt id="g-frame">Frame</dt><dd>A box on the canvas that you can move, resize and overlap with other frames. It shows
+  one panel at a time, and when it holds several, they appear as tabs.</dd>
+  <dt id="g-key-window">Key window</dt><dd>The one window of the app that gets the keyboard events at a time. macOS
+  shows it as the active window.</dd>
+  <dt id="g-layout-unit">Layout unit</dt><dd>The measure used for every position and size on the canvas. At the
+  default Interface scale of 100%, one unit is one point, the unit macOS uses to measure the screen.</dd>
+  <dt id="g-main-actor">Main actor</dt><dd>In Swift, the context that runs on the main thread, which is where all the
+  UI code runs.</dd>
+  <dt id="g-overview">Overview</dt><dd>A panel that lists your Claude Code sessions. You can have up to 99 of them
+  open, and each has its own set of up to 12 tabs, which you edit in its Overview Settings panel.</dd>
+  <dt id="g-owned">Owned session</dt><dd>A session that Claude Code's background service runs, which means Bifrost can
+  attach a terminal to it.</dd>
+  <dt id="g-panel">Panel</dt><dd>Anything you can open on the canvas, such as an Overview, a chat or Settings. A panel
+  always sits inside a frame.</dd>
+  <dt id="g-parked">Parked</dt><dd>A session that has ended. Its row stays in the list, and you can resume it
+  later.</dd>
+  <dt id="g-snap">Snap</dt><dd>When you let go of a frame, any edge that's within a few units of a canvas edge or
+  another frame's edge jumps onto it, so frames line up neatly.</dd>
+  <dt id="g-stack">Stack</dt><dd>A frame that holds two or more panels and shows them as tabs.</dd>
+  <dt id="g-tab">Tab</dt><dd>A panel's title in a stack's title bar. Clicking it shows that panel.</dd>
+  <dt id="g-tear-out">Tear-out</dt><dd>Dragging a tab out of its stack so that it becomes a frame of its own.</dd>
+</dl>
+</section>
+
+</div>
+</body>
+</html>

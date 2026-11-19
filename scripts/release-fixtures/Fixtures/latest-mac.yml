@@ -1,0 +1,9 @@
+version: 1.2.3
+files:
+  - url: Bifrost-1.2.3-arm64-mac.zip
+    sha512: HYZjywTxbAp7eWKOSLm4mMRFlWKkJXSt1ZE7FbNri4/M8FhGwiwVkcqRVNblMLwv6KaDDbKJGs9tziJlC2pgqg==
+    size: 1517
+path: Bifrost-1.2.3-arm64-mac.zip
+sha512: HYZjywTxbAp7eWKOSLm4mMRFlWKkJXSt1ZE7FbNri4/M8FhGwiwVkcqRVNblMLwv6KaDDbKJGs9tziJlC2pgqg==
+releaseDate: '2026-11-18T12:00:00.000Z'
+minimumSystemVersion: 25.0.0

@@ -1,0 +1,60 @@
+{
+  "areas": {
+    "area-1": {
+      "draft": "**Update**\nDone: one thing",
+      "edited": true,
+      "items": [
+        {
+          "from": "Open",
+          "id": "T-1",
+          "kind": "ticket",
+          "title": "A ticket",
+          "to": "Done",
+          "url": "https://example.test/T-1"
+        },
+        {
+          "id": "PR-7",
+          "kind": "pr",
+          "title": "A merged PR"
+        }
+      ],
+      "moved": true,
+      "pending": "**Update**\nA newer draft",
+      "since": 1780000000000
+    },
+    "area-2": {
+      "draft": "Nothing moved",
+      "edited": false,
+      "items": [],
+      "moved": false
+    }
+  },
+  "lastRun": {
+    "at": 1780003600000,
+    "failure": "timeout",
+    "ok": false
+  },
+  "lastSent": {
+    "area-1": 1779900000000
+  },
+  "marks": {
+    "date": "2026-11-17",
+    "firstShown": true,
+    "secondShown": false,
+    "sent": {
+      "area-2": 1780001000000
+    },
+    "skipped": false
+  },
+  "prevSent": {
+    "area-1": 1779800000000
+  },
+  "unplaced": [
+    {
+      "id": "T-9",
+      "kind": "ticket",
+      "title": "Unplaced"
+    }
+  ],
+  "version": 1
+}

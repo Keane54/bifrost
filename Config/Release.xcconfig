@@ -1,0 +1,25 @@
+// Build settings of the app target for the Release configuration: the release app.
+// The release app has the bundle ID, the permissions and the data folders of the Electron app.
+// Do not start a Release build until it replaces the Electron app. Build it only.
+
+#include "Base.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = $(BIFROST_RELEASE_BUNDLE_ID)
+PRODUCT_NAME = Bifrost
+// Xcode adds the debugger entitlement to an ad hoc build. The release app must not have it.
+CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO
+// Xcode adds an INFOPLIST_KEY_ setting to the Info.plist only for a key that macOS defines. Thus
+// the key of the releases address is in Config/Release-Info.plist, and Xcode adds the generated
+// keys to it.
+INFOPLIST_FILE = Config/Release-Info.plist
+EXCLUDED_SOURCE_FILE_NAMES = AppIconDev.icns
+
+// Sparkle updates the release app from the appcast of the latest release on GitHub
+// (docs/release.md). Config/Release-Info.plist gives these two values as SUFeedURL and
+// SUPublicEDKey. UpdatePolicy starts the updater only when both values are there.
+SPARKLE_FEED_URL = $(BIFROST_RELEASES_URL)/latest/download/appcast.xml
+// The public EdDSA key of the Sparkle key pair of the user (2026-11-18). The private key is the
+// secret SPARKLE_PRIVATE_KEY. This file reads "//" as the start of a comment, so write each "//"
+// of a new key as "/$()/". scripts/release/check-sparkle.sh compares the key in the built app with
+// the full value of this line. The CI workflow and each release run it.
+SPARKLE_PUBLIC_KEY = k/96U+l0dAjWPysdCSvfgc2fOUO2uiPcD2/HlR5wZ7I=

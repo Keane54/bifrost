@@ -1,0 +1,5 @@
+{"incidents":[
+  {"name":"Elevated errors on the API","status":"investigating","impact":"major",
+   "started_at":"2026-11-18T09:03:00.000Z","components":[{"name":"Claude API"}]},
+  {"name":"Slow logins","status":"identified","impact":"minor",
+   "started_at":"2026-11-18T08:00:00.000+00:00","components":[{"name":"claude.ai"}]}]}

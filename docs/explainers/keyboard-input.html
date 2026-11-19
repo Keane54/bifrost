@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyboard input</title>
+<style>
+  :root { --bg:#0a0a0a; --panel:#141414; --panel2:#1a1a1a; --edge:rgba(255,255,255,.12); --text:#d2d2d2;
+          --dim:#8a8a8a; --strong:#fff; --cyan:#8fdcec; --purple:#a78bfa; --green:#4ade80; --red:#f87171;
+          --amber:#fbbf24; color-scheme:dark; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif;
+         font-size:14px; line-height:1.55; padding:32px 24px 72px; overflow-x:hidden; }
+  .wrap { max-width:1080px; margin:0 auto; }
+  h1 { font-size:24px; margin:0 0 6px; color:var(--strong); }
+  h2 { font-size:17px; margin:40px 0 4px; color:var(--strong); }
+  h3 { font-size:14px; margin:0 0 4px; color:var(--strong); }
+  p { margin:0 0 10px; max-width:80ch; }
+  .sub { color:#a8a8a8; font-size:15px; max-width:84ch; margin-bottom:26px; }
+  .lead { color:var(--dim); margin-bottom:14px; max-width:84ch; }
+  code, pre { font-family:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace; }
+  code { font-size:12.5px; color:var(--cyan); overflow-wrap:anywhere; }
+  pre { margin:8px 0 0; font-size:12px; line-height:1.5; white-space:pre-wrap; color:#cfcfcf; overflow-wrap:anywhere; }
+  .tldr { border:1px solid var(--edge); background:var(--panel); padding:16px 18px; display:grid;
+          grid-template-columns:repeat(3,1fr); gap:18px; }
+  .tldr b { display:block; color:var(--strong); margin-bottom:4px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:12px; }
+  .card { border:1px solid var(--edge); background:var(--panel); padding:12px 14px; min-width:0; }
+  .card.go { border-left:3px solid var(--purple); }
+  .card.chat { border-left:3px solid var(--cyan); }
+  .card.win { border-left:3px solid var(--green); }
+  .card.warn { border-left:3px solid var(--amber); }
+  .card p, .card li { font-size:13px; margin:0 0 6px; }
+  .card ul { margin:4px 0 0; padding-left:18px; }
+  .card li { margin-bottom:4px; }
+  .flow { margin-top:16px; display:grid; gap:20px; }
+  .layer { display:grid; grid-template-columns:28px 1.45fr 1fr; gap:0 12px; align-items:stretch; }
+  .layer .n { color:var(--dim); font-family:ui-monospace,Menlo,monospace; text-align:right; align-self:start; padding-top:10px; }
+  .layer .box { border:1px solid var(--edge); background:var(--panel); padding:10px 14px; position:relative; }
+  .layer + .layer .box::before { content:"↓"; position:absolute; top:-21px; left:16px; color:var(--dim); }
+  .layer .box p { font-size:13px; margin:0; }
+  .layer.os .box { background:#101010; }
+  .layer.bf .box { border-color:rgba(167,139,250,.55); }
+  .layer.ch .box { border-color:rgba(143,220,236,.55); }
+  .layer.end .box { border-color:rgba(74,222,128,.6); }
+  .stop { border:1px dashed rgba(248,113,113,.45); padding:8px 12px; font-size:12.5px; }
+  .stop b { display:block; color:var(--red); font-size:11px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; }
+  .stop.pass { border-color:var(--edge); color:var(--dim); }
+  .stop.pass b { color:var(--dim); }
+  .fig { border:1px solid var(--edge); background:var(--panel); padding:14px; margin-top:12px; overflow-x:auto; }
+  .fig svg { display:block; width:100%; min-width:720px; height:auto; }
+  svg text { font-family:system-ui,-apple-system,sans-serif; font-size:12px; fill:var(--text); }
+  svg .dim { fill:var(--dim); font-size:11px; }
+  svg .t { fill:var(--strong); font-weight:600; }
+  svg .mono { font-family:ui-monospace,Menlo,monospace; font-size:11px; fill:var(--cyan); }
+  .cap { color:var(--dim); font-size:12px; margin-top:8px; }
+  .scroll { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; margin-top:12px; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--edge); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; font-size:12px; white-space:nowrap; }
+  .chain { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; }
+  .chain span { border:1px solid var(--edge); background:var(--panel); padding:6px 10px; font-size:13px; }
+  .chain span.k { border-color:rgba(167,139,250,.55); color:var(--strong); }
+  .chain span.e { border-color:rgba(74,222,128,.6); }
+  .chain i { color:var(--dim); font-style:normal; }
+  .bars { margin-top:12px; display:grid; gap:7px; }
+  .bar { display:grid; grid-template-columns:96px 1fr 36px; gap:10px; align-items:center; font-size:13px; }
+  .bar small { grid-column:2 / 4; color:var(--dim); font-size:12px; margin-top:-4px; }
+  .track { background:var(--panel2); height:12px; border:1px solid var(--edge); position:relative; }
+  .fill { position:absolute; inset:0 auto 0 0; background:var(--purple); opacity:.7; }
+  .num { color:var(--dim); font-variant-numeric:tabular-nums; text-align:right; }
+  a { color:var(--cyan); }
+  a.g { color:inherit; text-decoration:underline dotted; text-decoration-color:rgba(255,255,255,.4);
+        text-decoration-thickness:1px; text-underline-offset:3px; }
+  a.g:hover { color:var(--strong); text-decoration-color:var(--cyan); }
+  h2[id], .anchor, .gloss div { scroll-margin-top:16px; }
+  .toc { border:1px solid var(--edge); background:var(--panel); padding:12px 16px; margin:0 0 18px; font-size:13px; }
+  .toc b { display:block; color:var(--strong); margin-bottom:6px; }
+  .toc ol { margin:0; padding-left:20px; columns:2; column-gap:40px; }
+  .toc li { margin:0 0 3px; break-inside:avoid; }
+  .toc a { color:var(--text); text-decoration:none; }
+  .toc a:hover { color:var(--cyan); text-decoration:underline; }
+  .gloss { margin:12px 0 0; columns:2; column-gap:32px; }
+  .gloss div { break-inside:avoid; padding:6px 8px; border-bottom:1px solid var(--edge); font-size:13px; }
+  .gloss div:target { background:var(--panel2); outline:1px solid rgba(143,220,236,.45); }
+  .gloss dt { display:inline; color:var(--strong); font-weight:600; }
+  .gloss dt::after { content:": "; font-weight:400; }
+  .gloss dd { display:inline; margin:0; }
+  @media (max-width:820px) {
+    .toc ol, .gloss { columns:1; }
+    body { padding:24px 16px 56px; }
+    .tldr, .grid2, .grid3 { grid-template-columns:1fr; }
+    .layer { grid-template-columns:1fr; gap:6px; }
+    .layer .n { text-align:left; padding:0; }
+    .layer + .layer .box::before { display:none; }
+    .fig::before { content:"Scroll sideways for the whole diagram."; display:block; position:sticky; left:0; color:var(--dim); font-size:12px; margin-bottom:6px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Keyboard input</h1>
+<p class="sub">This page covers how the keys you press in native Bifrost (the Swift app) are passed on to
+Claude Code. Each session you open in Bifrost gets a chat window, which is a terminal connected to Claude Code
+through a pseudo-terminal (<a class="g" href="#g-pty">PTY</a>). Most keys end up there, but on the way a key
+passes through several layers, and any of them can take it first.</p>
+
+<nav class="toc" aria-label="Contents"><b>On this page</b><ol>
+  <li><a href="#layers">One key, layer by layer</a></li>
+  <li><a href="#key-event">What Bifrost reads from a key</a></li>
+  <li><a href="#shortcuts">Shortcuts and where they work</a></li>
+  <li><a href="#recorder">Changing a key</a></li>
+  <li><a href="#input-methods">Input methods and dead keys</a></li>
+  <li><a href="#dictation">Hold Space to talk</a></li>
+  <li><a href="#voice">From voice to prompt</a></li>
+  <li><a href="#interrupt">The Interrupt key</a></li>
+  <li><a href="#tests">The 318 key tests</a></li>
+  <li><a href="#code-map">Where the code lives</a></li>
+  <li><a href="#glossary">Glossary</a></li>
+</ol></nav>
+
+<div class="tldr">
+  <div><b>One filter goes first</b>Every key event goes through the window's
+  <a class="g" href="#g-key-filter">key filter</a> before any view sees it. It has to work this way because
+  <a class="g" href="#g-swiftterm">SwiftTerm</a>, the terminal view inside each chat, doesn't let Bifrost override
+  how it handles keys (its <code>keyDown</code> method isn't <code>open</code>).</div>
+  <div><b>The first taker wins</b>macOS, the app menu, a Bifrost shortcut, the chat input and the focused view
+  each get a chance at a key, in that order. Once one of them takes it, nothing further along sees it.</div>
+  <div><b>Hold Space to talk</b>In a chat, holding Space for 250 ms starts dictation, and your words are typed
+  into Claude's prompt as you speak.</div>
+</div>
+
+<h2 id="layers">One key, layer by layer</h2>
+<p class="lead">A key press works its way down these layers in order, and the note with each one says whether
+the key can stop there. Plain boxes belong to macOS, purple ones are Bifrost's own key handling, blue ones belong
+to the chat window, and green is where the key finally arrives.</p>
+<div class="flow">
+  <div class="layer os"><div class="n">1</div>
+    <div class="box"><h3>macOS</h3><p>macOS deals with its own system shortcuts before any app hears about them,
+    so these never reach Bifrost at all.</p></div>
+    <div class="stop"><b>Stops here</b>Cmd+Tab, Cmd+Space, Ctrl+Space and the screenshot keys (Cmd+Shift+3, 4
+    and 5).</div></div>
+  <div class="layer os"><div class="n">2</div>
+    <div class="box"><h3>The app menu</h3><p>When a key press includes Cmd, <a class="g" href="#g-appkit">AppKit</a>
+    offers it as a shortcut to the controls in the window first, and then to the menu bar
+    (<code>MainMenu.swift</code>). The window asks the key filter before its controls, which is how the
+    <a class="g" href="#g-key-recorder">key recorder</a> gets every key while it records.</p></div>
+    <div class="stop"><b>Stops here</b>Close Panel (Cmd+W), Toggle Fullscreen (Ctrl+Cmd+F), Copy, Paste, Undo,
+    Quit, Hide and the Window menu items all take their keys here. While the key recorder records, it takes
+    every key, here or in step 3, and nothing further down sees it.</div></div>
+  <div class="layer bf"><div class="n">3</div>
+    <div class="box"><h3>The key filter (<code>WindowKeyFilter</code>)</h3><p>Every event the window receives goes
+    through the filter first, because <code>BifrostWindow.sendEvent</code> hands it over before the views get a
+    look. For a key, the filter turns the raw event into a <code>KeyEvent</code> and works out the
+    <a class="g" href="#g-zone">focus zone</a>, which chat has focus (if any), and whether an
+    <a class="g" href="#g-input-method">input method</a> is in the middle of a word.</p></div>
+    <div class="stop pass"><b>Passes through</b>The filter keeps nothing at this point. It only gathers the facts
+    that the next two layers need.</div></div>
+  <div class="layer bf"><div class="n">4</div>
+    <div class="box"><h3>Bifrost shortcuts (<code>KeyLayer</code>)</h3><p>The key layer finds the binding that
+    best matches the key and runs it, as long as the focus zone allows that shortcut.
+    <a class="g" href="#g-row-hold-key">Row hold keys</a> work a little differently, because they wait until you
+    let go before they act.</p></div>
+    <div class="stop"><b>Stops here</b>When a shortcut runs (<code>KeyCommands</code>), the key goes no further.
+    Esc is the exception: outside the <a class="g" href="#g-send-box">send box</a> it waits until step 7, so a
+    popover or a drag in progress can use it first.</div></div>
+  <div class="layer ch"><div class="n">5</div>
+    <div class="box"><h3>The chat input (<code>ChatTerminal.chatKey</code>, <code>ChatInput</code>)</h3><p>This
+    layer only applies when a chat has focus. Any key you press stops a dictation that's still listening, and Esc
+    or Ctrl+C also stop the dictation <a class="g" href="#g-typer">typer</a>, even while it's typing the final
+    text.</p></div>
+    <div class="stop"><b>Stops here</b>The chat input keeps Space while it waits to see whether you're holding
+    it, and while you dictate. It turns Shift+Enter into an escape followed by a carriage return (ESC CR), which
+    Claude Code reads as a new line. It also swallows a Cmd shortcut with a printable key that nothing else
+    claimed, since SwiftTerm would otherwise send it to Claude Code as a <a class="g" href="#g-kitty">kitty
+    key</a>.</div></div>
+  <div class="layer ch"><div class="n">6</div>
+    <div class="box"><h3>The views</h3><p>Next, the key goes to whichever view has focus. In a chat that's the
+    SwiftTerm terminal, which turns the key into the bytes a real terminal would send.</p></div>
+    <div class="stop"><b>Stops here</b>This is where most keys end: a text field types the character, a button is
+    pressed, or the terminal sends its bytes on.</div></div>
+  <div class="layer bf"><div class="n">7</div>
+    <div class="box"><h3>The window (<code>BifrostWindow.keyDown</code>)</h3><p>A key that no view wanted ends up
+    at the window itself, at the end of the <a class="g" href="#g-responder-chain">responder chain</a>.</p></div>
+    <div class="stop"><b>Ends here</b>A waiting Esc acts here, and it will open or close Settings once phase 4 of
+    the rewrite adds that. Any other Esc or Tab goes back to AppKit, which uses them to leave full screen or move
+    to the next field. Everything else is dropped without a beep.</div></div>
+  <div class="layer end"><div class="n">→</div>
+    <div class="box"><h3>The session</h3><p>The terminal's bytes pass through the chat input
+    (<code>ChatInput.data</code>) and the chat's dictation (<code>ChatDictation.input</code>) on their way to
+    <code>ChatTerminal.send</code>. That writes them to the PTY of the chat's
+    attach, and Claude Code reads them as typed keys.</p></div>
+    <div class="stop pass"><b>Waits here</b>While dictation is typing its final text, the keys you press queue up
+    behind it.</div></div>
+</div>
+
+<h2 id="key-event">What Bifrost reads from a key</h2>
+<p class="lead">For each key event, the filter copies the parts the key rules need into a <code>KeyEvent</code>:
+the key code (which physical key it was), the text the key types with and without modifiers, which of Cmd, Ctrl,
+Option and Shift are held, whether it's a press or a release, whether it's a key repeat, and whether an input
+method is <a class="g" href="#g-composing">composing</a>. Caps Lock, fn and the keypad flag are left out, because
+no binding can use them and macOS sets fn on every arrow key anyway. From those values, <code>KeyEvent.key</code>
+decides which key the rules should treat it as.</p>
+<div class="scroll"><table>
+  <tr><th>You press (US layout)</th><th><code>KeyEvent.key</code></th><th>Why</th></tr>
+  <tr><td>Return</td><td><code>.named(.enter)</code></td><td>Keys with a name, such as Enter, Tab, the arrows and F1 to F12, are reported by that name.</td></tr>
+  <tr><td>Left Shift alone</td><td><code>.modifier(.shift)</code></td><td>Pressing or releasing a modifier on its own counts as that modifier's key going down or up, and the left and right keys are told apart.</td></tr>
+  <tr><td>Option+E</td><td><code>.dead</code></td><td>It's a <a class="g" href="#g-dead-key">dead key</a>, so it types nothing until the next key.</td></tr>
+  <tr><td>Ctrl+C</td><td><code>.text("c")</code></td><td>With Ctrl or Cmd held, Bifrost uses the text the key types without modifiers, so a control character can't hide which key you pressed.</td></tr>
+  <tr><td>Cmd+Shift+M</td><td><code>.text("M")</code></td><td>Shift still counts, which gives a capital M.</td></tr>
+  <tr><td>Option+O</td><td><code>.text("ø")</code></td><td>Without Ctrl or Cmd, the key is simply the text it types.</td></tr>
+</table></div>
+
+<h2 id="shortcuts">Shortcuts and where they work</h2>
+<div class="grid2">
+  <div class="card go"><h3>Slots and matching</h3>
+    <p>Every shortcut Bifrost knows about is a <a class="g" href="#g-slot">slot</a>, and <code>KeySlot.swift</code>
+    defines 84 of them: 49 "always" slots, which use Cmd by default, 24 single keys, 10 hold keys and the
+    dictation key. A binding is written like <code>Mod+Shift+M</code>, where Mod stands for Cmd.</p>
+    <p>When you press a key, <code>Match.swift</code> scores each binding against it. An exact match of key and
+    modifiers scores 3. A match that needs an implied Shift (a symbol your layout types with Shift), or that reads
+    the Turkish dotless ı as I, scores 2. When the typed character can't name a shortcut at all, as with another
+    script, a dead key, the digit row, a Shift symbol or an Option letter, Bifrost falls back to the key's
+    position on a US keyboard and scores the match 1. Only the bindings with the best score run, and they run
+    again on every key repeat.</p>
+    <p>At the moment the window, <a class="g" href="#g-row">row</a> and layout shortcuts work, along with Focus
+    Overview, the Overview tab keys (Tab and Shift+Tab), Interrupt and dictation. The row keys and the Overview tab
+    keys act on the Overview whose rows have the keyboard focus now, which they get when you click them, click in
+    that Overview's tab bar or press Focus Overview. When no Overview's rows have the focus, for example while you
+    type in a chat, they act on the Overview that's the active panel of the highest frame showing, and with no such
+    Overview they do nothing. The rest of the slots arrive in phase 4.</p></div>
+  <div class="card warn"><h3>Reserved keys</h3>
+    <p>Settings won't let you bind these keys, so they always reach macOS or the menu bar:</p>
+    <ul><li>macOS: Cmd+Tab, Cmd+Space, Cmd+H, Cmd+M, Cmd+Q, Cmd+Alt+Esc, Cmd+Shift+3, 4 and 5, Cmd+Shift+Q,
+    Cmd+Shift+/, Ctrl+Cmd+Q, Ctrl+Space.</li>
+    <li>Menus: Cmd+Z, Cmd+Shift+Z, Cmd+X, Cmd+C, Cmd+V, Cmd+A, Cmd+Alt+H, Cmd+= and Cmd+-.</li></ul>
+    <p>The two menu slots, Close Panel and Toggle Fullscreen, must use Cmd, because the menu bar sees their keys
+    first and a plain key would then fire inside a chat or a text box. Two slots of the same class (ordinary
+    keys, hold keys or the dictation key) can't share a binding, and if a saved settings file has a clash anyway,
+    the slot that comes first keeps it.</p></div>
+</div>
+<p class="lead" style="margin-top:16px">Which shortcuts work depends on where the focus is. Bifrost sorts every
+focused view into one of six <a class="g" href="#g-zone">focus zones</a>:</p>
+<div class="scroll"><table>
+  <tr><th>Zone</th><th>The focus is in</th><th>Bifrost shortcuts</th></tr>
+  <tr><td>modal</td><td>a sheet, alert, menu, list box or the <a class="g" href="#g-key-recorder">key recorder</a></td><td>none</td></tr>
+  <tr><td>chat</td><td>a chat terminal</td><td>Cmd shortcuts and the dictation key. Esc, Ctrl keys and plain keys all go to Claude Code.</td></tr>
+  <tr><td>send box</td><td>the send box (phase 4)</td><td>Cmd and Ctrl shortcuts, and Esc, which leaves the box</td></tr>
+  <tr><td>text</td><td>a text field or text view</td><td>Cmd and Ctrl shortcuts</td></tr>
+  <tr><td>control</td><td>a button, tab, check box or pop-up</td><td>Cmd, Ctrl and Esc, plus plain keys other than Enter, Space, Tab, the arrows, Home and End, which the control keeps</td></tr>
+  <tr><td>other</td><td>anything else, or the window</td><td>all of them, including the row hold keys</td></tr>
+</table></div>
+<p class="cap">Focusing a chat also selects its session, so a session shortcut like Cmd+. acts on the chat you're
+typing in. The <a class="g" href="#g-row-hold-key">row hold keys</a> (O, M, I, J, X and 1 to 5) only work in the
+other zone. If you click a row while holding one, its action runs on that row, and if you don't, the key runs its
+usual single-key action when you let go (<code>HoldGate</code> keeps track of this). macOS sends no key-up event
+while Cmd is held, so pressing Cmd makes Bifrost forget any held key, and so does the window losing focus.</p>
+
+<h2 id="recorder">Changing a key</h2>
+<p class="lead">In Settings &gt; Keys you change a shortcut by pressing the new one. While the
+<a class="g" href="#g-key-recorder">key recorder</a> (<code>KeyRecorderView</code>) records, it has the focus, so the
+<a class="g" href="#g-zone">focus zone</a> is modal and no Bifrost shortcut runs.</p>
+<div class="grid2">
+  <div class="card go"><h3>Every key goes to the recorder</h3>
+    <p>The window hands the recorder each key event, and each Cmd shortcut, before the views or the menu bar can see
+    it (<code>WindowKeyFilter</code>). So Cmd+W, Ctrl+Cmd+F and Cmd+Q are recorded rather than run, and the menu bar
+    still shows its keys while you record.</p>
+    <p>The recorder saves the key the way the matching reads it (<code>Chord(event:)</code>), so the key you pressed
+    is the key that runs the shortcut on any layout. A letter or symbol that a binding can name, and that matches
+    exactly, is saved as itself: Cmd+Z on a German keyboard stays Cmd+Z. Anything else falls back to the US key at
+    that place, the same fallback the matching uses, so Option+O is Alt+O and the Russian key in the place of F is
+    F. The dictation key is found by its place, so for that slot the recorder always saves the place.</p>
+    <p>Esc, and Backspace or Delete with no modifier, stop the recording without a change. A key repeat or a
+    modifier on its own isn't a new key (<code>KeyRecording.step</code>). Moving the focus away, leaving the
+    window, hiding Settings or closing it stops the recording too.</p></div>
+  <div class="card warn"><h3>Refused keys</h3>
+    <p><code>KeyEditor.checkRecorded</code> checks each key against your current keys. A refused key keeps the
+    recording going, and the row shows why:</p>
+    <ul><li>a key with no binding, such as a keypad digit, F13, the ISO key left of 1, or German Ö with no
+    modifier, which the matching can't read: "Bifrost can't use this key. Try another one."</li>
+    <li>a <a class="g" href="#g-dead-key">dead key</a> such as Option+E, without Cmd or Ctrl: "That key types a
+    character. Try another one." With Cmd or Ctrl it's an ordinary shortcut.</li>
+    <li>the space bar, for any slot but the dictation key: "The space bar can't be a shortcut. Try another
+    one."</li>
+    <li>any of the binding checks in <a href="#shortcuts">Reserved keys</a>, such as "Event log already uses this
+    key."</li></ul>
+    <p>A good key saves at once and rewrites only its own slot. Reset all keys keeps any key that a later version
+    of Bifrost saved (<code>KeyEditor.resetAll</code>).</p></div>
+</div>
+
+<h2 id="input-methods">Input methods and dead keys</h2>
+<div class="grid2">
+  <div class="card chat"><h3>Composing</h3>
+    <p>While a Japanese, Chinese or Korean <a class="g" href="#g-input-method">input method</a> is
+    <a class="g" href="#g-composing">composing</a> a word (the focused view reports marked text through
+    <code>hasMarkedText()</code>), Bifrost stays out of its way:</p>
+    <ul><li>no binding matches, so no shortcut can fire;</li><li>Space types as normal and never starts
+    dictation;</li>
+    <li>Shift+Enter goes to the input method instead of the <a class="g" href="#g-pty">PTY</a>, which is a
+    deliberate difference from the Electron version of Bifrost;</li>
+    <li>Enter in the send box doesn't send the message.</li></ul></div>
+  <div class="card chat"><h3>Dead keys and other layouts</h3>
+    <p>A <a class="g" href="#g-dead-key">dead key</a> such as Option+E hasn't typed anything yet, so the only way
+    to match it to a shortcut is by its position, using the US key table in <code>KeyCode.swift</code>. Bifrost
+    does the same for other keys whose character can't name a shortcut, such as those on a Cyrillic layout, the
+    AZERTY digit row, Shift symbols and Option letters.</p>
+    <p>Letters are compared without case but with their accents, so Option+0, which types º, never matches
+    Option+O.</p></div>
+</div>
+
+<h2 id="dictation">Hold Space to talk</h2>
+<p class="lead">Holding Space in a chat lets you dictate straight into Claude's prompt. Space is just the default
+for the <a class="g" href="#g-slot">slot</a> <code>dictation:hold</code>, and the dictation key does nothing
+special outside a chat. <code>ChatInput</code> tells a tap from a hold by timing the press, and a press counts as
+a hold once the key has been down for 250 ms.</p>
+<div class="fig"><svg viewBox="0 0 760 276" role="img" aria-label="Timeline of a Space hold: a 250 ms wait, then dictation, then you let go and the final text is typed">
+  <g stroke="rgba(255,255,255,.2)" stroke-dasharray="3 4">
+    <line x1="130" y1="22" x2="130" y2="240"/><line x1="240" y1="22" x2="240" y2="240"/><line x1="300" y1="22" x2="300" y2="240"/>
+    <line x1="560" y1="22" x2="560" y2="240"/><line x1="640" y1="22" x2="640" y2="240"/></g>
+  <text x="0" y="46" class="dim">Space key</text><text x="0" y="88" class="dim">ChatInput</text>
+  <text x="0" y="130" class="dim">Microphone</text><text x="0" y="172" class="dim">On screen</text><text x="0" y="214" class="dim">Sent to the PTY</text>
+  <rect x="130" y="34" width="430" height="16" fill="#3a3a3a"/><text x="138" y="46">held down</text>
+  <rect x="130" y="76" width="110" height="16" fill="rgba(251,191,36,.25)" stroke="#fbbf24"/><text x="137" y="88">waiting</text>
+  <rect x="240" y="76" width="320" height="16" fill="rgba(167,139,250,.25)" stroke="#a78bfa"/><text x="248" y="88">holding, so ChatDictation.start runs</text>
+  <text x="568" y="88" class="dim">idle</text>
+  <text x="137" y="130" class="dim">closed</text>
+  <rect x="262" y="118" width="304" height="16" fill="rgba(143,220,236,.22)" stroke="#8fdcec"/><text x="270" y="130">open while the speech session runs</text>
+  <text x="574" y="130" class="dim">closed</text>
+  <rect x="300" y="160" width="260" height="16" fill="rgba(74,222,128,.25)" stroke="#4ade80"/><text x="308" y="172">green glow and level bar</text>
+  <path d="M312 202h12v16h-12z M336 202h12v16h-12z M360 202h12v16h-12z M384 202h12v16h-12z M408 202h12v16h-12z M432 202h12v16h-12z M456 202h12v16h-12z M480 202h12v16h-12z M504 202h12v16h-12z M528 202h12v16h-12z" fill="rgba(74,222,128,.45)"/>
+  <rect x="560" y="202" width="80" height="16" fill="none" stroke="#fbbf24" stroke-dasharray="4 3"/><text x="568" y="214">keys wait</text>
+  <rect x="640" y="202" width="76" height="16" fill="rgba(74,222,128,.25)" stroke="#4ade80"/><text x="647" y="214">final text</text>
+  <text x="426" y="234" class="dim" text-anchor="middle">live text, corrected with backspaces as the guess changes</text>
+  <text x="130" y="256" text-anchor="middle" class="dim">key down</text><text x="240" y="256" text-anchor="middle" class="dim">250 ms</text>
+  <text x="300" y="270" text-anchor="middle" class="dim">first sound level or text</text><text x="560" y="256" text-anchor="middle" class="dim">you let go</text>
+  <text x="652" y="270" text-anchor="middle" class="dim">ends within 1.5 s</text>
+</svg></div>
+<p class="cap">The timeline isn't to scale after the first 250 ms. The green glow only shows while the microphone
+is open.</p>
+<div class="grid3">
+  <div class="card"><h3>Tap</h3><p>Let go before 250 ms and you get a single space, and the microphone never
+  opens.</p></div>
+  <div class="card"><h3>Roll over</h3><p>Press another key during the wait, as often happens when you type
+  quickly, and you get the space followed by that key, in the right order, with no dictation.</p></div>
+  <div class="card win"><h3>Hold</h3><p>At 250 ms Bifrost checks whether Claude Code is in vim mode and, if it
+  isn't, starts listening. Once the first sound level or text arrives, the green glow comes on and Space stops
+  typing anything. Let go to stop. The final text arrives within 1.5 s, and any keys you press in the meantime
+  wait up to 2 s for it, so they land after your words.</p></div>
+</div>
+<div class="card warn" style="margin-top:14px"><h3>Edge cases</h3><ul>
+  <li>If you let go or press another key before the first sound level or text arrives, nothing has shown on screen
+  yet, so Bifrost treats it as a slow tap and types the space.</li>
+  <li>You also get a plain space when vim mode is on (a dictated letter could run as a vim command), when the chat
+  has no <a class="g" href="#g-pty">PTY</a> or Bifrost has no speech engine, after an early error, or while the
+  session shows a <a class="g" href="#g-red-box">red prompt box</a>.</li>
+  <li>Space with a modifier held, or while an input method is composing, is just a normal key, and the key repeats
+  of a held Space are ignored.</li>
+  <li>Moving the focus away from the chat or closing it stops dictation, and so does the 2-minute limit on a
+  single dictation.</li></ul></div>
+
+<h2 id="voice">From voice to prompt</h2>
+<p class="lead">Once a hold turns into dictation, your voice passes through a short pipeline before it appears as
+text in Claude's prompt. Apple's speech framework does the recognition (<code>SpeechAnalyzer</code> with
+<code>SpeechTranscriber</code>), which is why dictation needs macOS 26.</p>
+<div class="fig"><svg viewBox="0 0 900 226" role="img" aria-label="The dictation pipeline, from the microphone to Claude Code's prompt">
+  <defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8a8a8a"/></marker></defs>
+  <g fill="#141414" stroke="rgba(255,255,255,.25)">
+    <rect x="0" y="26" width="132" height="76"/><rect x="153" y="26" width="132" height="76"/><rect x="306" y="26" width="132" height="76"/>
+    <rect x="459" y="26" width="132" height="76" stroke="#a78bfa"/><rect x="612" y="26" width="132" height="76" stroke="#8fdcec"/>
+    <rect x="765" y="26" width="132" height="76" stroke="#4ade80"/></g>
+  <g stroke="#8a8a8a" marker-end="url(#ah)"><line x1="133" y1="64" x2="152" y2="64"/><line x1="286" y1="64" x2="305" y2="64"/>
+    <line x1="439" y1="64" x2="458" y2="64"/><line x1="592" y1="64" x2="611" y2="64"/><line x1="745" y1="64" x2="764" y2="64"/>
+    <line x1="678" y1="103" x2="678" y2="151"/></g>
+  <text x="142" y="16" text-anchor="middle" class="mono">buffers</text><text x="296" y="16" text-anchor="middle" class="mono">audio</text>
+  <text x="448" y="16" text-anchor="middle" class="mono">SpeechEvent</text><text x="601" y="16" text-anchor="middle" class="mono">DictationViewEvent</text>
+  <text x="755" y="16" text-anchor="middle" class="mono">bytes</text>
+  <text x="9" y="48" class="t">Microphone</text><text x="9" y="68" class="dim">AVAudioEngine sink</text><text x="9" y="88" class="mono">Microphone.swift</text>
+  <text x="162" y="48" class="t">AnalyzerSession</text><text x="162" y="68" class="dim">converts the audio</text><text x="162" y="88" class="dim">30 levels a second</text>
+  <text x="315" y="48" class="t">SpeechAnalyzer</text><text x="315" y="68" class="dim">SpeechTranscriber</text><text x="315" y="88" class="dim">drafts, then final</text>
+  <text x="468" y="48" class="t">DictationService</text><text x="468" y="68" class="dim">one at a time</text><text x="468" y="88" class="dim">a stream per chat</text>
+  <text x="621" y="48" class="t">ChatDictation</text><text x="621" y="68" class="dim">DictationTyper</text><text x="621" y="88" class="dim">DELs, then text</text>
+  <text x="774" y="48" class="t">Claude Code</text><text x="774" y="68" class="dim">ChatTerminal.send</text><text x="774" y="88" class="dim">claude attach PTY</text>
+  <text x="686" y="132" class="dim">sound level, 0 to 1</text>
+  <rect x="459" y="152" width="438" height="64" fill="#141414" stroke="#4ade80" stroke-dasharray="4 3"/>
+  <text x="471" y="174" class="t">DictationLook, then DictationGlow</text><text x="471" y="192" class="dim">a green top border and glow, plus a 44 pt level bar in the title bar</text>
+  <text x="471" y="208" class="dim">the bar rises quickly (60 ms) and falls back slowly (220 ms)</text>
+  <rect x="0" y="152" width="438" height="64" fill="none" stroke="rgba(255,255,255,.2)" stroke-dasharray="4 3"/>
+  <text x="12" y="174" class="t">On your Mac only</text><text x="12" y="192" class="dim">Recognition runs on the Mac. No audio is saved, and no audio or</text>
+  <text x="12" y="208" class="dim">text is sent anywhere else.</text>
+</svg></div>
+<div class="grid2">
+  <div class="card"><h3>The <a class="g" href="#g-typer">typer</a> (<code>DictationTyper</code>, <code>TypingRules</code>)</h3><ul>
+    <li>Each time the recogniser revises its guess, the typer sends backspaces (DEL) over the part that changed and
+    then types the new ending. It only ever deletes text it typed itself, one DEL per visible character, so your
+    own text is safe.</li>
+    <li>A single write carries at most 100 UTF-16 units of text and 1,000 DELs, and writes go at least 20 ms apart,
+    plus 1 ms for every 2 DELs. Small writes keep Claude Code from treating the text as a paste, and the gap gives
+    it time to work through the deletes.</li>
+    <li>It puts a space before the dictated text when the prompt's text doesn't already end in white space. On an
+    empty prompt it only adds one before <code>/</code>, <code>!</code>, <code>?</code> or <code>#</code>, which
+    would otherwise open one of Claude's menus or modes.</li>
+    <li>It never sends Enter, Tab or Esc, and it never reads the screen.</li></ul></div>
+  <div class="card"><h3>The engine (<code>DictationService</code>, <code>AnalyzerEngine</code>)</h3><ul>
+    <li>The speech engine loads the first time it's needed, which is when a chat with a dictation key gets focus or
+    when dictation starts. If the speech model isn't on the Mac yet, it downloads it from Apple first.</li>
+    <li>After 5 minutes without use it unloads again, though never during a download or a dictation.</li>
+    <li>Starting the engine and starting each session both give up after 10 s, because the macOS speech service
+    can stop answering.</li>
+    <li>There's only one microphone, so dictations run one at a time, and starting one in another chat stops the
+    first. When you let go, the engine waits up to 1.5 s for the final text and then uses whatever it has.</li></ul></div>
+</div>
+
+<h2 id="interrupt">The Interrupt key</h2>
+<p class="lead">Pressing Cmd+. sends a single Esc, which is Claude Code's stop key, to the selected session. It
+works from anywhere in Bifrost except a dialog.</p>
+<div class="chain">
+  <span class="k">Cmd+.</span><i>→</i><span><code>KeyLayer</code> matches the slot <code>interrupt:mod</code></span><i>→</i>
+  <span><code>KeyCommands.interruptRow</code>, for <a class="g" href="#g-owned">owned</a> rows only</span><i>→</i><span><code>SessionInput.interrupt</code></span><i>→</i>
+  <span>cancels sends not yet written</span><i>→</i><span>the chat's <a class="g" href="#g-pty">PTY</a>, or a <a class="g" href="#g-hidden-attach">hidden attach</a></span><i>→</i>
+  <span class="e">one Esc</span>
+</div>
+<div class="grid2">
+  <div class="card"><h3>Timing guards</h3><ul>
+    <li>A busy session's spinner means its output never goes quiet, so the Esc goes out 300 ms after the
+    attach first produces output.</li>
+    <li>A second Interrupt does nothing while one is still pending, or within 1.5 s of the last Esc, because two
+    Escs in a row would open Claude's rewind menu.</li>
+    <li>After an Esc, the next write waits 200 ms, so Claude can't read the Esc and the bytes after it as one
+    key.</li>
+    <li>A <a class="g" href="#g-red-box">red prompt box</a> blocks sends, but it never blocks an Interrupt.</li></ul></div>
+  <div class="card chat"><h3>Plain Esc in a chat</h3><p>In a chat, a plain Esc goes straight to Claude Code. On its
+  way it stops any dictation typer and throws away the keys queued behind it, so a queued Enter can't submit half a
+  sentence. Ctrl+C does the same.</p></div>
+</div>
+
+<h2 id="tests">The 318 key tests</h2>
+<p class="lead">The key rules are pinned down by 318 scenarios in <code>Scenarios/key-scenarios.json</code>, and
+<code>KeyScenarioTests</code> plays each one through the real pieces: a Bifrost window with its key filter, a
+SwiftTerm view and a <code>ChatInput</code>. Every scenario gets its own window, which never comes to the front.
+<code>Support/Driver.swift</code> delivers each key the way macOS does, offering Cmd shortcuts to the window's
+controls and then the menu before the window itself gets the key, and a manual clock drives the 250 ms hold timer
+so the timings are exact. A scenario passes only when the commands that ran, the calls to dictation and the bytes
+sent to the PTY all match exactly.</p>
+<div class="bars">
+  <div class="bar"><span>slot</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="num">217</span>
+    <small>every slot in the other zone and in a chat, plus the single keys in text fields and controls</small></div>
+  <div class="bar"><span>dictation</span><div class="track"><div class="fill" style="width:12%"></div></div><span class="num">26</span>
+    <small>taps, rollover, the first sound level, modifiers, leaving or closing, and Cmd mid-hold</small></div>
+  <div class="bar"><span>zone</span><div class="track"><div class="fill" style="width:6.5%"></div></div><span class="num">14</span></div>
+  <div class="bar"><span>hold-gate</span><div class="track"><div class="fill" style="width:6%"></div></div><span class="num">13</span></div>
+  <div class="bar"><span>chat-input</span><div class="track"><div class="fill" style="width:5.1%"></div></div><span class="num">11</span></div>
+  <div class="bar"><span>modifiers</span><div class="track"><div class="fill" style="width:4.1%"></div></div><span class="num">9</span></div>
+  <div class="bar"><span>custom</span><div class="track"><div class="fill" style="width:3.7%"></div></div><span class="num">8</span></div>
+  <div class="bar"><span>esc</span><div class="track"><div class="fill" style="width:3.2%"></div></div><span class="num">7</span></div>
+  <div class="bar"><span>shift-enter</span><div class="track"><div class="fill" style="width:3.2%"></div></div><span class="num">7</span></div>
+  <div class="bar"><span>repeat</span><div class="track"><div class="fill" style="width:1.4%"></div></div><span class="num">3</span></div>
+  <div class="bar"><span>focus</span><div class="track"><div class="fill" style="width:1.4%"></div></div><span class="num">3</span></div>
+</div>
+<div class="grid2">
+  <div class="card"><h3>One scenario</h3>
+<pre>{"id": "dictation/tap-249",
+ "rule": "A tap shorter than 250 ms types one space",
+ "setup": {"view": "chat"},
+ "steps": [{"do": "down", "key": "Space"}, {"do": "wait", "ms": 150},
+           {"do": "up", "key": "Space"}, {"do": "wait", "ms": 400}],
+ "expect": {"log": ["dict:warm", "dict:interrupt"],
+            "pty": [{"text": " "}]}}</pre>
+    <p class="cap">Here Space is held for 150 ms in a chat, which is a tap, so the PTY must receive exactly one
+    space.</p></div>
+  <div class="card go"><h3>Negative controls</h3>
+    <p>Two deliberately broken runs check that the scenarios really depend on the filter and the hold timer:</p>
+    <ul><li>With the filter switched off, exactly 243 fail. The 75 that still pass are keys Bifrost leaves alone
+    anyway, in text boxes, dialogs and the menu slots.</li>
+    <li>With the hold time cut to 100 ms, exactly 5 fail, because their taps now count as holds:
+    <code>slot/dictation:hold/chat-tap</code>, <code>dictation/tap-249</code>, <code>dictation/rollover</code>,
+    <code>dictation/blur-in-wait</code> and <code>dictation/close-in-wait</code>.</li></ul>
+    <p>Two scenarios expect a different result from the Electron app on purpose. In
+    <code>shift-enter/composing</code>, Shift+Enter during composition goes to the input method, and in
+    <code>hold-gate/rollover-stale</code>, releasing a hold key always clears it, so a stale hold key can't turn a
+    later row click into a hold action.</p></div>
+</div>
+
+<div id="code-map" class="anchor"></div>
+<h2>Where the code lives</h2>
+<div class="scroll"><table>
+  <tr><th>Folder</th><th>What</th></tr>
+  <tr><td><code>BifrostKeyboard/Model</code></td><td>The key rules themselves: <code>KeyEvent</code> and <code>KeyCode</code>, the slots and the checks on a new binding (<code>KeySlot.swift</code> and <code>KeyMap.swift</code>), <code>Match</code>, <code>KeyLayer</code>, <code>HoldGate</code> and <code>FocusZone</code>, the Esc rule (<code>Escape.swift</code>), the send key and the Shift+Enter override (<code>KeyRules.swift</code>), and the rules of the key editor in Settings (<code>KeyEditor</code> and <code>KeyRecording</code>)</td></tr>
+  <tr><td><code>BifrostDictation/Model</code></td><td>The rules for keys in a chat (<code>DictationKeys.swift</code>), <code>TypingRules</code>, the values behind the glow (<code>DictationLook</code>), and dictation's events and notices</td></tr>
+  <tr><td><code>BifrostSessions/Model</code></td><td><code>InputPlan</code>, which plans the text of a send and the single Esc of an Interrupt</td></tr>
+  <tr><td><code>BifrostDictation/Services</code></td><td>The working parts of dictation: <code>ChatInput</code>, <code>ChatDictation</code>, <code>DictationTyper</code>, <code>DictationService</code>, <code>AnalyzerEngine</code>, <code>Microphone</code> and <code>VimModeReader</code>, plus <code>FakeSpeechEngine</code>, which the tests use so that none of them opens the microphone or downloads a model</td></tr>
+  <tr><td><code>BifrostSessions/Services</code></td><td><code>SessionInput</code>, which runs the send and Interrupt jobs and opens a hidden attach when a session has no chat open</td></tr>
+  <tr><td><code>BifrostKeyboard/UI</code></td><td>The link to AppKit: <code>KeyEvents.swift</code> turns an <code>NSEvent</code> into a <code>KeyEvent</code>, <code>FocusTargets.swift</code> works out the focus zone of a view, and <code>USKeyboard</code> builds US keyboard events for the key scenarios</td></tr>
+  <tr><td><code>BifrostWindows/UI</code></td><td><code>WindowKeyFilter</code>, <code>KeyCommands</code> and <code>BifrostWindow</code></td></tr>
+  <tr><td><code>BifrostSettings/UI</code></td><td><code>KeyRecorderView</code>, the key recorder of Settings &gt; Keys</td></tr>
+  <tr><td><code>BifrostDictation/UI</code></td><td>What you see while dictating: <code>DictationGlow</code>, <code>DictationMeter</code> and <code>DictationNoticeView</code></td></tr>
+  <tr><td><code>BifrostChat/UI</code></td><td><code>ChatTerminal</code> and its SwiftTerm view, <code>ChatTerminalView</code></td></tr>
+  <tr><td><code>docs/behaviour</code></td><td>The full rules, in <code>keys.md</code>, <code>dictation.md</code> and <code>input.md</code></td></tr>
+</table></div>
+
+<section id="glossary">
+<h2>Glossary</h2>
+<dl class="gloss">
+  <div id="g-appkit"><dt>AppKit</dt><dd>Apple's framework for Mac app interfaces. It owns the windows, views and menus, and delivers key events to them.</dd></div>
+  <div id="g-composing"><dt>Composing</dt><dd>What an input method does while it builds a word. The unfinished text, called marked text, shows underlined until you commit it.</dd></div>
+  <div id="g-dead-key"><dt>Dead key</dt><dd>A key that types nothing by itself but changes the next key you press. Option+E followed by E gives é.</dd></div>
+  <div id="g-zone"><dt>Focus zone</dt><dd>The kind of place the focus is in, which is one of six: modal, chat, send box, text, control or other. The zone decides which shortcuts work.</dd></div>
+  <div id="g-hidden-attach"><dt>Hidden attach</dt><dd>An attach with no window. Bifrost opens one briefly when it needs to type into a session that has no chat open.</dd></div>
+  <div id="g-input-method"><dt>Input method</dt><dd>The macOS tool for typing languages such as Japanese, Chinese or Korean, where you build up a word over several keys and then commit it.</dd></div>
+  <div id="g-key-filter"><dt>Key filter</dt><dd>Bifrost's code in the main window that sees every key event before any view does, and runs Bifrost's shortcuts.</dd></div>
+  <div id="g-key-recorder"><dt>Key recorder</dt><dd>The part of Settings &gt; Keys that records a new shortcut. While it records, it takes every key you press.</dd></div>
+  <div id="g-kitty"><dt>Kitty key</dt><dd>A key sent using the kitty keyboard protocol, a richer way for a terminal to report keys, which Claude Code turns on.</dd></div>
+  <div id="g-owned"><dt>Owned session</dt><dd>A session that runs as a Claude Code background job, which Bifrost can attach to. For a session running in some other terminal, Bifrost can only show its status.</dd></div>
+  <div id="g-pty"><dt>PTY</dt><dd>Short for pseudo-terminal, a software stand-in for a real terminal. Claude Code reads it as if it were one, so the bytes Bifrost writes to it arrive as typed keys.</dd></div>
+  <div id="g-red-box"><dt>Red prompt box</dt><dd>The red mark on a session while Claude Code waits for your answer, for example to a permission request. While it shows, Bifrost won't send text to the session.</dd></div>
+  <div id="g-responder-chain"><dt>Responder chain</dt><dd>The line of views that AppKit offers a key to, from the focused view out through its parents to the window.</dd></div>
+  <div id="g-row"><dt>Row</dt><dd>One session as it appears in a session list, such as the Overview.</dd></div>
+  <div id="g-row-hold-key"><dt>Row hold key</dt><dd>A letter or digit you hold while you click a session row, to run an action on that row. For example, hold O and click a row to open its chat.</dd></div>
+  <div id="g-send-box"><dt>Send box</dt><dd>The box in the Selected Item panel where you type a message for the selected session. It arrives in phase 4.</dd></div>
+  <div id="g-slot"><dt>Slot</dt><dd>One shortcut Bifrost knows about, such as Interrupt. Each slot has one binding.</dd></div>
+  <div id="g-swiftterm"><dt>SwiftTerm</dt><dd>The open-source terminal view that draws each chat window.</dd></div>
+  <div id="g-typer"><dt>Typer</dt><dd>The part of dictation that types your words into the PTY, and corrects them as the speech engine revises its guess.</dd></div>
+</dl>
+</section>
+
+</div>
+</body>
+</html>

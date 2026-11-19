@@ -1,0 +1,164 @@
+{
+  "data": {
+    "viewer": {
+      "login": "smoke-user"
+    },
+    "toReview": {
+      "pageInfo": {
+        "hasNextPage": false
+      },
+      "nodes": [
+        {
+          "number": 7,
+          "title": "Add a second line to the notes",
+          "isDraft": false,
+          "additions": 1,
+          "deletions": 0,
+          "createdAt": "2026-11-01T09:00:00Z",
+          "updatedAt": "@REQUESTED@",
+          "repository": {
+            "name": "smoke-repo",
+            "owner": {
+              "login": "smoke-owner"
+            }
+          },
+          "author": {
+            "login": "smoke-author"
+          },
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "smoke-user"
+                }
+              }
+            ]
+          },
+          "timelineItems": {
+            "nodes": [
+              {
+                "createdAt": "@REQUESTED@",
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "smoke-user"
+                }
+              }
+            ]
+          },
+          "pendingReviews": {
+            "nodes": []
+          },
+          "latestOpinionatedReviews": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": []
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "@HEAD@",
+                  "statusCheckRollup": {
+                    "state": "SUCCESS",
+                    "contexts": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
+                      "nodes": []
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "headRefName": "smoke-notes",
+          "headRefOid": "@HEAD@",
+          "baseRefName": "main",
+          "isCrossRepository": false
+        }
+      ]
+    },
+    "mine": {
+      "pageInfo": {
+        "hasNextPage": false
+      },
+      "nodes": [
+        {
+          "number": 8,
+          "title": "Tidy the readme",
+          "isDraft": false,
+          "additions": 2,
+          "deletions": 1,
+          "createdAt": "2026-11-01T09:00:00Z",
+          "updatedAt": "2026-11-01T09:00:00Z",
+          "repository": {
+            "name": "smoke-repo",
+            "owner": {
+              "login": "smoke-owner"
+            }
+          },
+          "author": {
+            "login": "smoke-user"
+          },
+          "reviewRequests": {
+            "nodes": []
+          },
+          "timelineItems": {
+            "nodes": []
+          },
+          "pendingReviews": {
+            "nodes": []
+          },
+          "latestOpinionatedReviews": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": []
+          },
+          "reviews": {
+            "pageInfo": {
+              "hasNextPage": false
+            },
+            "nodes": []
+          },
+          "reviewThreads": {
+            "pageInfo": {
+              "hasPreviousPage": false
+            },
+            "nodes": []
+          },
+          "comments": {
+            "pageInfo": {
+              "hasPreviousPage": false
+            },
+            "nodes": []
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "@BASE@",
+                  "statusCheckRollup": {
+                    "state": "SUCCESS",
+                    "contexts": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
+                      "nodes": []
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "headRefName": "smoke-tidy",
+          "headRefOid": "@BASE@",
+          "baseRefName": "main",
+          "isCrossRepository": false
+        }
+      ]
+    }
+  }
+}

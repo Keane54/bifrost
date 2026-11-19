@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "turnedOnAt": 1794000000000,
+  "baseline": [],
+  "requests": { "Owner-A/Repo-B#12": { "firstSeen": 1794000100000, "baseline": false } },
+  "pauses": { "Owner-A/Repo-B#12": 1794009000000 },
+  "prs": {
+    "Owner-A/Repo-B#12": {
+      "handled": {
+        "PRRT_kwDOexample20": { "at": 1794001000000, "lastReplyAt": 1794000900000 }
+      },
+      "firstCopilotReview": null,
+      "lastReviewedCommit": null,
+      "request": null,
+      "review": null,
+      "handleOlder": false,
+      "handleCopilot": false,
+      "rerequested": {},
+      "lastError": null,
+      "round": null,
+      "recommendation": null,
+      "actedAt": null,
+      "outbox": null,
+      "questions": {},
+      "held": [],
+      "checkedAt": null
+    }
+  },
+  "posted": [],
+  "drafts": [],
+  "voicePairs": [],
+  "queue": [],
+  "repos": {},
+  "setUpAt": null,
+  "fixFrom": null,
+  "autoFixConsent": null,
+  "hidden": { "Owner-A/Repo-B#12": 1794005000000 }
+}

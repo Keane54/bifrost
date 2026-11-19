@@ -1,0 +1,124 @@
+#!/bin/sh
+# The fake gh of the PR lookup tests and of the smoke test. A test puts this folder first on the
+# PATH of the lookup. The script reads and writes files only in the test home, and it uses no
+# network.
+#
+# "pr view --json number,title,url,state" prints the file fake-pr.json in the test home
+# ($BIFROST_TEST_HOME) when that file exists, and exits 0. Without the file, it writes the error
+# of gh for a branch with no PR and exits 1. Each call adds one line to gh-calls.log in the test
+# home: the real path of the current folder, a colon, a space and the arguments, with one space
+# between them.
+#
+# The calls of Reviews send a JSON body on stdin ("--input -"), as GHRunner does:
+# - "api graphql --input -" with a read is a GraphQL query. The fake reads the name of the query
+#   at the start of the body. The query Poll prints fake-reviews-poll.json and the query
+#   ReviewContext prints fake-reviews-context.json, from the test home. A missing file, or another
+#   query, gives an error and exit 1.
+# - "api graphql --input -" with a mutation, and "api --method POST <path> --input -", are writes.
+#   Each write adds one line to gh-writes.jsonl in the test home: {"args":[...],"input":<body>},
+#   with the arguments and the body as the fake got them. Then the fake prints
+#   fake-reviews-writes.json of the test home, or it gives an error and exit 1 with no file. When
+#   the file fake-reviews-poll-next.json is in the test home, a write first moves it over
+#   fake-reviews-poll.json, so the next poll shows the change of the write, as GitHub does.
+# Each other command exits 1.
+#
+# The real gh reads the config of the user. So the fake exits 1 with no answer when HOME is not
+# the test home, and when HOME is the home of the user database or the same folder.
+
+if [ -z "${BIFROST_TEST_HOME:-}" ] || [ "${HOME:-}" != "$BIFROST_TEST_HOME" ]; then
+    echo 'fake gh: HOME is not the test home' >&2
+    exit 1
+fi
+
+# The real path of the folder $1, or nothing when the folder cannot be read.
+real_folder() {
+    (CDPATH='' cd -- "$1" 2>/dev/null && pwd -P)
+}
+
+user=$(id -un 2>/dev/null) || user=''
+case "$user" in
+    '' | *[!A-Za-z0-9._-]*)
+        echo 'fake gh: cannot read the user name' >&2
+        exit 1
+        ;;
+esac
+user_home=$(eval echo "~$user")
+# Two folders that cannot be read give the same empty path, and the fake exits.
+if [ "${HOME%/}" = "${user_home%/}" ] ||
+    [ "$(real_folder "$HOME")" = "$(real_folder "$user_home")" ]; then
+    echo 'fake gh: HOME is the real home of the user' >&2
+    exit 1
+fi
+
+home=$BIFROST_TEST_HOME
+printf '%s: %s\n' "$(pwd -P)" "$*" >>"$home/gh-calls.log"
+
+case "$#:$*" in
+    '4:pr view --json number,title,url,state')
+        if [ -f "$home/fake-pr.json" ]; then
+            cat "$home/fake-pr.json"
+            exit 0
+        fi
+        echo 'no pull requests found for branch "fake"' >&2
+        exit 1
+        ;;
+esac
+
+# Prints the file $1 of the test home and exits 0. With no file, it gives an error and exit 1.
+answer() {
+    if [ ! -f "$home/$1" ]; then
+        echo "fake gh: no $1" >&2
+        exit 1
+    fi
+    cat "$home/$1"
+    exit 0
+}
+
+# Records the write with the arguments of the call and the body in $body, then answers it.
+write() {
+    # Each argument goes into the JSON line with no escape, and the body must be one line.
+    for argument in "$@"; do
+        case "$argument" in
+            *'"'* | *'\'* | *[[:cntrl:]]*)
+                echo 'fake gh: an argument has a quote, a backslash or a control character' >&2
+                exit 1
+                ;;
+        esac
+    done
+    case "$body" in
+        '' | *[[:cntrl:]]*)
+            echo 'fake gh: the body is empty or has a control character' >&2
+            exit 1
+            ;;
+    esac
+    list=''
+    for argument in "$@"; do
+        list="$list${list:+,}\"$argument\""
+    done
+    printf '{"args":[%s],"input":%s}\n' "$list" "$body" >>"$home/gh-writes.jsonl"
+    if [ -f "$home/fake-reviews-poll-next.json" ]; then
+        mv "$home/fake-reviews-poll-next.json" "$home/fake-reviews-poll.json" || exit 1
+    fi
+    answer fake-reviews-writes.json
+}
+
+case "$#:$*" in
+    '4:api graphql --input -')
+        body=$(cat)
+        # GHRunner sends the keys in sorted order with no space, so "query" comes first.
+        case "$body" in
+            '{"query":"query Poll('*) answer fake-reviews-poll.json ;;
+            '{"query":"query ReviewContext('*) answer fake-reviews-context.json ;;
+            '{"query":"mutation '*) write "$@" ;;
+        esac
+        echo 'fake gh: unknown query' >&2
+        exit 1
+        ;;
+    '6:api --method POST '*' --input -')
+        body=$(cat)
+        write "$@"
+        ;;
+esac
+
+echo "fake gh: unknown command: $*" >&2
+exit 1

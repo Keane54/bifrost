@@ -1,0 +1,5 @@
+let force = "--force-with-lease"
+let mirror = "--mirror"
+let alias = "alias.x=!sh -c x"
+let pack = "send-pack"
+let http = "http-push"

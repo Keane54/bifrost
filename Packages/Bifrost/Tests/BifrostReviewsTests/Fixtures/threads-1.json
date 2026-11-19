@@ -1,0 +1,48 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "login": "user-me" },
+                    "body": "Add a test here.",
+                    "url": "https://github.com/owner-a/repo-a/pull/7#discussion_r1"
+                  },
+                  {
+                    "author": { "login": "user-d" },
+                    "body": "Done.",
+                    "url": "https://github.com/owner-a/repo-a/pull/7#discussion_r2"
+                  }
+                ]
+              },
+              "isOutdated": false,
+              "isResolved": false,
+              "line": 42,
+              "path": "src/client.ts"
+            },
+            {
+              "comments": {
+                "nodes": [
+                  {
+                    "author": { "login": "user-e" },
+                    "body": "Nit.",
+                    "url": "https://github.com/owner-a/repo-a/pull/7#discussion_r3"
+                  }
+                ]
+              },
+              "isOutdated": true,
+              "isResolved": true,
+              "line": null,
+              "path": "src/other.ts"
+            }
+          ],
+          "pageInfo": { "endCursor": null, "hasNextPage": false }
+        }
+      }
+    }
+  }
+}

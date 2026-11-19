@@ -1,0 +1,5 @@
+{"incidents":[
+  {"name":"Console outage","status":"investigating","impact":"major",
+   "started_at":"2026-11-18T09:03:00.000Z","components":[{"name":"Claude Console"}]},
+  {"name":"No components named","status":"investigating","impact":"minor",
+   "started_at":"2026-11-18T09:10:00.000Z","components":[]}]}

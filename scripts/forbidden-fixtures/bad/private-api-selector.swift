@@ -1,0 +1,1 @@
+let selector = NSSelectorFromString("filterWithType:")

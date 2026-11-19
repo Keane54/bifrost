@@ -1,0 +1,3 @@
+{"incidents":[
+  {"name":"Elevated errors on the API","status":"monitoring","impact":"critical",
+   "started_at":"2026-11-18T09:03:00.000Z","components":[{"name":"Claude API"}]}]}

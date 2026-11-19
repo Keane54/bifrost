@@ -1,0 +1,4 @@
+// The build settings of the temp repo of the rules self-test.
+// This file is the only file that can hold the literal of the release bundle ID.
+
+BIFROST_RELEASE_BUNDLE_ID = com.example.app

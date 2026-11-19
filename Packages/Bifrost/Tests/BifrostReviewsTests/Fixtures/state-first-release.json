@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "turnedOnAt": 1794000000000,
+  "baseline": ["PR_kwDOexample1", "PRRT_kwDOexample2"],
+  "requests": {
+    "owner-a/repo-a#1": { "firstSeen": 1794000000000, "baseline": true },
+    "owner-a/repo-b#2": { "firstSeen": 1794000600000, "baseline": false }
+  },
+  "pauses": { "owner-a/repo-b#2": 1794004200000 },
+  "prs": {
+    "owner-b/repo-c#3": {
+      "handled": {
+        "PRRT_kwDOexample3": { "at": 1794000900000, "lastReplyAt": null },
+        "IC_kwDOexample4": { "at": 1794001000000, "lastReplyAt": 1794000950000 }
+      },
+      "firstCopilotReview": "PRR_kwDOexample5",
+      "lastReviewedCommit": null,
+      "request": {
+        "sessionId": "0b6f3c2a-1d4e-4f5a-9b8c-7d6e5f4a3b21",
+        "name": "repo-c-3-request",
+        "shortId": "0b6f3c2a"
+      },
+      "review": null,
+      "handleOlder": false,
+      "handleCopilot": true,
+      "rerequested": {},
+      "lastError": null
+    }
+  },
+  "posted": [
+    { "id": "IC_kwDOexample6", "prKey": "owner-b/repo-c#3", "body": "Fixed by aaaaaaa", "at": 1794001100000 }
+  ],
+  "drafts": [],
+  "voicePairs": [
+    { "prKey": "owner-a/repo-a#1", "draft": "Draft text", "final": "Final text", "at": 1794001200000 }
+  ]
+}

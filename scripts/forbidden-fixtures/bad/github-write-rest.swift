@@ -1,0 +1,6 @@
+let merge = ["api", "-X", "PUT", "repos/o/r/pulls/7/merge"]
+let method = ["api", "--method=DELETE", "repos/o/r/git/refs/heads/x"]
+let field = ["api", "repos/o/r/issues/7/comments", "-f", "body=x"]
+let input = ["api", "repos/o/r/pulls/7/merge", "--input", "-"]
+let raw = ["--raw-field", "--field", "-F"]
+let short = ["api", "repos/o/r/issues/7/comments", "-fbody=x", "-Fline=1", "-f=body=x"]

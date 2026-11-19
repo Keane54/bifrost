@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sessions and attach</title>
+<style>
+  :root { --bg:#0a0a0a; --panel:#141414; --panel2:#1a1a1a; --edge:rgba(255,255,255,.12); --text:#d2d2d2;
+          --dim:#8a8a8a; --strong:#fff; --cyan:#8fdcec; --purple:#a78bfa; --green:#4ade80; --red:#f87171;
+          --amber:#fbbf24; --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,sans-serif;
+         font-size:14px; line-height:1.55; padding:32px 24px 72px; overflow-x:hidden; }
+  .wrap { max-width:1080px; margin:0 auto; }
+  h1 { font-size:24px; margin:0 0 6px; color:var(--strong); }
+  h2 { font-size:17px; margin:44px 0 4px; color:var(--strong); }
+  h3 { font-size:14px; margin:0 0 4px; color:var(--strong); }
+  h2[id], h3[id], dt[id], #code-map { scroll-margin-top:16px; }
+  p { margin:0 0 10px; max-width:78ch; }
+  .sub { color:#a8a8a8; font-size:15px; max-width:80ch; margin-bottom:16px; }
+  .lead { color:#b4b4b4; margin-bottom:14px; max-width:84ch; }
+  code { font-family:var(--mono); font-size:12.5px; color:var(--cyan); overflow-wrap:anywhere; }
+  code.nw { white-space:nowrap; }
+  a.g { color:inherit; text-decoration:underline dotted rgba(255,255,255,.38); text-underline-offset:3px; }
+  a.g:hover { color:var(--strong); text-decoration-color:var(--cyan); }
+  .toc { margin:0 0 24px; font-size:13px; color:var(--dim); }
+  .toc ol { list-style:none; margin:4px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:4px 18px; }
+  .toc a { color:var(--cyan); text-decoration:none; }
+  .toc a:hover { text-decoration:underline; }
+  .tldr { border:1px solid var(--edge); background:var(--panel); padding:16px 18px; display:grid;
+          grid-template-columns:repeat(3,1fr); gap:18px; }
+  .tldr b { display:block; color:var(--strong); margin-bottom:4px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+  .card { border:1px solid var(--edge); background:var(--panel); padding:12px 14px; min-width:0; }
+  .card p { font-size:13px; margin:0; }
+  .card.go { border-left:3px solid var(--purple); }
+  .card.win { border-left:3px solid var(--green); }
+  .card.hit { border-left:3px solid var(--red); }
+  .layers { display:grid; grid-template-columns:1fr 56px 1.15fr 56px 1fr; margin-top:14px; }
+  .layers.flow { grid-template-columns:1fr 34px 1.2fr 34px 1fr 34px 1fr; }
+  .box { border:1px solid var(--edge); background:var(--panel); padding:12px 14px; min-width:0; font-size:13px; }
+  .box .where { color:var(--dim); font-size:12px; margin-bottom:8px; }
+  .box ul { margin:0; padding-left:16px; }
+  .box li { margin-bottom:3px; }
+  .box.app { border:2px solid var(--purple); } .box.app h3 { color:var(--purple); }
+  .box.cc { border:2px dashed var(--cyan); } .box.cc h3 { color:var(--cyan); }
+  .box.owner { border:2px solid var(--green); }
+  .inner { border:1px solid var(--edge); background:#0f0f0f; padding:7px 10px; margin-top:8px; }
+  .inner .t { color:var(--strong); font-size:12px; }
+  .wall { margin-top:10px; border-top:1px solid var(--edge); padding-top:8px; color:var(--red); }
+  .arrow { display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--dim);
+           font-size:11px; text-align:center; gap:2px; padding:6px 0; }
+  .arrow b { color:var(--strong); font-size:20px; font-weight:400; }
+  .fig { border:1px solid var(--edge); background:var(--panel); margin-top:14px; overflow-x:auto; }
+  .fig svg { display:block; width:100%; min-width:700px; height:auto; }
+  .cap { color:var(--dim); font-size:12px; margin:6px 0 0; max-width:100ch; }
+  svg text { font-family:system-ui,-apple-system,sans-serif; font-size:13px; fill:var(--text);
+             paint-order:stroke; stroke:var(--panel); stroke-width:4px; stroke-linejoin:round; }
+  svg .m { font-family:var(--mono); font-size:12px; fill:var(--cyan); }
+  svg .d { fill:var(--dim); font-size:12px; }
+  svg .h { fill:var(--strong); font-weight:600; }
+  svg .rt { fill:var(--red); } svg .gt { fill:var(--green); } svg .at { fill:var(--amber); }
+  svg .node { fill:var(--panel2); stroke:rgba(255,255,255,.25); }
+  svg .nt { fill:#0f0f0f; stroke:var(--edge); }
+  svg .life { stroke:rgba(255,255,255,.16); stroke-dasharray:4 5; }
+  svg .ln { stroke:#9a9a9a; stroke-width:1.4; fill:none; marker-end:url(#ah); }
+  svg .ln.back { stroke-dasharray:5 4; }
+  svg .ln.red { stroke:var(--red); marker-end:url(#ahr); }
+  svg .ln.cy { stroke:var(--cyan); stroke-dasharray:5 4; marker-end:url(#ahc); }
+  svg .ln.gr { stroke:var(--green); marker-end:url(#ahg); }
+  .scroll { overflow-x:auto; }
+  .scroll table { min-width:560px; }
+  table { border-collapse:collapse; width:100%; margin-top:12px; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--edge); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; font-size:12px; white-space:nowrap; }
+  .note { color:var(--dim); font-size:12px; margin-top:8px; max-width:100ch; }
+  .gloss { display:grid; grid-template-columns:190px 1fr; margin:12px 0 0; font-size:13px;
+           border-top:1px solid var(--edge); }
+  .gloss dt, .gloss dd { margin:0; padding:7px 10px; border-bottom:1px solid var(--edge); }
+  .gloss dt { color:var(--strong); }
+  .gloss dt:target, .gloss dt:target + dd { background:rgba(143,220,236,.08); }
+  @media (max-width:820px) {
+    body { padding:24px 16px 56px; }
+    .tldr, .grid2, .layers, .layers.flow { grid-template-columns:1fr; }
+    .arrow { flex-direction:row; gap:8px; }
+    .arrow b { transform:rotate(90deg); }
+    .arrow br { display:none; }
+    .gloss { grid-template-columns:1fr; }
+    .gloss dt { border-bottom:0; padding-bottom:0; }
+    .gloss dd { padding-top:2px; }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#9a9a9a"/></marker>
+  <marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#f87171"/></marker>
+  <marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#8fdcec"/></marker>
+  <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="#4ade80"/></marker>
+</defs></svg>
+<div class="wrap">
+
+<h1>How Bifrost talks to Claude Code sessions</h1>
+<p class="sub">Claude Code runs the sessions, and Bifrost finds them, shows them and types into them. Bifrost only
+ever connects to a session that Claude Code is running, so closing anything in Bifrost just detaches from it,
+and the session keeps going.</p>
+
+<nav class="toc" aria-label="Contents">On this page
+  <ol>
+    <li><a href="#processes">The processes</a></li>
+    <li><a href="#finding">Finding sessions</a></li>
+    <li><a href="#chat">Opening a chat window</a></li>
+    <li><a href="#attach-state">The attach state</a></li>
+    <li><a href="#hidden">Typing without a window</a></li>
+    <li><a href="#actions">Acting on a session</a></li>
+    <li><a href="#closing">How an attach ends</a></li>
+    <li><a href="#code-map">Where the code lives</a></li>
+    <li><a href="#glossary">Glossary</a></li>
+  </ol>
+</nav>
+
+<div class="tldr">
+  <div><b>Finding sessions</b>The <a class="g" href="#g-registry">registry</a> asks Claude Code for its sessions
+  by running <code>claude agents --json</code> every 2 seconds, and keeps one <a class="g" href="#g-row">row</a>
+  for each session it finds. All the rows live in one place, <code>RegistryService.rows</code>, which the rest
+  of the app reads from.</div>
+  <div><b>Watching one</b>A chat window runs <code>claude attach &lt;short id&gt;</code> inside a pseudo-terminal
+  (<a class="g" href="#g-pty">PTY</a>) and draws what comes back with
+  <a class="g" href="#g-swiftterm">SwiftTerm</a>. A window only changes the session's size while it has focus,
+  and the rest of the time it fits itself to whatever size the session already has.</div>
+  <div><b>Typing without a window</b>When you send something to a session that has no chat window open, Bifrost
+  opens a <a class="g" href="#g-hidden">hidden attach</a> at the session's current size, types into it, and
+  closes it again 1 second after the last write.</div>
+</div>
+
+<h2 id="processes">The processes</h2>
+<p class="lead">To list the sessions, Bifrost runs <code>claude agents</code> as a short-lived command and reads
+its output. To show a session or type into it, Bifrost starts a <code>claude attach</code> child process for each
+open view, either a chat window or a <a class="g" href="#g-hidden">hidden attach</a>, and talks to it through a pseudo-terminal
+(<a class="g" href="#g-pty">PTY</a>).</p>
+<div class="layers">
+  <div class="box app">
+    <h3>Bifrost</h3>
+    <div class="where">The app itself.</div>
+    <div class="inner"><div class="t">The PTY manager (<code>PTYManager</code>)</div>Keeps one PTY for each view:
+      <code>.chat(id)</code> for a chat window and <code>.input(id)</code> for a hidden attach. Bifrost holds the
+      master end, where it reads output and writes keys.</div>
+    <div class="inner"><div class="t">A quick run for the list</div><code>claude agents --json</code>, run with
+      no terminal and no input.</div>
+  </div>
+  <div class="arrow"><b>⇄</b>PTY bytes <br>both ways</div>
+  <div class="box">
+    <h3>The attach child</h3>
+    <div class="where"><code>claude attach &lt;short id&gt;</code>, which keeps one process ID (pid) from start
+      to exit.</div>
+    <ul>
+      <li><code>forkpty</code> creates the PTY and forks a copy of Bifrost to become the child.</li>
+      <li>In that copy, <code>login_tty</code> makes the PTY its
+        <a class="g" href="#g-controlling">controlling terminal</a>.</li>
+      <li><code>posix_spawn</code> with <code>POSIX_SPAWN_SETEXEC</code> then swaps the copy for
+        <code>claude</code>, keeping the same pid.</li>
+      <li>The child's environment gains <code>TERM=xterm-256color</code> and <code>COLORTERM=truecolor</code>, so
+        Claude Code knows it can use full colour.</li>
+    </ul>
+    <div class="wall">A close sends <a class="g" href="#g-sighup">SIGHUP</a> to this pid and nothing else.</div>
+  </div>
+  <div class="arrow"><b>→</b>Claude Code's <br>own link</div>
+  <div class="box cc">
+    <h3>Claude Code</h3>
+    <div class="where">Its background service, which Bifrost doesn't own.</div>
+    <div class="inner"><div class="t">The session</div>An <a class="g" href="#g-owned">owned</a> (background)
+      session, which keeps running when an attach goes away.</div>
+    <div class="inner"><div class="t">Its terminal size</div>Any attach can change it, and the new size applies to
+      every client. Bifrost reads it straight from the session's process (<code>SessionSizeReader</code>) and only
+      ever changes it through an attach.</div>
+  </div>
+</div>
+<p class="note">Bifrost forks first because on macOS <code>posix_spawn</code> on its own can't give the child a
+controlling terminal, and a child without one never receives <a class="g" href="#g-sigwinch">SIGWINCH</a>, the
+signal that tells it the terminal was resized. The spawn also runs off the
+<a class="g" href="#g-main-actor">main actor</a>, because an <a class="g" href="#g-endpoint">endpoint scanner</a>
+can hold up every program start while it checks it, which would freeze the interface each time a chat
+opened.</p>
+
+<h2 id="finding">Finding sessions</h2>
+<p class="lead">The <a class="g" href="#g-registry">registry</a> (<code>RegistryService</code>) keeps track of
+every session. It runs four loops that gather what Claude Code reports, and passes the results through
+<code>SessionRegistry</code>, which holds the rules for matching each report to a
+<a class="g" href="#g-row">row</a> and deciding what state that row is in.</p>
+<div class="layers flow">
+  <div class="box">
+    <h3>Inputs</h3>
+    <ul>
+      <li><code>claude agents --json</code>: the sessions running now</li>
+      <li><code>claude agents --json --all</code>: every session Claude Code knows about</li>
+      <li>Events and usage from the <a class="g" href="#g-live">Live details mod</a></li>
+      <li>The git branch of each session's folder</li>
+      <li>A clock tick</li>
+    </ul>
+  </div>
+  <div class="arrow"><b>→</b></div>
+  <div class="box app">
+    <h3>RegistryService</h3>
+    <div class="where">Runs on the <a class="g" href="#g-main-actor">main actor</a>.</div>
+    <div class="inner"><div class="t">Read the list</div><code>AgentList(output:)</code> reads the JSON. It skips
+      an entry it can't use, such as one with no session ID, and marks the whole list as partial. A list that
+      can't be read at all gives a friendly reason instead.</div>
+    <div class="inner"><div class="t">Match and decide</div><code>SessionRegistry</code> finds the row each entry
+      belongs to, and <code>MachineState</code> works out the row's state and its
+      <a class="g" href="#g-box">box</a>.</div>
+    <div class="inner"><div class="t">Save</div>Writes <code>registry.json</code>, but only when something
+      changed. The file has the same format as the Electron app's.</div>
+  </div>
+  <div class="arrow"><b>→</b></div>
+  <div class="box owner">
+    <h3><code>RegistryService.rows</code></h3>
+    <div class="where">The single place the rows live (user decision, 2026-11-16).</div>
+    <ul>
+      <li>Rebuilt after each change.</li>
+      <li>Setting a value that hasn't changed doesn't notify anyone.</li>
+      <li>A failed poll keeps the existing rows and sets <code>error</code>.</li>
+    </ul>
+  </div>
+  <div class="arrow"><b>→</b>read</div>
+  <div class="box">
+    <h3>Readers</h3>
+    <ul>
+      <li>The session list and the panels.</li>
+      <li>Each chat window, through <code>ChatTerminals</code>.</li>
+      <li><code>SessionInput</code>, which checks the row again before every write.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="scroll"><table>
+  <tr><th>Loop</th><th>How often</th><th>What it does</th></tr>
+  <tr><td>Active</td><td><code>claude agents --json</code> every 2 s (a setting), or every 15 s or more while the
+    window is hidden. When the window shows again, the next poll runs straight away.</td><td>Updates the rows,
+    their states and the error line.</td></tr>
+  <tr><td>All</td><td><code class="nw">claude agents --json --all</code> every 30 s</td><td>Forgets a session once
+    it has been missing from two complete lists in a row.</td></tr>
+  <tr><td>Branch</td><td>Every 10 s, one folder at a time</td><td>Reads the folder's <code>.git/HEAD</code> file
+    directly, and only runs git when that file looks unusual.</td></tr>
+  <tr><td>Tick</td><td>Every 1 s</td><td>Turns a yellow box red once it has waited too long (10 minutes by default), and drops a session's
+    live status 90 s after its last event.</td></tr>
+</table></div>
+<p class="note">Only one <code>claude agents</code> process runs at a time, so the active and <code>--all</code>
+polls never overlap.</p>
+
+<p style="margin-top:18px">Each row keeps the first session ID Bifrost saw for it, even after a <code>/clear</code>
+or a resume gives the session a new one, so anything stored against the row, such as its name or priority, stays
+with it. Rows come in two kinds. <a class="g" href="#g-owned">Owned</a> rows are background sessions that Claude
+Code's own service runs, and these are the ones Bifrost can attach to.
+<a class="g" href="#g-external">External</a> rows are sessions running in a terminal somewhere else, so Bifrost
+can show their status but can't attach to them.</p>
+<p>Each row also has a state, shown as a label in the session list, and sometimes a box, the coloured flag that
+tells you a session wants your attention. A session that has ended is <a class="g" href="#g-parked">parked</a>,
+and its row stays in the list.</p>
+<div class="scroll"><table>
+  <tr><th>State (label)</th><th>What puts a row there</th><th>Box</th></tr>
+  <tr><td><code>working</code> (Working)</td><td>You sent a prompt, a tool finished, or the list reports the
+    session as <code>busy</code></td><td>None</td></tr>
+  <tr><td rowspan="2"><code>needsYou</code> (Alert)</td><td>A permission request, an <code>AskUserQuestion</code>,
+    or a <code>permission_prompt</code> notification</td><td>Red (<code>prompt</code>)</td></tr>
+  <tr><td>The turn ended and the session is waiting for you</td><td>Yellow, turning red (<code>escalated</code>)
+    after 10 minutes. The time is a setting, and 0 turns it off. A PR session never gets a yellow box.</td></tr>
+  <tr><td><code>error</code> (Error)</td><td>A <code>StopFailure</code> event</td><td>Red
+    (<code>error</code>)</td></tr>
+  <tr><td><code>idle</code> (Idle)</td><td>You stopped the turn yourself, or the list went idle after the session
+    was working</td><td>None, and no alert</td></tr>
+  <tr><td><code>parked</code> (Parked)</td><td>The session ended (<code>SessionEnd</code>). Only a
+    <code>SessionStart</code>, or a later list entry that has a pid, brings it back.</td><td>None</td></tr>
+</table></div>
+<p class="note">The rules live in <code>MachineState</code> in <code>StateMachine.swift</code>, and
+<code>docs/behaviour/registry.md</code> covers the edge cases.</p>
+
+<h2 id="chat">Opening a chat window</h2>
+<p class="lead">Each open chat gets its own terminal (<code>ChatTerminal</code>), which attaches to the session
+once its <a class="g" href="#g-row">row</a> is <a class="g" href="#g-owned">owned</a>, isn't <a class="g" href="#g-parked">parked</a> and has a
+short ID from Claude Code (<code>AttachRules.target</code>). The attach always runs in the folder recorded on the
+row, or in <code>/</code> if the row has none. Moving a chat around the canvas, stacking it, switching tabs,
+minimising it or tearing it out all keep the same attach, since only opening or closing the chat panel starts or
+ends one.</p>
+<div class="fig"><svg viewBox="0 0 980 548" role="img" aria-label="Sequence of a chat window opening">
+  <g><rect class="node" x="15" y="12" width="150" height="40"/><text x="90" y="30" text-anchor="middle" class="h">ChatTerminal</text><text x="90" y="45" text-anchor="middle" class="d">one for each open chat</text>
+  <rect class="node" x="225" y="12" width="150" height="40"/><text x="300" y="30" text-anchor="middle" class="h">SessionInput</text><text x="300" y="45" text-anchor="middle" class="d">the session's job queue</text>
+  <rect class="node" x="425" y="12" width="150" height="40"/><text x="500" y="30" text-anchor="middle" class="h">PTYManager</text><text x="500" y="45" text-anchor="middle" class="d">one PTY for each view</text>
+  <rect class="node" x="645" y="12" width="150" height="40"/><text x="720" y="30" text-anchor="middle" class="h">claude attach</text><text x="720" y="45" text-anchor="middle" class="d">the child process</text>
+  <rect class="node" x="825" y="12" width="150" height="40"/><text x="900" y="30" text-anchor="middle" class="h">the session</text><text x="900" y="45" text-anchor="middle" class="d">in Claude Code</text></g>
+  <line class="life" x1="90" y1="52" x2="90" y2="540"/><line class="life" x1="300" y1="52" x2="300" y2="540"/><line class="life" x1="500" y1="52" x2="500" y2="540"/><line class="life" x1="720" y1="52" x2="720" y2="540"/><line class="life" x1="900" y1="52" x2="900" y2="540"/>
+  <rect class="nt" x="20" y="64" width="262" height="26"/><text x="30" y="82">wait until the row can attach: <tspan class="m">AttachRules.target</tspan></text>
+  <rect class="nt" x="20" y="96" width="262" height="26"/><text x="30" y="114">not focused? Read the session&#39;s size once</text>
+  <line class="ln" x1="90" y1="146" x2="298" y2="146"/><text x="100" y="139" class="m">chatOpening(view)</text>
+  <line class="ln back" x1="300" y1="176" x2="92" y2="176"/><text x="110" y="169" class="d">once no jobs are left; open marked</text>
+  <rect class="nt" x="20" y="188" width="440" height="42"/><text x="30" y="205">check the rows again, which gives a <tspan class="m">CheckedAttach</tspan>:</text><text x="30" y="222" class="m">AttachRules.check(rows, view:, shortId:)</text>
+  <line class="ln" x1="90" y1="260" x2="498" y2="260"/><text x="100" y="253" class="m">open(checked, size:)</text>
+  <rect class="nt" x="392" y="272" width="300" height="42"/><text x="402" y="289">closes this view's old PTY first, then runs</text><text x="402" y="306"><tspan class="m">attach &lt;short id&gt;</tspan> in the checked folder</text>
+  <g transform="translate(0,48)">
+  <line class="ln" x1="500" y1="308" x2="718" y2="308"/><text x="512" y="301" class="m">forkpty + posix_spawn</text><text x="512" y="324" class="d">off the main actor</text>
+  <line class="ln cy" x1="720" y1="346" x2="898" y2="346"/><text x="732" y="339">attaches</text>
+  <line class="ln back" x1="500" y1="378" x2="92" y2="378"/><text x="270" y="371"><tspan class="m">PTYAttach</tspan>, which the window now owns</text>
+  <line class="ln" x1="90" y1="410" x2="298" y2="410"/><text x="100" y="403" class="m">opened(view, shortId)</text>
+  <line class="ln gr" x1="720" y1="444" x2="92" y2="444"/><text x="250" y="437">output: to SessionInput and the size watcher, then SwiftTerm</text>
+  <line class="ln" x1="90" y1="476" x2="718" y2="476"/><text x="310" y="469">your keys and pastes: <tspan class="m">write</tspan></text>
+  </g>
+</svg></div>
+<p class="cap">Opening the chat and running the session's jobs (queued sends and Interrupts) take turns, so a
+<a class="g" href="#g-hidden">hidden attach</a> never runs alongside the chat's own. <code>PTYManager.open</code>
+only accepts a <code>CheckedAttach</code>, and only <code>AttachRules.check</code> can make one, so nothing can open
+a PTY without the check, and the manager builds the <code>claude attach</code> arguments itself from the checked
+short ID. If you close the window while the child is still starting, the child gets a
+<a class="g" href="#g-sighup">SIGHUP</a> as soon as the spawn finishes.</p>
+
+<h3 id="attach-state" style="margin-top:22px">The attach state</h3>
+<p>Getting a chat window connected takes several steps, and most of them wait on something outside the window,
+such as the session list, a size read or a new process starting up. Bifrost tracks how far along each window is
+with a single value, its attach state (<code>AttachState</code> in <code>ChatTerminal.swift</code>). A window is
+always in exactly one state, and each state carries only the details that matter while the window is in it.</p>
+<p>Once attached, the window also has to watch for Claude Code's agent view. Pressing the left arrow on an empty
+prompt opens it, showing a list of sessions across all projects, and anything typed there doesn't reach this
+session. So Bifrost watches the screen for it, blocks your typing while it's open, and attaches again to get back
+to the session. It checks the screen 250 ms after output stops, or at least once a second while output keeps
+coming, and gives up after 3 reattaches in 60 seconds.</p>
+<div class="scroll"><table>
+  <tr><th>State</th><th>What it means</th><th>What it carries</th></tr>
+  <tr><td><code class="nw">waiting</code></td><td>Every window starts here, waiting for the first session list, for its <a class="g" href="#g-row">row</a>
+    to be ready to attach, or for its panel to get a size.</td><td>Nothing</td></tr>
+  <tr><td><code class="nw">readingSize</code></td><td>A window that isn't focused reads the session's current size once
+    before its first open, so it can open at that size instead of resizing the session.</td><td>Nothing</td></tr>
+  <tr><td><code class="nw">opening</code></td><td>The open is under way: the window waits for the session's queued jobs, then
+    starts <code>claude attach</code>.</td><td>The task doing the open, so closing the window can cancel
+    it</td></tr>
+  <tr><td><code class="nw">attached</code></td><td>The attach is running, and its output is going to the terminal.</td><td>
+    Whether the screen has shown any text yet (<code>textShown</code>), and the agent view watch
+    (<code>agentView</code>): <code>.free</code> when you can type, <code>.waiting</code> while the agent view is
+    up and the row can't attach again yet, or <code>.gaveUp</code> after too many reattaches</td></tr>
+  <tr><td><code class="nw">reattaching</code></td><td>The agent view appeared, so the window is opening a fresh attach. Your
+    typing is blocked until it's done.</td><td>The task doing the new open</td></tr>
+  <tr><td><code class="nw">ended</code></td><td>The attach stopped, and the window shows one line saying why.</td><td>That
+    line, and whether the agent view watch had already given up (<code>gaveUp</code>), so the window keeps
+    showing the give-up message</td></tr>
+  <tr><td><code class="nw">closed</code></td><td>The window has closed, and nothing happens after this.</td><td>Nothing</td></tr>
+</table></div>
+<p style="margin-top:14px">Keeping each detail inside the state it belongs to is what rules out nonsense
+combinations. If the window kept separate flags instead, say one for attached, one for ended and an optional
+open task, nothing would stop it from being ended and attached at once, or ended with an open still
+running in the background, and every piece of code would need to check for those mixes. With one state, an open
+task can only exist while the window is <code>opening</code> or <code>reattaching</code>, an end message only once
+it's <code>ended</code>, and the agent view watch only while it's <code>attached</code>. Swift also checks that
+every <code>switch</code> over the state handles each case, so a new state can't be left unhandled somewhere.</p>
+<div class="fig"><svg viewBox="0 0 980 365" role="img" aria-label="The attach states of a chat window and the moves between them">
+  <line class="ln" x1="310" y1="14" x2="310" y2="50"/><text x="318" y="28" class="d">window opens</text>
+  <rect class="node" x="20" y="52" width="130" height="46" rx="6"/><text x="85" y="80" text-anchor="middle" class="m">readingSize</text>
+  <rect class="node" x="240" y="52" width="140" height="46" rx="6"/><text x="310" y="80" text-anchor="middle" class="m">waiting</text>
+  <rect class="node" x="470" y="52" width="150" height="46" rx="6"/><text x="545" y="80" text-anchor="middle" class="m">opening</text>
+  <rect class="node" x="720" y="36" width="240" height="78" rx="6" style="stroke:var(--green)"/><text x="840" y="58" text-anchor="middle" class="m">attached</text><text x="840" y="78" text-anchor="middle" class="d">textShown, agentView:</text><text x="840" y="98" text-anchor="middle" class="d">.free · .waiting · .gaveUp</text>
+  <rect class="node" x="470" y="232" width="150" height="46" rx="6"/><text x="545" y="252" text-anchor="middle" class="m">ended</text><text x="545" y="269" text-anchor="middle" class="d">shows one line</text>
+  <rect class="node" x="770" y="232" width="180" height="46" rx="6"/><text x="860" y="260" text-anchor="middle" class="m">reattaching</text>
+  <line class="ln" x1="240" y1="66" x2="152" y2="66"/><text x="196" y="58" text-anchor="middle" class="d">not focused</text>
+  <line class="ln" x1="150" y1="86" x2="238" y2="86"/><text x="196" y="104" text-anchor="middle" class="d">size read</text>
+  <line class="ln" x1="380" y1="75" x2="468" y2="75"/><text x="424" y="66" text-anchor="middle" class="d">row ready</text>
+  <line class="ln" x1="620" y1="75" x2="718" y2="75"/><text x="669" y="66" text-anchor="middle" class="m">PTYAttach</text>
+  <line class="ln" x1="545" y1="98" x2="545" y2="230"/><text x="537" y="160" text-anchor="end" class="m">[open failed: …]</text>
+  <line class="ln" x1="735" y1="114" x2="622" y2="240"/><text x="660" y="168" text-anchor="end">child exited</text><text x="660" y="184" text-anchor="end">or a write failed</text>
+  <line class="ln" x1="790" y1="114" x2="790" y2="230"/><line class="ln" x1="930" y1="230" x2="930" y2="116"/>
+  <text x="860" y="160" text-anchor="middle">↓ agent view</text><text x="860" y="178" text-anchor="middle">↑ attached again</text><text x="860" y="196" text-anchor="middle" class="d">3 times in 60 s at most</text>
+  <line class="ln" x1="770" y1="266" x2="622" y2="266"/><text x="696" y="258" text-anchor="middle" class="d">open failed</text>
+  <path class="ln" d="M470,262 H310 V100"/><text x="318" y="200">Resume</text><text x="318" y="216" class="m">restart()</text>
+  <rect x="20" y="304" width="940" height="48" rx="6" style="fill:#140c0c;stroke:var(--red);stroke-dasharray:5 4"/>
+  <text x="36" y="324"><tspan class="rt">closed</tspan>: reached from any state when the window closes (<tspan class="m">ChatTerminal.dispose</tspan>).</text>
+  <text x="36" y="342" class="d">Any open in progress is cancelled, and the window's own attach gets SIGHUP. Nothing happens after this.</text>
+</svg></div>
+<p class="cap">A failed open isn't retried automatically, because a retry could keep hitting the same error, so you
+close the window and open it again instead.</p>
+
+<div class="grid2">
+  <div class="card go"><h3>The output drain</h3><p>Output from the attach is held until the window asks for it,
+  then handed over in chunks of up to 262,144 bytes, with at most one chunk for each turn of the
+  <a class="g" href="#g-main-actor">main actor</a> (<code>PTYAttach.output</code>). A sudden burst of output
+  therefore can't freeze the window. And once 1 MiB of output is waiting unread, Bifrost stops reading the
+  <a class="g" href="#g-pty">PTY</a> until the window has caught up to under 256 KiB. Claude Code's writes simply
+  wait in the meantime, so a slow window never makes the app's memory grow without limit.</p></div>
+  <div class="card go"><h3>The size sync</h3><p>A session has one size shared by every client, so only the focused
+  chat window changes it. A window without focus takes whatever size the session already has, and zooms out if
+  that doesn't fit its panel, though never below 10%. Every resize makes Claude Code redraw the whole screen, so
+  Bifrost waits until resizing has been quiet for 150 ms and sends only the last size. There's one catch: sending
+  a size the terminal already has produces no <a class="g" href="#g-sigwinch">SIGWINCH</a>. So when a window gains
+  focus and its terminal already has the right size but the session doesn't, Bifrost first sends a size one row
+  off, then the right size 60 ms later.</p></div>
+</div>
+
+<h2 id="hidden">Typing without a window: the hidden attach</h2>
+<p class="lead">Sending a message, running a slash command, renaming a session and Interrupt all go through
+<code>SessionInput</code> as jobs, which run one at a time for each session. If the session's chat window is open,
+a job types into that window's attach. If it isn't, the job opens a
+<a class="g" href="#g-hidden">hidden attach</a>: a <code>claude attach</code> with no window, paired with a
+<a class="g" href="#g-swiftterm">SwiftTerm</a> terminal that has no view (<code>HiddenTerminalModel</code>) so it
+can answer the questions Claude Code asks its terminal, such as where the cursor is. Here's what happens when you
+press Interrupt (Cmd+.) on a session with no window open.</p>
+<div class="fig"><svg viewBox="0 0 980 632" role="img" aria-label="Sequence of an Interrupt through a hidden attach">
+  <g><rect class="node" x="5" y="12" width="130" height="40"/><text x="70" y="30" text-anchor="middle" class="h">You</text><text x="70" y="45" text-anchor="middle" class="d">Cmd+. on a row</text>
+  <rect class="node" x="185" y="12" width="130" height="40"/><text x="250" y="30" text-anchor="middle" class="h">SessionInput</text><text x="250" y="45" text-anchor="middle" class="d">runs jobs in order</text>
+  <rect class="node" x="360" y="12" width="140" height="40"/><text x="430" y="30" text-anchor="middle" class="h">SessionSizeReader</text><text x="430" y="45" text-anchor="middle" class="d">only reads</text>
+  <rect class="node" x="535" y="12" width="130" height="40"/><text x="600" y="30" text-anchor="middle" class="h">PTYManager</text><text x="600" y="45" text-anchor="middle" class="d">view .input(id)</text>
+  <rect class="node" x="705" y="12" width="130" height="40"/><text x="770" y="30" text-anchor="middle" class="h">claude attach</text><text x="770" y="45" text-anchor="middle" class="d">hidden</text>
+  <rect class="node" x="855" y="12" width="120" height="40"/><text x="915" y="30" text-anchor="middle" class="h">the session</text><text x="915" y="45" text-anchor="middle" class="d">in Claude Code</text></g>
+  <line class="life" x1="70" y1="52" x2="70" y2="622"/><line class="life" x1="250" y1="52" x2="250" y2="622"/><line class="life" x1="430" y1="52" x2="430" y2="622"/><line class="life" x1="600" y1="52" x2="600" y2="622"/><line class="life" x1="770" y1="52" x2="770" y2="622"/><line class="life" x1="915" y1="52" x2="915" y2="622"/>
+  <line class="ln" x1="70" y1="84" x2="248" y2="84"/><text x="82" y="77" class="m">interrupt(id)</text>
+  <rect class="nt" x="180" y="98" width="330" height="42"/><text x="190" y="115">One already waiting or running? Do nothing.</text><text x="190" y="132">Cancel any send that hasn't written yet.</text>
+  <rect class="nt" x="180" y="148" width="330" height="42"/><text x="190" y="165">Check the row: owned, running, short ID.</text><text x="190" y="182">A red box never blocks Interrupt.</text>
+  <rect x="180" y="198" width="560" height="28" style="fill:#14110a;stroke:var(--amber);stroke-dasharray:5 4"/><text x="190" y="217"><tspan class="at">Chat attach open?</tspan> Write the Esc there, leave it open, and skip the rest.</text>
+  <line class="ln" x1="250" y1="258" x2="428" y2="258"/><text x="262" y="251" class="m">read(pid)</text><text x="440" y="251" class="d">finds the session&#39;s terminal, reads its size</text>
+  <line class="ln back" x1="430" y1="286" x2="252" y2="286"/><text x="262" y="279" class="d">the current size</text><text x="262" y="302" class="d">can&#39;t read it? Refuse and send nothing</text>
+  <rect class="nt" x="180" y="318" width="540" height="42"/><text x="190" y="335">The rows can change during the read, so check again for a <tspan class="m">CheckedAttach</tspan>:</text><text x="190" y="352" class="m">AttachRules.check(rows, view: .input(id), shortId:)</text>
+  <g transform="translate(0,66)">
+  <line class="ln" x1="250" y1="330" x2="598" y2="330"/><text x="262" y="323" class="m">open(checked, size:)</text><text x="262" y="346" class="d">in /, with a HiddenTerminalModel at that size</text>
+  <line class="ln" x1="600" y1="364" x2="768" y2="364"/><text x="612" y="357">spawn</text>
+  <line class="ln cy" x1="770" y1="392" x2="913" y2="392"/><text x="780" y="385">attaches at that size</text>
+  <line class="ln back" x1="770" y1="422" x2="252" y2="422"/><text x="455" y="415">first output</text>
+  <rect class="nt" x="180" y="434" width="330" height="26"/><text x="190" y="452">wait 300 ms, then check the row again</text>
+  <line class="ln" x1="250" y1="484" x2="768" y2="484"/><text x="262" y="477" class="m">Esc (0x1b)</text>
+  <line class="ln cy" x1="770" y1="504" x2="913" y2="504"/><text x="780" y="497">Escape key</text>
+  <line class="ln red" x1="250" y1="540" x2="768" y2="540"/><text x="262" y="533" class="rt">1 s later: close it, SIGHUP to this pid only</text>
+  <text x="915" y="545" text-anchor="middle" class="gt">keeps running</text>
+  </g>
+</svg></div>
+
+<div class="grid2">
+  <div class="card win"><h3>One attach per session</h3><p>Any attach can resize the session, so Bifrost keeps to
+  one attach per session at a time. A chat window waits for the session's queued jobs to finish before it opens
+  (<code>chatOpening</code>), and any jobs that arrive while it's opening wait for it, then type into the chat's
+  attach.</p></div>
+  <div class="card win"><h3>A hidden attach never resizes the session</h3><p>It opens at the size the session
+  already has, in the root folder (<code>/</code>), and never sends a resize. If Bifrost can't read the session's
+  size, the job sends nothing and shows "Bifrost cannot read the session size. Open the chat window and send from
+  there."</p></div>
+  <div class="card hit"><h3>SIGHUP goes to the attach child only</h3><p>Closing an attach
+  (<code>PTYAttach.close</code>) sends the hang-up signal, <a class="g" href="#g-sighup">SIGHUP</a>, to the attach
+  child's pid and nothing else. The child leads its own Unix process session, so the hang-up stops with it and
+  never reaches the Claude Code session. Once the child has exited and been <a class="g" href="#g-reap">reaped</a>,
+  Bifrost never signals that pid again, because macOS can give it to a new process.</p></div>
+  <div class="card go"><h3>Interrupt timing</h3><p>Interrupt sends a single Esc 300 ms after the attach's first
+  output. It doesn't wait for the output to go quiet, because a working session's spinner never stops. Pressing
+  Interrupt again within 1.5 s does nothing, since two Escs in a row open Claude Code's rewind menu, and the next
+  write after an Esc waits 200 ms so the session doesn't read the two as one key. Ordinary sends work differently:
+  they wait for 1.5 s of quiet output and give up after 15 s. The hidden terminal also stays silent when Claude
+  Code asks whether it supports the kitty keyboard protocol, so Claude Code keeps the plain key encoding and a raw
+  Esc still means the Escape key.</p></div>
+</div>
+
+<h2 id="actions">Acting on a session</h2>
+<p class="lead">Everything you do to a session from the window, whether it's a button in the Selected Item panel, a
+key, an entry in the row menu or the side bar's New session button, goes through one
+<a class="g" href="#g-runner">action runner</a> (<code>ActionRunner</code>). It gets the action and the row's ID,
+never the row itself, so it always reads the <a class="g" href="#g-row">row</a> as it is at that moment, works out
+what the action means for it, asks first where the action needs a yes, and then hands the work to the part that
+does it. The shell makes the runner at the first change of the session list after Bifrost has found
+<code>claude</code>, because the session commands and the session input only exist from then on. Until that moment
+the buttons and keys do nothing.</p>
+<div class="fig"><svg viewBox="0 0 980 280" role="img" aria-label="How an action travels from the window to Claude Code">
+  <g><rect class="node" x="15" y="16" width="170" height="40"/><text x="100" y="34" text-anchor="middle" class="h">A button</text><text x="100" y="49" text-anchor="middle" class="d">Selected Item, side bar</text>
+  <rect class="node" x="15" y="76" width="170" height="40"/><text x="100" y="94" text-anchor="middle" class="h">A key</text><text x="100" y="109" text-anchor="middle" class="d">KeyCommands</text>
+  <rect class="node" x="15" y="136" width="170" height="40"/><text x="100" y="154" text-anchor="middle" class="h">The row menu</text><text x="100" y="169" text-anchor="middle" class="d">a right-click on a row</text>
+  <rect class="node" x="15" y="196" width="170" height="40"/><text x="100" y="214" text-anchor="middle" class="h">The send box</text><text x="100" y="229" text-anchor="middle" class="d">SendBoxModel</text>
+  <rect class="node" x="265" y="96" width="190" height="60"/><text x="360" y="120" text-anchor="middle" class="h">ActionRunner</text><text x="360" y="137" text-anchor="middle" class="d">reads the row by its ID</text><text x="360" y="151" text-anchor="middle" class="d">and plans the action</text>
+  <rect class="node" x="265" y="206" width="190" height="44"/><text x="360" y="225" text-anchor="middle" class="h">DialogHost</text><text x="360" y="241" text-anchor="middle" class="d">confirm, Rename, New session</text>
+  <rect class="node" x="545" y="16" width="200" height="40"/><text x="645" y="34" text-anchor="middle" class="h">SessionInput</text><text x="645" y="49" text-anchor="middle" class="d">types a message or an Esc</text>
+  <rect class="node" x="545" y="106" width="200" height="40"/><text x="645" y="124" text-anchor="middle" class="h">SessionActions</text><text x="645" y="139" text-anchor="middle" class="d">the session commands</text>
+  <rect class="node" x="545" y="196" width="200" height="40"/><text x="645" y="214" text-anchor="middle" class="h">AppActions, TerminalLauncher</text><text x="645" y="229" text-anchor="middle" class="d">opens and copies</text>
+  <rect class="node" x="800" y="16" width="170" height="40"/><text x="885" y="34" text-anchor="middle" class="h">claude attach</text><text x="885" y="49" text-anchor="middle" class="d">the chat&#39;s or a hidden one</text>
+  <rect class="node" x="800" y="106" width="170" height="40"/><text x="885" y="124" text-anchor="middle" class="h">claude --bg, stop, rm</text><text x="885" y="139" text-anchor="middle" class="d">and the Take control signal</text>
+  <rect class="node" x="800" y="196" width="170" height="40"/><text x="885" y="214" text-anchor="middle" class="h">macOS apps</text><text x="885" y="229" text-anchor="middle" class="d">Finder, editors, terminals</text></g>
+  <line class="ln" x1="185" y1="36" x2="263" y2="110"/><line class="ln" x1="185" y1="96" x2="263" y2="120"/>
+  <line class="ln" x1="185" y1="156" x2="263" y2="132"/><line class="ln" x1="185" y1="216" x2="263" y2="142"/>
+  <line class="ln" x1="345" y1="156" x2="345" y2="204"/><line class="ln back" x1="375" y1="206" x2="375" y2="158"/>
+  <line class="ln" x1="455" y1="112" x2="543" y2="40"/><line class="ln" x1="455" y1="126" x2="543" y2="126"/>
+  <line class="ln" x1="455" y1="140" x2="543" y2="212"/>
+  <line class="ln cy" x1="745" y1="36" x2="798" y2="36"/><line class="ln cy" x1="745" y1="126" x2="798" y2="126"/>
+  <line class="ln" x1="745" y1="216" x2="798" y2="216"/>
+</svg></div>
+<p class="cap">A dashed arrow back from the dialog is your answer. The cyan arrows are the only places where an
+action reaches Claude Code.</p>
+
+<div class="grid2">
+  <div class="card go"><h3>The send box</h3><p>The box at the bottom of the Selected Item panel keeps a draft for each
+  session, so switching rows never mixes them up, and a failed send keeps the text. Sending goes through the same
+  <code>SessionInput</code> job queue as everything else on this page: into the chat window's attach when one is open,
+  or through a <a class="g" href="#g-hidden">hidden attach</a> when it isn't.</p></div>
+  <div class="card go"><h3>Stop and Resume</h3><p>Stop runs <code>claude stop &lt;short id&gt;</code> for an
+  <a class="g" href="#g-owned">owned</a> session, asking first only while the session is working. It then waits,
+  for 20 seconds at most, until the next poll shows the row as <a class="g" href="#g-parked">parked</a>, and the
+  session stays locked meanwhile, so a Delete straight after it can't run a second stop. Resume runs <code>claude --bg --resume</code>,
+  waits for the row to run again and restarts its chat window, so an ended window attaches again.</p></div>
+  <div class="card hit"><h3>Take control</h3><p>Take control moves an <a class="g" href="#g-external">external</a>
+  session, one running in a terminal of its own, into Bifrost. After you confirm, Bifrost opens the chat window
+  with its loader, checks that the process is still the same <code>claude</code>, sends it SIGTERM (the only
+  signal the session actions ever send to a session), and resumes the session in the background. The loader stays
+  until the chat shows Claude Code, and if anything fails the window closes again.</p></div>
+  <div class="card win"><h3>Delete</h3><p>Delete checks the worktree for unmerged work first and shows what it
+  found in its dialog. Then it stops the session if it runs and runs <code>claude rm &lt;short id&gt;</code>, and
+  the row leaves the list straight away. A folder that another session still uses is never removed: its
+  <code>claude rm</code> waits until the last session there goes.</p></div>
+</div>
+
+<h2 id="closing">How an attach ends</h2>
+<p class="lead">An attach can end from Bifrost's side, when you close a window or quit, or from the other end,
+when the attach process exits or stops accepting input.</p>
+<div class="scroll"><table>
+  <tr><th>When</th><th>What Bifrost does</th><th>What you see</th></tr>
+  <tr><td>You close a chat window</td><td>Cancels any open still in progress and sends
+    <a class="g" href="#g-sighup">SIGHUP</a> to that window's own attach (<code>ChatTerminal.dispose</code>). A
+    newer window on the same session keeps its own attach.</td><td>Nothing. The session keeps running.</td></tr>
+  <tr><td>The window closes while the child is still starting</td><td>The new child gets SIGHUP as soon as the spawn
+    finishes.</td><td>Nothing.</td></tr>
+  <tr><td>The attach child exits</td><td>The window ends.</td><td><code>[process ended: code N]</code></td></tr>
+  <tr><td>A write fails</td><td>The window ends.</td><td><code>[input failed: the attach ended]</code></td></tr>
+  <tr><td>The open fails</td><td>Stops there and doesn't retry, so the same error can't repeat in a loop.</td><td><code>[open failed: &lt;reason&gt;]</code>.
+    Close the window and open it again.</td></tr>
+  <tr><td>The agent view shows</td><td>Attaches again, and gives up after 3 times in 60 s.</td><td>The terminal
+    resets. After the third time, a note asks you to close the window and open it again.</td></tr>
+  <tr><td>You press Resume on an ended window</td><td><code>ChatTerminal.restart</code> resets the terminal and waits
+    for a <a class="g" href="#g-row">row</a> that can attach.</td><td>A fresh attach.</td></tr>
+  <tr><td>A <a class="g" href="#g-hidden">hidden attach</a> job ends</td><td>Closes the attach 1 s after the last
+    write, or straight away after an error.</td><td>Nothing.</td></tr>
+  <tr><td>You quit</td><td><code>AppServices.stop</code> stops the session commands, the
+    <a class="g" href="#g-registry">registry</a> and the Live details server, and <code>PTYManager.closeAll</code>
+    sends SIGHUP to every attach. A <code>claude rm</code> that's running is left to finish.</td><td>Every session
+    keeps running.</td></tr>
+</table></div>
+
+<div id="code-map"></div>
+<h2>Where the code lives</h2>
+<p class="lead">Code paths are relative to <code>Packages/Bifrost/Sources/</code>, and a file name on its own sits
+in the same folder as the path before it.</p>
+<div class="scroll"><table>
+  <tr><th>Part</th><th>Files</th></tr>
+  <tr><td>The registry</td><td><code>BifrostSessions/Services/RegistryService.swift</code>, <code>BifrostSessions/Model/Registry.swift</code>,
+    <code>StateMachine.swift</code>, <code>Agents.swift</code>, <code>Model.swift</code></td></tr>
+  <tr><td>Finding and running the claude command</td><td><code>BifrostSessions/Services/ClaudeCLI.swift</code>, <code>BifrostApp/Services/AppServices.swift</code></td></tr>
+  <tr><td>Pseudo-terminals and sizes</td><td><code>BifrostSessions/Services/PTYManager.swift</code>, <code>PTYProcess.swift</code>,
+    <code>SessionSizeReader.swift</code>, <code>SessionSizeWatcher.swift</code>, <code>BifrostChat/Services/SizeSync.swift</code></td></tr>
+  <tr><td>Chat windows and the attach state</td><td><code>BifrostChat/UI/ChatTerminal.swift</code>, <code>ChatTerminals.swift</code>,
+    <code>TerminalMetal.swift</code>, <code>BifrostChat/Model/TerminalFit.swift</code>, <code>AgentView.swift</code>,
+    <code>BifrostSessions/Model/AttachRules.swift</code>, <code>PTYView.swift</code></td></tr>
+  <tr><td>Typing into sessions</td><td><code>BifrostSessions/Services/SessionInput.swift</code>, <code>BifrostSessions/Model/InputPlan.swift</code>,
+    <code>BifrostChat/UI/HiddenTerminalModel.swift</code></td></tr>
+  <tr><td>Acting on a session</td><td><code>BifrostWindows/UI/Actions/ActionRunner.swift</code>, <code>DialogHost.swift</code>,
+    <code>RowMenu.swift</code>, <code>BifrostWindows/UI/SelectedItem/SendBoxModel.swift</code>,
+    <code>BifrostSessions/Services/Actions/SessionActions.swift</code>, and <code>BifrostApp/UI/Shell.swift</code>, which
+    makes the runner</td></tr>
+  <tr><td>The full behaviour rules</td><td><code>docs/behaviour/registry.md</code>, <code>pty.md</code>, <code>chat.md</code>, <code>input.md</code>,
+    <code>actions.md</code></td></tr>
+</table></div>
+
+<h2 id="glossary">Glossary</h2>
+<dl class="gloss">
+  <dt id="g-runner">Action runner</dt><dd>The one part of Bifrost that carries out the session actions
+    (<code>ActionRunner</code>). Every button, key and menu entry hands it an action and a row ID, and it reads the
+    row, asks where it must and runs the work.</dd>
+  <dt id="g-box">Box</dt><dd>The coloured flag on a row. Yellow means the turn has ended and the session is waiting
+    for you, and red means it needs you now, for example to answer a permission prompt.</dd>
+  <dt id="g-controlling">Controlling terminal</dt><dd>The terminal a Unix process belongs to. The kernel signals the
+    process through it, for example when the terminal is resized or hangs up.</dd>
+  <dt id="g-endpoint">Endpoint scanner</dt><dd>Security software that checks each program before macOS lets it
+    start, which can make every program launch slower.</dd>
+  <dt id="g-external">External row</dt><dd>A row for a session running in a terminal of its own, outside Claude
+    Code's background service. Bifrost shows its status but can't attach to it.</dd>
+  <dt id="g-hidden">Hidden attach</dt><dd>An attach with no window behind it. Bifrost opens one to type into a
+    session that has no chat window open, and closes it 1 s after the last write.</dd>
+  <dt id="g-live">Live details mod</dt><dd>A Claude Code mod that sends Bifrost each session's events (a prompt
+    going in, a tool finishing, a turn ending) and usage over a local socket. A session counts as live for 90 s
+    after the mod's last line about it.</dd>
+  <dt id="g-main-actor">Main actor</dt><dd>In Swift, the context that runs on the main thread, where the interface
+    is drawn. Slow work has to stay off it, or the app freezes.</dd>
+  <dt id="g-owned">Owned row</dt><dd>A row for a session that Claude Code's background service runs. These are the
+    sessions Bifrost can attach to and type into.</dd>
+  <dt id="g-parked">Parked</dt><dd>The state of a session that has ended. Its row stays in the list, and you can
+    resume it from there.</dd>
+  <dt id="g-pty">Pseudo-terminal (PTY)</dt><dd>A pair of connected ends that behave like a terminal. The program on
+    one end (here <code>claude attach</code>) sees an ordinary terminal, while Bifrost holds the other end, the
+    master, where it reads the output and writes your keys.</dd>
+  <dt id="g-reap">Reap</dt><dd>Collecting a finished child process's exit status. Until then the process stays
+    behind as a zombie, and once it's reaped macOS is free to give its pid to a new process.</dd>
+  <dt id="g-registry">Registry</dt><dd>The part of Bifrost that polls <code>claude agents</code>, matches what it
+    finds to rows and keeps them up to date.</dd>
+  <dt id="g-row">Row</dt><dd>Bifrost's record of one session (<code>SessionRow</code>): its IDs, folder, branch,
+    state and box. The session list shows one line for each row.</dd>
+  <dt id="g-sighup">SIGHUP</dt><dd>The "hang up" signal. An attach exits when it receives one, and the session it
+    was attached to keeps running.</dd>
+  <dt id="g-sigwinch">SIGWINCH</dt><dd>The signal that tells a program its terminal has changed size, so it can
+    redraw.</dd>
+  <dt id="g-swiftterm">SwiftTerm</dt><dd>The open-source terminal library Bifrost uses to draw a session's screen
+    and to answer its terminal queries.</dd>
+</dl>
+
+</div>
+</body>
+</html>

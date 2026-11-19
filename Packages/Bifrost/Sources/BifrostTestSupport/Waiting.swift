@@ -1,0 +1,114 @@
+import Foundation
+import Synchronization
+import Testing
+
+// The waits of the tests. Each wait has a limit on the real clock. At the limit, the wait records
+// an issue at the line of the caller and gives false. Thus a defect stops a test with a message,
+// and no test waits with no end or goes on in silence.
+//
+// A fake that knows when its event comes gives a TestSignal, and a test waits on it. A test of a
+// real process or a real file waits for a condition with waitUntil. A test with a manual clock
+// waits for the sleepers of the clock (ManualClock), and a gate tells when a caller waits at it
+// (TestGate).
+
+// Wait until the condition is true, for at most the limit. The wait checks the condition on the
+// main actor, by default each 10 ms. The default limit is wide, because a test host under load
+// can start a program 20 s late. The wait ends as soon as the condition is true. The result is
+// false only at the limit, after the issue.
+@MainActor
+@discardableResult
+package func waitUntil(
+    within limit: Duration = .seconds(60), every interval: Duration = .milliseconds(10),
+    sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool
+) async -> Bool {
+    let end = ContinuousClock.now + limit
+    while !condition() {
+        if ContinuousClock.now >= end {
+            if condition() { return true }
+            Issue.record(
+                "The condition was not true after \(limit).", sourceLocation: sourceLocation)
+            return false
+        }
+        try? await Task.sleep(for: interval)
+    }
+    return true
+}
+
+// A signal that a fake sends one time, for example "a caller waits at the gate" or "the clock
+// has two sleepers". The first send sets the value. A wait gives the value at once when the
+// signal came, else it waits with no thread until the signal or the limit.
+package final class TestSignal: Sendable {
+    private struct State {
+        var value: Bool?
+        var wake: CheckedContinuation<Bool, Never>?
+    }
+
+    private let state = Mutex(State())
+
+    package init() {}
+
+    // True after a send of true.
+    package var sent: Bool { state.withLock { $0.value == true } }
+
+    // Send the value. Only the first send counts.
+    package func send(_ value: Bool = true) {
+        let wake = state.withLock { s -> CheckedContinuation<Bool, Never>? in
+            guard s.value == nil else { return nil }
+            s.value = value
+            defer { s.wake = nil }
+            return s.wake
+        }
+        wake?.resume(returning: value)
+    }
+
+    // Wait for the signal, for at most the limit. At the limit the result is false and the
+    // signal keeps false. This wait records no issue: the caller names what it waited for.
+    package func value(within limit: Duration) async -> Bool {
+        let timer = Task { [self] in
+            do {
+                try await Task.sleep(for: limit)
+                send(false)
+            } catch {}
+        }
+        defer { timer.cancel() }
+        return await withCheckedContinuation { (wake: CheckedContinuation<Bool, Never>) in
+            let now = state.withLock { s -> Bool? in
+                if let value = s.value { return value }
+                s.wake = wake
+                return nil
+            }
+            if let now { wake.resume(returning: now) }
+        }
+    }
+
+    // Wait for the signal, for at most the limit. At the limit the wait records an issue that
+    // names the event, and gives false.
+    @discardableResult
+    package func wait(
+        for event: String, within limit: Duration = .seconds(30),
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) async -> Bool {
+        if await value(within: limit) { return true }
+        Issue.record("No \(event) after \(limit).", sourceLocation: sourceLocation)
+        return false
+    }
+}
+
+// True when an item is at the path. A link is not followed.
+package func fileExists(_ path: String) -> Bool {
+    var info = stat()
+    return lstat(path, &info) == 0
+}
+
+// The end of a task, as a flag that a wait reads.
+@MainActor
+package final class TaskEnd {
+    package private(set) var ended = false
+
+    package init<T: Sendable>(_ task: Task<T, Never>) {
+        Task { [weak self] in
+            _ = await task.value
+            self?.ended = true
+        }
+    }
+}

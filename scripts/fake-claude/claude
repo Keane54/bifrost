@@ -1,0 +1,798 @@
+#!/bin/sh
+# The fake claude of the smoke test, of the chat terminal tests and of the tests of the session
+# commands. The smoke test puts this folder first on the PATH of the app. The script gives fixed
+# answers to the commands that the app runs. It writes files only in the test home, and it sends
+# a signal only to a session process that it started itself.
+#
+# Each call with the test home as HOME adds one line to claude-calls.log in the test home: its
+# arguments, with one space between them.
+#
+# "agents --json" and "agents --json --all" give the file fake-agents.json in the test home
+# ($BIFROST_TEST_HOME) when that file exists. Else they give an empty list. The caller writes the
+# file with the session folders in its own test home (scripts/smoke.sh, tools/bench/run.sh).
+# The two lists are the same list.
+#
+# "--bg", "stop" and "rm" follow the smoke fake of the Electron app. The line of a resume and the
+# outputs of a kept worktree follow the real output of claude that ClaudeOutput reads. These
+# commands change fake-agents.json with plutil, so the next "agents --json" shows the change:
+# - "--bg ... --name <name> [prompt]" (a new session) starts a session process in the current
+#   folder. The session gets the next ID of the fake: 5b0e0001-0000-4000-8000-000000000001 first,
+#   then 5b0e0002-..., with the short ID 5b0e0001 first. The list gets the entry of the session:
+#   a background job, idle, with the real current folder and the pid of the session process. The
+#   fake prints "backgrounded <middle dot> <short id> <middle dot> <name>".
+# - "--bg ... --name <name> /bifrost-review bifrost-input=<file>" (the review session of a review
+#   round of Reviews) does the same with the next ID of the review sessions:
+#   5c0e0001-0000-4000-8000-000000000001 first, then 5c0e0002-.... The input file must be in the
+#   test home. The entry of the session starts busy. After 3 s, the session process writes the
+#   file result.json next to the input file and sets its entry to idle, so the round sees the turn
+#   work and then end. The result is fake-review-result.json of the test home, with the token of
+#   the round (the field "round" of the input file) in place of each @ROUND@. With no such file,
+#   the session writes no result and only goes idle.
+# - "--bg ... --resume <session id>" (a resume, or the resume of Take control) does the same for
+#   that session ID, with the first 8 characters of the ID as the short ID. The new entry replaces
+#   the entry of that session ID, and keeps its name. The fake prints "backgrounded <middle dot>
+#   <short id> (idle)".
+# - "stop <short id>" ends the session process of that short ID and removes its entry. It prints
+#   "stopped <short id>". A short ID with no entry gives an error and exit 1.
+# - "rm <short id>" does the same, also for a short ID with no entry, and prints
+#   "removed <short id>".
+# The session process is a loop of 1 s sleeps. It ends when the test home goes, or after 600 s,
+# so a test leaves no process when it removes its test home. When the file fake-session-seconds
+# is in the test home, its number (1 or more) replaces the 600 s. The process gets no pipe of the
+# caller, so the run of the caller ends when this script ends. The fake writes its pid to the file
+# fake-session-<short id>.pid in the test home, and a stop or an rm sends SIGTERM only to that
+# pid. The process removes the file before it ends by itself, so the system cannot give the pid
+# in the file to another process. The entries of the caller (for example the pid 99991 of the
+# smoke test) get no signal.
+#
+# The outputs of "claude rm" for a worktree that it keeps, with exit 1. The file in the test home
+# selects the output, and its first line is the worktree path of the kept line:
+# - fake-rm-kept: the worktree has a commit on no remote. The output has the kept line and the
+#   value of --discard-unpushed. The fake has no discard: a run with that value is an unknown
+#   command.
+# - fake-rm-changes: the worktree has changes that are not committed. The output has no value.
+# When the file fake-rm-hang is in the test home, "claude rm" makes the file fake-rm-waiting and
+# then waits until the test home goes, or for 600 s. Its SIGTERM adds the line "TERM" to
+# fake-rm-signals, and the fake exits 143.
+#
+# The fake changes the list one call at a time: two starts at the same time can lose an entry. The
+# smoke test and the tests run the session commands one after the other. A name or a folder with a
+# quote, a backslash or a control character gives an error and exit 1, because the entry is JSON
+# text with no escapes.
+#
+# "attach <short id>" is the attach of a chat window, as in the smoke fake of the Electron app.
+# It prints "FAKE ATTACH <short id>" and adds that line to attach.log in the test home. When the
+# file fake-attach-screen is in the test home, the fake then prints that file: a test puts the
+# escape sequences of a screen there. Then the input of the chat window goes to the file
+# attach-input-<short id>.log in the test home at once, with no echo and no wait for a line
+# break. With no test home, the attach only waits. The SIGHUP of a close stops it.
+#
+# The stream mode of the debug bench: when the file fake-attach-stream is in the test home, the
+# attach enters the alternate screen, as "claude attach" does, and prints 30 coloured lines a
+# second: 24-bit and 256 colours, diff lines with a background colour, box lines and Unicode marks
+# (the stream of the prototype gate).
+# When the file fake-attach-stream-normal is there instead, the attach stays on the normal
+# screen and first prints 1,200 lines, so the scrollback of the chat fills. The input still goes
+# to attach-input-<short id>.log. Ctrl+C stops the stream and shows a prompt line. On that line,
+# a printable key shows, Ctrl+U clears the line and Return starts the stream again. The stream
+# runs in /bin/zsh -f, which reads no file of the user. The SIGHUP of a close stops it.
+#
+# A run with no arguments is the trust terminal of Reviews (see the branch below the checks of
+# the home).
+#
+# "--version" prints "2.1.318 (Claude Code)", or the text of the file fake-version in the test
+# home when that file exists.
+#
+# The print mode of the Daily update ("-p --output-format <format> ..."):
+# - With the format stream-json (the probe of the MCP servers), the fake prints the file
+#   fake-mcp-init.json of the test home: one line, the init event. Then it waits as a run that
+#   calls the model, until a signal ends it, or until the test home goes, or for 600 s. The probe
+#   stops it after the init event.
+# - With the format json (the run of the drafts), the fake prints the file fake-daily-result.json
+#   of the test home: the JSON output of the run. When the file fake-daily-hang is in the test
+#   home, the fake first writes its pid to fake-daily-pid and waits in the same way.
+# With no such file, the fake exits 1. A print run must have --no-session-persistence, because
+# a real run with no such flag saves a session under ~/.claude/projects: with no flag, the fake
+# exits 1 with no answer.
+#
+# The plugin commands keep the plugin state in fake-plugins.json in the test home: an object with
+# the list "plugins" (id, enabled, scope, readFromFolder) and the list "marketplaces" (name,
+# source, path). With no file, both lists are empty. "plugin list --json" and "plugin marketplace
+# list --json" print a list. When the file fake-plugins-fail is in the test home, they write a
+# message to stderr and exit 1. Each write command ends with "--scope user --json" and prints one
+# JSON result line, as claude does: {"outcome":"ok"}, or a line with a message and exit 1. Enable
+# and disable of a plugin that is already on or off give the failure code already_in_goal_state.
+# - "plugin marketplace add <folder>" adds the marketplace with the name of
+#   <folder>/.claude-plugin/marketplace.json, the source "directory" and the path of the folder.
+# - "plugin install <name>@<marketplace>" needs that marketplace. The plugin gets the path of the
+#   marketplace as readFromFolder and is on, or off when the file fake-install-off is in the test
+#   home.
+# - "plugin enable", "plugin disable" and "plugin uninstall" need an installed plugin, and
+#   "plugin marketplace remove <name>" needs that marketplace.
+# A change goes to a copy of the file first, and a rename then replaces the file in one step.
+#
+# Each other command exits 1.
+#
+# The smoke test sets HOME to the test home, as the smoke test of the Electron app does. A
+# program that claude runs could then read the real ~/.claude. So the fake exits 1 with no answer
+# when HOME is not the test home. It also exits 1 when HOME is the home of the user database (as
+# scripts/run-sandboxed.sh finds it), or the same folder, also when BIFROST_TEST_HOME has that
+# value.
+
+# An attach with no test home reads and writes no file. It waits for the SIGHUP of the close.
+if [ "$#" -eq 2 ] && [ "$1" = attach ] && [ -z "${BIFROST_TEST_HOME:-}" ]; then
+    exec sleep 600
+fi
+
+if [ -z "${BIFROST_TEST_HOME:-}" ] || [ "${HOME:-}" != "$BIFROST_TEST_HOME" ]; then
+    echo 'fake claude: HOME is not the test home' >&2
+    exit 1
+fi
+
+# The real path of the folder $1, or nothing when the folder cannot be read.
+real_folder() {
+    (CDPATH='' cd -- "$1" 2>/dev/null && pwd -P)
+}
+
+user=$(id -un 2>/dev/null) || user=''
+case "$user" in
+    '' | *[!A-Za-z0-9._-]*)
+        echo 'fake claude: cannot read the user name' >&2
+        exit 1
+        ;;
+esac
+user_home=$(eval echo "~$user")
+# Two folders that cannot be read give the same empty path, and the fake exits.
+if [ "${HOME%/}" = "${user_home%/}" ] ||
+    [ "$(real_folder "$HOME")" = "$(real_folder "$user_home")" ]; then
+    echo 'fake claude: HOME is the real home of the user' >&2
+    exit 1
+fi
+
+home=$BIFROST_TEST_HOME
+agents="$home/fake-agents.json"
+
+printf '%s\n' "$*" >>"$home/claude-calls.log"
+
+# A run with no arguments: the trust terminal of Reviews. The fake prints the one line
+# "FAKE TRUST", adds its real current folder to trust.log in the test home, and then adds each
+# byte of its input to trust-input.log at once, with no echo, until its input closes. The SIGHUP
+# of a close stops it.
+if [ "$#" -eq 0 ]; then
+    stty raw -echo opost onlcr
+    echo 'FAKE TRUST'
+    pwd -P >>"$home/trust.log"
+    exec cat >>"$home/trust-input.log"
+fi
+
+# Prints the agents file of the test home when it exists, else an empty list.
+print_agents() {
+    if [ -f "$agents" ]; then
+        cat "$agents"
+    else
+        echo '[]'
+    fi
+}
+
+case "$#:$*" in
+    '1:--version')
+        if [ -f "$home/fake-version" ]; then
+            cat "$home/fake-version"
+        else
+            echo '2.1.318 (Claude Code)'
+        fi
+        exit 0
+        ;;
+    '2:agents --json' | '3:agents --json --all')
+        print_agents
+        exit 0
+        ;;
+esac
+
+# MARK: the print mode of the Daily update.
+
+# Waits until a signal ends the fake, or until the test home goes, or for 600 s. The sleep gets no
+# pipe of the caller, so the caller does not wait for it after the end of the fake.
+wait_for_stop() {
+    n=0
+    while [ "$n" -lt 600 ] && [ -d "$home" ]; do
+        sleep 1 </dev/null >/dev/null 2>&1 &
+        wait $!
+        n=$((n + 1))
+    done
+}
+
+if [ "${1:-}" = -p ] && [ "${2:-}" = --output-format ]; then
+    no_session=false
+    for arg in "$@"; do
+        [ "$arg" = --no-session-persistence ] && no_session=true
+    done
+    if [ "$no_session" = false ]; then
+        echo 'fake claude: a print run with no --no-session-persistence' >&2
+        exit 1
+    fi
+    case "${3:-}" in
+        stream-json)
+            if [ ! -f "$home/fake-mcp-init.json" ]; then
+                echo 'fake claude: no fake-mcp-init.json' >&2
+                exit 1
+            fi
+            cat "$home/fake-mcp-init.json"
+            wait_for_stop
+            exit 1
+            ;;
+        json)
+            if [ -f "$home/fake-daily-hang" ]; then
+                echo "$$" >"$home/fake-daily-pid"
+                wait_for_stop
+                exit 1
+            fi
+            if [ ! -f "$home/fake-daily-result.json" ]; then
+                echo 'fake claude: no fake-daily-result.json' >&2
+                exit 1
+            fi
+            cat "$home/fake-daily-result.json"
+            exit 0
+            ;;
+    esac
+fi
+
+# MARK: the plugin commands.
+
+plugins="$home/fake-plugins.json"
+plugin_copy="$plugins.$$.tmp"
+
+# Prints the list $1 of the plugin state, or an empty list.
+print_plugin_list() {
+    if [ -f "$home/fake-plugins-fail" ]; then
+        echo 'fake claude: the plugin list failed' >&2
+        exit 1
+    fi
+    if [ -f "$plugins" ]; then
+        plutil -extract "$1" json -o - "$plugins" 2>/dev/null || echo '[]'
+        echo
+    else
+        echo '[]'
+    fi
+}
+
+# Stops a write command with the result line of a failure: the message $1 and, if it is given,
+# the failure code $2. The copy of the state goes.
+plugin_fail() {
+    rm -f "$plugin_copy"
+    if [ -n "${2:-}" ]; then
+        printf '{"outcome":"error","failureCode":"%s","message":"%s"}\n' "$2" "$1"
+    else
+        printf '{"outcome":"error","message":"%s"}\n' "$1"
+    fi
+    exit 1
+}
+
+# Makes the copy of the state that a write command changes.
+plugin_open() {
+    if [ -f "$plugins" ]; then
+        cp "$plugins" "$plugin_copy" || plugin_fail 'cannot copy the plugin state'
+    else
+        echo '{"plugins":[],"marketplaces":[]}' >"$plugin_copy" ||
+            plugin_fail 'cannot write the plugin state'
+    fi
+}
+
+# Replaces the state with the copy in one step and prints the result line of a good write.
+plugin_save() {
+    mv "$plugin_copy" "$plugins" || plugin_fail 'cannot write the plugin state'
+    echo '{"outcome":"ok"}'
+    exit 0
+}
+
+# Changes the copy with plutil, or stops.
+plugin_change() {
+    plutil "$@" "$plugin_copy" >/dev/null || plugin_fail 'cannot change the plugin state'
+}
+
+# Prints the index of the first item of the list $1 of the copy whose field $2 has the value $3.
+# Exit 1 when no item has it.
+plugin_index() {
+    index=0
+    while plutil -type "$1.$index" "$plugin_copy" >/dev/null 2>&1; do
+        if [ "$(plutil -extract "$1.$index.$2" raw "$plugin_copy" 2>/dev/null)" = "$3" ]; then
+            echo "$index"
+            return 0
+        fi
+        index=$((index + 1))
+    done
+    return 1
+}
+
+# Prints the number of items of the list $1 of the copy.
+plugin_count() {
+    index=0
+    while plutil -type "$1.$index" "$plugin_copy" >/dev/null 2>&1; do
+        index=$((index + 1))
+    done
+    echo "$index"
+}
+
+# The write command $1 for the plugin ID $2.
+plugin_write() {
+    plugin_open
+    case "$1" in
+        install)
+            market=${2#*@}
+            [ "$market" != "$2" ] || plugin_fail 'not a plugin ID'
+            m=$(plugin_index marketplaces name "$market") ||
+                plugin_fail 'the marketplace is not added'
+            if plugin_index plugins id "$2" >/dev/null; then
+                plugin_fail 'the plugin is already installed' already_in_goal_state
+            fi
+            folder=$(plutil -extract "marketplaces.$m.path" raw "$plugin_copy") ||
+                plugin_fail 'the marketplace has no path'
+            on=true
+            [ ! -f "$home/fake-install-off" ] || on=false
+            n=$(plugin_count plugins)
+            plugin_change -insert "plugins.$n" -dictionary
+            plugin_change -insert "plugins.$n.id" -string "$2"
+            plugin_change -insert "plugins.$n.enabled" -bool "$on"
+            plugin_change -insert "plugins.$n.scope" -string user
+            plugin_change -insert "plugins.$n.readFromFolder" -string "$folder"
+            ;;
+        enable | disable)
+            p=$(plugin_index plugins id "$2") || plugin_fail 'the plugin is not installed'
+            want=true
+            [ "$1" = enable ] || want=false
+            if [ "$(plutil -extract "plugins.$p.enabled" raw "$plugin_copy")" = "$want" ]; then
+                plugin_fail "the plugin is already ${1}d" already_in_goal_state
+            fi
+            plugin_change -replace "plugins.$p.enabled" -bool "$want"
+            ;;
+        uninstall)
+            p=$(plugin_index plugins id "$2") || plugin_fail 'the plugin is not installed'
+            plugin_change -remove "plugins.$p"
+            ;;
+    esac
+    plugin_save
+}
+
+# Adds the folder $1 as a marketplace.
+marketplace_add() {
+    plugin_open
+    name=$(plutil -extract name raw "$1/.claude-plugin/marketplace.json" 2>/dev/null) ||
+        plugin_fail 'the folder has no marketplace.json'
+    if plugin_index marketplaces name "$name" >/dev/null; then
+        plugin_fail 'a marketplace with this name already exists'
+    fi
+    n=$(plugin_count marketplaces)
+    plugin_change -insert "marketplaces.$n" -dictionary
+    plugin_change -insert "marketplaces.$n.name" -string "$name"
+    plugin_change -insert "marketplaces.$n.source" -string directory
+    plugin_change -insert "marketplaces.$n.path" -string "$1"
+    plugin_save
+}
+
+# Removes the marketplace with the name $1.
+marketplace_remove() {
+    plugin_open
+    m=$(plugin_index marketplaces name "$1") || plugin_fail 'the marketplace is not added'
+    plugin_change -remove "marketplaces.$m"
+    plugin_save
+}
+
+case "$#:$*" in
+    '3:plugin list --json')
+        print_plugin_list plugins
+        exit 0
+        ;;
+    '4:plugin marketplace list --json')
+        print_plugin_list marketplaces
+        exit 0
+        ;;
+esac
+
+case "$#:${1:-} ${2:-}" in
+    '6:plugin install' | '6:plugin enable' | '6:plugin disable' | '6:plugin uninstall')
+        [ "$4 $5 $6" = '--scope user --json' ] || plugin_fail 'unknown options'
+        plugin_write "$2" "$3"
+        ;;
+    '7:plugin marketplace')
+        [ "$5 $6 $7" = '--scope user --json' ] || plugin_fail 'unknown options'
+        case "$3" in
+            add) marketplace_add "$4" ;;
+            remove) marketplace_remove "$4" ;;
+        esac
+        ;;
+esac
+
+# Stops with an error. The message goes to stderr. A copy of the list that is not saved goes.
+refuse() {
+    rm -f "$copy"
+    echo "fake claude: $1" >&2
+    exit 1
+}
+
+# Stops when $1 is not a short ID: 8 characters, each a digit or a letter from a to f.
+check_short() {
+    case "$1" in
+        [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *) refuse "not a short ID: $1" ;;
+    esac
+}
+
+# Stops when $1 cannot go into the JSON text of an entry with no escape.
+check_text() {
+    case "$1" in
+        *'"'* | *'\'* | *[[:cntrl:]]*) refuse "a quote, a backslash or a control character" ;;
+    esac
+}
+
+# The changes of the list go to a copy. save_list then replaces the list in one step, so a read
+# of the list never gets a part of a change.
+copy="$agents.$$.tmp"
+
+open_list() {
+    if [ -f "$agents" ]; then
+        cp "$agents" "$copy" || refuse "cannot copy the list"
+    else
+        echo '[]' >"$copy" || refuse "cannot write the list"
+    fi
+}
+
+save_list() {
+    mv "$copy" "$agents" || refuse "cannot write the list"
+}
+
+# Prints the index of the first entry of the copy whose field $1 has the value $2. Exit 1 when no
+# entry has it.
+find_entry() {
+    index=0
+    while plutil -type "$index" "$copy" >/dev/null 2>&1; do
+        if [ "$(plutil -extract "$index.$1" raw "$copy" 2>/dev/null)" = "$2" ]; then
+            echo "$index"
+            return 0
+        fi
+        index=$((index + 1))
+    done
+    return 1
+}
+
+# Prints the number of entries of the copy.
+count_entries() {
+    index=0
+    while plutil -type "$index" "$copy" >/dev/null 2>&1; do
+        index=$((index + 1))
+    done
+    echo "$index"
+}
+
+# Removes the entry of the copy at the index $1.
+remove_entry() {
+    plutil -remove "$1" "$copy" >/dev/null || refuse "cannot change the list"
+}
+
+# Sends SIGTERM to the session process that the fake started for the short ID $1, if there is one.
+# Only a value of digits above 1 is a pid: the fake never signals a process group or launchd.
+end_session() {
+    pid_file="$home/fake-session-$1.pid"
+    if [ -f "$pid_file" ]; then
+        pid=$(cat "$pid_file")
+        case "$pid" in
+            '' | *[!0-9]*) ;;
+            *) if [ "$pid" -gt 1 ]; then kill "$pid" 2>/dev/null; fi ;;
+        esac
+        rm -f "$pid_file"
+    fi
+}
+
+# Sets the status of the entry of the session ID $1 to $2. The change goes to a copy of the list
+# first, and a rename then replaces the list in one step. Exit 1 when the list has no such entry.
+set_status() {
+    status_copy="$agents.status-$1.tmp"
+    cp "$agents" "$status_copy" || return 1
+    index=0
+    while plutil -type "$index" "$status_copy" >/dev/null 2>&1; do
+        if [ "$(plutil -extract "$index.sessionId" raw "$status_copy" 2>/dev/null)" = "$1" ]; then
+            plutil -replace "$index.status" -string "$2" "$status_copy" >/dev/null &&
+                mv "$status_copy" "$agents" && return 0
+            break
+        fi
+        index=$((index + 1))
+    done
+    rm -f "$status_copy"
+    return 1
+}
+
+# The turn of the review session of the session ID $1 with the input file $2: 3 s of work, then
+# result.json next to the input file and the status idle. The result goes to a copy first, and a
+# rename then makes the file in one step. The entry of the session can come a moment after the
+# start of the process, so the change of the status tries again each second, 10 times at most.
+review_turn() {
+    sleep 3
+    round=$(plutil -extract round raw -o - "$2" 2>/dev/null) || round=''
+    result=$(dirname -- "$2")/result.json
+    case "$round" in
+        '' | *[!0-9a-f-]*) ;;
+        *)
+            if [ -f "$home/fake-review-result.json" ] &&
+                sed "s/@ROUND@/$round/g" "$home/fake-review-result.json" >"$result.tmp"; then
+                mv "$result.tmp" "$result"
+            fi
+            ;;
+    esac
+    tries=0
+    while [ "$tries" -lt 10 ] && ! set_status "$1" idle; do
+        sleep 1
+        tries=$((tries + 1))
+    done
+}
+
+# Stops when the file $1 is not a file in the test home.
+check_input() {
+    input_folder=$(real_folder "$(dirname -- "$1")")
+    test_home=$(real_folder "$home")
+    case "$input_folder" in
+        "$test_home"/*) [ -f "$1" ] || refuse "no input file: $1" ;;
+        *) refuse "the input file is not in the test home: $1" ;;
+    esac
+}
+
+# Starts the session process of the session ID $1 with the short ID $2 and the name $3 in the
+# current folder, and adds its entry to the list. A resume replaces the entry of the session ID.
+# The entry gets the status $4 (idle when it is not given). With the input file $5 of a review
+# session, the process first runs the turn of the review (review_turn).
+start_session() {
+    folder=$(pwd -P) || refuse "cannot read the current folder"
+    check_text "$folder"
+    check_text "$3"
+    status=${4:-idle}
+    review_input=${5:-}
+    end_session "$2"
+    seconds=$(cat "$home/fake-session-seconds" 2>/dev/null) || seconds=600
+    case "$seconds" in
+        '' | *[!0-9]*) seconds=600 ;;
+    esac
+    # A process of 0 s can end and remove its pid file before the write below. Then the file
+    # holds the pid of an ended process, which the system can give to another process. So 0 is
+    # not valid.
+    if [ "$seconds" -lt 1 ]; then seconds=600; fi
+    pid_file="$home/fake-session-$2.pid"
+    # The process removes its pid file while it still runs, so no other process has its pid yet.
+    (
+        if [ -n "$review_input" ]; then
+            review_turn "$1" "$review_input"
+        fi
+        n=0
+        while [ "$n" -lt "$seconds" ] && [ -d "$home" ]; do
+            sleep 1
+            n=$((n + 1))
+        done
+        rm -f "$pid_file"
+    ) </dev/null >/dev/null 2>&1 &
+    pid=$!
+    echo "$pid" >"$pid_file"
+    open_list
+    if index=$(find_entry sessionId "$1"); then
+        remove_entry "$index"
+    fi
+    entry="{\"cwd\":\"$folder\",\"id\":\"$2\",\"kind\":\"background\",\"name\":\"$3\""
+    entry="$entry,\"pid\":$pid,\"sessionId\":\"$1\",\"startedAt\":$(date +%s)000"
+    entry="$entry,\"status\":\"$status\"}"
+    plutil -insert "$(count_entries)" -json "$entry" "$copy" >/dev/null ||
+        refuse "cannot change the list"
+    save_list
+}
+
+# The output of "claude rm" for a worktree that it keeps, from the file $1 in the test home, for
+# the short ID $2. The em dash and the curly quotes are octal escapes of their UTF-8 bytes.
+print_kept() {
+    worktree=$(sed -n 1p "$home/$1")
+    printf 'kept %s \342\200\224 its worktree is still at \342\200\234%s\342\200\235\n' \
+        "$2" "$worktree"
+    if [ "$1" = fake-rm-changes ]; then
+        echo '  The worktree has uncommitted changes. Deleting it would lose them.'
+        printf "  commit or stash them and run 'claude rm %s' again, or delete the session" "$2"
+        echo " from 'claude agents' (ctrl+x twice)"
+        return
+    fi
+    printf '  1 unpushed commit on \342\200\234worktree-%s\342\200\235: ' "${worktree##*/}"
+    printf 'f7698d3 \342\200\234test\342\200\235. It exists on no remote, so deleting the '
+    echo 'worktree would lose it.'
+    printf "  push it and run 'claude rm %s' again, or discard the worktree and its " "$2"
+    printf 'commits: claude rm %s --discard-unpushed ' "$2"
+    echo 'f7698d38614ba22b41f996fab73124361d2fe389@598a160a880168020f78fdeda23f998a'
+}
+
+# A "claude rm" that runs until a signal ends it, or until the test home goes.
+wait_for_signal() {
+    trap 'echo TERM >>"$home/fake-rm-signals"; exit 143' TERM
+    : >"$home/fake-rm-waiting"
+    n=0
+    while [ "$n" -lt 600 ] && [ -d "$home" ]; do
+        sleep 1 </dev/null >/dev/null 2>&1 &
+        wait $!
+        n=$((n + 1))
+    done
+    exit 1
+}
+
+case "$#:${1:-}" in
+    '2:stop')
+        check_short "$2"
+        open_list
+        index=$(find_entry id "$2") || refuse "no session $2"
+        end_session "$2"
+        remove_entry "$index"
+        save_list
+        echo "stopped $2"
+        exit 0
+        ;;
+    '2:rm')
+        check_short "$2"
+        if [ -f "$home/fake-rm-hang" ]; then
+            wait_for_signal
+        fi
+        for kept in fake-rm-kept fake-rm-changes; do
+            if [ -f "$home/$kept" ]; then
+                print_kept "$kept" "$2"
+                exit 1
+            fi
+        done
+        end_session "$2"
+        open_list
+        if index=$(find_entry id "$2"); then
+            remove_entry "$index"
+        fi
+        save_list
+        echo "removed $2"
+        exit 0
+        ;;
+esac
+
+# A start: the first argument is --bg. --resume gives the session ID of a resume, and --name the
+# name of a new session. The last argument is the prompt.
+if [ "${1:-}" = --bg ]; then
+    name=''
+    resume=''
+    previous=''
+    for argument in "$@"; do
+        case "$previous" in
+            --name) name=$argument ;;
+            --resume) resume=$argument ;;
+        esac
+        previous=$argument
+    done
+    prompt=$previous
+    review_prefix='/bifrost-review bifrost-input='
+    if [ -n "$name" ] && [ -z "$resume" ]; then
+        case "$prompt" in
+            "$review_prefix"*)
+                check_text "$name"
+                input=${prompt#"$review_prefix"}
+                check_input "$input"
+                count=$(cat "$home/fake-review-sessions" 2>/dev/null) || count=0
+                count=$((count + 1))
+                echo "$count" >"$home/fake-review-sessions"
+                number=$(printf '%04d' "$count")
+                short="5c0e$number"
+                start_session "$short-0000-4000-8000-00000000$number" "$short" "$name" busy \
+                    "$input"
+                printf 'backgrounded \302\267 %s \302\267 %s\n' "$short" "$name"
+                exit 0
+                ;;
+        esac
+    fi
+    if [ -n "$resume" ]; then
+        short=$(printf '%.8s' "$resume")
+        check_short "$short"
+        check_text "$resume"
+        open_list
+        if index=$(find_entry sessionId "$resume"); then
+            name=$(plutil -extract "$index.name" raw "$copy" 2>/dev/null)
+        fi
+        rm -f "$copy"
+        start_session "$resume" "$short" "${name:-fake-$short}"
+        printf 'backgrounded \302\267 %s (idle)\n' "$short"
+        exit 0
+    fi
+    if [ -n "$name" ]; then
+        check_text "$name"
+        count=$(cat "$home/fake-new-sessions" 2>/dev/null) || count=0
+        count=$((count + 1))
+        echo "$count" >"$home/fake-new-sessions"
+        number=$(printf '%04d' "$count")
+        short="5b0e$number"
+        start_session "$short-0000-4000-8000-00000000$number" "$short" "$name"
+        printf 'backgrounded \302\267 %s \302\267 %s\n' "$short" "$name"
+        exit 0
+    fi
+fi
+
+# The attach of a chat window, or the hidden attach of the session input. The SIGHUP of a close
+# stops cat. The input of the terminal is raw before the first output, so a key that comes at once
+# after the first output (the ESC of an Interrupt) does not wait for a line end. The output keeps
+# its line ends (opost onlcr), so the screen is the same as with a terminal that is not raw.
+if [ "$#" -eq 2 ] && [ "$1" = attach ]; then
+    stty raw -echo opost onlcr
+    echo "FAKE ATTACH $2"
+    echo "FAKE ATTACH $2" >>"$BIFROST_TEST_HOME/attach.log"
+    input_log="$BIFROST_TEST_HOME/attach-input-$2.log"
+    screen=""
+    if [ -f "$BIFROST_TEST_HOME/fake-attach-stream" ]; then
+        screen=alternate
+    elif [ -f "$BIFROST_TEST_HOME/fake-attach-stream-normal" ]; then
+        screen=normal
+    fi
+    if [ -n "$screen" ]; then
+        # The arguments of the stream: the screen and the input log.
+        stream=$(
+            cat <<'ZSH'
+zmodload zsh/zselect zsh/datetime zsh/system || exit 1
+unsetopt MULTIBYTE
+screen=$1
+exec {log}>>"$2"
+printf -v e '\e'
+# The colours: orange (24-bit), grey and blue (256 colours), bold and the reset.
+o="${e}[38;2;215;119;87m" g="${e}[38;5;244m" b="${e}[38;5;111m" w="${e}[1m" r="${e}[0m"
+add="${e}[48;2;20;60;30m${e}[38;2;140;220;150m" del="${e}[48;2;70;20;20m${e}[38;2;245;118;109m"
+lines=(
+  "${o}⏺${r} ${w}Read${r}(src/renderer/src/wm/Frame.tsx)"
+  "  ${g}⎿  Read 292 lines (ctrl+o to expand)${r}"
+  "${o}⏺${r} ${w}Update${r}(src/renderer/src/wm/geometry.ts)"
+  "    ${add}120 +  const snapped = moveRect(start, dx, dy, others, bounds)${r}"
+  "    ${del}121 -  const raw = { ...start, x: start.x + dx }${r}"
+  "${o}✻ Thinking…${r} ${g}(esc to interrupt · 12s · ↓ 1.2k tokens)${r}"
+  "  The snap applies only on release, so the raw rect follows the pointer during the drag."
+  "${o}⏺${r} ${w}Bash${r}(npm test -- wm)"
+  "  ${g}⎿${r}  ${e}[32m✓${r} test/wm/geometry.test.ts ${g}(148 tests) 31ms${r}"
+  "  ${g}⎿${r}  ${e}[31m✗${r} test/wm/overlap.test.ts > blurred > skips a minimised frame"
+  "${b}  ┌──────────────┬──────────┬─────────┐${r}"
+  "${b}  │${r} Frame        ${b}│${r} Blur     ${b}│${r} 120 fps ${b}│${r}"
+  "  Next, I change the snap marks so that a corner gap of 8 px keeps the two arrows apart."
+)
+integer k=${#lines} n=0 due i streaming=1 rate=30
+float start
+if [[ $screen == alternate ]]; then
+  print -rn -- "${e}[?1049h${e}[H${e}[2J"
+else
+  for (( i = 0; i < 1200; i++ )); do print -r -- "${lines[i % k + 1]}"; done
+fi
+start=$EPOCHREALTIME
+while true; do
+  if (( streaming )); then
+    (( due = (EPOCHREALTIME - start) * rate ))
+    while (( n < due )); do
+      print -r -- "${lines[n % k + 1]}"
+      (( n++ ))
+    done
+  fi
+  # Wait for input for 20 ms at most. The end of the input ends the stream.
+  zselect -t 2 -r 0 || continue
+  sysread -i 0 -s 256 chunk || exit 0
+  syswrite -o $log -- "$chunk"
+  for (( i = 1; i <= ${#chunk}; i++ )); do
+    c=${chunk[i]}
+    if [[ $c == $'\x03' ]]; then
+      streaming=0
+      print -rn -- $'\r\n> '
+    elif (( streaming )); then
+      continue
+    elif [[ $c == $'\r' ]]; then
+      streaming=1 n=0 start=$EPOCHREALTIME
+      print -rn -- $'\r\n'
+    elif [[ $c == $'\x15' ]]; then
+      print -rn -- $'\r\e[K> '
+    elif [[ $c == [[:print:]] ]]; then
+      print -rn -- "$c"
+    fi
+  done
+done
+ZSH
+        )
+        exec /bin/zsh -f -c "$stream" fake-stream "$screen" "$input_log"
+    fi
+    if [ -f "$BIFROST_TEST_HOME/fake-attach-screen" ]; then
+        cat "$BIFROST_TEST_HOME/fake-attach-screen"
+    fi
+    exec cat >>"$input_log"
+fi
+
+echo 'fake claude: unknown command' >&2
+exit 1

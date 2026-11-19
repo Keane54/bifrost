@@ -1,0 +1,2 @@
+A line of exactly 100 characters, some of them with two bytes:
+ééééééééééééééééééééééééééééééééééééééééééééééééééxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

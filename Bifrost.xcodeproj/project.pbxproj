@@ -1,0 +1,405 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		B1F000000000000000000040 /* BifrostFoundation in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000050 /* BifrostFoundation */;
+		};
+		B1F000000000000000000041 /* BifrostLayout in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000051 /* BifrostLayout */;
+		};
+		B1F000000000000000000042 /* BifrostSettings in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000052 /* BifrostSettings */;
+		};
+		B1F000000000000000000043 /* BifrostLook in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000053 /* BifrostLook */;
+		};
+		B1F000000000000000000044 /* BifrostKeyboard in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000054 /* BifrostKeyboard */;
+		};
+		B1F000000000000000000045 /* BifrostSessions in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000055 /* BifrostSessions */;
+		};
+		B1F000000000000000000046 /* BifrostDictation in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000056 /* BifrostDictation */;
+		};
+		B1F000000000000000000047 /* BifrostChat in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000057 /* BifrostChat */;
+		};
+		B1F000000000000000000048 /* BifrostWindows in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000058 /* BifrostWindows */;
+		};
+		B1F000000000000000000049 /* BifrostApp in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000059 /* BifrostApp */;
+		};
+		B1F000000000000000000016 /* Sparkle in Frameworks */ = {
+			isa = PBXBuildFile;
+			productRef = B1F000000000000000000024 /* Sparkle */;
+		};
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B1F000000000000000000007 /* Bifrost.app */ = {
+			isa = PBXFileReference;
+			explicitFileType = wrapper.application;
+			includeInIndex = 0;
+			path = Bifrost.app;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		B1F000000000000000000008 /* Base.xcconfig */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.xcconfig;
+			path = Base.xcconfig;
+			sourceTree = "<group>";
+		};
+		B1F000000000000000000009 /* Debug.xcconfig */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.xcconfig;
+			path = Debug.xcconfig;
+			sourceTree = "<group>";
+		};
+		B1F00000000000000000000A /* Release.xcconfig */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.xcconfig;
+			path = Release.xcconfig;
+			sourceTree = "<group>";
+		};
+		B1F00000000000000000000B /* Debug-Info.plist */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.plist.xml;
+			path = "Debug-Info.plist";
+			sourceTree = "<group>";
+		};
+		B1F0000000000000000000FA /* Release-Info.plist */ = {
+			isa = PBXFileReference;
+			lastKnownFileType = text.plist.xml;
+			path = "Release-Info.plist";
+			sourceTree = "<group>";
+		};
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		B1F000000000000000000006 /* Bifrost */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFolders = (
+				"Resources/bifrost-skills",
+				"Resources/live-mod",
+			);
+			path = Bifrost;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B1F000000000000000000012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1F000000000000000000040 /* BifrostFoundation in Frameworks */,
+				B1F000000000000000000041 /* BifrostLayout in Frameworks */,
+				B1F000000000000000000042 /* BifrostSettings in Frameworks */,
+				B1F000000000000000000043 /* BifrostLook in Frameworks */,
+				B1F000000000000000000044 /* BifrostKeyboard in Frameworks */,
+				B1F000000000000000000045 /* BifrostSessions in Frameworks */,
+				B1F000000000000000000046 /* BifrostDictation in Frameworks */,
+				B1F000000000000000000047 /* BifrostChat in Frameworks */,
+				B1F000000000000000000048 /* BifrostWindows in Frameworks */,
+				B1F000000000000000000049 /* BifrostApp in Frameworks */,
+				B1F000000000000000000016 /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		B1F000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				B1F000000000000000000004 /* App */,
+				B1F000000000000000000005 /* Config */,
+				B1F000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B1F000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B1F000000000000000000007 /* Bifrost.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B1F000000000000000000004 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				B1F000000000000000000006 /* Bifrost */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		B1F000000000000000000005 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				B1F000000000000000000008 /* Base.xcconfig */,
+				B1F000000000000000000009 /* Debug.xcconfig */,
+				B1F00000000000000000000A /* Release.xcconfig */,
+				B1F00000000000000000000B /* Debug-Info.plist */,
+				B1F0000000000000000000FA /* Release-Info.plist */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B1F000000000000000000010 /* Bifrost */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B1F000000000000000000033 /* Target configurations */;
+			buildPhases = (
+				B1F000000000000000000011 /* Sources */,
+				B1F000000000000000000012 /* Frameworks */,
+				B1F000000000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				B1F000000000000000000006 /* Bifrost */,
+			);
+			name = Bifrost;
+			packageProductDependencies = (
+				B1F000000000000000000050 /* BifrostFoundation */,
+				B1F000000000000000000051 /* BifrostLayout */,
+				B1F000000000000000000052 /* BifrostSettings */,
+				B1F000000000000000000053 /* BifrostLook */,
+				B1F000000000000000000054 /* BifrostKeyboard */,
+				B1F000000000000000000055 /* BifrostSessions */,
+				B1F000000000000000000056 /* BifrostDictation */,
+				B1F000000000000000000057 /* BifrostChat */,
+				B1F000000000000000000058 /* BifrostWindows */,
+				B1F000000000000000000059 /* BifrostApp */,
+				B1F000000000000000000024 /* Sparkle */,
+			);
+			productName = Bifrost;
+			productReference = B1F000000000000000000007 /* Bifrost.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B1F000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					B1F000000000000000000010 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = B1F000000000000000000030 /* Project configurations */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = B1F000000000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */,
+				B1F000000000000000000023 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B1F000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B1F000000000000000000010 /* Bifrost */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		B1F000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B1F000000000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		B1F000000000000000000031 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		B1F000000000000000000032 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		B1F000000000000000000034 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1F000000000000000000009 /* Debug.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		B1F000000000000000000035 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B1F00000000000000000000A /* Release.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		B1F000000000000000000030 /* Build configuration list for PBXProject "Bifrost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1F000000000000000000031 /* Debug */,
+				B1F000000000000000000032 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B1F000000000000000000033 /* Build configuration list for PBXNativeTarget "Bifrost" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1F000000000000000000034 /* Debug */,
+				B1F000000000000000000035 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/Bifrost;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B1F000000000000000000023 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.10.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B1F000000000000000000050 /* BifrostFoundation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostFoundation;
+		};
+		B1F000000000000000000051 /* BifrostLayout */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostLayout;
+		};
+		B1F000000000000000000052 /* BifrostSettings */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostSettings;
+		};
+		B1F000000000000000000053 /* BifrostLook */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostLook;
+		};
+		B1F000000000000000000054 /* BifrostKeyboard */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostKeyboard;
+		};
+		B1F000000000000000000055 /* BifrostSessions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostSessions;
+		};
+		B1F000000000000000000056 /* BifrostDictation */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostDictation;
+		};
+		B1F000000000000000000057 /* BifrostChat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostChat;
+		};
+		B1F000000000000000000058 /* BifrostWindows */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostWindows;
+		};
+		B1F000000000000000000059 /* BifrostApp */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000020 /* XCLocalSwiftPackageReference "Packages/Bifrost" */;
+			productName = BifrostApp;
+		};
+		B1F000000000000000000024 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1F000000000000000000023 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = B1F000000000000000000001 /* Project object */;
+}

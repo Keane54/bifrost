@@ -1,0 +1,21 @@
+{
+  "aliases": {
+    "5a0e0001-0000-4000-8000-000000000001": "smoke-imported"
+  },
+  "current": {},
+  "deferred": [],
+  "jobs": {},
+  "lastActive": [],
+  "names": {},
+  "prNames": [],
+  "prSessions": [],
+  "priorities": {},
+  "started": [],
+  "watch": [
+    {
+      "colour": "green",
+      "sessionId": "5a0e0001-0000-4000-8000-000000000001"
+    }
+  ],
+  "worktrees": []
+}

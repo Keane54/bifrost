@@ -1,0 +1,6 @@
+{"components":[
+  {"name":"Claude API","status":"operational","group":false},
+  {"name":"Claude Console","status":"major_outage","group":false},
+  {"name":"Claude Cowork","status":"partial_outage","group":false},
+  {"name":"Claude for Government","status":"major_outage","group":false},
+  {"name":"Platform group","status":"major_outage","group":true}]}

@@ -1,0 +1,72 @@
+; The profile of the test sandbox. Only scripts/run-sandboxed.sh uses it.
+;
+; The wrapper writes a concrete copy of this file to .build/check/ and gives that copy to
+; sandbox-exec with -f. In each rule line, it replaces a parameter:
+; - HOME (between two @ characters): the wrapper writes the rule one time for each home, with
+;   the real path of the home. The homes are the home of the user database, and HOME when it has
+;   another value.
+; - DENY (between two @ characters): the wrapper writes the rule only when BIFROST_SANDBOX_DENY
+;   has a value (only for the self-test), with the real path of that folder.
+; Each rule is on one line. The self-test compares the rule lines of the concrete copy with the
+; exact set that it expects, so each change of a rule needs the same change in the self-test. A
+; later allow rule has priority over a deny rule, and the compare finds it.
+;
+; The profile allows all operations. The deny rules come after (allow default), so they have
+; priority. The rules apply to the command and to each process that it starts.
+(version 1)
+(allow default)
+
+; macOS refuses the exec of a setuid program in each sandbox, also with (allow default). No test
+; and no script runs a setuid program: the app reads the process details with the process APIs
+; of macOS, and smoke.sh uses kill -0 and pgrep. Thus the profile runs no program outside the
+; sandbox.
+
+; Reads and writes of the shared state of Claude Code and Bifrost, and of the data of the apps.
+; A stat is a read too.
+(deny file-read* file-write* (subpath "@HOME@/.claude"))
+(deny file-read* file-write* (literal "@HOME@/.claude.json"))
+(deny file-read* file-write* (subpath "@HOME@/.bifrost"))
+(deny file-read* file-write* (subpath "@HOME@/.bifrost-native-dev"))
+(deny file-read* file-write* (subpath "@HOME@/Library/Application Support/Bifrost"))
+(deny file-read* file-write* (subpath "@HOME@/Library/Application Support/Bifrost Native Dev"))
+; Writes of the logs. Reads of the logs stay allowed.
+(deny file-write* (subpath "@HOME@/Library/Logs"))
+; A rename of a parent folder moves the folders above out of their rules. Thus the profile refuses
+; each write of the folder itself (a rename, a removal or a change of its modes). A write in
+; the folder stays allowed. The wrapper replaces only the first HOME parameter of a line, so each
+; folder has its own line.
+(deny file-write* (literal "@HOME@/Library"))
+(deny file-write* (literal "@HOME@/Library/Application Support"))
+; Connections to the Unix sockets in the folders above, for example ~/.bifrost/live.sock. A file
+; rule does not refuse a connection to a socket. Other Unix sockets stay allowed.
+(deny network-outbound (subpath "@HOME@/.claude"))
+(deny network-outbound (subpath "@HOME@/.bifrost"))
+(deny network-outbound (subpath "@HOME@/.bifrost-native-dev"))
+(deny network-outbound (subpath "@HOME@/Library/Application Support/Bifrost"))
+(deny network-outbound (subpath "@HOME@/Library/Application Support/Bifrost Native Dev"))
+
+; Each outbound IP connection, also to the loopback address.
+(deny network-outbound (remote ip))
+; The name lookup: the socket of the resolver, the services of the resolver (Network.framework
+; uses the dnssd service) and the hosts file.
+(deny network-outbound (literal "/private/var/run/mDNSResponder"))
+(deny mach-lookup (global-name "com.apple.dnssd.service"))
+(deny mach-lookup (global-name "com.apple.mDNSResponder"))
+(deny file-read* (literal "/private/etc/hosts"))
+
+; The exec of the Keychain tool. No test and no script reads a Keychain item, for example the
+; login of Claude Code that the app reads with this tool (AccessToken).
+(deny process-exec (literal "/usr/bin/security"))
+
+; Each signal to a process outside the sandbox, for example a Claude session or an app of the
+; user. Each child of the command inherits the sandbox, so a test can still signal the processes
+; that it started. The allow rule comes after the deny rule, so it has priority.
+(deny signal)
+(allow signal (target same-sandbox))
+
+; Only for the self-test: writes under the denied folder, connections to the sockets in it, and
+; the exec of the program "true" in it. The exec rule has the form of the rule of the Keychain
+; tool (a literal path), so the self-test proves that form without a run of that tool.
+(deny file-write* (subpath "@DENY@"))
+(deny network-outbound (subpath "@DENY@"))
+(deny process-exec (literal "@DENY@/true"))

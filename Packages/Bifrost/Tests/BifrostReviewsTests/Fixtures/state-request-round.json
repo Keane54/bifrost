@@ -1,0 +1,219 @@
+{
+  "version": 1,
+  "turnedOnAt": 1794000000000,
+  "baseline": [],
+  "requests": {},
+  "pauses": {},
+  "prs": {
+    "owner-a/repo-b#7": {
+      "handled": {
+        "PRRT_kwDOexample10": { "at": 1794001000000, "lastReplyAt": 1794000990000 }
+      },
+      "firstCopilotReview": "PRR_kwDOexample11",
+      "lastReviewedCommit": null,
+      "request": {
+        "sessionId": "2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a",
+        "name": "repo-b-7-request",
+        "shortId": "2d3e4f5a"
+      },
+      "review": null,
+      "handleOlder": true,
+      "handleCopilot": false,
+      "rerequested": { "reviewer-a": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+      "lastError": null,
+      "round": {
+        "phase": "posting",
+        "kind": "request",
+        "startedAt": 1794003000000,
+        "at": 1794002900000,
+        "headSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "baseSha": "ffffffffffffffffffffffffffffffffffffffff",
+        "shortId": "2d3e4f5a",
+        "sessionId": "2d3e4f5a-6b7c-4d8e-9f0a-1b2c3d4e5f6a",
+        "stoppedByUser": false,
+        "items": {
+          "PRRT_kwDOexample12": 1794002500000,
+          "IC_kwDOexample13": 1794002600000,
+          "PRRT_kwDOexample14": 1794002700000
+        },
+        "fixSha": "1111111111111111111111111111111111111111"
+      },
+      "recommendation": null,
+      "actedAt": null,
+      "outbox": {
+        "headSha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "mergeBase": "ffffffffffffffffffffffffffffffffffffffff",
+        "startedAt": 1794003500000,
+        "seen": {
+          "PRRT_kwDOexample12": 1794002500000,
+          "IC_kwDOexample13": 1794002600000,
+          "PRRT_kwDOexample14": 1794002700000
+        },
+        "posts": [
+          {
+            "id": "commit",
+            "state": "done",
+            "kind": "commit",
+            "paths": ["src/list.ts"],
+            "message": "Fix the empty list check",
+            "sha": "1111111111111111111111111111111111111111"
+          },
+          {
+            "id": "push",
+            "state": "done",
+            "kind": "push",
+            "sha": "1111111111111111111111111111111111111111"
+          },
+          {
+            "id": "reply-1",
+            "state": "done",
+            "kind": "reply",
+            "itemId": "PRRT_kwDOexample12",
+            "text": null,
+            "by": "1111111111111111111111111111111111111111",
+            "commentId": "PRRC_kwDOexample15"
+          },
+          { "id": "resolve-1", "state": "done", "kind": "resolve", "itemId": "PRRT_kwDOexample12" },
+          {
+            "id": "comment-2",
+            "state": "sending",
+            "kind": "comment",
+            "itemId": "IC_kwDOexample13",
+            "quote": "Can you rename it?",
+            "text": "Renamed it to count.",
+            "by": "1111111111111111111111111111111111111111"
+          },
+          {
+            "id": "reply-3",
+            "state": "todo",
+            "kind": "reply",
+            "itemId": "PRRT_kwDOexample14",
+            "text": "This one stays: the list is never empty here."
+          },
+          { "id": "resolve-3", "state": "todo", "kind": "resolve", "itemId": "PRRT_kwDOexample14" },
+          { "id": "rerequest", "state": "todo", "kind": "rerequest", "logins": ["reviewer-a"] }
+        ]
+      },
+      "questions": {
+        "PRRT_kwDOexample16": {
+          "question": "Should the limit be 10 or 20?",
+          "where": "src/limit.ts line 4",
+          "author": "reviewer-a",
+          "body": "The limit looks low.",
+          "url": "https://github.com/owner-a/repo-b/pull/7#discussion_r1",
+          "kind": "thread",
+          "at": 1794003100000,
+          "answer": null,
+          "seenUntil": 1794002800000
+        }
+      },
+      "held": ["PRRT_kwDOexample17"],
+      "checkedAt": 1794002950000
+    },
+    "owner-a/repo-b#8": {
+      "handled": {},
+      "firstCopilotReview": null,
+      "lastReviewedCommit": null,
+      "request": null,
+      "review": null,
+      "handleOlder": true,
+      "handleCopilot": true,
+      "rerequested": {},
+      "lastError": null,
+      "round": null,
+      "recommendation": null,
+      "actedAt": null,
+      "outbox": null,
+      "questions": {},
+      "held": [],
+      "checkedAt": null
+    },
+    "owner-a/repo-b#10": {
+      "handled": {},
+      "firstCopilotReview": null,
+      "lastReviewedCommit": null,
+      "request": {
+        "sessionId": "3e4f5a6b-7c8d-4e9f-8a1b-2c3d4e5f6a7b",
+        "name": "repo-b-10-request",
+        "shortId": "3e4f5a6b"
+      },
+      "review": null,
+      "handleOlder": false,
+      "handleCopilot": false,
+      "rerequested": {},
+      "lastError": null,
+      "round": {
+        "phase": "running",
+        "kind": "request",
+        "startedAt": 1794004000000,
+        "at": 1794003900000,
+        "headSha": "2222222222222222222222222222222222222222",
+        "shortId": "3e4f5a6b",
+        "sessionId": "3e4f5a6b-7c8d-4e9f-8a1b-2c3d4e5f6a7b",
+        "stoppedByUser": false,
+        "items": { "PRRT_kwDOexample18": 1794003800000 }
+      },
+      "recommendation": null,
+      "actedAt": null,
+      "outbox": null,
+      "questions": {},
+      "held": [],
+      "checkedAt": 1794003950000
+    },
+    "owner-a/repo-a#11": {
+      "handled": {},
+      "firstCopilotReview": null,
+      "lastReviewedCommit": null,
+      "request": null,
+      "review": null,
+      "handleOlder": false,
+      "handleCopilot": false,
+      "rerequested": {},
+      "lastError": null,
+      "round": null,
+      "recommendation": null,
+      "actedAt": null,
+      "outbox": {
+        "headSha": "3333333333333333333333333333333333333333",
+        "mergeBase": "4444444444444444444444444444444444444444",
+        "startedAt": 1794004500000,
+        "seen": { "PRRT_kwDOexample19": 1794004400000 },
+        "posts": [
+          {
+            "id": "push",
+            "state": "todo",
+            "kind": "push",
+            "signed": true
+          },
+          {
+            "id": "reply-1",
+            "state": "todo",
+            "kind": "reply",
+            "itemId": "PRRT_kwDOexample19",
+            "text": null
+          }
+        ]
+      },
+      "questions": {},
+      "held": [],
+      "checkedAt": null
+    }
+  },
+  "posted": [
+    { "id": "PRRC_kwDOexample15", "prKey": "owner-a/repo-b#7", "body": "Fixed by 1111111", "at": 1794003600000 }
+  ],
+  "drafts": [],
+  "voicePairs": [],
+  "queue": [
+    { "key": "owner-a/repo-b#8", "kind": "request", "at": 1794004100000 },
+    { "key": "owner-a/repo-a#9", "kind": "review", "at": 1794004200000 }
+  ],
+  "repos": {
+    "owner-a/repo-a": { "trustNotifiedAt": null },
+    "owner-a/repo-b": { "trustNotifiedAt": 1794000400000 }
+  },
+  "setUpAt": 1794000300000,
+  "fixFrom": 1794000000000,
+  "autoFixConsent": true,
+  "hidden": {}
+}

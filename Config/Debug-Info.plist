@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+	"http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIconFile</key>
+	<string>$(BIFROST_APP_ICON)</string>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>BifrostReleasesURL</key>
+	<string>$(BIFROST_RELEASES_URL)</string>
+	<key>BifrostFakeClaude</key>
+	<string>$(SRCROOT)/scripts/fake-claude/claude</string>
+</dict>
+</plist>

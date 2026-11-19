@@ -1,0 +1,4 @@
+// !$*UTF8*$!
+{
+		A1B2C3 /* Example.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F6 /* Example.swift */; };
+}

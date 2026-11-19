@@ -1,0 +1,31 @@
+# Deliberate differences
+
+This table lists the places where the Bifrost menu works differently from the menus of the
+Electron app on purpose. The Electron app is the reference for what a menu shows and how its keys
+behave, not for how it's built. The last column says whether someone using the app would notice
+the difference in normal use, and a row marked "for the hands-on test" is one to check by hand in
+the real app.
+
+The table covers the shared parts of the menus (`MENU_POPUP`, `MENU_ITEM` and `MENU_SEPARATOR` in
+`lib/menu.tsx`), the row menu entries (`RowMenu.tsx`), the Panel menu (`PanelMenu.tsx`) and the
+keys of the menu library behind them. The values of the look are the values of those classes, and
+`ThemeTokensTests.theMenuValuesMatchTheElectronClasses` checks them. M1, M2, M4, M5, M7, M8 and M9
+are visible and are for the hands-on test.
+
+The row menu updates its entries while it's open, as `OverviewTable.tsx` draws them again at each
+change of the row, and a press outside the row menu or the tab menu only closes it, as with the
+modal context menus of the Electron app, so neither has a row here. The pop-up pickers of the New
+session dialog and of Settings are standard macOS menus, which is fine for now (user decision,
+2026-11-17); X26 of the actions port and S3 of the settings port describe them.
+
+| ID | Where | TypeScript | Swift | Reason | Visible? |
+| --- | --- | --- | --- | --- | --- |
+| M1 | Where a menu can go | The popup is an element of the page, so it stays inside the window. | A menu is a separate borderless panel above the window (`MenuPanel`). It stays inside the visible part of its screen rather than the window, so near an edge of the window it can hang outside it. | One custom menu type for every menu inside the window (user decision, 2026-11-16). A panel is the native way to float a box above the window and its frames. | Yes, only near an edge of the window. For the hands-on test. |
+| M2 | VoiceOver | The menu library gives the menu its web roles (`menu`, `menuitem`, `menuitemcheckbox`, `menuitemradio`, `aria-expanded`, `aria-disabled`), and Chromium passes them on. | The AppKit roles of a menu: the list is a menu, each row a menu item, a check box or radio row reports 1 or 0 as its value and a checked row gives the ✓ mark (`AXMenuItemMarkChar`), a submenu row has a menu as its child and reports whether it's open, a separator is hidden, a disabled row is not enabled and gives its reason as its help, and the highlighted row is selected and announced (`AXMenuItemSelected`) in each level. A field row is its text field, and the SwiftUI drawing is hidden. | These are the roles VoiceOver knows from the menus of macOS. | Only with VoiceOver. For the hands-on test. |
+| M3 | The blur behind a menu | `backdrop-blur-md` (12 px) behind the fill. | No blur. | The fill is the title colour, which is opaque, so a blur behind it can't show in either app. The menu is also a separate window, so a blur inside it would have nothing behind it to blur. | No. |
+| M4 | The key focus during a field edit | The text box of the Panel menu takes the focus inside the page, and the window stays the focused window. | The window stays the key window while a menu shows, as with each menu of macOS. While the text box of a field row edits, the panel of the menu takes the key focus, so the main window isn't the key window then: the animated background pauses and a chat shows as unfocused. The panel gives the key focus back when the highlight leaves the field or the menu closes. | A text box needs the key window to take the typed text and the text of an input method. | Yes, while you type in the name field of the Panel menu. For the hands-on test. |
+| M5 | The keys of the Panel menu | A box (`role="dialog"`): Lock gets the focus when it opens, and Tab moves between "Overview settings…", Lock and the name field. | A menu: no row has the highlight when it opens, Up and Down move over the rows and reach the name field, and Tab does nothing. | One menu type with one set of keys for every menu inside the window (user decision, 2026-11-16). | Yes, to someone using the keys. For the hands-on test. |
+| M6 | The length of the name field | `maxLength` of 40, which counts UTF-16 units, so an emoji outside the basic plane counts as two. | 40 `Character`s, so an emoji counts as one. | Every length limit in the app counts `Character`s (row OV6 of the Overview port), and the field keeps what the rename rule keeps. | Yes, but OV6 already covers it. |
+| M7 | Moving to a submenu | The menu library keeps an open submenu while the pointer crosses other rows on its way to the submenu (a "safe triangle"). | A submenu opens after the pointer rests 100 ms on its row, and a pointer over another row of the same menu closes it at once, so a diagonal move across other rows closes it. | The rule is simple and the same for the keys and the pointer, and the submenus of the row menu sit right next to their rows. | Yes, when you move diagonally to a submenu. For the hands-on test. |
+| M8 | A window that loses the focus | The Panel menu is a box in the page: it stays open when the window loses the focus, and closes only at a press outside it or Esc. | A Bifrost menu also closes when the window (or the menu's panel during a field edit) loses the key focus to anything other than the menu, when Bifrost stops being the active app, at a click in the menu bar, when an item of the menu bar acts (except an edit of the menu's own field: Paste, Cut, Select All, Undo, Redo, Emoji & Symbols and Dictation while the field edits) and at a press in another app. | A menu that floats above the window must not stay above other apps or over a window that isn't in use, as with each menu of macOS. | Yes: switching away with Cmd+Tab closes the Panel menu. For the hands-on test. |
+| M9 | When the Panel menu opens | The menu button toggles the box at its click, so the box opens at the release of the press. | The menu opens at the press of the button, as a pop-up button of macOS does, so a drag from the press to a row and a release there choose the row. A second press closes it. | Press, drag and release is the way to use a menu in one move, and it needs the menu at the press. | Yes, the menu opens a moment earlier. For the hands-on test. |

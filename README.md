@@ -1,234 +1,346 @@
-<div align="center"><img width=150 src="build/icon.png" /></div>
+<div align="center"><img width=150 src="docs/images/bifrost-icon.png" /></div>
 
 <h1 align="center">Bifrost</h1>
 
 <div align="center">
 
-[![CI](https://github.com/Keane54/bifrost/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Keane54/bifrost/actions/workflows/ci.yml) [![Release](https://github.com/Keane54/bifrost/actions/workflows/release.yml/badge.svg)](https://github.com/Keane54/bifrost/actions/workflows/release.yml)
+[![CI][ci-badge]][ci] [![Release][release-badge]][release]
 
-[![Electron](https://shieldcn.dev/badge/Electron.svg?size=xs&logo=electron&logoColor=ffffff&color=47848f)](https://www.electronjs.org/)
-[![React](https://shieldcn.dev/badge/React.svg?size=xs&logo=react&logoColor=ffffff&color=087ea4)](https://react.dev/)
-[![TypeScript](https://shieldcn.dev/badge/TypeScript.svg?size=xs&logo=typescript&logoColor=ffffff&color=3178c6)](https://www.typescriptlang.org/)
-[![Tailwind V4](https://shieldcn.dev/badge/Tailwind_V4.svg?size=xs&logo=tailwindcss&logoColor=ffffff&color=00bcff)](https://tailwindcss.com/)
-[![Vite](https://shieldcn.dev/badge/Vite.svg?size=xs&logo=vite&logoColor=ffffff&gradient=646cff%2Cbd34fe)](https://vite.dev/)
-[![xterm.js](https://shieldcn.dev/badge/xterm.js.svg?size=xs&color=262626)](https://xtermjs.org/)
+[![Swift][swift-badge]][swift] [![SwiftUI][swiftui-badge]][swiftui]
+[![AppKit][appkit-badge]][appkit] [![SwiftTerm][swiftterm-badge]][swiftterm]
+[![Sparkle][sparkle-badge]][sparkle]
 
-[![pnpm](https://shieldcn.dev/badge/pnpm.svg?size=xs&logo=pnpm&logoColor=ffffff&color=f69220)](https://pnpm.io/)
-[![Biome](https://shieldcn.dev/badge/Biome.svg?size=xs&logo=biome&logoColor=ffffff&color=60a5fa)](https://biomejs.dev/)
-[![Vitest](https://shieldcn.dev/badge/Vitest.svg?size=xs&logo=vitest&logoColor=ffffff&gradient=729b1b%2Cfcc72b)](https://vitest.dev/)
-[![Playwright](https://shieldcn.dev/badge/Playwright.svg?size=xs&color=2ead33)](https://playwright.dev/)
-[![Conventional Commits](https://shieldcn.dev/badge/Conventional_Commits.svg?size=xs&logo=conventionalcommits&logoColor=ffffff&gradient=fe5196%2C+f77062)](https://www.conventionalcommits.org/)
-[![semantic-release](https://shieldcn.dev/badge/semantic--release.svg?size=xs&logo=semanticrelease&logoColor=ffffff&color=494949)](https://github.com/semantic-release/semantic-release)
+[![Conventional Commits][cc-badge]][cc] [![semantic-release][sr-badge]][sr]
 
 </div>
 
-Bifrost is a macOS desktop app for Claude Code. It shows all the Claude Code sessions on your Mac in one window, and it lets you control them.
+[ci-badge]: https://github.com/Keane54/bifrost/actions/workflows/ci.yml/badge.svg?branch=main
+[ci]: https://github.com/Keane54/bifrost/actions/workflows/ci.yml
+[release-badge]: https://github.com/Keane54/bifrost/actions/workflows/release.yml/badge.svg
+[release]: https://github.com/Keane54/bifrost/actions/workflows/release.yml
+[swift-badge]: https://shieldcn.dev/badge/Swift.svg?size=xs&logo=swift&logoColor=ffffff&color=f05138
+[swift]: https://www.swift.org/
+[swiftui-badge]: https://shieldcn.dev/badge/SwiftUI.svg?size=xs&color=0a84ff
+[swiftui]: https://developer.apple.com/xcode/swiftui/
+[appkit-badge]: https://shieldcn.dev/badge/AppKit.svg?size=xs&color=262626
+[appkit]: https://developer.apple.com/documentation/appkit
+[swiftterm-badge]: https://shieldcn.dev/badge/SwiftTerm.svg?size=xs&color=262626
+[swiftterm]: https://github.com/migueldeicaza/SwiftTerm
+[sparkle-badge]: https://shieldcn.dev/badge/Sparkle.svg?size=xs&color=262626
+[sparkle]: https://sparkle-project.org/
+[cc-badge]: https://shieldcn.dev/badge/Conventional_Commits.svg?size=xs&logo=conventionalcommits&logoColor=ffffff&gradient=fe5196%2C+f77062
+[cc]: https://www.conventionalcommits.org/
+[sr-badge]: https://shieldcn.dev/badge/semantic--release.svg?size=xs&logo=semanticrelease&logoColor=ffffff&color=494949
+[sr]: https://github.com/semantic-release/semantic-release
+[dmg]: https://github.com/Keane54/bifrost/releases/latest/download/Bifrost-arm64.dmg
 
-Bifrost has a modular, flexible interface. Panels float inside one app window. You can move, resize, snap and stack the panels, plus save each layout with a name to load it again later.
+Bifrost is a native macOS app for Claude Code. It shows every Claude Code session on your Mac in
+one window, and you can run them all from there.
 
-Built with [Electron](https://www.electronjs.org/), [React](https://react.dev/) and [TypeScript](https://www.typescriptlang.org/), with:
+Panels float inside the window. You can move, resize, snap and stack them, and save a layout by
+name to load it again later.
 
-- [electron-vite](https://electron-vite.org/) (build) and [electron-builder](https://www.electron.build/) (DMG)
-- [xterm.js](https://xtermjs.org/) and [node-pty](https://github.com/microsoft/node-pty) (chat windows)
-- [Tailwind CSS v4](https://tailwindcss.com/) (styles)
-- [Base UI](https://base-ui.com/) (menus, dialogs and tooltips)
-- [TanStack Table](https://tanstack.com/table/latest) and [TanStack Hotkeys](https://tanstack.com/hotkeys/latest) (Overview columns and keys)
-- [Biome](https://biomejs.dev/) (lint and format)
-- [Vitest](https://vitest.dev/) (unit tests) and [Playwright](https://playwright.dev/) (smoke tests)
+It's written in Swift with SwiftUI and AppKit. The chat windows use
+[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm), and updates come through
+[Sparkle](https://sparkle-project.org/).
 
 ## What Bifrost does
 
-- Bifrost reads the session list from `claude agents --json` every 2 seconds.
-- It starts a new session in the background with `claude --bg`.
-- Each chat window shows the real terminal interface of Claude Code for one session. Bifrost runs `claude attach` for this.
-- A session that a terminal app owns, for example Warp, shows its status only. With the Take control action, you can move the session to the background service of Claude Code.
-- A yellow box or a red box flashes on a session that needs you. A macOS notification and a sound are optional.
-- Live details is an optional mod for Claude Code. It sends live events and usage data to Bifrost. Then Bifrost shows the model, the cost and the context use of each session. Bifrost asks about Live details at the first start.
-- When the 5-hour limit or the 7-day limit gets to 90%, Bifrost shows a macOS notification. Each limit gives one notification in each reset period. When extra usage is on, the notification warns you that Claude Code can spend real money after 100%. A click on the notification opens the Usage HUD.
-- Bifrost skills are five built-in Claude Code skills. They give Claude tested steps for common jobs. Bifrost asks about them at the first start, after Live details. See the Skills section.
-- Hand over moves the work of a session to a new session. Bifrost asks the session for a short note and saves it in `~/.bifrost/handovers`. Then Bifrost starts a new session that continues from the note. The new name is the old name with " (2)". When that name is taken, the number goes up to " (3)" or higher. The chat window shows the new session, and Bifrost parks the old session. Hand over moves the watchlist entry, its colour and the priority to the new session. The button gets the warning colour when the context use is 80% or more. Only Live details gives the context use, so the colour needs Live details. When you delete a session whose folder another session uses, Bifrost removes the session from the list at once and keeps the folder. Bifrost removes the session from Claude Code when you delete the last session in that folder. This applies only to a worktree, not to a plain folder.
-- Bifrost updates itself. It checks GitHub for a new version and downloads it. When the update is ready, a button shows above Layouts in the side bar.
-- Bifrost shows the release notes from GitHub. After an update, the "What's new" dialog shows the changes since your last version. The "Release notes" button in Settings > Updates shows the last 10 releases.
-- Modules add your own panels to Bifrost. A module never gets a secret. See the Modules section.
-
-## Panels
-
-The side bar on the left edge has one button for each panel. It also holds the panels that you minimise.
-
-| Panel | Content |
-| --- | --- |
-| Overview | The list of sessions. Each tab has its own filters, columns and sort order. You can open more than one Overview. |
-| Selected Item | The selected session, its action buttons (Hand over is one of them) and a send box. |
-| Chat window | The Claude Code terminal of one session. You can dictate into it. See the Dictation section. |
-| Show Info | All the details of one session. |
-| Watchlist | The sessions that you track, in your order and colours. |
-| Event log | The live events of the sessions, with their times. |
-| Usage HUD | The use of the 5-hour limit and the 7-day limit. |
-| Service status | The status of Claude, GitHub and Sentry. |
-| Reviews | The GitHub pull requests that need you, in two tabs: To review and My PRs. See the Reviews section. |
-| Daily update | One tab for each work area. Each tab shows the tickets and PRs that moved since your last update, and the draft of your daily update. |
-| Settings | The tabs General, Slash commands, Keys, Reviews, Daily update, Live details, Skills, Modules and Updates. |
-| Module panels | The panels of the modules that you installed. See the Modules section. |
-
-## Dictation
-
-You can speak to Claude in a chat window. Bifrost types your words into the prompt of Claude
-while you speak.
-
-1. Click in a chat window.
-2. Hold Space. After a short time, the top line of the window becomes green. A microphone icon
-   and a level bar show in the header.
-3. Speak. Your words show in the prompt. While you speak, Bifrost can change the last words.
-4. Release Space. Bifrost types the final text.
-5. Read the text. Press Enter to send it. Bifrost never presses Enter.
-
-Rules:
-
-- A tap of Space types a space. The microphone opens only when you hold the key.
-- Speech recognition runs on your Mac. The audio and the text stay on your Mac. Bifrost saves no
-  audio. Bifrost can download the speech model of your language from Apple one time. During the
-  download, a hold shows the progress. When the model is ready, hold the key again. If you
-  release the key before the download ends, the chat window does not tell you that the model is
-  ready. Your next hold after the download dictates.
-- macOS asks one time for access to the microphone. On macOS 13 to 15, macOS also asks for
-  Speech Recognition. Answer each prompt. Then hold the key again. If you do not give access, the
-  chat window shows a notice with an "Open System Settings" button. Use this button to give
-  access.
-- When macOS has no speech model for your language, Bifrost uses English.
-- Dictation stops at these times. The text that Bifrost typed stays.
-  - You press another key.
-  - The window loses the focus.
-  - The chat window closes.
-  - The dictation is 2 minutes long.
-- Dictation does not start when Claude shows a choice, for example a permission prompt. Then
-  Space types a space.
-- Dictation does not work with the vim mode of Claude Code.
-- To change the key, go to Settings > Keys > Dictation key. The key can be Space, a letter, a
-  number or a symbol, with no Cmd, Ctrl, Option or Shift. To turn dictation off, click Clear.
-
-## Daily update
-
-The Daily update reminds you to post a short update in Slack on each work day. Claude writes one draft for each work area. You read the draft, change it if necessary, and copy it to Slack.
-
-Set up the Daily update in Settings > Daily update:
-
-- **Ticket source**: an MCP server of your Claude Code, for example the server of your ticket board. Bifrost proposes the tools of the server that only read. You confirm the list.
-- **You on the board**: your name, email or ID on the board. When this is empty, Claude uses the user of the MCP server.
-- **Merged PRs**: Bifrost also uses your merged PRs as items. This needs `gh`.
-- **Times and days**: the draft time (default 09:30), the deadline (default 10:00) and the work days (default Monday to Friday).
-- **Format**: the template of the update, and up to three past updates as examples of your style.
-- **Work areas**: each area has a name, a Slack channel and a short text that tells which work goes there. One area can take all other work.
-
-How it works:
-
-- At the draft time, Bifrost runs `claude -p` with the `bifrost-daily-update` skill. Then a notification with a sound tells you that the drafts are ready. When an area is not sent 10 minutes before the deadline, a second notification comes.
-- When you open the Daily update panel, Bifrost makes new drafts. It does not do this when the last run ended less than 5 minutes ago. The Refresh button always makes new drafts.
-- On the same day, a new draft does not replace a draft that you changed. The tab offers the new draft, and you choose. On the next day, the new draft replaces it.
-- The reminders stop when you mark each area as sent, or when you click Skip today. Copy does not stop them.
-- The run only reads the board. It gets the Read and Skill tools of Claude Code and the read tools that you confirmed. Bifrost denies all other tools of the server and all other MCP servers. A tool with a name that can change things, for example `update_item` or `deleteItem`, is always denied. Settings does not let you tick it.
-- The Send button comes with the Slack app. Until then, copy the draft and paste it in Slack.
-
-## Reviews
-
-The Reviews panel shows the GitHub pull requests that need you. To start, turn on Watch GitHub in Settings > Reviews. Bifrost uses your `gh` login and checks GitHub every 2 minutes. You can change this interval.
-
-- **To review**: the pull requests that ask for your review. A new request flashes. When you click Review, Claude reviews the pull request in a read-only session. Bifrost then saves a draft review on GitHub. Only you can see the draft. The row shows the result of Claude in a colour, with one button:
-  - **Approval recommended** (green): click Approve to approve the pull request on GitHub, or to submit the draft review as an approval.
-  - **Draft ready** (amber) or **Changes required** (red): click Comment or Request changes to open the Review panel. The panel shows the summary and each comment of the draft, also the comments that you added on GitHub. You can change each text and remove a comment. Bifrost changes nothing on GitHub until you click Send review. "Send as" sets the type of the review. Discard draft deletes the draft on GitHub. Approve instead deletes the draft, then approves the pull request.
-  - **Approved by others** (grey): click Remove to hide the row in Bifrost. Nothing changes on GitHub. The row comes back when someone asks for your review again.
-  - **CI failing** (red): Bifrost starts no review and does not approve the pull request. You can still send a draft as Comment or Request changes. **CI running** (grey, with a spinner): Claude can review, but Approve waits until CI has passed.
-- **My PRs**: your own pull requests. Claude fixes or answers each new comment from an owner, a member or a collaborator of the repository. It also handles the first Copilot review of the pull request. The session of Claude has no access to GitHub. Bifrost then commits the fix, pushes it to your branch, replies to the comment and resolves its thread. When Claude needs a decision from you, the row shows Needs you. Click the row and answer in the Answer panel. Each reviewer name has the colour of the latest review: green for approved, amber for comments only, red for changes requested, grey for no review.
-
-Rules:
-
-- Bifrost makes its own copy of each repository and asks you to trust each copy one time. It never uses your checkouts.
-- Bifrost approves a pull request only when you click Approve or Approve instead. It sends or
-  deletes a draft review only when you click a button in the Review panel. It never merges a
-  pull request. It never force-pushes. Bifrost itself never signs a commit.
-- To get signed fix commits, turn on "Sign commits through GitHub" in Settings > Reviews. Bifrost
-  then sends each fix to GitHub with your `gh` login, and does not push it with git. GitHub makes
-  the commit and signs it, so the commit shows as Verified. You are its author. Bifrost does not
-  send a fix that changes an executable file, a link or a submodule, or a fix that has more than 4
-  MB of files. When Bifrost refuses a fix, turn the setting off and select Try again, or make the
-  change yourself.
-- Bifrost never pushes a change to a GitHub workflow, a GitHub action or a `.claude` folder.
-- Comments from before the turn-on wait until you select Handle now in the menu of the row.
-- To stop the automatic fixes, turn off "Handle comments on my PRs automatically" in Settings > Reviews.
-- If Watch GitHub was on before the update that added the automatic fixes, Bifrost turns the automatic fixes off one time. The My PRs tab then shows how to turn them on.
-- When Bifrost stops before it posts all the replies, the row shows Error. Select Try again to send the rest. Select Cancel to drop them. After Cancel, the comments wait for Handle now.
-
-## Skills
-
-Bifrost skills are a small Claude Code plugin. The plugin has six skills.
-
-| Skill | Group | Job |
-| --- | --- | --- |
-| `bifrost-review` | Called by name | Review a PR. |
-| `bifrost-resolve-comments` | Called by name | Resolve the comments on a PR. |
-| `bifrost-humanise` | Listed | Make a text sound like a person wrote it. |
-| `bifrost-grill` | Listed | Ask hard questions about a plan. |
-| `bifrost-hand-over` | Called by name | Hand over a session to a new session. |
-| `bifrost-daily-update` | Called by name | Write a draft of your daily update for each work area. |
-
-Listed skills are in the skill list of Claude, so Claude can start them by itself. A skill that you call by name costs no context until you type its name.
-
-- Install the skills from the setup dialog or from Settings > Skills. When you install the skills, Bifrost first shows each change.
-- To start a skill, type its name in a chat, for example `/bifrost-review`.
-- Bifrost updates the skill files at each start.
-- After you install or turn on the skills, a session that runs now gets the change after `/reload-plugins` or a restart.
-- The Hand over button works without the skills.
-
-`bifrost-humanise` comes from `blader/humanizer`. `bifrost-grill` comes from `mattpocock/skills`. Both are MIT licensed.
-
-## Modules
-
-A module adds your own panels to Bifrost. A module is a folder of static web files with a manifest. You can keep a module in your own repository, also in a private repository. The [author guide](docs/modules.md) tells you how to write a module.
-
-Each panel of a module runs in a sandboxed frame. The frames of a module run in a process of their own, apart from Bifrost and from the other modules. A frame has no Node, no network and no clipboard read. One known limit: if a browser bug takes over the process of a module, that process can send UDP to a fixed IP address. HTTP, TCP and DNS stay blocked. Bifrost tracks a browser-side block for UDP. The panel talks only to Heimdall, the secure core of Bifrost. Heimdall runs in the main process. It checks each call of a module against the permissions that you gave to the module.
-
-A module never gets a secret. Heimdall keeps the tokens, the logins and the keys, and it never gives them to a module. Heimdall filters each value that it gives to a module. Each text that looks like a token or a private key becomes `***`.
-
-A module cannot read the files on your Mac by itself. It can read a file only when you pick the file in a file dialog of its panel, or drop the file on its panel. The module can then give the content of the file to a module job, and the job sends it to Claude. Before each module job, the secret filter masks the known token and key formats in its input. So pick or drop only a file that you want the module to have.
-
-Each module has a tier. Bifrost has two tiers:
-
-- **Standard**: the panels of the module, its own storage, notifications, the session list, the plan usage, the service status, module jobs and Discuss with Claude. This version of Bifrost has only the Standard tier.
-- **Permissive**: more access, for example Slack reads, GitHub reads and web reads, each to a target that you approve. A later version of Bifrost adds this tier. This version refuses a module that asks for a Permissive permission, with "This module needs a newer version of Bifrost."
-
-To install a module:
-
-1. Open Settings > Modules.
-2. Click "Install from a folder" or "Install from a git repo". For a git repo, Bifrost accepts only an address of the form `https://github.com/<owner>/<repo>`. It uses your `gh` login, so a private repository works.
-3. Read Heimdall's window. It shows the tier, each permission with the reason of the module, and what a module can never do.
-4. Click "Allow". The module runs only after this step.
-
-The side bar then shows a button for each panel of the module. In Settings > Modules, you can turn a module off, remove a permission, check for updates or remove the module. A new version that asks for a new permission does not run until you allow it.
-
-A module job is a short Claude Code run that Heimdall starts for a module. The job has no tools, no MCP servers, no skills and no memory. You choose the model and the daily cap of the module jobs for each module. Without the permission "Run module jobs automatically", a job waits until you click Refresh in the title bar of a panel of the module.
-
-With Discuss with Claude, a module can ask you to start a Claude session. Heimdall opens its own panel. The module can show text cards with Copy buttons there, but Claude does not see the cards. The prompt box always starts empty. You write the prompt and pick the folder. Only your text goes to Claude. The module cannot see or change the session.
+- It reads the session list from `claude agents --json`, every 2 seconds by default.
+- It starts new sessions in the background with `claude --bg`. The New session dialog closes as
+  soon as the start begins, and a "Starting…" row shows until the session is ready.
+- Each chat window is the real Claude Code terminal of one session, through `claude attach`.
+- A session that runs in a terminal app, such as Warp, shows its status and the icon of that app.
+  Take control moves it to Claude Code's background service.
+- A yellow or red box flashes on a session that needs you, with an optional macOS notification
+  and sound.
+- Live details, an optional mod for Claude Code, sends live events and usage data to Bifrost, so
+  it can show the model and the context use of each session.
+- The Usage HUD shows the 5-hour and 7-day limits. When a limit reaches 90%, Bifrost sends one
+  notification for that reset period.
+- Hand over moves the work of a session to a fresh session, through a short note that the old
+  session writes.
+- Reviews watches your GitHub pull requests. Claude drafts the reviews and the replies, and you
+  decide what goes out.
+- The Daily update drafts your daily update for each work area.
+- You can dictate into a chat window: hold Space and talk.
+- Bifrost updates itself, and shows what's new after each update.
 
 ## Requirements
 
-- A Mac with Apple silicon and macOS 13 or later. The DMG has arm64 code only.
-- The Claude Code CLI (`claude`). Bifrost finds it through the PATH of your login shell. For Live details, you need Claude Code 2.1.290 or later.
-- The GitHub CLI (`gh`) for the Reviews panel. Log in with `gh auth login`.
+- A Mac with Apple silicon and macOS 26 or later.
+- The Claude Code CLI (`claude`). Bifrost finds it through the PATH of your login shell.
+- The GitHub CLI (`gh`) for Reviews. Log in with `gh auth login`.
 
 ## Install
 
-1. Download [Bifrost for Apple silicon](https://github.com/Keane54/bifrost/releases/latest/download/Bifrost-arm64.dmg) from the latest release. The [Releases page](https://github.com/Keane54/bifrost/releases) has all versions and their release notes.
-2. Open the DMG.
-3. Drag Bifrost to the Applications folder. Keep Bifrost in this folder. Bifrost can update itself only from the Applications folder.
-4. Open Bifrost from the Applications folder.
-5. At the first start, Bifrost shows the "Set up Bifrost" dialog. Follow its steps, or select Skip.
+1. Download [Bifrost for Apple silicon][dmg] from the latest release. The
+   [Releases page](https://github.com/Keane54/bifrost/releases) has every version with its
+   release notes.
+2. Open the DMG and drag Bifrost to the Applications folder.
+3. Open Bifrost. On the first start, the "Set up Bifrost" dialog walks you through the setup.
 
-After the first install, you do not need to download a DMG again. Bifrost checks for new versions. When a new version is ready, a button shows above Layouts in the side bar. Click the button to restart Bifrost with the new version. After the restart, the "What's new" dialog opens one time and shows the changes of the new version. Settings > Updates has the switch "Check for updates automatically", the "Check for updates" button, the "Show log" button and the "Release notes" button.
+After that, Bifrost keeps itself up to date. Sparkle checks for new versions and shows you what
+changed before it installs one, and after the restart the "What's new" dialog lists the changes.
+Settings > Updates has the switch for automatic checks and a "Check now" button.
 
-## Documentation
+If you used the Electron version of Bifrost, it updates to this version by itself, and your
+layouts and settings come across on the first start.
 
-The [`docs`](docs) folder and the root folder have the other documents:
+## Build and test
 
-- [Modules](docs/modules.md): the author guide. It tells you how to write a module for Bifrost.
-- [Electron, Tauri or GPUI](docs/electron-or-tauri.md): why Bifrost stays on Electron.
-- [Slack app](docs/slack/README.md): the Slack app for a later milestone.
-- [Releasing](RELEASING.md): the secrets and the steps of a signed release.
+You'll need macOS 26 and Xcode 26.6 or later. The app build also needs Xcode's Metal Toolchain,
+because the shaders of the background and the chat terminal are compiled when the app builds.
+Xcode doesn't always install it, so on a new Mac run this once before your first build:
+
+    xcodebuild -downloadComponent MetalToolchain
+
+CI runs one script on every push, and you run the same script before every commit:
+
+    scripts/check.sh
+
+It runs 17 steps in order and stops at the first one that fails. Between them, the steps test the
+checkers themselves, check the repo rules, look for forbidden code constructs and work out the list
+of Debug-only names, resolve the package dependencies, run the package tests in the test sandbox,
+build the package in release mode, and build the Debug and Release apps. Straight after the Debug
+build, a release step tests the scripts that build and publish a release
+(`scripts/test-release.sh`). Two bundled steps then check that the Debug app carries the Live
+details mod and the skills plugin with exactly the bytes of the repo copies
+(`scripts/check-bundled.sh`, which tests itself first). The Release build must contain none of the
+Debug-only names. After the builds, a fork-child step checks that the code which runs in a forked
+child process never calls into the Swift or Objective-C runtime. Finally the smoke test runs the
+Debug app, and a last step makes sure the smoke script refuses to start the Release app. Each step
+writes its output to `.build/check/<step>.log`, and passing `--clean` removes the `.build` folder
+when the run ends. The full list of steps is at the end of `scripts/check.sh`.
+
+Any other test command, even a single focused test, has to run through the test sandbox too:
+
+    scripts/run-sandboxed.sh swift test --package-path Packages/Bifrost \
+        --scratch-path .build/pkg --disable-sandbox --filter Shared
+
+The sandbox keeps tests away from your real `~/.claude`, `~/.claude.json`, `~/.bifrost` and the app
+data folders, it blocks the network and the Keychain tool `/usr/bin/security`, and it stops a test
+from signalling any process it didn't start. Each `swift test` inside it needs `--disable-sandbox`,
+because macOS won't let SwiftPM start its own `sandbox-exec` inside another sandbox. The full rules
+are in `scripts/run-sandboxed.sh` and `scripts/test-sandbox.sb`. Outside the sandbox, for example
+from a plain `swift test` or from Xcode, the shared helpers that start real processes or make
+temporary folders (`TemporaryFolder` and `StandInProcess`, and so `FakeClaude` and `ChatFixture`)
+stop the test at once, and so do the process runner suites.
+
+Tests and scripts never attach to a real Claude session; they use the fake `claude` in
+`scripts/fake-claude/` instead. Besides listing sessions and attaching to them, the fake handles the
+commands of the session actions: `--bg` starts a session (a new one, or a resume) with a small
+stand-in process, and `stop` and `rm` end it and take it off the list. It logs every call to
+`claude-calls.log` in the test home, and it refuses to run with your real home. In the app, closing
+a chat only detaches from its session: Bifrost sends SIGHUP (the "hang up" signal) to the attach
+process it started, and the session itself keeps running.
+
+## Running the app
+
+Only ever run the Debug app. Open `Bifrost.xcodeproj` and use the shared `Bifrost` scheme, whose
+Debug configuration builds `Bifrost Dev.app`. After a `check.sh` run you'll also find a copy in
+`.build/xcode/Build/Products/Debug/`. The Debug app keeps its data in
+`~/Library/Application Support/Bifrost Native Dev` and `~/.bifrost-native-dev`, separate from the
+release app's folders.
+
+Never start the Release build. It uses the Electron app's bundle ID, and unless it was built with
+`BIFROST_CUTOVER` it shows an alert and quits. No build configuration sets that flag: only the
+Release workflow adds it, on the `xcodebuild` command line, when it builds a release. How a release
+works, and how the first one takes over from the Electron app, is in
+[`docs/release.md`](docs/release.md). `check.sh` only builds the Release app, checks that it
+contains no debug-only code, and then removes it from the LaunchServices database, so that macOS
+can't open it in place of the Electron app.
+
+The main panel is the Overview, Bifrost's table of your Claude Code sessions, and a window with no
+saved layout opens with it, with the Selected Item panel to its right. Each Overview has a row of
+tabs that filter and sort the sessions, and you can open more than one Overview from the side bar
+(New Overview) and change any tab in its Overview Settings panel. What it does in detail is in
+[`docs/behaviour/overview.md`](docs/behaviour/overview.md).
+
+The session actions work from the Selected Item panel, the keys, the side bar and the row menu that
+a right-click on a row opens. You can start a new session, send a message or a slash command,
+interrupt, rename, set a priority, watch a session, open its project or a terminal, stop, resume,
+take control of a session running in another terminal, and delete. Anything that needs a yes or a
+few values asks in a Bifrost dialog inside the window, with the canvas dimmed behind it, never in a
+system sheet. The row menu and the Panel menu are Bifrost menus too: borderless panels in Bifrost's
+own colours and fonts, which work from the keyboard and with VoiceOver like the menus of macOS.
+These actions run the real `claude` on your real sessions, so try them on `bifrost-test-` sessions
+first. The rules are in [`docs/behaviour/actions.md`](docs/behaviour/actions.md) and, for the
+menus, [`docs/behaviour/menu.md`](docs/behaviour/menu.md).
+
+Settings opens from the gear at the bottom of the side bar, with Cmd+, or with Esc. It keeps the
+nine tabs of the Electron app, and a search above them finds any setting or shortcut by its label
+or by its key. General, Slash commands, Keys, Live details and Skills work now. The other sections
+show "This section comes in a later build of Bifrost Dev." until their phase brings them: Reviews,
+Daily update and Updates with phase 5, and Modules with phase 7. In
+Keys you change a shortcut by recording it: click Change and press the new keys. While it records,
+the recorder gets every key first, menu keys such as Cmd+W included, so nothing else acts on them,
+and Esc stops it without a change. The details are in
+[`docs/behaviour/settings.md`](docs/behaviour/settings.md) and, for the keys,
+[`docs/behaviour/keys.md`](docs/behaviour/keys.md).
+
+The side bar also opens the other panels of phase 4: the Watchlist, which lists the sessions you
+watch in their colours and lets you drag them into order, the Event log, which shows the newest
+events of your sessions as Live details reports them, and the Usage HUD, which shows how much of
+your 5-hour and 7-day limits you've used. Show Info opens from a session's row menu and gives its
+details, with the pull request of its branch, which Bifrost looks up with the GitHub CLI (`gh`).
+The details are in [`docs/behaviour/panels.md`](docs/behaviour/panels.md) and
+[`docs/behaviour/usage.md`](docs/behaviour/usage.md).
+
+Bifrost tells you when a session needs you. A new box on a session row gives a macOS notification
+while the window isn't focused, and a red box plays the Ping sound. When a limit reaches 90 %, a
+usage notification shows once for that period, even while the window is focused. All of them go
+through one notifier, and the first one asks macOS for permission. With Account usage from
+Anthropic on in Settings, Bifrost also polls your account's usage every five minutes, with the
+access token of your Claude Code login from the Keychain. A test home never does either: it
+records each notification in memory and shows none, plays no sound, and has no poller, so a test
+run never reads the Keychain or reaches the network. The rules are in
+[`docs/behaviour/alerts.md`](docs/behaviour/alerts.md) and
+[`docs/behaviour/usage.md`](docs/behaviour/usage.md).
+
+The chat terminals draw with Metal. To switch the Debug app to Core Graphics drawing, run
+`defaults write <Debug bundle ID> TerminalRenderer cg`, where the Debug bundle ID is the one set in
+`Config/Debug.xcconfig`. The change takes effect the next time the app starts, and
+`defaults delete` with the same ID and key switches it back.
+
+### Live details and the skills
+
+Live details is how Bifrost knows what each Claude Code session is doing right now: its model, its
+context, its cost and whether it's waiting for you. A small Claude Code plugin, the mod, runs
+inside every session and sends a line for each event to a Unix socket that Bifrost listens on,
+`~/.bifrost/live.sock`. The Bifrost skills are a second plugin, a set of `/bifrost-...` skills
+that sessions can call. This repo owns both plugins: the four mod files are in
+`App/Bifrost/Resources/live-mod` and the skills in `App/Bifrost/Resources/bifrost-skills`, and
+the app bundles both folders. Settings > Live details and Settings > Skills install them with
+`claude plugin` (the mod goes to `~/.bifrost/mod`, the skills to `~/.bifrost/skills`), turn them
+on and off and remove them, and the gear in the side bar shows a small dot when Live details needs
+attention. At the first start a Setup dialog offers both. The rules are in
+[`docs/behaviour/live.md`](docs/behaviour/live.md) and
+[`docs/behaviour/skills.md`](docs/behaviour/skills.md), and the
+[Live details and skills](docs/explainers/live-and-skills.html) page shows how the pieces fit.
+
+### Reviews
+
+Reviews watches GitHub for the pull requests that need you, the ones where someone asked for your
+review and your own, and lists them in the Reviews panel. It polls through the GitHub CLI (`gh`)
+with your own login, and only once you turn on Watch GitHub in Settings > Reviews. When you click
+Review, Claude reviews the PR in a read-only background session and Bifrost leaves the result as a
+pending review that only you can see, which you then approve, edit or send from the Review panel.
+On your own PRs, once you turn on "Handle comments on my PRs automatically" and confirm it, Claude
+fixes or answers each new review comment in a sandboxed session, and Bifrost commits, pushes and
+posts the replies itself. Claude never touches GitHub or git: every write goes through a small set
+of closed types in `BifrostReviews`, and `scripts/check_forbidden.py` stops any other code from
+adding one. Bifrost works in its own clones under `~/.bifrost/reviews`, never in your checkouts. It
+never merges or force-pushes, and it approves only when you click Approve. The rules are in
+[`docs/behaviour/reviews.md`](docs/behaviour/reviews.md), and the
+[Reviews](docs/explainers/reviews.html) page shows how the pieces fit.
+
+### Shared paths
+
+Bifrost Dev owns the state it shares with Claude Code (user decision, 2026-11-16): the Live
+details socket, the mod, the skills, the settings backups and your saved status line
+(`statusline-original.json`) in `~/.bifrost`, and Claude Code's settings file
+`~/.claude/settings.json`. The app works out all these paths once, from its home
+(`SharedClaudeState`), so under a test home, the temporary home folder that the tests and the
+smoke test use, every shared path sits inside the test home and nothing can reach the real ones.
+The writers are Live details and the skills: they copy the mod and the skills, listen on the
+socket, and remove the old Electron hook install from Claude Code's settings file, keeping a backup
+of the old file. Every `claude plugin` command that Bifrost Dev runs in a test home gets the test
+home as its home, so it only changes the test home's Claude Code state.
+
+### The data import
+
+The first time a phase 4 build of Bifrost Dev starts, it copies the Electron app's data across, so
+your local session names, priorities, watchlist, layouts, Overviews and settings carry over. It
+reads `settings.json`, `registry.json`, `ui-state.json`, `window-state.json` and
+`usage-alerts.json` from `~/Library/Application Support/Bifrost` and writes them, unchanged, into
+`~/Library/Application Support/Bifrost Native Dev`. A Bifrost Dev file that the copy replaces stays
+next to it as `<name>.before-import`, and the Electron folder is only ever read. The last step
+writes a marker, `import.json`, with a short report of what came across and why any file didn't.
+While the marker is there the import never runs again, so deleting it (with the app quit) is how
+you'd run it once more. The full rules are in
+[`docs/behaviour/import.md`](docs/behaviour/import.md).
+
+### The Daily update
+
+The Daily update reminds you each morning to post a short team update, and asks Claude to draft it
+from the tickets that moved on your board and the PRs you merged. You set it up in Settings > Daily
+update: Find servers reads the MCP servers of your Claude Code setup, you pick your board as the
+ticket source and confirm the read tools that the run may use, and you add a work area for each
+channel you post to. At the draft time Bifrost runs `claude -p` with only those read tools and
+notifies you, and ten minutes before the deadline it reminds you again. The Daily update panel,
+from its side bar button, shows one tab per work area with what moved and the draft, which you can
+change in place and copy as Markdown. Bifrost never changes the board and posts nothing: you paste
+the draft into Slack yourself and click Mark as sent. Only one copy of Bifrost runs the Daily
+update at a time. The rules are in
+[`docs/behaviour/daily-update.md`](docs/behaviour/daily-update.md).
+
+### Performance
+
+The Performance panel answers one question: is Bifrost using too much, or is something wrong with
+it? The monitor samples Bifrost's memory and CPU every 15 seconds (every 2 while the panel shows),
+counts the background polls that keep failing and the saves that don't make it to disk, and sums it
+all up as OK, Warning or Problem, with a sentence for each reason and a coloured dot on the side
+bar button while something's wrong. The Details row adds the Claude sessions (with a Stop button
+for the ones Bifrost owns), your Mac, the network and the disk, which help you find the cause when
+it isn't Bifrost. The past events also go to `health.log` in Bifrost's logs folder. A test home
+measures no network and starts no `gh`. The rules are in
+[`docs/behaviour/health.md`](docs/behaviour/health.md).
+
+### The smoke test
+
+`scripts/smoke.sh` runs the Debug app headless in a test home and drives it through the debug test
+port, a local socket that only exists in a Debug build running in a test home. Before the start, it
+puts a small hand-written Electron folder (`scripts/smoke-fixtures/electron-support`) in the test
+home, read only, so it can check the import, the imported local name, the Overview's sort and that
+the Electron folder never changes. It also changes the settings through the port, to check that a
+change reaches settings.json, that a new menu key reaches the menu, and that a key conflict is
+refused. Then it checks the panels of phase 4e: a Live details line gives an entry in the Event log,
+the Watchlist shows the fixture row that the fixture registry watches, and Show Info of that row
+shows the pull request of the fake `gh` in `scripts/fake-gh`, which prints `fake-pr.json` from the
+test home. Last, it runs the session actions through the port against the fake `claude`: it sends a
+message, renames a session, starts a new one, stops one and deletes it, and checks each `claude`
+call and the rows that follow. The requests the port understands are listed in
+`Packages/Bifrost/Sources/BifrostApp/Model/TestPortMessage.swift`.
+
+The smoke test also owns Live details and the skills through the port. The fake `claude` keeps its
+plugin state in `fake-plugins.json` in the test home and logs every call to `claude-calls.log`
+there. The smoke test starts with no such file, so neither plugin is installed and the app doesn't
+listen. It then installs Live details and checks the plugin commands, the four mod files with the
+bundle's bytes, the socket and the answer to a Live details line, turns Live details off and
+checks that the socket is gone, and finally installs the skills and compares the installed folder
+with the bundle's.
+
+Reviews gets its own run through the port, with no network and no real repository. The smoke test
+makes a local bare repository in the test home, and a Debug build running in a test home clones
+from there in place of GitHub. The fake `gh` answers the poll, the read of the PR and the one write
+of a round from the files in `scripts/smoke-fixtures/reviews`, and it logs every write in
+`gh-writes.jsonl`. With the automatic rounds off, the smoke test turns Watch GitHub on, checks that
+a new review request flashes and that Pause stops it, then clicks Review. The fake `claude` runs a
+`bifrost-test-` review session that writes a result file, and the round must leave exactly one
+pending review on the fake GitHub and nothing else.
+
+## Repo layout
+
+| Path | What |
+| --- | --- |
+| `App/Bifrost/` | The app target, which handles start-up, the menu and updates, and holds the shell that joins all the parts together. `Resources/` has the Live details mod and the skills plugin that the app bundles |
+| `Packages/Bifrost/` | One Swift package with a module for each area of the app: `BifrostFoundation`, `BifrostLayout`, `BifrostLook`, `BifrostKeyboard`, `BifrostSessions`, `BifrostLive`, `BifrostSettings`, `BifrostDictation`, `BifrostChat`, `BifrostWindows` and `BifrostApp`, plus `BifrostTestSupport` with the fakes and helpers that the tests share. Every module except the test support splits its code into `Model`, `Services` and `UI` folders as it needs them |
+| `Config/` | The build settings and the Debug app's Info.plist |
+| `scripts/` | The check script, the test sandbox, the smoke test with its fixtures, the fake `claude` and the fake `gh` |
+| `tools/bench/` | The performance bench |
+
+## Docs
+
+- The explainer pages walk through the biggest pieces with diagrams, and open in a browser:
+  [Canvas and panels](docs/explainers/canvas-and-panels.html),
+  [Sessions and attach](docs/explainers/sessions-and-attach.html),
+  [Keyboard input](docs/explainers/keyboard-input.html),
+  [Live details and skills](docs/explainers/live-and-skills.html) and
+  [Reviews](docs/explainers/reviews.html).
+- [`docs/behaviour/`](docs/behaviour/) describes what each feature does, as the tests prove it.
+- `docs/ports/*/DELIBERATE-DIFFERENCES.md` lists the places where the native app differs from
+  Electron on purpose, and why.
+- [`docs/release.md`](docs/release.md) explains how a release runs and how the Electron app
+  updates to this one.
+- [`docs/WRITING.md`](docs/WRITING.md) explains how to write docs for this repo.

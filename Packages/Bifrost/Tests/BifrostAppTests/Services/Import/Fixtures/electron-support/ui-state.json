@@ -1,0 +1,108 @@
+{
+  "current": {
+    "frames": [
+      {
+        "active": "overview:1",
+        "locked": false,
+        "minimised": false,
+        "panels": ["overview:1"],
+        "rect": { "h": 360, "w": 760, "x": 40, "y": 40 }
+      },
+      {
+        "active": "watchlist",
+        "locked": true,
+        "minimised": false,
+        "panels": ["chat:11111111-1111-4111-8111-111111111111", "watchlist"],
+        "rect": { "h": 480, "w": 720, "x": 820, "y": 40 }
+      }
+    ],
+    "memory": {
+      "settings": { "h": 540, "w": 720, "x": 100, "y": 80 }
+    }
+  },
+  "futureField": {
+    "level": 3,
+    "tags": ["a", true, null]
+  },
+  "history": {
+    "model": "opus",
+    "permissionMode": "plan",
+    "recentDirs": ["/Users/user/Developer/app", "/Users/user/Developer/docs"],
+    "recentSlash": ["/compact", "/review"]
+  },
+  "layouts": [
+    {
+      "name": "Focus",
+      "snapshot": {
+        "frames": [
+          {
+            "active": "overview:1",
+            "locked": false,
+            "minimised": true,
+            "panels": ["overview:1"],
+            "rect": { "h": 300, "w": 600, "x": 0, "y": 0 }
+          }
+        ],
+        "memory": {}
+      }
+    },
+    {
+      "name": "Review",
+      "snapshot": {
+        "frames": [],
+        "memory": {
+          "watchlist": { "h": 280, "w": 320, "x": 10, "y": 20 }
+        }
+      }
+    }
+  ],
+  "overviews": {
+    "overview:1": {
+      "active": "t1",
+      "name": "Overview",
+      "nextTab": 3,
+      "tabs": [
+        {
+          "color": 0,
+          "columns": ["kind", "name", "priority", "state", "activity"],
+          "filter": {
+            "boxOnly": false,
+            "kinds": ["owned", "external"],
+            "states": ["working", "needs-you", "error", "idle"],
+            "watchedOnly": false
+          },
+          "id": "t1",
+          "name": "Live",
+          "order": [
+            "kind", "name", "priority", "state", "project", "branch", "model", "context", "cost",
+            "activity"
+          ],
+          "sort": { "column": "priority", "desc": false },
+          "widths": { "name": 220 }
+        },
+        {
+          "color": 5,
+          "columns": ["kind", "name", "state"],
+          "filter": {
+            "boxOnly": true,
+            "kinds": ["owned"],
+            "states": ["needs-you"],
+            "watchedOnly": true
+          },
+          "id": "t2",
+          "name": "Watched",
+          "order": [
+            "kind", "name", "priority", "state", "project", "branch", "model", "context", "cost",
+            "activity"
+          ],
+          "sort": { "column": "activity", "desc": true },
+          "widths": {}
+        }
+      ]
+    }
+  },
+  "performance": {
+    "detailsOpen": true
+  },
+  "version": 1
+}

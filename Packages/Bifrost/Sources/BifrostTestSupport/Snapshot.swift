@@ -1,0 +1,262 @@
+// The snapshot tests of the panel bodies: a small image compare of our own, so the tests need no
+// other package. A test renders a view at scale 2 over a background, and compares the image with
+// a PNG in Fixtures/Snapshots/ of its test target (a resource, read through Bundle.module).
+//
+// - Two pixels are equal when no channel differs by more than channelTolerance of 255. The
+//   images match when at most limit(pixels:) pixels differ: 0.05 % of the pixels, rounded down.
+//   So a few pixels of the text edges can change, and a changed glyph or colour fails the test.
+// - With SNAPSHOT_RECORD=1, the check writes the image into the repo copy of the fixture
+//   (Repo.root()) and records an issue, so a recording run never passes by mistake. Run the test
+//   again with no variable: the build copies the new PNG into the bundle.
+// - A missing PNG, an image of another size or more changed pixels than the limit record an
+//   issue with the count of the pixels that differ.
+// - cacheDisplay does not draw an NSHostingView inside the view, or the rows of a table in a tree
+//   with layers. The image draws them again at their places (drawLayeredParts).
+// The tests never order the window of the view front.
+import AppKit
+import CoreGraphics
+import Foundation
+import Testing
+
+@MainActor
+package struct Snapshot {
+    // The pixels of one point.
+    package static let scale = 2
+    // The most pixels that can differ, as a part of all pixels: 0.05 %.
+    package static let tolerance = 0.0005
+    // The most that a channel of two equal pixels can differ, of 255.
+    package static let channelTolerance: UInt8 = 2
+    // The variable that turns on the recording.
+    nonisolated package static let recordVariable = "SNAPSHOT_RECORD"
+
+    private let bundle: Bundle
+    private let target: String
+
+    // bundle is the Bundle.module of the test target, and target the name of its folder in
+    // Packages/Bifrost/Tests, for the repo copy of a recording.
+    package init(bundle: Bundle, target: String) {
+        self.bundle = bundle
+        self.target = target
+    }
+
+    // The most pixels that can differ in an image of this many pixels.
+    package static func limit(pixels: Int) -> Int {
+        Int((Double(pixels) * tolerance).rounded(.down))
+    }
+
+    // Compare the view with <name>.png, or record it when SNAPSHOT_RECORD is 1.
+    package func check(
+        _ view: NSView, named name: String, background: NSColor,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        guard let image = Self.image(of: view, background: background, sourceLocation) else {
+            return
+        }
+        check(image, named: name, sourceLocation: sourceLocation)
+    }
+
+    // Compare an image with <name>.png, or record it when SNAPSHOT_RECORD is 1. LayerImage gives
+    // the image of a layer tree.
+    package func check(
+        _ image: CGImage, named name: String, sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        if ProcessInfo.processInfo.environment[Self.recordVariable] == "1" {
+            record(image, name, sourceLocation)
+            return
+        }
+        guard
+            let url = bundle.url(
+                forResource: name, withExtension: "png", subdirectory: "Snapshots"),
+            let stored = Self.image(at: url)
+        else {
+            Issue.record(
+                "No snapshot \(name).png. Record it with \(Self.recordVariable)=1.",
+                sourceLocation: sourceLocation)
+            return
+        }
+        guard let differ = Self.differingPixels(image, stored) else {
+            let text =
+                "The image of \(name) is \(image.width) by \(image.height) pixels, and the "
+                + "snapshot is \(stored.width) by \(stored.height)."
+            Issue.record(Comment(rawValue: text), sourceLocation: sourceLocation)
+            return
+        }
+        let limit = Self.limit(pixels: image.width * image.height)
+        if differ > limit {
+            let text = "\(differ) pixels of \(name) differ from the snapshot (at most \(limit))."
+            Issue.record(Comment(rawValue: text), sourceLocation: sourceLocation)
+        }
+    }
+
+    private func record(_ image: CGImage, _ name: String, _ sourceLocation: SourceLocation) {
+        do {
+            let folder = try Repo.root().appending(
+                path: "Packages/Bifrost/Tests/\(target)/Fixtures/Snapshots")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let file = folder.appending(path: "\(name).png")
+            guard let data = Self.png(image) else {
+                Issue.record("Cannot make the PNG of \(name).", sourceLocation: sourceLocation)
+                return
+            }
+            try data.write(to: file)
+            Issue.record(
+                "Recorded \(file.path). Run the test again with no \(Self.recordVariable).",
+                sourceLocation: sourceLocation)
+        } catch {
+            Issue.record(error, "Cannot record \(name).", sourceLocation: sourceLocation)
+        }
+    }
+
+    // MARK: - The images
+
+    // The sRGB colour space of each image, so the colours do not depend on the display.
+    private static let space =
+        CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+
+    // A context of RGBA pixels of 8 bits in sRGB.
+    private static func context(width: Int, height: Int) -> CGContext? {
+        CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    }
+
+    // The image of the bounds of the view at scale 2, over the background. The view draws itself
+    // and its subviews (the draw methods of AppKit), so the image does not need a window on
+    // screen. When the bitmap cannot be made, the call records an issue and gives nil.
+    package static func image(
+        of view: NSView, background: NSColor,
+        _ sourceLocation: SourceLocation = #_sourceLocation
+    ) -> CGImage? {
+        view.layoutSubtreeIfNeeded()
+        let size = view.bounds.size
+        let width = max(1, Int((size.width * CGFloat(scale)).rounded()))
+        let height = max(1, Int((size.height * CGFloat(scale)).rounded()))
+        guard let rep = bitmap(size), let context = context(width: width, height: height) else {
+            Issue.record(
+                "Cannot make a bitmap of \(width) by \(height) pixels.",
+                sourceLocation: sourceLocation)
+            return nil
+        }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        drawLayeredParts(of: view, into: rep)
+        let whole = CGRect(x: 0, y: 0, width: width, height: height)
+        context.setFillColor(background.usingColorSpace(.sRGB)?.cgColor ?? background.cgColor)
+        context.fill(whole)
+        if let drawn = rep.cgImage { context.draw(drawn, in: whole) }
+        guard let image = context.makeImage() else {
+            Issue.record("Cannot make the image of the view.", sourceLocation: sourceLocation)
+            return nil
+        }
+        return image
+    }
+
+    // An RGBA bitmap in sRGB at scale 2 for a size in points, or nil.
+    private static func bitmap(_ size: NSSize) -> NSBitmapImageRep? {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: max(1, Int((size.width * CGFloat(scale)).rounded())),
+            pixelsHigh: max(1, Int((size.height * CGFloat(scale)).rounded())), bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0)?.retagging(with: .sRGB)
+        rep?.size = size
+        return rep
+    }
+
+    // cacheDisplay of a view does not draw two kinds of view inside it: an NSHostingView, and the
+    // document of a clip view that has a layer. SwiftUI gives the views of its tree layers, as the
+    // canvas of the app does, so in a tree with an NSHostingView the rows of a table do not draw.
+    // Each such view draws when it is itself the view of cacheDisplay. So each one draws its
+    // visible part again here, at its place in the view, over the first image, in the order of
+    // the tree. A view inside an NSHostingView draws with it, and a tree with no NSHostingView
+    // draws in the first image.
+    // Limits: a later sibling that covers a part draws below it, not above it. The pass does not
+    // apply the opacity, the clip or the transform of an ancestor of a part, only its place. So a
+    // snapshot must not depend on these cases.
+    private static func drawLayeredParts(of root: NSView, into rep: NSBitmapImageRep) {
+        guard !isHostingView(root) else { return }
+        var parts: [(view: NSView, rect: NSRect)] = []
+        func walk(_ view: NSView) {
+            for child in view.subviews where !child.isHidden {
+                if isHostingView(child) {
+                    parts.append((child, child.bounds))
+                    continue
+                }
+                if let clip = child as? NSClipView, clip.layer != nil,
+                    let document = clip.documentView
+                {
+                    parts.append((document, clip.documentVisibleRect))
+                }
+                walk(child)
+            }
+        }
+        walk(root)
+        guard parts.contains(where: { isHostingView($0.view) }),
+            let context = NSGraphicsContext(bitmapImageRep: rep)
+        else { return }
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = context
+        for (view, rect) in parts where !rect.isEmpty {
+            guard let part = bitmap(rect.size) else { continue }
+            view.cacheDisplay(in: rect, to: part)
+            // The context of the bitmap has its origin at the bottom left.
+            let place = root.convert(rect, from: view)
+            let y = root.isFlipped ? root.bounds.height - place.maxY : place.minY
+            part.draw(
+                in: NSRect(x: place.minX, y: y, width: place.width, height: place.height),
+                from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false,
+                hints: nil)
+        }
+    }
+
+    // True for an NSHostingView of any content. The class is generic, so the check reads the
+    // names of the classes of the view.
+    private static func isHostingView(_ view: NSView) -> Bool {
+        var current: AnyClass? = type(of: view)
+        while let type = current {
+            if NSStringFromClass(type).contains("NSHostingView") { return true }
+            current = class_getSuperclass(type)
+        }
+        return false
+    }
+
+    // The image of a PNG file, or nil when the file cannot be read.
+    package static func image(at url: URL) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+
+    package static func png(_ image: CGImage) -> Data? {
+        NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+    }
+
+    // The RGBA bytes of the image in sRGB, the top row first.
+    package static func pixels(_ image: CGImage) -> [UInt8] {
+        guard let context = context(width: image.width, height: image.height) else { return [] }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard let data = context.data else { return [] }
+        let count = image.width * image.height * 4
+        let bytes = data.assumingMemoryBound(to: UInt8.self)
+        return Array(UnsafeBufferPointer(start: bytes, count: count))
+    }
+
+    // The number of pixels that differ, or nil when the sizes differ.
+    package static func differingPixels(_ one: CGImage, _ two: CGImage) -> Int? {
+        guard one.width == two.width, one.height == two.height else { return nil }
+        let a = pixels(one)
+        let b = pixels(two)
+        let count = one.width * one.height
+        guard a.count == count * 4, b.count == count * 4 else { return nil }
+        var differ = 0
+        for pixel in 0..<count {
+            let start = pixel * 4
+            for channel in start..<(start + 4) {
+                let (one, two) = (a[channel], b[channel])
+                if max(one, two) - min(one, two) > channelTolerance {
+                    differ += 1
+                    break
+                }
+            }
+        }
+        return differ
+    }
+}

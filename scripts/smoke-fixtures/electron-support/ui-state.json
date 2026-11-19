@@ -1,0 +1,43 @@
+{
+  "current": {
+    "frames": [
+      {
+        "active": "overview:1",
+        "locked": false,
+        "minimised": false,
+        "panels": ["overview:1"],
+        "rect": { "h": 300, "w": 640, "x": 20, "y": 20 }
+      }
+    ],
+    "memory": {}
+  },
+  "layouts": [],
+  "overviews": {
+    "overview:1": {
+      "active": "t1",
+      "name": "Smoke",
+      "nextTab": 2,
+      "tabs": [
+        {
+          "color": 2,
+          "columns": ["kind", "name", "state", "project", "activity"],
+          "filter": {
+            "boxOnly": false,
+            "kinds": ["owned", "external"],
+            "states": ["working", "needs-you", "error", "idle", "parked"],
+            "watchedOnly": false
+          },
+          "id": "t1",
+          "name": "Smoke",
+          "order": [
+            "kind", "name", "priority", "state", "project", "branch", "model", "context", "cost",
+            "activity"
+          ],
+          "sort": { "column": "name", "desc": true },
+          "widths": {}
+        }
+      ]
+    }
+  },
+  "version": 1
+}

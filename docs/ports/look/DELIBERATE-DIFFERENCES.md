@@ -1,0 +1,29 @@
+# Deliberate differences
+
+This table lists the places where the native look works differently from the Electron app on
+purpose. The Electron app is the reference for what the app shows, not for how it draws it. The
+last column says whether someone using the app would notice the difference in normal use, and a
+row marked "for the hands-on test" is one to check by hand in the real app.
+
+The table covers the colour tokens of `app.css`, the animated background (`Background.tsx`,
+`background-paint.ts`, `background-style.ts` and the background rules of `app.css`), the frame
+blur, the UI font, the icons, the tooltip (`Tip` in `lib/menu.tsx`) and the layout scale. In
+normal use, F2 is the only row a user can see, and it's for the hands-on test. BL1 shows only
+after a macOS update, and the user accepted it. The tokens and the background values are the
+values of `app.css`, which the tests in `ThemeTokensTests.swift` and `MotionTests.swift` check.
+The blur is the same soft
+8 px blur as `backdrop-blur-panel` (8 px at the page zoom), made with the private
+`CABackdropLayer` and a gaussian filter of 8 layout units.
+
+| ID | Where | TypeScript | Swift | Reason | Visible? |
+| --- | --- | --- | --- | --- | --- |
+| B1 | Painting the background | Seven canvases, the base and six fields. Each canvas has half the device pixels of its own box, and CSS transforms move the canvases on the compositor. | One Metal fragment shader draws the seven layers into one drawable with half the device pixels of the window (`Motion.canvasSize`), and Core Animation scales it up. The layers, their boxes, colours, poses and paint order are the same. | The integrated-prototype gate proved this approach: low CPU use at idle, and no large images in memory. | No. The gradients are smooth at both resolutions. |
+| B2 | Dithering the gradients | A plain gradient first. Once the size has stayed the same for 300 ms, each canvas is painted again with a fixed triangular noise of up to one 8-bit step before it's rounded to 8 bits. | The shader works at float precision, and on each draw it adds a triangular noise of up to one 8-bit step to the final colour of each pixel. The noise depends only on where the pixel is, so it doesn't move. | One dither at the end is enough, because the shader rounds only the final colour. | No. Both give a fine grain with no bands. |
+| B3 | The grain on top (`--background-noise`) | A fixed SVG turbulence noise in grey at an opacity of 0.0075. | The shader mixes in the mean of that noise, the mid grey 128, at 0.0075, and the dither of B2 gives the grain. | The noise changes each colour by less than one 8-bit step, and the mean is the same, so the colour is the same. | No. |
+| B4 | The time of a pause | A pause keeps the time of the last 30 Hz step. | `MotionClock` keeps the time of the stop, and the next draw rounds that time down to its step. | The two times are at most one step (33 ms) apart. | No. |
+| B5 | A Mac with no Metal device | The canvases draw in software. | `MetalBackground` shows the plain background colour `--color-bg`. | Every Mac that runs macOS 26 has a Metal device. | No in normal use. |
+| F1 | The faces of Geist Mono | `@font-face` rules for each subset of each weight (latin, latin-ext, vietnamese, symbols2, cyrillic and cyrillic-ext) with a `unicode-range`, so the browser picks the subset face for each character. After those come ui-monospace (SF Mono), SF Mono, Menlo and monospace. | The OTF file of each weight is registered for the process. `Fonts.ui` gives the face of the weight with a cascade list of SF Mono and Menlo, then the system fallback. A weight under 400 uses 400 and a weight over 600 uses 600, as the CSS rule does for these three faces, and if the registration fails `Fonts.ui` gives SF Mono. | CoreText has no `unicode-range`. One full file for each weight has every character of the six subsets, so the app needs no subset list. | Only through the font files themselves (F2). |
+| F2 | The font files of Geist Mono | The web subsets of `@fontsource/geist-mono` 5.3.0: version 1.701, the Google Fonts build, with TrueType outlines and 762 characters in each weight. | The OTF files for 400, 500 and 600 from the official Geist Mono 1.8.0 release (version 1.700), with CFF outlines. The metrics and widths are the same: 1,000 units per em, an ascender of 1005, a descender of -295, no line gap and an advance of 600 for every character (`theMetricsAreThoseOfTheWebFont`). 125 more characters draw in Geist Mono instead of SF Mono or Menlo, including arrows, key symbols such as ⌫ and ⏎, maths signs, circled digits and Greek letters. | User decision, 2026-11-16: ship the 1.8.0 release. No release of Geist Mono has version 1.701. | Yes, in a small way: the 125 characters, and perhaps the CFF outlines at small sizes. For the hands-on test of the user. |
+| T1 | A tooltip with no room above or below its view (or on either side) | base-ui takes the side that overflows least, or a side at a right angle. | The tooltip keeps its side and slides along it to stay in the window. | A tooltip of one or two lines always fits on one side. | No in normal use. |
+| T2 | Spaces in a tooltip text | `white-space: pre-line` collapses a run of spaces into one space. | The label shows every space. | No tooltip text in the app has a run of spaces. | No. |
+| BL1 | The blur when macOS has no private backdrop | Not applicable, because the browser has `backdrop-filter`. | When `CABackdropLayer` or `CAFilter` is missing (a later macOS), `Blur.make(.backdrop)` gives the public `NSVisualEffectView` material instead, which has no control over the radius. | User decision (phase 3, carried item 10): use the private 8 px blur, with the public material as the automatic fallback. | Only after a macOS update removes the private classes. Accepted (user decision). |

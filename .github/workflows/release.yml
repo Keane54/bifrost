@@ -2,22 +2,24 @@ name: Release
 
 # A person starts a release by hand (user decision, 2026-11-10): Actions > Release > Run workflow
 # on main, or "gh workflow run release.yml -f summary='<text>'". So one release can hold many
-# commits, and the slow signed build runs only when a new DMG is wanted. CI still runs on each
-# push.
+# commits, and the slow signed build runs only when a new version is wanted. CI still runs on each
+# push. docs/release.md tells how a release runs and how the first native release takes over from
+# the Electron app.
 on:
   workflow_dispatch:
     inputs:
       # The summary is required in each mode (user decision, 2026-11-10). It goes at the top of the
-      # release notes (scripts/release/summary.ts). The app shows it in What's new.
+      # release notes (scripts/release/summary.sh). The app shows it in What's new, and Sparkle
+      # shows the notes in its update window.
       summary:
         description: A short summary for the release notes
         type: string
         required: true
       mode:
         description: >-
-          release: publish the next version with a signed DMG and the update files. dry-run:
-          build, sign and notarise the DMG and the update files, and keep them as a download,
-          with no tag and no release.
+          release: publish the next version with a signed DMG, the update ZIP, latest-mac.yml and
+          appcast.xml. dry-run: build, sign and notarise the same files, and keep them as a
+          download, with no tag and no release.
         type: choice
         options:
           - release
@@ -51,43 +53,20 @@ jobs:
       version: ${{ steps.next.outputs.version }}
 
     steps:
-      # GitHub accepts a required summary of only spaces. So this step checks the summary before
-      # each other step. scripts/release/summary.ts checks the same rules again in semantic-release.
-      # The summary comes only through the env, so the shell never runs it as code.
-      - name: Check the release summary
-        env:
-          RELEASE_SUMMARY: ${{ inputs.summary }}
-          # Count characters, not bytes.
-          LC_ALL: C.UTF-8
-        run: |
-          limit=600
-          summary="$RELEASE_SUMMARY"
-          # Remove the white space at the start and at the end.
-          summary="${summary#"${summary%%[![:space:]]*}"}"
-          summary="${summary%"${summary##*[![:space:]]}"}"
-          if [ -z "$summary" ]; then
-            echo "::error::The release summary is empty. Type a short summary of the release."
-            exit 1
-          fi
-          if [ "${#summary}" -gt "$limit" ]; then
-            echo "::error::The release summary has ${#summary} characters. The limit is $limit."
-            exit 1
-          fi
-          # The release notes use "#" for their headings. So no line can start with "#", also
-          # after spaces. A line break goes before the summary, so the check finds the first line.
-          heading=$'\n''[[:blank:]]*#'
-          if [[ $'\n'"$summary" =~ $heading ]]; then
-            echo '::error::A line of the release summary starts with "#". Remove the "#".'
-            exit 1
-          fi
-          echo "The release summary has ${#summary} characters."
-
       - name: Checkout code
         uses: actions/checkout@v7.0.1
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+
+      # GitHub accepts a required summary of only spaces. So this step checks the summary before
+      # each other step. semantic-release runs the same script again for the release notes. The
+      # summary comes only through the env, so the shell never runs it as code.
+      - name: Check the release summary
+        env:
+          RELEASE_SUMMARY: ${{ inputs.summary }}
+        run: scripts/release/summary.sh > /dev/null
 
       - name: Record the commit
         id: commit
@@ -102,7 +81,8 @@ jobs:
           result=$(gh run list --workflow ci.yml --commit "$SHA" --event push --limit 1 \
             --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
           if [ "$result" != "completed success" ]; then
-            echo "::error::CI has not passed for $SHA (result: ${result:-no run}). Wait for CI, or fix main first."
+            message="CI has not passed for $SHA (result: ${result:-no run})."
+            echo "::error::$message Wait for CI, or fix main first."
             exit 1
           fi
 
@@ -115,8 +95,7 @@ jobs:
           node-version: "24"
           cache: "pnpm"
 
-      # The scripts do not run. This job needs only semantic-release and its plugins, not the
-      # Electron binary or the native modules.
+      # The release tooling has no install scripts that this job needs.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
@@ -143,16 +122,21 @@ jobs:
     needs: check
     # A release needs a next version. A dry run always builds.
     if: needs.check.outputs.version != '' || inputs.mode == 'dry-run'
-    # The speech helper needs Xcode 26 and the macOS 26 SDK.
     runs-on: macos-26
     # The signing secrets live only in this environment. It allows only main.
     environment: release
 
     # contents: write lets semantic-release push the tag, make the GitHub release and attach the
-    # DMG and the update files. The github plugin makes no comments and no labels
-    # (.releaserc.json).
+    # files. The github plugin makes no comments and no labels (.releaserc.json).
     permissions:
       contents: write
+
+    env:
+      # The pinned Xcode, as in ci.yml.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      # The last Electron release. The bridge check reads the designated requirement of its app
+      # (docs/release.md). Change it only if a new Electron release comes before the cutover.
+      BRIDGE_FROM_TAG: v0.9.0
 
     steps:
       - name: Checkout code
@@ -172,26 +156,57 @@ jobs:
             exit 1
           fi
 
+      - name: Check the Xcode version
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            message="The runner has no $DEVELOPER_DIR."
+            echo "::error::$message Pin an Xcode of the runner image (docs/release.md)."
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          xcodebuild -version
+          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+
+      - name: Cache the Swift packages
+        uses: actions/cache@v6
+        with:
+          path: .build/spm
+          key: >-
+            spm-${{ runner.os }}-${{ hashFiles(
+            'Bifrost.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
+            'Packages/Bifrost/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      # The build and sparkle-sign.sh need the packages and the Sparkle tools in .build/spm.
+      - name: Resolve the Swift packages
+        run: >-
+          xcodebuild -resolvePackageDependencies -project Bifrost.xcodeproj -scheme Bifrost
+          -clonedSourcePackagesDirPath .build/spm
+
+      # Only semantic-release needs Node. The dry run calls prepare.sh directly.
       - name: Install pnpm
+        if: inputs.mode == 'release'
         uses: pnpm/action-setup@v6.1.0
 
       - name: Setup Node.js
+        if: inputs.mode == 'release'
         uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "pnpm"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        if: inputs.mode == 'release'
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # electron-builder signs the speech helper with the app, so it must exist first. The helper
-      # needs Xcode 26 or later. The script stops with a clear message when the SDK is older. It
-      # needs no secret, so it runs before the steps that use the secrets.
-      - name: Build the speech helper
+      # The bridge check needs the app of the last Electron release. The download needs no
+      # secret, so it runs before the steps that use the secrets.
+      - name: Download the last Electron app
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          xcodebuild -version
-          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
-          pnpm build:dictation
+          app=$(scripts/release/electron-app.sh "$BRIDGE_FROM_TAG" "$RUNNER_TEMP/electron")
+          echo "BRIDGE_APP=$app" >> "$GITHUB_ENV"
 
       # notarytool reads the App Store Connect key from a file. The runner deletes RUNNER_TEMP
       # at the end of the job.
@@ -204,9 +219,9 @@ jobs:
           chmod 600 "$key"
           echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
 
-      # electron-builder 26.15.3 cannot make its own keychain from CSC_LINK: it unlocks the keychain
-      # with the .p12 password, not with the keychain password. So the workflow makes the keychain
-      # and gives its path in CSC_KEYCHAIN. The runner deletes RUNNER_TEMP at the end of the job.
+      # The keychain holds the Developer ID certificate of the CSC_LINK secret. codesign finds the
+      # identity in it (scripts/release/sign-app.sh). The runner deletes RUNNER_TEMP at the end of
+      # the job.
       - name: Make the signing keychain
         env:
           P12_BASE64: ${{ secrets.CSC_LINK }}
@@ -220,27 +235,30 @@ jobs:
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
           security import "$p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" \
+            "$keychain" > /dev/null
           rm -f "$p12"
           # Add the keychain to the search list, and keep the keychains that are there.
           existing=$(security list-keychains -d user | tr -d '"')
           # shellcheck disable=SC2086
           security list-keychains -d user -s "$keychain" $existing
           security find-identity -v -p codesigning "$keychain"
-          echo "CSC_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
 
       # The signing identity and the team ID are public: each released app shows them in its code
       # signature. So the workflow reads them from the certificate in the keychain, and the repo
-      # and the secrets hold no signing name. The script prints no value of the p12 file.
+      # and the secrets hold no signing name.
       - name: Read the signing identity
         shell: bash
         run: |
-          security find-identity -v -p codesigning "$CSC_KEYCHAIN" |
-            node scripts/release/signing-identity.ts
+          security find-identity -v -p codesigning "$SIGNING_KEYCHAIN" |
+            scripts/release/signing-identity.sh >> "$GITHUB_ENV"
 
-      # The exec plugin sets the version in package.json, runs "pnpm dist:release" (signed and
-      # notarised) and "pnpm verify:release". Only then does the github plugin publish the tag,
-      # the release, the DMG and the update files. No commit goes back to main.
+      # semantic-release finds the version and writes the notes. The exec plugin then runs
+      # scripts/release/prepare.sh with the version and the notes: it builds, signs and
+      # notarises the app and the DMG, runs the bridge check, and writes the update ZIP,
+      # latest-mac.yml and appcast.xml. Only then does the github plugin publish the tag, the
+      # release and the files. No commit goes back to main.
       - name: Release
         if: inputs.mode == 'release'
         run: pnpm exec semantic-release
@@ -248,20 +266,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           RELEASE_SUMMARY: ${{ inputs.summary }}
 
-      # A dry run uses the next version, or the last version when no release is due.
+      # A dry run uses the next version, or the last version when no release is due. Its release
+      # notes are only the summary, because semantic-release does not run.
       - name: Dry run build
         if: inputs.mode == 'dry-run'
         env:
           NEXT_VERSION: ${{ needs.check.outputs.version }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          RELEASE_SUMMARY: ${{ inputs.summary }}
+        # bash with pipefail: a failed summary stops the step.
+        shell: bash
         run: |
           version="${NEXT_VERSION:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
-          pnpm pkg set version="$version"
-          pnpm dist:release
-          pnpm verify:release
+          notes=$(scripts/release/summary.sh | openssl base64 -A)
+          scripts/release/prepare.sh "$version" "$notes"
 
       - name: Upload the dry run files
         if: inputs.mode == 'dry-run'
@@ -271,6 +294,7 @@ jobs:
           path: |
             dist/Bifrost-arm64.dmg
             dist/Bifrost-*-arm64-mac.zip
-            dist/Bifrost-*-arm64-mac.zip.blockmap
             dist/latest-mac.yml
+            dist/appcast.xml
+            dist/notes.md
           retention-days: 7

@@ -1,0 +1,50 @@
+{
+  "areas": [
+    {
+      "channel": "team-alpha",
+      "description": "Work on the alpha project.",
+      "id": "area-1",
+      "name": "Alpha",
+      "on": true,
+      "takesRest": false
+    },
+    {
+      "channel": "team-general",
+      "description": "",
+      "id": "area-2",
+      "name": "General",
+      "on": false,
+      "takesRest": true
+    }
+  ],
+  "days": [
+    1,
+    3,
+    5
+  ],
+  "deadline": "11:15",
+  "draftTime": "08:45",
+  "format": {
+    "examples": [
+      "Example one",
+      "Example two"
+    ],
+    "template": "**Update**\n**Done**\n**Next**"
+  },
+  "futureField": {
+    "keep": [
+      1,
+      2
+    ]
+  },
+  "mergedPrs": false,
+  "model": "sonnet",
+  "source": {
+    "server": "board-one",
+    "tools": [
+      "mcp__board-one__list_items",
+      "mcp__board-one__get_item"
+    ]
+  },
+  "you": "person@example.test"
+}

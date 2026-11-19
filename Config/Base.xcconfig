@@ -1,0 +1,38 @@
+// Build settings of the app target for all configurations.
+// This file is the only file that holds the literal of the release bundle ID.
+
+BIFROST_RELEASE_BUNDLE_ID = com.keyholding.bifrost
+
+MACOSX_DEPLOYMENT_TARGET = 26.0
+SWIFT_VERSION = 6.0
+SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor
+// The concurrency features SE-0461 and SE-0470, the member import visibility (SE-0444) and the
+// explicit any of an existential (SE-0335). Packages/Bifrost/Package.swift turns on the same
+// features for the package.
+SWIFT_UPCOMING_FEATURE_NONISOLATED_NONSENDING_BY_DEFAULT = YES
+SWIFT_UPCOMING_FEATURE_INFER_ISOLATED_CONFORMANCES = YES
+SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES
+SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES
+SWIFT_TREAT_WARNINGS_AS_ERRORS = YES
+// The module name is the same in Debug and in Release. The product names are different.
+PRODUCT_MODULE_NAME = Bifrost
+// The app loads the embedded frameworks, for example Sparkle.framework, from this folder.
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
+
+ENABLE_HARDENED_RUNTIME = YES
+CODE_SIGN_IDENTITY = -
+CODE_SIGN_ENTITLEMENTS = App/Bifrost/Bifrost.entitlements
+
+GENERATE_INFOPLIST_FILE = YES
+MARKETING_VERSION = 0.0.1
+CURRENT_PROJECT_VERSION = 1
+INFOPLIST_KEY_NSMicrophoneUsageDescription = Bifrost uses the microphone when you hold the dictation key to talk to Claude.
+INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.developer-tools
+
+// The Releases page of the project on GitHub. The app reads the release notes from it (the
+// Info.plist key BifrostReleasesURL, which Debug-Info.plist and Release-Info.plist give). The
+// empty $() keeps the double slash out of a comment of this format.
+BIFROST_RELEASES_URL = https:/$()/github.com/Keane54/bifrost/releases
+// The app icon: a .icns file in App/Bifrost/Resources. The Debug build (Bifrost Dev) uses the
+// dev icon, so the two apps are easy to tell apart. Each configuration copies only its own icon.
+BIFROST_APP_ICON = AppIcon

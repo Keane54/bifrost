@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "pr": "smoke-owner/smoke-repo#7",
+  "headSha": "@HEAD@",
+  "round": "@ROUND@",
+  "recommendation": "comment",
+  "why": "One question on the empty notes file.",
+  "summary": "The change reads well. One question on the empty notes file.",
+  "comments": []
+}

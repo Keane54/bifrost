@@ -1,0 +1,2 @@
+// A build setting that sets the cutover condition. No configuration can set it before cutover.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) BIFROST_CUTOVER

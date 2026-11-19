@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 # A new push to a PR stops the old run of that PR. A run on main always completes, because the
-# Release workflow starts after it.
+# Release workflow checks its result.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -17,7 +17,67 @@ permissions:
 
 jobs:
   checks:
-    name: Lint, types and unit tests
+    name: Checks, tests and builds (macOS)
+    runs-on: macos-26
+    env:
+      # The pinned Xcode. The Release workflow pins the same version. docs/release.md tells how to
+      # change it.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # The runner image has more than one Xcode. DEVELOPER_DIR selects the pinned one for each
+      # step.
+      - name: Check the Xcode version
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            message="The runner has no $DEVELOPER_DIR."
+            echo "::error::$message Pin an Xcode of the runner image (docs/release.md)."
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          xcodebuild -version
+          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+
+      # The Xcode builds of check.sh keep the Swift packages in .build/spm.
+      - name: Cache the Swift packages
+        uses: actions/cache@v6
+        with:
+          path: .build/spm
+          key: >-
+            spm-${{ runner.os }}-${{ hashFiles(
+            'Bifrost.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
+            'Packages/Bifrost/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      # The steps of check.sh: the self-tests of the checkers, the rules, the package tests in the
+      # test sandbox, the Debug and the Release builds, the release self-test and the smoke test.
+      # The Release build has no BIFROST_CUTOVER, so the smoke script refuses to start it.
+      - name: Run the checks
+        run: scripts/check.sh
+
+      # An xcconfig file reads "//" as the start of a comment. This step reads the Sparkle key of
+      # the Release app that check.sh built, so a key that the build cut fails here.
+      - name: Check the Sparkle settings of the Release app
+        run: >-
+          scripts/release/check-sparkle.sh .build/xcode/Build/Products/Release/Bifrost.app
+          Config/Release.xcconfig
+
+      - name: Upload the logs of the checks
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: check-logs
+          path: .build/check/
+          retention-days: 14
+
+  release-config:
+    name: Release config
+    # The test needs only git, POSIX sh, Python and Node, so a Linux runner is enough.
     runs-on: ubuntu-latest
 
     steps:
@@ -35,54 +95,10 @@ jobs:
           node-version: "24"
           cache: "pnpm"
 
-      # The postinstall script downloads Electron and builds node-pty from source on Linux.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Run Biome CI
-        run: pnpm exec biome ci
-
-      - name: Check the Bifrost skills
-        run: pnpm check:skills
-
-      - name: Check types
-        run: pnpm typecheck
-
-      - name: Run unit tests
-        run: pnpm test
-
-  smoke:
-    name: Smoke tests (macOS)
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6.1.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # The smoke harness starts Bifrost with a test home and a PATH that starts with the fake
-      # claude and the fake gh (test/smoke/fake-claude). That PATH has no Homebrew folder, so the
-      # gh of the runner is not on it.
-      - name: Run smoke tests
-        run: pnpm smoke
-
-      - name: Upload Playwright results
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: smoke-test-results
-          path: test-results/
-          retention-days: 14
+      # semantic-release runs in temp repos with a copy of .releaserc.json, with no network and no
+      # token.
+      - name: Test the release config
+        run: scripts/test-release-config.sh

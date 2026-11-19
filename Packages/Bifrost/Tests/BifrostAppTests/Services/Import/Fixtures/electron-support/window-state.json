@@ -1,0 +1,13 @@
+{
+  "bounds": {
+    "height": 860,
+    "width": 1400,
+    "x": 120,
+    "y": 60
+  },
+  "futureField": {
+    "level": 3,
+    "tags": ["a", true, null]
+  },
+  "mode": "borderless"
+}

@@ -1,0 +1,5688 @@
+[
+  {
+    "id": "slot/new-session:mod/other",
+    "group": "slot",
+    "keys": "Cmd+N",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "n"},
+      {"do": "up", "key": "n"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:new-session:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/new-session:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+N",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "n"},
+      {"do": "up", "key": "n"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:new-session:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.1:mod/other",
+    "group": "slot",
+    "keys": "Cmd+1",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "1"},
+      {"do": "up", "key": "1"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.1:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.1:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+1",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "1"},
+      {"do": "up", "key": "1"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.1:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.2:mod/other",
+    "group": "slot",
+    "keys": "Cmd+2",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "2"},
+      {"do": "up", "key": "2"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.2:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.2:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+2",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "2"},
+      {"do": "up", "key": "2"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.2:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.3:mod/other",
+    "group": "slot",
+    "keys": "Cmd+3",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "3"},
+      {"do": "up", "key": "3"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.3:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.3:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+3",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "3"},
+      {"do": "up", "key": "3"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.3:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.4:mod/other",
+    "group": "slot",
+    "keys": "Cmd+4",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "4"},
+      {"do": "up", "key": "4"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.4:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.4:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+4",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "4"},
+      {"do": "up", "key": "4"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.4:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.5:mod/other",
+    "group": "slot",
+    "keys": "Cmd+5",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "5"},
+      {"do": "up", "key": "5"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.5:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.5:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+5",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "5"},
+      {"do": "up", "key": "5"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.5:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.6:mod/other",
+    "group": "slot",
+    "keys": "Cmd+6",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "6"},
+      {"do": "up", "key": "6"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.6:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.6:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+6",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "6"},
+      {"do": "up", "key": "6"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.6:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.7:mod/other",
+    "group": "slot",
+    "keys": "Cmd+7",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "7"},
+      {"do": "up", "key": "7"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.7:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.7:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+7",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "7"},
+      {"do": "up", "key": "7"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.7:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.8:mod/other",
+    "group": "slot",
+    "keys": "Cmd+8",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "8"},
+      {"do": "up", "key": "8"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.8:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.8:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+8",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "8"},
+      {"do": "up", "key": "8"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.8:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.9:mod/other",
+    "group": "slot",
+    "keys": "Cmd+9",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "9"},
+      {"do": "up", "key": "9"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.9:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-row.9:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+9",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "9"},
+      {"do": "up", "key": "9"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-row.9:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-prev:mod/other",
+    "group": "slot",
+    "keys": "Cmd+ArrowUp",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "ArrowUp"},
+      {"do": "up", "key": "ArrowUp"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-prev:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-prev:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+ArrowUp",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "ArrowUp"},
+      {"do": "up", "key": "ArrowUp"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-prev:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-next:mod/other",
+    "group": "slot",
+    "keys": "Cmd+ArrowDown",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "ArrowDown"},
+      {"do": "up", "key": "ArrowDown"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-next:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-next:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+ArrowDown",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "ArrowDown"},
+      {"do": "up", "key": "ArrowDown"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-next:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/focus-overview:mod/other",
+    "group": "slot",
+    "keys": "Cmd+0",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "0"},
+      {"do": "up", "key": "0"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:focus-overview:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/focus-overview:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+0",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "0"},
+      {"do": "up", "key": "0"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:focus-overview:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Enter",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:open:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Enter",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:open:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/send-message:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Shift+M",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "m"},
+      {"do": "up", "key": "m"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:send-message:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/send-message:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Shift+M",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "m"},
+      {"do": "up", "key": "m"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:send-message:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/run-slash:mod/other",
+    "group": "slot",
+    "keys": "Cmd+/",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "/"},
+      {"do": "up", "key": "/"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:run-slash:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/run-slash:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+/",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "/"},
+      {"do": "up", "key": "/"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:run-slash:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/interrupt:mod/other",
+    "group": "slot",
+    "keys": "Cmd+.",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "."},
+      {"do": "up", "key": "."},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:interrupt:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/interrupt:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+.",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "."},
+      {"do": "up", "key": "."},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:interrupt:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/show-info:mod/other",
+    "group": "slot",
+    "keys": "Cmd+I",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "i"},
+      {"do": "up", "key": "i"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:show-info:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/show-info:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+I",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "i"},
+      {"do": "up", "key": "i"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:show-info:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/copy-id:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Shift+C",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "c"},
+      {"do": "up", "key": "c"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:copy-id:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/copy-id:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Shift+C",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "c"},
+      {"do": "up", "key": "c"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:copy-id:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-project:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Shift+O",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "o"},
+      {"do": "up", "key": "o"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:open-project:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-project:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Shift+O",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "o"},
+      {"do": "up", "key": "o"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:open-project:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-in-terminal:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Shift+J",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "j"},
+      {"do": "up", "key": "j"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:open-in-terminal:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-in-terminal:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Shift+J",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "j"},
+      {"do": "up", "key": "j"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:open-in-terminal:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/take-control:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Shift+T",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "t"},
+      {"do": "up", "key": "t"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:take-control:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/take-control:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Shift+T",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "t"},
+      {"do": "up", "key": "t"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:take-control:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/resume:mod/other",
+    "group": "slot",
+    "keys": "Cmd+R",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "r"},
+      {"do": "up", "key": "r"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:resume:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/resume:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+R",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "r"},
+      {"do": "up", "key": "r"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:resume:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/resume-all:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Shift+R",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "r"},
+      {"do": "up", "key": "r"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:resume-all:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/resume-all:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Shift+R",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "r"},
+      {"do": "up", "key": "r"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:resume-all:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.1:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+1",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "1"},
+      {"do": "up", "key": "1"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.1:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.1:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+1",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "1"},
+      {"do": "up", "key": "1"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.1:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.2:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+2",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "2"},
+      {"do": "up", "key": "2"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.2:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.2:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+2",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "2"},
+      {"do": "up", "key": "2"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.2:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.3:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+3",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "3"},
+      {"do": "up", "key": "3"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.3:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.3:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+3",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "3"},
+      {"do": "up", "key": "3"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.3:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.4:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+4",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "4"},
+      {"do": "up", "key": "4"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.4:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.4:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+4",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "4"},
+      {"do": "up", "key": "4"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.4:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.5:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+5",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "5"},
+      {"do": "up", "key": "5"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.5:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.5:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+5",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "5"},
+      {"do": "up", "key": "5"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.5:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.0:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+0",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "0"},
+      {"do": "up", "key": "0"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.0:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.0:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+0",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "0"},
+      {"do": "up", "key": "0"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:set-priority.0:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/close-panel:mod/other",
+    "group": "slot",
+    "keys": "Cmd+W",
+    "rule": "A menu slot goes to the menu first",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "w"},
+      {"do": "up", "key": "w"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["menu:close-panel:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/close-panel:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+W",
+    "rule": "A menu slot goes to the menu first",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "w"},
+      {"do": "up", "key": "w"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["menu:close-panel:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/stop:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Shift+Backspace",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Backspace"},
+      {"do": "up", "key": "Backspace"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:stop:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/stop:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Shift+Backspace",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Backspace"},
+      {"do": "up", "key": "Backspace"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:stop:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/delete:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+Shift+Backspace",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Backspace"},
+      {"do": "up", "key": "Backspace"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:delete:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/delete:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+Shift+Backspace",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Backspace"},
+      {"do": "up", "key": "Backspace"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:delete:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/prev-stack-tab:mod/other",
+    "group": "slot",
+    "keys": "Cmd+[",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "["},
+      {"do": "up", "key": "["},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:prev-stack-tab:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/prev-stack-tab:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+[",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "["},
+      {"do": "up", "key": "["},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:prev-stack-tab:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/next-stack-tab:mod/other",
+    "group": "slot",
+    "keys": "Cmd+]",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "]"},
+      {"do": "up", "key": "]"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:next-stack-tab:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/next-stack-tab:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+]",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "]"},
+      {"do": "up", "key": "]"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:next-stack-tab:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.1:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+1",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "1"},
+      {"do": "up", "key": "1"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.1:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.1:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+1",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "1"},
+      {"do": "up", "key": "1"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.1:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.2:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+2",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "2"},
+      {"do": "up", "key": "2"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.2:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.2:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+2",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "2"},
+      {"do": "up", "key": "2"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.2:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.3:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+3",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "3"},
+      {"do": "up", "key": "3"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.3:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.3:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+3",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "3"},
+      {"do": "up", "key": "3"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.3:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.4:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+4",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "4"},
+      {"do": "up", "key": "4"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.4:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.4:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+4",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "4"},
+      {"do": "up", "key": "4"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.4:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.5:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+5",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "5"},
+      {"do": "up", "key": "5"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.5:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.5:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+5",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "5"},
+      {"do": "up", "key": "5"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.5:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.6:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+6",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "6"},
+      {"do": "up", "key": "6"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.6:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.6:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+6",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "6"},
+      {"do": "up", "key": "6"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.6:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.7:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+7",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "7"},
+      {"do": "up", "key": "7"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.7:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.7:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+7",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "7"},
+      {"do": "up", "key": "7"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.7:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.8:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+8",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "8"},
+      {"do": "up", "key": "8"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.8:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.8:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+8",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "8"},
+      {"do": "up", "key": "8"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.8:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.9:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+9",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "9"},
+      {"do": "up", "key": "9"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.9:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/load-layout.9:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+9",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "9"},
+      {"do": "up", "key": "9"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.9:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/save-layout:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Option+S",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "s"},
+      {"do": "up", "key": "s"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:save-layout:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/save-layout:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Option+S",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "s"},
+      {"do": "up", "key": "s"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:save-layout:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/event-log:mod/other",
+    "group": "slot",
+    "keys": "Cmd+L",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "l"},
+      {"do": "up", "key": "l"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:event-log:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/event-log:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+L",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "l"},
+      {"do": "up", "key": "l"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:event-log:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/usage-hud:mod/other",
+    "group": "slot",
+    "keys": "Cmd+U",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "u"},
+      {"do": "up", "key": "u"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:usage-hud:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/usage-hud:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+U",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "u"},
+      {"do": "up", "key": "u"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:usage-hud:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/settings:mod/other",
+    "group": "slot",
+    "keys": "Cmd+,",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": ","},
+      {"do": "up", "key": ","},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:settings:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/settings:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+,",
+    "rule": "A Cmd key acts in every zone except a dialog",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": ","},
+      {"do": "up", "key": ","},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:settings:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/toggle-fullscreen:mod/other",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+F",
+    "rule": "A menu slot goes to the menu first",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "f"},
+      {"do": "up", "key": "f"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["menu:toggle-fullscreen:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/toggle-fullscreen:mod/chat",
+    "group": "slot",
+    "keys": "Cmd+Ctrl+F",
+    "rule": "A menu slot goes to the menu first",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "f"},
+      {"do": "up", "key": "f"},
+      {"do": "up", "key": "Control"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["menu:toggle-fullscreen:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-prev:key/other",
+    "group": "slot",
+    "keys": "ArrowUp",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "ArrowUp"}, {"do": "up", "key": "ArrowUp"}],
+    "expect": {
+      "log": ["cmd:select-prev:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-prev:key/chat",
+    "group": "slot",
+    "keys": "ArrowUp",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "ArrowUp"}, {"do": "up", "key": "ArrowUp"}],
+    "expect": {
+      "log": ["dict:interrupt", "dict:interrupt"],
+      "pty": [{"term": {"key": "ArrowUp", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-prev:key/text",
+    "group": "slot",
+    "keys": "ArrowUp",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "ArrowUp"}, {"do": "up", "key": "ArrowUp"}],
+    "expect": {
+      "log": ["view:text:ArrowUp"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-prev:key/control",
+    "group": "slot",
+    "keys": "ArrowUp",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "ArrowUp"}, {"do": "up", "key": "ArrowUp"}],
+    "expect": {
+      "log": ["view:control:ArrowUp"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-next:key/other",
+    "group": "slot",
+    "keys": "ArrowDown",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "ArrowDown"}, {"do": "up", "key": "ArrowDown"}],
+    "expect": {
+      "log": ["cmd:select-next:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-next:key/chat",
+    "group": "slot",
+    "keys": "ArrowDown",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "ArrowDown"}, {"do": "up", "key": "ArrowDown"}],
+    "expect": {
+      "log": ["dict:interrupt", "dict:interrupt"],
+      "pty": [{"term": {"key": "ArrowDown", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-next:key/text",
+    "group": "slot",
+    "keys": "ArrowDown",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "ArrowDown"}, {"do": "up", "key": "ArrowDown"}],
+    "expect": {
+      "log": ["view:text:ArrowDown"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/select-next:key/control",
+    "group": "slot",
+    "keys": "ArrowDown",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "ArrowDown"}, {"do": "up", "key": "ArrowDown"}],
+    "expect": {
+      "log": ["view:control:ArrowDown"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/next-overview-tab:key/other",
+    "group": "slot",
+    "keys": "Tab",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "Tab"}, {"do": "up", "key": "Tab"}],
+    "expect": {
+      "log": ["cmd:next-overview-tab:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/next-overview-tab:key/chat",
+    "group": "slot",
+    "keys": "Tab",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "Tab"}, {"do": "up", "key": "Tab"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Tab", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/next-overview-tab:key/text",
+    "group": "slot",
+    "keys": "Tab",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "Tab"}, {"do": "up", "key": "Tab"}],
+    "expect": {
+      "log": ["view:text:Tab"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/next-overview-tab:key/control",
+    "group": "slot",
+    "keys": "Tab",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "Tab"}, {"do": "up", "key": "Tab"}],
+    "expect": {
+      "log": ["view:control:Tab"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/prev-overview-tab:key/other",
+    "group": "slot",
+    "keys": "Shift+Tab",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Tab"},
+      {"do": "up", "key": "Tab"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["cmd:prev-overview-tab:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/prev-overview-tab:key/chat",
+    "group": "slot",
+    "keys": "Shift+Tab",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Tab"},
+      {"do": "up", "key": "Tab"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Tab", "mods": ["shift"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/prev-overview-tab:key/text",
+    "group": "slot",
+    "keys": "Shift+Tab",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Tab"},
+      {"do": "up", "key": "Tab"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["view:text:Tab"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/prev-overview-tab:key/control",
+    "group": "slot",
+    "keys": "Shift+Tab",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Tab"},
+      {"do": "up", "key": "Tab"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["view:control:Tab"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:key/other",
+    "group": "slot",
+    "keys": "O",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "o"}, {"do": "up", "key": "o"}],
+    "expect": {
+      "log": ["cmd:open:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:key/chat",
+    "group": "slot",
+    "keys": "O",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "o"}, {"do": "up", "key": "o"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "o", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:key/text",
+    "group": "slot",
+    "keys": "O",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "o"}, {"do": "up", "key": "o"}],
+    "expect": {
+      "log": ["view:text:o"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:key/control",
+    "group": "slot",
+    "keys": "O",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "o"}, {"do": "up", "key": "o"}],
+    "expect": {
+      "log": ["view:control:o"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:key2/other",
+    "group": "slot",
+    "keys": "Enter",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "Enter"}, {"do": "up", "key": "Enter"}],
+    "expect": {
+      "log": ["cmd:open:key2"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:key2/chat",
+    "group": "slot",
+    "keys": "Enter",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "Enter"}, {"do": "up", "key": "Enter"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Enter", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:key2/text",
+    "group": "slot",
+    "keys": "Enter",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "Enter"}, {"do": "up", "key": "Enter"}],
+    "expect": {
+      "log": ["view:text:Enter"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:key2/control",
+    "group": "slot",
+    "keys": "Enter",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "Enter"}, {"do": "up", "key": "Enter"}],
+    "expect": {
+      "log": ["view:control:Enter"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/send-message:key/other",
+    "group": "slot",
+    "keys": "M",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "m"}, {"do": "up", "key": "m"}],
+    "expect": {
+      "log": ["cmd:send-message:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/send-message:key/chat",
+    "group": "slot",
+    "keys": "M",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "m"}, {"do": "up", "key": "m"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "m", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/send-message:key/text",
+    "group": "slot",
+    "keys": "M",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "m"}, {"do": "up", "key": "m"}],
+    "expect": {
+      "log": ["view:text:m"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/send-message:key/control",
+    "group": "slot",
+    "keys": "M",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "m"}, {"do": "up", "key": "m"}],
+    "expect": {
+      "log": ["view:control:m"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/run-slash:key/other",
+    "group": "slot",
+    "keys": "/",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "/"}, {"do": "up", "key": "/"}],
+    "expect": {
+      "log": ["cmd:run-slash:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/run-slash:key/chat",
+    "group": "slot",
+    "keys": "/",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "/"}, {"do": "up", "key": "/"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "/", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/run-slash:key/text",
+    "group": "slot",
+    "keys": "/",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "/"}, {"do": "up", "key": "/"}],
+    "expect": {
+      "log": ["view:text:/"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/run-slash:key/control",
+    "group": "slot",
+    "keys": "/",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "/"}, {"do": "up", "key": "/"}],
+    "expect": {
+      "log": ["cmd:run-slash:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/interrupt:key/other",
+    "group": "slot",
+    "keys": "X",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "x"}, {"do": "up", "key": "x"}],
+    "expect": {
+      "log": ["cmd:interrupt:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/interrupt:key/chat",
+    "group": "slot",
+    "keys": "X",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "x"}, {"do": "up", "key": "x"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "x", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/interrupt:key/text",
+    "group": "slot",
+    "keys": "X",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "x"}, {"do": "up", "key": "x"}],
+    "expect": {
+      "log": ["view:text:x"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/interrupt:key/control",
+    "group": "slot",
+    "keys": "X",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "x"}, {"do": "up", "key": "x"}],
+    "expect": {
+      "log": ["view:control:x"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/show-info:key/other",
+    "group": "slot",
+    "keys": "I",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "i"}, {"do": "up", "key": "i"}],
+    "expect": {
+      "log": ["cmd:show-info:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/show-info:key/chat",
+    "group": "slot",
+    "keys": "I",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "i"}, {"do": "up", "key": "i"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "i", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/show-info:key/text",
+    "group": "slot",
+    "keys": "I",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "i"}, {"do": "up", "key": "i"}],
+    "expect": {
+      "log": ["view:text:i"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/show-info:key/control",
+    "group": "slot",
+    "keys": "I",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "i"}, {"do": "up", "key": "i"}],
+    "expect": {
+      "log": ["view:control:i"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-in-terminal:key/other",
+    "group": "slot",
+    "keys": "J",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "j"}, {"do": "up", "key": "j"}],
+    "expect": {
+      "log": ["cmd:open-in-terminal:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-in-terminal:key/chat",
+    "group": "slot",
+    "keys": "J",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "j"}, {"do": "up", "key": "j"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "j", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-in-terminal:key/text",
+    "group": "slot",
+    "keys": "J",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "j"}, {"do": "up", "key": "j"}],
+    "expect": {
+      "log": ["view:text:j"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-in-terminal:key/control",
+    "group": "slot",
+    "keys": "J",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "j"}, {"do": "up", "key": "j"}],
+    "expect": {
+      "log": ["view:control:j"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-project:key/other",
+    "group": "slot",
+    "keys": "P",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "p"}, {"do": "up", "key": "p"}],
+    "expect": {
+      "log": ["cmd:open-project:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-project:key/chat",
+    "group": "slot",
+    "keys": "P",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "p"}, {"do": "up", "key": "p"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "p", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-project:key/text",
+    "group": "slot",
+    "keys": "P",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "p"}, {"do": "up", "key": "p"}],
+    "expect": {
+      "log": ["view:text:p"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-project:key/control",
+    "group": "slot",
+    "keys": "P",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "p"}, {"do": "up", "key": "p"}],
+    "expect": {
+      "log": ["cmd:open-project:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/copy-id:key/other",
+    "group": "slot",
+    "keys": "C",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "c"}, {"do": "up", "key": "c"}],
+    "expect": {
+      "log": ["cmd:copy-id:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/copy-id:key/chat",
+    "group": "slot",
+    "keys": "C",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "c"}, {"do": "up", "key": "c"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "c", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/copy-id:key/text",
+    "group": "slot",
+    "keys": "C",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "c"}, {"do": "up", "key": "c"}],
+    "expect": {
+      "log": ["view:text:c"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/copy-id:key/control",
+    "group": "slot",
+    "keys": "C",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "c"}, {"do": "up", "key": "c"}],
+    "expect": {
+      "log": ["cmd:copy-id:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/rename:key/other",
+    "group": "slot",
+    "keys": "R",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "r"}, {"do": "up", "key": "r"}],
+    "expect": {
+      "log": ["cmd:rename:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/rename:key/chat",
+    "group": "slot",
+    "keys": "R",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "r"}, {"do": "up", "key": "r"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "r", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/rename:key/text",
+    "group": "slot",
+    "keys": "R",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "r"}, {"do": "up", "key": "r"}],
+    "expect": {
+      "log": ["view:text:r"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/rename:key/control",
+    "group": "slot",
+    "keys": "R",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "r"}, {"do": "up", "key": "r"}],
+    "expect": {
+      "log": ["cmd:rename:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/take-control:key/other",
+    "group": "slot",
+    "keys": "T",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "t"}, {"do": "up", "key": "t"}],
+    "expect": {
+      "log": ["cmd:take-control:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/take-control:key/chat",
+    "group": "slot",
+    "keys": "T",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "t"}, {"do": "up", "key": "t"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "t", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/take-control:key/text",
+    "group": "slot",
+    "keys": "T",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "t"}, {"do": "up", "key": "t"}],
+    "expect": {
+      "log": ["view:text:t"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/take-control:key/control",
+    "group": "slot",
+    "keys": "T",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "t"}, {"do": "up", "key": "t"}],
+    "expect": {
+      "log": ["cmd:take-control:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.1:key/other",
+    "group": "slot",
+    "keys": "1",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "1"}, {"do": "up", "key": "1"}],
+    "expect": {
+      "log": ["cmd:set-priority.1:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.1:key/chat",
+    "group": "slot",
+    "keys": "1",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "1"}, {"do": "up", "key": "1"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "1", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.1:key/text",
+    "group": "slot",
+    "keys": "1",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "1"}, {"do": "up", "key": "1"}],
+    "expect": {
+      "log": ["view:text:1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.1:key/control",
+    "group": "slot",
+    "keys": "1",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "1"}, {"do": "up", "key": "1"}],
+    "expect": {
+      "log": ["view:control:1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.2:key/other",
+    "group": "slot",
+    "keys": "2",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "2"}, {"do": "up", "key": "2"}],
+    "expect": {
+      "log": ["cmd:set-priority.2:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.2:key/chat",
+    "group": "slot",
+    "keys": "2",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "2"}, {"do": "up", "key": "2"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "2", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.2:key/text",
+    "group": "slot",
+    "keys": "2",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "2"}, {"do": "up", "key": "2"}],
+    "expect": {
+      "log": ["view:text:2"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.2:key/control",
+    "group": "slot",
+    "keys": "2",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "2"}, {"do": "up", "key": "2"}],
+    "expect": {
+      "log": ["view:control:2"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.3:key/other",
+    "group": "slot",
+    "keys": "3",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "3"}, {"do": "up", "key": "3"}],
+    "expect": {
+      "log": ["cmd:set-priority.3:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.3:key/chat",
+    "group": "slot",
+    "keys": "3",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "3"}, {"do": "up", "key": "3"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "3", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.3:key/text",
+    "group": "slot",
+    "keys": "3",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "3"}, {"do": "up", "key": "3"}],
+    "expect": {
+      "log": ["view:text:3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.3:key/control",
+    "group": "slot",
+    "keys": "3",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "3"}, {"do": "up", "key": "3"}],
+    "expect": {
+      "log": ["view:control:3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.4:key/other",
+    "group": "slot",
+    "keys": "4",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "4"}, {"do": "up", "key": "4"}],
+    "expect": {
+      "log": ["cmd:set-priority.4:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.4:key/chat",
+    "group": "slot",
+    "keys": "4",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "4"}, {"do": "up", "key": "4"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "4", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.4:key/text",
+    "group": "slot",
+    "keys": "4",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "4"}, {"do": "up", "key": "4"}],
+    "expect": {
+      "log": ["view:text:4"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.4:key/control",
+    "group": "slot",
+    "keys": "4",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "4"}, {"do": "up", "key": "4"}],
+    "expect": {
+      "log": ["view:control:4"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.5:key/other",
+    "group": "slot",
+    "keys": "5",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "5"}, {"do": "up", "key": "5"}],
+    "expect": {
+      "log": ["cmd:set-priority.5:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.5:key/chat",
+    "group": "slot",
+    "keys": "5",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "5"}, {"do": "up", "key": "5"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "5", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.5:key/text",
+    "group": "slot",
+    "keys": "5",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "5"}, {"do": "up", "key": "5"}],
+    "expect": {
+      "log": ["view:text:5"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.5:key/control",
+    "group": "slot",
+    "keys": "5",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "5"}, {"do": "up", "key": "5"}],
+    "expect": {
+      "log": ["view:control:5"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.0:key/other",
+    "group": "slot",
+    "keys": "0",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "0"}, {"do": "up", "key": "0"}],
+    "expect": {
+      "log": ["cmd:set-priority.0:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.0:key/chat",
+    "group": "slot",
+    "keys": "0",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "0"}, {"do": "up", "key": "0"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "0", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.0:key/text",
+    "group": "slot",
+    "keys": "0",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "0"}, {"do": "up", "key": "0"}],
+    "expect": {
+      "log": ["view:text:0"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.0:key/control",
+    "group": "slot",
+    "keys": "0",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "0"}, {"do": "up", "key": "0"}],
+    "expect": {
+      "log": ["cmd:set-priority.0:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/stop:key/other",
+    "group": "slot",
+    "keys": "Backspace",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "Backspace"}, {"do": "up", "key": "Backspace"}],
+    "expect": {
+      "log": ["cmd:stop:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/stop:key/chat",
+    "group": "slot",
+    "keys": "Backspace",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "Backspace"}, {"do": "up", "key": "Backspace"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Backspace", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/stop:key/text",
+    "group": "slot",
+    "keys": "Backspace",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "Backspace"}, {"do": "up", "key": "Backspace"}],
+    "expect": {
+      "log": ["view:text:Backspace"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/stop:key/control",
+    "group": "slot",
+    "keys": "Backspace",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "Backspace"}, {"do": "up", "key": "Backspace"}],
+    "expect": {
+      "log": ["cmd:stop:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/delete:key/other",
+    "group": "slot",
+    "keys": "Shift+Backspace",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Backspace"},
+      {"do": "up", "key": "Backspace"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["cmd:delete:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/delete:key/chat",
+    "group": "slot",
+    "keys": "Shift+Backspace",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Backspace"},
+      {"do": "up", "key": "Backspace"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Backspace", "mods": ["shift"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/delete:key/text",
+    "group": "slot",
+    "keys": "Shift+Backspace",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Backspace"},
+      {"do": "up", "key": "Backspace"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["view:text:Backspace"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/delete:key/control",
+    "group": "slot",
+    "keys": "Shift+Backspace",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Backspace"},
+      {"do": "up", "key": "Backspace"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["cmd:delete:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/escape:key/other",
+    "group": "slot",
+    "keys": "Escape",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["view:other:Escape", "esc:open-settings"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/escape:key/chat",
+    "group": "slot",
+    "keys": "Escape",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["dict:block"],
+      "pty": [{"term": {"key": "Escape", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/escape:key/text",
+    "group": "slot",
+    "keys": "Escape",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["view:text:Escape"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/escape:key/control",
+    "group": "slot",
+    "keys": "Escape",
+    "rule": "A single key acts only outside a chat window and a text box (spec 9.3)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["view:control:Escape", "esc:open-settings"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:hold/other",
+    "group": "slot",
+    "keys": "hold O + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "o"}
+    ],
+    "expect": {
+      "log": ["hold:open:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open:hold/chat",
+    "group": "slot",
+    "keys": "hold O + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "o"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "o", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/send-message:hold/other",
+    "group": "slot",
+    "keys": "hold M + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "m"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "m"}
+    ],
+    "expect": {
+      "log": ["hold:send-message:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/send-message:hold/chat",
+    "group": "slot",
+    "keys": "hold M + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "m"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "m"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "m", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/show-info:hold/other",
+    "group": "slot",
+    "keys": "hold I + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "i"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "i"}
+    ],
+    "expect": {
+      "log": ["hold:show-info:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/show-info:hold/chat",
+    "group": "slot",
+    "keys": "hold I + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "i"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "i"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "i", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-in-terminal:hold/other",
+    "group": "slot",
+    "keys": "hold J + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "j"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "j"}
+    ],
+    "expect": {
+      "log": ["hold:open-in-terminal:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/open-in-terminal:hold/chat",
+    "group": "slot",
+    "keys": "hold J + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "j"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "j"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "j", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/interrupt:hold/other",
+    "group": "slot",
+    "keys": "hold X + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "x"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "x"}
+    ],
+    "expect": {
+      "log": ["hold:interrupt:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/interrupt:hold/chat",
+    "group": "slot",
+    "keys": "hold X + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "x"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "x"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "x", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.1:hold/other",
+    "group": "slot",
+    "keys": "hold 1 + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "1"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "1"}
+    ],
+    "expect": {
+      "log": ["hold:set-priority.1:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.1:hold/chat",
+    "group": "slot",
+    "keys": "hold 1 + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "1"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "1"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "1", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.2:hold/other",
+    "group": "slot",
+    "keys": "hold 2 + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "2"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "2"}
+    ],
+    "expect": {
+      "log": ["hold:set-priority.2:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.2:hold/chat",
+    "group": "slot",
+    "keys": "hold 2 + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "2"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "2"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "2", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.3:hold/other",
+    "group": "slot",
+    "keys": "hold 3 + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "3"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "3"}
+    ],
+    "expect": {
+      "log": ["hold:set-priority.3:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.3:hold/chat",
+    "group": "slot",
+    "keys": "hold 3 + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "3"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "3"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "3", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.4:hold/other",
+    "group": "slot",
+    "keys": "hold 4 + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "4"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "4"}
+    ],
+    "expect": {
+      "log": ["hold:set-priority.4:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.4:hold/chat",
+    "group": "slot",
+    "keys": "hold 4 + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "4"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "4"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "4", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.5:hold/other",
+    "group": "slot",
+    "keys": "hold 5 + click row S3",
+    "rule": "A hold key and a row click run the hold command on that row (D8)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "5"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "5"}
+    ],
+    "expect": {
+      "log": ["hold:set-priority.5:hold@S3"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/set-priority.5:hold/chat",
+    "group": "slot",
+    "keys": "hold 5 + click row S3",
+    "rule": "A hold key acts only in the other zone (C3)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "5"},
+      {"do": "press", "row": "S3"},
+      {"do": "click", "row": "S3"},
+      {"do": "up", "key": "5"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "click:S3"],
+      "pty": [{"term": {"key": "5", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/dictation:hold/chat-tap",
+    "group": "slot",
+    "keys": "Space tap (100 ms)",
+    "rule": "A tap of the dictation key types a space",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 100},
+      {"do": "up", "key": "Space"},
+      {"do": "wait", "ms": 400}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:interrupt"],
+      "pty": [{"text": " "}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/dictation:hold/chat-hold",
+    "group": "slot",
+    "keys": "Space hold (400 ms)",
+    "rule": "A hold of 250 ms starts dictation and types no space",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:stop"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "slot/dictation:hold/other",
+    "group": "slot",
+    "keys": "Space hold (400 ms)",
+    "rule": "The dictation key acts only in a chat window",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["view:other: "],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/modal/Mod+N",
+    "group": "zone",
+    "keys": "Cmd+N",
+    "rule": "No Bifrost key acts in a dialog or a menu",
+    "setup": {"view": "modal"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "n"},
+      {"do": "up", "key": "n"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["view:modal:n"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/modal/C",
+    "group": "zone",
+    "keys": "C",
+    "rule": "No Bifrost key acts in a dialog or a menu",
+    "setup": {"view": "modal"},
+    "steps": [{"do": "down", "key": "c"}, {"do": "up", "key": "c"}],
+    "expect": {
+      "log": ["view:modal:c"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/modal/Escape",
+    "group": "zone",
+    "keys": "Escape",
+    "rule": "A dialog keeps its own Esc",
+    "setup": {"view": "modal"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["view:modal:Escape"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/recorder/Mod+N",
+    "group": "zone",
+    "keys": "Cmd+N",
+    "rule": "Bifrost keys pause while the key recorder records (C4)",
+    "setup": {"view": "recorder"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "n"},
+      {"do": "up", "key": "n"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["view:modal:n"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/recorder/O",
+    "group": "zone",
+    "keys": "O",
+    "rule": "Bifrost keys pause while the key recorder records (C4)",
+    "setup": {"view": "recorder"},
+    "steps": [{"do": "down", "key": "o"}, {"do": "up", "key": "o"}],
+    "expect": {
+      "log": ["view:modal:o"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/send-box/Mod+N",
+    "group": "zone",
+    "keys": "Cmd+N",
+    "rule": "A Cmd key acts in the send box",
+    "setup": {"view": "send-box"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "n"},
+      {"do": "up", "key": "n"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:new-session:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/send-box/C",
+    "group": "zone",
+    "keys": "C",
+    "rule": "A single key goes to the send box",
+    "setup": {"view": "send-box"},
+    "steps": [{"do": "down", "key": "c"}, {"do": "up", "key": "c"}],
+    "expect": {
+      "log": ["view:send-box:c"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/send-box/Escape",
+    "group": "zone",
+    "keys": "Escape",
+    "rule": "Esc leaves the send box, then the next key acts outside it",
+    "setup": {"view": "send-box"},
+    "steps": [
+      {"do": "down", "key": "Escape"},
+      {"do": "up", "key": "Escape"},
+      {"do": "down", "key": "c"},
+      {"do": "up", "key": "c"}
+    ],
+    "expect": {
+      "log": ["esc:leave-send-box", "cmd:copy-id:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/send-box/Shift+Enter",
+    "group": "zone",
+    "keys": "Shift+Enter",
+    "rule": "The send box gets Shift+Enter (its own line break)",
+    "setup": {"view": "send-box"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["view:send-box:Enter"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/text/Mod+Shift+M",
+    "group": "zone",
+    "keys": "Cmd+Shift+M",
+    "rule": "A Cmd key acts in a text box",
+    "setup": {"view": "text"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "m"},
+      {"do": "up", "key": "m"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:send-message:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/text/Space",
+    "group": "zone",
+    "keys": "Space",
+    "rule": "A text box gets Space",
+    "setup": {"view": "text"},
+    "steps": [{"do": "down", "key": "Space"}, {"do": "up", "key": "Space"}],
+    "expect": {
+      "log": ["view:text: "],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/control/Space",
+    "group": "zone",
+    "keys": "Space",
+    "rule": "A control keeps Space (D27)",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "Space"}, {"do": "up", "key": "Space"}],
+    "expect": {
+      "log": ["view:control: "],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/control/ArrowLeft",
+    "group": "zone",
+    "keys": "ArrowLeft",
+    "rule": "A control keeps the arrow keys",
+    "setup": {"view": "control"},
+    "steps": [{"do": "down", "key": "ArrowLeft"}, {"do": "up", "key": "ArrowLeft"}],
+    "expect": {
+      "log": ["view:control:ArrowLeft"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "zone/other/Space",
+    "group": "zone",
+    "keys": "Space",
+    "rule": "Space is not a Bifrost key outside a chat window",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "Space"}, {"do": "up", "key": "Space"}],
+    "expect": {
+      "log": ["view:other: "],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "esc/toggle",
+    "group": "esc",
+    "keys": "Esc",
+    "rule": "Esc opens Settings, and a second Esc closes it",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Escape"},
+      {"do": "up", "key": "Escape"},
+      {"do": "down", "key": "Escape"},
+      {"do": "up", "key": "Escape"}
+    ],
+    "expect": {
+      "log": ["view:other:Escape", "esc:open-settings", "view:other:Escape", "esc:close-settings"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "esc/on-top",
+    "group": "esc",
+    "keys": "Esc",
+    "rule": "Esc closes Settings when Settings is on top",
+    "setup": {"settingsOnTop": true, "view": "other"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["view:other:Escape", "esc:close-settings"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "esc/repeat",
+    "group": "esc",
+    "keys": "Esc",
+    "rule": "A key repeat of a held Esc does not toggle Settings again",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Escape"},
+      {"do": "down", "key": "Escape", "repeat": true},
+      {"do": "down", "key": "Escape", "repeat": true},
+      {"do": "up", "key": "Escape"}
+    ],
+    "expect": {
+      "log": ["view:other:Escape", "esc:open-settings", "view:other:Escape", "view:other:Escape"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "esc/taken",
+    "group": "esc",
+    "keys": "Esc",
+    "rule": "Esc does nothing when another handler took it (a popover or a drag)",
+    "setup": {"escTaker": true, "view": "other"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["view:other:Escape"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "esc/taken-control",
+    "group": "esc",
+    "keys": "Esc",
+    "rule": "Esc does nothing when another handler took it",
+    "setup": {"escTaker": true, "view": "control"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["view:control:Escape"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "esc/window",
+    "group": "esc",
+    "keys": "Esc",
+    "rule": "Esc with no focused view opens Settings",
+    "setup": {"view": "window"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["esc:open-settings"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "esc/send-box-twice",
+    "group": "esc",
+    "keys": "Esc",
+    "rule": "Esc leaves the send box, and the next Esc opens Settings",
+    "setup": {"view": "send-box"},
+    "steps": [
+      {"do": "down", "key": "Escape"},
+      {"do": "up", "key": "Escape"},
+      {"do": "down", "key": "Escape"},
+      {"do": "up", "key": "Escape"}
+    ],
+    "expect": {
+      "log": ["esc:leave-send-box", "esc:open-settings"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "shift-enter/shift",
+    "group": "shift-enter",
+    "keys": "Shift+Enter",
+    "rule": "Shift+Enter sends ESC CR (a new line, not a submit)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"text": "\u001b\r"}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "shift-enter/plain",
+    "group": "shift-enter",
+    "keys": "Enter",
+    "rule": "Enter goes to the terminal (a submit)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "Enter"}, {"do": "up", "key": "Enter"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Enter", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "shift-enter/ctrl-shift",
+    "group": "shift-enter",
+    "keys": "Ctrl+Shift+Enter",
+    "rule": "Shift+Enter with Ctrl is not the new line rule",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Control"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Enter", "mods": ["shift", "ctrl"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "shift-enter/cmd-shift",
+    "group": "shift-enter",
+    "keys": "Cmd+Shift+Enter",
+    "rule": "Shift+Enter with Cmd is not the new line rule",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Enter", "mods": ["meta", "shift"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "shift-enter/alt-shift",
+    "group": "shift-enter",
+    "keys": "Option+Shift+Enter",
+    "rule": "Shift+Enter with Option is not the new line rule",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Alt"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Enter", "mods": ["shift", "alt"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "shift-enter/composing",
+    "group": "shift-enter",
+    "keys": "Shift+Enter",
+    "rule": "Shift+Enter during a composition still sends ESC CR (as the Electron rule)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "compose", "on": true},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "shift-enter/repeat",
+    "group": "shift-enter",
+    "keys": "Shift+Enter (repeat)",
+    "rule": "Each key down of Shift+Enter sends ESC CR, the key up sends nothing",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Enter"},
+      {"do": "down", "key": "Enter", "repeat": true},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "dict:interrupt"],
+      "pty": [{"text": "\u001b\r"}, {"text": "\u001b\r"}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/tap-249",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A tap shorter than 250 ms types one space",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 150},
+      {"do": "up", "key": "Space"},
+      {"do": "wait", "ms": 400}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:interrupt"],
+      "pty": [{"text": " "}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/rollover",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Another key during the wait types the space first, then the key; no dictation",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 100},
+      {"do": "down", "key": "b"},
+      {"do": "up", "key": "b"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:interrupt", "dict:interrupt"],
+      "pty": [{"text": " "}, {"term": {"key": "b", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/rollover-text",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Fast typing with rollover keeps each space in its place",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "t"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "t"},
+      {"do": "up", "key": "Shift"},
+      {"do": "down", "key": "h"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "h"},
+      {"do": "down", "key": "e"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "e"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "up", "key": "Space"},
+      {"do": "down", "key": "q"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "q"},
+      {"do": "down", "key": "u"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "u"},
+      {"do": "down", "key": "i"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "i"},
+      {"do": "down", "key": "c"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "c"},
+      {"do": "down", "key": "k"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "k"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "b"},
+      {"do": "wait", "ms": 30},
+      {"do": "up", "key": "Space"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "b"},
+      {"do": "up", "key": "Shift"},
+      {"do": "down", "key": "r"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "r"},
+      {"do": "down", "key": "o"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "o"},
+      {"do": "down", "key": "w"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "w"},
+      {"do": "down", "key": "n"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "n"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "up", "key": "Space"},
+      {"do": "down", "key": "f"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "f"},
+      {"do": "down", "key": "o"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "o"},
+      {"do": "down", "key": "x"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "x"},
+      {"do": "down", "key": ","},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": ","},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "down", "key": "j"},
+      {"do": "wait", "ms": 30},
+      {"do": "up", "key": "Space"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "j"},
+      {"do": "down", "key": "u"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "u"},
+      {"do": "down", "key": "m"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "m"},
+      {"do": "down", "key": "p"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "p"},
+      {"do": "down", "key": "s"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "s"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "up", "key": "Space"},
+      {"do": "down", "key": "o"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "o"},
+      {"do": "down", "key": "v"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "v"},
+      {"do": "down", "key": "e"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "e"},
+      {"do": "down", "key": "r"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "r"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "down", "key": "t"},
+      {"do": "wait", "ms": 30},
+      {"do": "up", "key": "Space"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "t"},
+      {"do": "down", "key": "h"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "h"},
+      {"do": "down", "key": "e"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "e"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "up", "key": "Space"},
+      {"do": "down", "key": "l"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "l"},
+      {"do": "down", "key": "a"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "a"},
+      {"do": "down", "key": "z"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "z"},
+      {"do": "down", "key": "y"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "y"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "down", "key": "d"},
+      {"do": "wait", "ms": 30},
+      {"do": "up", "key": "Space"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "d"},
+      {"do": "down", "key": "o"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "o"},
+      {"do": "down", "key": "g"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "g"},
+      {"do": "down", "key": "."},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "."},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "up", "key": "Space"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "t"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "t"},
+      {"do": "up", "key": "Shift"},
+      {"do": "down", "key": "h"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "h"},
+      {"do": "down", "key": "e"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "e"},
+      {"do": "down", "key": "n"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "n"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "down", "key": "i"},
+      {"do": "wait", "ms": 30},
+      {"do": "up", "key": "Space"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "i"},
+      {"do": "down", "key": "t"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "t"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 60},
+      {"do": "up", "key": "Space"},
+      {"do": "down", "key": "r"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "r"},
+      {"do": "down", "key": "u"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "u"},
+      {"do": "down", "key": "n"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "n"},
+      {"do": "down", "key": "s"},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "s"},
+      {"do": "down", "key": "."},
+      {"do": "wait", "ms": 40},
+      {"do": "up", "key": "."},
+      {"do": "wait", "ms": 400}
+    ],
+    "expect": {
+      "log": [
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt",
+        "dict:interrupt"
+      ],
+      "pty": [
+        {"term": {"key": "t", "mods": ["shift"], "repeat": false}},
+        {"term": {"key": "h", "mods": [], "repeat": false}},
+        {"term": {"key": "e", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "q", "mods": [], "repeat": false}},
+        {"term": {"key": "u", "mods": [], "repeat": false}},
+        {"term": {"key": "i", "mods": [], "repeat": false}},
+        {"term": {"key": "c", "mods": [], "repeat": false}},
+        {"term": {"key": "k", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "b", "mods": ["shift"], "repeat": false}},
+        {"term": {"key": "r", "mods": [], "repeat": false}},
+        {"term": {"key": "o", "mods": [], "repeat": false}},
+        {"term": {"key": "w", "mods": [], "repeat": false}},
+        {"term": {"key": "n", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "f", "mods": [], "repeat": false}},
+        {"term": {"key": "o", "mods": [], "repeat": false}},
+        {"term": {"key": "x", "mods": [], "repeat": false}},
+        {"term": {"key": ",", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "j", "mods": [], "repeat": false}},
+        {"term": {"key": "u", "mods": [], "repeat": false}},
+        {"term": {"key": "m", "mods": [], "repeat": false}},
+        {"term": {"key": "p", "mods": [], "repeat": false}},
+        {"term": {"key": "s", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "o", "mods": [], "repeat": false}},
+        {"term": {"key": "v", "mods": [], "repeat": false}},
+        {"term": {"key": "e", "mods": [], "repeat": false}},
+        {"term": {"key": "r", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "t", "mods": [], "repeat": false}},
+        {"term": {"key": "h", "mods": [], "repeat": false}},
+        {"term": {"key": "e", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "l", "mods": [], "repeat": false}},
+        {"term": {"key": "a", "mods": [], "repeat": false}},
+        {"term": {"key": "z", "mods": [], "repeat": false}},
+        {"term": {"key": "y", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "d", "mods": [], "repeat": false}},
+        {"term": {"key": "o", "mods": [], "repeat": false}},
+        {"term": {"key": "g", "mods": [], "repeat": false}},
+        {"term": {"key": ".", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "t", "mods": ["shift"], "repeat": false}},
+        {"term": {"key": "h", "mods": [], "repeat": false}},
+        {"term": {"key": "e", "mods": [], "repeat": false}},
+        {"term": {"key": "n", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "i", "mods": [], "repeat": false}},
+        {"term": {"key": "t", "mods": [], "repeat": false}},
+        {"text": " "},
+        {"term": {"key": "r", "mods": [], "repeat": false}},
+        {"term": {"key": "u", "mods": [], "repeat": false}},
+        {"term": {"key": "n", "mods": [], "repeat": false}},
+        {"term": {"key": "s", "mods": [], "repeat": false}},
+        {"term": {"key": ".", "mods": [], "repeat": false}}
+      ]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/release-before-heard",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A release before the first level types the space first (D8)",
+    "setup": {"view": "chat", "heard": false},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 650},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:interrupt", "dict:stop"],
+      "pty": [{"text": " "}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/other-before-heard",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Another key before the first level types the space, then the key (D8)",
+    "setup": {"view": "chat", "heard": false},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 650},
+      {"do": "down", "key": "w"},
+      {"do": "up", "key": "w"},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:interrupt", "dict:cancel", "dict:interrupt"],
+      "pty": [{"text": " "}, {"term": {"key": "w", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/heard-release",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "After the first level a release types no space",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:stop"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/heard-other",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "After the first level another key stops dictation and types only the key",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "down", "key": "w"},
+      {"do": "up", "key": "w"},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:cancel", "dict:interrupt"],
+      "pty": [{"term": {"key": "w", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/repeats",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "The key-repeat events of the held key do nothing",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "wait", "ms": 400},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:stop"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/with-shift",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Space with Shift is a normal key",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Space", "mods": ["shift"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/with-ctrl",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Space with Ctrl is a normal key",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"},
+      {"do": "up", "key": "Control"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Space", "mods": ["ctrl"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/with-alt",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Space with Option is a normal key",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"},
+      {"do": "up", "key": "Alt"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Space", "mods": ["alt"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/with-meta",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Space with Cmd is a normal key",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Space", "mods": ["meta"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/composing",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Space during a composition of an input method is a normal key",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "compose", "on": true},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"},
+      {"do": "compose", "on": false}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": []
+    },
+    "pty": "ignore"
+  },
+  {
+    "id": "dictation/blocked",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "While Claude shows a choice, Space is a normal key with its repeat",
+    "setup": {"view": "chat", "blocked": true},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "dict:interrupt"],
+      "pty": [
+        {"term": {"key": "Space", "mods": [], "repeat": false}},
+        {"term": {"key": "Space", "mods": [], "repeat": true}}
+      ]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/block-in-wait",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A block during the wait types the space at the hold",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "set", "blocked": true},
+      {"do": "wait", "ms": 400},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:interrupt"],
+      "pty": [{"text": " "}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/stop-other-key",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Another key during the hold stops dictation early",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "down", "key": "a"},
+      {"do": "up", "key": "a"},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:cancel", "dict:interrupt"],
+      "pty": [{"term": {"key": "a", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/stop-blur",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A blur of the window during the hold stops dictation early",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "window-blur"},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:cancel", "dict:interrupt"],
+      "pty": [{"term": {"key": "Space", "mods": [], "repeat": true}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/stop-close",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A close of the chat during the hold stops dictation early",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "close"},
+      {"do": "down", "key": "Space", "repeat": true},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:cancel", "dict:interrupt"],
+      "pty": [{"term": {"key": "Space", "mods": [], "repeat": true}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/stop-focus",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A focus move out of the terminal during the hold stops dictation early",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "focus", "view": "other"},
+      {"do": "focus", "view": "chat"},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:cancel", "dict:warm"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/stop-cmd",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Cmd during the hold stops dictation early (Cmd before Cmd+Tab)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "down", "key": "Meta"},
+      {"do": "up", "key": "Meta"},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:cancel"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/no-keyup",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A new press starts again when the key up did not come (Cmd held)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "down", "key": "Meta"},
+      {"do": "up", "key": "Space"},
+      {"do": "up", "key": "Meta"},
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:interrupt", "dict:warm", "dict:start", "dict:stop"],
+      "pty": [{"text": " "}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/blur-in-wait",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A blur during the wait types the space",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 100},
+      {"do": "window-blur"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:interrupt"],
+      "pty": [{"text": " "}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/close-in-wait",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A close during the wait types nothing",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 100},
+      {"do": "close"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:warm"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/fallback",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "A fallback types the held key one time, and nothing after the release",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "fallback"},
+      {"do": "fallback"},
+      {"do": "up", "key": "Space"},
+      {"do": "fallback"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "dict:start", "dict:interrupt"],
+      "pty": [{"text": " "}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/off",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "With the slot Off, Space is a normal key",
+    "setup": {"view": "chat", "custom": {"dictation:hold": null}},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "Space"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "Space", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "dictation/other-key-setting",
+    "group": "dictation",
+    "keys": "Space",
+    "rule": "Another dictation key in Settings: Space is normal, / is the hold key",
+    "setup": {"view": "chat", "custom": {"dictation:hold": "/"}},
+    "steps": [
+      {"do": "down", "key": "Space"},
+      {"do": "up", "key": "Space"},
+      {"do": "down", "key": "/"},
+      {"do": "up", "key": "/"},
+      {"do": "wait", "ms": 100},
+      {"do": "down", "key": "/"},
+      {"do": "wait", "ms": 400},
+      {"do": "up", "key": "/"}
+    ],
+    "expect": {
+      "log": [
+        "dict:interrupt",
+        "dict:warm",
+        "dict:interrupt",
+        "dict:warm",
+        "dict:start",
+        "dict:stop"
+      ],
+      "pty": [{"term": {"key": "Space", "mods": [], "repeat": false}}, {"text": "/"}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/escape",
+    "group": "chat-input",
+    "keys": "Esc",
+    "rule": "Esc stops each typer at once, then goes to the terminal (D12)",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "Escape"}, {"do": "up", "key": "Escape"}],
+    "expect": {
+      "log": ["dict:block"],
+      "pty": [{"term": {"key": "Escape", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/ctrl-c",
+    "group": "chat-input",
+    "keys": "Ctrl+C",
+    "rule": "Ctrl+C stops each typer at once, then goes to the terminal (D12)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "c"},
+      {"do": "up", "key": "c"},
+      {"do": "up", "key": "Control"}
+    ],
+    "expect": {
+      "log": ["dict:block"],
+      "pty": [{"term": {"key": "c", "mods": ["ctrl"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/modifiers",
+    "group": "chat-input",
+    "keys": "Shift, Cmd, Option, Ctrl",
+    "rule": "A modifier key alone does not stop a dictation",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "up", "key": "Shift"},
+      {"do": "down", "key": "Meta"},
+      {"do": "up", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "up", "key": "Alt"},
+      {"do": "down", "key": "Control"},
+      {"do": "up", "key": "Control"}
+    ],
+    "expect": {
+      "log": [],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/letter",
+    "group": "chat-input",
+    "keys": "A",
+    "rule": "Another key stops a dictation before the key goes to the PTY",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "a"}, {"do": "up", "key": "a"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "a", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/cursor",
+    "group": "chat-input",
+    "keys": "ArrowUp",
+    "rule": "A cursor key also stops a dictation in the data rule",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "down", "key": "ArrowUp"}, {"do": "up", "key": "ArrowUp"}],
+    "expect": {
+      "log": ["dict:interrupt", "dict:interrupt"],
+      "pty": [{"term": {"key": "ArrowUp", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/waits-letter",
+    "group": "chat-input",
+    "keys": "A, Enter",
+    "rule": "While a final text types, a key does not stop the typer (D9)",
+    "setup": {"view": "chat", "waits": true},
+    "steps": [
+      {"do": "down", "key": "a"},
+      {"do": "up", "key": "a"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"}
+    ],
+    "expect": {
+      "log": [],
+      "pty": [
+        {"term": {"key": "a", "mods": [], "repeat": false}},
+        {"term": {"key": "Enter", "mods": [], "repeat": false}}
+      ]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/waits-escape",
+    "group": "chat-input",
+    "keys": "Esc, Ctrl+C",
+    "rule": "While a final text types, Esc and Ctrl+C still stop it (D12)",
+    "setup": {"view": "chat", "waits": true},
+    "steps": [
+      {"do": "down", "key": "Escape"},
+      {"do": "up", "key": "Escape"},
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "c"},
+      {"do": "up", "key": "c"},
+      {"do": "up", "key": "Control"}
+    ],
+    "expect": {
+      "log": ["dict:block", "dict:block"],
+      "pty": [
+        {"term": {"key": "Escape", "mods": [], "repeat": false}},
+        {"term": {"key": "c", "mods": ["ctrl"], "repeat": false}}
+      ]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/waits-cursor",
+    "group": "chat-input",
+    "keys": "ArrowDown",
+    "rule": "While a final text types, a cursor key waits",
+    "setup": {"view": "chat", "waits": true},
+    "steps": [{"do": "down", "key": "ArrowDown"}, {"do": "up", "key": "ArrowDown"}],
+    "expect": {
+      "log": [],
+      "pty": [{"term": {"key": "ArrowDown", "mods": [], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/rows",
+    "group": "chat-input",
+    "keys": "(row updates)",
+    "rule": "A row with a blocking choice stops a dictation",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "row", "box": "none"},
+      {"do": "row", "box": "yellow"},
+      {"do": "row", "box": "red", "reason": "escalated"},
+      {"do": "row", "box": "red", "reason": "error"},
+      {"do": "row", "box": "red", "reason": "prompt"},
+      {"do": "row", "box": "red"}
+    ],
+    "expect": {
+      "log": ["dict:block", "dict:block"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/mouse",
+    "group": "chat-input",
+    "keys": "(mouse down)",
+    "rule": "A mouse down, a paste or a drop stops a dictation",
+    "setup": {"view": "chat"},
+    "steps": [{"do": "other"}],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "chat-input/mouse-waits",
+    "group": "chat-input",
+    "keys": "(mouse down)",
+    "rule": "While a final text types, a mouse down does not stop the typer",
+    "setup": {"view": "chat", "waits": true},
+    "steps": [{"do": "other"}],
+    "expect": {
+      "log": [],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/no-click",
+    "group": "hold-gate",
+    "keys": "O",
+    "rule": "A hold key with no click runs its single-key command at the key up",
+    "setup": {"view": "other"},
+    "steps": [{"do": "down", "key": "o"}, {"do": "up", "key": "o"}],
+    "expect": {
+      "log": ["cmd:open:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/quick",
+    "group": "hold-gate",
+    "keys": "X + click",
+    "rule": "A key up before the mouse up still acts on the pressed row",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "x"},
+      {"do": "press", "row": "S1"},
+      {"do": "up", "key": "x"},
+      {"do": "click", "row": "S1"}
+    ],
+    "expect": {
+      "log": ["hold:interrupt:hold@S1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/two-keys",
+    "group": "hold-gate",
+    "keys": "O+M + click",
+    "rule": "Two held keys give no hold click",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "down", "key": "m"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S1"},
+      {"do": "up", "key": "o"},
+      {"do": "up", "key": "m"}
+    ],
+    "expect": {
+      "log": ["click:S1", "cmd:send-message:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/inactive",
+    "group": "hold-gate",
+    "keys": "O (control) + click",
+    "rule": "A key that went down outside the other zone is not a hold key",
+    "setup": {"view": "control"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "focus", "view": "other"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S1"},
+      {"do": "up", "key": "o"}
+    ],
+    "expect": {
+      "log": ["view:control:o", "click:S1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/cmd-clears",
+    "group": "hold-gate",
+    "keys": "O, Cmd + click",
+    "rule": "Cmd clears the gate, because macOS sends no key up while Cmd is down",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "down", "key": "Meta"},
+      {"do": "up", "key": "Meta"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S1"},
+      {"do": "up", "key": "o"}
+    ],
+    "expect": {
+      "log": ["click:S1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/shift-up",
+    "group": "hold-gate",
+    "keys": "O, Shift + click",
+    "rule": "A key up with a modifier removes the hold key",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "down", "key": "Shift"},
+      {"do": "up", "key": "o"},
+      {"do": "up", "key": "Shift"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S1"}
+    ],
+    "expect": {
+      "log": ["click:S1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/blur-clears",
+    "group": "hold-gate",
+    "keys": "O, blur + click",
+    "rule": "A window blur clears the gate",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "window-blur"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S1"},
+      {"do": "up", "key": "o"}
+    ],
+    "expect": {
+      "log": ["click:S1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/recorder-clears",
+    "group": "hold-gate",
+    "keys": "O, recorder + click",
+    "rule": "A focus on the key recorder clears the gate",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "focus", "view": "recorder"},
+      {"do": "focus", "view": "other"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S1"},
+      {"do": "up", "key": "o"}
+    ],
+    "expect": {
+      "log": ["click:S1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/repeat",
+    "group": "hold-gate",
+    "keys": "O (repeat)",
+    "rule": "The key repeat of a hold key does not reset it",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "down", "key": "o", "repeat": true},
+      {"do": "down", "key": "o", "repeat": true},
+      {"do": "up", "key": "o"}
+    ],
+    "expect": {
+      "log": ["cmd:open:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/repeat-used",
+    "group": "hold-gate",
+    "keys": "O + click (repeat)",
+    "rule": "The key repeat does not reset a used key",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "press", "row": "S2"},
+      {"do": "click", "row": "S2"},
+      {"do": "down", "key": "o", "repeat": true},
+      {"do": "up", "key": "o"}
+    ],
+    "expect": {
+      "log": ["hold:open:hold@S2"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/two-clicks",
+    "group": "hold-gate",
+    "keys": "3 + 2 clicks",
+    "rule": "Two clicks with one key both act",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "3"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S1"},
+      {"do": "press", "row": "S2"},
+      {"do": "click", "row": "S2"},
+      {"do": "up", "key": "3"}
+    ],
+    "expect": {
+      "log": ["hold:set-priority.3:hold@S1", "hold:set-priority.3:hold@S2"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/other-row",
+    "group": "hold-gate",
+    "keys": "O + press S1, click S2",
+    "rule": "A claim serves one click of the pressed row only",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S2"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S1"},
+      {"do": "up", "key": "o"}
+    ],
+    "expect": {
+      "log": ["click:S2", "hold:open:hold@S1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "hold-gate/rollover-stale",
+    "group": "hold-gate",
+    "keys": "O, P + click",
+    "rule": "Rollover O then P: O does not act at its key up and stays in the gate",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "o"},
+      {"do": "down", "key": "p"},
+      {"do": "up", "key": "o"},
+      {"do": "up", "key": "p"},
+      {"do": "press", "row": "S2"},
+      {"do": "click", "row": "S2"}
+    ],
+    "expect": {
+      "log": ["cmd:open-project:key", "click:S2"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "repeat/cmd-down",
+    "group": "repeat",
+    "keys": "Cmd+ArrowDown (repeat)",
+    "rule": "A Cmd key acts again for each key repeat",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "ArrowDown"},
+      {"do": "down", "key": "ArrowDown", "repeat": true},
+      {"do": "down", "key": "ArrowDown", "repeat": true},
+      {"do": "up", "key": "ArrowDown"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:select-next:mod", "cmd:select-next:mod", "cmd:select-next:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "repeat/single-down",
+    "group": "repeat",
+    "keys": "ArrowDown (repeat)",
+    "rule": "A single key acts again for each key repeat",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "ArrowDown"},
+      {"do": "down", "key": "ArrowDown", "repeat": true},
+      {"do": "up", "key": "ArrowDown"}
+    ],
+    "expect": {
+      "log": ["cmd:select-next:key", "cmd:select-next:key"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "repeat/chat-letter",
+    "group": "repeat",
+    "keys": "A (repeat)",
+    "rule": "A key repeat in a chat window goes to the terminal",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "a"},
+      {"do": "down", "key": "a", "repeat": true},
+      {"do": "up", "key": "a"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt", "dict:interrupt"],
+      "pty": [
+        {"term": {"key": "a", "mods": [], "repeat": false}},
+        {"term": {"key": "a", "mods": [], "repeat": true}}
+      ]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "modifiers/option-o",
+    "group": "modifiers",
+    "keys": "Option+O",
+    "rule": "Option+O is not the O key",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "o"},
+      {"do": "up", "key": "o"},
+      {"do": "up", "key": "Alt"}
+    ],
+    "expect": {
+      "log": ["view:other:ø"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "modifiers/shift-o",
+    "group": "modifiers",
+    "keys": "Shift+O",
+    "rule": "Shift+O is not the O key",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "o"},
+      {"do": "up", "key": "o"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["view:other:O"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "modifiers/ctrl-o",
+    "group": "modifiers",
+    "keys": "Ctrl+O",
+    "rule": "Ctrl+O is not the O key",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "o"},
+      {"do": "up", "key": "o"},
+      {"do": "up", "key": "Control"}
+    ],
+    "expect": {
+      "log": ["view:other:o"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "modifiers/cmd-o",
+    "group": "modifiers",
+    "keys": "Cmd+O",
+    "rule": "Cmd+O has no binding",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "o"},
+      {"do": "up", "key": "o"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["view:other:o"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "modifiers/shift-1",
+    "group": "modifiers",
+    "keys": "Shift+1",
+    "rule": "Shift+1 is not the 1 key",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "1"},
+      {"do": "up", "key": "1"},
+      {"do": "up", "key": "Shift"}
+    ],
+    "expect": {
+      "log": ["view:other:!"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "modifiers/cmd-alt-s",
+    "group": "modifiers",
+    "keys": "Cmd+Option+S",
+    "rule": "Cmd+Option+S matches although Option changes the character",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "s"},
+      {"do": "up", "key": "s"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:save-layout:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "modifiers/cmd-alt-1",
+    "group": "modifiers",
+    "keys": "Cmd+Option+1",
+    "rule": "Cmd+Option+1 matches by the key position",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "1"},
+      {"do": "up", "key": "1"},
+      {"do": "up", "key": "Alt"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:load-layout.1:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "modifiers/option-m-chat",
+    "group": "modifiers",
+    "keys": "Option+M",
+    "rule": "Option+M in a chat window goes to the terminal (Option as Meta)",
+    "setup": {"view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Alt"},
+      {"do": "down", "key": "m"},
+      {"do": "up", "key": "m"},
+      {"do": "up", "key": "Alt"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "m", "mods": ["alt"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "modifiers/cmd-shift-slash",
+    "group": "modifiers",
+    "keys": "Cmd+Shift+/",
+    "rule": "Cmd+Shift+/ is not Cmd+/ (macOS keeps it)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "/"},
+      {"do": "up", "key": "/"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["view:other:?"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "custom/new-key",
+    "group": "custom",
+    "keys": "Cmd+K",
+    "rule": "A changed key acts",
+    "setup": {"custom": {"open:mod": "Mod+K"}, "view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "k"},
+      {"do": "up", "key": "k"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:open:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "custom/old-key",
+    "group": "custom",
+    "keys": "Cmd+Enter",
+    "rule": "The old key of a changed slot does nothing",
+    "setup": {"custom": {"open:mod": "Mod+K"}, "view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Enter"},
+      {"do": "up", "key": "Enter"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["view:other:Enter"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "custom/off",
+    "group": "custom",
+    "keys": "Cmd+Shift+Backspace",
+    "rule": "A slot with no key does nothing",
+    "setup": {"custom": {"stop:mod": null}, "view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "Shift"},
+      {"do": "down", "key": "Backspace"},
+      {"do": "up", "key": "Backspace"},
+      {"do": "up", "key": "Shift"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["view:other:Backspace"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "custom/conflict",
+    "group": "custom",
+    "keys": "Cmd+N",
+    "rule": "In a conflict the first slot keeps the key",
+    "setup": {"custom": {"event-log:mod": "Mod+N"}, "view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "n"},
+      {"do": "up", "key": "n"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["cmd:new-session:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "custom/menu-wins",
+    "group": "custom",
+    "keys": "Cmd+W",
+    "rule": "A menu slot keeps its key against a later slot",
+    "setup": {"custom": {"event-log:mod": "Mod+W"}, "view": "other"},
+    "steps": [
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "w"},
+      {"do": "up", "key": "w"},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["menu:close-panel:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "custom/ctrl-key",
+    "group": "custom",
+    "keys": "Ctrl+K",
+    "rule": "A Ctrl key acts outside a chat window",
+    "setup": {"custom": {"copy-id:mod": "Control+K"}, "view": "other"},
+    "steps": [
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "k"},
+      {"do": "up", "key": "k"},
+      {"do": "up", "key": "Control"}
+    ],
+    "expect": {
+      "log": ["cmd:copy-id:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "custom/ctrl-key-chat",
+    "group": "custom",
+    "keys": "Ctrl+K",
+    "rule": "A Ctrl key does not act in a chat window",
+    "setup": {"custom": {"copy-id:mod": "Control+K"}, "view": "chat"},
+    "steps": [
+      {"do": "down", "key": "Control"},
+      {"do": "down", "key": "k"},
+      {"do": "up", "key": "k"},
+      {"do": "up", "key": "Control"}
+    ],
+    "expect": {
+      "log": ["dict:interrupt"],
+      "pty": [{"term": {"key": "k", "mods": ["ctrl"], "repeat": false}}]
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "custom/hold-only",
+    "group": "custom",
+    "keys": "hold K + click row S1",
+    "rule": "A hold key with no single slot acts only with a click",
+    "setup": {"custom": {"open:hold": "K"}, "view": "other"},
+    "steps": [
+      {"do": "down", "key": "k"},
+      {"do": "press", "row": "S1"},
+      {"do": "click", "row": "S1"},
+      {"do": "up", "key": "k"},
+      {"do": "down", "key": "k"},
+      {"do": "up", "key": "k"}
+    ],
+    "expect": {
+      "log": ["hold:open:hold@S1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "focus/chat-selects",
+    "group": "focus",
+    "keys": "(focus the chat)",
+    "rule": "A focus in a chat window selects its session",
+    "setup": {"view": "other"},
+    "steps": [{"do": "focus", "view": "chat"}],
+    "expect": {
+      "log": ["dict:warm", "select:S1"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "focus/chat-selected",
+    "group": "focus",
+    "keys": "(focus the chat)",
+    "rule": "A focus in the chat of the selected session selects nothing",
+    "setup": {"selected": "S1", "view": "other"},
+    "steps": [{"do": "focus", "view": "chat"}],
+    "expect": {
+      "log": ["dict:warm"],
+      "pty": []
+    },
+    "pty": "exact"
+  },
+  {
+    "id": "focus/session-key",
+    "group": "focus",
+    "keys": "Cmd+. in the chat",
+    "rule": "A session key in a chat window acts (on the chat session)",
+    "setup": {"view": "other"},
+    "steps": [
+      {"do": "focus", "view": "chat"},
+      {"do": "down", "key": "Meta"},
+      {"do": "down", "key": "."},
+      {"do": "up", "key": "."},
+      {"do": "up", "key": "Meta"}
+    ],
+    "expect": {
+      "log": ["dict:warm", "select:S1", "cmd:interrupt:mod"],
+      "pty": []
+    },
+    "pty": "exact"
+  }
+]

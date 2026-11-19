@@ -1,0 +1,2 @@
+  1) ABCDEF0123456789ABCDEF0123456789ABCDEF01 "Developer ID Application: Example Ltd"
+     1 valid identities found

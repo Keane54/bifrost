@@ -1,0 +1,76 @@
+{
+  "accountUsage": true,
+  "animatedBackground": false,
+  "autoUpdate": false,
+  "dailyUpdate": {
+    "areas": [
+      {
+        "channel": "#app-updates",
+        "description": "The work on the app and its tests.",
+        "id": "a1",
+        "name": "App",
+        "on": true,
+        "takesRest": true
+      },
+      {
+        "channel": "#docs-updates",
+        "description": "The guides and the API reference.",
+        "id": "a2",
+        "name": "Docs",
+        "on": false,
+        "takesRest": false
+      }
+    ],
+    "days": [1, 2, 3, 4],
+    "deadline": "11:00",
+    "draftTime": "10:15",
+    "format": {
+      "examples": ["**Daily update**\n**Done since my last update**\n- The search fix"],
+      "template": "**Daily update**\n**Done**\n**Next**"
+    },
+    "mergedPrs": false,
+    "model": "sonnet",
+    "source": {
+      "server": "boards",
+      "tools": ["mcp__boards__list_items", "mcp__boards__get_item"]
+    },
+    "you": "user-1"
+  },
+  "escalationMinutes": 25,
+  "futureField": {
+    "level": 3,
+    "tags": ["a", true, null]
+  },
+  "interfaceScale": 120,
+  "keys": {
+    "interrupt": null,
+    "new-session": "Mod+Shift+N"
+  },
+  "labels": "space",
+  "notifications": false,
+  "panelTransparency": 30,
+  "pollSeconds": 5,
+  "projectApp": "zed",
+  "redBoxSound": false,
+  "reviewsAutoFix": false,
+  "reviewsIgnore": ["example-org/docs", "sandbox/*"],
+  "reviewsMaxSessions": 5,
+  "reviewsPauseMinutes": 120,
+  "reviewsPollMinutes": 5,
+  "reviewsRequestModel": "opus",
+  "reviewsReviewModel": "sonnet",
+  "reviewsSignedCommits": true,
+  "reviewsTeamRequests": false,
+  "reviewsWatch": true,
+  "rowFlash": false,
+  "setupDone": true,
+  "slashCommands": ["/compact", "/review", "/cost"],
+  "snapDistance": 12,
+  "startAtLogin": true,
+  "terminalApp": "ghostty",
+  "terminalFont": {
+    "family": "Menlo",
+    "size": 14
+  },
+  "version": 1
+}
