@@ -1,5 +1,6 @@
 # Shared functions of the release scripts (docs/release.md). Each script reads this file with ".".
-# The scripts are POSIX sh. summary.sh also runs on the Linux runner. The other scripts need macOS.
+# The scripts are POSIX sh. summary.sh, save-notes.sh and check-dist.sh also run on the Linux
+# runner. The other scripts need macOS.
 
 # Prints the message and stops the script with exit 1. The arguments are the parts of one message,
 # joined with a space, so a long message can continue on the next line of a script. In GitHub

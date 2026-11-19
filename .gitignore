@@ -6,10 +6,12 @@ xcuserdata/
 .DS_Store
 .worktrees/
 .superpowers/
-# The release tooling (package.json) and the files of a release (scripts/release/prepare.sh).
+# The release tooling (package.json), the files of a release (scripts/release/prepare.sh) and the
+# version and the notes of the dry run (.releaserc.json).
 node_modules/
 dist/
 .release-version
+.release-notes.md
 
 # The design, the plans and the phase records stay on the machine that writes them.
 docs/specs/

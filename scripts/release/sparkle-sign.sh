@@ -10,8 +10,9 @@
 # (SUPublicEDKey, verify-ed-signature.swift). So a release never publishes an update that the
 # installed apps refuse, for example after a change of the key pair with no change of the public
 # key in Config/Release.xcconfig.
-# SPARKLE_BIN can give the folder of the Sparkle tools. The default is the folder that an
-# xcodebuild resolve with -clonedSourcePackagesDirPath .build/spm makes.
+# SPARKLE_BIN can give the folder of the Sparkle tools. The sign job of the Release workflow
+# gets the tools with sparkle-tools.sh and sets it. The default is the folder that an xcodebuild
+# resolve with -clonedSourcePackagesDirPath .build/spm makes (scripts/test-release.sh).
 #
 # Exit 0: the script prints the signature. Exit 1: the script prints the reason.
 set -u

@@ -6,13 +6,15 @@
 # The test needs the release tooling: run "pnpm install --frozen-lockfile" first. Each case makes
 # a temp git repo with a bare remote on the disk, and runs semantic-release in it with a copy of
 # the real config. The copy has no github plugin, because that plugin needs a token and the
-# network. The temp repo has the real summary.sh and lib.sh, and a stand-in prepare.sh that
-# records its arguments. So the cases test the real release rules, the real summary step and the
-# real prepareCmd of the exec plugin, and nothing builds an app.
+# network. The temp repo has the real summary.sh, save-notes.sh, check-dist.sh and lib.sh, and
+# stand-in release files in dist/. So the cases test the real release rules, the real notes steps
+# and the real prepareCmd of the exec plugin, and nothing builds or signs an app.
 # The cases: the cutover commit ("feat!:" with a BREAKING CHANGE footer) after v0.9.0 gives 1.0.0;
 # after that, fix gives a patch, feat a minor, a breaking change a major, and chore a patch; a
-# commit of another type gives no release; an empty summary stops the release; and a full run
-# gives prepare.sh the version and the release notes as base64.
+# commit of another type gives no release; an empty summary stops the release; a dry run saves
+# the full notes (the summary, then the notes of the commits) to .release-notes.md; a full run
+# with the files of the version in dist/ pushes the tag; and a full run with the files of another
+# version stops before the tag.
 # semantic-release runs with a clean environment, so the CI variables of GitHub Actions and the
 # git settings of the user do not change the result.
 #
@@ -66,15 +68,9 @@ new_repo() {
     g config user.email release-test@example.invalid
     g remote add origin "$remote"
     mkdir -p "$repo/scripts/release" || fail "cannot make the scripts folder"
-    cp "$here/release/summary.sh" "$here/release/lib.sh" "$repo/scripts/release/" ||
-        fail "cannot copy the summary script"
-    cat >"$repo/scripts/release/prepare.sh" <<'EOF'
-#!/bin/sh
-# A stand-in for the real prepare.sh: it records its arguments.
-printf '%s\n' "$1" >prepared-version.txt
-printf '%s' "$2" | openssl base64 -d -A >prepared-notes.md
-EOF
-    chmod +x "$repo/scripts/release/prepare.sh"
+    for script in summary.sh save-notes.sh check-dist.sh lib.sh; do
+        cp "$here/release/$script" "$repo/scripts/release/" || fail "cannot copy $script"
+    done
     python3 -I - "$root/.releaserc.json" "file://$remote" >"$repo/.releaserc.json" <<'EOF' ||
 import json, sys
 config = json.load(open(sys.argv[1]))
@@ -85,7 +81,7 @@ json.dump(config, sys.stdout, indent=2)
 EOF
         fail "cannot write the config"
     ln -s "$root/node_modules" "$repo/node_modules" || fail "cannot link node_modules"
-    printf 'node_modules\n.release-version\nprepared-*\n' >"$repo/.gitignore"
+    printf 'node_modules\n.release-version\n.release-notes.md\ndist/\n' >"$repo/.gitignore"
     g add -A
     g commit -q -m "chore: the Electron app" || fail "the first commit failed"
     g tag v0.9.0
@@ -101,7 +97,7 @@ commit() {
 # Runs semantic-release in the temp repo. Sets out and code. The other arguments go to
 # semantic-release.
 release() {
-    rm -f "$repo/.release-version"
+    rm -f "$repo/.release-version" "$repo/.release-notes.md"
     out=$(cd "$repo" && env -i PATH="$PATH" HOME="$tmp/home" GIT_CONFIG_NOSYSTEM=1 \
         RELEASE_SUMMARY="${summary-A summary.}" "$semantic" --no-ci "$@" 2>&1)
     code=$?
@@ -114,6 +110,21 @@ expect_version() {
     [ "$code" -eq 0 ] || fail "$1: semantic-release failed with $code: $out"
     found=$(cat "$repo/.release-version" 2>/dev/null)
     [ "$found" = "$2" ] || fail "$1: expected version \"$2\", got \"$found\": $out"
+}
+
+# Writes stand-in release files of the version $1 to dist/ of the temp repo. They have the names
+# and the lines that check-dist.sh reads, as prepare.sh writes them.
+fake_dist() {
+    dist="$repo/dist"
+    zip_name="Bifrost-$1-arm64-mac.zip"
+    rm -rf "$dist"
+    mkdir -p "$dist" || fail "cannot make $dist"
+    printf 'dmg\n' >"$dist/Bifrost-arm64.dmg"
+    printf 'zip\n' >"$dist/$zip_name"
+    printf 'version: %s\nfiles:\n  - url: %s\npath: %s\n' "$1" "$zip_name" "$zip_name" \
+        >"$dist/latest-mac.yml"
+    printf '<sparkle:version>%s</sparkle:version>\nurl="%s"\n' "$1" \
+        "https://github.com/example/bifrost/releases/download/v$1/$zip_name" >"$dist/appcast.xml"
 }
 
 # Tags the commit at the top with v$1, as a release does.
@@ -162,8 +173,28 @@ printf '%s\n' "$out" | grep -q -F "The release summary is empty" ||
     fail "an empty summary: no reason in the output: $out"
 unset summary
 
-# A full run: the stand-in prepare.sh gets the version and the notes as base64, and the tag goes
-# to the remote.
+# The notes in .release-notes.md must start with the summary and hold the notes of the commits
+# once. The first argument names the case.
+expect_notes() {
+    notes="$repo/.release-notes.md"
+    [ -f "$notes" ] || fail "$1: no .release-notes.md: $out"
+    [ "$(sed -n 1,2p "$notes")" = "$summary" ] ||
+        fail "$1: the notes start with: $(sed -n 1,3p "$notes")"
+    for text in '## [1.0.0]' '### ⚠ BREAKING CHANGES' '### Features' '### Bug Fixes' \
+        '* **updates:** a fix with "quotes", $(no command) and a `tick`'; do
+        grep -q -F -- "$text" "$notes" || fail "$1: no \"$text\" in the notes: $(cat "$notes")"
+    done
+    for text in 'The native app is here.' '## [1.0.0]'; do
+        count=$(grep -c -F -- "$text" "$notes")
+        [ "$count" -eq 1 ] || fail "$1: \"$text\" is $count times in the notes: $(cat "$notes")"
+    done
+}
+
+# Returns 0 when the remote has the tag $1.
+has_tag() {
+    HOME="$tmp/home" git -C "$remote" rev-parse -q --verify "refs/tags/$1" >/dev/null
+}
+
 new_repo
 commit "feat!: replace the Electron app with the native app
 
@@ -171,18 +202,26 @@ BREAKING CHANGE: Bifrost is a native macOS app now."
 commit "fix(updates): a fix with \"quotes\", \$(no command) and a \`tick\`"
 summary='The native app is here.
 It keeps your data.'
+
+# The dry run of the check job saves the full notes and makes no tag.
+expect_version "the notes of a dry run" 1.0.0
+expect_notes "the notes of a dry run"
+! has_tag v1.0.0 || fail "the notes of a dry run: the dry run made the tag v1.0.0"
+
+# The files in dist/ have another version, for example after a new commit: the prepareCmd stops
+# the release before the tag.
+fake_dist 0.9.1
+release
+[ "$code" -ne 0 ] || fail "files of another version: semantic-release did not stop: $out"
+printf '%s\n' "$out" | grep -q -F "exactly one update ZIP, Bifrost-1.0.0-arm64-mac.zip" ||
+    fail "files of another version: no reason in the output: $out"
+! has_tag v1.0.0 || fail "files of another version: the run made the tag v1.0.0"
+
+# A full run with the files of the version: the prepareCmd passes, and the tag goes to the remote.
+fake_dist 1.0.0
 release
 [ "$code" -eq 0 ] || fail "a full run: semantic-release failed with $code: $out"
-[ "$(cat "$repo/prepared-version.txt" 2>/dev/null)" = 1.0.0 ] ||
-    fail "a full run: prepare.sh did not get 1.0.0: $out"
-notes="$repo/prepared-notes.md"
-[ "$(sed -n 1,2p "$notes")" = "$summary" ] ||
-    fail "a full run: the notes start with: $(sed -n 1,3p "$notes")"
-for text in '## [1.0.0]' '### ⚠ BREAKING CHANGES' '### Features' '### Bug Fixes' \
-    '* **updates:** a fix with "quotes", $(no command) and a `tick`'; do
-    grep -q -F -- "$text" "$notes" || fail "a full run: no \"$text\" in the notes: $(cat "$notes")"
-done
-HOME="$tmp/home" git -C "$remote" rev-parse -q --verify refs/tags/v1.0.0 >/dev/null ||
-    fail "a full run: no tag v1.0.0 on the remote"
+expect_notes "a full run"
+has_tag v1.0.0 || fail "a full run: no tag v1.0.0 on the remote"
 
 echo PASS

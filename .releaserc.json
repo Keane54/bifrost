@@ -27,7 +27,7 @@
       {
         "verifyReleaseCmd": "echo ${nextRelease.version} > .release-version",
         "generateNotesCmd": "scripts/release/summary.sh",
-        "prepareCmd": "scripts/release/prepare.sh ${nextRelease.version} ${Buffer.from(nextRelease.notes).toString('base64')}"
+        "prepareCmd": "scripts/release/check-dist.sh ${nextRelease.version}"
       }
     ],
     [
@@ -49,6 +49,12 @@
             { "type": "ci", "section": "Continuous Integration", "hidden": false }
           ]
         }
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "generateNotesCmd": "scripts/release/save-notes.sh ${Buffer.from(nextRelease.notes).toString('base64')}"
       }
     ],
     [

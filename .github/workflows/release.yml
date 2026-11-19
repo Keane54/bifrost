@@ -5,6 +5,11 @@ name: Release
 # commits, and the slow signed build runs only when a new version is wanted. CI still runs on each
 # push. docs/release.md tells how a release runs and how the first native release takes over from
 # the Electron app.
+#
+# The workflow has three jobs (user decision, 2026-11-19). The check job finds the next version and
+# the release notes. The build job builds the app with no secret, because the build runs the code
+# of the Swift packages, also their build plug-ins. The sign job holds the signing secrets, builds
+# nothing and runs no package plug-in. So no code of a package runs next to the signing keys.
 on:
   workflow_dispatch:
     inputs:
@@ -42,7 +47,8 @@ jobs:
     # starts.
     runs-on: ubuntu-latest
 
-    # contents: write: semantic-release checks that it can push a tag, also in a dry run.
+    # contents: write: semantic-release checks that it can push a tag, also in a dry run. So the
+    # dry run stays in this job, and the build job gets a token that can only read.
     # actions: read: the job reads the CI result of the commit.
     permissions:
       contents: write
@@ -51,6 +57,8 @@ jobs:
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
       version: ${{ steps.next.outputs.version }}
+      app_version: ${{ steps.app.outputs.version }}
+      notes: ${{ steps.app.outputs.notes }}
 
     steps:
       - name: Checkout code
@@ -99,16 +107,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # The exec plugin writes the next version to .release-version (.releaserc.json). With no
-      # releasable commit, the file does not exist and the version stays empty. The dry run also
-      # makes the release notes, so it runs the summary script.
+      # The exec plugin writes the next version to .release-version and the release notes to
+      # .release-notes.md (.releaserc.json, save-notes.sh). With no releasable commit, the files do
+      # not exist and the version stays empty. The notes start with the summary.
       - name: Find the next version
         id: next
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_SUMMARY: ${{ inputs.summary }}
         run: |
-          rm -f .release-version
+          rm -f .release-version .release-notes.md
           pnpm exec semantic-release --dry-run
           if [ -f .release-version ]; then
             echo "version=$(cat .release-version)" >> "$GITHUB_OUTPUT"
@@ -117,33 +125,48 @@ jobs:
             echo "No commit since the last release needs a new version."
           fi
 
+      # The version and the notes of the build. A release uses the next version and the notes of
+      # the dry run. A dry run with no release due uses the last version, with only the summary as
+      # its notes. The notes go to the build job as base64 text on one line.
+      - name: Choose the version and the notes of the build
+        id: app
+        env:
+          NEXT_VERSION: ${{ steps.next.outputs.version }}
+          RELEASE_SUMMARY: ${{ inputs.summary }}
+        # bash with pipefail: a failed command of a pipe stops the step.
+        shell: bash
+        run: |
+          if [ -n "$NEXT_VERSION" ]; then
+            version=$NEXT_VERSION
+            notes=$(openssl base64 -A < .release-notes.md)
+          else
+            version=$(git describe --tags --abbrev=0 | sed 's/^v//')
+            notes=$(scripts/release/summary.sh | openssl base64 -A)
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "notes=$notes" >> "$GITHUB_OUTPUT"
+          echo "The build gets the version $version."
+
   build:
-    name: Build, sign and notarise
+    name: Build the app (no secrets)
     needs: check
     # A release needs a next version. A dry run always builds.
     if: needs.check.outputs.version != '' || inputs.mode == 'dry-run'
     runs-on: macos-26
-    # The signing secrets live only in this environment. It allows only main.
-    environment: release
-
-    # contents: write lets semantic-release push the tag, make the GitHub release and attach the
-    # files. The github plugin makes no comments and no labels (.releaserc.json).
+    # The build runs the code of the Swift packages, also their build plug-ins. So this job has no
+    # environment and no secret, and its token can only read. It gives the sign job only files.
     permissions:
-      contents: write
+      contents: read
 
     env:
       # The pinned Xcode, as in ci.yml.
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      # The last Electron release. The bridge check reads the designated requirement of its app
-      # (docs/release.md). Change it only if a new Electron release comes before the cutover.
-      BRIDGE_FROM_TAG: v0.9.0
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
         with:
           ref: main
-          fetch-depth: 0
           persist-credentials: false
 
       # The check job read the CI result of one commit. Build only that commit.
@@ -167,6 +190,8 @@ jobs:
           xcodebuild -version
           echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
 
+      # Only this job and CI use this cache. The sign job restores no cache, because a job that
+      # runs the code of the packages can change a cache.
       - name: Cache the Swift packages
         uses: actions/cache@v6
         with:
@@ -177,27 +202,119 @@ jobs:
             'Packages/Bifrost/Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      # The build and sparkle-sign.sh need the packages and the Sparkle tools in .build/spm.
-      - name: Resolve the Swift packages
+      # GitHub sets CI=true, so the build skips the trust prompt of the package build plug-ins
+      # (build-app.sh).
+      - name: Build the Release app
+        env:
+          APP_VERSION: ${{ needs.check.outputs.app_version }}
+        run: scripts/release/build-app.sh "$APP_VERSION"
+
+      - name: Check the Sparkle settings of the Release app
         run: >-
-          xcodebuild -resolvePackageDependencies -project Bifrost.xcodeproj -scheme Bifrost
-          -clonedSourcePackagesDirPath .build/spm
+          scripts/release/check-sparkle.sh .build/xcode/Build/Products/Release/Bifrost.app
+          Config/Release.xcconfig
 
-      # Only semantic-release needs Node. The dry run calls prepare.sh directly.
-      - name: Install pnpm
-        if: inputs.mode == 'release'
-        uses: pnpm/action-setup@v6.1.0
+      # An artifact keeps no symbolic link and no file mode, and Sparkle.framework has both. So the
+      # app goes into a ZIP of ditto first, as the update ZIP does.
+      - name: Pack the unsigned app, the version and the notes
+        env:
+          APP_VERSION: ${{ needs.check.outputs.app_version }}
+          NOTES: ${{ needs.check.outputs.notes }}
+        run: |
+          out="$RUNNER_TEMP/unsigned"
+          mkdir -p "$out"
+          ditto -c -k --sequesterRsrc --keepParent .build/xcode/Build/Products/Release/Bifrost.app \
+            "$out/Bifrost.app.zip"
+          printf '%s\n' "$APP_VERSION" > "$out/version.txt"
+          printf '%s' "$NOTES" | openssl base64 -d -A > "$out/notes.md"
+          [ -s "$out/notes.md" ] || { echo "::error::The release notes are empty."; exit 1; }
 
-      - name: Setup Node.js
-        if: inputs.mode == 'release'
-        uses: actions/setup-node@v7
+      - name: Upload the unsigned app
+        uses: actions/upload-artifact@v7
         with:
-          node-version: "24"
-          cache: "pnpm"
+          name: unsigned-app
+          path: ${{ runner.temp }}/unsigned/
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Install dependencies
-        if: inputs.mode == 'release'
-        run: pnpm install --frozen-lockfile --ignore-scripts
+  sign:
+    name: Sign, notarise and publish
+    needs: [check, build]
+    runs-on: macos-26
+    # The signing secrets live only in this environment. It allows only main. This job builds
+    # nothing, runs no package plug-in and restores no cache: it signs the app of the build job.
+    environment: release
+
+    # contents: write lets semantic-release push the tag, make the GitHub release and attach the
+    # files. The github plugin makes no comments and no labels (.releaserc.json).
+    permissions:
+      contents: write
+
+    env:
+      # The pinned Xcode, as in ci.yml.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      # The last Electron release. The bridge check reads the designated requirement of its app
+      # (docs/release.md). Change it only if a new Electron release comes before the cutover.
+      BRIDGE_FROM_TAG: v0.9.0
+      # The version of the build, from the check job.
+      APP_VERSION: ${{ needs.check.outputs.app_version }}
+
+    steps:
+      # semantic-release needs the full history and the tags.
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The check job read the CI result of one commit. Publish only that commit.
+      - name: Check main has not moved on
+        env:
+          CHECKED_SHA: ${{ needs.check.outputs.sha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$CHECKED_SHA" ]; then
+            echo "::error::main moved on after the check. Start the workflow again."
+            exit 1
+          fi
+
+      - name: Check the Xcode version
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            message="The runner has no $DEVELOPER_DIR."
+            echo "::error::$message Pin an Xcode of the runner image (docs/release.md)."
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          xcodebuild -version
+          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+
+      - name: Download the unsigned app
+        uses: actions/download-artifact@v8
+        with:
+          name: unsigned-app
+          path: ${{ runner.temp }}/unsigned
+
+      # The artifact is only data: no step runs a file of it. prepare.sh checks the version of the
+      # app again before it signs.
+      - name: Unpack the unsigned app
+        run: |
+          unsigned="$RUNNER_TEMP/unsigned"
+          built=$(cat "$unsigned/version.txt")
+          if [ "$built" != "$APP_VERSION" ]; then
+            echo "::error::The artifact has version $built, but the check job found $APP_VERSION."
+            exit 1
+          fi
+          ditto -x -k "$unsigned/Bifrost.app.zip" "$RUNNER_TEMP/app"
+          echo "UNSIGNED_APP=$RUNNER_TEMP/app/Bifrost.app" >> "$GITHUB_ENV"
+
+      # sparkle-sign.sh needs sign_update. The script resolves only the pinned Sparkle package,
+      # with no cache, so no other package comes into this job. A resolve builds nothing and runs
+      # no plug-in (sparkle-tools.sh).
+      - name: Get the Sparkle tools
+        run: |
+          bin=$(scripts/release/sparkle-tools.sh "$RUNNER_TEMP/sparkle")
+          echo "SPARKLE_BIN=$bin" >> "$GITHUB_ENV"
 
       # The bridge check needs the app of the last Electron release. The download needs no
       # secret, so it runs before the steps that use the secrets.
@@ -208,8 +325,7 @@ jobs:
           app=$(scripts/release/electron-app.sh "$BRIDGE_FROM_TAG" "$RUNNER_TEMP/electron")
           echo "BRIDGE_APP=$app" >> "$GITHUB_ENV"
 
-      # notarytool reads the App Store Connect key from a file. The runner deletes RUNNER_TEMP
-      # at the end of the job.
+      # notarytool reads the App Store Connect key from a file. A later step deletes it.
       - name: Write the notarisation key
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
@@ -220,8 +336,7 @@ jobs:
           echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
 
       # The keychain holds the Developer ID certificate of the CSC_LINK secret. codesign finds the
-      # identity in it (scripts/release/sign-app.sh). The runner deletes RUNNER_TEMP at the end of
-      # the job.
+      # identity in it (scripts/release/sign-app.sh). A later step deletes it.
       - name: Make the signing keychain
         env:
           P12_BASE64: ${{ secrets.CSC_LINK }}
@@ -254,37 +369,54 @@ jobs:
           security find-identity -v -p codesigning "$SIGNING_KEYCHAIN" |
             scripts/release/signing-identity.sh >> "$GITHUB_ENV"
 
-      # semantic-release finds the version and writes the notes. The exec plugin then runs
-      # scripts/release/prepare.sh with the version and the notes: it builds, signs and
-      # notarises the app and the DMG, runs the bridge check, and writes the update ZIP,
-      # latest-mac.yml and appcast.xml. Only then does the github plugin publish the tag, the
-      # release and the files. No commit goes back to main.
+      # prepare.sh signs the app, the nested Sparkle code first, then notarises and staples it. It
+      # runs the bridge check on the update ZIP, makes the DMG, latest-mac.yml and appcast.xml, and
+      # signs the ZIP for Sparkle. The notes come from the artifact. Each mode runs this step.
+      - name: Sign, notarise and make the release files
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: >-
+          scripts/release/prepare.sh "$UNSIGNED_APP" "$APP_VERSION"
+          "$RUNNER_TEMP/unsigned/notes.md"
+
+      # semantic-release and its plugins come from npm. They need no signing key, so the keychain
+      # and the key files go before they run. The step also runs after a failed step.
+      - name: Remove the signing keychain and the key files
+        if: always()
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          if [ -e "$keychain" ]; then
+            security delete-keychain "$keychain"
+          fi
+          rm -f "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Install pnpm
+        if: inputs.mode == 'release'
+        uses: pnpm/action-setup@v6.1.0
+
+      # No pnpm cache: this job restores no cache at all.
+      - name: Setup Node.js
+        if: inputs.mode == 'release'
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        if: inputs.mode == 'release'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # semantic-release finds the version and writes the notes again. Its exec plugin runs
+      # check-dist.sh, which checks that dist/ holds the files of that version. Only then does
+      # semantic-release push the tag, and its github plugin publishes the release with the files.
+      # No commit goes back to main. This step gets no signing secret.
       - name: Release
         if: inputs.mode == 'release'
         run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           RELEASE_SUMMARY: ${{ inputs.summary }}
-
-      # A dry run uses the next version, or the last version when no release is due. Its release
-      # notes are only the summary, because semantic-release does not run.
-      - name: Dry run build
-        if: inputs.mode == 'dry-run'
-        env:
-          NEXT_VERSION: ${{ needs.check.outputs.version }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-          RELEASE_SUMMARY: ${{ inputs.summary }}
-        # bash with pipefail: a failed summary stops the step.
-        shell: bash
-        run: |
-          version="${NEXT_VERSION:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
-          notes=$(scripts/release/summary.sh | openssl base64 -A)
-          scripts/release/prepare.sh "$version" "$notes"
 
       - name: Upload the dry run files
         if: inputs.mode == 'dry-run'

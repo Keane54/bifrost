@@ -5,9 +5,10 @@
 #
 # The cases: summary.sh (with sh and with dash), signing-identity.sh with fixture outputs of
 # "security find-identity", latest-mac.sh with a fixture ZIP, appcast.sh with fixture notes,
-# check-sparkle.sh with fixture apps and with the real Release settings, sparkle-sign.sh with a new
-# test key, bridge-check.sh with ad hoc apps, and sign-app.sh with an ad hoc signature and a copy
-# of Sparkle.framework.
+# check-dist.sh with fixture release files, check-sparkle.sh with fixture apps and with the real
+# Release settings, sparkle-sign.sh with a new test key, sparkle-tools.sh with fixture pins (only
+# the checks before the resolve), bridge-check.sh with ad hoc apps, sign-app.sh with an ad hoc
+# signature and a copy of Sparkle.framework, and the checks of prepare.sh before it signs.
 # The script never builds or starts the Release app, never reads the Keychain and uses no network.
 # sparkle-sign.sh and sign-app.sh need the Sparkle tools and the Sparkle framework in .build/spm.
 # A resolve of the Swift packages of the project puts them there (check.sh runs this test after
@@ -30,7 +31,8 @@ trap 'rm -rf "$tmp"' EXIT
 # is an annotation of the run. The cases expect errors, so the script turns the annotations off.
 TMPDIR=$tmp
 export TMPDIR
-unset GITHUB_ACTIONS RUNNER_TEMP SPARKLE_PRIVATE_KEY SPARKLE_BIN
+unset GITHUB_ACTIONS RUNNER_TEMP SPARKLE_PRIVATE_KEY SPARKLE_BIN SIGNING_IDENTITY SIGNING_KEYCHAIN \
+    TEAM_ID BRIDGE_APP
 
 fail() {
     echo "FAIL: $1"
@@ -199,6 +201,40 @@ expect_error "appcast: no notes" "no notes file" appcast 1.2.3 "$address" 1517 "
 expect_error "appcast: a bad date" "RFC 822" appcast 1.2.3 "$address" 1517 "$signature" \
     "$fix/notes.md" 2026-11-18
 
+# --- check-dist.sh ------------------------------------------------------------------------------
+
+# Makes the release files of version 1.2.3 in the folder $1, from the fixtures.
+make_dist() {
+    rm -rf "$1"
+    mkdir -p "$1" || fail "cannot make $1"
+    printf 'dmg\n' >"$1/Bifrost-arm64.dmg"
+    cp "$zip" "$fix/latest-mac.yml" "$fix/appcast.xml" "$1/" || fail "cannot copy the fixtures"
+}
+dist="$tmp/dist"
+check_dist() {
+    "$release/check-dist.sh" "$1" "$dist"
+}
+make_dist "$dist"
+expect_ok "dist: the files of 1.2.3" check_dist 1.2.3
+expect_error "dist: another version" "exactly one update ZIP, Bifrost-1.2.4-arm64-mac.zip" \
+    check_dist 1.2.4
+expect_error "dist: a bad version" "is not a version" check_dist 1.2
+expect_error "dist: no folder" "There is no folder" "$release/check-dist.sh" 1.2.3 "$tmp/none"
+cp "$zip" "$dist/Bifrost-1.2.2-arm64-mac.zip" || fail "cannot copy the ZIP"
+expect_error "dist: two ZIPs" "exactly one update ZIP" check_dist 1.2.3
+make_dist "$dist"
+rm "$dist/Bifrost-arm64.dmg"
+expect_error "dist: no DMG" "no Bifrost-arm64.dmg" check_dist 1.2.3
+make_dist "$dist"
+sed 's/^version: 1.2.3$/version: 1.2.4/' "$fix/latest-mac.yml" >"$dist/latest-mac.yml"
+expect_error "dist: latest-mac.yml of another version" 'no line "version: 1.2.3"' check_dist 1.2.3
+make_dist "$dist"
+sed 's|/v1.2.3/|/v1.2.4/|' "$fix/appcast.xml" >"$dist/appcast.xml"
+expect_error "dist: appcast.xml of another tag" "appcast.xml has no" check_dist 1.2.3
+make_dist "$dist"
+sed 's|<sparkle:version>1.2.3<|<sparkle:version>1.2.4<|' "$fix/appcast.xml" >"$dist/appcast.xml"
+expect_error "dist: appcast.xml of another version" "<sparkle:version>1.2.3" check_dist 1.2.3
+
 # --- check-sparkle.sh ---------------------------------------------------------------------------
 
 feed=https://github.com/example/bifrost/releases/latest/download/appcast.xml
@@ -266,6 +302,38 @@ expect_error "sparkle sign: no private key" "SPARKLE_PRIVATE_KEY is empty" spark
     "$tmp/Signed.app"
 expect_error "sparkle sign: no public key" "has no SUPublicEDKey" sparkle_sign "$seed" "$zip" \
     "$tmp/NoKey.app"
+
+# --- sparkle-tools.sh ---------------------------------------------------------------------------
+
+# Only the checks of the pins: each case fails before the resolve, so no case uses the network.
+# Writes a Package.resolved file with one pin. Arguments: the file, the identity, the address,
+# the version and the revision.
+pin_file() {
+    printf '{"pins":[{"identity":"%s","kind":"remoteSourceControl","location":"%s",%s}],%s}\n' \
+        "$2" "$3" "\"state\":{\"revision\":\"$5\",\"version\":\"$4\"}" '"version":3' >"$1" ||
+        fail "cannot write $1"
+}
+tools() {
+    "$release/sparkle-tools.sh" "$tmp/tools" "$1"
+}
+sparkle_url=https://github.com/sparkle-project/Sparkle
+revision=ab7d71291238df6e0492143b120c9b696a35f603
+pin_file "$tmp/other.resolved" swiftterm https://github.com/migueldeicaza/SwiftTerm 1.99.3 \
+    "$revision"
+expect_error "sparkle tools: no pin of Sparkle" "has no pin of Sparkle" tools "$tmp/other.resolved"
+expect_error "sparkle tools: no file" "There is no Package.resolved" tools "$tmp/none.resolved"
+printf '{"version":3}\n' >"$tmp/empty.resolved"
+expect_error "sparkle tools: no pins" "has no list of pins" tools "$tmp/empty.resolved"
+# The JSON text \" is a quote in the address.
+pin_file "$tmp/quote.resolved" sparkle 'https://github.com/a/b\", exact: \"1.0.0\")' 2.10.1 \
+    "$revision"
+expect_error "sparkle tools: a quote in the address" "not a GitHub address" tools \
+    "$tmp/quote.resolved"
+pin_file "$tmp/branch.resolved" sparkle "$sparkle_url" "" "$revision"
+expect_error "sparkle tools: no version" "no version of the form" tools "$tmp/branch.resolved"
+pin_file "$tmp/short.resolved" sparkle "$sparkle_url" 2.10.1 abc
+expect_error "sparkle tools: a short revision" "no revision of 40 hex" tools "$tmp/short.resolved"
+[ ! -e "$tmp/tools" ] || fail "sparkle tools: a failed check made $tmp/tools"
 
 # --- bridge-check.sh ----------------------------------------------------------------------------
 
@@ -379,5 +447,37 @@ expect_error "sign: an unknown item in Frameworks" "unknown item: notes.txt" \
 make_app "$tmp/nosparkle/Bifrost.app" "$bridge"
 expect_error "sign: no Sparkle" "no Sparkle framework" "$release/sign-app.sh" \
     "$tmp/nosparkle/Bifrost.app" "$entitlements" -
+
+# --- prepare.sh ---------------------------------------------------------------------------------
+
+# Only the checks before the first change: each case fails before prepare.sh removes dist/, signs
+# or sends a file. The environment has no secret.
+prep="$tmp/prep/Bifrost.app"
+info_plist "$prep" CFBundleShortVersionString 1.2.3 CFBundleVersion 1.2.3
+info_plist "$tmp/prep-name/Other.app" CFBundleShortVersionString 1.2.3 CFBundleVersion 1.2.3
+info_plist "$tmp/prep-build/Bifrost.app" CFBundleShortVersionString 1.2.3 CFBundleVersion 1.2.2
+: >"$tmp/empty-notes.md"
+prepare() {
+    "$release/prepare.sh" "$@"
+}
+expect_error "prepare: two arguments" "usage" prepare "$prep" 1.2.3
+expect_error "prepare: no app" "is not an app bundle" prepare "$tmp/none/Bifrost.app" 1.2.3 \
+    "$fix/notes.md"
+expect_error "prepare: another name" "must have the name Bifrost.app" prepare \
+    "$tmp/prep-name/Other.app" 1.2.3 "$fix/notes.md"
+expect_error "prepare: a bad version" "is not a version" prepare "$prep" 1.2 "$fix/notes.md"
+expect_error "prepare: no notes" "is not there or is empty" prepare "$prep" 1.2.3 "$tmp/none.md"
+expect_error "prepare: empty notes" "is not there or is empty" prepare "$prep" 1.2.3 \
+    "$tmp/empty-notes.md"
+expect_error "prepare: the app of another version" \
+    'CFBundleShortVersionString of the app is "1.2.3", not 1.2.4' prepare "$prep" 1.2.4 \
+    "$fix/notes.md"
+expect_error "prepare: another build number" 'CFBundleVersion of the app is "1.2.2"' prepare \
+    "$tmp/prep-build/Bifrost.app" 1.2.3 "$fix/notes.md"
+expect_error "prepare: no signing identity" "SIGNING_IDENTITY is not set" prepare "$prep" 1.2.3 \
+    "$fix/notes.md"
+expect_error "prepare: no Sparkle tools" "SPARKLE_BIN is not set" env SIGNING_IDENTITY=- \
+    SIGNING_KEYCHAIN="$tmp/none.keychain-db" TEAM_ID=ABCDE12345 "$release/prepare.sh" "$prep" \
+    1.2.3 "$fix/notes.md"
 
 echo PASS
