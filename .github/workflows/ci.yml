@@ -57,8 +57,9 @@ jobs:
       # The steps of check.sh: the self-tests of the checkers, the rules, the package tests in the
       # test sandbox, the Debug and the Release builds, the release self-test and the smoke test.
       # The Release build has no BIFROST_CUTOVER, so the smoke script refuses to start it.
+      # --keep-going runs each step and lists each failure, so one run shows all of them.
       - name: Run the checks
-        run: scripts/check.sh
+        run: scripts/check.sh --keep-going
 
       # An xcconfig file reads "//" as the start of a comment. This step reads the Sparkle key of
       # the Release app that check.sh built, so a key that the build cut fails here.

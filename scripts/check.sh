@@ -1,13 +1,16 @@
 #!/bin/sh
 # The check of the whole repo. CI runs it on each push, and you run it before each commit.
 #
-# Usage: scripts/check.sh [--clean]
+# Usage: scripts/check.sh [--clean] [--keep-going]
 #
 # The script runs each step in order. It prints "ok <step>" or "FAIL <step>" for each step.
 # The steps tests and smoke-debug run in the test sandbox (scripts/run-sandboxed.sh).
 # The sandbox refuses the real shared state and the network.
 # The full output of each step goes to .build/check/<step>.log.
 # The script stops at the first failed step and exits 1.
+# With --keep-going, it runs each step and reports each failure in one run, as CI does. A step
+# that needs the output of an earlier step that failed prints "skip <step> (needs <steps>)". At
+# the end the script lists the failed and the skipped steps and exits 1.
 # After all steps pass, it prints "all checks passed" and exits 0.
 # With --clean, the script removes the .build folder when the run ends.
 #
@@ -17,11 +20,13 @@
 set -u
 
 clean=no
+keep_going=no
 for arg in "$@"; do
     case "$arg" in
         --clean) clean=yes ;;
+        --keep-going) keep_going=yes ;;
         *)
-            echo "usage: scripts/check.sh [--clean]"
+            echo "usage: scripts/check.sh [--clean] [--keep-going]"
             exit 1
             ;;
     esac
@@ -49,15 +54,37 @@ finish() {
 trap finish EXIT
 trap 'exit 1' HUP INT TERM
 
-# Runs one step. The first argument is the step name. The other arguments are the command.
+# The names of the failed and the skipped steps of a run with --keep-going.
+failed=""
+
+# Runs one step. The first argument is the step name. A step that needs the output of earlier
+# steps names them after --after, in one argument with commas. The other arguments are the
+# command. A step whose needed step failed or was skipped does not run.
 run_step() {
     name=$1
     shift
+    if [ "${1:-}" = --after ]; then
+        missing=""
+        for need in $(printf '%s' "$2" | tr ',' ' '); do
+            case " $failed " in
+                *" $need "*) missing="$missing${missing:+, }$need" ;;
+            esac
+        done
+        shift 2
+        if [ -n "$missing" ]; then
+            echo "skip $name (needs $missing)"
+            failed="$failed $name"
+            return
+        fi
+    fi
     if "$@" >"$logs/$name.log" 2>&1; then
         echo "ok $name"
     else
         echo "FAIL $name (log: $logs/$name.log)"
-        exit 1
+        if [ "$keep_going" = no ]; then
+            exit 1
+        fi
+        failed="$failed $name"
     fi
 }
 
@@ -258,17 +285,23 @@ run_step rules python3 -I scripts/check_rules.py .
 run_step forbidden python3 -I scripts/check_forbidden.py Packages App
 run_step resolve resolve_package
 run_step sandbox-selftest scripts/test-run-sandboxed.sh
-run_step tests package_tests
-run_step package-release package_release
+run_step tests --after resolve package_tests
+run_step package-release --after resolve package_release
 run_step build-debug xcode_build Debug
 # The self-test of the release scripts. It needs the Sparkle tools that the Debug build resolves
 # into .build/spm. The test of the semantic-release config needs Node, so CI runs it (ci.yml).
-run_step release-selftest scripts/test-release.sh
-run_step bundled-selftest scripts/test-check-bundled.sh "$products/Debug/Bifrost Dev.app"
-run_step bundled scripts/check-bundled.sh "$products/Debug/Bifrost Dev.app"
+run_step release-selftest --after build-debug scripts/test-release.sh
+run_step bundled-selftest --after build-debug \
+    scripts/test-check-bundled.sh "$products/Debug/Bifrost Dev.app"
+run_step bundled --after build-debug scripts/check-bundled.sh "$products/Debug/Bifrost Dev.app"
 run_step build-release build_release
-run_step fork-child fork_child
-run_step smoke-debug scripts/run-sandboxed.sh scripts/smoke.sh "$products/Debug/Bifrost Dev.app"
-run_step refuse-release refuse_release
+run_step fork-child --after build-debug,build-release fork_child
+run_step smoke-debug --after build-debug \
+    scripts/run-sandboxed.sh scripts/smoke.sh "$products/Debug/Bifrost Dev.app"
+run_step refuse-release --after build-release refuse_release
 
+if [ -n "$failed" ]; then
+    echo "failed or skipped:$failed"
+    exit 1
+fi
 echo "all checks passed"
