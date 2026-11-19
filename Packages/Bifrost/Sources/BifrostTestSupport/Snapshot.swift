@@ -14,7 +14,10 @@
 //   (Repo.root()) and records an issue, so a recording run never passes by mistake. Run the test
 //   again with no variable: the build copies the new PNG into the bundle.
 // - A missing PNG, an image of another size or more changed pixels than the limit record an
-//   issue with the count of the pixels that differ.
+//   issue with the count of the pixels that differ. A failed compare also saves
+//   <name>.actual.png, <name>.expected.png and <name>.diff.png (each changed pixel in red) to
+//   .build/check/snapshots/ of the repo, so a failure on the CI runner comes back with the logs
+//   of the checks.
 // - cacheDisplay does not draw an NSHostingView inside the view, or the rows of a table in a tree
 //   with layers. The image draws them again at their places (drawLayeredParts).
 // The tests never order the window of the view front.
@@ -84,18 +87,62 @@ package struct Snapshot {
                 sourceLocation: sourceLocation)
             return
         }
-        guard let differ = Self.differingPixels(image, stored) else {
+        guard let mask = Self.differenceMask(image, stored) else {
             let text =
                 "The image of \(name) is \(image.width) by \(image.height) pixels, and the "
                 + "snapshot is \(stored.width) by \(stored.height)."
             Issue.record(Comment(rawValue: text), sourceLocation: sourceLocation)
+            Self.saveFailure(name, actual: image, expected: stored, mask: nil)
             return
         }
+        let differ = mask.count(where: \.self)
         let limit = Self.limit(pixels: image.width * image.height)
         if differ > limit {
             let text = "\(differ) pixels of \(name) differ from the snapshot (at most \(limit))."
             Issue.record(Comment(rawValue: text), sourceLocation: sourceLocation)
+            Self.saveFailure(name, actual: image, expected: stored, mask: mask)
         }
+    }
+
+    // Save the images of a failed compare to .build/check/snapshots/ of the repo. The diff image
+    // shows each changed pixel in red over the expected image at a quarter of its brightness. A
+    // save that fails records nothing: the issue of the compare is there already.
+    private static func saveFailure(
+        _ name: String, actual: CGImage, expected: CGImage, mask: [Bool]?
+    ) {
+        guard
+            let folder = try? Repo.root().appending(path: ".build/check/snapshots"),
+            (try? FileManager.default.createDirectory(
+                at: folder, withIntermediateDirectories: true)) != nil
+        else { return }
+        var images = [("actual", actual), ("expected", expected)]
+        if let mask, let diff = diffImage(expected, mask: mask) { images.append(("diff", diff)) }
+        for (kind, image) in images {
+            try? png(image)?.write(to: folder.appending(path: "\(name).\(kind).png"))
+        }
+    }
+
+    // The expected image at a quarter of its brightness, with each pixel of the mask in red.
+    private static func diffImage(_ expected: CGImage, mask: [Bool]) -> CGImage? {
+        var bytes = pixels(expected)
+        guard bytes.count == mask.count * 4,
+            let context = context(width: expected.width, height: expected.height),
+            let data = context.data
+        else { return nil }
+        for (pixel, changed) in mask.enumerated() {
+            let start = pixel * 4
+            if changed {
+                (bytes[start], bytes[start + 1], bytes[start + 2]) = (255, 0, 0)
+            } else {
+                for channel in start..<(start + 3) { bytes[channel] /= 4 }
+            }
+            bytes[start + 3] = 255
+        }
+        bytes.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress else { return }
+            data.copyMemory(from: base, byteCount: buffer.count)
+        }
+        return context.makeImage()
     }
 
     private func record(_ image: CGImage, _ name: String, _ sourceLocation: SourceLocation) {
@@ -271,18 +318,22 @@ package struct Snapshot {
     // perceptualTolerance (CIEDE2000). The colour difference runs only for a pixel with a channel
     // over channelTolerance.
     package static func differingPixels(_ one: CGImage, _ two: CGImage) -> Int? {
+        differenceMask(one, two)?.count(where: \.self)
+    }
+
+    // For each pixel, the top row first: true when it differs (differingPixels). nil when the
+    // sizes differ.
+    package static func differenceMask(_ one: CGImage, _ two: CGImage) -> [Bool]? {
         guard one.width == two.width, one.height == two.height else { return nil }
         let a = pixels(one)
         let b = pixels(two)
         let count = one.width * one.height
         guard a.count == count * 4, b.count == count * 4 else { return nil }
-        var differ = 0
-        for pixel in 0..<count {
+        return (0..<count).map { pixel in
             let start = pixel * 4
-            if !(start..<(start + 4)).contains(where: { far(a[$0], b[$0]) }) { continue }
-            if far(a[start + 3], b[start + 3]) || !looksEqual(a, b, at: start) { differ += 1 }
+            if !(start..<(start + 4)).contains(where: { far(a[$0], b[$0]) }) { return false }
+            return far(a[start + 3], b[start + 3]) || !looksEqual(a, b, at: start)
         }
-        return differ
     }
 
     // True when the two values of a channel differ by more than channelTolerance.
