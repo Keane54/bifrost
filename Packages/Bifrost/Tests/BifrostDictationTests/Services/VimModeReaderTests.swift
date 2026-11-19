@@ -42,7 +42,7 @@ private struct Home {
     func remove() { folder.remove() }
 }
 
-@Suite("vim mode check", .timeLimit(.minutes(1)))
+@Suite("vim mode check", .testTimeLimit)
 @MainActor struct VimModeCheckTests {
     @Test("each file is read and vim mode in any of them counts")
     func eachFile() async throws {
@@ -119,7 +119,7 @@ private struct Home {
     }
 }
 
-@Suite("file stamp", .timeLimit(.minutes(1)))
+@Suite("file stamp", .testTimeLimit)
 struct FileStampTests {
     @Test("a regular file gives time and size and no file gives null")
     func stamp() throws {

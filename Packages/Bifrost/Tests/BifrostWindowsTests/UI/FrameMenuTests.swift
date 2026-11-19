@@ -14,7 +14,7 @@ import Testing
 // the name field of the tab set below it. The canvas shows it on its Bifrost menu. The Overview
 // tests give the canvas a real Overview model, as the app does, so a choice opens the panel and
 // renames the tab set through the model.
-@Suite("Panel menu", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Panel menu", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct FrameMenuTests {
     private static let overview = panel("overview:1")

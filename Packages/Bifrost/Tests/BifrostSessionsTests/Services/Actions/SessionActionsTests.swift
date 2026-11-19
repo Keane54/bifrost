@@ -110,7 +110,7 @@ private struct Sent: Sendable, Equatable {
     var signal: Int32
 }
 
-@Suite("the session commands with the fake claude", .timeLimit(.minutes(1)), .tags(.realProcess))
+@Suite("the session commands with the fake claude", .testTimeLimit, .tags(.realProcess))
 @MainActor
 struct SessionActionsTests {
     init() throws { try TestSandbox.require() }

@@ -154,7 +154,7 @@ private final class DraftPanelFixture {
 }
 
 @MainActor
-@Suite("the Review panel", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Review panel", .serialized, .testTimeLimit, .tags(.window))
 struct ReviewDraftPanelTests {
     // Comment opens the panel for the PR, which reads the draft: Claude's suggestion, the summary
     // and the comments, "Send as" set to Claude's suggestion. The buttons act while the row

@@ -107,7 +107,7 @@ private final class ServiceFixture {
     }
 }
 
-@Suite("dictation service", .timeLimit(.minutes(1)))
+@Suite("dictation service", .testTimeLimit)
 @MainActor
 struct DictationServiceTests {
     // A warm call boots the engine one time: the download step, then the load. It opens no
@@ -607,7 +607,7 @@ struct DictationServiceTests {
 }
 
 // The level meter of the real engine, on buffers that the test makes. No audio device is used.
-@Suite("level meter", .timeLimit(.minutes(1)))
+@Suite("level meter", .testTimeLimit)
 struct LevelMeterTests {
     // A buffer of one channel at 48 kHz, with each sample at the amplitude.
     private func buffer(frames: Int, amplitude: Float) throws -> AVAudioPCMBuffer {
@@ -667,7 +667,7 @@ struct LevelMeterTests {
 
 // The progress of a model download of the real engine, on a progress that the test moves. No
 // test downloads a speech model.
-@Suite("model download progress", .timeLimit(.minutes(1)))
+@Suite("model download progress", .testTimeLimit)
 struct DownloadProgressTests {
     // The value now comes at once. Then the last value after each change comes, at most one
     // each progress step. The report ends at its cancel.

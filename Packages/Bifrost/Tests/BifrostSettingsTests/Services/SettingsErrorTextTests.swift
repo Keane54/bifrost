@@ -11,7 +11,7 @@ import Testing
 // "Cannot save /a: Permission denied.".
 
 @MainActor
-@Suite("the texts of the errors of the settings store", .timeLimit(.minutes(1)))
+@Suite("the texts of the errors of the settings store", .testTimeLimit)
 struct SettingsErrorTextTests {
     // A folder at the path makes the read fail with EISDIR, a Cocoa error with a POSIX error.
     @Test func aSettingsFileThatCannotBeReadLogsTheReason() async throws {

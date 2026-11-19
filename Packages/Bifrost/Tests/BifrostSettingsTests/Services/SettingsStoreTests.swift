@@ -219,7 +219,7 @@ private func openStore(
 }
 
 @MainActor
-@Suite("the settings store", .timeLimit(.minutes(1)))
+@Suite("the settings store", .testTimeLimit)
 struct SettingsStoreTests {
     @Test func aMissingFileGivesTheDefaultsAndAnEditSaves() async throws {
         let folder = try TemporaryFolder()

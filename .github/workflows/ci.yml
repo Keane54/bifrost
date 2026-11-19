@@ -57,8 +57,12 @@ jobs:
       # The steps of check.sh: the self-tests of the checkers, the rules, the package tests in the
       # test sandbox, the Debug and the Release builds, the release self-test and the smoke test.
       # The Release build has no BIFROST_CUTOVER, so the smoke script refuses to start it.
+      # The runner draws with another GPU and another font rendering, so the snapshot tests
+      # compare only the size of each image there (SNAPSHOT_PIXELS, Snapshot.swift).
       - name: Run the checks
         run: scripts/check.sh
+        env:
+          SNAPSHOT_PIXELS: "0"
 
       # An xcconfig file reads "//" as the start of a comment. This step reads the Sparkle key of
       # the Release app that check.sh built, so a key that the build cut fails here.

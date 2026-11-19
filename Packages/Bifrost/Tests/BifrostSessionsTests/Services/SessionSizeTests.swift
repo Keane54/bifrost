@@ -14,7 +14,7 @@ private func fake(sizeWorks: Bool = true) -> FakeProcessInspector {
         device: "/dev/ttys012", size: sizeWorks ? TerminalSize(cols: 120, rows: 32) : nil)
 }
 
-@Suite("session size text", .timeLimit(.minutes(1)))
+@Suite("session size text", .testTimeLimit)
 struct SessionSizeTextTests {
     @Test("the device path is read and ?? and other text are refused")
     func theDevice() {
@@ -43,7 +43,7 @@ struct SessionSizeTextTests {
     }
 }
 
-@Suite("terminal size", .timeLimit(.minutes(1)))
+@Suite("terminal size", .testTimeLimit)
 struct TerminalSizeTests {
     @Test("only whole numbers from 1 to 1000 are accepted")
     func theRange() {
@@ -56,7 +56,7 @@ struct TerminalSizeTests {
 }
 
 @MainActor
-@Suite("session size reader", .timeLimit(.minutes(1)))
+@Suite("session size reader", .testTimeLimit)
 struct SessionSizeReaderTests {
     @Test func theDeviceOfThePidThenTheSizeOfTheDevice() async {
         let inspector = fake()
@@ -177,7 +177,7 @@ private final class WatchRig {
 }
 
 @MainActor
-@Suite("SessionSizeWatcher", .timeLimit(.minutes(1)))
+@Suite("SessionSizeWatcher", .testTimeLimit)
 struct SessionSizeWatcherTests {
     @Test func oneReadAfterABurst() async {
         let rig = WatchRig()

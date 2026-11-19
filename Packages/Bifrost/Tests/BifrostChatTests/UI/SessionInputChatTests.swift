@@ -14,7 +14,7 @@ import Testing
 @testable import BifrostLayout
 @testable import BifrostLook
 
-@Suite("hidden terminal model", .timeLimit(.minutes(2)), .tags(.realProcess, .window))
+@Suite("hidden terminal model", .testTimeLimit, .tags(.realProcess, .window))
 @MainActor
 struct HiddenTerminalModelTests {
     // A cursor position request (CSI 6 n) gets the report of the cursor (CSI row ; col R). The
@@ -119,7 +119,7 @@ private let agentViewReason =
     "The chat window shows the agent view. Close the window and open it again."
 
 @Suite(
-    "session input and chats", .serialized, .timeLimit(.minutes(2)), .tags(.realProcess, .window))
+    "session input and chats", .serialized, .testTimeLimit, .tags(.realProcess, .window))
 @MainActor
 struct SessionInputChatTests {
     // An Interrupt of a session with a chat window writes one ESC into the attach of the chat:
@@ -149,7 +149,8 @@ struct SessionInputChatTests {
         await waitUntil { chat.spawner.log.pids.count == 1 }
         let hidden = try #require(chat.spawner.log.pids.first)
         chat.open()
-        #expect(await interrupting.value == nil)
+        let reason = await interrupting.value
+        #expect(reason == nil, "The Interrupt was refused: \(reason ?? "")")
         try #require(await chat.waitForAttach())
         let events = Array(chat.spawner.log.events.prefix(3))
         #expect(events.count == 3)

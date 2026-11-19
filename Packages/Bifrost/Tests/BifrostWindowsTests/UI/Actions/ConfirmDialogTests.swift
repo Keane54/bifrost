@@ -50,7 +50,7 @@ private final class Parts {
     func close() { fixture.close() }
 }
 
-@Suite("the confirmation dialog", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the confirmation dialog", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct ConfirmDialogTests {
     @Test func aConfirmAgainNeedsASecondClickAfter500ms() async throws {

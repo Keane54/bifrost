@@ -14,7 +14,7 @@ private func app(_ id: ProjectAppID) -> InstalledApp {
     InstalledApp(app: ProjectApp(id: id, label: id.name), path: "/Apps/\(id.name).app")
 }
 
-@Suite("installed app list", .timeLimit(.minutes(1)))
+@Suite("installed app list", .testTimeLimit)
 @MainActor
 struct InstalledAppListTests {
     // The list is empty until the first find. Then it has the apps of the Terminal app setting

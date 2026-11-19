@@ -148,7 +148,7 @@ private final class HUDFixture {
 }
 
 @MainActor
-@Suite("Usage HUD panel", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Usage HUD panel", .serialized, .testTimeLimit, .tags(.window))
 struct UsageHUDPanelTests {
     // The bars and the source line come from UsageView.of with the values of now: the session
     // snapshot of the registry, then the account values of the poller. The time of the bars moves

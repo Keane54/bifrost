@@ -7,7 +7,7 @@ import Testing
 // The poll of Reviews, with the GitHub of the tests: no gh and no network.
 
 @MainActor
-@Suite("the GitHub client", .timeLimit(.minutes(1)))
+@Suite("the GitHub client", .testTimeLimit)
 struct GitHubClientTests {
     @Test func thePollAsksOnceForBothLists() async throws {
         let github = FakeGitHub(answers: ["poll": .success(try FixtureFiles.data("poll-basic"))])

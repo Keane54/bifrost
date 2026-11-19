@@ -29,7 +29,7 @@ private func dailyEnvironment(_ clock: ManualClock) -> DailyEnvironment {
 // The skill export of the Daily update follows the settings (docs/behaviour/daily-update.md,
 // "The run"). Safety: the Daily update folder is in a temporary folder.
 @MainActor
-@Suite("the Daily update skill export", .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Daily update skill export", .testTimeLimit, .tags(.window))
 struct DailySkillExportTests {
     // The value of the export file at the key path, or nil while the file is not there.
     private func exported(_ layout: DailyLayout, _ key: String) -> JSONValue? {
@@ -66,7 +66,7 @@ struct DailySkillExportTests {
 // wall time is a Saturday, so no reminder is due and no draft runs. Safety: the files are in a
 // temporary folder, and claude and gh are fakes that run no program.
 @MainActor
-@Suite("the Daily update start", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Daily update start", .serialized, .testTimeLimit, .tags(.window))
 struct DailyUpdateStartTests {
     @MainActor
     private struct Home {

@@ -22,7 +22,7 @@ import Testing
 // before that request, and the dialog that opens would be the first-start dialog.
 
 @MainActor
-@Suite("the Setup dialog", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Setup dialog", .serialized, .testTimeLimit, .tags(.window))
 struct SetupDialogTests {
     @Test func theDialogOpensAtTheFirstStartWithNoPlugin() async throws {
         let s = try await SetupParts()

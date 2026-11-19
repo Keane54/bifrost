@@ -108,7 +108,7 @@ private final class World {
 private let minute = Duration.seconds(60)
 
 @MainActor
-@Suite("the new reads of the Live details status", .timeLimit(.minutes(1)))
+@Suite("the new reads of the Live details status", .testTimeLimit)
 struct LiveRetryTests {
     @Test func theStepsAndTheTwoGaps() {
         #expect(LiveRetry.steps == [minute, minute * 2, minute * 5, minute * 10])

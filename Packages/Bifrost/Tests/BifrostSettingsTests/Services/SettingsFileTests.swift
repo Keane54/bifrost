@@ -13,7 +13,7 @@ private func readValue(_ url: URL) throws -> JSONValue? {
 
 // A load and a save of settings.json with the settings model: one decode and one encode. The
 // settings keep the unknown fields of the file.
-@Suite("settings file", .timeLimit(.minutes(1)))
+@Suite("settings file", .testTimeLimit)
 struct SettingsFileTests {
     private func load(_ file: URL) throws -> Settings {
         try JSONDecoder().decode(Settings.self, from: JSONFile.read(file) ?? Data())

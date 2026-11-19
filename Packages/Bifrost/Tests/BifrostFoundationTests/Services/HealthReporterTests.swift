@@ -17,7 +17,7 @@ private func next(_ count: Int, of events: AsyncStream<HealthEvent>) async -> [H
     return result
 }
 
-@Suite("health reporter", .timeLimit(.minutes(1)))
+@Suite("health reporter", .testTimeLimit)
 struct HealthReporterTests {
     @Test func aRecordedEventReachesTheStream() async {
         let (reporter, events) = HealthReporter.make()

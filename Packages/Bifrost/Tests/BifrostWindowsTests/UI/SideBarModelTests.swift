@@ -14,7 +14,7 @@ import Testing
 
 // The side bar and the Layouts popover (docs/behaviour/windows.md, "The side bar and layouts").
 @MainActor
-@Suite("side bar", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("side bar", .serialized, .testTimeLimit, .tags(.window))
 struct SideBarModelTests {
     // A layout model and a side bar model with a store in a new folder.
     @MainActor

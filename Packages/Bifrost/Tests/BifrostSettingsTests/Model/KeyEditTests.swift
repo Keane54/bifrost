@@ -68,7 +68,7 @@ private func commandKey(_ letter: Character) -> KeyEvent {
 }
 
 @MainActor
-@Suite("the key edits of the settings", .timeLimit(.minutes(1)))
+@Suite("the key edits of the settings", .testTimeLimit)
 struct KeyEditTests {
     // An unknown slot, a bad value and a new conflict refuse the edit. The settings and the file
     // stay as they were.

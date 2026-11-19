@@ -11,7 +11,7 @@ import Testing
 
 // The Overview model: the config of each Overview through the UI state store, and the default
 // open action of a double-click.
-@Suite("Overview model", .timeLimit(.minutes(1)))
+@Suite("Overview model", .testTimeLimit)
 @MainActor
 struct OverviewModelTests {
     private static let one = panel("overview:1")

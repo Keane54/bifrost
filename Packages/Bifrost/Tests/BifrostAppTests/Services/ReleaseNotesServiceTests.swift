@@ -28,7 +28,7 @@ private func plan(_ identity: AppIdentity, home: URL, testHome: Bool) -> StartPl
 }
 
 @MainActor
-@Suite("release notes service", .timeLimit(.minutes(1)))
+@Suite("release notes service", .testTimeLimit)
 struct ReleaseNotesServiceTests {
     private func service(source: ReleaseNotesSource, file: URL?) -> ReleaseNotesService {
         ReleaseNotesService(source: source, whatsNewFile: file, log: Recorder<StoreEvent>())

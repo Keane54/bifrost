@@ -200,7 +200,7 @@ private func savedStartAtLogin(_ file: URL) throws -> Bool {
 }
 
 @MainActor
-@Suite("app services", .timeLimit(.minutes(1)), .tags(.realProcess))
+@Suite("app services", .testTimeLimit, .tags(.realProcess))
 struct AppServicesTests {
     @Test func theSessionListShowsTheSessionsOfTheFakeClaude() async throws {
         try await withScope { scope in

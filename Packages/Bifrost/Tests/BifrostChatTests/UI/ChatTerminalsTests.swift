@@ -13,7 +13,7 @@ import Testing
 // The set of chat terminals and their lifecycle, on real PTYs with the fake attach of
 // scripts/fake-claude. The open chat panels of the layout decide which terminals exist. The
 // window is never ordered front.
-@Suite("chat terminals", .serialized, .timeLimit(.minutes(2)), .tags(.realProcess, .window))
+@Suite("chat terminals", .serialized, .testTimeLimit, .tags(.realProcess, .window))
 @MainActor
 struct ChatTerminalsTests {
     // The chats keep no copy of the rows: the attach check reads the session list. So it sees a

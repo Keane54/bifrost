@@ -10,7 +10,7 @@ import Testing
 // command, Move up, Move down and Remove, the refusal reasons of the list and the empty list. The
 // tests that show views use a window that is never ordered front.
 @MainActor
-@Suite("Settings > Slash commands", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Settings > Slash commands", .serialized, .testTimeLimit, .tags(.window))
 struct SlashSectionTests {
     // Enter in the field adds the trimmed command at the end of the list, and the field is empty
     // again. Move up, Move down and Remove change the list, and the rows show the new order. The

@@ -40,7 +40,7 @@ private func withUnknownFields(_ store: RegistryStore) -> RegistryStore {
     return store
 }
 
-@Suite("the row records of the store", .timeLimit(.minutes(1)))
+@Suite("the row records of the store", .testTimeLimit)
 struct StoreRecordTests {
     // The fixture is a file that the app wrote: sorted keys, the watchlist and the deferred
     // deletes in their order, and two top-level fields that this app does not know.

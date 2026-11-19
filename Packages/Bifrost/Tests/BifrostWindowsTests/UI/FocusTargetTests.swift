@@ -13,7 +13,7 @@ import Testing
 
 // The focus zone of the first responder, with real views in a window that is never ordered
 // front. The chat is the real chat terminal view.
-@Suite("focus targets", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("focus targets", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct FocusTargetTests {
     // A window with a content view. The test adds the views.

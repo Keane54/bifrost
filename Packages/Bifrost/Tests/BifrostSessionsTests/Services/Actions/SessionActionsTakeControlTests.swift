@@ -87,7 +87,7 @@ extension CommandHarness {
     }
 }
 
-@Suite("the session command Take control", .timeLimit(.minutes(1)))
+@Suite("the session command Take control", .testTimeLimit)
 @MainActor
 struct SessionActionsTakeControlTests {
     // MARK: - A takeover

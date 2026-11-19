@@ -113,7 +113,7 @@ struct TestPortFirstLineTests {
 }
 
 @MainActor
-@Suite("test port server", .timeLimit(.minutes(1)))
+@Suite("test port server", .testTimeLimit)
 struct TestPortServerTests {
     // The socket is <test home>/.bifrost-native-dev/test.sock. Only the user may connect: the
     // socket has mode 0600 in a folder with mode 0700. A stop removes the socket.

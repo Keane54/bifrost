@@ -13,7 +13,7 @@ private func readValue(_ url: URL) throws -> JSONValue? {
     try JSONFile.read(url).map { try JSONDecoder().decode(JSONValue.self, from: $0) }
 }
 
-@Suite("the JSON file of a store", .timeLimit(.minutes(1)))
+@Suite("the JSON file of a store", .testTimeLimit)
 struct JSONFileTests {
     @Test
     func writesWithMode() throws {

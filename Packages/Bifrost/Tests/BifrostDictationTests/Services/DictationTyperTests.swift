@@ -1,6 +1,7 @@
 // The typer of a dictation: the edits, the corrections, the leading space, the clean of the text
 // and the cut of a write. TyperDriver writes one part at once and the next part at each step,
 // as the chat does at the end of each gap. The times of the gaps are in ChatDictationTests.
+import BifrostTestSupport
 import Testing
 
 @testable import BifrostDictation
@@ -20,7 +21,7 @@ private func partsOf(_ data: [String]) -> [String] {
     data.map { let p = parts($0); return "\(p.deletes) \(p.text)" }
 }
 
-@Suite("the typer of a dictation", .timeLimit(.minutes(1)))
+@Suite("the typer of a dictation", .testTimeLimit)
 @MainActor
 struct DictationTyperTests {
     @Test func eachWriteGoesFromTheTypedTextToTheNewestText() {

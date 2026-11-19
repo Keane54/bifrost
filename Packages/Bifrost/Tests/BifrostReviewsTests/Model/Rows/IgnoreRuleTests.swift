@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -11,7 +12,7 @@ private func entries(_ texts: String...) throws -> [IgnoreEntry] {
     try texts.map { try #require(IgnoreEntry($0)) }
 }
 
-@Suite("the ignore list", .timeLimit(.minutes(1)))
+@Suite("the ignore list", .testTimeLimit)
 struct IgnoreRuleTests {
     @Test func anIgnoredRepoShowsNoRow() throws {
         var state = R.turnedOn()

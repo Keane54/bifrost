@@ -49,7 +49,7 @@ private struct BifrostHome {
     }
 }
 
-@Suite("the old hook data", .timeLimit(.minutes(1)))
+@Suite("the old hook data", .testTimeLimit)
 struct OldHookDataTests {
     @Test func theOldHookDataKeepsModSocketOriginalAndBackups() async throws {
         let bifrost = try BifrostHome()

@@ -1,10 +1,11 @@
 // The texts of a failed review round or request round (docs/behaviour/reviews.md, "Review
 // rounds" and "Request rounds").
+import BifrostTestSupport
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the texts of a failed round", .timeLimit(.minutes(1)))
+@Suite("the texts of a failed round", .testTimeLimit)
 struct RoundFailureTests {
     // A write that GitHub may have saved never asks for Try again and never says that nothing
     // was posted: Bifrost never sends it again by itself.

@@ -133,7 +133,7 @@ private struct Tree {
     func remove() { temp.remove() }
 }
 
-@Suite("link real paths", .timeLimit(.minutes(1)))
+@Suite("link real paths", .testTimeLimit)
 struct LinkRealPathTests {
     @Test func aTrailingSlashShowsTheAppInFinder() async throws {
         let tree = try Tree.usual()
@@ -239,7 +239,7 @@ struct LinkRealPathTests {
 
 // The type of a real file decides, also with no execute bit. Each name is one plain file with
 // mode 0644 in a new temp folder.
-@Suite("link file types", .timeLimit(.minutes(1)))
+@Suite("link file types", .testTimeLimit)
 struct LinkFileTypeTests {
     private func fileAction(_ name: String) async throws -> (LinkAction, String) {
         let tree = try Tree()
@@ -322,7 +322,7 @@ struct LinkFileTypeTests {
 // The app that opens a file that the type rules open. The file opens only in an app that the
 // rules checked: the app of the file is the default app of its type, it has a bundle ID, and it
 // is not a terminal or a launcher.
-@Suite("link default apps", .timeLimit(.minutes(1)))
+@Suite("link default apps", .testTimeLimit)
 struct LinkDefaultAppTests {
     private let terminal = "com.apple.Terminal"
     private let editor = "dev.example.editor"
@@ -404,7 +404,7 @@ struct LinkDefaultAppTests {
 
 // Launch Services has a time limit of 5 seconds. The clock is a manual clock, and the fake lookup
 // waits for a gate.
-@Suite("link time limit", .timeLimit(.minutes(1)))
+@Suite("link time limit", .testTimeLimit)
 struct LinkTimeLimitTests {
     // With no answer in the time limit, the file shows in Finder. The rules do not use the late
     // answer.

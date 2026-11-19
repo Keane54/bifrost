@@ -7,7 +7,7 @@ import Testing
 
 // The store of state.json and its lock (docs/behaviour/daily-update.md, "The store").
 @MainActor
-@Suite("the Daily update store", .timeLimit(.minutes(1)))
+@Suite("the Daily update store", .testTimeLimit)
 struct DailyStateStoreTests {
     private struct Setup {
         let home: TemporaryFolder

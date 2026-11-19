@@ -1,4 +1,5 @@
 // The pending review of a review round (docs/behaviour/reviews.md, "Review rounds").
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -6,7 +7,7 @@ import Testing
 
 private typealias D = ReviewData
 
-@Suite("the plan of the pending review", .timeLimit(.minutes(1)))
+@Suite("the plan of the pending review", .testTimeLimit)
 struct PendingReviewPlanTests {
     private func outcome(
         _ recommendation: Recommendation = .requestChanges, summary: String = "Summary.",

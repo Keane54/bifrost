@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -9,7 +10,7 @@ private let mine =
     #"{"command":"sh ~/.claude/statusline-command.sh","padding":0,"refreshInterval":1,"#
     + #""type":"command"}"#
 
-@Suite("the plan of the settings edit", .timeLimit(.minutes(1)))
+@Suite("the plan of the settings edit", .testTimeLimit)
 struct SettingsPlanTests {
     @Test func checkInstallFindsAllTenRowsAndTheWrapperOfAnOldInstall() throws {
         #expect(SettingsPlan.hookRows.count == 10)

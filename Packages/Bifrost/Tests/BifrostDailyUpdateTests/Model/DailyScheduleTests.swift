@@ -1,10 +1,11 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostDailyUpdate
 
 // The reminder rules (docs/behaviour/daily-update.md, "The schedule").
-@Suite("the Daily update schedule", .timeLimit(.minutes(1)))
+@Suite("the Daily update schedule", .testTimeLimit)
 struct DailyScheduleTests {
     private let london = calendar()
     private let fresh = DayMarks.fresh("2026-11-18")

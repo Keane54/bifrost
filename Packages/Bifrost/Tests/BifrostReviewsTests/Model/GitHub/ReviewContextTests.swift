@@ -1,12 +1,13 @@
 // The read of the answers of the reads of a review round (docs/behaviour/reviews.md, "Review
 // rounds"), on the sample answers of GitHub in Fixtures/.
 import BifrostFoundation
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the answers of the review reads", .timeLimit(.minutes(1)))
+@Suite("the answers of the review reads", .testTimeLimit)
 struct ReviewContextTests {
     // Page 1 gives the PR and the pending review of the viewer only: a pending review of
     // another person is not the viewer's.

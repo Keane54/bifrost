@@ -43,7 +43,7 @@ private struct TrustHome {
 }
 
 @MainActor
-@Suite("the trust check of Reviews", .timeLimit(.minutes(1)))
+@Suite("the trust check of Reviews", .testTimeLimit)
 struct TrustCheckTests {
     // A folder is trusted when its entry, or the entry of a folder above it, has the value true
     // at hasTrustDialogAccepted. Another value, another folder and a missing file give false.

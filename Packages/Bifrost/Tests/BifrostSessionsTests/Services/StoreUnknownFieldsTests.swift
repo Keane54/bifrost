@@ -15,7 +15,7 @@ private func fields(_ file: String) throws -> [String: JSONValue] {
     return fields
 }
 
-@Suite("registry.json unknown fields", .timeLimit(.minutes(1)))
+@Suite("registry.json unknown fields", .testTimeLimit)
 struct StoreUnknownFieldsTests {
     @Test func unknownTopLevelKeysOfRegistryJsonSurviveASave() throws {
         let folder = try TemporaryFolder()
@@ -81,7 +81,7 @@ private func text(_ file: String) throws -> String {
 
 // A file that does not parse at all holds the local names that the
 // user typed. Before the first save over it, the saver keeps one copy at registry.json.unreadable.
-@Suite("registry.json that does not parse", .timeLimit(.minutes(1)))
+@Suite("registry.json that does not parse", .testTimeLimit)
 struct UnreadableRegistryTests {
     @Test func aRegistryJsonThatDoesNotParseIsKeptAsUnreadable() throws {
         let folder = try TemporaryFolder()

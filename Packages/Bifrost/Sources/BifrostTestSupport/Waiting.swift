@@ -18,6 +18,12 @@ import Testing
 // something does not happen gives its own short limit (TestSignal.value(within:)).
 package let testWaitLimit = Duration.seconds(60)
 
+extension Trait where Self == TimeLimitTrait {
+    // The time limit of a test: a guard against a test that hangs. It is wider than
+    // testWaitLimit, so a test with a slow wait under load still ends by itself.
+    package static var testTimeLimit: Self { .timeLimit(.minutes(3)) }
+}
+
 // Wait until the condition is true, for at most the limit (testWaitLimit). The wait checks the
 // condition on the main actor, by default each 10 ms. The wait ends as soon as the condition is
 // true. The result is false only at the limit, after the issue.

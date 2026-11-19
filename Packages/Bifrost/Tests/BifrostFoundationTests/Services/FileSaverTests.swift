@@ -25,7 +25,7 @@ private struct Probe: Codable, Sendable, Equatable {
     }
 }
 
-@Suite("the open of a store file", .timeLimit(.minutes(1)))
+@Suite("the open of a store file", .testTimeLimit)
 struct FileSaverTests {
     // NoJSONForm is the one sign of a value with no JSON form: the file counts as a file that
     // does not parse, whatever error the JSON decoder gives. The first save keeps a copy.
@@ -63,7 +63,7 @@ struct FileSaverTests {
 
 // The one save task of a store file: the generation of each save and the result of its write.
 @MainActor
-@Suite("the save queue of a store file", .timeLimit(.minutes(1)))
+@Suite("the save queue of a store file", .testTimeLimit)
 struct SaveQueueTests {
     // Each save gets the next generation, and saved(_:) gives the result of the first write whose
     // generation is at least that generation. The value of the open counts as saved.

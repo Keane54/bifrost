@@ -78,7 +78,7 @@ private final class AnswerFixture {
 }
 
 @MainActor
-@Suite("the Answer panel flow", .timeLimit(.minutes(1)))
+@Suite("the Answer panel flow", .testTimeLimit)
 struct AnswerFlowTests {
     // The panel lists the open questions oldest first, with the line over the quote. Send waits
     // for an answer or the check on each question. The answers then start one request round,

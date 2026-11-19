@@ -175,7 +175,7 @@ private let defaultModes =
     + ":susp=1a:time=0:werase=17:ispeed=38400:ospeed=38400"
 
 @MainActor
-@Suite("PTYProcess", .serialized, .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("PTYProcess", .serialized, .testTimeLimit, .tags(.realProcess))
 struct PTYProcessTests {
     // The child is perl with no shell. Perl does not take a terminal
     // itself. A shell such as bash or sh takes one, so a shell script passes also when the spawn
@@ -521,7 +521,7 @@ struct PTYProcessTests {
 
 // The flow control of a PTYProcess with no reader: the read of the master stops while too many
 // bytes wait, so the memory of the app does not grow with the output of the child.
-@Suite("PTY flow control", .serialized, .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("PTY flow control", .serialized, .testTimeLimit, .tags(.realProcess))
 struct PTYFlowControlTests {
     // The child writes 4 MiB. With no drain, the read stops when more than highWater bytes
     // wait, so the bytes that wait never pass highWater and one read, and the child waits on its

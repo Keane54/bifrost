@@ -8,7 +8,7 @@ import Testing
 // The probe of the MCP servers with the fake claude: it prints the init event and then waits as
 // a run that calls the model. The reader stops it after the event.
 @MainActor
-@Suite("the read of the MCP servers", .timeLimit(.minutes(1)), .tags(.realProcess))
+@Suite("the read of the MCP servers", .testTimeLimit, .tags(.realProcess))
 struct InventoryReaderTests {
     @Test func theProbeGivesTheServersAndStops() async throws {
         let home = try RunHome()

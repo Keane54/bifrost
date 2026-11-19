@@ -9,7 +9,7 @@ import Testing
 @testable import BifrostReviews
 
 @MainActor
-@Suite("the Approve button", .timeLimit(.minutes(1)))
+@Suite("the Approve button", .testTimeLimit)
 struct ApproveFlowTests {
     private func approve(_ f: FlowFixture) async -> ApproveRefusal? {
         do throws(ApproveRefusal) {

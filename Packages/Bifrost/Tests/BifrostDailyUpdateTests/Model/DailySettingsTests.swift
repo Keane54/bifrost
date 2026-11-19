@@ -7,7 +7,7 @@ import Testing
 @testable import BifrostDailyUpdate
 
 // The settings block (docs/behaviour/daily-update.md, "The settings").
-@Suite("the Daily update settings", .timeLimit(.minutes(1)))
+@Suite("the Daily update settings", .testTimeLimit)
 struct DailySettingsTests {
     private func read(_ value: JSONValue) -> DailySettings {
         DailySettings(json: value) ?? .defaults

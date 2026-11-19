@@ -142,7 +142,7 @@ final class WatchlistParts {
     }
 }
 
-@Suite("the Watchlist panel", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Watchlist panel", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct WatchlistPanelTests {
     @Test func theWatchedRowsShowInWatchOrder() async throws {

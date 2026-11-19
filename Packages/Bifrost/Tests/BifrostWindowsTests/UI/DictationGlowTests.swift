@@ -9,7 +9,7 @@ import Testing
 
 // The glow layer of the green look: the values of the approved mock
 // (docs/behaviour/dictation.md).
-@Suite("dictation glow", .timeLimit(.minutes(1)), .tags(.window))
+@Suite("dictation glow", .testTimeLimit, .tags(.window))
 @MainActor
 struct DictationGlowTests {
     private let metrics = CanvasMetrics(interfaceScale: 100)

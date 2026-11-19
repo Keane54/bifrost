@@ -168,7 +168,7 @@ private struct Harness {
 }
 
 @MainActor
-@Suite("the Reviews watcher", .timeLimit(.minutes(1)))
+@Suite("the Reviews watcher", .testTimeLimit)
 struct ReviewsWatcherTests {
     @Test func thePollRunsAtTheIntervalAndOnRefresh() async throws {
         let harness = try await Harness()

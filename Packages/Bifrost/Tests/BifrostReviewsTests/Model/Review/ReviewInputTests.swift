@@ -1,6 +1,7 @@
 // The input file of a review round (docs/behaviour/reviews.md, "Review rounds", and
 // skills/bifrost-review/bifrost-mode.md, "The input file").
 import BifrostFoundation
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -8,7 +9,7 @@ import Testing
 
 private typealias D = ReviewData
 
-@Suite("the input file of a review round", .timeLimit(.minutes(1)))
+@Suite("the input file of a review round", .testTimeLimit)
 struct ReviewInputTests {
     private func context(threads: [ViewerThread] = []) throws -> ReviewContext {
         var context = ReviewContext(

@@ -8,7 +8,7 @@ import Testing
 // edge colour, the text colour, Geist Mono at 12 (text-xs), a padding of 8 by 4 inside the
 // border, and a line break in the text starts a new line.
 @MainActor
-@Suite("tooltip", .timeLimit(.minutes(1)), .tags(.window))
+@Suite("tooltip", .testTimeLimit, .tags(.window))
 struct TooltipTests {
     init() { UITestApp.prepare() }
 

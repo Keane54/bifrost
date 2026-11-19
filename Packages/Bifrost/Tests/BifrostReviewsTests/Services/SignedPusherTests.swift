@@ -10,7 +10,7 @@ import Testing
 @testable import BifrostReviews
 
 @MainActor
-@Suite("the signed push of a fix", .serialized, .timeLimit(.minutes(1)), .tags(.realProcess))
+@Suite("the signed push of a fix", .serialized, .testTimeLimit, .tags(.realProcess))
 struct SignedPusherTests {
     // GitHub makes the commit on feat of the source: the changes of the write on its head.
     static func playGitHub(_ github: FakeGitHub, _ repo: PushTestRepo) {

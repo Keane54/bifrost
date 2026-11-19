@@ -57,7 +57,7 @@ private final class Reader {
 }
 
 @MainActor
-@Suite("PTY manager", .timeLimit(.minutes(1)))
+@Suite("PTY manager", .testTimeLimit)
 struct PTYManagerTests {
     // The manager makes the arguments of claude: "attach" and the short ID, nothing else.
     @Test func anOpenSpawnsClaudeAttachWithTheShortIDTheSizeAndTERM() async throws {
@@ -366,7 +366,7 @@ struct PTYManagerTests {
 // cancel of the open task, a closeAll or a newer open of the view during the spawn closes the
 // new child.
 @MainActor
-@Suite("PTY manager spawn", .timeLimit(.minutes(1)))
+@Suite("PTY manager spawn", .testTimeLimit)
 struct PTYManagerSpawnTests {
     // The spawn waits at its gate until the main actor opens the gate, or the gate limit. The main
     // actor sees the spawn wait, so it ran during the spawn, and the spawn did not run on the
@@ -509,7 +509,7 @@ struct PTYManagerSpawnTests {
 // The trust run (docs/behaviour/pty.md, "The trust run"): claude with no arguments in a folder
 // that TrustRuns.check allowed. It is never one of the attaches of the views.
 @MainActor
-@Suite("PTY manager trust run", .timeLimit(.minutes(1)))
+@Suite("PTY manager trust run", .testTimeLimit)
 struct PTYManagerTrustTests {
     // A folder below a root in a temporary folder, and its check.
     private struct Clone {

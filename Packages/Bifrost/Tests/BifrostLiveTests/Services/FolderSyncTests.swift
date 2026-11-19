@@ -99,7 +99,7 @@ private let skillsFiles = [
     "skills/bifrost-b/SKILL.md",
 ]
 
-@Suite("Folder sync", .timeLimit(.minutes(1)))
+@Suite("Folder sync", .testTimeLimit)
 struct FolderSyncTests {
     // MARK: - The mod folder
 

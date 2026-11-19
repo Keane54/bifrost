@@ -171,7 +171,7 @@ struct PRLookupParseTests {
 }
 
 @MainActor
-@Suite("PR lookup runs", .timeLimit(.minutes(1)))
+@Suite("PR lookup runs", .testTimeLimit)
 struct PRLookupTests {
     @Test func aLookupRunsGhPrViewInTheFolderWithTheEnvironment() async {
         let t = Setup()
@@ -370,7 +370,7 @@ struct PRLookupTests {
 
 // The address that a click on the PR of Show Info opens.
 @MainActor
-@Suite("PR address", .timeLimit(.minutes(1)))
+@Suite("PR address", .testTimeLimit)
 struct PRAddressTests {
     @Test func onlyAnHttpsPRAddressOpens() async {
         for url in [
@@ -427,7 +427,7 @@ struct PRAddressTests {
 
 // The fake gh of scripts/fake-gh on the PATH, in a test home, with the real process runner.
 @MainActor
-@Suite("PR lookup with the fake gh", .timeLimit(.minutes(1)), .tags(.realProcess))
+@Suite("PR lookup with the fake gh", .testTimeLimit, .tags(.realProcess))
 struct PRLookupFakeGhTests {
     @Test func theFakeGhGivesThePRLine() async throws {
         let home = try TemporaryFolder()

@@ -96,7 +96,7 @@ private final class AnswerPanelFixture {
 }
 
 @MainActor
-@Suite("the Answer panel", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Answer panel", .serialized, .testTimeLimit, .tags(.window))
 struct AnswerPanelTests {
     // A click on a My PRs row with questions opens the panel for its PR. The panel lists the
     // questions oldest first with the line over the quote, and the reason of the last round.

@@ -11,7 +11,7 @@ import Testing
 private typealias D = ReviewData
 
 @MainActor
-@Suite("the writes of the pending review", .timeLimit(.minutes(1)))
+@Suite("the writes of the pending review", .testTimeLimit)
 struct PendingReviewWritesTests {
     private let threadKey = "addPullRequestReviewThread"
     private let bodyKey = "updatePullRequestReview"

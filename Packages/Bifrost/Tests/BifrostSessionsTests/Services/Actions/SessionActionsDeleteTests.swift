@@ -157,7 +157,7 @@ private func deferredEntry(_ id: String, _ shortId: ShortID) -> DeferredDelete {
     DeferredDelete(sessionId: id, shortId: shortId, worktree: wt)
 }
 
-@Suite("the session command Delete", .timeLimit(.minutes(1)))
+@Suite("the session command Delete", .testTimeLimit)
 @MainActor
 struct SessionActionsDeleteTests {
     // MARK: - A plain remove

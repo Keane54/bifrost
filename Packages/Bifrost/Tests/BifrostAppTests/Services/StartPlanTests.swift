@@ -36,7 +36,7 @@ private func plan(
 
 private let listen = [StartPlan.forceListenKey: "1"]
 
-@Suite("start plan", .timeLimit(.minutes(1)))
+@Suite("start plan", .testTimeLimit)
 struct StartPlanTests {
     // The Live details server listens on the shared socket of the shared home by the start rule
     // of the live control, so the plan has no socket of its own for it. No value of the plan
@@ -312,7 +312,7 @@ private func makeRepo(_ path: String) throws {
     try "not a ref\n".write(toFile: "\(path)/.git/HEAD", atomically: true, encoding: .utf8)
 }
 
-@Suite("start plan and branch reader", .timeLimit(.minutes(1)))
+@Suite("start plan and branch reader", .testTimeLimit)
 struct StartPlanBranchTests {
     // Make a repo, a worktree folder in it, and a .git file outside that points into it, in each
     // reviews folder of the home. Each HEAD file holds no branch, so a reader without the skip
@@ -390,7 +390,7 @@ struct StartPlanBranchTests {
 }
 
 // The speech engine of a start: the fake engine only for a development app with a test home.
-@Suite("the speech engine of a start", .timeLimit(.minutes(1)))
+@Suite("the speech engine of a start", .testTimeLimit)
 @MainActor
 struct StartSpeechEngineTests {
     // The dictation start test of the plan: a development app with a test

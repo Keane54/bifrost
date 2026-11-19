@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -24,7 +25,7 @@ private func seen(
     return state
 }
 
-@Suite("the To review rows", .timeLimit(.minutes(1)))
+@Suite("the To review rows", .testTimeLimit)
 struct ToReviewRulesTests {
     @Test func theRequestsOpenAtTheFirstTurnOnDoNotFlash() throws {
         var state = ReviewsState()

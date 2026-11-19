@@ -109,7 +109,7 @@ private struct DeepFile {
     }
 }
 
-@Suite("the edit of the Claude Code settings file", .timeLimit(.minutes(1)))
+@Suite("the edit of the Claude Code settings file", .testTimeLimit)
 struct ClaudeSettingsFileTests {
     // MARK: - The refusals
 

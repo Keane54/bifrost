@@ -30,7 +30,7 @@ private func start(_ command: Command, on clock: ManualClock) -> Task<ExecResult
     return Task { await runner.run(command) }
 }
 
-@Suite("process runner", .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("process runner", .testTimeLimit, .tags(.realProcess))
 struct ProcessRunnerTests {
     // The tests start real programs.
     init() throws { try TestSandbox.require() }

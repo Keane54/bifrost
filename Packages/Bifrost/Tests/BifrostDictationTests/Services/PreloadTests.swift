@@ -41,7 +41,7 @@ private final class GatedLoads: Sendable {
     }
 }
 
-@Suite("preload of the next analyzer", .timeLimit(.minutes(1)))
+@Suite("preload of the next analyzer", .testTimeLimit)
 @MainActor
 struct PreloadTests {
     private let loads = GatedLoads()

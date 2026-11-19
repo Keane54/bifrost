@@ -8,7 +8,7 @@ import Testing
 
 // The state of What's new, release-notes.json (docs/behaviour/updates.md, "What's new").
 @MainActor
-@Suite("release notes store", .timeLimit(.minutes(1)))
+@Suite("release notes store", .testTimeLimit)
 struct ReleaseNotesStoreTests {
     private func stored(_ file: URL) throws -> String? {
         let data = try Data(contentsOf: file)

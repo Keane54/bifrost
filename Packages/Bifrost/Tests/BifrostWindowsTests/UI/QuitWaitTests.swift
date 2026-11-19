@@ -7,7 +7,7 @@ import Testing
 // The quit waits for the last write of the window bounds, for 2 s at most. The work waits at a
 // gate. The work records its end as its last step: the reply of its end runs in the same turn,
 // so a test that sees the end also sees that reply.
-@Suite("quit wait", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("quit wait", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct QuitWaitTests {
     @Test func theQuitRepliesWhenTheWriteEnds() async {

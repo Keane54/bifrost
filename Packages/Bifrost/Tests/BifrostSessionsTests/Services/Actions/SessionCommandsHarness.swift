@@ -162,7 +162,7 @@ enum Entry {
     }
 }
 
-@Suite("the job wait of the command harness", .timeLimit(.minutes(1)))
+@Suite("the job wait of the command harness", .testTimeLimit)
 @MainActor
 struct CommandHarnessTests {
     // A resume waits for a row that never shows. The wait records an issue at its limit, and the

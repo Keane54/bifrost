@@ -165,7 +165,7 @@ private final class RunCounter: CommandRunner {
 }
 
 @MainActor
-@Suite("the repo store of Reviews", .serialized, .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("the repo store of Reviews", .serialized, .testTimeLimit, .tags(.realProcess))
 struct RepoStoreTests {
     // The clone is in lower case below the repos folder, with no checkout (no file of the
     // repository in the folder) and no blobs (a partial clone with the blob filter).

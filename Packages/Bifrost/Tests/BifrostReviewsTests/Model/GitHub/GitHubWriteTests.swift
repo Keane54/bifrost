@@ -2,6 +2,7 @@
 // and the stdin of one gh call. The tests read both, so a new case or a changed text that names
 // another mutation fails here.
 import BifrostFoundation
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -110,7 +111,7 @@ private func names(_ text: String) -> [String] {
     text.split { !($0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_")) }.map(String.init)
 }
 
-@Suite("the GitHub writes", .timeLimit(.minutes(1)))
+@Suite("the GitHub writes", .testTimeLimit)
 struct GitHubWriteTests {
     @Test func eachWriteNamesOnlyItsOwnMutation() throws {
         let writes = try samples()

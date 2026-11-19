@@ -1,10 +1,11 @@
 // The names of the PR sessions (docs/behaviour/reviews.md, "PR sessions").
 import BifrostSessions
+import BifrostTestSupport
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the names of the PR sessions", .timeLimit(.minutes(1)))
+@Suite("the names of the PR sessions", .testTimeLimit)
 struct SessionNamesTests {
     // <repo>-<number>-<kind>; a name in use gives <owner>-<repo>-<number>-<kind>.
     @Test func aClashAddsTheOwner() throws {

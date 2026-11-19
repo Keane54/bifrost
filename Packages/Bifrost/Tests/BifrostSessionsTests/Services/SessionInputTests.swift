@@ -92,7 +92,7 @@ private final class HiddenAttachFixture {
     }
 }
 
-@Suite("session input shell", .serialized, .timeLimit(.minutes(1)), .tags(.realProcess))
+@Suite("session input shell", .serialized, .testTimeLimit, .tags(.realProcess))
 @MainActor
 struct SessionInputTests {
     // Cmd+. with no chat window: the session input opens a hidden attach at the session size,

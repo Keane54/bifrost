@@ -7,7 +7,7 @@ import Testing
 
 @testable import BifrostSessions
 
-@Suite("trust runs", .timeLimit(.minutes(1)))
+@Suite("trust runs", .testTimeLimit)
 struct TrustRunsTests {
     @Test func onlyAFolderBelowTheRootGivesARun() async throws {
         let folder = try TemporaryFolder()

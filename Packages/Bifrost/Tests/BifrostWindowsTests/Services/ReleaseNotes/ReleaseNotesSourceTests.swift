@@ -33,7 +33,7 @@ private let twoReleases = releasesAnswer(
     releaseJSON(tag: "v1.1.0", body: "New things."), releaseJSON(tag: "v1.0.0"))
 
 @MainActor
-@Suite("release notes source", .timeLimit(.minutes(1)))
+@Suite("release notes source", .testTimeLimit)
 struct ReleaseNotesSourceTests {
     private func source(
         _ fetcher: FakeFetcher, _ clock: ManualClock = ManualClock()

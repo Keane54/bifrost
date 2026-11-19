@@ -79,7 +79,7 @@ private func spec(
     ).get()
 }
 
-@Suite("the session commands: New session, Stop, Resume and Resume all", .timeLimit(.minutes(1)))
+@Suite("the session commands: New session, Stop, Resume and Resume all", .testTimeLimit)
 @MainActor
 struct SessionActionsStartTests {
     // MARK: - New session
@@ -1040,7 +1040,7 @@ struct SessionActionsStartTests {
 // A start with a real program in the place of claude, in the test sandbox: a script that
 // ignores SIGTERM. It is no Claude Code program. The process runner runs it on the manual clock.
 @Suite(
-    "the session commands with a program that ignores SIGTERM", .timeLimit(.minutes(1)),
+    "the session commands with a program that ignores SIGTERM", .testTimeLimit,
     .tags(.realProcess))
 @MainActor
 struct SessionActionsGraceTests {

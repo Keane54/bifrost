@@ -162,7 +162,7 @@ private func withHome(
 }
 
 @MainActor
-@Suite("the Daily update panel", .timeLimit(.minutes(1)))
+@Suite("the Daily update panel", .testTimeLimit)
 struct DailyUpdatePanelTests {
     @Test func oneTabPerAreaThatIsOn() async throws {
         let off = WorkArea(id: "a3", on: false, name: "Gamma")

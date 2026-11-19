@@ -34,7 +34,7 @@ private func isGone(_ pid: pid_t) -> Bool {
 }
 
 @MainActor
-@Suite("the run of the drafts", .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("the run of the drafts", .testTimeLimit, .tags(.realProcess))
 struct DailyRunnerTests {
     @Test func eachStartEndAndFailureIsReported() async throws {
         let home = try RunHome()

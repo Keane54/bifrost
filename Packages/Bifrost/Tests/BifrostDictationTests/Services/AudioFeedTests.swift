@@ -56,7 +56,7 @@ private func expected(_ frames: Range<Int>, channels: Int = 2) -> [[Float]] {
     (0..<channels).map { channel in frames.map { FakeSource.value(channel: channel, frame: $0) } }
 }
 
-@Suite("audio ring", .timeLimit(.minutes(1)))
+@Suite("audio ring", .testTimeLimit)
 struct AudioRingTests {
     @Test func theRingGivesTheFramesOfEachChannelInOrder() throws {
         var source = try FakeSource()
@@ -126,7 +126,7 @@ struct AudioRingTests {
     }
 }
 
-@Suite("audio feed", .timeLimit(.minutes(1)))
+@Suite("audio feed", .testTimeLimit)
 @MainActor
 struct AudioFeedTests {
     // The samples of each buffer that the receiver of the feed got, for each channel.

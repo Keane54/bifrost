@@ -18,7 +18,7 @@ private func paths(_ state: SharedClaudeState) -> [String] {
 // A path check that reads no file: no path is a link.
 private let noLinks = PathCheck(ignoresCase: true, realPath: { _ in nil })
 
-@Suite("shared Claude state", .timeLimit(.minutes(1)))
+@Suite("shared Claude state", .testTimeLimit)
 struct SharedClaudeStateTests {
     // The shared state has only the paths of the user decision of 2026-11-16 and the three
     // folders of phase 5. A new path needs a new review. Each path is under the home that the

@@ -223,7 +223,7 @@ private func line() -> String {
 }
 
 @Suite(
-    "the Live details control with the fake claude", .timeLimit(.minutes(1)), .tags(.realProcess))
+    "the Live details control with the fake claude", .testTimeLimit, .tags(.realProcess))
 @MainActor
 struct LiveControlTests {
     init() throws { try TestSandbox.require() }

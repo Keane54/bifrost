@@ -23,7 +23,7 @@ private func radius(_ blur: any FrameBlur) -> Double? {
 }
 
 @MainActor
-@Suite("frame blur", .timeLimit(.minutes(1)), .tags(.window))
+@Suite("frame blur", .testTimeLimit, .tags(.window))
 struct FrameBlurTests {
     init() { UITestApp.prepare() }
 

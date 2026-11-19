@@ -8,7 +8,7 @@ import Testing
 
 @testable import BifrostWindows
 
-@Suite("the Rename dialog", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Rename dialog", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct RenameDialogTests {
     @Test func theBoxIsHiddenForAnExternalRow() async throws {

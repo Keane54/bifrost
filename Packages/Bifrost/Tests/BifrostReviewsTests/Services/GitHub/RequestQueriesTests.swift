@@ -79,7 +79,7 @@ private func thread(_ id: String, more: Bool) -> JSONValue {
 }
 
 @MainActor
-@Suite("the full read of a request round", .timeLimit(.minutes(1)))
+@Suite("the full read of a request round", .testTimeLimit)
 struct RequestQueriesTests {
     // The read takes the PR fields with the first page of the reviews, then each page of the
     // threads with the later comments of a long thread, and the PR comments. Each value goes in a

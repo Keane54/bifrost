@@ -5,7 +5,7 @@ import Testing
 
 // The debounce of the shells: one task that sleeps to a deadline, on a manual clock.
 @MainActor
-@Suite("debouncer", .timeLimit(.minutes(1)))
+@Suite("debouncer", .testTimeLimit)
 struct DebouncerTests {
     @Test func aBurstMakesOneRunAfterTheQuietTimeOfTheLastEvent() async {
         let clock = ManualClock()

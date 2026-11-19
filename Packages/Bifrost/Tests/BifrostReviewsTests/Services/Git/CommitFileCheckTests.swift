@@ -18,7 +18,7 @@ extension GitTestRepo {
     }
 }
 
-@Suite("the file checks of a fix commit", .timeLimit(.minutes(1)))
+@Suite("the file checks of a fix commit", .testTimeLimit)
 struct CommitFileCheckTests {
     @Test func aLinkAHardLinkOrASubmoduleIsRefused() async throws {
         let repo = try await GitTestRepo.make()

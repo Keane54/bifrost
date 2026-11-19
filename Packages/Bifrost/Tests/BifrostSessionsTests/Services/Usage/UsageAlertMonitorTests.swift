@@ -187,7 +187,7 @@ private final class Sources {
 }
 
 @MainActor
-@Suite("usage alert monitor", .timeLimit(.minutes(1)))
+@Suite("usage alert monitor", .testTimeLimit)
 struct UsageAlertMonitorTests {
     @Test func sessionValuesAt90PercentOrMoreShowOneNotification() async throws {
         try await withMonitor { f in

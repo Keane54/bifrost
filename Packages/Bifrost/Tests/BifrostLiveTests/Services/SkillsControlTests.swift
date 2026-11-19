@@ -238,7 +238,7 @@ private func foreignText(_ place: String) -> String {
         + "Bifrost did not change it."
 }
 
-@Suite("the skills control with the fake claude", .timeLimit(.minutes(1)), .tags(.realProcess))
+@Suite("the skills control with the fake claude", .testTimeLimit, .tags(.realProcess))
 @MainActor
 struct SkillsControlTests {
     init() throws { try TestSandbox.require() }

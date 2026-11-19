@@ -34,7 +34,7 @@ private final class Opened {
 }
 
 @MainActor
-@Suite("release notes dialog", .timeLimit(.minutes(1)))
+@Suite("release notes dialog", .testTimeLimit)
 struct ReleaseNotesDialogTests {
     private func make(
         _ view: ReleaseNotesView, _ data: Data?, opened: Opened = Opened()

@@ -14,7 +14,7 @@ import Testing
 // The window key filter with the key commands of the app (the public init), and the end of the
 // responder chain of the window: an Esc or a Tab that no Bifrost key uses goes to AppKit. The
 // window is never ordered front.
-@Suite("window key filter", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("window key filter", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct WindowKeyFilterTests {
     static let s1 = "11111111-1111-4111-8111-111111111111"

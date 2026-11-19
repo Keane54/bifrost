@@ -20,7 +20,7 @@ import Testing
 private let scope = " --scope user --json"
 
 @MainActor
-@Suite("Settings > Live details", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Settings > Live details", .serialized, .testTimeLimit, .tags(.window))
 struct LiveSectionTests {
     // Before the shell gives the controls, the section says that it checks, with no button.
     @Test func beforeTheControlsTheSectionChecks() async throws {

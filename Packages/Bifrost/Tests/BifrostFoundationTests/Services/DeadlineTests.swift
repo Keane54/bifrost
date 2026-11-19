@@ -5,7 +5,7 @@ import Testing
 
 // The race of a task against a time limit on the clock (firstResult). The race never cancels the
 // task, so the work goes on after the limit and after a cancel of the caller.
-@Suite("the race of a task against its limit", .timeLimit(.minutes(1)))
+@Suite("the race of a task against its limit", .testTimeLimit)
 struct DeadlineTests {
     @Test func aTaskThatEndsFirstGivesItsValue() async {
         let clock = ManualClock()

@@ -35,7 +35,7 @@ private final class PagedGitHub: GitHubAccess {
 }
 
 @MainActor
-@Suite("the reads of a review round", .timeLimit(.minutes(1)))
+@Suite("the reads of a review round", .testTimeLimit)
 struct ReviewQueriesTests {
     private func rereviewPages() throws -> [Data] {
         let file = try JSONDecoder().decode(

@@ -9,7 +9,7 @@ import Testing
 @testable import BifrostReviews
 
 @MainActor
-@Suite("the Review panel flow", .timeLimit(.minutes(1)))
+@Suite("the Review panel flow", .testTimeLimit)
 struct DraftFlowTests {
     private static let claudeComment = "PRRC_claude"
     private static let userComment = "PRRC_user"

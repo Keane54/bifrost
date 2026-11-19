@@ -23,7 +23,7 @@ private func write(_ value: JSONValue, _ file: URL) throws {
     try JSONFile.encode(value).write(to: file)
 }
 
-@Suite("the typed views of the UI state in the store", .timeLimit(.minutes(1)))
+@Suite("the typed views of the UI state in the store", .testTimeLimit)
 struct UIStateValuesStoreTests {
     // One refused config among three, with a layout and a history: after a change of another
     // Overview and a save, the two good configs, the layout and the history stay. The refused

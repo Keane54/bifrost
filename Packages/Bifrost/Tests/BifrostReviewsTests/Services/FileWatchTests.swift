@@ -6,7 +6,7 @@ import Testing
 
 @testable import BifrostReviews
 
-@Suite("the watch of one file", .timeLimit(.minutes(1)), .tags(.timing))
+@Suite("the watch of one file", .testTimeLimit, .tags(.timing))
 struct FileWatchTests {
     // The coming of a file that was missing gives a call.
     @Test func theComingOfTheFileGivesACall() async throws {

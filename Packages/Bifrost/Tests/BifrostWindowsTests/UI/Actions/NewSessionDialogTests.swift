@@ -63,7 +63,7 @@ private final class StartingOverview {
     }
 }
 
-@Suite("the New session dialog", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the New session dialog", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct NewSessionDialogTests {
     @Test func theFormRefusesABadNameWithItsReason() async throws {

@@ -30,6 +30,8 @@ public final class SessionInput {
     // An attach is ready for a send when its output was quiet for this time one time.
     fileprivate static let quietTime = Duration.milliseconds(1500)
     // A busy session never gets quiet. After this time, a wait ends and Bifrost writes nothing.
+    // The time starts when the attach is open: on a busy Mac the spawn of a hidden attach can
+    // wait, and that wait is not a session that never gets quiet.
     private static let readyLimit = Duration.seconds(15)
     // A hidden attach closes this time after the last write.
     private static let closeDelay = Duration.seconds(1)
@@ -313,7 +315,6 @@ public final class SessionInput {
         _ job: Job, checked: CheckedAttach, size: TerminalSize
     ) async throws(InputRefusal) {
         let view = checked.view
-        let limit = timeline.now() + Self.readyLimit
         let model = HiddenModel(terminal: makeTerminal(size))
         let opened: PTYAttach?
         do throws(PTYError) {
@@ -323,6 +324,7 @@ public final class SessionInput {
             throw .endedBeforeReady
         }
         guard let attach = opened else { throw .endedBeforeReady }
+        let limit = timeline.now() + Self.readyLimit
         let watch = OutputWatch(shortId: checked.shortId)
         watches[view] = watch
         let reader = read(attach, model: model, watch: watch)

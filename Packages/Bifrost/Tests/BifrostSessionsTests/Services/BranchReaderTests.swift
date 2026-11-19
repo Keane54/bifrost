@@ -18,7 +18,7 @@ private func strangeRepo(_ cwd: String) -> MemoryFileSystem {
     MemoryFileSystem(files: ["\(cwd)/.git": "nonsense\n"], folders: [cwd])
 }
 
-@Suite("the branch of a folder", .timeLimit(.minutes(2)))
+@Suite("the branch of a folder", .testTimeLimit)
 struct GitBranchTests {
     @Test("the branch of git is trimmed or missing")
     func trims() async {
@@ -137,7 +137,7 @@ struct GitBranchTests {
     }
 }
 
-@Suite("branch reader", .timeLimit(.minutes(2)))
+@Suite("branch reader", .testTimeLimit)
 struct BranchReaderTests {
     @Test("a missing folder gives no branch and the walk does not go up to a parent repo")
     func missingFolder() async {
@@ -315,7 +315,7 @@ private let warpTable: ProcessTable = [
 
 // The commands that the dependencies of the app run.
 
-@Suite("registry system dependencies", .timeLimit(.minutes(2)))
+@Suite("registry system dependencies", .testTimeLimit)
 struct SystemDepsTests {
     // "claude agents --json" has the default time limit of the claude runner.
     @Test("the agents list uses a 10 s timeout")

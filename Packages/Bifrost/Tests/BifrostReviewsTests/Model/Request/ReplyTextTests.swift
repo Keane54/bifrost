@@ -1,9 +1,10 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the fixed texts of the replies", .timeLimit(.minutes(1)))
+@Suite("the fixed texts of the replies", .testTimeLimit)
 struct ReplyTextTests {
     // The quote has the first three lines of the request, 300 UTF-16 units at most and never half
     // a character, each line after "> ". A blank request gives no quote.

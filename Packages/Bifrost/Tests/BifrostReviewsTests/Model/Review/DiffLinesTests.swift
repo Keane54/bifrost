@@ -1,10 +1,11 @@
 // The lines that a diff shows (docs/behaviour/reviews.md, "Review rounds").
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the lines of a diff", .timeLimit(.minutes(1)))
+@Suite("the lines of a diff", .testTimeLimit)
 struct DiffLinesTests {
     // The files keep their order, a binary file is marked, and each hunk gives the lines of
     // each side.

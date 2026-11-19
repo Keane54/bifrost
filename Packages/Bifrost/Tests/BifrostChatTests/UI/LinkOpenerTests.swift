@@ -22,7 +22,7 @@ nonisolated struct GatedApps: DefaultApps {
 }
 
 @MainActor
-@Suite("link opener", .timeLimit(.minutes(1)), .tags(.window))
+@Suite("link opener", .testTimeLimit, .tags(.window))
 struct LinkOpenerTests {
     private let web = "https://example.com/newer"
 

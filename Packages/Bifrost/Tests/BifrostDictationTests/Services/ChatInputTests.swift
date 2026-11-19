@@ -111,7 +111,7 @@ final class InputRig {
     }
 }
 
-@Suite("the hold key of dictation", .timeLimit(.minutes(1)))
+@Suite("the hold key of dictation", .testTimeLimit)
 @MainActor
 struct HoldKeyTests {
     @Test func theHoldTimeIs250ms() {
@@ -520,7 +520,7 @@ private let holdCases: [HoldCase] = [
         steps: [.up(" ", takes: false, log: [], timer: .none)]),
 ]
 
-@Suite("the hold key edge cases", .timeLimit(.minutes(1)))
+@Suite("the hold key edge cases", .testTimeLimit)
 @MainActor
 struct HoldKeyEdgeTests {
     @Test("the hold key script gives its results and calls", arguments: holdCases)
@@ -564,7 +564,7 @@ struct HoldKeyEdgeTests {
 
 // MARK: - The input rules
 
-@Suite("the input rules of a chat", .timeLimit(.minutes(1)))
+@Suite("the input rules of a chat", .testTimeLimit)
 @MainActor
 struct ChatInputRuleTests {
     @Test func theHoldKeySeesEachKeyEventFirst() {
@@ -679,7 +679,7 @@ struct ChatInputRuleTests {
 
 // MARK: - The chat input of a chat dictation
 
-@Suite("the chat input of a chat dictation", .timeLimit(.minutes(1)))
+@Suite("the chat input of a chat dictation", .testTimeLimit)
 @MainActor
 struct ChatDictationInputTests {
     private let down = ev(.keydown, " ")

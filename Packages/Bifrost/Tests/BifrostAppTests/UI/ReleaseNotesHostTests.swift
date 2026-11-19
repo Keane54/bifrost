@@ -67,7 +67,7 @@ private struct Parts {
 }
 
 @MainActor
-@Suite("What's new at the start", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("What's new at the start", .serialized, .testTimeLimit, .tags(.window))
 struct ReleaseNotesHostTests {
     @Test func anUpdateOpensWhatsNewAfterTheVersionIsStored() async throws {
         let p = try await Parts(lastSeen: "1.0.0", setupDone: true)

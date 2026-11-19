@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -42,7 +43,7 @@ private func draft(_ review: String, path: String) throws -> DraftRecord {
         body: "A comment.", at: R.at(-5))
 }
 
-@Suite("the row texts", .timeLimit(.minutes(1)))
+@Suite("the row texts", .testTimeLimit)
 struct RowTextTests {
     @Test func theAgeAndTheSizeTexts() {
         #expect(RowText.age(.seconds(-5)) == "just now")

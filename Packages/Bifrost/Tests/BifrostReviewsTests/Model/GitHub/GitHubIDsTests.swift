@@ -1,6 +1,7 @@
 // The IDs of the safety surface (docs/behaviour/reviews.md, "Safety"): the PR key, the commit ID,
 // the branch name and the node ID. Each init refuses each text that could change the target of a
 // write.
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -8,7 +9,7 @@ import Testing
 
 private let head = "f7698d38614ba22b41f996fab73124361d2fe389"
 
-@Suite("the GitHub IDs", .timeLimit(.minutes(1)))
+@Suite("the GitHub IDs", .testTimeLimit)
 struct GitHubIDsTests {
     @Test func onlyAGitHubPullRequestAddressGivesAKey() throws {
         let key = try #require(PRKey(url: "https://github.com/Owner-A/Repo.B/pull/42"))

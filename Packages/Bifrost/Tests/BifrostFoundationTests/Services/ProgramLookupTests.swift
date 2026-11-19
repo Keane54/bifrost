@@ -28,7 +28,7 @@ private func relativePath(_ folder: URL) -> String {
     return up + folder.resolvingSymlinksInPath().path
 }
 
-@Suite("the program lookup", .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("the program lookup", .testTimeLimit, .tags(.realProcess))
 struct ProgramLookupTests {
     // Some tests write programs to the temp folder and start them.
     init() throws { try TestSandbox.require() }

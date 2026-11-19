@@ -7,7 +7,7 @@ import Testing
 // stop, and the check of Task.isCancelled and of the generation after the sleep, on an injected
 // clock. The tests move a manual clock.
 @MainActor
-@Suite("timer slot", .timeLimit(.minutes(1)))
+@Suite("timer slot", .testTimeLimit)
 struct TimerSlotTests {
     @Test func theActionRunsAfterTheDurationOneTime() async {
         let clock = ManualClock()

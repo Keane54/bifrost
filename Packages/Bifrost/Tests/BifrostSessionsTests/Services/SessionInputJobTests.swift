@@ -177,7 +177,7 @@ private final class Rig {
     }
 }
 
-@Suite("the texts of the session input", .timeLimit(.minutes(1)))
+@Suite("the texts of the session input", .testTimeLimit)
 struct SessionInputTextTests {
     // The texts name the connection to the session, never the attach.
     @Test func theRefusalTextsNameTheConnectionAndNotTheAttach() {
@@ -208,7 +208,7 @@ struct SessionInputTextTests {
     }
 }
 
-@Suite("the sends of the session input", .timeLimit(.minutes(1)))
+@Suite("the sends of the session input", .testTimeLimit)
 @MainActor
 struct SessionInputSendTests {
     // The paste goes at once, and the cr 300 ms later. No hidden attach opens, and the chat
@@ -647,7 +647,7 @@ struct SessionInputSendTests {
     }
 }
 
-@Suite("the Interrupt of the session input", .timeLimit(.minutes(1)))
+@Suite("the Interrupt of the session input", .testTimeLimit)
 @MainActor
 struct SessionInputInterruptTests {
     // One Esc goes into a chat with output at once. A red box does not block it. A session that
@@ -937,7 +937,7 @@ struct SessionInputInterruptTests {
     }
 }
 
-@Suite("the session input and a chat open", .timeLimit(.minutes(1)))
+@Suite("the session input and a chat open", .testTimeLimit)
 @MainActor
 struct SessionInputChatOpenTests {
     // While the chat of the session opens, a job waits: no size read and no hidden attach. When

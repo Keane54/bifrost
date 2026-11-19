@@ -82,7 +82,7 @@ private func prLine(_ model: ShowInfoPanelModel) -> String? {
 }
 
 @MainActor
-@Suite("Show Info panel", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Show Info panel", .serialized, .testTimeLimit, .tags(.window))
 struct ShowInfoPanelTests {
     @Test func thePanelShowsTheSevenSections() async throws {
         let p = Parts()

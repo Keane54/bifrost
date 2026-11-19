@@ -112,7 +112,7 @@ private struct TestHome {
     }
 }
 
-@Suite("the import of the Electron data", .timeLimit(.minutes(1)))
+@Suite("the import of the Electron data", .testTimeLimit)
 struct ElectronImportTests {
     // Review Focus 2: the folder at mode 0500 and its files at 0400, so each write in the folder
     // fails. After the import, each file has the same bytes, mode and modification time, and the

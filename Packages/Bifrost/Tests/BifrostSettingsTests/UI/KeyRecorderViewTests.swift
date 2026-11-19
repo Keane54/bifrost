@@ -9,7 +9,7 @@ import Testing
 @testable import BifrostSettings
 
 @MainActor
-@Suite("the key recorder", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the key recorder", .serialized, .testTimeLimit, .tags(.window))
 struct KeyRecorderViewTests {
     // A window with a key recorder and a view behind it that records the keys that get past the
     // recorder.

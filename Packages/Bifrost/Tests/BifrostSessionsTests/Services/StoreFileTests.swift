@@ -19,7 +19,7 @@ private func save(_ file: String, _ store: RegistryStore) throws {
     try JSONFile.write(try JSONFile.encode(store), to: URL(fileURLWithPath: file))
 }
 
-@Suite("the registry store file", .timeLimit(.minutes(1)))
+@Suite("the registry store file", .testTimeLimit)
 struct StoreFileTests {
     @Test
     func emptyForBad() throws {
@@ -442,7 +442,7 @@ struct StoreFileTests {
 }
 
 // The steer of the gate: one bad field must not make the whole file fail.
-@Suite("damaged store files", .timeLimit(.minutes(1)))
+@Suite("damaged store files", .testTimeLimit)
 struct DamagedStoreTests {
     private let good = #""names":{"s1":"alpha"},"started":["s1"],"priorities":{"s1":2}"#
     private var want: RegistryStore {

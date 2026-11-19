@@ -26,7 +26,7 @@ private func openStore(_ layout: ReviewsLayout) async throws(ReviewsStoreError) 
 }
 
 @MainActor
-@Suite("the Reviews lock", .timeLimit(.minutes(1)))
+@Suite("the Reviews lock", .testTimeLimit)
 struct ReviewsLockTests {
     // While one store is open, a second open is refused with otherCopy and touches no file. The
     // lock file has the mode 0600 in a folder with the mode 0700.

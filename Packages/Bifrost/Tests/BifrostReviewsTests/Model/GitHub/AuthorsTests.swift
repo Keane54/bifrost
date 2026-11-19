@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -11,7 +12,7 @@ private func author(
     Author(login: login, isBot: bot, association: association)
 }
 
-@Suite("trusted authors", .timeLimit(.minutes(1)))
+@Suite("trusted authors", .testTimeLimit)
 struct AuthorsTests {
     @Test func copilotIsTrustedButNeverAReviewer() {
         let copilot = author(Authors.copilotLogin, bot: true)

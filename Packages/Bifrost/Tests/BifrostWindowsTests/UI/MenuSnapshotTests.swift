@@ -7,7 +7,7 @@ import Testing
 
 // The snapshot of the Bifrost menu (docs/behaviour/menu.md, "The look"): one row of each kind, at
 // the Interface scale 100. The rows are test rows.
-@Suite("menu snapshot", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("menu snapshot", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct MenuSnapshotTests {
     private let snapshot = Snapshot(bundle: .module, target: "BifrostWindowsTests")

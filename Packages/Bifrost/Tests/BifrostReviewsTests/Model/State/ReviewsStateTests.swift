@@ -1,5 +1,6 @@
 import BifrostFoundation
 import BifrostSessions
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -54,7 +55,7 @@ private func holds(_ whole: JSONValue, _ part: JSONValue) -> Bool {
     }
 }
 
-@Suite("the Reviews state", .timeLimit(.minutes(1)))
+@Suite("the Reviews state", .testTimeLimit)
 struct ReviewsStateTests {
     // Each form of the Electron file opens with no dropped field, its save holds each value of
     // the file, and a read of the save gives the same state.

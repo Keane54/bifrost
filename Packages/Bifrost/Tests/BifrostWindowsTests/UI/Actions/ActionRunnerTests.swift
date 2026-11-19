@@ -12,7 +12,7 @@ import Testing
 
 @testable import BifrostWindows
 
-@Suite("the action runner", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the action runner", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct ActionRunnerTests {
     // A Stop of a parked row and a Delete of an external row that runs are off: the run plans

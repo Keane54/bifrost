@@ -12,7 +12,7 @@ import Testing
 // search field, the later sections, the errors of the rows and the Save button. The tests with a
 // host show the panel in a window that is never ordered front.
 @MainActor
-@Suite("the Settings panel", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Settings panel", .serialized, .testTimeLimit, .tags(.window))
 struct SettingsPanelTests {
     @Test func theTabsAreInTheElectronOrder() async throws {
         #expect(

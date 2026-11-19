@@ -10,6 +10,10 @@
 //   again with no variable: the build copies the new PNG into the bundle.
 // - A missing PNG, an image of another size or more changed pixels than the limit record an
 //   issue with the count of the pixels that differ.
+// - With SNAPSHOT_PIXELS=0, the check compares only the size of the image. The CI workflow sets
+//   it: a CI runner draws text, blur and shadows with another GPU and another font rendering, so
+//   its pixels never match the snapshots of the Mac that recorded them. A wrong size is a fault
+//   of the layout on any machine, so it still fails there.
 // - cacheDisplay does not draw an NSHostingView inside the view, or the rows of a table in a tree
 //   with layers. The image draws them again at their places (drawLayeredParts).
 // The tests never order the window of the view front.
@@ -28,15 +32,26 @@ package struct Snapshot {
     package static let channelTolerance: UInt8 = 2
     // The variable that turns on the recording.
     nonisolated package static let recordVariable = "SNAPSHOT_RECORD"
+    // The variable that turns off the pixel compare when it is 0 (only the size counts).
+    nonisolated package static let pixelsVariable = "SNAPSHOT_PIXELS"
 
     private let bundle: Bundle
     private let target: String
+    // False: the check compares only the size of the image.
+    private let pixels: Bool
+
+    // True unless SNAPSHOT_PIXELS is 0.
+    nonisolated package static var comparesPixels: Bool {
+        ProcessInfo.processInfo.environment[pixelsVariable] != "0"
+    }
 
     // bundle is the Bundle.module of the test target, and target the name of its folder in
-    // Packages/Bifrost/Tests, for the repo copy of a recording.
-    package init(bundle: Bundle, target: String) {
+    // Packages/Bifrost/Tests, for the repo copy of a recording. pixels comes from SNAPSHOT_PIXELS.
+    // A test of the snapshot tool gives true: its images are the same on each machine.
+    package init(bundle: Bundle, target: String, pixels: Bool = Snapshot.comparesPixels) {
         self.bundle = bundle
         self.target = target
+        self.pixels = pixels
     }
 
     // The most pixels that can differ in an image of this many pixels.
@@ -81,6 +96,7 @@ package struct Snapshot {
             Issue.record(Comment(rawValue: text), sourceLocation: sourceLocation)
             return
         }
+        guard pixels else { return }
         let limit = Self.limit(pixels: image.width * image.height)
         if differ > limit {
             let text = "\(differ) pixels of \(name) differ from the snapshot (at most \(limit))."

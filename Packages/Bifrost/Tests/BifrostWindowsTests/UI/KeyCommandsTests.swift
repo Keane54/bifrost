@@ -13,7 +13,7 @@ import Testing
 
 // The key commands of the window and of the rows. They change the layout and the selection, so
 // each test checks the new state (docs/behaviour/keys.md, "Which shortcuts work today").
-@Suite("key commands", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("key commands", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct KeyCommandsTests {
     static let s1 = "11111111-1111-4111-8111-111111111111"
@@ -668,7 +668,7 @@ func press(
 // action through the action runner, on the selected row, on the clicked row of a hold click, or
 // with no row. The runner runs on fake deps (ActionsHarness): no test runs a program, opens an
 // app or signals a process.
-@Suite("the session keys", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the session keys", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct SessionKeyTests {
     // The key commands on the parts of the harness, with its runner.

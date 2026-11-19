@@ -112,7 +112,7 @@ private func withSetup(
 }
 
 @MainActor
-@Suite("the Daily update service", .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("the Daily update service", .testTimeLimit, .tags(.realProcess))
 struct DailyUpdateServiceTests {
     @Test func theFirstReminderRunsThenNotifiesWithSound() async throws {
         try await withSetup(at: wednesday(9, 0)) { setup in

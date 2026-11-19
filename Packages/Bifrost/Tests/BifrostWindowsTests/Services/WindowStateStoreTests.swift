@@ -35,7 +35,7 @@ private func openStore(
 }
 
 @MainActor
-@Suite("window-state store", .timeLimit(.minutes(1)))
+@Suite("window-state store", .testTimeLimit)
 struct WindowStateStoreTests {
     @Test
     func savesEachChange() async throws {

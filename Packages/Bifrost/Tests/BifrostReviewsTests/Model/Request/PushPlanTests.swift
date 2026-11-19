@@ -1,10 +1,11 @@
 import BifrostFoundation
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the rules of the push", .timeLimit(.minutes(1)))
+@Suite("the rules of the push", .testTimeLimit)
 struct PushPlanTests {
     private static let address = URL(filePath: "/tmp/sources/owner-a/repo-a.git")
 

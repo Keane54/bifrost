@@ -207,7 +207,7 @@ private func contents(_ path: String) -> String? {
     FileManager.default.contents(atPath: path).map { String(decoding: $0, as: UTF8.self) }
 }
 
-@Suite("Hand over", .serialized, .timeLimit(.minutes(1)))
+@Suite("Hand over", .serialized, .testTimeLimit)
 @MainActor
 struct HandOverTests {
     // The request goes through the session input, the note of the reply goes to a new file,

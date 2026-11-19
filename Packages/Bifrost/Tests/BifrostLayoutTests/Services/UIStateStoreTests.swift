@@ -179,7 +179,7 @@ private func openStore(
 }
 
 @MainActor
-@Suite("the UI state store", .timeLimit(.minutes(1)))
+@Suite("the UI state store", .testTimeLimit)
 struct UIStateStoreTests {
     @Test("a missing file gives the empty state and a working save")
     func missingFile() async throws {

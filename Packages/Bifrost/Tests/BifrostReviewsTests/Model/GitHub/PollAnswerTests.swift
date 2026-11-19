@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -17,7 +18,7 @@ private func time(_ text: String) throws -> Date {
     try Date(text, strategy: .iso8601)
 }
 
-@Suite("the poll answer", .timeLimit(.minutes(1)))
+@Suite("the poll answer", .testTimeLimit)
 struct PollAnswerTests {
     @Test func theBasicAnswerGivesBothLists() throws {
         let answer = try decoded(FixtureFiles.data("poll-basic"))

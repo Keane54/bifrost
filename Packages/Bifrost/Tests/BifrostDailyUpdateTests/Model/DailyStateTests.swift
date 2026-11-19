@@ -1,11 +1,12 @@
 import BifrostFoundation
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostDailyUpdate
 
 // The changes of the day state (docs/behaviour/daily-update.md, "The day state").
-@Suite("the Daily update state", .timeLimit(.minutes(1)))
+@Suite("the Daily update state", .testTimeLimit)
 struct DailyStateTests {
     private let now = Date(timeIntervalSince1970: 1_780_000_000)
 

@@ -118,7 +118,7 @@ private final class PerformanceHome {
 }
 
 @MainActor
-@Suite("the Performance wiring", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Performance wiring", .serialized, .testTimeLimit, .tags(.window))
 struct PerformanceWiringTests {
     // The session list, the account usage, the status pages and the updates report each poll to
     // the one reporter, and three failures in a row of each give a reason in the monitor.

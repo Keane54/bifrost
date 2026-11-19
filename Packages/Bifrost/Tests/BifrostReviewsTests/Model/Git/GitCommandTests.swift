@@ -75,7 +75,7 @@ private func caseName(_ command: GitCommand) -> String {
     }
 }
 
-@Suite("the git commands of Reviews", .timeLimit(.minutes(1)))
+@Suite("the git commands of Reviews", .testTimeLimit)
 struct GitCommandTests {
     @Test func eachCaseHasASample() throws {
         #expect(Set(try samples().map(caseName)).count == 28)

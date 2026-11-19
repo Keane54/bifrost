@@ -3,6 +3,7 @@
 // executable, NUL bytes, then the arguments and the environment, each with a NUL at its end.
 // The tests give the data of the parse. The real read is in
 // PTYProcessTests.theSystemInspectorReadsAChildThatTheTestStarted.
+import BifrostTestSupport
 import Testing
 
 @testable import BifrostSessions
@@ -12,7 +13,7 @@ private func arguments(argc: Int32, _ text: String) -> ArraySlice<UInt8> {
     ArraySlice(withUnsafeBytes(of: argc.littleEndian, Array.init) + Array(text.utf8))
 }
 
-@Suite("process inspector", .timeLimit(.minutes(1)))
+@Suite("process inspector", .testTimeLimit)
 struct ProcessInspectorTests {
     // argv[0] is not the path of the executable: a login shell, a link, a relative path and an
     // argument with a space.

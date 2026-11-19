@@ -22,7 +22,7 @@ private let bundledSkills = [
 ]
 
 @MainActor
-@Suite("Settings > Skills", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Settings > Skills", .serialized, .testTimeLimit, .tags(.window))
 struct SkillsSectionTests {
     @Test func beforeTheControlsTheSectionChecks() async throws {
         let p = try await SettingsParts()

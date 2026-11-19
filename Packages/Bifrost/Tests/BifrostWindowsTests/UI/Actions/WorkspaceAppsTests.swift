@@ -11,7 +11,7 @@ import Testing
 
 @testable import BifrostWindows
 
-@Suite("the opener of the apps", .timeLimit(.minutes(1)))
+@Suite("the opener of the apps", .testTimeLimit)
 @MainActor
 struct WorkspaceAppsTests {
     @Test func theKindComesFromTheResolvedPath() async throws {

@@ -7,7 +7,7 @@ import Testing
 
 // The write of the skill export: settings.json in the Daily update folder of a test home.
 
-@Suite("the write of the skill export", .timeLimit(.minutes(1)))
+@Suite("the write of the skill export", .testTimeLimit)
 struct SkillExportWriterTests {
     @Test func theExportHasOnlyItsFieldsAndMode0600() async throws {
         let home = try TemporaryFolder()

@@ -13,7 +13,7 @@ import Testing
 @testable import BifrostLayout
 
 @MainActor
-@Suite("bench plan", .timeLimit(.minutes(1)))
+@Suite("bench plan", .testTimeLimit)
 struct BenchPlanTests {
     // The prototype timeline: start 10 s, quiet 4, idle 12, warm 6, stream 12, drag 12, resize
     // 8, typeprep 3 and typing 25. The prototype step "end" (1 s) only waited for the quit of the

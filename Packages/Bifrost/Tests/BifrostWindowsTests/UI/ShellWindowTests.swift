@@ -59,7 +59,7 @@ private final class Parts {
     }
 }
 
-@Suite("shell window", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("shell window", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct ShellWindowTests {
     @Test func theWindowHasTheLookAndTheLimitsOfIndexTs() {

@@ -13,7 +13,7 @@ private func config(_ value: String, realHome: String) -> String? {
         environment: [HomeLocator.testHomeKey: value], realHome: realHome, check: .system)
 }
 
-@Suite("test home (links)", .timeLimit(.minutes(1)))
+@Suite("test home (links)", .testTimeLimit)
 struct TestHomeLinkTests {
     @Test("a symbolic link to the real home or a parent of it is refused")
     func links() throws {

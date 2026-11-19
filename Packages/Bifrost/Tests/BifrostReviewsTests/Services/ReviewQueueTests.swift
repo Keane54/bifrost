@@ -36,7 +36,7 @@ private final class Rounds {
 }
 
 @MainActor
-@Suite("the queue of the PR rounds", .timeLimit(.minutes(1)))
+@Suite("the queue of the PR rounds", .testTimeLimit)
 struct ReviewQueueTests {
     private func pr(_ number: Int) throws -> PRKey {
         try ReviewData.pr("Owner-A/Repo-A#\(number)")

@@ -209,7 +209,7 @@ struct TranscriptTailTests {
 
     // The watch gives one event when it starts, so no write before the start is lost, and one
     // event after a write.
-    @Test(.timeLimit(.minutes(1)))
+    @Test(.testTimeLimit)
     func aWriteGivesAChangeEvent() async throws {
         let projects = try Projects()
         defer { projects.remove() }

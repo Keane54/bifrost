@@ -223,7 +223,7 @@ private func ready(_ entries: AgentEntry...) async -> RegistryHarness {
 }
 
 @MainActor
-@Suite("the registry service: polls", .timeLimit(.minutes(1)))
+@Suite("the registry service: polls", .testTimeLimit)
 struct RegistryPollTests {
     @Test func theNextActivePollStartsOneIntervalAfterTheEndOfThePollBefore() async {
         let h = RegistryHarness()
@@ -428,7 +428,7 @@ struct RegistryPollTests {
 }
 
 @MainActor
-@Suite("the registry service: a window that is not visible", .timeLimit(.minutes(1)))
+@Suite("the registry service: a window that is not visible", .testTimeLimit)
 struct HiddenWindowPollTests {
     @Test func aHiddenWindowPollsEvery15Seconds() async {
         let h = RegistryHarness()
@@ -496,7 +496,7 @@ struct HiddenWindowPollTests {
 }
 
 @MainActor
-@Suite("the registry service: changes and the store", .timeLimit(.minutes(1)))
+@Suite("the registry service: changes and the store", .testTimeLimit)
 struct RegistryChangeTests {
     @Test func theRowsChangeOnlyWhenARowChanges() async {
         let h = await ready()
@@ -900,7 +900,7 @@ struct RegistryChangeTests {
 }
 
 @MainActor
-@Suite("the registry service: a stop", .timeLimit(.minutes(1)))
+@Suite("the registry service: a stop", .testTimeLimit)
 struct RegistryStopTests {
     // The stop comes after the first poll made the other loops and before they run for the
     // first time. The stop task is queued before the loop tasks, so it runs first.
@@ -985,7 +985,7 @@ struct RegistryStopTests {
 }
 
 @MainActor
-@Suite("the registry service: a wait for a row", .timeLimit(.minutes(1)))
+@Suite("the registry service: a wait for a row", .testTimeLimit)
 struct RowWaitTests {
     @Test func aWaitEndsWithTheFirstRowThatMatchesAfterAChange() async throws {
         let h = RegistryHarness { $0.active = { n in n == 1 ? AgentList() : list(bg()) } }
@@ -1123,7 +1123,7 @@ private func lists(_ replies: AgentList...) -> (Int) throws -> AgentList {
 // that session for good. A failed or partial list never counts, and a deferred delete does not
 // count, because the session can come back.
 @MainActor
-@Suite("the registry service: a session that is gone", .timeLimit(.minutes(1)))
+@Suite("the registry service: a session that is gone", .testTimeLimit)
 struct GoneSessionTests {
     @Test func aFailedFullListBetweenTwoGoodListsDoesNotCount() async {
         let h = RegistryHarness(withGone()) {
@@ -1229,7 +1229,7 @@ struct GoneSessionTests {
 }
 
 @MainActor
-@Suite("the registry service: rows that only an --all read lists", .timeLimit(.minutes(1)))
+@Suite("the registry service: rows that only an --all read lists", .testTimeLimit)
 struct UnconfirmedRowTests {
     // The marks of the rows that an --all read added follow the turns of the lists in their lock,
     // not the wall clock. The wall clock steps back 3 s at 4.5 s. The active list of 4 s then
@@ -1357,7 +1357,7 @@ struct UnconfirmedRowTests {
 }
 
 @MainActor
-@Suite("the registry service: live lines", .timeLimit(.minutes(1)))
+@Suite("the registry service: live lines", .testTimeLimit)
 struct RegistryLiveTests {
     @Test func aStateEventShowsAtOnce() async {
         let h = await ready()
@@ -1425,7 +1425,7 @@ struct RegistryLiveTests {
 }
 
 @MainActor
-@Suite("the registry service: the newest rate limits", .timeLimit(.minutes(1)))
+@Suite("the registry service: the newest rate limits", .testTimeLimit)
 struct RegistryRateLimitTests {
     private let limits = RateLimits(sevenDay: RateWindow(usedPercent: 15, resetsAt: 9_000_000))
 

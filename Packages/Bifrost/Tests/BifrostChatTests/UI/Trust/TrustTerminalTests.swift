@@ -88,7 +88,7 @@ private final class TrustFixture {
     }
 }
 
-@Suite("trust terminal", .serialized, .timeLimit(.minutes(1)), .tags(.realProcess))
+@Suite("trust terminal", .serialized, .testTimeLimit, .tags(.realProcess))
 @MainActor
 struct TrustTerminalTests {
     // claude runs with no arguments in the real folder of the clone, and its output shows in

@@ -66,7 +66,7 @@ private final class BoxParts {
     }
 }
 
-@Suite("the send box", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the send box", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct SendBoxTests {
     // Each session has its own draft. The draft stays when the selection changes, and the box

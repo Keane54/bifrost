@@ -79,7 +79,7 @@ private func attachedUnfocused(screen: CGSize = smallScreen) -> SizeSync {
     return size
 }
 
-@Suite("chat size", .timeLimit(.minutes(1)))
+@Suite("chat size", .testTimeLimit)
 struct SizeSyncTests {
     @Test func aVisibleWindowWaitsForItsPanel() {
         var size = SizeSync()
@@ -261,7 +261,7 @@ struct SizeSyncTests {
 // The sender of the sizes to the PTY, on a manual clock: one debounce of 150 ms, the bump, 60 ms
 // and the fit.
 @MainActor
-@Suite("size sender", .timeLimit(.minutes(1)))
+@Suite("size sender", .testTimeLimit)
 struct SizeSenderTests {
     private let clock = ManualClock()
     private var sent = Box()

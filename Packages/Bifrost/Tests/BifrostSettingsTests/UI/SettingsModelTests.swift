@@ -10,7 +10,7 @@ import Testing
 // (docs/behaviour/settings.md, "Saving"). Each test uses a real settings store in a temporary
 // folder. A WriteGate holds a write, so a test can see what waits for it.
 @MainActor
-@Suite("the Settings model", .serialized, .timeLimit(.minutes(1)))
+@Suite("the Settings model", .serialized, .testTimeLimit)
 struct SettingsModelTests {
     // Save adds a typed command one time. The field is empty before the save ends, so a second
     // Save after the end adds nothing.

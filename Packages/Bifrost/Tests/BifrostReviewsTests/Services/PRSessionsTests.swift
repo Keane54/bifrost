@@ -108,7 +108,7 @@ private final class Wall {
 }
 
 @MainActor
-@Suite("the PR sessions", .serialized, .timeLimit(.minutes(1)))
+@Suite("the PR sessions", .serialized, .testTimeLimit)
 struct PRSessionsTests {
     // The registry sleeps on the clock in 4 loops; the wait adds one timer.
     private static let registrySleepers = 4

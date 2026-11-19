@@ -15,7 +15,7 @@ private func hasDebugText(_ text: String) -> Bool {
 }
 
 @MainActor
-@Suite("the texts of the errors of the registry", .timeLimit(.minutes(1)))
+@Suite("the texts of the errors of the registry", .testTimeLimit)
 struct RegistryErrorTextTests {
     @Test func aRegistryFileThatCannotBeReadLogsTheReason() throws {
         let folder = try TemporaryFolder()

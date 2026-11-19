@@ -59,7 +59,7 @@ struct TabMenuItem {
 // the active tab, the Add tab button, the rename in place and the tab menu.
 // The rename field of a tab is a SwiftUI text field, so the suite takes its turn with the other
 // tests of SwiftUI text fields (SharedFieldEditor).
-@Suite("Overview tabs", .serialized, .sharedFieldEditor, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Overview tabs", .serialized, .sharedFieldEditor, .testTimeLimit, .tags(.window))
 @MainActor
 struct OverviewTabsTests {
     private static let rows = [

@@ -14,7 +14,7 @@ import Testing
 // the column list with its drag, the locked kind row, the filter groups, the Tab colour group
 // with its arrow keys and Reset to default. The panel edits the Overview of the test parts
 // (overview:1), and the table of that Overview shows each change.
-@Suite("Overview Settings panel", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Overview Settings panel", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct OverviewSettingsPanelTests {
     private static let settingsID = panel("overview-settings:1")

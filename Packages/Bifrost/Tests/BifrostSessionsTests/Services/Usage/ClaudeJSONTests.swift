@@ -17,7 +17,7 @@ private func flag(_ home: TemporaryFolder) async -> Bool {
     await ClaudeJSON.extraUsageFlag(home: home.url)
 }
 
-@Suite("~/.claude.json flag", .timeLimit(.minutes(1)))
+@Suite("~/.claude.json flag", .testTimeLimit)
 struct ClaudeJSONTests {
     @Test func theFileIsClaudeJsonInTheHome() {
         let home = URL(filePath: "/tmp/test-home", directoryHint: .isDirectory)

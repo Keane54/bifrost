@@ -1,10 +1,11 @@
 import BifrostFoundation
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the rules of the outbox", .timeLimit(.minutes(1)))
+@Suite("the rules of the outbox", .testTimeLimit)
 struct OutboxRulesTests {
     private static func full(_ head: CommitID) throws -> FullPR {
         let member = Rows.person("user-b")

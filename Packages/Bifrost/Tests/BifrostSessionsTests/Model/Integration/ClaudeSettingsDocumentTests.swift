@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -5,7 +6,7 @@ import Testing
 
 private typealias Document = ClaudeSettingsDocument
 
-@Suite("the Claude Code settings document", .timeLimit(.minutes(1)))
+@Suite("the Claude Code settings document", .testTimeLimit)
 struct ClaudeSettingsDocumentTests {
     // Each object keeps the order of its keys, and each number keeps its text.
     @Test func theKeyOrderAndTheNumberTextsStayInTheText() throws {

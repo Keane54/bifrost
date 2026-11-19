@@ -25,7 +25,7 @@ private func isGone(_ pid: pid_t) -> Bool {
 // program late, so the limit is wide.
 private let wide = Duration.seconds(60)
 
-@Suite("the first line of a program", .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("the first line of a program", .testTimeLimit, .tags(.realProcess))
 struct ProcessLinesTests {
     // The tests start real programs.
     init() throws { try TestSandbox.require() }

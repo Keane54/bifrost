@@ -4,7 +4,7 @@ import Testing
 
 // The temporary folder of a test (TemporaryFolder in BifrostTestSupport). remove() frees the path
 // at once with a rename, and removes the content in the background.
-@Suite("the temporary folder of a test", .timeLimit(.minutes(1)))
+@Suite("the temporary folder of a test", .testTimeLimit)
 struct TemporaryFolderTests {
     @Test func removeFreesThePathAtOnceAndThenRemovesTheContent() async throws {
         let folder = try TemporaryFolder()

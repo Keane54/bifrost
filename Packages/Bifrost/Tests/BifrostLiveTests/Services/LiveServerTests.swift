@@ -163,7 +163,7 @@ private func isSocket(_ path: String) -> Bool {
 }
 
 @MainActor
-@Suite("Live server", .timeLimit(.minutes(1)))
+@Suite("Live server", .testTimeLimit)
 struct LiveServerTests {
     @Test("the server listens on a socket with mode 0600 in a directory with mode 0700")
     func startListens() async throws {
@@ -490,7 +490,7 @@ struct LiveServerTests {
 }
 
 @MainActor
-@Suite("the rules of the Live details server", .timeLimit(.minutes(1)))
+@Suite("the rules of the Live details server", .testTimeLimit)
 struct LiveServerRuleTests {
     // The server makes each missing folder of the socket path with mode 0700. Then it sets the
     // mode of the folder of the socket. The folder "a" comes from the first mkdir, and "a/b"

@@ -30,7 +30,7 @@ private func openStore(
 }
 
 @MainActor
-@Suite("usage alert store", .timeLimit(.minutes(1)))
+@Suite("usage alert store", .testTimeLimit)
 struct UsageAlertStoreTests {
     @Test func noFileGivesNoNotifiedPeriod() async throws {
         let folder = try TemporaryFolder()

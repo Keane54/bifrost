@@ -1,4 +1,5 @@
 import BifrostSessions
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -6,7 +7,7 @@ import Testing
 
 // The settings of Reviews in the types of the rules.
 
-@Suite("the Reviews config", .timeLimit(.minutes(1)))
+@Suite("the Reviews config", .testTimeLimit)
 struct ReviewsConfigTests {
     // The defaults of Settings > Reviews: watch off, automatic fixes on, team requests on, three
     // PR sessions, a pause of one hour and a poll each two minutes.

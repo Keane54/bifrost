@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -32,7 +33,7 @@ private func ids(_ list: [OpenItems.Item]) -> [String] {
     list.map(\.id.text)
 }
 
-@Suite("the My PRs rows", .timeLimit(.minutes(1)))
+@Suite("the My PRs rows", .testTimeLimit)
 struct MyPRRulesTests {
     @Test func copilotCanShowCommentsButNeverApproved() throws {
         let first = try R.review("PRR_c1", by: R.copilot, .commented, at: R.at(-300))

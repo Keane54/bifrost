@@ -1,12 +1,13 @@
 // The flags of the PR sessions (docs/behaviour/reviews.md, "PR sessions"): Claude Code enforces
 // what a session can do, so the argv is pinned exactly.
 import BifrostSessions
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the flags of the PR sessions", .timeLimit(.minutes(1)))
+@Suite("the flags of the PR sessions", .testTimeLimit)
 struct PRSessionArgsTests {
     private let input = URL(filePath: "/r/repos/o/r/.bifrost-io/7", directoryHint: .isDirectory)
     private let skills = URL(filePath: "/App/bifrost-skills", directoryHint: .isDirectory)

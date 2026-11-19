@@ -21,7 +21,7 @@ private func gh(_ runner: FakeRunner) -> GHRunner {
 
 private func node(_ text: String) throws -> NodeID { try #require(NodeID(text)) }
 
-@Suite("the gh runner of Reviews", .timeLimit(.minutes(1)))
+@Suite("the gh runner of Reviews", .testTimeLimit)
 struct GHRunnerTests {
     @Test func ghGetsTheLoginEnvironmentAndNoPrompt() async throws {
         let runner = FakeRunner(ExecResult(.exited(0), stdout: "{}"))

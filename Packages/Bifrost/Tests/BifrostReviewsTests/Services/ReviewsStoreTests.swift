@@ -96,7 +96,7 @@ private func openThroughGate(
 }
 
 @MainActor
-@Suite("the Reviews store", .timeLimit(.minutes(1)))
+@Suite("the Reviews store", .testTimeLimit)
 struct ReviewsStoreTests {
     // The first open copies state.json byte for byte to state.json.before-native, with the mode
     // 0600, before it saves. With no state.json, the copy is empty.

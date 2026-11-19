@@ -18,7 +18,7 @@ private struct CancelProbe: CommandRunner {
 
 // The runs of claude: the program, the env, the time limit and the output.
 
-@Suite("running Claude", .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("running Claude", .testTimeLimit, .tags(.realProcess))
 struct ClaudeRunnerTests {
     @Test("the Claude run uses the base environment without the removed variables")
     func childEnvironment() async {
@@ -107,7 +107,7 @@ private func failedEnd(_ event: SessionsLogEvent?) -> ExecEnd? {
 }
 
 // The one login shell of the start gives the path of claude and the env of the claude runs.
-@Suite("the login shell", .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("the login shell", .testTimeLimit, .tags(.realProcess))
 struct LoginShellTests {
     private func load(
         _ result: ExecResult, shell: String? = "/bin/zsh", fallback: [String: String] = [:],
@@ -264,7 +264,7 @@ struct LoginShellTests {
 
 // The list of the agents: "claude agents --json" and its parse.
 
-@Suite("agent listing", .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("agent listing", .testTimeLimit, .tags(.realProcess))
 struct ListAgentsTests {
     @Test("agent listing adds --all only when asked")
     func addsAll() async {

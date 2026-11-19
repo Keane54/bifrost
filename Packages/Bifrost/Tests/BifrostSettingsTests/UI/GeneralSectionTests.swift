@@ -22,7 +22,7 @@ private typealias Settings = BifrostSettings.Settings
 // tests that show views use a window that is never ordered front. The app finder of a test reads
 // a fake list of paths, never the disk.
 @MainActor
-@Suite("Settings > General", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Settings > General", .serialized, .testTimeLimit, .tags(.window))
 struct GeneralSectionTests {
     // The labels of the rows of the Electron app, in the order of its General section.
     private static let electronOrder = [

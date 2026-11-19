@@ -1,10 +1,11 @@
 // The baseline of a review (docs/behaviour/reviews.md, "Review rounds").
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the baseline of a review", .timeLimit(.minutes(1)))
+@Suite("the baseline of a review", .testTimeLimit)
 struct BaselineTests {
     private func review(_ hex: String?, at seconds: Double = 0, state: ReviewState = .approved)
         -> ViewerReview

@@ -178,7 +178,7 @@ private func runLoopTurn() {
     RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
 }
 
-@Suite("main menu", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("main menu", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct MainMenuTests {
     // The test process ends its launch one time, so AppKit adds its items to the main menu as in

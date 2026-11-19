@@ -1,4 +1,5 @@
 import BifrostLook
+import BifrostTestSupport
 import Foundation
 import Synchronization
 import Testing
@@ -15,7 +16,7 @@ private func close(_ a: Double, _ b: Double, _ places: Double = 6) -> Bool {
     (a - b).magnitude < pow(10, -places) / 2
 }
 
-@Suite("the background layer", .timeLimit(.minutes(1)))
+@Suite("the background layer", .testTimeLimit)
 struct BackgroundLayerTests {
     @Test("the window background colour stays so the first paint has no flash")
     func windowBackground() {
@@ -78,7 +79,7 @@ struct BackgroundLayerTests {
     }
 }
 
-@Suite("the motion of the background", .timeLimit(.minutes(1)))
+@Suite("the motion of the background", .testTimeLimit)
 struct BackgroundMotionValueTests {
     // User decision, 2026-11-06: the motion felt a little slow.
     @Test("each field has its own cycle of 17 to 37 s with no common factor below 5")
@@ -199,7 +200,7 @@ struct BackgroundMotionValueTests {
 }
 
 // User decision, 2026-11-10: the motion moves 30 times each second, not at the display rate.
-@Suite("the motion steps", .timeLimit(.minutes(1)))
+@Suite("the motion steps", .testTimeLimit)
 struct MotionStepTests {
     @Test
     func thirtyTimesASecond() {
@@ -223,7 +224,7 @@ struct MotionStepTests {
 
 // User decision, 2026-11-10: the background is drawn at a part of the device pixels and scaled
 // up. The stretch stays small, so the grain of the dither stays fine.
-@Suite("the canvas size", .timeLimit(.minutes(1)))
+@Suite("the canvas size", .testTimeLimit)
 struct CanvasSizeTests {
     @Test("each canvas draws at a part of its device pixels, from 1/4 to 1")
     func part() {
@@ -272,7 +273,7 @@ struct CanvasSizeTests {
     }
 }
 
-@Suite("the paint of the layers", .timeLimit(.minutes(1)))
+@Suite("the paint of the layers", .testTimeLimit)
 struct LayerPaintTests {
     @Test("each field fades from full glow at the centre to zero at the edge")
     func fade() {
@@ -321,7 +322,7 @@ struct LayerPaintTests {
     }
 }
 
-@Suite("the dither", .timeLimit(.minutes(1)))
+@Suite("the dither", .testTimeLimit)
 struct DitherTests {
     @Test("a field fades with its distance from the centre")
     func fieldFade() {
@@ -544,7 +545,7 @@ private let darkestLuminance = 0.008
 // The brief of 2026-11-06: at the brightest and the darkest point of the background, under a
 // panel at the default Panel transparency, the text stays readable and the boxes stay clearly
 // visible. The watch and box colours are in ReadableColours (LookSupport.swift).
-@Suite("the cover and the contrast of the background", .timeLimit(.minutes(1)))
+@Suite("the cover and the contrast of the background", .testTimeLimit)
 struct BackgroundContrastTests {
     private let transparency = ThemeTokens.defaultTransparency
 

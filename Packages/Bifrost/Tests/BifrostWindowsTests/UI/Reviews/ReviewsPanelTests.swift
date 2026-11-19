@@ -99,7 +99,7 @@ private func mine(_ text: String, _ claude: ClaudeState) throws -> ReviewRow {
 }
 
 @MainActor
-@Suite("the Reviews panel", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Reviews panel", .serialized, .testTimeLimit, .tags(.window))
 struct ReviewsPanelTests {
     // The Trust needed strip lists each repository that needs trust by name, with the count of
     // its PRs. Its Trust button opens the trust panel for that repository, which asks Reviews

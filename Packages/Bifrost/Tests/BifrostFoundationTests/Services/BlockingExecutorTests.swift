@@ -7,7 +7,7 @@ import Testing
 
 // The blocking executor runs the calls that can wait a long time on its own threads, so they
 // never hold the threads of the cooperative pool. A run with a time limit races the clock.
-@Suite("the blocking executor", .timeLimit(.minutes(1)))
+@Suite("the blocking executor", .testTimeLimit)
 struct BlockingExecutorTests {
     @Test func theWorkRunsOnTheQueueOfTheExecutor() async {
         let label = await BlockingExecutor.run {

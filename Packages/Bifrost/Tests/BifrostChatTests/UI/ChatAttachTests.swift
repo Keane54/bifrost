@@ -25,7 +25,7 @@ private let agentScreen =
 @MainActor
 private let promptScreen = "\u{1b}[2J\u{1b}[H> hello\r\n  ? for shortcuts\r\n"
 
-@Suite("chat attach", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("chat attach", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct ChatAttachTests {
     // Open the chat of the first session, focused, and wait for its attach.

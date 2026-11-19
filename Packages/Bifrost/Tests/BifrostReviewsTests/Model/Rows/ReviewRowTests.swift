@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -8,7 +9,7 @@ import Testing
 
 private typealias R = Rows
 
-@Suite("the rows of a poll", .timeLimit(.minutes(1)))
+@Suite("the rows of a poll", .testTimeLimit)
 struct ReviewRowTests {
     @Test func theBasicAnswerGivesTheRowsOfBothTabs() throws {
         let answer = try PollAnswer.decode(FixtureFiles.data("poll-basic")).get()

@@ -10,7 +10,7 @@ import Testing
 // close and the focus, the keys and the place on the screen (docs/behaviour/menu.md). The window
 // of each test is never ordered front, so the panels never show on the screen. The keys go to the
 // parent window, as AppKit gives them to the key window.
-@Suite("Bifrost menu", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Bifrost menu", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct BifrostMenuTests {
     private static func spec(_ id: String, enabled: Bool = true, reason: String? = nil)

@@ -10,7 +10,7 @@ import Testing
 // case. So the chat finds its row and attaches. The test uses the fake PTY of the fixture: no
 // child process starts.
 @Suite(
-    "an upper-case session ID", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+    "an upper-case session ID", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct UpperCaseSessionTests {
     @Test func aChatOfAnUpperCaseSessionIDOpensAndAttaches() async throws {

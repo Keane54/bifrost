@@ -16,7 +16,7 @@ import Testing
 // The canvas, the frames and the drag (docs/behaviour/windows.md). Each test has its own
 // window, which is never ordered front. MouseDriver gives the mouse events (MouseEvents.swift).
 @MainActor
-@Suite("canvas", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("canvas", .serialized, .testTimeLimit, .tags(.window))
 struct CanvasTests {
     // A drag of the title bar moves only the frame view, with no snap. The layout gets the
     // snapped rect at the release.

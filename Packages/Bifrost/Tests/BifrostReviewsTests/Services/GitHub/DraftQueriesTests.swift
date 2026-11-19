@@ -9,7 +9,7 @@ import Testing
 @testable import BifrostReviews
 
 @MainActor
-@Suite("the reads of the panels", .timeLimit(.minutes(1)))
+@Suite("the reads of the panels", .testTimeLimit)
 struct DraftQueriesTests {
     // Both texts are reads with each value in a variable, and the fresh read gives the PR.
     @Test func theFreshReadIsARead() async throws {

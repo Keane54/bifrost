@@ -74,7 +74,7 @@ private func links(_ calls: Calls, read: InventoryRead = .found(inventory)) -> S
 }
 
 @MainActor
-@Suite("Settings > Daily update", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Settings > Daily update", .serialized, .testTimeLimit, .tags(.window))
 struct DailyUpdateSectionTests {
     @Test func theRowsAreInOrder() async throws {
         let p = try await SettingsParts()

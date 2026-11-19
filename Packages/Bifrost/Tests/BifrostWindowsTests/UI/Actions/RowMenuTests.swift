@@ -54,7 +54,7 @@ private final class OverviewWindow {
     }
 }
 
-@Suite("the row menu", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the row menu", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct RowMenuTests {
     // The ID of each row, with "-" for a separator.

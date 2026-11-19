@@ -12,6 +12,18 @@ private let period = 1.0 / 120
 @MainActor
 @Suite("bench metrics")
 struct MetricsTests {
+    // True when the kernel counts the CPU cycles of this process. A virtual machine can have no
+    // CPU counters, and then it counts no cycles and no instructions.
+    static func countsCycles() -> Bool {
+        var info = rusage_info_v6()
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) {
+                proc_pid_rusage(getpid(), RUSAGE_INFO_V6, $0)
+            }
+        }
+        return result == 0 && info.ri_cycles > 0
+    }
+
     // A gap of n display periods between two frames counts n - 1 missed frames. The gap is
     // rounded to whole periods, as in the prototype.
     @Test func aGapOfThreePeriodsCountsTwoMissedFrames() {
@@ -89,7 +101,9 @@ struct MetricsTests {
     @Test func theUsageOfAProcessComesFromItsPid() throws {
         let usage = try #require(ProcessMetrics.usage(of: getpid()))
         #expect(usage.footprint > 1_000_000)
-        #expect(usage.instructions > 0)
+        // A virtual machine, such as a CI runner, can have no CPU counters: then the kernel
+        // gives 0 instructions and 0 cycles for each process.
+        if Self.countsCycles() { #expect(usage.instructions > 0) }
         #expect(usage.cpuSeconds > 0)
         // The CPU time is the CPU time of getrusage (a wrong time base gives a factor of 40).
         var own = rusage()

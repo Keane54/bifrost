@@ -19,7 +19,7 @@ import Testing
 // attach, OSC 52, the focus reports of a new attach, a refused open, the exit line, the close
 // with its SIGHUP, and the session size of a window that is not focused. A test home in a
 // TemporaryFolder holds the files of that fake.
-@Suite("chat terminal", .serialized, .timeLimit(.minutes(2)), .tags(.realProcess, .window))
+@Suite("chat terminal", .serialized, .testTimeLimit, .tags(.realProcess, .window))
 @MainActor
 struct ChatTerminalTests {
     // Open the chat of the first session, focused, and wait for the fake attach.

@@ -7,7 +7,7 @@ import Testing
 // The one owned worker of a type: its work runs one at a time, in the order of the adds.
 
 @MainActor
-@Suite("the serial worker", .timeLimit(.minutes(1)))
+@Suite("the serial worker", .testTimeLimit)
 struct SerialWorkTests {
     // A work starts only after the work before it ended, also when the work before it waits.
     @Test func eachWorkStartsAfterTheWorkBeforeItEnded() async {

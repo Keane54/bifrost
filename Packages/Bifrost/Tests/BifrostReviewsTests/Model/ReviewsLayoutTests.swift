@@ -1,3 +1,4 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -11,7 +12,7 @@ private func repo(_ text: String) throws -> RepoName {
     try #require(RepoName(text))
 }
 
-@Suite("reviews layout", .timeLimit(.minutes(1)))
+@Suite("reviews layout", .testTimeLimit)
 struct ReviewsLayoutTests {
     @Test func theCloneIsInLowerCase() throws {
         let layout = ReviewsLayout(folder: folder)

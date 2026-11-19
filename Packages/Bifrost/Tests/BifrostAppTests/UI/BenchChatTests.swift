@@ -14,7 +14,7 @@ import Testing
 @testable import BifrostApp
 @testable import BifrostChat
 
-@Suite("bench chats", .serialized, .timeLimit(.minutes(2)), .tags(.realProcess, .window))
+@Suite("bench chats", .serialized, .testTimeLimit, .tags(.realProcess, .window))
 @MainActor
 struct BenchChatTests {
     // A chat is ready after its attach and its first output. Then a Ctrl+C is a byte of the

@@ -1,10 +1,11 @@
 // The path rule of a fix commit (docs/behaviour/reviews.md, "Safety"). Each compare ignores case,
 // because the default APFS volume ignores it.
+import BifrostTestSupport
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the path rule of a fix commit", .timeLimit(.minutes(1)))
+@Suite("the path rule of a fix commit", .testTimeLimit)
 struct CommitFileRuleTests {
     @Test func aWorkflowFileIsNeverCommitted() {
         let paths = [

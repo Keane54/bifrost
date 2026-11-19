@@ -13,7 +13,7 @@ private func mode(_ path: String) -> mode_t {
     return info.st_mode & 0o777
 }
 
-@Suite("the lock of a store folder", .timeLimit(.minutes(1)))
+@Suite("the lock of a store folder", .testTimeLimit)
 struct FileLockTests {
     // The take makes the folder and the lock file with private modes. A second take is held,
     // and after the release a new take works. A second release does nothing.

@@ -30,7 +30,7 @@ private func links(
 }
 
 @MainActor
-@Suite("Settings > Updates", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Settings > Updates", .serialized, .testTimeLimit, .tags(.window))
 struct UpdatesSectionTests {
     @Test func theRowsAreInOrder() async throws {
         let p = try await SettingsParts()

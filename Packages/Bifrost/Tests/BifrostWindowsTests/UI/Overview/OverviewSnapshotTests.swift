@@ -8,7 +8,7 @@ import Testing
 
 // The snapshot of the Overview body, and the self-test of the image compare (Snapshot). The rows
 // are test rows: no real session name or folder.
-@Suite("Overview snapshot", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Overview snapshot", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct OverviewSnapshotTests {
     private let snapshot = Snapshot(bundle: .module, target: "BifrostWindowsTests")
@@ -83,7 +83,7 @@ struct OverviewSnapshotTests {
         try FileManager.default.createDirectory(at: stored, withIntermediateDirectories: true)
         try #require(Snapshot.png(base)).write(to: stored.appending(path: "block.png"))
         let bundle = try #require(Bundle(url: folder.url))
-        let check = Snapshot(bundle: bundle, target: "BifrostWindowsTests")
+        let check = Snapshot(bundle: bundle, target: "BifrostWindowsTests", pixels: true)
         check.check(Block(frame: frame), named: "block", background: .black)
         check.check(atLimit, named: "block", background: .black)
         withKnownIssue("6 pixels differ: over the limit of 5") {
@@ -95,6 +95,13 @@ struct OverviewSnapshotTests {
         }
         withKnownIssue("no stored PNG") {
             check.check(Block(frame: frame), named: "missing", background: .black)
+        }
+        // With the pixel compare off (SNAPSHOT_PIXELS=0 on the CI runner), only the size counts.
+        let sizeOnly = Snapshot(bundle: bundle, target: "BifrostWindowsTests", pixels: false)
+        sizeOnly.check(overLimit, named: "block", background: .black)
+        withKnownIssue("an image of another size, with the pixel compare off") {
+            let other = Block(frame: NSRect(x: 0, y: 0, width: 40, height: 50))
+            sizeOnly.check(other, named: "block", background: .black)
         }
     }
 }

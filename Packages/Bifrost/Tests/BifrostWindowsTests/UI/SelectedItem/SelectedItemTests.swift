@@ -101,7 +101,7 @@ private final class PanelParts {
     }
 }
 
-@Suite("the Selected Item panel", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Selected Item panel", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct SelectedItemTests {
     // The name line: the row icon, the name, the state label in its tone. A row with no priority

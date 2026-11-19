@@ -21,7 +21,7 @@ private func end(_ final: String) -> DictationViewEvent { .end(final: final) }
 
 private func ms(_ duration: Duration) -> Int { Int(duration / .milliseconds(1)) }
 
-@Suite("the dictation of a chat", .timeLimit(.minutes(1)))
+@Suite("the dictation of a chat", .testTimeLimit)
 @MainActor
 struct ChatDictationTests {
     // The times of docs/behaviour/dictation.md: the key wait, the close wait and the notice.
@@ -229,7 +229,7 @@ struct ChatDictationTests {
     }
 }
 
-@Suite("an early stop of a dictation", .timeLimit(.minutes(1)))
+@Suite("an early stop of a dictation", .testTimeLimit)
 @MainActor
 struct EarlyStopTests {
     @Test func aCancelKeepsTheTypedTextAndTheEndTypesNothing() async {
@@ -320,7 +320,7 @@ struct EarlyStopTests {
     }
 }
 
-@Suite("the keys during a final text", .timeLimit(.minutes(1)))
+@Suite("the keys during a final text", .testTimeLimit)
 @MainActor
 struct KeysDuringAFinalTextTests {
     @Test func keysWaitForTheFinalTextAndGoInTheirOrder() async {
@@ -566,7 +566,7 @@ struct KeysDuringAFinalTextTests {
     }
 }
 
-@Suite("one dictation at a time", .timeLimit(.minutes(1)))
+@Suite("one dictation at a time", .testTimeLimit)
 @MainActor
 struct OneDictationAtATimeTests {
     @Test func aHoldAfterAnEarlyStopWaitsForItsEnd() async {
@@ -691,7 +691,7 @@ struct OneDictationAtATimeTests {
     }
 }
 
-@Suite("the notice of a chat", .timeLimit(.minutes(1)))
+@Suite("the notice of a chat", .testTimeLimit)
 @MainActor
 struct NoticeOfAChatTests {
     // The notice of a denied microphone keeps its button, and it stays until a good start. A
@@ -828,7 +828,7 @@ struct NoticeOfAChatTests {
     }
 }
 
-@Suite("the writes, the typed tail and the look of a dictation", .timeLimit(.minutes(1)))
+@Suite("the writes, the typed tail and the look of a dictation", .testTimeLimit)
 @MainActor
 struct WritesAndLookTests {
     // A write goes at once. The next write waits the gap, and it has the newest text. After
@@ -971,7 +971,7 @@ private final class EngineChat {
     var closed: Bool { !engine.microphoneOpen && engine.microphoneOpens == engine.microphoneCloses }
 }
 
-@Suite("the dictation of a chat with the fake engine", .timeLimit(.minutes(1)))
+@Suite("the dictation of a chat with the fake engine", .testTimeLimit)
 @MainActor
 struct ChatDictationEngineTests {
     private let final = FakeSpeechScript.helperText

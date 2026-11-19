@@ -13,7 +13,7 @@ import Testing
 // ignore list with the reasons of a refused entry. The tests that show views use a window that is
 // never ordered front.
 @MainActor
-@Suite("Settings > Reviews", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Settings > Reviews", .serialized, .testTimeLimit, .tags(.window))
 struct ReviewsSectionTests {
     // The section shows one row for each label, in the order of the Electron app.
     @Test func theSectionShowsEachRowInItsOrder() async throws {

@@ -16,7 +16,7 @@ import BifrostWindows
 // ordered front, with no window key filter, so the recorder takes the keys that it has the focus
 // for.
 @MainActor
-@Suite("Settings > Keys", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Settings > Keys", .serialized, .testTimeLimit, .tags(.window))
 struct KeysSectionTests {
     // The four groups show in the order always, single, hold, dictation, each under its title,
     // and the rows keep the slot order. Each row shows its key with the modifier symbols in the

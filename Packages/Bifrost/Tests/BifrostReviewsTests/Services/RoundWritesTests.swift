@@ -9,7 +9,7 @@ import Testing
 @testable import BifrostReviews
 
 @MainActor
-@Suite("the writes of a request round", .serialized, .timeLimit(.minutes(1)))
+@Suite("the writes of a request round", .serialized, .testTimeLimit)
 struct RoundWritesTests {
     // A member answered thread 1 after the round read it: the reply goes, but the thread stays
     // open and its item waits in held, as at a drop of the outbox, so the next round handles the

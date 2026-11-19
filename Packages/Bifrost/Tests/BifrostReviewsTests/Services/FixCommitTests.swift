@@ -9,7 +9,7 @@ import Testing
 @testable import BifrostReviews
 
 @MainActor
-@Suite("the fix commit", .serialized, .timeLimit(.minutes(1)), .tags(.realProcess))
+@Suite("the fix commit", .serialized, .testTimeLimit, .tags(.realProcess))
 struct FixCommitTests {
     // The session changed three files and listed two: the commit holds only the two, on the head,
     // and a cut-off run finds the same commit again.

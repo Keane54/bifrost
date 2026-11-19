@@ -1,11 +1,12 @@
 // The end of the turn of a PR session (docs/behaviour/reviews.md, "PR sessions"): one case per
 // rule, with the edges of the settle time after work (10 s), the time with no start (120 s) and
 // the grace of a missing row (60 s).
+import BifrostTestSupport
 import Testing
 
 @testable import BifrostReviews
 
-@Suite("the end rule of a round", .timeLimit(.minutes(1)))
+@Suite("the end rule of a round", .testTimeLimit)
 struct RoundEndTests {
     private let limit = Duration.seconds(1800)
 

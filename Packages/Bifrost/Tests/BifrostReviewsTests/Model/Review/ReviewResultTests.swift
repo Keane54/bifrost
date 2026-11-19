@@ -1,6 +1,7 @@
 // The strict check of result.json (docs/behaviour/reviews.md, "Review rounds"): one good file
 // and one bad file per rule. A refusal names a field or a limit only.
 import BifrostFoundation
+import BifrostTestSupport
 import Foundation
 import Testing
 
@@ -108,7 +109,7 @@ private let badFiles: [BadResultFile] = [
     },
 ]
 
-@Suite("the check of the result file", .timeLimit(.minutes(1)))
+@Suite("the check of the result file", .testTimeLimit)
 struct ReviewResultTests {
     // A good file gives only the known fields: the reason on one line, a summary with only white
     // space as no summary, and the range of a comment.

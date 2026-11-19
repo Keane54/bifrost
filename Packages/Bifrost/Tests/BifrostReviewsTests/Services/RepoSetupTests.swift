@@ -83,7 +83,7 @@ private struct SetupFixture {
 private func repo(_ text: String) throws -> RepoName { try #require(RepoName(text)) }
 
 @MainActor
-@Suite("the set-up of the review clones", .serialized, .timeLimit(.minutes(2)), .tags(.realProcess))
+@Suite("the set-up of the review clones", .serialized, .testTimeLimit, .tags(.realProcess))
 struct RepoSetupTests {
     // The first turn-on clones each repository of the open PRs and requests that is not
     // ignored, one at a time, then lists the ones that need trust with the count of their PRs.

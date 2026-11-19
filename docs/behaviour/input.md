@@ -69,7 +69,8 @@ time.
 
 - A send waits until the attach's output has been quiet for 1.5 s once, whether it writes through
   the chat window or through a hidden attach. A busy session may never go quiet, so after 15 s the
-  job writes nothing and ends.
+  job writes nothing and ends. For a hidden attach, the 15 s start once the attach is open, so a
+  slow start of the attach on a busy Mac doesn't use them up.
 - An Interrupt only needs a connected attach, because a working session shows a spinner and never
   goes quiet. It sends its Esc 300 ms after the attach's first output.
 - If the attach ends while a job waits or writes, the job ends. So does a job whose row now has a

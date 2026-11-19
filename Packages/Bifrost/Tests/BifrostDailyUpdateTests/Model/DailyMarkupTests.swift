@@ -1,9 +1,10 @@
+import BifrostTestSupport
 import Foundation
 import Testing
 
 @testable import BifrostDailyUpdate
 
-@Suite("the Daily update markup", .timeLimit(.minutes(1)))
+@Suite("the Daily update markup", .testTimeLimit)
 struct DailyMarkupTests {
     private func boldText(_ text: AttributedString) -> [String] {
         text.runs.compactMap { run in

@@ -44,7 +44,7 @@ private func listenError(
 }
 
 @MainActor
-@Suite("the Unix socket listener", .timeLimit(.minutes(1)))
+@Suite("the Unix socket listener", .testTimeLimit)
 struct UnixSocketListenerTests {
     @Test func eachConnectionRunsTheHandlerAndClosesWhenItReturns() async throws {
         let folder = try TemporaryFolder(short: true)

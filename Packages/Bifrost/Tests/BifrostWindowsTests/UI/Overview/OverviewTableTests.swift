@@ -283,7 +283,7 @@ private final class AttachedSessions {
 // The Overview table (docs/behaviour/overview.md, The table): the columns of the tab, the header,
 // the clicks of the rows, the empty texts, the keys, the colours of a watched row, the icon of the
 // app that shows a row and the age texts.
-@Suite("Overview table", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("Overview table", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct OverviewTableTests {
     private static let three = [

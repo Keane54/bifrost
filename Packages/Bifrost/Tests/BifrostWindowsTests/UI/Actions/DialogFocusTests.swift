@@ -43,7 +43,7 @@ private final class Parts {
 // The fields of the dialogs are SwiftUI text fields, so the suite takes its turn with the other
 // tests of SwiftUI text fields (SharedFieldEditor).
 @Suite(
-    "the focus of the dialogs", .serialized, .sharedFieldEditor, .timeLimit(.minutes(1)),
+    "the focus of the dialogs", .serialized, .sharedFieldEditor, .testTimeLimit,
     .tags(.window))
 @MainActor
 struct DialogFocusTests {

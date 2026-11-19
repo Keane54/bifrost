@@ -234,7 +234,7 @@ private final class Harness {
 }
 
 @MainActor
-@Suite("the Reviews part", .serialized, .timeLimit(.minutes(1)))
+@Suite("the Reviews part", .serialized, .testTimeLimit)
 struct ShellReviewsTests {
     @Test func watchGitHubOnOpensTheStoreAndStartsTheWatcher() async throws {
         let h = try await Harness()

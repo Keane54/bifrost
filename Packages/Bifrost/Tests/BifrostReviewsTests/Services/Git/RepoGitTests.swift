@@ -44,7 +44,7 @@ private func git(_ runner: FakeRunner, layout: ReviewsLayout, environment: [Stri
         identity: CommitIdentity(name: "Test", email: "test@example.invalid"), runner: runner)
 }
 
-@Suite("the git runner of Reviews", .timeLimit(.minutes(1)))
+@Suite("the git runner of Reviews", .testTimeLimit)
 struct RepoGitTests {
     @Test func eachCommandGetsTheSafeConfig() async throws {
         #expect(
@@ -264,7 +264,7 @@ struct RepoGitTests {
 
 // The real git: each command is pinned to the repository that Bifrost made, whatever the session
 // writes in its worktree.
-@Suite("the repository pin of the git runner", .timeLimit(.minutes(1)))
+@Suite("the repository pin of the git runner", .testTimeLimit)
 struct RepoGitPinTests {
     // A session rewrites the .git file of its worktree: it names a git folder of the session,
     // whose config sets core.worktree to a checkout of the user and a filter that runs a program.

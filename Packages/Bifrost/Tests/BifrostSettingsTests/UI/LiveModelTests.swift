@@ -14,7 +14,7 @@ import Testing
 // and the back-off runs on a manual clock.
 
 @MainActor
-@Suite("the live model", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the live model", .serialized, .testTimeLimit, .tags(.window))
 struct LiveModelTests {
     // The first read is quiet. When an action starts while it waits, its answer drops at its
     // end, and the status of the action stays.

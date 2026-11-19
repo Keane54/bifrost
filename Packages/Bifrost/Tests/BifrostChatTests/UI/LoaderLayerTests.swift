@@ -14,7 +14,7 @@ import Testing
 
 private let id = "5a0e0001-0000-4000-8000-000000000001"
 
-@Suite("the Take control loader layer", .serialized, .timeLimit(.minutes(1)), .tags(.window))
+@Suite("the Take control loader layer", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct LoaderLayerTests {
     // The values of the look: the six icon tokens from violet to red and no colour of its own,

@@ -13,7 +13,7 @@ private func scale(_ value: JSONValue) -> JSONValue? {
 }
 
 @MainActor
-@Suite("the zoom items with the settings store", .timeLimit(.minutes(1)))
+@Suite("the zoom items with the settings store", .testTimeLimit)
 struct ZoomStepTests {
     // The zoom items of the menu change the Interface scale with an edit (MenuModel.zoomStep). A
     // step stays inside 80 to 150, so a step at a limit changes nothing and writes nothing.

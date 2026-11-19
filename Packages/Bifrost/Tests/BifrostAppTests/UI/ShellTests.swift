@@ -165,7 +165,7 @@ private func withShell(
 }
 
 @MainActor
-@Suite("shell", .serialized, .timeLimit(.minutes(1)), .tags(.realProcess, .window))
+@Suite("shell", .serialized, .testTimeLimit, .tags(.realProcess, .window))
 struct ShellTests {
     // The file of the window state is on the disk after the start, with no move, no mode change
     // and no quit. So a quit that the 2 s limit of QuitWait ends before its bounds write still
