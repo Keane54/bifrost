@@ -39,7 +39,7 @@ package final class TestGate: Sendable {
     private let state = Mutex(State())
     private let limit: Duration
 
-    package init(limit: Duration = .seconds(30)) { self.limit = limit }
+    package init(limit: Duration = testWaitLimit) { self.limit = limit }
 
     // The callers that wait at the gate now.
     package var holding: Int { state.withLock { $0.queue.count } }
@@ -96,7 +96,7 @@ package final class TestGate: Sendable {
     // records an issue and gives false.
     @discardableResult
     package func waitUntilHolding(
-        _ count: Int = 1, within limit: Duration = .seconds(30),
+        _ count: Int = 1, within limit: Duration = testWaitLimit,
         sourceLocation: SourceLocation = #_sourceLocation
     ) async -> Bool {
         let signal = TestSignal()

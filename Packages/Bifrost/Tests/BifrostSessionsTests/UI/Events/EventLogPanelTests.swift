@@ -71,7 +71,7 @@ private final class ShownEventLog {
 
     // Wait until the body shows the values of now.
     func settle(sourceLocation: SourceLocation = #_sourceLocation) async {
-        await waitUntil(within: .seconds(10), sourceLocation: sourceLocation) { [self] in
+        await waitUntil(sourceLocation: sourceLocation) { [self] in
             var known: [String: String] = [:]
             let names = LogView.names(sessions.rows, known: &known)
             return body.state
@@ -86,7 +86,7 @@ private final class ShownEventLog {
     func flush() async {
         await clock.waitForSleepers(1)
         clock.advance(by: EventBatcher.gap)
-        await waitUntil(within: .seconds(10)) { [self] in model.entries == logEntries }
+        await waitUntil { [self] in model.entries == logEntries }
         await settle()
     }
 
@@ -158,7 +158,7 @@ struct EventLogPanelTests {
         #expect(shown.clock.sleeperCount == 1)
         #expect(shown.reloads == start + 1)
         shown.clock.advance(by: .milliseconds(1))
-        await waitUntil(within: .seconds(10)) { shown.table.numberOfRows == 5000 }
+        await waitUntil { shown.table.numberOfRows == 5000 }
         await shown.settle()
         #expect(shown.reloads == start + 2)
         // The newest first.
@@ -171,7 +171,7 @@ struct EventLogPanelTests {
             await shown.clock.waitForSleepers(1)
             shown.clock.advance(by: EventBatcher.gap)
             let last = 20_000 + round * 1000
-            await waitUntil(within: .seconds(10)) { shown.rows.entry(atRow: 0)?.seq == last }
+            await waitUntil { shown.rows.entry(atRow: 0)?.seq == last }
             await shown.settle()
             #expect(shown.reloads == start + 2 + round)
         }

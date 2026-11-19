@@ -112,7 +112,7 @@ struct OverviewTabsTests {
         p.model.menu = driver.menu
         let host = p.body.tabBar
         host.layoutSubtreeIfNeeded()
-        await waitUntil(within: .seconds(10), sourceLocation: sourceLocation) {
+        await waitUntil(sourceLocation: sourceLocation) {
             !host.rootView.frames.tabs.isEmpty
         }
         let event = try #require(
@@ -232,20 +232,20 @@ struct OverviewTabsTests {
         view.tabs[1].rename()
         #expect(view.rename.tab == "t2")
         #expect(view.rename.draft == "Alerts")
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         // The field selects its text, so the typed text replaces the name.
         type(p, ["m", "i", "n", "e", "Enter"])
-        await waitUntil(within: .seconds(10)) { p.config.tabs[1].name == "mine" }
+        await waitUntil { p.config.tabs[1].name == "mine" }
         #expect(view.rename.tab == nil)
         #expect(!view.rename.watching)
         #expect(view.tabs[1].name == "mine")
         // The rows get the focus back, so the Bifrost keys act on the Overview.
-        await waitUntil(within: .seconds(10)) { p.window.firstResponder === p.rows }
+        await waitUntil { p.window.firstResponder === p.rows }
         // An empty name changes nothing.
         view.tabs[1].rename()
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         type(p, [" ", "Enter"])
-        await waitUntil(within: .seconds(10)) { view.rename.tab == nil }
+        await waitUntil { view.rename.tab == nil }
         #expect(p.config.tabs[1].name == "mine")
     }
 
@@ -259,7 +259,7 @@ struct OverviewTabsTests {
         #expect(!driver.menu.isOpen)
         #expect(view.rename.tab == "t1")
         // The name field takes the focus, so typing goes in.
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         view.rename.cancel()
     }
 
@@ -269,10 +269,10 @@ struct OverviewTabsTests {
         // Rename... of the tab menu opens the same field.
         try tabMenu(p, "t1").choose("Rename...")
         #expect(view.rename.tab == "t1")
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         type(p, ["x", "Escape"])
-        await waitUntil(within: .seconds(10)) { view.rename.tab == nil }
-        await waitUntil(within: .seconds(10)) { p.window.firstResponder === p.rows }
+        await waitUntil { view.rename.tab == nil }
+        await waitUntil { p.window.firstResponder === p.rows }
         #expect(p.config.tabs[0].name == "All")
         // The Esc of the field does not open Settings.
         #expect(p.layout.layout.frame(of: .settings) == nil)
@@ -283,14 +283,14 @@ struct OverviewTabsTests {
         let p = try await OverviewParts(rows: Self.rows)
         let view = tabs(p)
         view.tabs[0].rename()
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         type(p, ["o", "n", "e"])
         view.tabs[1].rename()
         #expect(p.config.tabs[0].name == "one")
         #expect(view.rename.tab == "t2")
         #expect(view.rename.draft == "Alerts")
         // Rename... of the tab menu of another tab does the same.
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         type(p, ["t", "w", "o"])
         try tabMenu(p, "t0").choose("Rename...")
         #expect(p.config.tabs[1].name == "two")
@@ -302,20 +302,20 @@ struct OverviewTabsTests {
         let p = try await OverviewParts(rows: Self.rows)
         let view = tabs(p)
         view.tabs[0].rename()
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         type(p, ["y"])
         view.tabs[2].activate()
         #expect(p.config.tabs[0].name == "y")
         #expect(p.config.active == "t0")
         #expect(view.rename.tab == nil)
         view.tabs[1].rename()
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         type(p, ["z"])
         view.addButton.action()
         #expect(p.config.tabs[1].name == "z")
         #expect(p.config.tabs.last?.id == "t6")
         view.tabs[3].rename()
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         type(p, ["w"])
         try tabMenu(p, "t4").choose("Move right")
         #expect(p.config.tabs.first { $0.id == "t3" }?.name == "w")
@@ -332,7 +332,7 @@ struct OverviewTabsTests {
         #expect(!view.rename.watching)
         view.tabs[0].rename()
         #expect(view.rename.watching)
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         type(p, ["q"])
         let field = try #require(
             (p.window.firstResponder as? NSText)?.delegate as? NSView)
@@ -354,10 +354,10 @@ struct OverviewTabsTests {
         #expect(!view.rename.watching)
         // A switch to another app.
         view.tabs[1].rename()
-        await waitUntil(within: .seconds(10)) { editing(p) }
+        await waitUntil { editing(p) }
         type(p, ["k"])
         NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: p.window)
-        await waitUntil(within: .seconds(10)) { p.config.tabs[1].name == "k" }
+        await waitUntil { p.config.tabs[1].name == "k" }
         #expect(view.rename.tab == nil)
     }
 
@@ -482,7 +482,7 @@ struct OverviewTabsTests {
         try driver.key("Escape")
         try driver.key("Escape")
         #expect(!driver.menu.isOpen)
-        await waitUntil(within: .seconds(10)) { p.window.firstResponder === p.rows }
+        await waitUntil { p.window.firstResponder === p.rows }
     }
 
     @Test func aControlClickOnATabOpensItsMenu() async throws {
@@ -513,7 +513,7 @@ struct OverviewTabsTests {
         p.model.menu = driver.menu
         let host = p.body.tabBar
         host.layoutSubtreeIfNeeded()
-        await waitUntil(within: .seconds(10)) { !host.rootView.frames.tabs.isEmpty }
+        await waitUntil { !host.rootView.frames.tabs.isEmpty }
         tabs(p).tabs[0].showMenu()
         #expect(driver.menu.isOpen)
         let rect = try #require(host.rootView.frames.screenRect(of: "t1"))

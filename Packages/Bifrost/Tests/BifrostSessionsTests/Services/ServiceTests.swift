@@ -182,7 +182,7 @@ private final class RegistryHarness {
     // So the condition is true only when no task of the service can run.
     func idle(sourceLocation: SourceLocation = #_sourceLocation) async {
         await waitUntil(
-            within: .seconds(10), every: .milliseconds(1), sourceLocation: sourceLocation
+            every: .milliseconds(1), sourceLocation: sourceLocation
         ) {
             service.awake == deps.waitingCalls + service.queuedLists
                 && service.sleeps == clock.sleeperCount

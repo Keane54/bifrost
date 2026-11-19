@@ -206,7 +206,7 @@ struct SessionInputChatTests {
         await waitUntil { chat.spawner.log.signals.count == 1 }
         var reason: String?? = .none
         Task { reason = .some(await interruptReason(input)) }
-        await waitUntil(within: .seconds(15)) { reason != nil }
+        await waitUntil { reason != nil }
         #expect(reason == .some(nil))
         // The spawn of the chat, then the hidden attach at the session size.
         #expect(chat.spawner.log.opens.count == 2)
@@ -245,7 +245,7 @@ struct SessionInputChatTests {
         chat.open()
         try #require(await chat.waitForAttach())
         let terminal = try chat.terminal()
-        await waitUntil(within: .seconds(30)) {
+        await waitUntil {
                 terminal.state.note == ChatTerminal.giveUpText
             }
         #expect(terminal.state.blocked)

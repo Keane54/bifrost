@@ -160,7 +160,7 @@ final class KeyTestWindow: NSWindow {
 @MainActor
 @discardableResult
 func render(
-    _ view: NSView, within limit: Duration = .seconds(10),
+    _ view: NSView, within limit: Duration = testWaitLimit,
     sourceLocation: SourceLocation = #_sourceLocation, until condition: () -> Bool
 ) async -> Bool {
     await waitUntil(within: limit, sourceLocation: sourceLocation) {

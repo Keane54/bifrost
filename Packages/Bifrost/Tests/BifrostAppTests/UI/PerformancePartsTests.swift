@@ -133,7 +133,7 @@ struct PerformanceWiringTests {
             timing: timing, log: Recorder<SessionsLogEvent>(), health: home.reporter)
         registry.start()
         let sessions = "Bifrost couldn't check for sessions"
-        await waitUntil(within: .seconds(10)) { home.reasons.contains { $0.hasPrefix(sessions) } }
+        await waitUntil { home.reasons.contains { $0.hasPrefix(sessions) } }
         registry.stop()
         let pollerClock = ManualClock()
         let poller = AccountPoller(
@@ -162,12 +162,12 @@ struct PerformanceWiringTests {
             "Bifrost couldn't check Claude's status 3 times in a row.",
             "Bifrost couldn't check for updates 3 times in a row.",
         ]
-        await waitUntil(within: .seconds(10)) { expected.allSatisfy(home.reasons.contains) }
+        await waitUntil { expected.allSatisfy(home.reasons.contains) }
         #expect(home.reasons.contains { $0.hasPrefix(sessions) })
         #expect(expected.allSatisfy(home.reasons.contains))
         // The stop of the poller ends its streak.
         poller.stop()
-        await waitUntil(within: .seconds(10)) { !home.reasons.contains(expected[0]) }
+        await waitUntil { !home.reasons.contains(expected[0]) }
         #expect(!home.reasons.contains(expected[0]))
     }
 
@@ -212,7 +212,7 @@ struct PerformanceWiringTests {
             try await settings.edit { $0.rowFlash.toggle() }
         }
         let reasons = { parts.monitor.snapshot.reasons }
-        await waitUntil(within: .seconds(10)) { !reasons().isEmpty }
+        await waitUntil { !reasons().isEmpty }
         let saved = "Bifrost couldn't save your settings at "
         #expect(reasons().map(\.text).contains { $0.hasPrefix(saved) })
         #expect(reasons().allSatisfy { $0.past })
@@ -237,11 +237,11 @@ struct PerformanceWiringTests {
         #expect(button()?.id == "performance")
         #expect(button()?.dot == nil)
         for _ in 1...3 { home.reporter.record(.poll(.sessions, .failed)) }
-        await waitUntil(within: .seconds(10)) { home.parts.dot != nil }
+        await waitUntil { home.parts.dot != nil }
         #expect(button()?.dot == "Performance - Warning")
         #expect(button()?.dotColour == ThemeTokens.ctxMid)
         for _ in 1...7 { home.reporter.record(.poll(.sessions, .failed)) }
-        await waitUntil(within: .seconds(10)) { home.parts.monitor.snapshot.level == .problem }
+        await waitUntil { home.parts.monitor.snapshot.level == .problem }
         #expect(button()?.dot == "Performance - Problem")
         #expect(button()?.dotColour == ThemeTokens.ctxHigh)
         home.parts.monitor.clear()
@@ -257,12 +257,12 @@ struct PerformanceWiringTests {
         defer { home.finish() }
         let reason = "Bifrost couldn't check for updates 3 times in a row."
         for _ in 1...3 { home.reporter.record(.poll(.updates, .failed)) }
-        await waitUntil(within: .seconds(10)) { home.reasons == [reason] }
+        await waitUntil { home.reasons == [reason] }
         #expect(home.reasons == [reason])
-        await waitUntil(within: .seconds(10)) { home.logLines.count == 3 }
+        await waitUntil { home.logLines.count == 3 }
         #expect(home.logLines.last?.hasSuffix(" poll failed: updates (3 in a row)") == true)
         home.reporter.record(.poll(.updates, .ok))
-        await waitUntil(within: .seconds(10)) { home.reasons.isEmpty }
+        await waitUntil { home.reasons.isEmpty }
         #expect(home.reasons.isEmpty)
     }
 
@@ -273,14 +273,14 @@ struct PerformanceWiringTests {
         defer { home.finish() }
         let reason = "Bifrost couldn't check for updates 3 times in a row."
         for _ in 1...3 { home.reporter.record(.poll(.updates, .failed)) }
-        await waitUntil(within: .seconds(10)) { home.reasons == [reason] }
+        await waitUntil { home.reasons == [reason] }
         #expect(home.reasons == [reason])
         home.reporter.record(.stopped(.updates))
-        await waitUntil(within: .seconds(10)) { home.reasons.isEmpty }
+        await waitUntil { home.reasons.isEmpty }
         #expect(home.reasons.isEmpty)
         // A new failure counts from 1 again.
         home.reporter.record(.poll(.updates, .failed))
-        await waitUntil(within: .seconds(10)) { home.logLines.count == 4 }
+        await waitUntil { home.logLines.count == 4 }
         #expect(home.logLines.last?.hasSuffix(" poll failed: updates (1 in a row)") == true)
         #expect(home.reasons.isEmpty)
     }

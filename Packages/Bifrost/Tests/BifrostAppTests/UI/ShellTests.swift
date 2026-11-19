@@ -429,7 +429,7 @@ struct ShellTests {
             #expect(!model.links.dialogShows())
             let text = ConfirmText(title: "Reset all keys", body: "b", confirm: "Reset all keys")
             let answer = Task { await confirm(text) }
-            await waitUntil(within: .seconds(10)) { dialogs.isOpen }
+            await waitUntil { dialogs.isOpen }
             #expect(model.links.dialogShows())
             dialogs.escape()
             #expect(await answer.value == false)

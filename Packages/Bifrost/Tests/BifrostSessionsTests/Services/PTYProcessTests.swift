@@ -11,7 +11,7 @@ import Testing
 @testable import BifrostSessions
 
 // The longest wait of a test for a mark of a script.
-private let limit = Duration.seconds(60)
+private let limit = testWaitLimit
 
 // One event of an attach, as the harness reads it.
 private enum AttachEvent: Equatable {

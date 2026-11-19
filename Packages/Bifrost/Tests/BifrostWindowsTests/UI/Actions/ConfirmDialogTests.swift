@@ -36,7 +36,7 @@ private final class Parts {
             let answer = await host.confirm(text, openFolder: {}, onBusy: {})
             self.result = answer
         }
-        await waitUntil(within: .seconds(10)) { host.isOpen }
+        await waitUntil { host.isOpen }
         guard case .confirm(let model) = host.dialog else { throw HarnessError.noDialog }
         return model
     }

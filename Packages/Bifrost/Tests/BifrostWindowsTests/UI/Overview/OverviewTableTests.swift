@@ -131,7 +131,7 @@ final class OverviewParts {
 
     // Wait until the table shows the values of the model now.
     func settle(sourceLocation: SourceLocation = #_sourceLocation) async {
-        await waitUntil(within: .seconds(10), sourceLocation: sourceLocation) { [self] in
+        await waitUntil(sourceLocation: sourceLocation) { [self] in
             body.rows.input
                 == TableInput(model: model, panel: Self.panelID, look: look)
                 && body.rows.input?.rows.count == table.numberOfRows
@@ -561,13 +561,13 @@ struct OverviewTableTests {
         #expect(!p.table.visibleRect.intersects(p.table.rect(ofRow: 59)))
         p.selection.selectedId = last
         await p.settle()
-        await waitUntil(within: .seconds(5)) {
+        await waitUntil {
             p.table.visibleRect.contains(p.table.rect(ofRow: 59))
         }
         // The first row is out of view now. Its selection scrolls back to it.
         p.selection.selectedId = p.shownIDs[0]
         await p.settle()
-        await waitUntil(within: .seconds(5)) {
+        await waitUntil {
             p.table.visibleRect.contains(p.table.rect(ofRow: 0))
         }
     }
@@ -635,7 +635,7 @@ struct OverviewTableTests {
                 SessionIconRules.holder(
                     row, inChat: false, terminal: row.kind == .external ? term : nil))
         }
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             p.rows.input?.appIcons.count == 2
         }
         await p.settle()
@@ -673,21 +673,21 @@ struct OverviewTableTests {
                     terminal: row.sessionId == bravo.sessionId ? warp : nil))
         }
         // Each owned row has an app: Bifrost, or Warp for bravo.
-        await waitUntil(within: .seconds(10)) { p.rows.input?.appIcons.count == 3 }
+        await waitUntil { p.rows.input?.appIcons.count == 3 }
         await p.settle()
         #expect(p.kindCell(row: 0)?.icon.look?.glyph == .app(bifrostImage))
         #expect(p.kindCell(row: 1)?.icon.look?.glyph == .app(warpImage))
         #expect(p.kindCell(row: 1)?.icon.look?.title == "Warp")
         // The chat of alpha attaches, and the chat of bravo too: a chat comes before Warp.
         chats.sessions = [alpha.sessionId, bravo.sessionId]
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             p.kindCell(row: 0)?.icon.look?.glyph == .app(bifrostImage)
                 && p.kindCell(row: 1)?.icon.look?.glyph == .app(bifrostImage)
         }
         #expect(p.kindCell(row: 0)?.icon.look?.title == "Bifrost")
         // The chat of bravo ends: Warp shows again.
         chats.sessions = [alpha.sessionId]
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             p.kindCell(row: 1)?.icon.look?.glyph == .app(warpImage)
         }
         #expect(p.kindCell(row: 2)?.icon.look?.glyph == .app(bifrostImage))
@@ -725,7 +725,7 @@ struct OverviewTableTests {
         await p.clock.waitForSleepers(1)
         p.wall.advance(1)
         p.clock.advance(by: .seconds(1))
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             p.text(row: 0, column: .activity) == "1 min"
         }
         // The next step is a minute.
@@ -735,7 +735,7 @@ struct OverviewTableTests {
         #expect(p.text(row: 0, column: .activity) == "1 min")
         p.wall.advance(30)
         p.clock.advance(by: .seconds(30))
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             p.text(row: 0, column: .activity) == "2 min"
                 && p.text(row: 1, column: .activity) == "51 min"
         }
@@ -893,7 +893,7 @@ struct OverviewTableTests {
         #expect(p.body.errorLine.isHidden)
         let failed = AgentListError.commandFailed(detail: "exit 1")
         p.source.apply(rows: Self.three, error: failed)
-        await waitUntil(within: .seconds(10)) { !p.body.errorLine.isHidden }
+        await waitUntil { !p.body.errorLine.isHidden }
         #expect(p.body.errorLine.label.stringValue == failed.message)
         // The rows of the update stay.
         #expect(p.table.numberOfRows == 3)
@@ -901,9 +901,9 @@ struct OverviewTableTests {
         #expect(p.body.errorLine.frame.maxY == p.body.bounds.maxY)
         #expect(p.body.rows.frame.maxY == p.body.errorLine.frame.minY)
         p.source.apply(rows: Self.three, error: nil)
-        await waitUntil(within: .seconds(10)) { p.body.errorLine.isHidden }
+        await waitUntil { p.body.errorLine.isHidden }
         p.sessions.claudeMissing()
-        await waitUntil(within: .seconds(10)) { !p.body.errorLine.isHidden }
+        await waitUntil { !p.body.errorLine.isHidden }
         #expect(p.body.errorLine.label.stringValue == AgentListError.claudeNotFound.message)
         await p.settle()
         #expect(p.rows.emptyText.stringValue == "No sessions.")

@@ -115,7 +115,7 @@ package final class ManualClock: Clock {
     // fails the test, and the test does not wait with no end.
     @discardableResult
     package func waitForSleepers(
-        _ count: Int, within limit: Duration = .seconds(10),
+        _ count: Int, within limit: Duration = testWaitLimit,
         sourceLocation: SourceLocation = #_sourceLocation
     ) async -> Bool {
         await wait(for: .atLeast(count), "\(count) sleepers", limit, sourceLocation)
@@ -124,7 +124,7 @@ package final class ManualClock: Clock {
     // Wait until exactly count sleepers wait, for at most the limit on the real clock.
     @discardableResult
     package func waitForSleepers(
-        exactly count: Int, within limit: Duration = .seconds(10),
+        exactly count: Int, within limit: Duration = testWaitLimit,
         sourceLocation: SourceLocation = #_sourceLocation
     ) async -> Bool {
         await wait(for: .exactly(count), "exactly \(count) sleepers", limit, sourceLocation)
@@ -133,7 +133,7 @@ package final class ManualClock: Clock {
     // Wait until no sleeper waits, for at most the limit on the real clock.
     @discardableResult
     package func waitUntilNoSleepers(
-        within limit: Duration = .seconds(10), sourceLocation: SourceLocation = #_sourceLocation
+        within limit: Duration = testWaitLimit, sourceLocation: SourceLocation = #_sourceLocation
     ) async -> Bool {
         await wait(for: .exactly(0), "end of the sleepers", limit, sourceLocation)
     }

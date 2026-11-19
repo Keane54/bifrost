@@ -123,7 +123,7 @@ struct SessionActionsTests {
         let folder = try home.makeFolder("alpha")
         let c = await CommandHarness(claude: { _ in home.runner() })
         let job = c.start(.create(try newSession(cwd: folder)))
-        await c.waitForSleepers(1, within: .seconds(60))
+        await c.waitForSleepers(1)
         #expect(!c.anyEnded)
         let entry = try #require(home.agents.first)
         #expect(entry.sessionId == newId && entry.id == "5b0e0001")
@@ -145,13 +145,13 @@ struct SessionActionsTests {
         let folder = try home.makeFolder("alpha")
         let c = await CommandHarness(claude: { _ in home.runner() })
         let create = c.start(.create(try newSession(cwd: folder)))
-        await c.waitForSleepers(1, within: .seconds(60))
+        await c.waitForSleepers(1)
         await c.deps.show(home.agents)
         #expect(await c.result(of: create) == .success(.created(sessionId: newId)))
         let pid = try #require(home.agents.first?.pid)
         #expect(SystemSignals().isAlive(pid))
         let stop = c.start(.stop(newId))
-        await c.waitForSleepers(1, within: .seconds(60))
+        await c.waitForSleepers(1)
         // The list of the fake no longer has the session, so the row parks at the next sample,
         // and then Stop ends.
         await c.deps.show(home.agents)
@@ -172,7 +172,7 @@ struct SessionActionsTests {
             all: [Entry.stopped(s1, cwd: folder)], claude: { _ in home.runner() })
         #expect(c.deps.row(s1)?.state == .parked)
         let job = c.start(.resume(s1))
-        await c.waitForSleepers(1, within: .seconds(60))
+        await c.waitForSleepers(1)
         let entry = try #require(home.agents.first)
         #expect(entry.sessionId == s1 && entry.id == "f3a9c2d1" && entry.isBackground)
         #expect(entry.cwd == home.realPath("alpha"))
@@ -265,7 +265,7 @@ struct SessionActionsTests {
         // of the clock. Then the fake resumes the session, and the command waits for its row.
         #expect(await waitUntil { !terminal.alive })
         #expect(await waitUntil { !home.calls.isEmpty })
-        await c.waitForSleepers(1, within: .seconds(60))
+        await c.waitForSleepers(1)
         await c.deps.show(home.agents) { rows in
             rows.contains { $0.sessionId == s1 && $0.kind == .owned }
         }
@@ -307,7 +307,7 @@ struct SessionActionsTests {
         let job = c.start(.remove(s1, confirmed: true, seen: nil))
         #expect(await waitUntil { home.text("fake-rm-waiting") != nil })
         // The time limit of the run and the limit of the Delete sleep on the clock.
-        await c.waitForSleepers(2, within: .seconds(60))
+        await c.waitForSleepers(2)
         #expect(c.clock.nextDeadline == ManualClock.Instant(offset: .seconds(600)))
         c.clock.advance(by: .seconds(600))
         #expect(await c.result(of: job) == .failure(.rmTooSlow))

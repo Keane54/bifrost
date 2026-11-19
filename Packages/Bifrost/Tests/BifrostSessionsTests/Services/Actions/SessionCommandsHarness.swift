@@ -67,7 +67,7 @@ final class CommandHarness {
     // the wait records an issue and cancels the job, which then ends at once with cancelled.
     func result(
         of job: Task<Result<ActionDone, ActionRefusal>, Never>,
-        within limit: Duration = .seconds(30), sourceLocation: SourceLocation = #_sourceLocation
+        within limit: Duration = testWaitLimit, sourceLocation: SourceLocation = #_sourceLocation
     ) async -> Result<ActionDone, ActionRefusal> {
         let ended = await withTaskGroup(of: Bool.self) { group in
             group.addTask {
@@ -94,10 +94,10 @@ final class CommandHarness {
 
     // Wait until exactly this number of waits of the commands sleep on the clock, next to the
     // four loops of the registry. After a poll, the active loop sleeps again only in a new task,
-    // so a test waits for the count and never reads it at once. A test of a real process gives a
-    // wider limit, because a test host under load can start a program late.
+    // so a test waits for the count and never reads it at once. The limit is the wide limit of
+    // the test waits (testWaitLimit), because a test host under load can start a program late.
     func waitForSleepers(
-        _ count: Int, within limit: Duration = .seconds(10),
+        _ count: Int, within limit: Duration = testWaitLimit,
         sourceLocation: SourceLocation = #_sourceLocation
     ) async {
         await clock.waitForSleepers(

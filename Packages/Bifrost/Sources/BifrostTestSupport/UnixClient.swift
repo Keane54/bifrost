@@ -110,7 +110,7 @@ package struct UnixClient: Sendable {
 
     // The bytes until the server closes the connection, or nil when a read waits longer than
     // limit.
-    package func readToEnd(limit: Duration = .seconds(5)) async -> [UInt8]? {
+    package func readToEnd(limit: Duration = testWaitLimit) async -> [UInt8]? {
         await offThePool { [fd] in
             setTimeLimit(fd, SO_RCVTIMEO, limit)
             var result: [UInt8] = []

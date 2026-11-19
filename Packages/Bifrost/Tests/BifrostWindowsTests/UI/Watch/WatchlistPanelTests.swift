@@ -93,7 +93,7 @@ final class WatchlistParts {
 
     // Wait until the panel shows the values of now.
     func settle(sourceLocation: SourceLocation = #_sourceLocation) async {
-        await waitUntil(within: .seconds(10), sourceLocation: sourceLocation) { [self] in
+        await waitUntil(sourceLocation: sourceLocation) { [self] in
             body.input == WatchlistInput(model: overviews, labels: labels.labels, look: h.look)
                 && body.input?.rows.count == table.numberOfRows
         }

@@ -317,14 +317,14 @@ struct SelectedItemTests {
         try p.pressWatchAdd(on: driver.menu)
         #expect(driver.menu.isOpen)
         await p.h.deps.show([Entry.running(s2)]) { rows in !rows.contains { $0.sessionId == s1 } }
-        await waitUntil(within: .seconds(10)) { !driver.menu.isOpen }
+        await waitUntil { !driver.menu.isOpen }
         #expect(!driver.menu.isOpen)
         // A row that gets a watch colour while its menu shows has no Add to watchlist.
         try p.pressWatchAdd(on: driver.menu, sessionId: s2)
         #expect(driver.menu.isOpen)
         p.h.runner.run(.watchAdd, s2)
         await p.h.settle()
-        await waitUntil(within: .seconds(10)) { !driver.menu.isOpen }
+        await waitUntil { !driver.menu.isOpen }
         #expect(!driver.menu.isOpen)
     }
 

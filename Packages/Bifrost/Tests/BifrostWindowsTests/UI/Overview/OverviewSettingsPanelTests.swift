@@ -204,7 +204,7 @@ struct OverviewSettingsPanelTests {
         // A click on a swatch chooses its colour.
         colours.choose(7)
         #expect(p.tab.colour == 7)
-        await waitUntil(within: .seconds(10)) { colours.selected == 7 }
+        await waitUntil { colours.selected == 7 }
     }
 
     @Test func resetIsOffForADefaultTab() async throws {
@@ -283,7 +283,7 @@ struct OverviewSettingsPanelTests {
         #expect(!view.isOpen)
         #expect(OverviewSettingsPanel.closedText == "This Overview is closed.")
         s.host.setFrameSize(NSSize(width: 360, height: 48))
-        await waitUntil(within: .seconds(10)) { !view.isOpen }
+        await waitUntil { !view.isOpen }
         Snapshot(bundle: .module, target: "BifrostWindowsTests").check(
             s.host, named: "overview-settings-closed",
             background: ThemeTokens.panel(transparency: 0).nsColor)

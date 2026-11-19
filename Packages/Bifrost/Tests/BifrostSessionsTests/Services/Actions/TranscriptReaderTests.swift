@@ -220,12 +220,12 @@ struct TranscriptTailTests {
             for await _ in TranscriptReader.changes(of: file) { events.add() }
         }
         defer { watch.cancel() }
-        await waitUntil(within: .seconds(10)) { events.count == 1 }
+        await waitUntil { events.count == 1 }
         let handle = try FileHandle(forWritingTo: file)
         try handle.seekToEnd()
         try handle.write(contentsOf: Data(other.utf8))
         try handle.close()
-        await waitUntil(within: .seconds(10)) { events.count >= 2 }
+        await waitUntil { events.count >= 2 }
     }
 
     // A file that is not there gives one event and the end, so the reader finds the error.

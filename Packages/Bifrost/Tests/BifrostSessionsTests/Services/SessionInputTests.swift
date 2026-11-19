@@ -87,7 +87,7 @@ private final class HiddenAttachFixture {
     func close() async {
         ptys.closeAll()
         let pids = spawner.log.pids
-        await waitUntil(within: .seconds(10)) { pids.allSatisfy { kill($0, 0) != 0 } }
+        await waitUntil { pids.allSatisfy { kill($0, 0) != 0 } }
         folder.remove()
     }
 }

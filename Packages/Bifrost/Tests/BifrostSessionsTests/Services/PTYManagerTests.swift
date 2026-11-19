@@ -368,7 +368,7 @@ struct PTYManagerTests {
 @MainActor
 @Suite("PTY manager spawn", .timeLimit(.minutes(1)))
 struct PTYManagerSpawnTests {
-    // The spawn waits at its gate until the main actor opens the gate, or 30 s at most. The main
+    // The spawn waits at its gate until the main actor opens the gate, or the gate limit. The main
     // actor sees the spawn wait, so it ran during the spawn, and the spawn did not run on the
     // main thread. A spawn on the main actor would hold the main actor until the time limit.
     @Test func theMainActorRunsDuringTheSpawn() async throws {

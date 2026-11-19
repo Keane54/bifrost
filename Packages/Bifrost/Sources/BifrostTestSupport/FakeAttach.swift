@@ -443,13 +443,13 @@ package final class ChatFixture {
         window.close()
         // A spawn in flight ends first: the manager then closes its child (the closeAll cancelled
         // its open).
-        await waitUntil(within: .seconds(60), sourceLocation: sourceLocation) {
+        await waitUntil(sourceLocation: sourceLocation) {
             spawner.log.spawning == 0
         }
         await Task.yield()
         // Each child that the spawner started, also a child that a test closed or replaced.
         let started = spawner.log.pids
-        await waitUntil(within: .seconds(60), sourceLocation: sourceLocation) {
+        await waitUntil(sourceLocation: sourceLocation) {
             started.allSatisfy { kill($0, 0) != 0 }
         }
         pasteboard.releaseGlobally()

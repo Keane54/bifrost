@@ -161,7 +161,7 @@ struct SetupDialogTests {
             skills: FakePlugins(.skills, installed: true, enabled: true))
         defer { s.finish() }
         await s.live.attach()
-        await waitUntil(within: .seconds(10)) { s.settings.store.settings.setupDone }
+        await waitUntil { s.settings.store.settings.setupDone }
         // The Introduction row of General asks for the introduction.
         #expect(GeneralSection.rows.last == .introduction)
         s.settings.model.showIntroduction()
@@ -286,10 +286,10 @@ struct SetupDialogTests {
         let confirm = ConfirmText(title: "Stop session", body: "b", confirm: "Stop")
         let host = s.host
         let asked = Task { await host.confirm(confirm, openFolder: nil, onBusy: {}) }
-        await waitUntil(within: .seconds(10)) { host.isOpen }
+        await waitUntil { host.isOpen }
         await s.live.attach()
         // The Setup dialog is due and saw the other dialog.
-        await waitUntil(within: .seconds(10)) { s.setup.waitsForDialog }
+        await waitUntil { s.setup.waitsForDialog }
         guard case .confirm(let other) = host.dialog else {
             Issue.record("The confirmation does not show.")
             return
@@ -411,7 +411,7 @@ private final class SetupParts {
     // The model of the Setup dialog, after it shows.
     func shown(sourceLocation: SourceLocation = #_sourceLocation) async throws -> SetupDialogModel
     {
-        await waitUntil(within: .seconds(10), sourceLocation: sourceLocation) {
+        await waitUntil(sourceLocation: sourceLocation) {
             if case .setup = self.host.dialog { return true }
             return false
         }

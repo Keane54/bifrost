@@ -44,7 +44,7 @@ private final class StartingOverview {
     // Wait until the table has this number of rows and this number of Starting rows.
     func waitFor(rows count: Int, starting: Int) async {
         let (body, table) = (body, table)
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             table.numberOfRows == count && body.rows.input?.starting.count == starting
         }
         body.layoutSubtreeIfNeeded()
@@ -134,7 +134,7 @@ struct NewSessionDialogTests {
         // Claude Code lists the new job with no PID when claude --bg ends.
         h.deps.lists.active = [Entry.running(s1), Entry.running(newId, pid: nil)]
         gate.openAll()
-        await waitUntil(within: .seconds(10)) { h.row(newId) != nil }
+        await waitUntil { h.row(newId) != nil }
         #expect(h.runner.starting.map(\.shortId) == ["4cb23c30"])
         await overview.waitFor(rows: 2, starting: 0)
         #expect(Set(overview.body.rows.input?.rows.map(\.sessionId) ?? []) == [s1, newId])

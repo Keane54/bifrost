@@ -474,7 +474,7 @@ struct DictationServiceTests {
         await waitUntil { t.of(A) == [ready, .error(.failed)] }
         t.engine.script.holdsBegin = false
         t.service.start(chat: A)
-        let began = await waitUntil(within: .seconds(5)) { t.engine.microphoneOpen }
+        let began = await waitUntil { t.engine.microphoneOpen }
         #expect(began)
         t.engine.resume(.begin)
         await waitUntil { t.engine.beginsDone == 2 }

@@ -299,7 +299,7 @@ struct ChatTerminalsTests {
                 + "enter to return · space to reply · ? for shortcuts\r\n")
         chat.open()
         let first = try chat.terminal()
-        await waitUntil(within: .seconds(30)) {
+        await waitUntil {
                 first.state.note == ChatTerminal.giveUpText
             }
         #expect(chat.attachLines.count == 4)
@@ -307,7 +307,7 @@ struct ChatTerminalsTests {
         chat.open()
         let second = try chat.terminal()
         #expect(second !== first)
-        await waitUntil(within: .seconds(30)) {
+        await waitUntil {
                 second.state.note == ChatTerminal.giveUpText
             }
         #expect(chat.attachLines.count == 5)

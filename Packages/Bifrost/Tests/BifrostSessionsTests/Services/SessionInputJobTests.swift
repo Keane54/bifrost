@@ -123,12 +123,12 @@ private final class Rig {
 
     // Wait until the job ended.
     func ended(_ outcome: Outcome) async -> Bool {
-        await waitUntil(within: .seconds(10)) { outcome.done }
+        await waitUntil { outcome.done }
     }
 
     // The child of a spawn: 0 is the first spawn.
     func child(_ index: Int) async throws -> FakeChild {
-        await waitUntil(within: .seconds(10)) { spawner.fakes.count > index }
+        await waitUntil { spawner.fakes.count > index }
         return try #require(spawner.fakes.dropFirst(index).first)
     }
 
@@ -138,14 +138,14 @@ private final class Rig {
 
     // Wait until the child got these writes.
     func wrote(_ child: FakeChild, _ texts: [String]) async -> Bool {
-        await waitUntil(within: .seconds(10)) { writes(child) == texts }
+        await waitUntil { writes(child) == texts }
     }
 
     // Give a chunk to the child of a hidden attach, and wait until the session input read it.
     func output(_ child: FakeChild) async {
         let fed = models.reduce(0) { $0 + $1.fed }
         child.emitData("x")
-        await waitUntil(within: .seconds(10)) { models.reduce(0) { $0 + $1.fed } > fed }
+        await waitUntil { models.reduce(0) { $0 + $1.fed } > fed }
     }
 
     // Give the exit to the child of the hidden attach, and wait until its attach got it. The
@@ -154,7 +154,7 @@ private final class Rig {
     // After this wait, the attach refuses each write.
     func end(_ child: FakeChild) async {
         child.emitExit(0)
-        await waitUntil(within: .seconds(10)) { ptys.list().isEmpty }
+        await waitUntil { ptys.list().isEmpty }
     }
 
     // Open the attach of the chat window as the chat does: chatOpening, the open, opened.

@@ -18,7 +18,7 @@ struct EventLogModelTests {
         let (events, send) = AsyncStream.makeStream(of: HookEvent.self)
         model.read(events)
         send.yield(HookEvent(.userPromptSubmit, "s1", at: 1))
-        await waitUntil(within: .seconds(10)) { model.entries.count == 1 }
+        await waitUntil { model.entries.count == 1 }
         send.yield(HookEvent(.preToolUse, "s1", at: 2, toolName: "Bash"))
         send.yield(HookEvent(.stop, "s2", at: 3))
         send.finish()
@@ -26,7 +26,7 @@ struct EventLogModelTests {
         #expect(model.entries.count == 1)
         await clock.waitForSleepers(1)
         clock.advance(by: EventBatcher.gap)
-        await waitUntil(within: .seconds(10)) { model.entries.count == 3 }
+        await waitUntil { model.entries.count == 3 }
         #expect(
             model.entries.map(LogView.text) == ["UserPromptSubmit", "PreToolUse (Bash)", "Stop"])
         #expect(model.entries.map(\.tool) == [nil, "Bash", nil])
@@ -46,15 +46,15 @@ struct EventLogModelTests {
         let clock = ManualClock()
         let model = EventLogModel(clock: clock, now: { start })
         let changes = Recorder(following: Observations { model.entries.count })
-        await waitUntil(within: .seconds(10)) { changes.values == [0] }
+        await waitUntil { changes.values == [0] }
         model.line("First.")
-        await waitUntil(within: .seconds(10)) { changes.values == [0, 1] }
+        await waitUntil { changes.values == [0, 1] }
         for i in 0..<20_000 { model.append([HookEvent(.stop, "s1", at: i)]) }
         model.notice("A notice.")
         await clock.waitForSleepers(1)
         #expect(model.entries.count == 1)
         clock.advance(by: EventBatcher.gap)
-        await waitUntil(within: .seconds(10)) { changes.values == [0, 1, 5000] }
+        await waitUntil { changes.values == [0, 1, 5000] }
         #expect(model.entries.last?.kind == .notice("A notice."))
         changes.stop()
     }

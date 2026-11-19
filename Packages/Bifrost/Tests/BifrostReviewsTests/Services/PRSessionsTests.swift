@@ -122,7 +122,7 @@ struct PRSessionsTests {
         let checks = Recorder<String>()
         let accepted = Recorder<String?>()
         let wait = f.waitForTurnEnd(row, checks: checks, accepted: accepted)
-        await waitUntil(within: .seconds(20)) { f.deadline == .seconds(120) }
+        await waitUntil { f.deadline == .seconds(120) }
         try Data("good".utf8).write(to: f.result)
         #expect(await wait.value == nil)
         #expect(f.deps.clock.now.offset == .zero)
@@ -139,9 +139,9 @@ struct PRSessionsTests {
         let row = try await f.show(SessionsFixture.entry(.busy))
         let checks = Recorder<String>()
         let wait = f.waitForTurnEnd(row, checks: checks)
-        await waitUntil(within: .seconds(20)) { f.deadline == .seconds(1800) }
+        await waitUntil { f.deadline == .seconds(1800) }
         try Data("good".utf8).write(to: f.result)
-        await waitUntil(within: .seconds(20)) { checks.values == ["good"] }
+        await waitUntil { checks.values == ["good"] }
         _ = try await f.show(SessionsFixture.entry(.idle))
         #expect(await wait.value == nil)
         #expect(f.deps.clock.now.offset == .zero)
@@ -157,7 +157,7 @@ struct PRSessionsTests {
         let row = try await f.show(SessionsFixture.entry(.idle))
         let accepted = Recorder<String?>()
         let wait = f.waitForTurnEnd(row, accepted: accepted)
-        await waitUntil(within: .seconds(20)) { f.deadline == .seconds(120) }
+        await waitUntil { f.deadline == .seconds(120) }
         f.deps.clock.advance(by: .seconds(119))
         await f.deps.clock.waitForSleepers(exactly: Self.registrySleepers + 1)
         #expect(f.deadline == .seconds(120))
@@ -174,7 +174,7 @@ struct PRSessionsTests {
         await f.deps.start()
         let row = try await f.show(SessionsFixture.entry(.busy))
         let wait = f.waitForTurnEnd(row)
-        await waitUntil(within: .seconds(20)) { f.deadline == .seconds(1800) }
+        await waitUntil { f.deadline == .seconds(1800) }
         _ = try await f.show(SessionsFixture.entry(.waiting, waitingFor: "permission"))
         #expect(await wait.value == .blocked)
         await f.end()
@@ -187,10 +187,10 @@ struct PRSessionsTests {
         await f.deps.start()
         let row = try await f.show(SessionsFixture.entry(.busy))
         let wait = f.waitForTurnEnd(row)
-        await waitUntil(within: .seconds(20)) { f.deadline == .seconds(1800) }
+        await waitUntil { f.deadline == .seconds(1800) }
         f.deps.clock.advance(by: .seconds(30))
         _ = try await f.show(SessionsFixture.entry(.idle))
-        await waitUntil(within: .seconds(20)) { f.deadline == .seconds(40) }
+        await waitUntil { f.deadline == .seconds(40) }
         #expect(f.deps.clock.sleeperCount == Self.registrySleepers + 1)
         f.deps.clock.advance(by: .seconds(10))
         #expect(await wait.value == nil)
@@ -218,11 +218,11 @@ struct PRSessionsTests {
             testPrefix: true)
         sessions.start()
         let due = f.deps.clock.now.offset + .seconds(1)
-        await waitUntil(within: .seconds(20)) { f.deadline == due }
+        await waitUntil { f.deadline == due }
         #expect(!f.deps.calls.claudeRuns.contains(["stop", "abcdef12"]))
         wall.date += 1
         f.deps.clock.advance(by: .seconds(1))
-        await waitUntil(within: .seconds(20)) {
+        await waitUntil {
             f.deps.calls.claudeRuns.contains(["stop", "abcdef12"])
         }
         sessions.stop()

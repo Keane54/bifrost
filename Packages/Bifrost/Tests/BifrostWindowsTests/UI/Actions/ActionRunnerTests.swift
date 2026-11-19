@@ -56,7 +56,7 @@ struct ActionRunnerTests {
         #expect(model.showsOpenFolder)
         // Open worktree opens the worktree in Finder, and the dialog stays.
         model.openFolder()
-        await waitUntil(within: .seconds(10)) { !h.opener.calls.isEmpty }
+        await waitUntil { !h.opener.calls.isEmpty }
         #expect(h.dialogs.isOpen)
         model.cancel()
         await h.settle()
@@ -360,7 +360,7 @@ struct ActionRunnerTests {
         #expect(h.calls.all.isEmpty)
         await h.deps.show([Entry.running(s1, cwd: wt)]) { $0.count == 1 }
         shared.pressConfirm()
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             if case .confirm(let next) = h.dialogs.dialog { next !== shared } else { false }
         }
         let checked = try await h.confirmation()
@@ -526,12 +526,12 @@ struct ActionRunnerTests {
         try handle.close()
         // The start waits for the row of the new session, and the Stop of the old session waits
         // for its park.
-        await waitUntil(within: .seconds(10)) { h.calls.claudeRuns.contains { $0.first == "--bg" } }
+        await waitUntil { h.calls.claudeRuns.contains { $0.first == "--bg" } }
         let started = AgentEntry(
             sessionId: newId, cwd: "/p", isBackground: true, startedAt: 1,
             name: "bifrost-test-s (2)", status: .idle, pid: 5151, id: "4cb23c30")
         await h.deps.show([Entry.running(s1), started])
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             h.calls.claudeRuns.contains { $0 == ["stop", short1.text] }
         }
         await h.deps.show([started])
@@ -560,7 +560,7 @@ struct ActionRunnerTests {
         let reply = HandOverLines.request(id) + HandOverLines.reply("n") + HandOverLines.turnEnd
         try handle.write(contentsOf: Data(reply.utf8))
         try handle.close()
-        await waitUntil(within: .seconds(10)) { h.calls.claudeRuns.contains { $0.first == "--bg" } }
+        await waitUntil { h.calls.claudeRuns.contains { $0.first == "--bg" } }
         let started = AgentEntry(
             sessionId: newId, cwd: "/p", isBackground: true, startedAt: 1,
             name: "bifrost-test-s (2)", status: .idle, pid: 5151, id: "4cb23c30")

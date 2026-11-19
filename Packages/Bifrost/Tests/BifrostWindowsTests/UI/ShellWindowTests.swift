@@ -224,7 +224,7 @@ struct ShellWindowTests {
         p.window.setFrame(left, display: false)
         NotificationCenter.default.post(
             name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
-        await waitUntil(within: .seconds(5)) { p.window.frame == screen.frame }
+        await waitUntil { p.window.frame == screen.frame }
         p.window.setFrame(left, display: false)
         p.shell.windowDidChangeScreen(notice(NSWindow.didChangeScreenNotification, p.window))
         #expect(p.window.frame == screen.frame)
@@ -252,7 +252,7 @@ struct ShellWindowTests {
         p.window.setFrame(screen.frame.insetBy(dx: 100, dy: 100), display: false)
         NotificationCenter.default.post(
             name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
-        await waitUntil(within: .seconds(5)) { p.window.frame == screen.frame }
+        await waitUntil { p.window.frame == screen.frame }
     }
 
     // The first show: the window shows, then the saved mode applies. A reopen

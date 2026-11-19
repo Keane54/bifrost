@@ -261,7 +261,7 @@ final class ActionsHarness {
 
     // Wait for the end of a task, within the limit. A task that does not end records an issue.
     func finish(
-        _ task: Task<Void, Never>, within limit: Duration = .seconds(30),
+        _ task: Task<Void, Never>, within limit: Duration = testWaitLimit,
         sourceLocation: SourceLocation = #_sourceLocation
     ) async {
         let ended = await withTaskGroup(of: Bool.self) { group in
@@ -286,7 +286,7 @@ final class ActionsHarness {
     func confirmation(sourceLocation: SourceLocation = #_sourceLocation) async throws
         -> ConfirmDialogModel
     {
-        await waitUntil(within: .seconds(10), sourceLocation: sourceLocation) { dialogs.isOpen }
+        await waitUntil(sourceLocation: sourceLocation) { dialogs.isOpen }
         guard case .confirm(let model) = dialogs.dialog else {
             Issue.record("No confirmation shows.", sourceLocation: sourceLocation)
             throw HarnessError.noDialog
@@ -334,7 +334,7 @@ final class ActionsHarness {
     func drive(_ task: Task<Void, Never>, sourceLocation: SourceLocation = #_sourceLocation) async {
         let done = TaskEnd(task)
         for _ in 0..<20 {
-            await waitUntil(within: .seconds(10), sourceLocation: sourceLocation) {
+            await waitUntil(sourceLocation: sourceLocation) {
                 done.ended || inputClock.sleeperCount > 0
             }
             if done.ended { return }

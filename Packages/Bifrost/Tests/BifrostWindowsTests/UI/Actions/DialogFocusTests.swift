@@ -102,7 +102,7 @@ struct DialogFocusTests {
         #expect(model.reason != nil)
         #expect(!model.busy)
         // The name field has the focus: its field editor is the first responder.
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             (p.window.firstResponder as? NSText).map { _ in p.focusInDialog } ?? false
         }
         model.cancel()

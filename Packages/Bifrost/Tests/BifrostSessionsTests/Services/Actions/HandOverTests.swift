@@ -142,7 +142,7 @@ private final class HandOverHarness {
     func usage(mode: String) async {
         deps.registry.pushLive(
             .usage(sessionId: s1, at: 1_800_000_000_000, LiveUsage(permissionMode: mode)))
-        await waitUntil(within: .seconds(10)) { deps.row(s1)?.usage?.permissionMode == mode }
+        await waitUntil { deps.row(s1)?.usage?.permissionMode == mode }
     }
 
     // The park check of the old session after the hand-over, with the session list of now.
@@ -171,7 +171,7 @@ private final class HandOverHarness {
         sourceLocation: SourceLocation = #_sourceLocation
     ) async -> Result<HandOverDone, HandOverFailure> {
         let ended = TaskEnd(job)
-        if !(await waitUntil(within: .seconds(30), sourceLocation: sourceLocation) { ended.ended })
+        if !(await waitUntil(sourceLocation: sourceLocation) { ended.ended })
         {
             job.cancel()
         }
@@ -257,7 +257,7 @@ struct HandOverTests {
         let id = try #require(await h.typedRequest())
         await h.deps.show([Entry.running(s1, status: .busy)]) { $0.first?.status == .busy }
         try h.append(HandOverLines.request(id) + HandOverLines.reply("n") + HandOverLines.turnEnd)
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             h.handOver.lastReply
                 == .done(note: "n", model: HandOverLines.model, mode: .known(.plan))
         }
@@ -276,7 +276,7 @@ struct HandOverTests {
         defer { h.close() }
         let job = try h.start()
         let id = try #require(await h.typedRequest())
-        await waitUntil(within: .seconds(10)) { h.handOver.lastReply == .waiting }
+        await waitUntil { h.handOver.lastReply == .waiting }
         let lists = h.deps.lists.activeCalls
         try h.append(HandOverLines.request(id) + HandOverLines.reply("n") + HandOverLines.turnEnd)
         #expect(try await h.result(of: job).get().sessionId == newId)
@@ -307,7 +307,7 @@ struct HandOverTests {
         defer { h.close() }
         let job = try h.start()
         _ = try #require(await h.typedRequest())
-        await waitUntil(within: .seconds(10)) { h.handOver.lastReply == .waiting }
+        await waitUntil { h.handOver.lastReply == .waiting }
         let transcript = "\(h.folder.realPath)/projects/-p/\(s1).jsonl"
         #expect(openFiles(at: transcript) >= 1)
         // The limit of the wait runs in its own task, so its sleep can start after the first read.
@@ -315,7 +315,7 @@ struct HandOverTests {
         job.cancel()
         #expect(await h.result(of: job) == .failure(.stopped))
         #expect(h.limitClock.sleeperCount == 0)
-        await waitUntil(within: .seconds(10)) { openFiles(at: transcript) == 0 }
+        await waitUntil { openFiles(at: transcript) == 0 }
         #expect(h.starts.isEmpty)
         #expect(h.notes.isEmpty)
     }

@@ -11,14 +11,20 @@ import Testing
 // waits for the sleepers of the clock (ManualClock), and a gate tells when a caller waits at it
 // (TestGate).
 
-// Wait until the condition is true, for at most the limit. The wait checks the condition on the
-// main actor, by default each 10 ms. The default limit is wide, because a test host under load
-// can start a program 20 s late. The wait ends as soon as the condition is true. The result is
-// false only at the limit, after the issue.
+// The limit of each wait of the tests for a condition, a sleeper, a gate or a signal. It is wide,
+// because a test host under load can start a program 20 s late, and a CI runner with few cores
+// runs the main actor and the executors of thousands of tests at once. A wait ends as soon as its
+// condition is true, so the limit only bounds a test that a defect holds. A wait that proves that
+// something does not happen gives its own short limit (TestSignal.value(within:)).
+package let testWaitLimit = Duration.seconds(60)
+
+// Wait until the condition is true, for at most the limit (testWaitLimit). The wait checks the
+// condition on the main actor, by default each 10 ms. The wait ends as soon as the condition is
+// true. The result is false only at the limit, after the issue.
 @MainActor
 @discardableResult
 package func waitUntil(
-    within limit: Duration = .seconds(60), every interval: Duration = .milliseconds(10),
+    within limit: Duration = testWaitLimit, every interval: Duration = .milliseconds(10),
     sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool
 ) async -> Bool {
     let end = ContinuousClock.now + limit
@@ -85,7 +91,7 @@ package final class TestSignal: Sendable {
     // names the event, and gives false.
     @discardableResult
     package func wait(
-        for event: String, within limit: Duration = .seconds(30),
+        for event: String, within limit: Duration = testWaitLimit,
         sourceLocation: SourceLocation = #_sourceLocation
     ) async -> Bool {
         if await value(within: limit) { return true }

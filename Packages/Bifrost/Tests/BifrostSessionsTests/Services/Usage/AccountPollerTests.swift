@@ -175,7 +175,7 @@ struct AccountPollerTests {
         defer { reader.cancel() }
         // The events in their order, after a wait of at most 5 s for the count.
         func toldEvents(_ count: Int) async -> [HealthEvent] {
-            await waitUntil(within: .seconds(5)) { told.values.count >= count }
+            await waitUntil { told.values.count >= count }
             return told.values
         }
         let fixture = PollerFixture([ok(37), nil], health: health)

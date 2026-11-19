@@ -35,7 +35,7 @@ private final class OverviewWindow {
         content.addSubview(body)
         h.runner.attach(model, menu: menu)
         let (body, rows) = (body, h.list)
-        await waitUntil(within: .seconds(10)) {
+        await waitUntil {
             body.rows.input?.rows.count == rows.rows.count
                 && body.rows.table.numberOfRows == rows.rows.count
         }
@@ -212,7 +212,7 @@ struct RowMenuTests {
         await h.deps.show([Entry.running(s1, status: .waiting, waitingFor: "permission")]) {
             $0.first?.alert.blocksPrompt == true
         }
-        await waitUntil(within: .seconds(10)) { send()?.enabled == false }
+        await waitUntil { send()?.enabled == false }
         #expect(send()?.reason == "Send message\n\(ActionReasons.redBox)")
         let index = try #require(
             try driver.root.list.state.rows.firstIndex { $0.id == "send-message" })
@@ -267,7 +267,7 @@ struct RowMenuTests {
         for _ in 0..<10 { await Task.yield() }
         #expect(driver.menu.isOpen)
         await h.deps.show([]) { $0.isEmpty }
-        await waitUntil(within: .seconds(10)) { !driver.menu.isOpen }
+        await waitUntil { !driver.menu.isOpen }
         #expect(!driver.menu.isOpen)
     }
 
@@ -289,7 +289,7 @@ struct RowMenuTests {
         }
         #expect(stop()?.enabled == true)
         await h.deps.show([]) { $0.first?.state == .parked }
-        await waitUntil(within: .seconds(10)) { stop()?.enabled == false }
+        await waitUntil { stop()?.enabled == false }
         #expect(stop()?.reason == "Stop session\n\(ActionReasons.noProcess)")
         #expect(try driver.root.list.state.rows.contains { $0.id == "resume" })
         #expect(driver.menu.isOpen)
@@ -307,7 +307,7 @@ struct RowMenuTests {
             window.close()
         }
         let stop = Task { _ = try? await h.actions.run(.stop(s1)) }
-        await waitUntil(within: .seconds(10)) { !h.calls.claudeRuns.isEmpty }
+        await waitUntil { !h.calls.claudeRuns.isEmpty }
         #expect(h.calls.claudeRuns == [["stop", short1.text]])
         #expect(h.actions.isRunning(s1))
         let view = try #require(window.contentView)
@@ -321,7 +321,7 @@ struct RowMenuTests {
         await h.deps.show([]) { $0.first?.state == .parked }
         await h.finish(stop)
         #expect(!h.actions.isRunning(s1))
-        await waitUntil(within: .seconds(10)) { delete()?.enabled == true }
+        await waitUntil { delete()?.enabled == true }
         #expect(delete()?.enabled == true)
         #expect(driver.menu.isOpen)
     }
