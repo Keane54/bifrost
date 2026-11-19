@@ -207,6 +207,7 @@ package struct Snapshot {
     // top ancestor, so its ancestors still draw around it. A view in another window moves alone.
     // end puts the moved view back in its superview, at its place among the subviews, with its
     // frame.
+    @MainActor
     private struct Host {
         let window: SnapshotWindow
         let moved: NSView
