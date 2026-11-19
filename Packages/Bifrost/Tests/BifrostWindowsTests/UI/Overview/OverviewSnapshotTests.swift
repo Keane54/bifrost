@@ -61,21 +61,31 @@ struct OverviewSnapshotTests {
     func aChangedPixelAreaOverTheLimitFails() throws {
         let frame = NSRect(x: 0, y: 0, width: 50, height: 50)
         let base = try #require(Snapshot.image(of: Block(frame: frame), background: .black))
-        // 100 by 100 pixels at scale 2: the limit is 5 pixels.
-        #expect(Snapshot.limit(pixels: base.width * base.height) == 5)
-        #expect(Snapshot.limit(pixels: 1400 * 240) == 168)
+        // 100 by 100 pixels at scale 2: the limit is 10 pixels.
+        #expect(Snapshot.limit(pixels: base.width * base.height) == 10)
+        #expect(Snapshot.limit(pixels: 1400 * 240) == 336)
         #expect(Snapshot.differingPixels(base, base) == 0)
-        let atLimit = Block(frame: frame, pixels: 5)
-        let overLimit = Block(frame: frame, pixels: 6)
-        let five = try #require(Snapshot.image(of: atLimit, background: .black))
-        let six = try #require(Snapshot.image(of: overLimit, background: .black))
-        #expect(Snapshot.differingPixels(base, five) == 5)
-        #expect(Snapshot.differingPixels(base, six) == 6)
+        let atLimit = Block(frame: frame, pixels: 10)
+        let overLimit = Block(frame: frame, pixels: 11)
+        let ten = try #require(Snapshot.image(of: atLimit, background: .black))
+        let eleven = try #require(Snapshot.image(of: overLimit, background: .black))
+        #expect(Snapshot.differingPixels(base, ten) == 10)
+        #expect(Snapshot.differingPixels(base, eleven) == 11)
+        // A shift of the colour that the eye cannot see is no difference, also over 2 of 255 in
+        // a channel. A shift that the eye sees is one.
+        let faintRed = NSColor(srgbRed: 131 / 255, green: 0.5, blue: 0.5, alpha: 1)
+        let visibleRed = NSColor(srgbRed: 150 / 255, green: 0.5, blue: 0.5, alpha: 1)
+        let faint = Block(frame: frame, pixels: 60, line: faintRed)
+        let visible = Block(frame: frame, pixels: 60, line: visibleRed)
+        let faintImage = try #require(Snapshot.image(of: faint, background: .black))
+        let visibleImage = try #require(Snapshot.image(of: visible, background: .black))
+        #expect(Snapshot.differingPixels(base, faintImage) == 0)
+        #expect(Snapshot.differingPixels(base, visibleImage) == 60)
         // The PNG form keeps each pixel.
-        let png = try #require(Snapshot.png(six))
+        let png = try #require(Snapshot.png(eleven))
         let source = try #require(CGImageSourceCreateWithData(png as CFData, nil))
         let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
-        #expect(Snapshot.differingPixels(six, decoded) == 0)
+        #expect(Snapshot.differingPixels(eleven, decoded) == 0)
 
         let folder = try TemporaryFolder()
         defer { folder.remove() }
@@ -83,10 +93,10 @@ struct OverviewSnapshotTests {
         try FileManager.default.createDirectory(at: stored, withIntermediateDirectories: true)
         try #require(Snapshot.png(base)).write(to: stored.appending(path: "block.png"))
         let bundle = try #require(Bundle(url: folder.url))
-        let check = Snapshot(bundle: bundle, target: "BifrostWindowsTests", pixels: true)
+        let check = Snapshot(bundle: bundle, target: "BifrostWindowsTests")
         check.check(Block(frame: frame), named: "block", background: .black)
         check.check(atLimit, named: "block", background: .black)
-        withKnownIssue("6 pixels differ: over the limit of 5") {
+        withKnownIssue("11 pixels differ: over the limit of 10") {
             check.check(overLimit, named: "block", background: .black)
         }
         withKnownIssue("an image of another size") {
@@ -96,23 +106,60 @@ struct OverviewSnapshotTests {
         withKnownIssue("no stored PNG") {
             check.check(Block(frame: frame), named: "missing", background: .black)
         }
-        // With the pixel compare off (SNAPSHOT_PIXELS=0 on the CI runner), only the size counts.
-        let sizeOnly = Snapshot(bundle: bundle, target: "BifrostWindowsTests", pixels: false)
-        sizeOnly.check(overLimit, named: "block", background: .black)
-        withKnownIssue("an image of another size, with the pixel compare off") {
-            let other = Block(frame: NSRect(x: 0, y: 0, width: 40, height: 50))
-            sizeOnly.check(other, named: "block", background: .black)
+    }
+
+    // The image is dark also in a light app, as on a CI runner: the check fixes the appearance.
+    @Test func theImageHasTheDarkAppearanceAlsoInALightApp() throws {
+        let app = NSApplication.shared
+        let old = app.appearance
+        defer { app.appearance = old }
+        let frame = NSRect(x: 0, y: 0, width: 20, height: 20)
+        app.appearance = NSAppearance(named: .aqua)
+        let light = try #require(Snapshot.image(of: SystemText(frame: frame), background: .black))
+        app.appearance = NSAppearance(named: .darkAqua)
+        let dark = try #require(Snapshot.image(of: SystemText(frame: frame), background: .black))
+        #expect(Snapshot.differingPixels(light, dark) == 0)
+        // The system text colour of the dark appearance is light.
+        #expect(Snapshot.pixels(dark).first.map { $0 > 200 } == true)
+    }
+
+    // The CIEDE2000 differences of pairs from the test data of Sharma, Wu and Dalal (2005), and
+    // the CIELAB colours of black, white and a mid grey of sRGB.
+    @Test func theColourDifferenceIsCIEDE2000() {
+        typealias Lab = ColourDifference.Lab
+        let pairs: [(Lab, Lab, Double)] = [
+            (Lab(l: 50, a: 2.6772, b: -79.7751), Lab(l: 50, a: 0, b: -82.7485), 2.0425),
+            (Lab(l: 50, a: 0, b: 0), Lab(l: 50, a: -1, b: 2), 2.3669),
+            (
+                Lab(l: 60.2574, a: -34.0099, b: 36.2677), Lab(l: 60.4626, a: -34.1751, b: 39.4387),
+                1.2644
+            ),
+            (Lab(l: 50, a: 2.49, b: -0.001), Lab(l: 50, a: -2.49, b: 0.0009), 7.1792),
+        ]
+        for (one, two, expected) in pairs {
+            #expect(abs(ColourDifference.deltaE00(one, two) - expected) < 0.0001)
+            #expect(abs(ColourDifference.deltaE00(two, one) - expected) < 0.0001)
         }
+        let black = ColourDifference.lab(red: 0, green: 0, blue: 0)
+        let white = ColourDifference.lab(red: 255, green: 255, blue: 255)
+        let grey = ColourDifference.lab(red: 128, green: 128, blue: 128)
+        #expect(abs(black.l) < 0.001 && abs(white.l - 100) < 0.01 && abs(grey.l - 53.585) < 0.01)
+        #expect(abs(white.a) < 0.01 && abs(white.b) < 0.01)
+        #expect(ColourDifference.deltaE00(grey, grey) == 0)
     }
 }
 
-// A grey view with a white line of pixels at its top left corner: one pixel high at scale 2.
+// A grey view with a line of pixels at its top left corner: one pixel high at scale 2, white
+// unless the test gives another colour.
 @MainActor
 private final class Block: NSView {
     private let pixels: Int
 
-    init(frame: NSRect, pixels: Int = 0) {
+    private let line: NSColor
+
+    init(frame: NSRect, pixels: Int = 0, line: NSColor = .white) {
         self.pixels = pixels
+        self.line = line
         super.init(frame: frame)
     }
 
@@ -122,7 +169,17 @@ private final class Block: NSView {
     override func draw(_ dirtyRect: NSRect) {
         NSColor(srgbRed: 0.5, green: 0.5, blue: 0.5, alpha: 1).setFill()
         bounds.fill()
-        NSColor.white.setFill()
+        line.setFill()
         NSRect(x: 0, y: bounds.maxY - 0.5, width: CGFloat(pixels) * 0.5, height: 0.5).fill()
+    }
+}
+
+// A view in the system text colour, which is dark in the light appearance and light in the dark
+// one.
+@MainActor
+private final class SystemText: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.textColor.setFill()
+        bounds.fill()
     }
 }

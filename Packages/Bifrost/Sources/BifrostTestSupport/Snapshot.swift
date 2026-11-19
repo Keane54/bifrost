@@ -2,18 +2,19 @@
 // other package. A test renders a view at scale 2 over a background, and compares the image with
 // a PNG in Fixtures/Snapshots/ of its test target (a resource, read through Bundle.module).
 //
-// - Two pixels are equal when no channel differs by more than channelTolerance of 255. The
-//   images match when at most limit(pixels:) pixels differ: 0.05 % of the pixels, rounded down.
-//   So a few pixels of the text edges can change, and a changed glyph or colour fails the test.
+// - The inputs of the drawing are fixed, so one set of PNGs works on each Mac and on the CI
+//   runner: scale 2, the sRGB colour space, the dark appearance of Bifrost and no window on
+//   screen.
+// - Two pixels are equal when their colours look the same: no channel differs by more than
+//   channelTolerance of 255, or the CIEDE2000 difference is at most perceptualTolerance
+//   (ColourDifference). Another GPU or another anti-aliasing changes the pixels a little, below
+//   what the eye can see. The images match when at most limit(pixels:) pixels differ: 0.1 % of
+//   the pixels, rounded down. So a changed glyph, colour or shape still fails the test.
 // - With SNAPSHOT_RECORD=1, the check writes the image into the repo copy of the fixture
 //   (Repo.root()) and records an issue, so a recording run never passes by mistake. Run the test
 //   again with no variable: the build copies the new PNG into the bundle.
 // - A missing PNG, an image of another size or more changed pixels than the limit record an
 //   issue with the count of the pixels that differ.
-// - With SNAPSHOT_PIXELS=0, the check compares only the size of the image. The CI workflow sets
-//   it: a CI runner draws text, blur and shadows with another GPU and another font rendering, so
-//   its pixels never match the snapshots of the Mac that recorded them. A wrong size is a fault
-//   of the layout on any machine, so it still fails there.
 // - cacheDisplay does not draw an NSHostingView inside the view, or the rows of a table in a tree
 //   with layers. The image draws them again at their places (drawLayeredParts).
 // The tests never order the window of the view front.
@@ -26,32 +27,26 @@ import Testing
 package struct Snapshot {
     // The pixels of one point.
     package static let scale = 2
-    // The most pixels that can differ, as a part of all pixels: 0.05 %.
-    package static let tolerance = 0.0005
-    // The most that a channel of two equal pixels can differ, of 255.
+    // The most pixels that can differ, as a part of all pixels: 0.1 %.
+    package static let tolerance = 0.001
+    // Two pixels with no channel that differs by more than this, of 255, are equal at once.
     package static let channelTolerance: UInt8 = 2
+    // The most CIEDE2000 difference of two equal pixels: just below the difference of about 2.3
+    // that the eye can see (perceptualPrecision 0.98 in swift-snapshot-testing).
+    package static let perceptualTolerance = 2.0
+    // The appearance of each image: Bifrost is dark.
+    private static let appearance = NSAppearance(named: .darkAqua)
     // The variable that turns on the recording.
     nonisolated package static let recordVariable = "SNAPSHOT_RECORD"
-    // The variable that turns off the pixel compare when it is 0 (only the size counts).
-    nonisolated package static let pixelsVariable = "SNAPSHOT_PIXELS"
 
     private let bundle: Bundle
     private let target: String
-    // False: the check compares only the size of the image.
-    private let pixels: Bool
-
-    // True unless SNAPSHOT_PIXELS is 0.
-    nonisolated package static var comparesPixels: Bool {
-        ProcessInfo.processInfo.environment[pixelsVariable] != "0"
-    }
 
     // bundle is the Bundle.module of the test target, and target the name of its folder in
-    // Packages/Bifrost/Tests, for the repo copy of a recording. pixels comes from SNAPSHOT_PIXELS.
-    // A test of the snapshot tool gives true: its images are the same on each machine.
-    package init(bundle: Bundle, target: String, pixels: Bool = Snapshot.comparesPixels) {
+    // Packages/Bifrost/Tests, for the repo copy of a recording.
+    package init(bundle: Bundle, target: String) {
         self.bundle = bundle
         self.target = target
-        self.pixels = pixels
     }
 
     // The most pixels that can differ in an image of this many pixels.
@@ -96,7 +91,6 @@ package struct Snapshot {
             Issue.record(Comment(rawValue: text), sourceLocation: sourceLocation)
             return
         }
-        guard pixels else { return }
         let limit = Self.limit(pixels: image.width * image.height)
         if differ > limit {
             let text = "\(differ) pixels of \(name) differ from the snapshot (at most \(limit))."
@@ -136,12 +130,29 @@ package struct Snapshot {
             space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
     }
 
-    // The image of the bounds of the view at scale 2, over the background. The view draws itself
-    // and its subviews (the draw methods of AppKit), so the image does not need a window on
-    // screen. When the bitmap cannot be made, the call records an issue and gives nil.
+    // The image of the bounds of the view at scale 2, over the background, in the dark appearance
+    // of Bifrost. The view draws itself and its subviews (the draw methods of AppKit), so the
+    // image does not need a window on screen. When the bitmap cannot be made, the call records an
+    // issue and gives nil.
     package static func image(
         of view: NSView, background: NSColor,
         _ sourceLocation: SourceLocation = #_sourceLocation
+    ) -> CGImage? {
+        guard let appearance else {
+            Issue.record("No dark appearance.", sourceLocation: sourceLocation)
+            return nil
+        }
+        view.appearance = appearance
+        var image: CGImage?
+        appearance.performAsCurrentDrawingAppearance {
+            image = drawn(view, background: background, sourceLocation)
+        }
+        return image
+    }
+
+    // The drawing of image(of:background:), in the current drawing appearance.
+    private static func drawn(
+        _ view: NSView, background: NSColor, _ sourceLocation: SourceLocation
     ) -> CGImage? {
         view.layoutSubtreeIfNeeded()
         let size = view.bounds.size
@@ -255,7 +266,10 @@ package struct Snapshot {
         return Array(UnsafeBufferPointer(start: bytes, count: count))
     }
 
-    // The number of pixels that differ, or nil when the sizes differ.
+    // The number of pixels that differ, or nil when the sizes differ. A pixel differs when its
+    // alpha differs by more than channelTolerance, or when its colour differs by more than
+    // perceptualTolerance (CIEDE2000). The colour difference runs only for a pixel with a channel
+    // over channelTolerance.
     package static func differingPixels(_ one: CGImage, _ two: CGImage) -> Int? {
         guard one.width == two.width, one.height == two.height else { return nil }
         let a = pixels(one)
@@ -265,14 +279,21 @@ package struct Snapshot {
         var differ = 0
         for pixel in 0..<count {
             let start = pixel * 4
-            for channel in start..<(start + 4) {
-                let (one, two) = (a[channel], b[channel])
-                if max(one, two) - min(one, two) > channelTolerance {
-                    differ += 1
-                    break
-                }
-            }
+            if !(start..<(start + 4)).contains(where: { far(a[$0], b[$0]) }) { continue }
+            if far(a[start + 3], b[start + 3]) || !looksEqual(a, b, at: start) { differ += 1 }
         }
         return differ
+    }
+
+    // True when the two values of a channel differ by more than channelTolerance.
+    private static func far(_ one: UInt8, _ two: UInt8) -> Bool {
+        max(one, two) - min(one, two) > channelTolerance
+    }
+
+    // True when the colours of the two pixels at the start differ by at most perceptualTolerance.
+    private static func looksEqual(_ a: [UInt8], _ b: [UInt8], at start: Int) -> Bool {
+        let one = ColourDifference.lab(red: a[start], green: a[start + 1], blue: a[start + 2])
+        let two = ColourDifference.lab(red: b[start], green: b[start + 1], blue: b[start + 2])
+        return ColourDifference.deltaE00(one, two) <= perceptualTolerance
     }
 }
