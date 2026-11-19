@@ -130,6 +130,7 @@ put bad/long-line.txt Package.resolved
 put bad/long-line.txt Packages/Kit/Package.resolved
 put bad/long-line.txt pnpm-lock.yaml
 put bad/long-line.txt .releaserc.json
+put bad/long-line.txt package.json
 put bad/long-line.txt Packages/Kit/Sources/Kit/Resources/Fonts/LICENSE
 put bad/long-line.txt Packages/Kit/Sources/Kit/Resources/Icons/icon.svg
 put bad/long-line.txt App/Bifrost/Resources/live-mod/.claude-plugin/plugin.json
@@ -140,6 +141,11 @@ expect_pass "the skipped files"
 new_repo
 put bad/long-line.txt releaserc.json
 expect_finding "another JSON file" releaserc.json 2 long-line
+
+# Only the package.json at the root skips the long-line rule.
+new_repo
+put bad/long-line.txt tools/package.json
+expect_finding "a package.json in a folder" tools/package.json 2 long-line
 
 # Only a setting line of an xcconfig file skips the long-line rule. A comment line keeps it.
 new_repo

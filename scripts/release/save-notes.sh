@@ -7,7 +7,7 @@
 # (.releaserc.json). That plugin comes after the release-notes-generator plugin, so it gets the
 # full notes: the summary and the notes of the commits. The script prints nothing, so it adds no
 # text to the notes. A dry run also makes the notes, so the check job of the Release workflow gets
-# the notes with no release. The build job then puts the notes into its artifact for the sign job.
+# the notes with no release. The check job then gives the notes to the sign job.
 # The notes come as base64 text, so the shell of the exec plugin gets only the characters A-Z,
 # a-z, 0-9, "+", "/" and "=", and never runs a part of the notes.
 # The script is POSIX sh, and it runs on the Linux runner of the check job.

@@ -65,10 +65,11 @@ most 600 characters, and no line can start with `#`, because the release notes u
 headings. It goes at the top of the release notes, where the app's What's new dialog and Sparkle's
 update window both show it (`scripts/release/summary.sh` checks it).
 
-The workflow has three jobs, and they're split for one reason: no third-party build code ever runs
-next to the signing keys. Building the app runs code from its Swift packages, including SwiftTerm's
-build plug-in, and on a GitHub runner any step of a job can reach every secret that job holds. So
-the job that builds has no secrets at all, and the job that holds the secrets builds nothing.
+The workflow has four jobs, and they're split for one reason: no third-party code ever runs next
+to the signing keys. Building the app runs code from its Swift packages, including SwiftTerm's
+build plug-in, and publishing runs semantic-release and its plugins from npm. On a GitHub runner
+any step of a job can reach every secret that job holds, so the jobs that build and publish have no
+secrets at all, and the job that holds the secrets builds nothing and runs no npm code.
 
 1. **Check** runs on a cheap Linux runner. It checks the summary, checks that CI passed for the
    commit at the top of `main`, and asks semantic-release for the next version in a dry run. The
@@ -79,16 +80,22 @@ the job that builds has no secrets at all, and the job that holds the secrets bu
    job's token can only read.
 2. **Build** runs on a `macos-26` runner with no environment, no secrets and a read-only token. It
    checks that `main` hasn't moved, builds the Release app with the version from the check job,
-   checks its Sparkle settings, and uploads the unsigned app as a workflow artifact together with
-   the version and the release notes. The app goes into a `ditto` ZIP first, because an artifact
-   doesn't keep the symbolic links and file modes inside `Sparkle.framework`.
+   checks its Sparkle settings, and uploads the unsigned app and its version as a workflow
+   artifact. The app goes into a `ditto` ZIP first, because an artifact doesn't keep the symbolic
+   links and file modes inside `Sparkle.framework`.
 3. **Sign** runs on a fresh `macos-26` runner in the `release` environment, which holds the signing
-   secrets and only allows `main`. It checks that `main` hasn't moved, downloads the artifact and
-   checks its version, and treats the app as data: nothing inside it ever runs. It fetches Sparkle's
-   tools (see below), downloads the app of the last Electron release for the bridge check, builds a
-   temporary keychain from the Developer ID certificate, and runs `scripts/release/prepare.sh` to
-   sign the app and make the release files. Then it deletes the keychain and the notarisation key,
-   and in release mode runs semantic-release, which only publishes.
+   secrets and only allows `main`. Its token can only read, and it runs nothing but GitHub's own
+   actions, Apple's tools and the repo's scripts. It checks that `main` hasn't moved, downloads the
+   artifact and checks its version, and treats the app as data: nothing inside it ever runs. The
+   release notes come straight from the check job rather than through the artifact, so the build
+   can't change the text in Sparkle's update window. The job fetches Sparkle's tools (see below),
+   downloads the app of the last Electron release for the bridge check, builds a temporary keychain
+   from the Developer ID certificate, and runs `scripts/release/prepare.sh` to sign the app and
+   make the release files. Then it deletes the keychain and the key files, and uploads the files as
+   the `bifrost-files` artifact, which stays on the run for seven days in both modes.
+4. **Publish** only runs in release mode, on a Linux runner with no environment and no secrets,
+   and with a token that can push. It checks that `main` hasn't moved, downloads the files from the
+   sign job and runs semantic-release, which only publishes (see below).
 
 `scripts/release/build-app.sh` builds the app in the build job. It adds the `BIFROST_CUTOVER`
 compile condition on the `xcodebuild` command line only, so the published app is allowed to start
@@ -98,6 +105,11 @@ each build plug-in of a Swift package, which a runner can't answer, so in CI (wh
 `CI=true`) both `build-app.sh` and `scripts/check.sh` pass `-skipPackagePluginValidation`. On a Mac
 the prompt stays.
 
+The split protects the signing keys, not what the app contains. A bad package or build plug-in
+could still put its code into the app, and the sign job would sign and notarise it. What guards the
+contents is `Package.resolved`, which pins every package to a revision, and a careful look at each
+package update.
+
 `prepare.sh` makes the files in the sign job, with one script for each step in `scripts/release/`:
 
 1. `check-sparkle.sh` checks the Sparkle settings in the app: the feed address and the full public
@@ -105,7 +117,8 @@ the prompt stays.
 2. `sign-app.sh` signs the app from the inside out with the hardened runtime: Sparkle's XPC
    services, its `Autoupdate` tool and `Updater.app`, the Sparkle framework, any other code, and
    last the app with its one entitlement, audio input. `codesign --deep` would sign every nested
-   item the same way, so the script never uses it.
+   item the same way, so the script never uses it. `Downloader.xpc` keeps the entitlements Sparkle
+   gives it, so the script first checks that the build didn't add any: Sparkle 2.10.1 gives it none.
 3. `notarise.sh` sends the app to Apple's notary service with `notarytool` and staples the ticket,
    and `verify-app.sh` then checks the signatures, the team, the hardened runtime, the
    entitlements, the version, the ticket and Gatekeeper.
@@ -117,35 +130,49 @@ the prompt stays.
    writes `appcast.xml` with the release notes as the item's description.
 
 Before any of that, `prepare.sh` checks that the app's version is the version it was given, so it
-never signs the wrong build.
+never signs the wrong build. It also refuses an app that is itself a symbolic link, or that holds a
+link pointing outside the app, because `codesign` follows links and would otherwise sign files
+elsewhere on the runner.
 
-semantic-release then runs for real in the sign job, with only the GitHub token. It works out the
-version and the notes again, and its exec plugin runs `check-dist.sh` as the prepare step, which
-checks that `dist/` holds the files of exactly that version. If anything changed since the check
-job, the release stops before the tag. Otherwise semantic-release pushes the tag and its github
-plugin publishes the release with the four files. No commit goes back to `main`. The text of the
-GitHub release comes from this run and the appcast's text from the dry run, both made from the same
-commits and summary, so they only differ if the date in the heading changes in between.
+semantic-release then runs for real in the publish job. It works out the version and the notes
+again, and its exec plugin runs `check-dist.sh` as the prepare step, which checks that `dist/`
+holds the files of exactly that version. If anything changed since the check job, the release stops
+before the tag. Otherwise semantic-release pushes the tag and its github plugin publishes the
+release with the four files. No commit goes back to `main`. The text of the GitHub release comes
+from this run and the appcast's text from the dry run, both made from the same commits and summary,
+so they only differ if the date in the heading changes in between.
+
+If someone pushes to `main` while the release runs, semantic-release quietly makes no release and
+still succeeds. So the publish job checks afterwards that the tag `v<version>` is on GitHub, and
+fails with a clear message if it isn't. Start the workflow again in that case; the signed files of
+the failed run stay in its `bifrost-files` artifact.
 
 The exec plugin passes the release notes to `save-notes.sh` as base64, so the text of a commit
 message never reaches the shell as code.
 
-A dry run goes through the same three jobs, with the next version, or the last one when no release
-is due. Its notes are the full notes of the dry run, or only the summary when no release is due. It
-keeps the files as a download on the workflow run for seven days, and makes no tag and no release.
-Start with a dry run before each release, and never skip it before the first native one.
+A dry run goes through the first three jobs, with the next version, or the last one when no
+release is due. Its notes are the full notes of the dry run, or only the summary when no release is
+due. It keeps the files as a download on the workflow run for seven days, and makes no tag and no
+release. Start with a dry run before each release, and never skip it before the first native one.
+
+Every action in the workflows is pinned to the commit SHA of a release, with the tag in a comment
+beside it, because a tag can be moved. To update an action, look up the commit of its new tag and
+change both. The `packageManager` field in `package.json` pins pnpm the same way, with the SHA-512
+hash of its package.
 
 ### How the sign job gets Sparkle's tools
 
 `sign_update` reads the Sparkle private key, so the sign job must never run a copy that a build
 could have touched, which is why it restores no cache. `scripts/release/sparkle-tools.sh` writes a
-throwaway package whose only dependency is Sparkle at the exact version pinned in the project's
-`Package.resolved`, and resolves it with `swift package resolve`. That fetches Sparkle's source and
-its binary artifact and checks the artifact against the checksum in Sparkle's manifest, and no
-other package, SwiftTerm included, comes into the job. A resolve builds nothing and runs no
-plug-in: SwiftPM only runs build plug-ins during a build and command plug-ins through
-`swift package <command>`, and Sparkle's package has no plug-ins anyway, just one binary target.
-The script then checks that SwiftPM resolved the pinned revision, so a moved tag stops the release.
+throwaway package whose only dependency is Sparkle at the revision pinned in the project's
+`Package.resolved`, not at its version tag, since a tag can be moved. It resolves the package with
+`swift package resolve`, so no other package, SwiftTerm included, comes into the job. The resolve
+fetches Sparkle at that revision, then compiles and runs only Sparkle's `Package.swift`, inside
+SwiftPM's manifest sandbox, to learn where the binary artifact lives and what its checksum is. It
+downloads the artifact and checks it against that checksum, so the revision pins the tools too. It
+builds no target and runs no plug-in: SwiftPM only runs build plug-ins during a build and command
+plug-ins through `swift package <command>`, and Sparkle's package has no plug-ins anyway, just one
+binary target. As a second check, the script compares the resolved revision with the pin.
 `prepare.sh` insists on being told where the tools are (`SPARKLE_BIN`), so it never falls back to
 the copy in `.build/spm`.
 
@@ -225,8 +252,8 @@ signing identity and the team ID from the certificate itself (`signing-identity.
 holds a signing name.
 
 Keep these secrets in the `release` environment and nowhere else. Environment secrets only reach a
-job that names the environment, which is what keeps them away from the build job, and a copy as a
-repository or organisation secret would undo that.
+job that names the environment, which keeps them away from the build and publish jobs, and a copy
+as a repository or organisation secret would undo that.
 
 ### The Sparkle key pair
 
@@ -269,9 +296,10 @@ Two tests cover everything that doesn't need a secret:
   the signing identity, `latest-mac.yml` against a fixture ZIP, the appcast item, the check of the
   release files before publishing, the Sparkle settings (with the real resolved values of
   `Config/Release.xcconfig`), the Sparkle signature with a new test key, the checks of the Sparkle
-  pin, the bridge check with ad hoc signed test apps, the signing order with a copy of
-  Sparkle.framework, and the checks `prepare.sh` runs before it signs anything. It never reads the
-  Keychain, builds no Release app and uses no network.
+  pin, the bridge check with ad hoc signed test apps, the signing order and the `Downloader.xpc`
+  entitlements with a copy of Sparkle.framework, and the checks `prepare.sh` runs before it signs
+  anything, including the symbolic links. It never reads the Keychain, builds no Release app and
+  uses no network.
 - `scripts/test-release-config.sh` runs semantic-release with a copy of `.releaserc.json` in
   temporary repos, with no network. Besides the version rules, it checks that a dry run saves the
   full notes, that a run with the files of the right version pushes the tag, and that files of

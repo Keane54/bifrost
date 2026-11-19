@@ -4,11 +4,11 @@
 #
 # Usage: scripts/release/check-dist.sh <version> [<folder>]
 #
-# semantic-release runs this script as the prepareCmd of the exec plugin (.releaserc.json), with
-# the version of the tag that it is about to make. The sign job made the files before, with
-# prepare.sh, for the version that the dry run of the check job found. So when semantic-release
-# finds another version now, the release stops before the tag. The folder is dist/ of the repo
-# when the argument is not there.
+# semantic-release runs this script in the publish job of the Release workflow, as the prepareCmd
+# of the exec plugin (.releaserc.json), with the version of the tag that it is about to make. The
+# sign job made the files before, with prepare.sh, for the version that the dry run of the check
+# job found. So when semantic-release finds another version now, the release stops before the
+# tag. The folder is dist/ of the repo when the argument is not there.
 # The checks: the DMG Bifrost-arm64.dmg is there; the only update ZIP is
 # Bifrost-<version>-arm64-mac.zip; latest-mac.yml has the version and names that ZIP; appcast.xml
 # has the version and the address of that ZIP in the release of the tag v<version>.

@@ -8,7 +8,8 @@
 # check-dist.sh with fixture release files, check-sparkle.sh with fixture apps and with the real
 # Release settings, sparkle-sign.sh with a new test key, sparkle-tools.sh with fixture pins (only
 # the checks before the resolve), bridge-check.sh with ad hoc apps, sign-app.sh with an ad hoc
-# signature and a copy of Sparkle.framework, and the checks of prepare.sh before it signs.
+# signature and a copy of Sparkle.framework (also the entitlements of Downloader.xpc), and the
+# checks of prepare.sh before it signs (also the symbolic links of the app).
 # The script never builds or starts the Release app, never reads the Keychain and uses no network.
 # sparkle-sign.sh and sign-app.sh need the Sparkle tools and the Sparkle framework in .build/spm.
 # A resolve of the Swift packages of the project puts them there (check.sh runs this test after
@@ -447,6 +448,18 @@ expect_error "sign: an unknown item in Frameworks" "unknown item: notes.txt" \
 make_app "$tmp/nosparkle/Bifrost.app" "$bridge"
 expect_error "sign: no Sparkle" "no Sparkle framework" "$release/sign-app.sh" \
     "$tmp/nosparkle/Bifrost.app" "$entitlements" -
+# The signature keeps the entitlements of Downloader.xpc. Here the build gave it one more.
+make_sparkle_app "$tmp/entitled/Bifrost.app"
+downloader="$tmp/entitled/Bifrost.app/Contents/Frameworks/Sparkle.framework/Versions/B"
+downloader="$downloader/XPCServices/Downloader.xpc"
+printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' '<plist version="1.0">' '<dict>' \
+    '<key>com.apple.security.cs.disable-library-validation</key>' '<true/>' '</dict>' \
+    '</plist>' >"$tmp/extra.entitlements"
+codesign --force --sign - --entitlements "$tmp/extra.entitlements" "$downloader" 2>/dev/null ||
+    fail "codesign cannot give Downloader.xpc the test entitlement"
+expect_error "sign: other entitlements of Downloader.xpc" \
+    "other entitlements than Sparkle gives it: com.apple.security.cs.disable-library-validation" \
+    "$release/sign-app.sh" "$tmp/entitled/Bifrost.app" "$entitlements" -
 
 # --- prepare.sh ---------------------------------------------------------------------------------
 
@@ -479,5 +492,34 @@ expect_error "prepare: no signing identity" "SIGNING_IDENTITY is not set" prepar
 expect_error "prepare: no Sparkle tools" "SPARKLE_BIN is not set" env SIGNING_IDENTITY=- \
     SIGNING_KEYCHAIN="$tmp/none.keychain-db" TEAM_ID=ABCDE12345 "$release/prepare.sh" "$prep" \
     1.2.3 "$fix/notes.md"
+
+# The symbolic links. The links of Sparkle.framework stay in the app, so that app gets to the
+# check of the environment.
+links="$tmp/prep-links/Bifrost.app"
+info_plist "$links" CFBundleShortVersionString 1.2.3 CFBundleVersion 1.2.3
+mkdir -p "$links/Contents/Frameworks" || fail "cannot make the Frameworks folder"
+ditto "$sparkle_framework" "$links/Contents/Frameworks/Sparkle.framework" ||
+    fail "ditto cannot copy Sparkle.framework"
+expect_error "prepare: the links of Sparkle" "SIGNING_IDENTITY is not set" prepare "$links" \
+    1.2.3 "$fix/notes.md"
+# Makes a copy of the test app with one more link. Arguments: the case folder, the name of the
+# link in Contents, and its target.
+link_app() {
+    mkdir -p "$tmp/$1" || fail "cannot make $tmp/$1"
+    ditto "$prep" "$tmp/$1/Bifrost.app" || fail "ditto cannot copy the test app"
+    ln -s "$3" "$tmp/$1/Bifrost.app/Contents/$2" || fail "cannot make the link $2"
+}
+link_app prep-out hosts /etc/hosts
+link_app prep-up up ../..
+link_app prep-none none missing-file
+for case in prep-out:hosts prep-up:up prep-none:none; do
+    expect_error "prepare: the link $case" "These do not: $tmp/${case%%:*}/Bifrost.app/Contents" \
+        prepare "$tmp/${case%%:*}/Bifrost.app" 1.2.3 "$fix/notes.md"
+    printf '%s\n' "$out" | grep -q -F "Contents/${case#*:}" || fail "prepare: $case: $out"
+done
+mkdir -p "$tmp/prep-linked" || fail "cannot make $tmp/prep-linked"
+ln -s "$prep" "$tmp/prep-linked/Bifrost.app" || fail "cannot make the link to the app"
+expect_error "prepare: the app is a link" "is a symbolic link" prepare \
+    "$tmp/prep-linked/Bifrost.app" 1.2.3 "$fix/notes.md"
 
 echo PASS

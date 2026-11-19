@@ -10,7 +10,8 @@
 # The script does not use "codesign --deep". That option signs each nested item in the same way,
 # but Sparkle needs its own order and options. The order follows the Sparkle 2 documentation
 # (Code signing and notarization):
-# 1. Each XPC service of Sparkle. Downloader.xpc keeps its own entitlements (its sandbox).
+# 1. Each XPC service of Sparkle. Downloader.xpc keeps the entitlements that Sparkle gives it,
+#    after a check (see downloader_keys).
 # 2. Autoupdate, then Updater.app, then Sparkle.framework.
 # 3. Each other framework and each dynamic library in Contents/Frameworks.
 # 4. Each other Mach-O file in Contents/MacOS.
@@ -39,6 +40,19 @@ else
     stamp=--timestamp
 fi
 
+# The entitlement keys that Sparkle gives Downloader.xpc, one on each line, sorted. The signature
+# keeps the entitlements of Downloader.xpc (--preserve-metadata), and they come from the app of
+# the build job. So the script first checks them. Sparkle 2.10.1 gives Downloader.xpc no
+# entitlement, so the check of the keys is complete. When a new version of Sparkle gives it
+# entitlements, write their keys here, and also check their values.
+downloader_keys=''
+
+# Prints the entitlement keys of the code at $1, one on each line, sorted.
+entitlement_keys() {
+    codesign --display --entitlements - --xml "$1" 2>/dev/null | grep -o '<key>[^<]*</key>' |
+        sed -e 's/<key>//' -e 's/<\/key>//' | sort
+}
+
 # Signs one item. The first argument is the path. The other arguments are more codesign options.
 sign() {
     item=$1
@@ -64,7 +78,14 @@ fi
 for xpc in "$current"/XPCServices/*.xpc; do
     [ -e "$xpc" ] || continue
     case ${xpc##*/} in
-        Downloader.xpc) sign "$xpc" --preserve-metadata=entitlements ;;
+        Downloader.xpc)
+            keys=$(entitlement_keys "$xpc")
+            if [ "$keys" != "$downloader_keys" ]; then
+                fail "Downloader.xpc has other entitlements than Sparkle gives it:" \
+                    "$(printf '%s' "$keys" | tr '\n' ' ')(expected: ${downloader_keys:-none})."
+            fi
+            sign "$xpc" --preserve-metadata=entitlements
+            ;;
         *) sign "$xpc" ;;
     esac
 done

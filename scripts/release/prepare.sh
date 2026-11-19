@@ -5,10 +5,13 @@
 # Usage: scripts/release/prepare.sh <unsigned app> <version> <notes file>
 #
 # The sign job of the Release workflow runs this script, in each mode. The build job built the app
-# with build-app.sh and gave it to the sign job as an artifact, with the version and the release
-# notes. This script builds nothing, and it runs no code of the app or of a Swift package. It
-# needs the signing keychain and the secrets, so only the sign job runs it.
+# with build-app.sh and gave it to the sign job as an artifact, with the version. The release
+# notes come from the check job. This script builds nothing, and it runs no code of the app or of
+# a Swift package. It needs the signing keychain and the secrets, so only the sign job runs it.
 # The app must be a folder with the name Bifrost.app, because the ZIP and the DMG keep the name.
+# The app must not be a symbolic link, and each symbolic link in the app must go to a file or a
+# folder in the app. codesign follows a link, so a link out of the app would let the signing
+# change a file outside the app.
 # The notes file holds the release notes as Markdown. It must not be in dist/.
 #
 # The environment gives:
@@ -20,8 +23,9 @@
 # - BRIDGE_APP: the app of the last Electron release (electron-app.sh).
 # - GITHUB_REPOSITORY: the owner and the name of the repo, for the address of the update ZIP.
 #
-# First the script checks the arguments, the version of the app and the environment. It changes
-# no file before these checks pass, so scripts/test-release.sh can test them with no secret.
+# First the script checks the arguments, the links and the version of the app, and the
+# environment. It changes no file before these checks pass, so scripts/test-release.sh can test
+# them with no secret.
 # Then the steps, in this order: check the Sparkle settings of the app, sign it, notarise and
 # staple it, check it, make the update ZIP, do the bridge check on the ZIP, make, sign, notarise
 # and staple the DMG, write latest-mac.yml, sign the ZIP for Sparkle, and write appcast.xml.
@@ -41,6 +45,25 @@ version=$2
 notes=$3
 [ -d "$app/Contents" ] || fail "$app is not an app bundle."
 [ "${app##*/}" = Bifrost.app ] || fail "The app must have the name Bifrost.app, not ${app##*/}."
+[ ! -L "$app" ] || fail "$app is a symbolic link. The app must be a folder."
+inside=$(cd "$app" && pwd -P) || fail "Cannot read the path of $app."
+# The links that go out of the app or to no file, one on each line. realpath resolves each link
+# and each link of its path.
+outside=$(find "$app" -type l -exec sh -c '
+    inside=$1
+    shift
+    for link in "$@"; do
+        target=$(realpath "$link" 2>/dev/null) || target=""
+        case $target in
+            "$inside"/*) ;;
+            *) printf "%s\n" "$link" ;;
+        esac
+    done
+' sh "$inside" {} +) || fail "find cannot read the links of $app."
+if [ -n "$outside" ]; then
+    fail "Each symbolic link in the app must go to a file or a folder in the app. These do not:" \
+        "$(printf '%s' "$outside" | tr '\n' ' ')"
+fi
 is_version "$version" || fail "\"$version\" is not a version of the form 1.2.3."
 [ -s "$notes" ] || fail "The notes file $notes is not there or is empty."
 for key in CFBundleShortVersionString CFBundleVersion; do

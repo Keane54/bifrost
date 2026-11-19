@@ -7,7 +7,8 @@ does not ignore. It reads only text files: UTF-8 with no NUL byte.
 
 Rules:
 - long-line: a line of more than 100 characters. The rule skips these files: *.pbxproj,
-  *.xcscheme, Package.resolved, pnpm-lock.yaml, .releaserc.json, the files below a folder named
+  *.xcscheme, Package.resolved, pnpm-lock.yaml, .releaserc.json, the package.json at the root of
+  the repo (its packageManager field holds a SHA-512 hash), the files below a folder named
   Fixtures, the files named LICENSE and the SVG files below a folder named Resources (a licence
   text and an icon file of an icon set stay as written), the files below
   docs/archive/phase-records/, docs/archive/gates/ and docs/explainers/, and the bundled files of
@@ -49,6 +50,9 @@ SETTINGS_SUFFIX = ".xcconfig"
 # A tool writes the two lock files. A command of the semantic-release config is one JSON string,
 # and a JSON string cannot continue on the next line.
 SKIPPED_NAMES = ("Package.resolved", "pnpm-lock.yaml", ".releaserc.json")
+# The packageManager field of the package.json at the root holds the version of pnpm and the
+# SHA-512 hash of that version in one JSON string. Only that file is skipped.
+SKIPPED_PATHS = ("package.json",)
 # A licence text of a resource (a font or an icon set) stays as written. So does an icon file of
 # an icon set (for example a copy of a lucide icon).
 LICENCE_NAME = "LICENSE"
@@ -110,7 +114,9 @@ def long_lines_apply(path):
         return False
     if (parts[-1] == LICENCE_NAME or parts[-1].endswith(ICON_SUFFIX)) and "Resources" in parts[:-1]:
         return False
-    return not (path.endswith(SKIPPED_SUFFIXES) or parts[-1] in SKIPPED_NAMES)
+    return not (
+        path.endswith(SKIPPED_SUFFIXES) or parts[-1] in SKIPPED_NAMES or path in SKIPPED_PATHS
+    )
 
 
 def is_build_configuration(path):
