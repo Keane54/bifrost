@@ -1,15 +1,14 @@
 ---
 name: bifrost-review
-description: Adversarial review of a GitHub PR for significant bugs, errors, security problems and unclear intent. Shows the review and a recommendation in the chat, then creates a pending review after you confirm. Never submits.
+description: Adversarial review of a GitHub PR for significant bugs, errors, and security problems that the author can fix. Shows the review and a recommendation in the chat, then creates a pending review after you confirm. Never submits.
 disable-model-invocation: true
 argument-hint: "[PR number or URL]"
 ---
 
 # Review a PR
 
-Review the pull request (PR) `$ARGUMENTS` for the problems that matter: bugs, errors, security
-problems, and places where the intent is not clear. If no PR is given, use the PR of the current
-branch.
+Review the pull request (PR) `$ARGUMENTS` for the problems that matter: bugs, errors and security
+problems that the author can fix. If no PR is given, use the PR of the current branch.
 
 ## Started by Bifrost
 
@@ -28,8 +27,8 @@ rules that always apply still apply, with two changes:
 
 If `$ARGUMENTS` does not start with `bifrost-input=`, the user started this session.
 
-The result is a pending review on GitHub, plus a recommendation in the chat: Approve, Comment or
-Request changes. Only the user can see a pending review. The user reads it, changes it if they want,
+The result is a pending review on GitHub, plus a recommendation in the chat: Approve or Request
+changes. Only the user can see a pending review. The user reads it, changes it if they want,
 and submits it in GitHub with the recommended action or another one. You never submit it.
 
 The exact `gh`, `git` and GraphQL calls are in `${CLAUDE_SKILL_DIR}/reference.md`. Read it before
@@ -108,21 +107,27 @@ Be adversarial. Assume that the change has a bug, and try to find it. For each c
 - Security: injection (SQL, shell, HTML), a missing authorisation check, a secret in the code or in
   a log, unsafe deserialisation, path traversal, a request to a URL that a user controls, a weaker
   default.
-- Intent: code that does not do what the PR description says, or code that a reader can read in
-  two ways that behave differently.
+- The description: code that does not do what the PR description says, when the difference gives
+  a wrong result.
+- Code comments: a comment that no longer agrees with the code after the change, in the diff or in
+  code that the change makes wrong. A wrong comment misleads the next reader and the next agent.
 
 Report a problem only when it is:
 
-- significant: it can cause wrong behaviour, an error, lost data or a security hole, or the intent
-  is not clear;
-- actionable: the author can make a specific change to fix it.
+- significant: it can cause wrong behaviour, an error, lost data or a security hole;
+- actionable: you can name the specific change that fixes it.
 
 Never report:
 
 - style, naming, formatting or the order of the code;
 - another approach that works no better than the one in the PR;
 - a problem in code that the PR does not change, unless the change makes it worse or depends on it;
-- praise, a recap of what the PR does, or a comment for the sake of a comment.
+- praise, a recap of what the PR does, or a comment for the sake of a comment;
+- a question that checks what the code does, or that asks whether the author meant a behaviour;
+- a changed behaviour that the tests of the PR expect, or that similar code in the codebase
+  already has;
+- a difference from the PR description that gives no wrong result;
+- advice with no failure behind it, such as "consider" or "you may want to".
 
 ## 5. Check each finding
 
@@ -132,13 +137,29 @@ Prove each finding before you keep it.
 - Check that no other code already prevents it: a guard in a caller, a type, a validation, a test.
 - Check that you read the head version of the code, not an older one.
 
-Drop a finding that you cannot support. A guess is not a finding. When you cannot tell whether the
-author meant the behaviour, ask about it as an intent question.
+Drop a finding that you cannot support. A guess is not a finding.
+
+When a changed behaviour can be on purpose, find the intent yourself. Never ask the author.
+
+- Read the PR description, the tests of the PR and the commit messages.
+- Look for code in the codebase that does the same job.
+- Drop the finding when the tests expect the new behaviour, or when similar code already works the
+  same way. For example: a filter change gives an empty table for one mix of picks, but the filter
+  of another field already does that. Drop it.
+- If you still cannot tell, keep the finding only when a person clearly gets a wrong result, an
+  error or lost data from it. Else drop it.
+
+When a code comment and the code disagree, decide which one is right. The code is usually the
+authority, so the usual fix is to change the comment, as a minor point. When the code has a bug
+that makes it differ from the comment, the comment shows the intent: report the bug, and give the
+fix to the code.
+
+A finding that you keep is a problem, never a question. If you think that the code can be right,
+drop the finding.
 
 Then give each finding one kind:
 
 - **Bug or error:** the code does the wrong thing or fails. A security problem counts as a bug.
-- **Unclear intent:** you cannot tell what the author meant, and the answer changes the behaviour.
 - **Minor:** a real problem with a small effect. It does not need to block the PR.
 
 In a re-review, an earlier comment that the author did not fix counts again with its first kind,
@@ -152,7 +173,6 @@ its thread. Never make a new line comment for it, because its thread exists alre
 | None | Approve | Nothing. Write no summary and no comments. |
 | Minor only | Approve | A short summary that lists the minor points. No line comments. |
 | A bug or an error | Request changes | A summary and a line comment for each new finding. |
-| Unclear intent, no bug or error | Comment | A summary and a line comment for each new finding. |
 
 Minor points always go in the summary, never in line comments. They never block the approval.
 Earlier comments that are still open also go in the summary only, as step 5 says.
@@ -168,9 +188,9 @@ The summary is the body of the review:
 
 Each line comment:
 
-- Holds one problem. Say what is wrong, when it happens and what goes wrong. Give the fix when it is
-  clear.
-- For unclear intent, asks the question and says why the answer matters.
+- Holds one problem. Say what is wrong, when it happens, what goes wrong and the fix.
+- States the problem. It never asks a question, and it never argues against itself, for example
+  with "this may be fine".
 - Uses a GitHub suggestion block (a code block with the language `suggestion`) only for a small fix
   that you are sure of.
 - Is short, and speaks to the author as a colleague.
@@ -185,7 +205,7 @@ the diff. If a problem is outside the diff, put it in the summary with its path 
 Show the whole review in the chat before anything goes to GitHub:
 
 ```text
-Recommendation: <Approve | Comment | Request changes>
+Recommendation: <Approve | Request changes>
 Why: <one sentence>
 
 Summary:

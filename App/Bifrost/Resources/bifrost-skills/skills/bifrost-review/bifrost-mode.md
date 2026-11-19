@@ -8,9 +8,8 @@ Bifrost started this review session. Obey this file together with `SKILL.md`, as
 - You have no shell, no `gh` and no network. Do not try to run a command. Do not read
   `reference.md`.
 - Your tools are Read, Glob, Grep, Write and Skill. Do not start another skill.
-- Nobody reads this chat during the round. Never ask a question, and never wait for an answer. A
-  question about the intent goes into the review as an unclear-intent finding (sections 5 and 7
-  of `SKILL.md`).
+- Nobody reads this chat during the round. Never ask a question, and never wait for an answer.
+  When you are not sure of the intent, decide as section 5 of `SKILL.md` says.
 
 ## The input file
 
@@ -133,8 +132,8 @@ Bifrost checks the file. If one rule fails, Bifrost refuses the whole file and p
 - `pr`: the value of `pr.key`, exactly.
 - `headSha`: the value of `pr.headSha`, exactly.
 - `round`: the value of `round` of the input file, exactly.
-- `recommendation`: `approve`, `comment` or `request-changes`. These are Approve, Comment and
-  Request changes in section 6 of `SKILL.md`.
+- `recommendation`: `approve` or `request-changes`. These are Approve and Request changes in
+  section 6 of `SKILL.md`.
 - `why`: one sentence on one line that gives the reason for the recommendation, from 1 to 300
   characters. Bifrost shows it on the row of the PR.
 - `summary`: the body of the review (section 7 of `SKILL.md`), 20,000 characters at most. Write
@@ -149,7 +148,7 @@ Bifrost checks the file. If one rule fails, Bifrost refuses the whole file and p
   - `startSide`: only with `startLine`, and the same value as `side`. You can leave it out.
   - `body`: the text of the comment in Markdown, from 1 to 10,000 characters.
 - `approve` has no line comments. Put each minor point in the summary.
-- `comment` and `request-changes` need text: a summary, one or more comments, or both.
+- `request-changes` needs text: a summary, one or more comments, or both.
 - A text with only white space counts as empty.
 - Use no other field, in the object or in a comment.
 - Inside a string, write a line break as `\n` and a tab as `\t`, and put `\` before each `"` and
