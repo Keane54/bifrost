@@ -20,6 +20,8 @@ package enum LayerImage {
         of layer: CALayer, margins: NSEdgeInsets = NSEdgeInsets(), background: NSColor? = nil,
         _ sourceLocation: SourceLocation = #_sourceLocation
     ) -> CGImage? {
+        // Each layer draws at the scale of the image, also on a screen at 1x (a CI runner).
+        Snapshot.drawAtScale(layer)
         // The area in the coordinates of Core Animation, with y up.
         let frame = layer.frame
         let area = CGRect(
