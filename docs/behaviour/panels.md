@@ -186,10 +186,10 @@ Before it runs anything, the lookup checks the row:
 - A folder that isn't an absolute path (or holds a NUL character), a row with no branch, and a
   branch that starts with "-" all give "None" with nothing run. Git never names a branch with a
   leading "-", so such a value can't be a real branch.
-- It then reads the folder, and gives those reads 2 seconds, since a read can hang on a network
-  volume that has gone offline. A folder that isn't there, one that Bifrost isn't allowed to
-  search (so `gh` couldn't start in it), and one that doesn't answer in time all give "The
-  session folder isn't there any more."
+- It then reads the folder, and gives those reads 2 seconds from their start, since a read can hang
+  on a network volume that has gone offline. A wait for a free thread doesn't count. A folder that
+  isn't there, one that Bifrost isn't allowed to search (so `gh` couldn't start in it), and one that
+  doesn't answer in time all give "The session folder isn't there any more."
 - A folder at or below one of the review folders (`StartPlan.branchSkipRoots`, the same folders
   in which Bifrost never runs `git`) gives "This is a review session, so Bifrost doesn't run gh in
   its folder." A review session can write the git config of its folder, and `gh` would read it.

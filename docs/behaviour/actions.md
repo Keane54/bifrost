@@ -1016,8 +1016,10 @@ that without changing anything.
   missing without being read.
 - The check reads the path with `stat`, which follows links, and for a folder also reads the real
   paths for the review-folder check below. Both reads run on a thread of their own, and if they
-  don't finish within 2 seconds, as can happen on an offline network volume, the path counts as
-  missing. A stuck read only holds its own thread.
+  don't finish within 2 seconds of their start, as can happen on an offline network volume, the
+  path counts as missing. The time before the start, while a busy Mac finds a free thread, doesn't
+  count, so a folder that exists never shows as missing for that reason. A stuck read only holds
+  its own thread.
 - For a folder, `git -C <folder> rev-parse --show-toplevel` runs with your login environment and a
   2 second limit, and a success means it's in a repository. No git runs in a folder at or below
   one of the review folders, compared both as written and by real path, so a trailing `/` or a

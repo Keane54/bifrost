@@ -40,11 +40,35 @@ package final class BlockingExecutor: TaskExecutor {
     // example a stat on a network volume that is offline. A work that hangs cannot be stopped:
     // its task keeps its own thread of the executor until the work returns, and its result then
     // goes nowhere.
+    // The limit counts from the start of the work, not from the call. On a busy Mac the work can
+    // wait for a thread of the executor first, and that wait is not a hang: a limit that counted
+    // it gave the fallback for a read that never started, for example "missing" for a folder
+    // that exists.
     @concurrent package static func run<Value: Sendable>(
         within limit: Duration, on clock: any Clock<Duration>, else fallback: Value,
         _ work: @escaping @Sendable () async -> Value
     ) async -> Value {
-        let worker = Task(executorPreference: shared) { await work() }
+        await run(executor: shared, within: limit, on: clock, else: fallback, work)
+    }
+
+    // The run with a time limit on the executor. A test gives an executor that holds its jobs,
+    // so that it can move the clock while the work waits for its start.
+    @concurrent static func run<Value: Sendable>(
+        executor: any TaskExecutor, within limit: Duration, on clock: any Clock<Duration>,
+        else fallback: Value, _ work: @escaping @Sendable () async -> Value
+    ) async -> Value {
+        let (starts, start) = AsyncStream<Void>.makeStream()
+        let worker = Task(executorPreference: executor) {
+            start.yield()
+            start.finish()
+            return await work()
+        }
+        // The wait for the start ends with nil at a cancel of the caller.
+        var started = starts.makeAsyncIterator()
+        guard await started.next() != nil else {
+            worker.cancel()
+            return fallback
+        }
         let result = await firstResult(of: worker, within: limit, on: clock)
         worker.cancel()
         return result ?? fallback
