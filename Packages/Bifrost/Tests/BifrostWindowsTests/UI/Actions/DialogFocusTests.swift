@@ -101,6 +101,9 @@ struct DialogFocusTests {
         await p.h.finish(save)
         #expect(model.reason != nil)
         #expect(!model.busy)
+        // The failure asks for the focus with a count that only rises, so SwiftUI sees it also
+        // when it never saw busy as true.
+        #expect(model.focusReturns == 1)
         // The name field has the focus: its field editor is the first responder.
         await waitUntil {
             (p.window.firstResponder as? NSText).map { _ in p.focusInDialog } ?? false

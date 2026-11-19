@@ -42,6 +42,11 @@ package final class NewSessionDialogModel {
     // dialog never starts a second session. After a failed check, the folder field takes the
     // focus again.
     package private(set) var busy = false
+    // The count of the failed checks after a start began. Each one gives the focus back to the
+    // folder field. The view reacts to this count, not to the end of busy: a check that fails at
+    // once can end busy before the next update of SwiftUI, and then SwiftUI sees no change of
+    // busy. The count only rises, so each update after a failure sees it.
+    package private(set) var focusReturns = 0
     // The recent folders, at the open of the dialog.
     package let folders: [String]
     @ObservationIgnored private weak var runner: ActionRunner?
@@ -130,6 +135,7 @@ package final class NewSessionDialogModel {
         } catch {
             reason = error.message
             busy = false
+            focusReturns += 1
             return
         }
         // The start runs now, and the Overview shows it. The dialog closes and stays busy.
@@ -213,8 +219,9 @@ struct NewSessionDialogView: View {
         .onAppear { focus = .folder }
         // While a start runs, the fields are off and the layer holds the focus, so the focus
         // state is none then. At the end of a failed start the folder field takes the focus
-        // again.
-        .onChange(of: model.busy) { _, busy in focus = busy ? nil : .folder }
+        // again (focusReturns).
+        .onChange(of: model.busy) { _, busy in if busy { focus = nil } }
+        .onChange(of: model.focusReturns) { focus = .folder }
     }
 
     private var folderRow: some View {

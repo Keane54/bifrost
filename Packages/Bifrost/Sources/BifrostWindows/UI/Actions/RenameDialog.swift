@@ -29,6 +29,11 @@ package final class RenameDialogModel {
     // True while a save runs. A save cannot stop, so the dialog stays open until it ends. At the
     // end of a failed save, the name field takes the focus again.
     package private(set) var busy = false
+    // The count of the failed saves. Each one gives the focus back to the name field. The view
+    // reacts to this count, not to the end of busy: a save that fails at once can end busy before
+    // the next update of SwiftUI, and then SwiftUI sees no change of busy. The count only rises,
+    // so each update after a failure sees it.
+    package private(set) var focusReturns = 0
     @ObservationIgnored private weak var runner: ActionRunner?
     // Keeps the focus in the dialog while a save runs and the fields are off.
     @ObservationIgnored private let holdFocus: () -> Void
@@ -97,6 +102,7 @@ package final class RenameDialogModel {
         } catch {
             reason = error.message
             busy = false
+            focusReturns += 1
         }
     }
 
@@ -172,8 +178,10 @@ struct RenameDialogView: View {
         .accessibilityLabel(model.title)
         .onAppear { focused = true }
         // While a save runs, the field is off and the layer holds the focus, so the focus state
-        // is false then. At the end of a failed save the field takes the focus again.
-        .onChange(of: model.busy) { _, busy in focused = !busy }
+        // is false then. At the end of a failed save the field takes the focus again
+        // (focusReturns).
+        .onChange(of: model.busy) { _, busy in if busy { focused = false } }
+        .onChange(of: model.focusReturns) { focused = true }
     }
 
     // The check box shows the check only while it counts. A disabled box is at 70 % opacity,
