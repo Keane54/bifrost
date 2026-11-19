@@ -15,3 +15,6 @@ dist/
 docs/specs/
 docs/plans/
 docs/archive/
+
+# The local test sandbox for real Claude Code runs (cl.sh). It stays on this machine.
+.m0-sandbox/
