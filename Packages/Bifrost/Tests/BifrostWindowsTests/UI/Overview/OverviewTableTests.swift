@@ -651,8 +651,9 @@ struct OverviewTableTests {
         #expect(calls.values == ["/Applications/Example Term.app"])
     }
 
-    // An owned row in a chat window of Bifrost shows the icon of the running app, and an owned
-    // row with a claude attach client in a terminal shows the icon of that terminal app. When the
+    // An owned row in a chat window of Bifrost shows the icon of the running app, an owned row
+    // with a claude attach client in a terminal shows the icon of that terminal app, and an owned
+    // row that nothing shows also shows the icon of the running app. When the
     // chat attaches, the icon changes at once: the table reads the attached chats during its
     // observation.
     @Test func anOwnedRowShowsTheIconOfTheAppThatShowsIt() async throws {
@@ -671,9 +672,10 @@ struct OverviewTableTests {
                     row, inChat: chats.sessions.contains(row.sessionId),
                     terminal: row.sessionId == bravo.sessionId ? warp : nil))
         }
-        await waitUntil(within: .seconds(10)) { p.rows.input?.appIcons.count == 1 }
+        // Each owned row has an app: Bifrost, or Warp for bravo.
+        await waitUntil(within: .seconds(10)) { p.rows.input?.appIcons.count == 3 }
         await p.settle()
-        #expect(p.kindCell(row: 0)?.icon.look?.glyph == .mark)
+        #expect(p.kindCell(row: 0)?.icon.look?.glyph == .app(bifrostImage))
         #expect(p.kindCell(row: 1)?.icon.look?.glyph == .app(warpImage))
         #expect(p.kindCell(row: 1)?.icon.look?.title == "Warp")
         // The chat of alpha attaches, and the chat of bravo too: a chat comes before Warp.
@@ -688,7 +690,7 @@ struct OverviewTableTests {
         await waitUntil(within: .seconds(10)) {
             p.kindCell(row: 1)?.icon.look?.glyph == .app(warpImage)
         }
-        #expect(p.kindCell(row: 2)?.icon.look?.glyph == .mark)
+        #expect(p.kindCell(row: 2)?.icon.look?.glyph == .app(bifrostImage))
     }
 
     // The icon of a terminal app comes from the path of its bundle. A path that is not an app

@@ -37,13 +37,16 @@ package enum SessionIconRules {
     // The app that shows the row, or nil. A parked row has no app. A chat window of Bifrost
     // comes before a terminal app: Bifrost knows its own attach for sure, with no process read,
     // and the chat is in the window of the Overview, one click away. When the chat ends, the
-    // row shows its terminal app again.
+    // row shows its terminal app again. An owned row that no chat and no terminal app shows is
+    // still a session of the background service that Bifrost runs, so it shows Bifrost too (user
+    // decision, 2026-11-19).
     package static func holder(_ row: SessionRow, inChat: Bool, terminal: TerminalApp?)
         -> SessionHolder?
     {
         guard row.state != .parked else { return nil }
         if inChat { return .bifrost }
-        return terminal.map(SessionHolder.terminal)
+        if let terminal { return .terminal(terminal) }
+        return row.kind == .owned ? .bifrost : nil
     }
 
     package static func iconKind(_ row: SessionRow) -> IconKind {

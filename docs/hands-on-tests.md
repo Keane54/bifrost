@@ -496,7 +496,8 @@ one. What opens can depend on the default apps of your Mac.
   Its icon should be the Warp icon, and resting on it should say Warp. Then start a
   `bifrost-test-` background session with New session and run `claude attach <its short ID>` in
   Warp. Within a poll or two its row should show the Warp icon, and closing that Warp tab should
-  bring back the Bifrost mark.
+  bring back the Bifrost icon. A background session with no chat and no Warp tab should show the
+  Bifrost icon too.
   Open the session's chat in Bifrost: the icon should turn into the Bifrost icon (Bifrost Dev's
   own icon in the development build) with the tooltip Bifrost, also while Warp still shows the
   session, and closing the chat should bring back the Warp icon. A parked session should keep the

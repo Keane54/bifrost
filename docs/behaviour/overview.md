@@ -151,8 +151,10 @@ the Overview, the Watchlist and the Selected Item panel all share.
 - When a chat window and a terminal are both showing the session, the chat wins. Bifrost is
   certain about its own attach, and the chat sits in the same window as the Overview, one click
   away. Close the chat and the terminal's icon comes back.
-- A parked session always shows the mark in the parked grey. An owned session that nothing is
-  showing keeps the mark, and an external session with no known app keeps the terminal glyph.
+- An owned session that no chat and no terminal app is showing still runs in the background
+  service that Bifrost drives, so it shows the Bifrost icon too.
+- A parked session always shows the mark in the parked grey, and an external session with no
+  known app keeps the terminal glyph.
 - Bifrost looks up each terminal app's icon once, from the path of its app bundle, off the main
   thread. Until the lookup finishes the row shows its glyph.
 

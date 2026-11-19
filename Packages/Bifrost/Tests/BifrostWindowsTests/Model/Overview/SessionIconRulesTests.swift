@@ -49,8 +49,8 @@ struct SessionIconRulesTests {
             SessionIconRules.iconKind(overviewRow("a", kind: .external, state: .parked)) == .parked)
     }
 
-    // The app that shows a row. A chat window of Bifrost comes before a terminal app, and a
-    // parked row has no app.
+    // The app that shows a row. A chat window of Bifrost comes before a terminal app, an owned
+    // row that nothing shows is Bifrost, and a parked row has no app.
     @Test func theHolderIsTheChatOfBifrostThenTheTerminalApp() {
         let warp = TerminalApp(name: "Warp", bundle: "/Applications/Warp.app")
         let owned = overviewRow("a", kind: .owned)
@@ -59,7 +59,7 @@ struct SessionIconRulesTests {
         #expect(SessionIconRules.holder(owned, inChat: true, terminal: warp) == .bifrost)
         #expect(SessionIconRules.holder(owned, inChat: true, terminal: nil) == .bifrost)
         #expect(SessionIconRules.holder(owned, inChat: false, terminal: warp) == .terminal(warp))
-        #expect(SessionIconRules.holder(owned, inChat: false, terminal: nil) == nil)
+        #expect(SessionIconRules.holder(owned, inChat: false, terminal: nil) == .bifrost)
         #expect(
             SessionIconRules.holder(external, inChat: false, terminal: warp) == .terminal(warp))
         #expect(SessionIconRules.holder(external, inChat: false, terminal: nil) == nil)

@@ -26,8 +26,8 @@ package struct AppIcon: Equatable, Sendable {
 // setting give it.
 package struct SessionIconLook: Equatable {
     package enum Glyph: Equatable {
-        // The Bifrost mark: an owned session with no icon of an app, or a parked session of
-        // either kind.
+        // The Bifrost mark: a parked session of either kind, or an owned session while no icon
+        // of an app is known.
         case mark
         // The terminal glyph: an external session with no icon of its terminal app.
         case terminal
