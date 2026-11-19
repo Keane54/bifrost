@@ -14,8 +14,10 @@
 //   plain text only.
 // - The footer has Discard draft and Approve instead, the "Send as" switch (Comment or Request
 //   changes, at first Claude's suggestion) and Send review. Each button makes the click of the
-//   user in its action. A PR that changed after the review allows only Discard draft, and a row
-//   that no longer offers the draft allows nothing and says so.
+//   user in its action, and the action starts in the click. A PR that changed after the review
+//   allows only Discard draft, and a row that no longer offers the draft allows nothing and says
+//   so. While a send of the draft runs, its progress takes the place of Send review
+//   (WriteProgressLabel), as on the row, so a second click finds no button.
 // - A delete of a draft that holds comments of the user asks first (Keep draft, or the button
 //   again in the strip).
 // - An action that worked closes the panel. A refusal shows in the error line, and the edits stay.
@@ -132,6 +134,15 @@ package final class ReviewDraftPanels: PanelBodiesPart {
         canDiscard && flow?.shown?.headMoved == false
     }
 
+    // The review of the send of the draft of the PR while it runs, or nil (ReviewWrites). Its
+    // progress shows in the place of Send review.
+    package var sending: ReviewVerdict? {
+        guard let pr, case .running(let review)? = links.writes()?.progress(pr),
+            review != .approve
+        else { return nil }
+        return review
+    }
+
     // The text of the confirm strip.
     package func confirmText(_ confirm: Confirm) -> String {
         let button = confirm == .discard ? "Discard draft" : "Approve instead"
@@ -204,11 +215,13 @@ package final class ReviewDraftPanels: PanelBodiesPart {
 
     // Run an action of the flow. One that worked closes the panel. After a refusal the edits
     // stay, so the user can try again. The result of a flow of an earlier open does not show.
+    // The action starts in the click, so the flow is busy and a send shows its progress before a
+    // second click can come.
     private func run(
         _ flow: DraftFlow, _ action: @escaping @MainActor () async throws(DraftRefusal) -> Void
     ) {
         error = nil
-        task = Task { [weak self] in
+        task = Task.immediate { [weak self] in
             let refusal: DraftRefusal?
             do throws(DraftRefusal) {
                 try await action()
@@ -391,10 +404,16 @@ struct ReviewDraftPanel: View {
                 }
             }
             .overlay { Rectangle().strokeBorder(style.edge, lineWidth: style.points(1)) }
-            Button("Send review") { panels.send(click: UserClick()) }
-                .buttonStyle(RowButtonStyle(tone: .tinted(Self.tone(panels.event)), style: style))
-                .disabled(!panels.canSend)
-                .focusable(false)
+            if let sending = panels.sending {
+                WriteProgressLabel(progress: .running(sending), style: style)
+            } else {
+                Button("Send review") { panels.send(click: UserClick()) }
+                    .buttonStyle(
+                        RowButtonStyle(tone: .tinted(Self.tone(panels.event)), style: style)
+                    )
+                    .disabled(!panels.canSend)
+                    .focusable(false)
+            }
         }
     }
 

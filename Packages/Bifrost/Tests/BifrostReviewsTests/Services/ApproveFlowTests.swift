@@ -39,7 +39,7 @@ struct ApproveFlowTests {
                 == [.read(DraftQueries.freshName), .write(write)])
         // The next poll shows the approval.
         #expect(f.polls.values.count == 1)
-        #expect(f.approver.running.isEmpty)
+        #expect(f.writes.running.isEmpty)
         await f.end()
     }
 
@@ -182,20 +182,20 @@ struct ApproveFlowTests {
             }
         }
         #expect(await gate.waitUntilHolding(1))
-        #expect(f.approver.running == [f.pr])
+        #expect(f.writes.running == [f.pr])
         // The gate opens only once the second call waits.
         let opener = Task { gate.open() }
         #expect(await approve(f) == .refusedByGitHub)
         #expect(await first.value == .refusedByGitHub)
         await opener.value
-        #expect(f.written == [write] && f.approver.running.isEmpty)
+        #expect(f.written == [write] && f.writes.running.isEmpty)
         await f.end()
     }
 
     // The progress of a click: approving while the write runs, then approved when GitHub
     // confirmed it, for the time of the hold and not less. At the end of the hold the progress
     // goes, and the rows build again one time.
-    // After GitHub confirmed the approval, approvedHere has the PR with its head until an answer
+    // After GitHub confirmed the approval, reviewedHere has the PR with its head until an answer
     // shows the approval. A PR with a new head and a PR that left the answer leave it too.
     @Test func aConfirmedApprovalStaysUntilAnAnswerShowsIt() async throws {
         let f = try await FlowFixture()
@@ -207,25 +207,26 @@ struct ApproveFlowTests {
         var request = try Rows.pull(f.pr.text)
         request.headSHA = f.head.hex
         let behind = Rows.answer(toReview: [request])
-        #expect(f.approver.approvedHere(behind).isEmpty)
+        let approved = ConfirmedReview(.approve, head: f.head.hex)
+        #expect(f.writes.reviewedHere(behind).isEmpty)
         try await f.approver.approve(f.pr, click: UserClick())
-        #expect(f.approver.approvedHere(behind) == [f.pr: f.head.hex])
-        #expect(f.approver.approvedHere(behind) == [f.pr: f.head.hex])
+        #expect(f.writes.reviewedHere(behind) == [f.pr: approved])
+        #expect(f.writes.reviewedHere(behind) == [f.pr: approved])
         // An answer that shows the approval: the polls decide from then on.
         var shown = request
         shown.viewerReviews = [
             ViewerOpinion(state: .approved, commit: f.head.hex, submittedAt: Rows.now)
         ]
-        #expect(f.approver.approvedHere(Rows.answer(toReview: [shown])).isEmpty)
-        #expect(f.approver.approvedHere(behind).isEmpty)
+        #expect(f.writes.reviewedHere(Rows.answer(toReview: [shown])).isEmpty)
+        #expect(f.writes.reviewedHere(behind).isEmpty)
         // A new head.
         try await f.approver.approve(f.pr, click: UserClick())
         var moved = request
         moved.headSHA = ReviewData.oldHex
-        #expect(f.approver.approvedHere(Rows.answer(toReview: [moved])).isEmpty)
+        #expect(f.writes.reviewedHere(Rows.answer(toReview: [moved])).isEmpty)
         // A PR that left the answer.
         try await f.approver.approve(f.pr, click: UserClick())
-        #expect(f.approver.approvedHere(Rows.answer()).isEmpty)
+        #expect(f.writes.reviewedHere(Rows.answer()).isEmpty)
         await f.end()
     }
 
@@ -236,7 +237,7 @@ struct ApproveFlowTests {
         let write = GitHubWrite.approveCommit(
             pr: try ReviewData.node("PR_node7"), commit: f.head, click: UserClick())
         f.answerWrite(write, state: "APPROVED")
-        #expect(f.approver.progress(f.pr) == nil && f.approver.held.isEmpty)
+        #expect(f.writes.progress(f.pr) == nil && f.writes.held.isEmpty)
         let gate = TestGate()
         defer { gate.openAll() }
         f.github.onWrite = { _ in await gate.pass() }
@@ -250,22 +251,22 @@ struct ApproveFlowTests {
             }
         }
         #expect(await gate.waitUntilHolding(1))
-        #expect(f.approver.progress(f.pr) == .approving)
-        #expect(f.approver.running == [f.pr] && f.approver.held == [f.pr])
+        #expect(f.writes.progress(f.pr) == .running(.approve))
+        #expect(f.writes.running == [f.pr] && f.writes.held == [f.pr])
         gate.open()
         #expect(await click.value == nil)
-        #expect(f.approver.progress(f.pr) == .approved)
-        #expect(f.approver.running.isEmpty && f.approver.held == [f.pr])
+        #expect(f.writes.progress(f.pr) == .confirmed(.approve))
+        #expect(f.writes.running.isEmpty && f.writes.held == [f.pr])
         #expect(f.progressEnds.values.isEmpty)
-        let hold = try #require(f.approver.holdTask(f.pr))
+        let hold = try #require(f.writes.holdTask(f.pr))
         #expect(await f.clock.waitForSleepers(1))
-        f.clock.advance(by: ApproveFlow.hold - .milliseconds(1))
-        #expect(f.clock.sleeperCount == 1 && f.approver.progress(f.pr) == .approved)
+        f.clock.advance(by: ReviewWrites.hold - .milliseconds(1))
+        #expect(f.clock.sleeperCount == 1 && f.writes.progress(f.pr) == .confirmed(.approve))
         f.clock.advance(by: .milliseconds(1))
         await hold.value
-        #expect(f.approver.progress(f.pr) == nil && f.approver.held.isEmpty)
+        #expect(f.writes.progress(f.pr) == nil && f.writes.held.isEmpty)
         #expect(f.progressEnds.values.count == 1)
-        #expect(f.written == [write] && ApproveFlow.hold == .seconds(3))
+        #expect(f.written == [write] && ReviewWrites.hold == .seconds(3))
         await f.end()
     }
 
@@ -279,13 +280,13 @@ struct ApproveFlowTests {
             pr: try ReviewData.node("PR_node7"), commit: f.head, click: UserClick())
         f.github.answers[FakeGitHub.key(write)] = .failure(.refused("Can not approve"))
         #expect(await approve(f) == .refusedByGitHub)
-        #expect(f.approver.progress(f.pr) == nil && f.approver.held.isEmpty)
+        #expect(f.writes.progress(f.pr) == nil && f.writes.held.isEmpty)
         f.github.answers[FakeGitHub.key(write)] = .failure(.unknownOutcome("HTTP 502"))
         #expect(await approve(f) == .unknown)
-        #expect(f.approver.progress(f.pr) == nil)
+        #expect(f.writes.progress(f.pr) == nil)
         f.answerFresh(head: try ReviewData.commit(ReviewData.oldHex), pending: .some(nil))
         #expect(await approve(f) == .headMoved)
-        #expect(f.approver.progress(f.pr) == nil)
+        #expect(f.writes.progress(f.pr) == nil)
         #expect(f.progressEnds.values.count == 3 && f.clock.sleeperCount == 0)
         await f.end()
     }

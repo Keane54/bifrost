@@ -10,8 +10,9 @@
 //   offers it, Comment (amber) or Request changes (red) for Claude's draft, Remove for a row that
 //   others approved, Review (Try again on a failed row) while a round can start, and Pause for a
 //   new request. Review on a new request has the strong text colour. Approve makes the click of
-//   the user in its action, and waits while CI runs. While the approval has a progress, the
-//   progress takes the place of the state text and the buttons (ApproveProgressLabel).
+//   the user in its action, and waits while CI runs. While a review write of the PR has a
+//   progress (an approval, or a send of the Review panel), the progress takes the place of the
+//   state text and the buttons (WriteProgressLabel).
 // - Line 2 of My PRs: the review status with its square, the reviewers in the colours of their
 //   opinions, the notes (later Copilot comments, older comments), then at the right the Claude
 //   state with its tip. Needs you has the red box of the Overview before its text.
@@ -112,8 +113,8 @@ struct ReviewRowView: View {
             Spacer(minLength: 0)
             HStack(spacing: style.points(6)) {
                 if let status = model.shownStatus(row) { label(status) }
-                if let progress = model.approveProgress(row.id) {
-                    ApproveProgressLabel(progress: progress, style: style)
+                if let progress = model.progress(row.id) {
+                    WriteProgressLabel(progress: progress, style: style)
                 } else {
                     ForEach(ReviewsMenu.buttons(row), id: \.self) { item in
                         Button(item.label) {
@@ -277,42 +278,34 @@ private struct Flashing<Content: View>: View {
     }
 }
 
-// The progress of an approval in the place of the buttons of its row: the lucide loader that turns
-// one time each second, linear and with no end, with "Approving…" in the text colour, then the
-// lucide check with "Approved" in the green of an approval. With Reduce Motion on, the loader does
-// not turn. The label has the height and the side padding of a row button, so the row keeps its
-// height. It is not a button: it takes no click.
-struct ApproveProgressLabel: View {
+// The progress of a review write in the place of the buttons of its row, and of Send review in
+// the Review panel (RowText.progress): the lucide loader that turns one time each second, linear
+// and with no end, with "Approving…", "Commenting…" or "Requesting changes…" in the text colour,
+// then the lucide check with "Approved", "Commented" or "Changes requested" in the colour of the
+// review. With Reduce Motion on, the loader does not turn. The label has the height and the side
+// padding of a row button, so the row keeps its height. It is not a button: it takes no click.
+struct WriteProgressLabel: View {
     // The time of one turn of the loader, in seconds.
     nonisolated static let turn: TimeInterval = 1
 
-    let progress: ApproveProgress
+    let progress: ReviewWriteProgress
     let style: PanelStyle
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let label = RowText.progress(progress)
         HStack(spacing: style.points(4)) {
             switch progress {
-            case .approving:
-                loader
-                Text(ReviewsPanelModel.approvingText)
-            case .approved:
-                ButtonIcon(icon: .check, size: style.points(12))
-                Text(ReviewsPanelModel.approvedText)
+            case .running: loader
+            case .confirmed: ButtonIcon(icon: .check, size: style.points(12))
             }
+            Text(label.text)
         }
         .lineLimit(1)
         .fixedSize()
         .padding(.horizontal, style.points(6))
         .frame(minHeight: style.points(16))
-        .foregroundStyle(colour)
-    }
-
-    private var colour: Color {
-        switch progress {
-        case .approving: ThemeTokens.text.color
-        case .approved: RowTone.green.colour
-        }
+        .foregroundStyle(label.tone.colour)
     }
 
     // A turn ends at 360 degrees, which looks the same as the start, so the repeat has no jump.

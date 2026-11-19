@@ -43,6 +43,8 @@ package enum RowText {
         case .paused(let until):
             "Paused \(max(1, Int((until.timeIntervalSince(now) / 60).rounded(.up))))m"
         case .youApproved: "You approved"
+        case .youRequestedChanges: "You requested changes"
+        case .youCommented: "You commented"
         case .approvedByOthers: "Approved by others"
         case .teamRequest: "Team request"
         }
@@ -55,6 +57,8 @@ package enum RowText {
         case .queued: "Waiting for a free review slot."
         case .reviewing: "Claude is reviewing this pull request."
         case .youApproved: "You approved this pull request on GitHub."
+        case .youRequestedChanges: "You requested changes on this pull request on GitHub."
+        case .youCommented: "You commented on this pull request on GitHub."
         case .trustNeeded: trustTip
         case .newRequest, .draftReady, .reviewed, .waitingForYou, .paused, .approvedByOthers,
             .teamRequest:
@@ -103,7 +107,7 @@ package enum RowText {
                 : "Click \(name) to check the draft and send it."
             return "Claude suggests: \(name).\(why) \(next)"
         case .newRequest, .failed, .waitingForYou, .trustNeeded, .reviewing, .queued, .paused,
-            .youApproved, .approvedByOthers, .teamRequest:
+            .youApproved, .youRequestedChanges, .youCommented, .approvedByOthers, .teamRequest:
             return nil
         }
     }
@@ -113,6 +117,30 @@ package enum RowText {
         case .approve: "Approve"
         case .comment: "Comment"
         case .requestChanges: "Request changes"
+        }
+    }
+
+    // The progress of a review write on its row, in the place of the state text and the buttons:
+    // "Approving…", "Commenting…" or "Requesting changes…" in the text colour while the write
+    // runs, then "Approved", "Commented" or "Changes requested" in the colour of the review.
+    package static func progress(_ progress: ReviewWriteProgress) -> RowLabel {
+        switch progress {
+        case .running(let review):
+            let text =
+                switch review {
+                case .approve: "Approving"
+                case .comment: "Commenting"
+                case .requestChanges: "Requesting changes"
+                }
+            return RowLabel(text: text + "\u{2026}", tone: .plain, tip: nil)
+        case .confirmed(let review):
+            let text =
+                switch review {
+                case .approve: "Approved"
+                case .comment: "Commented"
+                case .requestChanges: "Changes requested"
+                }
+            return RowLabel(text: text, tone: review.tone, tip: nil)
         }
     }
 
@@ -207,6 +235,18 @@ enum ClaudeResult: Sendable, Equatable {
 
     // The colour of the dot before the repository.
     var dot: RowTone { RowText.text(self).tone }
+}
+
+extension ReviewVerdict {
+    // The colour of a review of the user: the soft green of an approval, the amber of a comment
+    // and the red of a change request.
+    package var tone: RowTone {
+        switch self {
+        case .approve: .green
+        case .comment: .amber
+        case .requestChanges: .red
+        }
+    }
 }
 
 // What Claude drafted for a mark: a summary or not, and the count of comments on lines.

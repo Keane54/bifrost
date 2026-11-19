@@ -10,145 +10,53 @@
 //   and an unknown result, so the row shows the true state on GitHub.
 // - A call while an approval of the PR runs sends nothing: it waits for that approval and gives
 //   its result, so Approve instead of the Review panel never reports an approval that didn't go.
-//   The approval leaves the running step in its own task, when it ends, so a later call never
-//   gets the result of an approval that ended.
-// - The progress of each approval shows on its row (ApproveProgress): approving while the read
-//   and the write run, then approved for the time of hold on the injected clock after GitHub
-//   confirmed it. A refusal ends the progress at once. While a PR has a progress, its row stays
-//   when a poll drops the PR (held, ReviewRows.holding). At the end of a progress, progressEnded
-//   builds the rows again, so such a row goes.
-// - After GitHub confirmed an approval, the To review row says You approved until a poll shows
-//   the approval itself (approvedHere). GitHub can take a moment to list a new review, and the
-//   row must not offer Approve again in that time.
+// - ReviewWrites runs each approval in its own task and keeps the progress that the row shows,
+//   the hold after GitHub confirmed it, and You approved until a poll shows the approval.
 // - The reason of GitHub goes to the Event log; the refusal gives the friendly text.
 import BifrostFoundation
 import Foundation
-import Observation
 
 @MainActor
-@Observable
 package final class ApproveFlow {
-    // The time that a row shows "Approved" and stays after GitHub confirmed its approval.
-    nonisolated package static let hold = Duration.seconds(3)
+    private let store: ReviewsStore
+    private let github: GitHubClient
+    private let writes: ReviewWrites
+    private let viewer: @MainActor () -> String?
+    private let ended: @MainActor () -> Void
+    private let eventLine: @MainActor (String) -> Void
 
-    // The approval of a PR: it runs, with its result, or GitHub confirmed it and the timer ends
-    // the time that its row shows that.
-    private enum Approval {
-        case running(Task<Result<Void, ApproveRefusal>, Never>)
-        case approved(TimerSlot)
-    }
-
-    // The approval of each PR with a progress.
-    private var approvals: [PRKey: Approval] = [:]
-
-    // The head commit of each PR that the user approved here, after GitHub confirmed the write,
-    // until a poll shows that approval. Only in memory: after a start, the polls decide.
-    @ObservationIgnored private var approvedHeads: [PRKey: String] = [:]
-
-    // The PRs whose approval runs now.
-    package var running: Set<PRKey> {
-        Set(approvals.compactMap { pr, approval in
-            if case .running = approval { pr } else { nil }
-        })
-    }
-
-    // The PRs with a progress. Their rows stay when a poll drops them (ReviewRows.holding).
-    package var held: Set<PRKey> { Set(approvals.keys) }
-
-    @ObservationIgnored private let store: ReviewsStore
-    @ObservationIgnored private let github: GitHubClient
-    @ObservationIgnored private let clock: any Clock<Duration>
-    @ObservationIgnored private let viewer: @MainActor () -> String?
-    @ObservationIgnored private let ended: @MainActor () -> Void
-    @ObservationIgnored private let progressEnded: @MainActor () -> Void
-    @ObservationIgnored private let eventLine: @MainActor (String) -> Void
-
-    // The clock runs the time of hold. viewer gives the login of the last good poll. ended asks
-    // for a poll. progressEnded builds the rows again, with no poll. eventLine adds a line to the
-    // Event log.
+    // writes keeps the progress of each approval on its row. viewer gives the login of the last
+    // good poll. ended asks for a poll. eventLine adds a line to the Event log.
     package init(
-        store: ReviewsStore, github: GitHubClient, clock: any Clock<Duration>,
+        store: ReviewsStore, github: GitHubClient, writes: ReviewWrites,
         viewer: @escaping @MainActor () -> String?,
         ended: @escaping @MainActor () -> Void = {},
-        progressEnded: @escaping @MainActor () -> Void = {},
         eventLine: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         self.store = store
         self.github = github
-        self.clock = clock
+        self.writes = writes
         self.viewer = viewer
         self.ended = ended
-        self.progressEnded = progressEnded
         self.eventLine = eventLine
-    }
-
-    // The progress of the approval of the PR, or nil.
-    package func progress(_ pr: PRKey) -> ApproveProgress? {
-        switch approvals[pr] {
-        case .running?: .approving
-        case .approved?: .approved
-        case nil: nil
-        }
-    }
-
-    // The approvals of the user that GitHub confirmed and that the answer does not show yet, by
-    // PR, with the head commit of each (ToReviewRules: You approved). An approval that the answer
-    // shows, a PR that is not in the answer and a PR with a new head leave the list.
-    package func approvedHere(_ answer: PollAnswer) -> [PRKey: String] {
-        approvedHeads = approvedHeads.filter { pr, head in
-            guard let request = answer.toReview.first(where: { $0.key == pr }),
-                request.headSHA == head
-            else { return false }
-            return !ToReviewRules.approvedOnHead(request.viewerReviews, head: head)
-        }
-        return approvedHeads
-    }
-
-    // The task of the timer of the approved PR, or nil. A test waits for it.
-    package func holdTask(_ pr: PRKey) -> Task<Void, Never>? {
-        if case .approved(let timer)? = approvals[pr] { timer.task } else { nil }
     }
 
     // Approve the PR. A call while an approval of the PR runs sends nothing, and gives the
     // result of that approval when it ends.
     package func approve(_ pr: PRKey, click: UserClick) async throws(ApproveRefusal) {
-        if case .running(let approval)? = approvals[pr] {
+        if let approval = writes.approval(pr) {
             try await approval.value.get()
             return
         }
         guard store.isOpen, let viewer = viewer() else { throw .notReady }
         guard let mark = offeredMark(pr) else { throw .notSuggested }
-        // A new approval ends the time that the row shows an earlier one.
-        if case .approved(let timer)? = approvals[pr] { timer.stop() }
-        // The task runs on the main actor after this call stored it, so its end changes it.
-        let approval = Task { () async -> Result<Void, ApproveRefusal> in
-            do throws(ApproveRefusal) {
-                let head = try await self.send(pr, viewer: viewer, mark: mark, click: click)
-                self.confirmed(pr, head: head)
-                return .success(())
-            } catch {
-                self.endProgress(pr)
-                return .failure(error)
-            }
+        // The result is nil while a send of Claude's draft of the PR runs. The mark of that draft
+        // does not let the user approve.
+        let approval = writes.approve(pr) { () async throws(ApproveRefusal) -> String in
+            try await self.send(pr, viewer: viewer, mark: mark, click: click)
         }
-        approvals[pr] = .running(approval)
+        guard let approval else { throw .notSuggested }
         try await approval.value.get()
-    }
-
-    // GitHub confirmed the approval of the head of the PR. The row shows Approved for the time
-    // of hold, then You approved until a poll shows the approval (approvedHere). A refusal ends
-    // the progress at once (endProgress).
-    private func confirmed(_ pr: PRKey, head: String) {
-        approvedHeads[pr] = head
-        let timer = TimerSlot(clock: clock)
-        approvals[pr] = .approved(timer)
-        timer.start(after: Self.hold) { [weak self] in self?.endProgress(pr) }
-    }
-
-    // Remove the progress of the PR, and build the rows again.
-    private func endProgress(_ pr: PRKey) {
-        approvals[pr] = nil
-        progressEnded()
     }
 
     // The approval itself: the fresh read, the checks and the one write. The result is the head

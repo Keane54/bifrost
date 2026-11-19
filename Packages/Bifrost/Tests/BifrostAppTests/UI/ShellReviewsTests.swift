@@ -28,15 +28,16 @@ private enum Poll {
     static let viewer = "viewer-a"
 
     // A PR of a list. requested is the time of the request for the viewer, or for a team with
-    // team true.
+    // team true. pending is the ID of the pending review of the viewer, or nil.
     static func pr(
         _ number: Int, owner: String = "owner-a", repo: String = "repo-a",
-        requested: String = "2026-11-02T10:00:00Z", team: Bool = false, head: String = "aaaa"
+        requested: String = "2026-11-02T10:00:00Z", team: Bool = false, head: String = "aaaa",
+        pending: String? = nil
     ) -> [String: Any] {
         let reviewer: [String: Any] =
             team
             ? ["__typename": "Team", "slug": "team-a"] : ["__typename": "User", "login": viewer]
-        return [
+        var pr: [String: Any] = [
             "number": number, "title": "Change \(number)", "isDraft": false, "additions": 3,
             "deletions": 1, "createdAt": "2026-11-01T09:00:00Z",
             "updatedAt": "2026-11-01T09:00:00Z",
@@ -45,6 +46,8 @@ private enum Poll {
             "reviewRequests": ["nodes": [["requestedReviewer": reviewer]]],
             "timelineItems": ["nodes": [["createdAt": requested, "requestedReviewer": reviewer]]],
         ]
+        if let pending { pr["pendingReviews"] = ["nodes": [["id": pending]]] }
+        return pr
     }
 
     static func answer(_ toReview: [[String: Any]]) throws -> Data {
@@ -231,6 +234,48 @@ private final class Harness {
         await parts.settled()
         folder.remove()
     }
+}
+
+// Send Claude's Request changes draft of PR 101 from the Review panel, while each poll lists the
+// request with that draft as the pending review of the viewer. Wait for the end of the hold of
+// Changes requested. The result is the PR.
+@MainActor
+private func sendRequestChanges(_ h: Harness) async throws -> PRKey {
+    let pr = try #require(PRKey(text: "owner-a/repo-a#101"))
+    let head = try #require(CommitID(String(repeating: "a", count: 40)))
+    let review = try #require(NodeID("PRR_claude"))
+    let store = try #require(h.parts.store)
+    let at = h.wall.date
+    await store.update { state in
+        var prState = state.prs[pr] ?? PRState()
+        prState.recommendation = RecommendationMark(
+            value: .requestChanges, why: "Two small bugs.", headSHA: head, reviewID: review, at: at)
+        state.prs[pr] = prState
+    }
+    h.github.answers["poll"] = .success(
+        try Poll.answer([Poll.pr(101, head: head.hex, pending: review.text)]))
+    h.parts.run(.refresh)
+    await h.settle()
+    #expect(h.parts.watcher?.toReview.first?.draft == .requestChanges)
+    h.github.answers[DraftQueries.freshName] = .success(
+        DraftAnswers.fresh(
+            pr, head: head, pending: DraftAnswers.Pending(id: review.text, commit: head)))
+    h.github.answers[DraftQueries.draftName] = .success(
+        DraftAnswers.draft(review.text, body: "Fix the two bugs.", commit: head, comments: []))
+    let submit = GitHubWrite.submitDraft(review: review, event: .requestChanges, click: UserClick())
+    h.github.answers[FakeGitHub.key(submit)] = .success(
+        DraftAnswers.written(submit, state: "CHANGES_REQUESTED"))
+    let flow = try #require(h.parts.draftFlow())
+    try await flow.open(pr)
+    try await flow.send(.requestChanges, click: UserClick())
+    await h.settle()
+    let writes = try #require(h.parts.writes)
+    #expect(writes.progress(pr) == .confirmed(.requestChanges))
+    let hold = try #require(writes.holdTask(pr))
+    h.clock.advance(by: ReviewWrites.hold)
+    await hold.value
+    #expect(writes.progress(pr) == nil)
+    return pr
 }
 
 @MainActor
@@ -613,15 +658,16 @@ struct ShellReviewsTests {
         // The poll after the approval has no request for the viewer any more.
         h.github.answers["poll"] = .success(try Poll.answer([]))
         let approver = try #require(h.parts.approver)
+        let writes = try #require(h.parts.writes)
         try await approver.approve(pr, click: UserClick())
         await h.settle()
         #expect(h.github.calls.filter { $0 == .read("poll") }.count == 2)
-        #expect(approver.progress(pr) == .approved)
+        #expect(writes.progress(pr) == .confirmed(.approve))
         #expect(h.toReview() == ["owner-a/repo-a#101"])
-        let hold = try #require(approver.holdTask(pr))
-        h.clock.advance(by: ApproveFlow.hold)
+        let hold = try #require(writes.holdTask(pr))
+        h.clock.advance(by: ReviewWrites.hold)
         await hold.value
-        #expect(approver.progress(pr) == nil && h.toReview().isEmpty)
+        #expect(writes.progress(pr) == nil && h.toReview().isEmpty)
         #expect(h.github.calls.filter { $0 == .read("poll") }.count == 2)
         await h.end()
     }
@@ -650,15 +696,55 @@ struct ShellReviewsTests {
         // The poll after the approval still lists the request, with no review of the viewer.
         h.github.answers["poll"] = .success(try Poll.answer([Poll.pr(101, head: head.hex)]))
         let approver = try #require(h.parts.approver)
+        let writes = try #require(h.parts.writes)
         try await approver.approve(pr, click: UserClick())
         await h.settle()
-        #expect(approver.progress(pr) == .approved)
-        let hold = try #require(approver.holdTask(pr))
-        h.clock.advance(by: ApproveFlow.hold)
+        #expect(writes.progress(pr) == .confirmed(.approve))
+        let hold = try #require(writes.holdTask(pr))
+        h.clock.advance(by: ReviewWrites.hold)
         await hold.value
-        #expect(approver.progress(pr) == nil)
+        #expect(writes.progress(pr) == nil)
         let row = try #require(h.parts.watcher?.toReview.first)
         #expect(row.id == pr && row.status.text == "You approved" && row.approve == nil)
+        await h.end()
+    }
+
+    // GitHub can still list the request and Claude's draft for a moment after it confirmed a send
+    // of the Review panel. After the hold of Changes requested, the row then says You requested
+    // changes and offers neither the draft nor Review: it never goes back to the state before the
+    // click.
+    @Test func aConfirmedSendShowsYouRequestedChangesWhileThePollIsBehind() async throws {
+        let h = try await Harness()
+        try await h.watch()
+        let pr = try await sendRequestChanges(h)
+        let row = try #require(h.parts.watcher?.toReview.first)
+        #expect(row.id == pr && row.status.text == "You requested changes")
+        #expect(row.draft == nil && row.approve == nil && ReviewsMenu.buttons(row).isEmpty)
+        let submits = h.github.calls.filter {
+            if case .write(.submitDraft) = $0 { true } else { false }
+        }
+        #expect(submits.count == 1)
+        await h.end()
+    }
+
+    // The start of a new review round of the PR ends the review that Bifrost kept for it, so the
+    // row follows the round and the polls again (ReviewRounds.reviewStarted).
+    @Test func aNewRoundEndsAKeptReviewResult() async throws {
+        let h = try await Harness(sessions: true)
+        try await h.watch()
+        let pr = try await sendRequestChanges(h)
+        let writes = try #require(h.parts.writes)
+        let answer = try #require(h.parts.watcher?.answer)
+        #expect(writes.reviewedHere(answer).count == 1)
+        #expect(h.parts.watcher?.toReview.first?.state == .toReview(.youRequestedChanges))
+        h.parts.run(.review(pr))
+        await h.parts.commandTask?.value
+        let round = try #require(h.parts.rounds?.queue.task(of: pr))
+        await round.value
+        #expect(writes.reviewedHere(answer).isEmpty)
+        let row = try #require(h.parts.watcher?.toReview.first)
+        #expect(row.id == pr && row.state != .toReview(.youRequestedChanges))
+        await h.parts.setupTask?.value
         await h.end()
     }
 

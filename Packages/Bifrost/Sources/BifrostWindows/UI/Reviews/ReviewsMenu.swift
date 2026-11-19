@@ -79,7 +79,7 @@ package enum ReviewsMenu {
         case .approvedByOthers: items.append(.remove)
         case .queued, .trustNeeded: items.append(.cancelReview)
         case .newRequest, .paused, .draftReady, .reviewed, .failed, .waitingForYou, .reviewing,
-            .youApproved, .teamRequest:
+            .youApproved, .youRequestedChanges, .youCommented, .teamRequest:
             break
         }
         if hasSession { items.append(.stopSession) }
@@ -87,7 +87,7 @@ package enum ReviewsMenu {
         case .newRequest: items.append(.pause)
         case .paused: items.append(.endPause)
         case .draftReady, .reviewed, .failed, .waitingForYou, .trustNeeded, .reviewing, .queued,
-            .youApproved, .approvedByOthers, .teamRequest:
+            .youApproved, .youRequestedChanges, .youCommented, .approvedByOthers, .teamRequest:
             break
         }
         return items
@@ -137,7 +137,9 @@ package enum ReviewsMenu {
         case .waitingForYou, .teamRequest: if row.reviewable { buttons.append(.review) }
         case .reviewed: if row.reviewable && row.approve == nil { buttons.append(.review) }
         case .failed: if row.reviewable { buttons.append(.tryAgain) }
-        case .draftReady, .trustNeeded, .reviewing, .queued, .paused, .youApproved: break
+        case .draftReady, .trustNeeded, .reviewing, .queued, .paused, .youApproved,
+            .youRequestedChanges, .youCommented:
+            break
         }
         return buttons
     }

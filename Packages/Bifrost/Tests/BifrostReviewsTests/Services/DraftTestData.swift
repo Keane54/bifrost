@@ -1,7 +1,7 @@
 // The fixture of the tests of the Approve button and of the Review panel: a Reviews store in a
-// temporary folder, FakeGitHub with the answers of DraftAnswers, the Approve flow on a manual
-// clock, and the polls, the ends of an approval progress and the Event log lines that the flows
-// ask for. No test reaches GitHub.
+// temporary folder, FakeGitHub with the answers of DraftAnswers, the Approve flow, the progress of
+// the review writes on a manual clock, and the polls, the ends of a progress and the Event log
+// lines that the flows ask for. No test reaches GitHub.
 import BifrostFoundation
 import BifrostTestSupport
 import Foundation
@@ -19,6 +19,7 @@ final class FlowFixture {
     let github = FakeGitHub()
     let client: GitHubClient
     let approver: ApproveFlow
+    let writes: ReviewWrites
     let clock = ManualClock()
     let polls = Recorder<Bool>()
     let progressEnds = Recorder<Bool>()
@@ -36,10 +37,11 @@ final class FlowFixture {
         pr = try ReviewData.pr()
         head = try ReviewData.commit()
         let (polls, progressEnds, lines) = (polls, progressEnds, lines)
+        let writes = ReviewWrites(clock: clock, progressEnded: { progressEnds.record(true) })
+        self.writes = writes
         approver = ApproveFlow(
-            store: store, github: client, clock: clock, viewer: { Self.viewer },
-            ended: { polls.record(true) }, progressEnded: { progressEnds.record(true) },
-            eventLine: { lines.record($0) })
+            store: store, github: client, writes: writes, viewer: { Self.viewer },
+            ended: { polls.record(true) }, eventLine: { lines.record($0) })
         if let mark { await setMark(mark) }
     }
 
@@ -47,8 +49,9 @@ final class FlowFixture {
     func draftFlow() -> DraftFlow {
         let (polls, lines) = (polls, lines)
         return DraftFlow(
-            store: store, github: client, approver: approver, viewer: { Self.viewer },
-            ended: { polls.record(true) }, eventLine: { lines.record($0) })
+            store: store, github: client, approver: approver, writes: writes,
+            viewer: { Self.viewer }, ended: { polls.record(true) },
+            eventLine: { lines.record($0) })
     }
 
     func setMark(_ mark: RecommendationMark?) async {

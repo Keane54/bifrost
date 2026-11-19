@@ -15,6 +15,10 @@
 //   again by itself; a poll follows it, and each action that worked.
 // - After a send or a discard the mark goes. Approve instead deletes the draft first, marks the
 //   mark deleted, then approves the head with no text through the Approve button (ApproveFlow).
+// - A send shows its progress on the row and in the panel (ReviewWrites.send): from the click to
+//   the end of the writes, then the result for a short time after GitHub confirmed the submit.
+//   After that, the row says You commented or You requested changes until a poll shows the
+//   review. A refusal ends the progress at once.
 import BifrostFoundation
 import Foundation
 import Observation
@@ -48,20 +52,23 @@ package final class DraftFlow {
     @ObservationIgnored private let store: ReviewsStore
     @ObservationIgnored private let github: GitHubClient
     @ObservationIgnored private let approver: ApproveFlow
+    @ObservationIgnored private let writes: ReviewWrites
     @ObservationIgnored private let viewer: @MainActor () -> String?
     @ObservationIgnored private let ended: @MainActor () -> Void
     @ObservationIgnored private let eventLine: @MainActor (String) -> Void
 
-    // approver approves for Approve instead. viewer gives the login of the last good poll. ended
-    // asks for a poll. eventLine adds a line to the Event log.
+    // approver approves for Approve instead. writes keeps the progress of a send on its row.
+    // viewer gives the login of the last good poll. ended asks for a poll. eventLine adds a line
+    // to the Event log.
     package init(
-        store: ReviewsStore, github: GitHubClient, approver: ApproveFlow,
+        store: ReviewsStore, github: GitHubClient, approver: ApproveFlow, writes: ReviewWrites,
         viewer: @escaping @MainActor () -> String?, ended: @escaping @MainActor () -> Void = {},
         eventLine: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         self.store = store
         self.github = github
         self.approver = approver
+        self.writes = writes
         self.viewer = viewer
         self.ended = ended
         self.eventLine = eventLine
@@ -101,27 +108,35 @@ package final class DraftFlow {
     }
 
     // Send review: write the edits to the draft, then submit it with the event. The edits stay
-    // after a failure, so the user can send again.
+    // after a failure, so the user can send again. The row and the panel show the progress from
+    // the click on (ReviewWrites.send). A send of the PR that runs in another flow refuses this
+    // one, and nothing is sent.
     package func send(_ event: DraftEvent, click: UserClick) async throws(DraftRefusal) {
         try await act { () async throws(DraftRefusal) in
             let (pr, mark, viewer) = try startWrite()
-            let fresh = try await readFresh(pr, viewer: viewer, mark: mark, needsHead: true)
-            let draft = try await readDraft(pr, mark: mark)
-            guard offeredMark(pr) == mark, let opened else { throw .gone }
-            let steps = try DraftEdits.plan(
-                draft, opened: opened, summary: summary, comments: comments, event: event
-            ).get()
-            for step in steps {
-                switch step {
-                case .body, .comment, .remove: try await checkPending(pr, mark: mark)
-                case .submit, .discard: break
+            try await writes.send(pr, event) { () async throws(DraftRefusal) -> String in
+                let fresh = try await readFresh(pr, viewer: viewer, mark: mark, needsHead: true)
+                let draft = try await readDraft(pr, mark: mark)
+                guard offeredMark(pr) == mark, let opened else { throw .gone }
+                let steps = try DraftEdits.plan(
+                    draft, opened: opened, summary: summary, comments: comments, event: event
+                ).get()
+                for step in steps {
+                    switch step {
+                    case .body, .comment, .remove: try await checkPending(pr, mark: mark)
+                    case .submit, .discard: break
+                    }
+                    try await write(
+                        step, pr: pr, mark: mark, fresh: fresh, draft: draft, click: click)
+                    remember(step)
                 }
-                try await write(step, pr: pr, mark: mark, fresh: fresh, draft: draft, click: click)
-                remember(step)
+                // The review isn't a draft any more, so the mark goes.
+                await setMark(pr, from: mark, to: nil)
+                ended()
+                // The submitted review is on the reviewed commit, which is the head of the PR
+                // (DraftEdits.refusal with needsHead).
+                return mark.headSHA.hex
             }
-            // The review isn't a draft any more, so the mark goes.
-            await setMark(pr, from: mark, to: nil)
-            ended()
         }
     }
 

@@ -496,18 +496,28 @@ first.
 | 7 | Reviewing | "Reviewing" | A review round runs |
 | 8 | Queued | "Queued" | The review waits for a free session |
 | 9 | Paused | "Paused 42m", the minutes left and at least 1 | You paused the request |
-| 10 | You approved | "You approved" | Your latest opinion approves the head commit |
-| 11 | Approved by others | "Approved by others" | GitHub's review decision is approved, so your approval changes nothing |
-| 12 | Team request | "Team request" | The request only names a team of yours |
+| 10 | You approved | "You approved", in soft green | Your latest opinion approves the head commit |
+| 11 | You requested changes | "You requested changes", in red | Your latest opinion requests changes on the head commit |
+| 12 | You commented | "You commented", in amber | You commented on the head commit, and you haven't approved it or requested changes on it |
+| 13 | Approved by others | "Approved by others" | GitHub's review decision is approved, so your approval changes nothing |
+| 14 | Team request | "Team request" | The request only names a team of yours |
 
 The state comes from the first rule that holds: a running or queued round (a queued round whose
-repository needs trust is Trust needed; see "Clones and trust"), the team filter, a
-pending review, your approval, a failed round, Claude's Approve with nothing posted, a pause,
-others' approval, a team request, and last a new request or one that waits for you. So an approved
-PR never flashes, and a pause hides the flash of a new request until it ends. Your approval of the
-head counts only once the request isn't new: someone who asks again on the same commit gets a new,
-flashing row. Only a new request flashes; the panel also stops the flash when the Row flash setting
-is off.
+repository needs trust is Trust needed; see "Clones and trust"), the team filter, a review you've
+just given in Bifrost, a pending review, your review of the head, a failed round, Claude's Approve
+with nothing posted, a pause, others' approval, a team request, and last a new request or one that
+waits for you. So a PR you've reviewed never flashes, and a pause hides the flash of a new request
+until it ends.
+
+Your review of the head is your latest opinion on GitHub when it's on the head commit: an approval
+gives You approved and a change request gives You requested changes. With no such opinion, a
+comment of yours on the head gives You commented, and a comment never changes an opinion, so
+commenting after you've approved still reads You approved. Your review counts only once the request
+isn't new: someone who asks again on the same commit gets a new, flashing row. A review you've just
+given in Bifrost (with Approve or Send review) counts as soon as GitHub confirms it, even before a
+poll lists it, and it stops counting once you start a new review round on the PR; see "Approve"
+and "The Review panel". Only a new request flashes, and the panel also stops the flash when the Row
+flash setting is off.
 
 When Claude has a result for the row, the result replaces the text of the state, the line of the
 author, size and age gives way to what Claude did, and a dot of the same colour sits before the
@@ -545,6 +555,8 @@ A failed review keeps its reason as the tip, also under CI. The other tips:
 | Queued | "Waiting for a free review slot." |
 | Reviewing | "Claude is reviewing this pull request." |
 | You approved | "You approved this pull request on GitHub." |
+| You requested changes | "You requested changes on this pull request on GitHub." |
+| You commented | "You commented on this pull request on GitHub." |
 
 The second line of a row with no result has the author, the size (`+12 −3`, with a real minus
 sign) and the age of the request: "just now" under a minute, then "5m ago", "3h ago" and "2d ago".
@@ -1193,8 +1205,9 @@ failing CI gets no Review button.
   address on github.com.
 - A right-click or a Control-click shows the Bifrost menu with only the items that apply to the
   row. On a To review row they come in this order: Open on GitHub; Open session while the PR has a
-  session that isn't parked; Approve while the row offers it, CI isn't running and no approval of
-  the PR is in progress; Comment or Request changes while the row offers Claude's draft; Review
+  session that isn't parked; Approve while the row offers it, CI isn't running and nothing is being
+  written to the PR; Comment or Request changes while the row offers Claude's draft and nothing is
+  being written to the PR; Review
   (Try again on a failed row) whenever a round can start; Remove on a row that others approved;
   Cancel review while a review waits in the queue or for trust; Stop session; Pause on a new
   request; and End pause now on a paused row. On a My PRs row: Open on
@@ -1247,9 +1260,9 @@ and "Approved" take its place for 3 seconds. Bifrost polls straight away, and Gi
 the review request once you've approved, which would make the row vanish at once. Bifrost keeps the
 row in place until the 3 seconds are up, and then it goes, or moves to You approved if GitHub still
 lists the request. GitHub can take a moment to list a new review, so Bifrost remembers the approval
-that GitHub confirmed, and the row says You approved until a poll shows the review too: it never
-goes back to offering Approve. If the approval doesn't go through, the Approve button comes back at
-once and the reason shows in the error line.
+that GitHub confirmed, and the row says You approved until a poll shows the review too (or until
+you start a new review round on the PR): it never goes back to offering Approve. If the approval
+doesn't go through, the Approve button comes back at once and the reason shows in the error line.
 
 When Bifrost doesn't approve, the reason shows in the error line at the bottom of the Reviews
 panel:
@@ -1271,11 +1284,12 @@ An approval that GitHub may have saved is never sent again by itself: Bifrost po
 click reads the PR again first, so it can't approve twice. GitHub's own words for a refusal go to
 the Event log with any token hidden.
 
-`ApproveFlow` runs the click and keeps the progress that the row shows (`ApproveProgress`, drawn by
-`ApproveProgressLabel`), `ApproveGuard` holds the checks and the write, and `DraftQueries.fresh` is
-the read. While an approval has a progress, the watcher keeps its row when a poll drops the PR
-(`ReviewRows.holding`). `ApproveFlowTests`, `ApproveGuardTests` and
-`ReviewDraftPanelTests.theRowShowsTheProgressOfItsApproval` cover them.
+`ApproveFlow` runs the click, `ApproveGuard` holds the checks and the write, and
+`DraftQueries.fresh` is the read. `ReviewWrites` keeps the progress that the row shows
+(`ReviewWriteProgress`, drawn by `WriteProgressLabel`) and the approvals GitHub confirmed, and it
+does the same for a send of the Review panel. While an approval has a progress, the watcher keeps
+its row when a poll drops the PR (`ReviewRows.holding`). `ApproveFlowTests`, `ApproveGuardTests`
+and `ReviewDraftPanelTests.theRowShowsTheProgressOfItsApproval` cover them.
 
 ### The Review panel
 
@@ -1315,6 +1329,21 @@ says so and only Discard draft works. Just before each change to the summary or 
 also checks that the review is still pending and yours, because GitHub's update would edit a
 submitted review too.
 
+Send review shows how the send is going, the same way Approve does on a row. As soon as you click,
+the button gives way to a spinning loader with "Commenting…" or "Requesting changes…", so there's
+nothing to click a second time, and the row in the Reviews panel shows the same progress in place
+of its state text and buttons, with Comment or Request changes gone from its menu. Once GitHub
+confirms the review, the panel closes and the row shows a check with "Commented" in amber or
+"Changes requested" in red for 3 seconds, staying in place even if the poll straight after drops
+the PR. GitHub usually drops the review request once you've reviewed, so the row then goes. If
+GitHub still lists the request, the row says You commented or You requested changes, with no
+button for the draft and no Review button, and it stays that way until a poll shows your review on
+that commit, the PR gets new commits or the request goes. That way a poll that's a moment behind
+GitHub never brings Claude's draft back. A poll never lists a comment, though, so starting a new
+review round on the PR (Review in the row menu) also ends it: the row then shows the round, and
+then the round's own draft. If the send doesn't go through, the progress ends at once,
+Send review comes back and the reason shows in the panel's error line.
+
 If the draft holds comments you added on GitHub, Discard draft and Approve instead ask first
 ("Discard draft also deletes the comment you added to this draft on GitHub.") with Keep draft next
 to the button. An action that works closes the panel and polls straight away. One that doesn't shows
@@ -1324,8 +1353,11 @@ round started, or the draft is gone), the panel says "You can't change this draf
 in the Reviews panel shows why." and allows nothing.
 
 `DraftFlow` runs the panel, `DraftEdits` holds the checks, the plan of a send and the guard of each
-write, and `ReviewDraftPanels` is the panel. `DraftFlowTests`, `DraftEditsTests` and
-`ReviewDraftPanelTests` cover them.
+write, and `ReviewDraftPanels` is the panel. `ReviewWrites` keeps the progress of a send and the
+review that GitHub confirmed, as it does for Approve. `DraftFlowTests`, `DraftEditsTests` and
+`ReviewDraftPanelTests` cover them, and
+`ShellReviewsTests.aConfirmedSendShowsYouRequestedChangesWhileThePollIsBehind` covers a poll
+that's behind.
 
 ### The Answer panel
 

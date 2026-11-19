@@ -18,20 +18,23 @@ enum ToReviewRules {
         case .queued: 7
         case .paused: 8
         case .youApproved: 9
-        case .approvedByOthers: 10
-        case .teamRequest: 11
+        case .youRequestedChanges: 10
+        case .youCommented: 11
+        case .approvedByOthers: 12
+        case .teamRequest: 13
         }
     }
 
     static func rows(
         _ answer: PollAnswer, _ state: ReviewsState, _ config: ReviewsConfig,
-        clones: CloneStates = CloneStates(), approvedHere: [PRKey: String] = [:], now: Date
+        clones: CloneStates = CloneStates(), reviewedHere: [PRKey: ConfirmedReview] = [:],
+        now: Date
     ) -> [ReviewRow] {
         let shown = answer.toReview.compactMap { pr -> (PullRequest, ToReviewState)? in
             guard !IgnoreRule.matches(config.ignore, pr.key.repo), state.hidden[pr.key] == nil,
                 let rowState = Self.state(
                     pr, state, teamRequests: config.teamRequests, clones: clones,
-                    approvedHere: approvedHere[pr.key], now: now)
+                    reviewedHere: reviewedHere[pr.key], now: now)
             else { return nil }
             return (pr, rowState)
         }
@@ -43,12 +46,12 @@ enum ToReviewRules {
     // The state of the row of the PR, or nil when the team filter hides it. The first rule that
     // holds wins. A session shows in each case. A queued review of a repository whose clone
     // needs the trust of the user waits for it. A queued review of a repository with no clone
-    // yet stays queued: its start makes the clone. approvedHere is the head commit that the user
-    // approved in Bifrost, after GitHub confirmed the write (ApproveFlow.approvedHere): the answer
-    // can be from before that approval, and the row must not offer Approve again.
+    // yet stays queued: its start makes the clone. reviewedHere is the review that the user gave
+    // in Bifrost, after GitHub confirmed the write (ReviewWrites.reviewedHere): the answer can be
+    // from before that review, and the row must not offer the same write again.
     static func state(
         _ pr: PullRequest, _ state: ReviewsState, teamRequests: Bool,
-        clones: CloneStates = CloneStates(), approvedHere: String? = nil, now: Date
+        clones: CloneStates = CloneStates(), reviewedHere: ConfirmedReview? = nil, now: Date
     ) -> ToReviewState? {
         let prState = state.prs[pr.key]
         if prState?.round != nil { return .reviewing }
@@ -57,7 +60,7 @@ enum ToReviewRules {
         }
         let direct = pr.isDirectRequest
         guard direct || teamRequests else { return nil }
-        if let approvedHere, approvedHere == pr.headSHA { return .youApproved }
+        if let reviewedHere, reviewedHere.head == pr.headSHA { return you(reviewedHere.verdict) }
         if pr.viewerPendingReviewID != nil { return .draftReady }
         let mark = state.requests[pr.key]
         // The user acted on the request (a Review click or the posts of a round) after its first
@@ -66,7 +69,9 @@ enum ToReviewRules {
             if let actedAt = prState?.actedAt, let mark { actedAt >= mark.firstSeen } else { false }
         let isNew = direct && mark?.baseline != true && !acted
         // A new request on the same commit stays new, so it flashes as before.
-        if !isNew && approvedOnHead(pr.viewerReviews, head: pr.headSHA) { return .youApproved }
+        if !isNew, let review = reviewOnHead(pr.viewerReviews, head: pr.headSHA) {
+            return you(review)
+        }
         if let reason = prState?.lastError { return .failed(reason) }
         if let mark = prState?.recommendation, mark.reviewID == nil,
             mark.headSHA.hex == pr.headSHA
@@ -79,16 +84,41 @@ enum ToReviewRules {
         return isNew ? .newRequest : .waitingForYou
     }
 
-    // True when the newest opinion of the user (an approval, a change request or a dismissal) is
-    // an approval of the head commit. A comment does not change an opinion.
-    static func approvedOnHead(_ opinions: [ViewerOpinion], head: String) -> Bool {
+    // The review of the user on the head commit, or nil. The newest opinion of the user (an
+    // approval, a change request or a dismissal) counts when it is on the head and is not a
+    // dismissal. Else a comment of the user on the head counts. A comment does not change an
+    // opinion, so a comment after an approval of the head leaves the approval.
+    static func reviewOnHead(_ opinions: [ViewerOpinion], head: String) -> ReviewVerdict? {
+        guard !head.isEmpty else { return nil }
         let kinds: [ReviewState] = [.approved, .changesRequested, .dismissed]
         var newest: ViewerOpinion?
         for opinion in opinions where kinds.contains(opinion.state) {
             let time = opinion.submittedAt ?? .distantPast
             if newest == nil || time >= newest?.submittedAt ?? .distantPast { newest = opinion }
         }
-        return !head.isEmpty && newest?.state == .approved && newest?.commit == head
+        if let newest, newest.commit == head {
+            switch newest.state {
+            case .approved: return .approve
+            case .changesRequested: return .requestChanges
+            case .commented, .dismissed, .pending: break
+            }
+        }
+        let commented = opinions.contains { $0.state == .commented && $0.commit == head }
+        return commented ? .comment : nil
+    }
+
+    // True when the newest opinion of the user is an approval of the head commit.
+    static func approvedOnHead(_ opinions: [ViewerOpinion], head: String) -> Bool {
+        reviewOnHead(opinions, head: head) == .approve
+    }
+
+    // The state of a row whose head commit has the review of the user.
+    private static func you(_ review: ReviewVerdict) -> ToReviewState {
+        switch review {
+        case .approve: .youApproved
+        case .comment: .youCommented
+        case .requestChanges: .youRequestedChanges
+        }
     }
 
     // The order of the tab: the group, then the end of the pause of a paused row, then the oldest
@@ -113,12 +143,13 @@ enum ToReviewRules {
     // MARK: - The row
 
     // True for a state whose text failing or running CI replaces: a state that waits for the
-    // user. A session, an approval of the user and approved by others keep their own text.
+    // user. A session, a review of the user and approved by others keep their own text.
     private static func showsCI(_ state: ToReviewState) -> Bool {
         switch state {
         case .newRequest, .waitingForYou, .teamRequest, .failed, .reviewed, .draftReady, .paused:
             true
-        case .trustNeeded, .reviewing, .queued, .youApproved, .approvedByOthers:
+        case .trustNeeded, .reviewing, .queued, .youApproved, .youRequestedChanges, .youCommented,
+            .approvedByOthers:
             false
         }
     }
@@ -177,7 +208,7 @@ enum ToReviewRules {
         switch state {
         case .reviewing, .queued, .trustNeeded: return false
         case .newRequest, .draftReady, .reviewed, .failed, .waitingForYou, .paused, .youApproved,
-            .approvedByOthers, .teamRequest:
+            .youRequestedChanges, .youCommented, .approvedByOthers, .teamRequest:
             return true
         }
     }
@@ -210,7 +241,9 @@ enum ToReviewRules {
         let tone: RowTone =
             switch rowState {
             case .failed: .red
-            case .youApproved: .green
+            case .youApproved: ReviewVerdict.approve.tone
+            case .youRequestedChanges: ReviewVerdict.requestChanges.tone
+            case .youCommented: ReviewVerdict.comment.tone
             case .newRequest, .draftReady, .reviewed, .waitingForYou, .trustNeeded, .reviewing,
                 .queued, .paused, .approvedByOthers, .teamRequest:
                 .plain
@@ -247,7 +280,7 @@ enum ToReviewRules {
             case nil: nil
             }
         case .newRequest, .failed, .waitingForYou, .trustNeeded, .reviewing, .queued, .paused,
-            .youApproved, .teamRequest:
+            .youApproved, .youRequestedChanges, .youCommented, .teamRequest:
             return nil
         }
     }

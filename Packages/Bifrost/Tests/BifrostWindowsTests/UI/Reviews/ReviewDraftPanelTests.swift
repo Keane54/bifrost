@@ -1,6 +1,7 @@
 // The Review panel and the Approve button of the Reviews panel (docs/behaviour/reviews.md,
 // "Approve" and "The Review panel"): the controls, the error line, the one GitHub write of each
-// button, with a click, and the progress of an approval on its row. The panels run on the real
+// button, with a click, and the progress of an approval and of a send on the row and in the
+// panel. The panels run on the real
 // flows over a Reviews store in a temporary folder and FakeGitHub, so no test reaches GitHub. A
 // close of a panel releases its body, as the canvas of the window does.
 import AppKit
@@ -25,7 +26,9 @@ private final class DraftPanelFixture {
     let github = FakeGitHub()
     let client: GitHubClient
     let approver: ApproveFlow
-    // The clock of the time that an approved row shows Approved.
+    // The progress of the review writes on the rows, on the clock of the time that a row shows
+    // the result of a write.
+    let writes: ReviewWrites
     let clock = ManualClock()
     let links = ReviewsPanelLinks()
     let panels: ReviewsPanels
@@ -54,8 +57,10 @@ private final class DraftPanelFixture {
         claudeComment = try #require(NodeID("PRRC_claude"))
         userComment = try #require(NodeID("PRRC_user"))
         let (store, client) = (store, client)
+        let writes = ReviewWrites(clock: clock)
+        self.writes = writes
         let approver = ApproveFlow(
-            store: store, github: client, clock: clock, viewer: { Self.viewer })
+            store: store, github: client, writes: writes, viewer: { Self.viewer })
         self.approver = approver
         row = ReviewRow(
             id: pr, state: .toReview(.draftReady), repo: "Repo-A", title: "Add the cache",
@@ -70,8 +75,11 @@ private final class DraftPanelFixture {
             ReviewsSnapshot(phase: .on, toReview: self.map { [$0.row] } ?? [])
         }
         links.approver = { approver }
+        links.writes = { writes }
         links.makeDraftFlow = {
-            DraftFlow(store: store, github: client, approver: approver, viewer: { Self.viewer })
+            DraftFlow(
+                store: store, github: client, approver: approver, writes: writes,
+                viewer: { Self.viewer })
         }
         links.openPanel = { opened.record($0) }
         links.closePanel = { [weak panels] in
@@ -137,12 +145,12 @@ private final class DraftPanelFixture {
         github.calls.compactMap { if case .write(let write) = $0 { write } else { nil } }
     }
 
-    // Move the clock to the end of the time that the approved row shows Approved, and wait for
-    // the end of the progress.
+    // Move the clock to the end of the time that the row shows the result of a write, and wait
+    // for the end of the progress.
     func endHold() async {
-        let hold = approver.holdTask(pr)
+        let hold = writes.holdTask(pr)
         #expect(await clock.waitForSleepers(1))
-        clock.advance(by: ApproveFlow.hold)
+        clock.advance(by: ReviewWrites.hold)
         await hold?.value
     }
 
@@ -266,7 +274,7 @@ struct ReviewDraftPanelTests {
         #expect(f.written == [submit, discard, discard, approve])
         #expect(f.closed.values.count == 3)
         // The row shows Approved after Approve instead too, until the end of the hold.
-        #expect(f.approver.progress(f.pr) == .approved)
+        #expect(f.writes.progress(f.pr) == .confirmed(.approve))
         await f.endHold()
         // The Approve button of a row with Claude's Approve draft submits that draft.
         await f.setMark(.approve)
@@ -306,12 +314,12 @@ struct ReviewDraftPanelTests {
         defer { gate.openAll() }
         f.github.onWrite = { _ in await gate.pass() }
         let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
-        #expect(model.approveProgress(f.pr) == nil && model.isEnabled(.approve, f.row))
+        #expect(model.progress(f.pr) == nil && model.isEnabled(.approve, f.row))
         #expect(!f.row.status.text.isEmpty && model.shownStatus(f.row) == f.row.status)
         model.approve(f.pr, click: UserClick())
         let first = try #require(model.approval)
         #expect(await gate.waitUntilHolding(1))
-        #expect(model.approveProgress(f.pr) == .approving)
+        #expect(model.progress(f.pr) == .running(.approve))
         // The progress takes the place of the state text.
         #expect(model.shownStatus(f.row) == nil)
         #expect(!model.isEnabled(.approve, f.row))
@@ -321,34 +329,88 @@ struct ReviewDraftPanelTests {
         #expect(model.approval == first)
         // A refresh of the rows keeps the progress.
         f.row.title = "Add the cache, part 2"
-        #expect(model.approveProgress(f.pr) == .approving)
+        #expect(model.progress(f.pr) == .running(.approve))
         gate.open()
         await first.value
         #expect(f.written == [write] && model.error == nil)
-        #expect(model.approveProgress(f.pr) == .approved)
+        #expect(model.progress(f.pr) == .confirmed(.approve))
         #expect(model.shownStatus(f.row) == nil)
         #expect(model.menuItems(f.pr) == [.openOnGitHub])
         let row = f.row
         f.row.status = RowLabel(text: "You approved", tone: .green, tip: nil)
         f.row.approve = nil
-        #expect(model.approveProgress(f.pr) == .approved)
+        #expect(model.progress(f.pr) == .confirmed(.approve))
         f.row = row
         #expect(f.clock.sleeperCount == 1)
         await f.endHold()
-        #expect(model.approveProgress(f.pr) == nil)
+        #expect(model.progress(f.pr) == nil)
         #expect(model.isEnabled(.approve, f.row))
         #expect(model.menuItems(f.pr) == [.openOnGitHub, .approve])
         // A refusal ends the progress and shows the reason.
         f.answerFresh(pending: false)
         model.approve(f.pr, click: UserClick())
-        #expect(model.approveProgress(f.pr) == .approving)
+        #expect(model.progress(f.pr) == .running(.approve))
         await model.approval?.value
-        #expect(model.approveProgress(f.pr) == nil)
+        #expect(model.progress(f.pr) == nil)
         #expect(model.shownStatus(f.row) == f.row.status)
         #expect(model.error == ApproveRefusal.draftMissing.message)
         #expect(f.written == [write])
-        #expect(ReviewsPanelModel.approvingText == "Approving\u{2026}")
-        #expect(ReviewsPanelModel.approvedText == "Approved")
+        #expect(RowText.progress(.running(.approve)).text == "Approving\u{2026}")
+        #expect(RowText.progress(.confirmed(.approve)).text == "Approved")
+        f.panels.releaseBody(for: .reviews)
+        await f.end()
+    }
+
+    // A send shows its progress from the click: Send review gives way to "Requesting changes…",
+    // the row shows the same progress in the place of its state text and its buttons, its menu
+    // has no Request changes, and a second click sends nothing. GitHub's answer closes the panel,
+    // and the row shows Changes requested until the end of the hold. A refusal ends the progress
+    // at once, and the reason shows in the error line of the panel.
+    @Test func aSendShowsItsProgressInThePanelAndOnTheRow() async throws {
+        let f = try await DraftPanelFixture(.requestChanges)
+        let submit = GitHubWrite.submitDraft(
+            review: f.review, event: .requestChanges, click: UserClick())
+        f.answer(submit, state: "CHANGES_REQUESTED")
+        let gate = TestGate()
+        defer { gate.openAll() }
+        f.github.onWrite = { _ in await gate.pass() }
+        let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
+        await f.open()
+        #expect(f.draft.event == .requestChanges && f.draft.sending == nil && f.draft.canSend)
+        #expect(model.menuItems(f.pr) == [.openOnGitHub, .requestChanges])
+        #expect(model.isEnabled(.requestChanges, f.row))
+        f.draft.send(click: UserClick())
+        let first = try #require(f.draft.task)
+        // The send starts in the click.
+        #expect(f.draft.sending == .requestChanges && !f.draft.canSend)
+        #expect(model.progress(f.pr) == .running(.requestChanges))
+        #expect(model.shownStatus(f.row) == nil && !model.isEnabled(.requestChanges, f.row))
+        #expect(model.menuItems(f.pr) == [.openOnGitHub])
+        f.draft.send(click: UserClick())
+        model.choose(.requestChanges, for: f.pr)
+        #expect(f.draft.task == first && f.opened.values == [.reviewDraft])
+        #expect(await gate.waitUntilHolding(1))
+        gate.open()
+        await first.value
+        #expect(f.written == [submit] && f.closed.values == [.reviewDraft])
+        #expect(f.draft.error == nil && f.draft.sending == nil)
+        #expect(model.progress(f.pr) == .confirmed(.requestChanges))
+        #expect(model.shownStatus(f.row) == nil && model.menuItems(f.pr) == [.openOnGitHub])
+        #expect(
+            RowText.progress(.running(.requestChanges)).text == "Requesting changes\u{2026}")
+        #expect(RowText.progress(.confirmed(.requestChanges)).text == "Changes requested")
+        await f.endHold()
+        #expect(model.progress(f.pr) == nil && model.shownStatus(f.row) == f.row.status)
+        // A refusal of GitHub ends the progress at once, and the edits stay.
+        f.github.onWrite = nil
+        f.github.answers[FakeGitHub.key(submit)] = .failure(.refused("Something went wrong"))
+        await f.setMark(.requestChanges)
+        await f.open()
+        f.draft.send(click: UserClick())
+        await f.draft.task?.value
+        #expect(f.draft.error == DraftRefusal.sendFailed.message)
+        #expect(f.draft.sending == nil && f.draft.canSend && model.progress(f.pr) == nil)
+        #expect(f.written == [submit, submit] && f.closed.values == [.reviewDraft])
         f.panels.releaseBody(for: .reviews)
         await f.end()
     }

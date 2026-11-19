@@ -71,6 +71,8 @@ package final class ReviewRounds {
     package var notify: @MainActor (ReviewsNotice) -> Void = { _ in }
     // A line for the Event log: the reason of git or of GitHub for a write that stopped.
     package var eventLine: @MainActor (String) -> Void = { _ in }
+    // A new review round of the PR starts (ReviewWrites.forget). The default does nothing.
+    package var reviewStarted: @MainActor (PRKey) -> Void = { _ in }
 
     private static let logger = Logger(bifrost: "reviews")
 
@@ -435,6 +437,9 @@ package final class ReviewRounds {
                 phase: .preparing, startedAt: time, at: job.since, kind: .review)
             state.prs[pr] = prState
         }
+        // The user acts on the request again, so a review result that Bifrost keeps for the PR
+        // ends.
+        reviewStarted(pr)
         changed()
         let round = makeRound(pr)
         await settle(job, round) { () async throws(ReviewRound.Stop) in try await round.start() }

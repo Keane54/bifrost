@@ -221,15 +221,83 @@ struct ToReviewRulesTests {
         state.prs[key, default: PRState()].recommendation = RecommendationMark(
             value: .approve, why: "", headSHA: try R.commit("a"), reviewID: nil, at: R.at(-5))
         let pr = try R.pull(key.text)
-        func row(_ here: [PRKey: String]) -> ReviewRow? {
+        func row(_ here: [PRKey: ConfirmedReview]) -> ReviewRow? {
             ReviewRows.toReview(
-                R.answer(toReview: [pr]), state, ReviewsConfig(), approvedHere: here, now: R.now
+                R.answer(toReview: [pr]), state, ReviewsConfig(), reviewedHere: here, now: R.now
             ).first
         }
         #expect(row([:])?.toReviewState == .reviewed && row([:])?.approve == .ready)
-        let approved = row([key: pr.headSHA])
+        let approved = row([key: ConfirmedReview(.approve, head: pr.headSHA)])
         #expect(approved?.toReviewState == .youApproved && approved?.approve == nil)
-        #expect(row([key: String(repeating: "b", count: 40)])?.toReviewState == .reviewed)
+        let older = ConfirmedReview(.approve, head: String(repeating: "b", count: 40))
+        #expect(row([key: older])?.toReviewState == .reviewed)
+    }
+
+    // A review of the user that GitHub confirmed in Bifrost shows its state before a poll shows
+    // it: a send of Claude's draft gives You requested changes or You commented, also while the
+    // answer still has the draft as the pending review. The row then offers neither the draft nor
+    // Approve. Only the reviewed head counts.
+    @Test func aSendConfirmedHereShowsItsStateBeforeAPoll() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        var state = seen(key)
+        state.prs[key, default: PRState()].recommendation = RecommendationMark(
+            value: .requestChanges, why: "", headSHA: try R.commit("a"),
+            reviewID: try R.node("PRR_c"), at: R.at(-5))
+        let pr = try R.pull(key.text, pending: "PRR_c")
+        func row(_ here: ConfirmedReview?) -> ReviewRow? {
+            ReviewRows.toReview(
+                R.answer(toReview: [pr]), state, ReviewsConfig(),
+                reviewedHere: here.map { [key: $0] } ?? [:], now: R.now
+            ).first
+        }
+        #expect(row(nil)?.toReviewState == .draftReady && row(nil)?.draft == .requestChanges)
+        let changes = try #require(row(ConfirmedReview(.requestChanges, head: pr.headSHA)))
+        #expect(changes.toReviewState == .youRequestedChanges)
+        #expect(changes.draft == nil && changes.approve == nil && changes.dot == nil)
+        #expect(changes.status.text == "You requested changes" && changes.status.tone == .red)
+        let comment = try #require(row(ConfirmedReview(.comment, head: pr.headSHA)))
+        #expect(comment.toReviewState == .youCommented && comment.draft == nil)
+        #expect(comment.status.text == "You commented" && comment.status.tone == .amber)
+        let older = ConfirmedReview(.requestChanges, head: String(repeating: "b", count: 40))
+        #expect(row(older)?.toReviewState == .draftReady)
+    }
+
+    // The newest opinion of the user on the head gives the state: an approval, or a change
+    // request. With no opinion on the head, a comment on the head gives You commented. A comment
+    // does not change an opinion. A new request on the same commit stays new, as for an approval.
+    @Test func theReviewOfTheUserOnTheHeadShowsItsState() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        let other = String(repeating: "b", count: 40)
+        func opinion(_ state: ReviewState, on commit: String = R.head, at minutes: Double)
+            -> ViewerOpinion
+        {
+            ViewerOpinion(state: state, commit: commit, submittedAt: R.at(minutes))
+        }
+        let waiting = seen(key, baseline: true)
+        func stateWith(_ opinions: [ViewerOpinion]) throws -> ToReviewState? {
+            stateOf(try R.pull(key.text, viewerReviews: opinions), waiting)
+        }
+        let changes = opinion(.changesRequested, at: -5)
+        let comment = opinion(.commented, at: -2)
+        #expect(try stateWith([changes]) == .youRequestedChanges)
+        #expect(try stateWith([comment]) == .youCommented)
+        #expect(try stateWith([changes, comment]) == .youRequestedChanges)
+        #expect(try stateWith([opinion(.approved, at: -5), comment]) == .youApproved)
+        // An opinion of an older commit, or a dismissal, leaves the comment on the head.
+        #expect(try stateWith([opinion(.changesRequested, on: other, at: -9)]) == .waitingForYou)
+        #expect(
+            try stateWith([opinion(.changesRequested, on: other, at: -9), comment])
+                == .youCommented)
+        #expect(try stateWith([opinion(.dismissed, at: -1)]) == .waitingForYou)
+        #expect(try stateWith([opinion(.commented, on: other, at: -1)]) == .waitingForYou)
+        // A new request on the same commit stays new, so it flashes as before.
+        #expect(stateOf(try R.pull(key.text, viewerReviews: [changes]), seen(key)) == .newRequest)
+        #expect(stateOf(try R.pull(key.text, viewerReviews: [comment]), seen(key)) == .newRequest)
+        #expect(ToReviewRules.reviewOnHead([changes], head: "") == nil)
+        // The row offers no Approve and no draft.
+        let answer = R.answer(toReview: [try R.pull(key.text, viewerReviews: [changes])])
+        let row = try #require(R.toReview(answer, waiting).first)
+        #expect(row.approve == nil && row.draft == nil)
     }
 
     @Test func theApproveButtonAndTheReviewPanelFollowTheMark() throws {
@@ -388,9 +456,13 @@ struct ToReviewRulesTests {
     @Test func theTabOrderIsTheGroupThenTheOldestRequest() throws {
         let keys = try (0...13).map { try R.key("owner-a/repo-a#\($0 + 1)") }
         let untrusted = try R.key("owner-a/repo-b#15")
+        let (changed, commented) = (try R.key("owner-a/repo-c#16"), try R.key("owner-a/repo-c#17"))
         var state = R.turnedOn()
         for key in keys { state.requests[key] = RequestMark(firstSeen: R.at(-60), baseline: false) }
         for index in [3, 4, 12] { state.requests[keys[index]]?.baseline = true }
+        for key in [changed, commented] {
+            state.requests[key] = RequestMark(firstSeen: R.at(-60), baseline: true)
+        }
         state.pauses[keys[5]] = R.at(50)
         state.pauses[keys[6]] = R.at(20)
         state.requests[untrusted] = RequestMark(firstSeen: R.at(-60), baseline: false)
@@ -404,7 +476,12 @@ struct ToReviewRulesTests {
         state.prs[keys[13], default: PRState()].round = ActiveRound(
             phase: .running, startedAt: R.at(-5), at: R.at(-6), kind: .review)
         let approval = ViewerOpinion(state: .approved, commit: R.head, submittedAt: R.at(-2))
+        let changes = ViewerOpinion(
+            state: .changesRequested, commit: R.head, submittedAt: R.at(-2))
+        let comment = ViewerOpinion(state: .commented, commit: R.head, submittedAt: R.at(-2))
         let answer = R.answer(toReview: [
+            try R.pull(commented.text, requestedAt: R.at(-400), viewerReviews: [comment]),
+            try R.pull(changed.text, requestedAt: R.at(-400), viewerReviews: [changes]),
             try R.pull(keys[0].text, direct: false, requestedAt: R.at(-200)),
             try R.pull(keys[1].text, requestedAt: R.at(-10)),
             try R.pull(keys[2].text, requestedAt: R.at(-20)),
@@ -426,14 +503,16 @@ struct ToReviewRulesTests {
             answer, state, clones: CloneStates(needsTrust: [untrusted.repo]))
         // Each group of the tab has a row, in the order of the groups.
         var order = [2, 1, 9, 10, 11, 4, 3].map { keys[$0] } + [untrusted]
-        order += [13, 7, 6, 5, 12, 8, 0].map { keys[$0] }
+        order += [13, 7, 6, 5, 12].map { keys[$0] } + [changed, commented]
+        order += [8, 0].map { keys[$0] }
         #expect(rows.map(\.id) == order)
         #expect(
             rows.map(\.toReviewState) == [
                 .newRequest, .newRequest, .draftReady, .reviewed, .failed("The review failed."),
                 .waitingForYou, .waitingForYou, .trustNeeded, .reviewing, .queued,
                 .paused(until: R.at(20)),
-                .paused(until: R.at(50)), .youApproved, .approvedByOthers, .teamRequest,
+                .paused(until: R.at(50)), .youApproved, .youRequestedChanges, .youCommented,
+                .approvedByOthers, .teamRequest,
             ])
     }
 

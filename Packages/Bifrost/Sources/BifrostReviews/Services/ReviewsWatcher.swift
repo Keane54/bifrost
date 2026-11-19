@@ -15,11 +15,11 @@
 // - A store that did not open (refusal) means no poll: the panel shows the message.
 // - Each good poll goes to the clones of Reviews after its rows (answered: RepoSetup.run), and
 //   the rows read the clone states (clones), so a queued round shows why it waits.
-// - A To review row whose PR has an approval progress (held: ApproveFlow.held) stays when a poll
-//   drops the PR, so the row shows the progress to its end (ReviewRows.holding).
-// - A To review row of an approval that GitHub confirmed says You approved until a poll shows the
-//   approval (approvedHere: ApproveFlow.approvedHere), so a poll that is behind GitHub never
-//   brings Approve back.
+// - A To review row whose PR has the progress of a review write (held: ReviewWrites.held) stays
+//   when a poll drops the PR, so the row shows the progress to its end (ReviewRows.holding).
+// - A To review row of a review that GitHub confirmed says You approved, You requested changes or
+//   You commented until a poll shows the review (reviewedHere: ReviewWrites.reviewedHere), so a
+//   poll that is behind GitHub never brings Approve or Claude's draft back.
 import BifrostFoundation
 import BifrostSessions
 import Foundation
@@ -93,14 +93,13 @@ package final class ReviewsWatcher {
     @ObservationIgnored package var clones: @MainActor () -> CloneStates = { CloneStates() }
     // A good poll, after its rows and its notifications: the clones of its repositories.
     @ObservationIgnored package var answered: @MainActor (PollAnswer) -> Void = { _ in }
-    // The PRs whose To review row stays when a poll drops them (ApproveFlow.held). The default
+    // The PRs whose To review row stays when a poll drops them (ReviewWrites.held). The default
     // holds no row.
     @ObservationIgnored package var held: @MainActor () -> Set<PRKey> = { [] }
-    // The approvals of the user that GitHub confirmed and that the answer does not show yet
-    // (ApproveFlow.approvedHere). Their rows say You approved. The default has none.
-    @ObservationIgnored package var approvedHere: @MainActor (PollAnswer) -> [PRKey: String] = {
-        _ in [:]
-    }
+    // The reviews of the user that GitHub confirmed and that the answer does not show yet
+    // (ReviewWrites.reviewedHere). Their rows say what the user did. The default has none.
+    @ObservationIgnored package var reviewedHere:
+        @MainActor (PollAnswer) -> [PRKey: ConfirmedReview] = { _ in [:] }
 
     // store is the result of the open of the store. A store that did not open gives a watcher
     // that does nothing on GitHub.
@@ -281,8 +280,8 @@ package final class ReviewsWatcher {
 
     // Build the rows again at the time of now, with no poll, so the time texts ("5m ago",
     // "Paused 42m") are correct between two polls. The panel calls it on its display clock, and
-    // the end of an approval progress calls it, so a held row goes. With no good answer, or while
-    // stopped, it does nothing.
+    // the end of the progress of a review write calls it, so a held row goes. With no good answer,
+    // or while stopped, it does nothing.
     package func refreshTimes() {
         rebuild()
     }
@@ -296,7 +295,7 @@ package final class ReviewsWatcher {
         let rows = ReviewRows.holding(
             held(), old: toReview,
             new: ReviewRows.toReview(
-                answer, store.state, config, clones: clones, approvedHere: approvedHere(answer),
+                answer, store.state, config, clones: clones, reviewedHere: reviewedHere(answer),
                 now: time))
         if rows != toReview { toReview = rows }
         let own = ReviewRows.mine(answer, store.state, config, clones: clones, now: time)

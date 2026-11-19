@@ -45,8 +45,11 @@
 //   ApproveFlow, each open of the Review panel gets a new DraftFlow, and each open of the Answer
 //   panel a new AnswerFlow, whose answers go to the request rounds. They read the viewer of the
 //   last good poll, ask for a poll after a write, and send the reason of GitHub to the Event log.
-//   The watcher keeps the row of a PR with an approval progress (ApproveFlow.held), and the end
-//   of a progress builds the rows again.
+//   One ReviewWrites keeps the progress and the result of the approvals and of the sends of the
+//   Review panel. The watcher keeps the row of a PR with a progress (ReviewWrites.held) and reads
+//   the reviews that GitHub confirmed (ReviewWrites.reviewedHere), and the end of a progress
+//   builds the rows again. The start of a new review round of a PR ends its confirmed review
+//   (ReviewWrites.forget).
 import BifrostFoundation
 import BifrostReviews
 import BifrostSessions
@@ -99,6 +102,8 @@ package final class ReviewsParts {
     package var rounds: ReviewRounds? { open?.rounds }
     // The Approve button, while the store is open.
     package var approver: ApproveFlow? { open?.approver }
+    // The progress and the result of the review writes of the rows, while the store is open.
+    package var writes: ReviewWrites? { open?.writes }
 
     // The parts of Reviews while the store is open.
     private struct OpenParts {
@@ -109,6 +114,7 @@ package final class ReviewsParts {
         // nil when the part cannot start sessions.
         let rounds: ReviewRounds?
         let approver: ApproveFlow
+        let writes: ReviewWrites
     }
 
     private enum Phase {
@@ -496,19 +502,21 @@ package final class ReviewsParts {
         case .success(let store):
             autoFixConsent = store.state.autoFixConsent
             let setup = makeSetup(store, watcher: watcher)
+            let writes = ReviewWrites(
+                clock: clock, progressEnded: { [weak watcher] in watcher?.refreshTimes() })
             let approver = ApproveFlow(
-                store: store, github: client, clock: clock,
+                store: store, github: client, writes: writes,
                 viewer: { [weak watcher] in watcher?.answer?.viewer },
-                ended: { [weak watcher] in watcher?.refresh() },
-                progressEnded: { [weak watcher] in watcher?.refreshTimes() },
-                eventLine: eventLine)
-            watcher.held = { [weak approver] in approver?.held ?? [] }
-            watcher.approvedHere = { [weak approver] in approver?.approvedHere($0) ?? [:] }
+                ended: { [weak watcher] in watcher?.refresh() }, eventLine: eventLine)
+            watcher.held = { [weak writes] in writes?.held ?? [] }
+            watcher.reviewedHere = { [weak writes] in writes?.reviewedHere($0) ?? [:] }
             phase = .on(
                 OpenParts(
                     store: store, watcher: watcher, setup: setup,
-                    rounds: setup.flatMap { makeRounds(store, setup: $0, watcher: watcher) },
-                    approver: approver))
+                    rounds: setup.flatMap {
+                        makeRounds(store, setup: $0, watcher: watcher, writes: writes)
+                    },
+                    approver: approver, writes: writes))
             settleConsent(store)
         case .failure(let failure):
             phase = .refused(failure, watcher)
@@ -524,7 +532,7 @@ package final class ReviewsParts {
         guard let open else { return nil }
         let watcher = open.watcher
         return DraftFlow(
-            store: open.store, github: client, approver: open.approver,
+            store: open.store, github: client, approver: open.approver, writes: open.writes,
             viewer: { [weak watcher] in watcher?.answer?.viewer },
             ended: { [weak watcher] in watcher?.refresh() }, eventLine: eventLine)
     }
@@ -555,10 +563,11 @@ package final class ReviewsParts {
         return setup
     }
 
-    // The review rounds of the open store, with their links to the watcher and the setup. Each
-    // good poll runs the setup, then goes to the rounds. nil when the part cannot start sessions.
+    // The review rounds of the open store, with their links to the watcher, the setup and the
+    // review writes. Each good poll runs the setup, then goes to the rounds. The start of a new
+    // review round ends the confirmed review of its PR. nil when the part cannot start sessions.
     private func makeRounds(
-        _ store: ReviewsStore, setup: RepoSetup, watcher: ReviewsWatcher
+        _ store: ReviewsStore, setup: RepoSetup, watcher: ReviewsWatcher, writes: ReviewWrites
     ) -> ReviewRounds? {
         guard let parts = sessionParts, let repos else { return nil }
         let sessions = PRSessions(
@@ -573,6 +582,7 @@ package final class ReviewsParts {
         rounds.ended = { [weak watcher] in watcher?.refresh() }
         rounds.notify = { [weak watcher] in watcher?.notify($0) }
         rounds.eventLine = eventLine
+        rounds.reviewStarted = { [weak writes] in writes?.forget($0) }
         setup.onTrusted = { [weak rounds] in rounds?.trusted($0) }
         watcher.answered = { [weak self, weak rounds] in
             self?.runSetup($0)
@@ -677,6 +687,7 @@ extension Shell {
         links.trusted = { [weak services] in services?.reviews?.setup?.trusted($0) }
         links.trustStepEnded = { [weak services] in services?.reviews?.rounds?.trustStepEnded($0) }
         links.approver = { [weak services] in services?.reviews?.approver }
+        links.writes = { [weak services] in services?.reviews?.writes }
         links.makeDraftFlow = { [weak services] in services?.reviews?.draftFlow() }
         links.makeAnswerFlow = { [weak services] in services?.reviews?.answerFlow(for: $0) }
         return links

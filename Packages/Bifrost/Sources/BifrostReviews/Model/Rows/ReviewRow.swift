@@ -29,6 +29,10 @@ package enum ToReviewState: Sendable, Equatable {
     case paused(until: Date)
     // The latest opinion of the user approves the head commit.
     case youApproved
+    // The latest opinion of the user requests changes on the head commit.
+    case youRequestedChanges
+    // The user commented on the head commit, with no approval or change request on it.
+    case youCommented
     // GitHub's review decision is APPROVED, so the approval of the user changes nothing.
     case approvedByOthers
     // A request for a team of the user only.
@@ -102,13 +106,40 @@ package enum ApproveOffer: Sendable, Equatable {
     case ready, waitsForCI
 }
 
-// The progress of an approval on its To review row (ApproveFlow.progress). The row shows it in
-// the place of its buttons, and a poll does not remove the row while it has a progress.
-package enum ApproveProgress: Sendable, Equatable {
-    // The fresh read and the write run.
-    case approving
-    // GitHub confirmed the approval. The row shows this for ApproveFlow.hold.
-    case approved
+// The kind of a review that the user gives on GitHub: an approval, a comment or a request for
+// changes. The progress of a write (ReviewWriteProgress), a review that GitHub confirmed
+// (ConfirmedReview) and the review of the user on the head in a poll answer
+// (ToReviewRules.reviewOnHead) each have one.
+package enum ReviewVerdict: Sendable, Equatable {
+    case approve, comment, requestChanges
+
+    // The kind of a send of Claude's draft review with the event.
+    package init(_ event: DraftEvent) {
+        self = event == .comment ? .comment : .requestChanges
+    }
+}
+
+// The progress of a review write on its To review row (ReviewWrites.progress): an approval of the
+// Approve button, or a send of Claude's draft review in the Review panel. The row shows it in the
+// place of its state text and its buttons, and a poll does not remove the row while it has a
+// progress.
+package enum ReviewWriteProgress: Sendable, Equatable {
+    // The fresh reads and the writes run.
+    case running(ReviewVerdict)
+    // GitHub confirmed the write. The row shows this for ReviewWrites.hold.
+    case confirmed(ReviewVerdict)
+}
+
+// A review of the user that Bifrost wrote and GitHub confirmed, with the head commit that it is
+// on (ReviewWrites.reviewedHere).
+package struct ConfirmedReview: Sendable, Equatable {
+    package var verdict: ReviewVerdict
+    package var head: String
+
+    package init(_ verdict: ReviewVerdict, head: String) {
+        self.verdict = verdict
+        self.head = head
+    }
 }
 
 // The state of a row in its tab.
@@ -215,10 +246,11 @@ package enum ReviewRows {
     // sort by the end of the pause.
     package static func toReview(
         _ answer: PollAnswer, _ state: ReviewsState, _ config: ReviewsConfig,
-        clones: CloneStates = CloneStates(), approvedHere: [PRKey: String] = [:], now: Date
+        clones: CloneStates = CloneStates(), reviewedHere: [PRKey: ConfirmedReview] = [:],
+        now: Date
     ) -> [ReviewRow] {
         ToReviewRules.rows(
-            answer, state, config, clones: clones, approvedHere: approvedHere, now: now)
+            answer, state, config, clones: clones, reviewedHere: reviewedHere, now: now)
     }
 
     // The My PRs rows: the PRs of the user that are not ignored. A row that needs the user comes
@@ -231,8 +263,8 @@ package enum ReviewRows {
     }
 
     // The new To review rows, with each old row of a held PR that the new rows do not have, at its
-    // old place or at the end. A held PR has an approval progress (ApproveFlow.held), so a poll
-    // that drops its PR does not remove the row while the row shows the progress.
+    // old place or at the end. A held PR has the progress of a review write (ReviewWrites.held),
+    // so a poll that drops its PR does not remove the row while the row shows the progress.
     package static func holding(
         _ held: Set<PRKey>, old: [ReviewRow], new: [ReviewRow]
     ) -> [ReviewRow] {

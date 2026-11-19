@@ -1,6 +1,6 @@
 // The Review panel (docs/behaviour/reviews.md, "The Review panel") on FakeGitHub: the open, Send
-// review with its checks and its writes, Discard draft and Approve instead. No test reaches
-// GitHub.
+// review with its checks, its writes and its progress on the manual clock, Discard draft and
+// Approve instead. No test reaches GitHub.
 import BifrostFoundation
 import BifrostTestSupport
 import Foundation
@@ -311,6 +311,162 @@ struct DraftFlowTests {
         #expect(f.written == [discard, approve])
         #expect(f.savedMark?.deleted == true && f.savedMark?.reviewID == nil)
         #expect(f.savedMark?.value == .comment)
+        await f.end()
+    }
+
+    // The progress of a send: running from the call while the reads and the writes run, then
+    // confirmed when GitHub confirmed the submit, for the time of the hold and not less. At the
+    // end of the hold the progress goes, and the rows build again one time.
+    @Test(arguments: [DraftEvent.comment, .requestChanges])
+    func theProgressOfASendEndsAfterTheHold(_ event: DraftEvent) async throws {
+        let (f, flow) = try await opened()
+        let review = ReviewVerdict(event)
+        let submit = GitHubWrite.submitDraft(
+            review: try ReviewData.node(FlowFixture.claudeReview), event: event,
+            click: UserClick())
+        f.answerWrite(submit, state: event == .comment ? "COMMENTED" : "CHANGES_REQUESTED")
+        #expect(f.writes.progress(f.pr) == nil && f.writes.held.isEmpty)
+        let gate = TestGate()
+        defer { gate.openAll() }
+        f.github.onWrite = { _ in await gate.pass() }
+        let send = Task { () async -> DraftRefusal? in
+            do throws(DraftRefusal) {
+                try await flow.send(event, click: UserClick())
+                return nil
+            } catch {
+                return error
+            }
+        }
+        #expect(await gate.waitUntilHolding(1))
+        #expect(f.writes.progress(f.pr) == .running(review))
+        #expect(f.writes.running == [f.pr] && f.writes.held == [f.pr])
+        gate.open()
+        #expect(await send.value == nil)
+        #expect(f.writes.progress(f.pr) == .confirmed(review))
+        #expect(f.writes.running.isEmpty && f.writes.held == [f.pr])
+        #expect(f.progressEnds.values.isEmpty)
+        let hold = try #require(f.writes.holdTask(f.pr))
+        #expect(await f.clock.waitForSleepers(1))
+        f.clock.advance(by: ReviewWrites.hold - .milliseconds(1))
+        #expect(f.clock.sleeperCount == 1 && f.writes.progress(f.pr) == .confirmed(review))
+        f.clock.advance(by: .milliseconds(1))
+        await hold.value
+        #expect(f.writes.progress(f.pr) == nil && f.writes.held.isEmpty)
+        #expect(f.progressEnds.values.count == 1 && f.written == [submit])
+        await f.end()
+    }
+
+    // After GitHub confirmed a send, reviewedHere has the review with its head until an answer
+    // shows that review on the head: a change request, or a comment. A PR with a new head and a
+    // PR that left the answer leave the list too.
+    @Test func aConfirmedSendStaysUntilAnAnswerShowsIt() async throws {
+        let (f, flow) = try await opened()
+        let review = try ReviewData.node(FlowFixture.claudeReview)
+        var request = try Rows.pull(f.pr.text, pending: FlowFixture.claudeReview)
+        request.headSHA = f.head.hex
+        let behind = Rows.answer(toReview: [request])
+        func shown(_ state: ReviewState) -> PollAnswer {
+            var shown = request
+            shown.viewerReviews = [
+                ViewerOpinion(state: state, commit: f.head.hex, submittedAt: Rows.now)
+            ]
+            return Rows.answer(toReview: [shown])
+        }
+        // Send Claude's draft again with the event, from a new open.
+        func send(_ event: DraftEvent) async throws {
+            let write = GitHubWrite.submitDraft(review: review, event: event, click: UserClick())
+            f.answerWrite(write, state: event == .comment ? "COMMENTED" : "CHANGES_REQUESTED")
+            await f.setMark(try f.mark(event == .comment ? .comment : .requestChanges))
+            let next = f.draftFlow()
+            try await next.open(f.pr)
+            try await next.send(event, click: UserClick())
+        }
+        let changes = GitHubWrite.submitDraft(
+            review: review, event: .requestChanges, click: UserClick())
+        f.answerWrite(changes, state: "CHANGES_REQUESTED")
+        #expect(f.writes.reviewedHere(behind).isEmpty)
+        try await flow.send(.requestChanges, click: UserClick())
+        let given = ConfirmedReview(.requestChanges, head: f.head.hex)
+        #expect(f.writes.reviewedHere(behind) == [f.pr: given])
+        #expect(f.writes.reviewedHere(behind) == [f.pr: given])
+        // A comment on the head is not the change request: it stays.
+        #expect(f.writes.reviewedHere(shown(.commented)) == [f.pr: given])
+        // An answer that shows the change request: the polls decide from then on.
+        #expect(f.writes.reviewedHere(shown(.changesRequested)).isEmpty)
+        #expect(f.writes.reviewedHere(behind).isEmpty)
+        try await send(.comment)
+        #expect(
+            f.writes.reviewedHere(behind) == [f.pr: ConfirmedReview(.comment, head: f.head.hex)])
+        #expect(f.writes.reviewedHere(shown(.commented)).isEmpty)
+        // A new head.
+        try await send(.requestChanges)
+        var moved = request
+        moved.headSHA = ReviewData.oldHex
+        #expect(f.writes.reviewedHere(Rows.answer(toReview: [moved])).isEmpty)
+        // A PR that left the answer.
+        try await send(.comment)
+        #expect(f.writes.reviewedHere(Rows.answer()).isEmpty)
+        await f.end()
+    }
+
+    // A refusal ends the progress of a send at once, with no hold and no review given here: a
+    // refusal of GitHub, a result that GitHub can have saved, and a refusal before the writes.
+    // Each end builds the rows again. A refusal before the reads shows no progress at all.
+    @Test func aRefusalEndsTheProgressOfASendAtOnce() async throws {
+        let (f, flow) = try await opened()
+        let submit = GitHubWrite.submitDraft(
+            review: try ReviewData.node(FlowFixture.claudeReview), event: .comment,
+            click: UserClick())
+        f.github.answers[FakeGitHub.key(submit)] = .failure(.refused("Something went wrong"))
+        #expect(await refusal { () async throws(DraftRefusal) in
+            try await flow.send(.comment, click: UserClick())
+        } == .sendFailed)
+        #expect(f.writes.progress(f.pr) == nil && f.writes.held.isEmpty)
+        f.github.answers[FakeGitHub.key(submit)] = .failure(.unknownOutcome("HTTP 502"))
+        #expect(await refusal { () async throws(DraftRefusal) in
+            try await flow.send(.comment, click: UserClick())
+        } == .sendUnknown)
+        #expect(f.writes.progress(f.pr) == nil)
+        flow.summary = " "
+        #expect(await refusal { () async throws(DraftRefusal) in
+            try await flow.send(.requestChanges, click: UserClick())
+        } == .needsSummary)
+        #expect(f.writes.progress(f.pr) == nil)
+        #expect(f.progressEnds.values.count == 3 && f.clock.sleeperCount == 0)
+        var request = try Rows.pull(f.pr.text)
+        request.headSHA = f.head.hex
+        #expect(f.writes.reviewedHere(Rows.answer(toReview: [request])).isEmpty)
+        await f.setMark(nil)
+        #expect(await refusal { () async throws(DraftRefusal) in
+            try await flow.send(.comment, click: UserClick())
+        } == .notOffered)
+        #expect(f.progressEnds.values.count == 3 && f.writes.held.isEmpty)
+        #expect(f.written == [submit, submit])
+        await f.end()
+    }
+
+    // A send while a send of the same PR runs in another flow sends nothing and says so; the
+    // first one goes on to its end.
+    @Test func aSendWhileASendOfThePRRunsSendsNothing() async throws {
+        let (f, flow) = try await opened()
+        let other = f.draftFlow()
+        try await other.open(f.pr)
+        let submit = GitHubWrite.submitDraft(
+            review: try ReviewData.node(FlowFixture.claudeReview), event: .comment,
+            click: UserClick())
+        f.answerWrite(submit, state: "COMMENTED")
+        let second = Recorder<DraftRefusal>()
+        f.github.onWrite = { _ in
+            do throws(DraftRefusal) {
+                try await other.send(.requestChanges, click: UserClick())
+            } catch {
+                second.record(error)
+            }
+        }
+        try await flow.send(.comment, click: UserClick())
+        #expect(second.values == [.busy])
+        #expect(f.written == [submit] && f.savedMark == nil)
+        #expect(f.writes.progress(f.pr) == .confirmed(.comment))
         await f.end()
     }
 }

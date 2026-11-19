@@ -748,6 +748,13 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   should stay for about 3 seconds before it goes (or moves to You approved). With Reduce Motion on
   in System Settings, the loader should stay still. Does it feel clear that the approval worked?
   ([reviews R30](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] Send a Request changes draft from the Review panel on a test PR. Send review should turn
+  straight into a spinning loader with "Requesting changes…", and the row should show the same in
+  place of its text and buttons. Then the row should show a red check with "Changes requested" for
+  about 3 seconds, and, while GitHub still lists the request, "You requested changes" with no
+  Request changes or Review button. A Comment draft should do the same in amber ("Commenting…",
+  "Commented", "You commented"). Does it feel clear that the review went?
+  ([reviews R31](ports/reviews/DELIBERATE-DIFFERENCES.md))
 - [ ] On a test PR where Claude left a Comment or Request changes draft, click that button. The
   Review panel should open with "Owner/Repo #7" after its title, Claude's suggestion, the summary
   and each comment with the end of its diff. Edit the summary, change one comment, remove another

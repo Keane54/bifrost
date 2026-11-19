@@ -428,6 +428,38 @@ struct ReviewRoundTests {
         await f.end()
     }
 
+    // A comment that GitHub confirmed in Bifrost stays as You commented, and a poll never shows a
+    // comment. A new review round of the PR ends it: the row shows the round, then the draft of
+    // the round, not You commented.
+    @Test func aNewRoundEndsAKeptReviewResult() async throws {
+        let f = try await RoundFixture()
+        let writes = ReviewWrites(clock: ManualClock())
+        f.rounds.reviewStarted = { writes.forget($0) }
+        let head = f.head.hex
+        try await writes.send(f.pr, .comment) { () async throws(DraftRefusal) -> String in head }
+        var request = try Rows.pull(f.pr.text)
+        request.headSHA = head
+        func row(_ request: PullRequest) -> ReviewRow? {
+            let answer = Rows.answer(toReview: [request])
+            return ReviewRows.toReview(
+                answer, f.store.state, ReviewsConfig(), reviewedHere: writes.reviewedHere(answer),
+                now: Rows.now
+            ).first
+        }
+        #expect(row(request)?.toReviewState == .youCommented)
+        let round = try await f.review()
+        await f.sessionWorks()
+        #expect(row(request)?.toReviewState == .reviewing)
+        try await f.endTurn(result: f.result())
+        await f.ended(round)
+        var drafted = request
+        drafted.viewerPendingReviewID = try ReviewData.node("PRR_new")
+        let shown = try #require(row(drafted))
+        #expect(shown.toReviewState == .draftReady && shown.draft == .requestChanges)
+        #expect(row(request)?.toReviewState != .youCommented)
+        await f.end()
+    }
+
     // A round that left a draft notifies once; later changes of the state notify nothing more.
     @Test func draftReadyNotifiesOnce() async throws {
         let f = try await RoundFixture()

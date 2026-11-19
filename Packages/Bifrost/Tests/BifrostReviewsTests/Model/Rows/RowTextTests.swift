@@ -69,6 +69,8 @@ struct RowTextTests {
         #expect(text(.paused(until: R.at(0.1))) == "Paused 1m")
         #expect(text(.paused(until: R.at(-3))) == "Paused 1m")
         #expect(text(.youApproved) == "You approved")
+        #expect(text(.youRequestedChanges) == "You requested changes")
+        #expect(text(.youCommented) == "You commented")
         #expect(text(.approvedByOthers) == "Approved by others")
         #expect(text(.teamRequest) == "Team request")
     }
@@ -223,10 +225,45 @@ struct RowTextTests {
                 == RowLabel(
                     text: "You approved", tone: .green,
                     tip: "You approved this pull request on GitHub."))
+        // The other reviews of the user have the colour of the review, also while CI runs.
+        let changes = ViewerOpinion(
+            state: .changesRequested, commit: R.head, submittedAt: R.at(-1))
+        let requested = try row(R.pull(key.text, ci: .running, viewerReviews: [changes])) {
+            $0.requests[key]?.baseline = true
+        }
+        #expect(
+            requested.status
+                == RowLabel(
+                    text: "You requested changes", tone: .red,
+                    tip: "You requested changes on this pull request on GitHub."))
+        let comment = ViewerOpinion(state: .commented, commit: R.head, submittedAt: R.at(-1))
+        let commented = try row(R.pull(key.text, ci: .failing, viewerReviews: [comment])) {
+            $0.requests[key]?.baseline = true
+        }
+        #expect(
+            commented.status
+                == RowLabel(
+                    text: "You commented", tone: .amber,
+                    tip: "You commented on this pull request on GitHub."))
         let waiting = try row(R.pull(key.text)) { $0.requests[key]?.baseline = true }
         #expect(waiting.status == RowLabel(text: "Waiting for you", tone: .plain, tip: nil))
         let paused = try row(R.pull(key.text)) { $0.pauses[key] = R.at(30) }
         #expect(paused.status == RowLabel(text: "Paused 30m", tone: .plain, tip: nil))
+    }
+
+    // The progress of a review write: the text colour while it runs, then the colour of the
+    // review once GitHub confirmed it.
+    @Test func theTextOfEachProgressOfAReviewWrite() {
+        let running: [ReviewVerdict: String] = [
+            .approve: "Approving\u{2026}", .comment: "Commenting\u{2026}",
+            .requestChanges: "Requesting changes\u{2026}",
+        ]
+        for (review, text) in running {
+            #expect(RowText.progress(.running(review)) == label(text, .plain))
+        }
+        #expect(RowText.progress(.confirmed(.approve)) == label("Approved", .green))
+        #expect(RowText.progress(.confirmed(.comment)) == label("Commented", .amber))
+        #expect(RowText.progress(.confirmed(.requestChanges)) == label("Changes requested", .red))
     }
 
     @Test func theTextsAndTipsOfTheMyPRsTab() throws {
