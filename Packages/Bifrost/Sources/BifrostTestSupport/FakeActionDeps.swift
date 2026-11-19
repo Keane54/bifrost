@@ -63,11 +63,13 @@ package final class FakeActionDeps {
         let calls = self.calls
         let inspector = self.inspector
         let runner = FakeActionRunner(calls: calls)
-        // The probe keeps the real clock on purpose: its folder reads end at once, so its time
-        // limit never acts, and the limit sleeps no sleeper of the manual clock that a test counts.
+        // The probe gets its own manual clock, which no test moves: a test can hold a folder read
+        // at a gate (holdFolderReads), and on a loaded host a real 2 s limit could end that read as
+        // missing before the test opens the gate. Its own clock adds no sleeper to the clock of
+        // the deps that a test counts. The time limit of the probe has its own tests.
         let probe = ProcessProbe(
             inspector: processes ?? inspector, runner: runner, environment: [:], skipRoots: [],
-            fileKind: { calls.folderRead($0) }, realPath: { $0 })
+            clock: ManualClock(), fileKind: { calls.folderRead($0) }, realPath: { $0 })
         let signals =
             realSignals
             ?? SystemSignals(
