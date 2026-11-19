@@ -88,8 +88,17 @@ run_step() {
     fi
 }
 
+# Xcode asks a person one time to trust each build plug-in of a Swift package (SwiftTerm has one).
+# A CI runner has no person to answer, so the build stops at "Validate plug-in". Thus in CI only
+# (GitHub sets CI=true), the build skips that check. The CI job holds no secret, and
+# Package.resolved pins each package. A local run keeps the prompt of Xcode, so a person must
+# trust each new plug-in.
 xcode_build() {
-    xcodebuild -project Bifrost.xcodeproj -scheme Bifrost -configuration "$1" \
+    set -- -configuration "$1"
+    if [ "${CI:-}" = true ]; then
+        set -- "$@" -skipPackagePluginValidation
+    fi
+    xcodebuild -project Bifrost.xcodeproj -scheme Bifrost "$@" \
         -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode \
         -clonedSourcePackagesDirPath .build/spm build
 }

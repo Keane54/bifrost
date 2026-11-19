@@ -58,6 +58,8 @@ jobs:
       # test sandbox, the Debug and the Release builds, the release self-test and the smoke test.
       # The Release build has no BIFROST_CUTOVER, so the smoke script refuses to start it.
       # --keep-going runs each step and lists each failure, so one run shows all of them.
+      # GitHub sets CI=true, so the Xcode builds skip the trust prompt of the package build
+      # plug-ins (xcode_build in check.sh). This job holds no secret.
       - name: Run the checks
         run: scripts/check.sh --keep-going
 
