@@ -289,6 +289,7 @@ struct LayerPaintTests {
     }
 
     // Yellow and orange come only from the fields, because a dark yellow or orange looks brown.
+    // The colours of the stops are the icon colours of the stops, in the same order.
     @Test("the base uses icon colours with no yellow or orange")
     func baseColours() {
         #expect(Motion.baseIcons.count >= 4)
@@ -296,6 +297,7 @@ struct LayerPaintTests {
         #expect(!Motion.baseIcons.contains(2))
         #expect(!Motion.baseIcons.contains(3))
         #expect(Motion.baseAngle == 120)
+        #expect(Motion.baseColours == Motion.baseIcons.map { ThemeTokens.icons[$0 - 1] })
     }
 
     @Test("the gradient line of an angle runs through the centre of the box")

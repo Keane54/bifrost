@@ -68,7 +68,7 @@ private final class BackgroundRenderer: NSObject, MTKViewDelegate {
         let width = Double(view.bounds.width)
         let height = Double(view.bounds.height)
         var data = layerData(at: t, width: width, height: height)
-        var stops = Motion.baseIcons.map { SIMD4<Float>(Theme.icon($0).rgb, 1) }
+        var stops = Motion.baseColours.map { SIMD4<Float>($0.rgb, 1) }
         let drawn = view.drawableSize
         var info = SIMD4<Float>(
             Float(width / max(1, Double(drawn.width))),
@@ -103,7 +103,7 @@ private final class BackgroundRenderer: NSObject, MTKViewDelegate {
             data.append(SIMD4(c, s, -s, c))
             if let icon = layer.icon {
                 let alpha = Motion.glow * layer.weight * pose.opacity
-                data.append(SIMD4(Theme.icon(icon).rgb, Float(alpha)))
+                data.append(SIMD4(ThemeTokens.icon(icon).rgb, Float(alpha)))
                 data.append(.zero)
                 data.append(.zero)
             } else {

@@ -161,11 +161,11 @@ sessions with New session, and give each new session a `bifrost-test-` name.
   such as "This window is for another session. Open the chat again.", not a `refused:` text.
   ([chat C24](ports/chat/DELIBERATE-DIFFERENCES.md))
 - [ ] Take control of an external `bifrost-test-` session. Its chat window should open at once
-  with "Taking control of <name>..." and a soft rainbow in the bottom two fifths, violet on the
-  left and red on the right, fading in from nothing at its top edge and drifting slowly from side
-  to side. The loader should go as soon as Claude shows in the terminal. Next to the Electron
-  loader, the middle colours may look a little darker. Turn on Reduce motion (System Settings >
-  Accessibility > Display) and take control again: the rainbow should stay still.
+  with "Taking control of <name>..." and a soft band in the bottom two fifths, fading in from
+  nothing at its top edge and drifting slowly from side to side. Its colours should match the
+  window background behind the panels: green, blue, violet and red, with no yellow or orange.
+  The loader should go as soon as Claude shows in the terminal. Turn on Reduce motion (System
+  Settings > Accessibility > Display) and take control again: the band should stay still.
   ([chat C25](ports/chat/DELIBERATE-DIFFERENCES.md))
 - [ ] Open the chat window of an external `bifrost-test-` session, then take control of it. When
   the takeover is done, the same window should show the session by itself, with no need to close

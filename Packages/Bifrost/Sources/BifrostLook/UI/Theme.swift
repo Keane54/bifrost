@@ -11,11 +11,3 @@ extension TokenColour {
     // The red, green and blue for a shader, with no alpha.
     var rgb: SIMD3<Float> { SIMD3(Float(r), Float(g), Float(b)) }
 }
-
-@MainActor
-package enum Theme {
-    // The colour of an icon colour of the app icon, 1 to 6.
-    static func icon(_ number: Int) -> TokenColour {
-        ThemeTokens.icons[min(max(number, 1), ThemeTokens.icons.count) - 1]
-    }
-}

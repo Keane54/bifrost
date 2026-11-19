@@ -245,9 +245,9 @@ Take control moves a session that's running in another terminal into Bifrost, an
 few seconds: the other terminal's process has to end, the session has to resume in the background,
 and the chat window has to attach to it. Meanwhile the chat window shows the Take control loader
 over its terminal. The loader is a layer over the whole chat body with the line "Taking control
-of fix-a..." (or "Taking control..." when the row has no name), and a soft rainbow of the app icon
-colours in the bottom two fifths. The line leaves out any hidden character of the name, and a
-long line wraps.
+of fix-a..." (or "Taking control..." when the row has no name), and a soft band in the colours of
+the window background in the bottom two fifths. The line leaves out any hidden character of the
+name, and a long line wraps.
 
 The action runner tells the chats when Take control starts, fails or works, and the loader follows
 these rules:
@@ -286,9 +286,9 @@ The look has these values (`LoaderLook.standard`):
 | --- | --- |
 | The line | 13 units, the text colour, centred, its top at 40 % of the height, 16 units from the sides, wrapping |
 | The band | The bottom two fifths of the window, at 25 % opacity |
-| The colours | The six app icon colours from violet (`icon-6`) at the left to red (`icon-1`) at the right, at 100 degrees |
+| The colours | The stops of the background's base gradient (`Motion.baseColours`), from the left to the right at 100 degrees: green (`icon-4`), blue (`icon-5`), violet (`icon-6`), red (`icon-1`) and violet again. The loader reads the same list as the background, so it changes whenever the background's colours do |
 | The fade | From transparent at the top edge to full strength at the bottom: 3 % at 15 %, 10 % at 30 %, 20 % at 45 %, 38 % at 60 %, 60 % at 75 %, 85 % at 90 % |
 | The motion | The gradient is twice the band's width and shifts from one end to the other in 12 seconds, then back, on the ease-in-out curve |
 
-With Reduce motion on in the Accessibility settings, the rainbow doesn't move. A screen reader
+With Reduce motion on in the Accessibility settings, the band doesn't move. A screen reader
 hears the line when the loader shows.

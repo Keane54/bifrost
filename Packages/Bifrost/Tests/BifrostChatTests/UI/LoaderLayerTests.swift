@@ -17,12 +17,12 @@ private let id = "5a0e0001-0000-4000-8000-000000000001"
 @Suite("the Take control loader layer", .serialized, .testTimeLimit, .tags(.window))
 @MainActor
 struct LoaderLayerTests {
-    // The values of the look: the six icon tokens from violet to red and no colour of its own,
-    // the bottom two fifths, a fade from transparent that stays faint in its upper half, a soft
-    // opacity and a slow shift.
+    // The values of the look: the colours of the base gradient of the window background and no
+    // colour of its own, the bottom two fifths, a fade from transparent that stays faint in its
+    // upper half, a soft opacity and a slow shift.
     @Test func theLookHasTheValuesOfTheLoader() {
         let look = LoaderLook.standard
-        #expect(look.colours == Array(ThemeTokens.icons.reversed()))
+        #expect(look.colours == Motion.baseColours)
         #expect(look.angle == 100)
         #expect(look.widthFactor == 2)
         #expect(look.heightPart == 0.4)
@@ -63,9 +63,10 @@ struct LoaderLayerTests {
         #expect(rainbow.mask.startPoint.y == 1)
         #expect(rainbow.mask.endPoint.y == 0)
         #expect(rainbow.mask.locations?.map(\.doubleValue) == LoaderLook.standard.fade.map(\.at))
-        #expect(rainbow.gradient.colors?.count == 6)
+        // The gradient has the colours of the background, from the left to the right.
+        let colours = Motion.baseColours.map { [$0.r, $0.g, $0.b, $0.a].map { CGFloat($0) } }
+        #expect((rainbow.gradient.colors as? [CGColor])?.map { $0.components ?? [] } == colours)
         #expect(rainbow.gradient.bounds.width == rainbow.bounds.width * 2)
-        // The gradient goes from the left (violet) to the right (red).
         #expect(rainbow.gradient.startPoint.x < rainbow.gradient.endPoint.x)
         #expect(loader.isMoving)
         let shift = try #require(

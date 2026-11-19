@@ -60,6 +60,9 @@ package enum Motion {
     // The icon colours of the stops of the base, from the first stop to the last.
     // Yellow and orange come only from the fields, because a dark yellow or orange looks brown.
     package static let baseIcons = [4, 5, 6, 1, 6]
+    // The colours of the stops of the base, in the same order. The Take control loader of a chat
+    // also uses them, so the loader has the colours of the background.
+    package static let baseColours = baseIcons.map { ThemeTokens.icon($0) }
     // The fade of a field from its centre (0) to its edge (1): the place and the part of the
     // glow. The fade is almost zero before the edge, so the edge shows no line.
     package static let fade: [(at: Double, part: Double)] = [

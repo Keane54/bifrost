@@ -38,6 +38,9 @@ the app icon.
 - The background has a base gradient, at an angle of 120 degrees and twice the size of the window
   in each direction, and six colour fields in the icon's colours. Yellow and orange come only from
   the fields, because a dark yellow or orange in the base looks brown.
+- The base gradient's stops are green, blue, violet, red and violet (`Motion.baseColours`). The
+  Take control loader of a chat window uses the same list, so it always has the colours of the
+  background.
 - The strengths are 0.15 for the glow of a field, 0.10 for the base and 0.0075 for the fine grain
   on top. Each field fades almost to nothing before its edge, so no edge ever shows.
 - The motion moves 30 times a second on the CSS ease-in-out curve, and each cycle runs forwards

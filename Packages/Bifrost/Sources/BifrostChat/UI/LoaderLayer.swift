@@ -1,8 +1,9 @@
 // The Take control loader of a chat window (docs/behaviour/chat.md, "The Take control loader"): a
-// layer over the whole chat body with the line of the loader, and a soft rainbow of the app icon
-// colours in the bottom two fifths. The rainbow is violet at the left and red at the right, as in
-// the app icon. It fades in from transparent at its top edge, and it shifts slowly from side to
-// side. With reduced motion it does not move. The layer takes no pointer input. The chat body
+// layer over the whole chat body with the line of the loader, and a soft band in the colours of
+// the window background in the bottom two fifths. The band has the stops of the base gradient of
+// the background (Motion.baseColours), from the left to the right, so it follows a change of the
+// background colours. It fades in from transparent at its top edge, and it shifts slowly from side
+// to side. With reduced motion it does not move. The layer takes no pointer input. The chat body
 // hides the terminal and the note while the layer shows.
 import AppKit
 import BifrostLook
@@ -10,7 +11,7 @@ import QuartzCore
 
 // The values of the loader look.
 package struct LoaderLook: Sendable, Equatable {
-    // One step of the fade of the rainbow: the place from the top edge (0) to the bottom edge
+    // One step of the fade of the band: the place from the top edge (0) to the bottom edge
     // (1), and the alpha of the mask there.
     package struct FadeStep: Sendable, Equatable {
         package var at: Double
@@ -22,8 +23,8 @@ package struct LoaderLook: Sendable, Equatable {
         }
     }
 
-    // The colours of the rainbow from its start to its end: the six app icon colours from icon-6
-    // (violet) to icon-1 (red). The loader has no colour of its own.
+    // The colours of the band from its start to its end: the stops of the base gradient of the
+    // window background (Motion.baseColours). The loader has no colour of its own.
     package var colours: [TokenColour]
     // The angle of the gradient: 0 degrees points up, 90 to the right.
     package var angle: Double
@@ -46,7 +47,7 @@ package struct LoaderLook: Sendable, Equatable {
     package var textInset: Double
 
     package static let standard = LoaderLook(
-        colours: ThemeTokens.icons.reversed(), angle: 100, widthFactor: 2, heightPart: 0.4,
+        colours: Motion.baseColours, angle: 100, widthFactor: 2, heightPart: 0.4,
         fade: [
             FadeStep(0, 0), FadeStep(0.15, 0.03), FadeStep(0.30, 0.1), FadeStep(0.45, 0.2),
             FadeStep(0.60, 0.38), FadeStep(0.75, 0.6), FadeStep(0.90, 0.85), FadeStep(1, 1),
@@ -87,7 +88,7 @@ package final class LoaderLayer: NSView {
     // The line that shows, or nil while the loader is hidden.
     package var text: String? { isHidden ? nil : label.stringValue }
 
-    // True while the rainbow moves.
+    // True while the band moves.
     package var isMoving: Bool { rainbow.isMoving }
 
     package func setMetrics(_ metrics: CanvasMetrics) {
@@ -134,7 +135,7 @@ package final class LoaderLayer: NSView {
     }
 }
 
-// The band of the rainbow. Its layer clips a gradient layer that is widthFactor times as wide as
+// The band of the loader. Its layer clips a gradient layer that is widthFactor times as wide as
 // the band, and the mask of the layer gives the fade. The shift moves the anchor point of the
 // gradient from its left edge to its middle and back, so the shift stays right at each size of
 // the band.

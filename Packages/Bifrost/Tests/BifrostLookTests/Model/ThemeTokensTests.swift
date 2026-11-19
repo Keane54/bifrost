@@ -87,6 +87,11 @@ struct ThemeTokensTests {
             #expect(isWhole(token), "\(name)")
         }
         #expect(ThemeTokens.icons.count == 6)
+        // An icon colour has its number, from 1 to 6. A number out of the range gets the
+        // nearest colour.
+        #expect((1...6).map(ThemeTokens.icon) == ThemeTokens.icons)
+        #expect(ThemeTokens.icon(0) == ThemeTokens.icons[0])
+        #expect(ThemeTokens.icon(7) == ThemeTokens.icons[5])
     }
 
     // The panel colours: the channels of the token and the alpha rule. The alpha of the panel is

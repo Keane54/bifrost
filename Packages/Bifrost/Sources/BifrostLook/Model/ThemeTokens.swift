@@ -56,6 +56,11 @@ package enum ThemeTokens {
         .rgb(0x74, 0xc8, 0x8e), .rgb(0x5e, 0x9b, 0xec), .rgb(0x9b, 0x80, 0xe6),
     ]
 
+    // The colour of an icon colour of the app icon, 1 to 6.
+    package static func icon(_ number: Int) -> TokenColour {
+        icons[min(max(number, 1), icons.count) - 1]
+    }
+
     // MARK: - The Overview
 
     // The colours of the projects, project-1 to project-8: the glyph of a row icon. No colour is
