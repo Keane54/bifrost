@@ -260,8 +260,9 @@ package final class ReviewsPanelModel {
 
     package func count(_ tab: ReviewsTab) -> Int { rows(tab).count }
 
-    // True when the count of the tab is red: a To review row flashes, or Claude needs the user
-    // on a My PRs row. The Row flash setting stops the flash of the rows, not the red count.
+    // True when the count of the tab is red: a To review row flashes (ReviewRow.flash: a new
+    // request whose CI does not fail), or Claude needs the user on a My PRs row. The Row flash
+    // setting stops the flash of the rows, not the red count.
     package func isHot(_ tab: ReviewsTab) -> Bool {
         switch tab {
         case .toReview:
@@ -273,7 +274,8 @@ package final class ReviewsPanelModel {
         }
     }
 
-    // True when the row flashes: a new request, with the Row flash setting on.
+    // True when the row flashes: a new request whose CI does not fail, with the Row flash
+    // setting on.
     package func flashes(_ row: ReviewRow) -> Bool {
         row.flash && snapshot.rowFlash
     }

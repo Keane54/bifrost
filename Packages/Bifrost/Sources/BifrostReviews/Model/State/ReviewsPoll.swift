@@ -1,6 +1,7 @@
 // What a good poll leaves in the Reviews state (docs/behaviour/reviews.md, "What each poll
 // records"), and the Remove of a row. The watcher calls recordPoll in the same store update for
-// each poll, before it builds the rows, so the first poll never flashes an open request.
+// each poll, before it builds the rows, so the first poll never flashes an open request. After
+// the rows, it calls recordNotices for the notifications of the new requests.
 import BifrostFoundation
 import Foundation
 
@@ -62,6 +63,28 @@ extension ReviewsState {
             fixFrom = fixFrom ?? now
         }
         return arrived
+    }
+
+    // Record which new requests notify after a good poll, and give them in the order of the rows.
+    // rows are the To review rows of the poll, and arrived holds the requests that came with it
+    // (recordPoll). A new request notifies one time, at the first poll where its row flashes. The
+    // rules:
+    // - A request that came while its CI failed does not flash (ReviewRow.flash). Its notice
+    //   waits (RequestMark.noticeWaitsForCI) until a poll where its row flashes.
+    // - A waiting notice goes with no notification when the row is not a new request any more:
+    //   the user reviewed the PR, acted on it in Bifrost or paused it, or others approved it.
+    // - A PR with no row keeps its waiting notice, because a cut answer can miss an open request.
+    //   A request that is not in the answer loses its mark in recordPoll, and the notice with it.
+    // - A request that comes again gets a new mark, so it notifies again, as before.
+    package mutating func recordNotices(_ rows: [ReviewRow], arrived: Set<PRKey>) -> [PRKey] {
+        var due: [PRKey] = []
+        for row in rows {
+            guard let mark = requests[row.id], arrived.contains(row.id) || mark.noticeWaitsForCI
+            else { continue }
+            if row.flash { due.append(row.id) }
+            requests[row.id]?.noticeWaitsForCI = row.state == .toReview(.newRequest) && !row.flash
+        }
+        return due
     }
 
     // Remove the To review row of the PR in Bifrost: it shows nowhere until a new request for the

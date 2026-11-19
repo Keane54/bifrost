@@ -145,6 +145,115 @@ struct ToReviewRulesTests {
         #expect(rows.map(\.flash) == [true, false])
     }
 
+    // A new request whose CI fails does not flash (user decision, 2026-11-19): the user cannot
+    // review it yet. It keeps its state, the "CI failing" text and no Review. Running or passed
+    // CI, or no checks, flash as before.
+    @Test func aNewRequestWithFailingCIDoesNotFlash() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        func row(_ ci: CIState?) throws -> ReviewRow {
+            let answer = R.answer(toReview: [try R.pull(key.text, ci: ci)])
+            return try #require(R.toReview(answer, seen(key)).first)
+        }
+        let failing = try row(.failing)
+        #expect(failing.toReviewState == .newRequest && !failing.flash)
+        #expect(failing.status.text == "CI failing" && failing.status.tone == .red)
+        #expect(!failing.reviewable && failing.ci == .failing)
+        for ci: CIState? in [.running, .passed, nil] {
+            #expect(try row(ci).flash)
+        }
+    }
+
+    // A new request notifies one time, at the first poll where its row flashes. While its CI
+    // fails, its notice waits in its mark, also over more polls. The first poll where CI does not
+    // fail gives the notice and ends the wait. A later fail and pass of CI gives no notice.
+    @Test func theNoticeOfARequestWithFailingCIWaitsAndGoesOutOnce() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        var state = R.turnedOn()
+        func poll(_ ci: CIState?, at minutes: Double) throws -> [PRKey] {
+            let pr = try R.pull(key.text, requestedAt: R.at(-5), ci: ci)
+            let answer = R.answer(toReview: [pr])
+            let arrived = state.recordPoll(answer, now: R.at(minutes))
+            return state.recordNotices(R.toReview(answer, state), arrived: arrived)
+        }
+        for minutes in [0.0, 2] {
+            #expect(try poll(.failing, at: minutes).isEmpty)
+            #expect(state.requests[key]?.noticeWaitsForCI == true)
+        }
+        #expect(try poll(.passed, at: 4) == [key])
+        #expect(state.requests[key]?.noticeWaitsForCI == false)
+        for (ci, minutes) in [(CIState.passed, 6.0), (.failing, 8), (.running, 10), (.passed, 12)] {
+            #expect(try poll(ci, at: minutes).isEmpty)
+        }
+        #expect(state.requests[key]?.noticeWaitsForCI == false)
+
+        // A request with running CI notifies at once, as before, and nothing waits.
+        state = R.turnedOn()
+        #expect(try poll(.running, at: 0) == [key])
+        #expect(state.requests[key]?.noticeWaitsForCI == false)
+    }
+
+    // A waiting notice goes with no notification when the row is not a new request any more: the
+    // user acted on it in Bifrost, paused it, started a review on GitHub or gave a review that
+    // GitHub confirmed here, or others approved it. Then CI that passes gives no notice.
+    @Test func aWaitingNoticeGoesWhenTheRowIsNoLongerANewRequest() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        var waiting = seen(key, at: R.at(-5))
+        waiting.requests[key]?.noticeWaitsForCI = true
+        let passed = try R.pull(key.text, requestedAt: R.at(-5), ci: .passed)
+        func notices(
+            _ start: ReviewsState, _ pr: PullRequest, here: [PRKey: ConfirmedReview] = [:]
+        ) -> (state: ToReviewState?, due: [PRKey], waits: Bool?) {
+            var state = start
+            let rows = ReviewRows.toReview(
+                R.answer(toReview: [pr]), state, ReviewsConfig(), reviewedHere: here, now: R.now)
+            let due = state.recordNotices(rows, arrived: [])
+            return (rows.first?.toReviewState, due, state.requests[key]?.noticeWaitsForCI)
+        }
+        // With no change, the notice goes out now.
+        let plain = notices(waiting, passed)
+        #expect(plain.state == .newRequest && plain.due == [key] && plain.waits == false)
+
+        var acted = waiting
+        acted.prs[key, default: PRState()].actedAt = R.at(-1)
+        var paused = waiting
+        paused.pauses[key] = R.at(30)
+        let pending = try R.pull(key.text, requestedAt: R.at(-5), ci: .passed, pending: "PRR_p")
+        let approved = try R.pull(
+            key.text, requestedAt: R.at(-5), decision: .approved, ci: .passed)
+        let reviewed = [key: ConfirmedReview(.comment, head: passed.headSHA)]
+        let ended = [
+            notices(acted, passed), notices(paused, passed), notices(waiting, pending),
+            notices(waiting, approved), notices(waiting, passed, here: reviewed),
+        ]
+        #expect(
+            ended.map(\.state) == [
+                .waitingForYou, .paused(until: R.at(30)), .draftReady, .approvedByOthers,
+                .youCommented,
+            ])
+        #expect(ended.allSatisfy { $0.due.isEmpty && $0.waits == false })
+    }
+
+    // A cut answer can miss an open request, so a waiting notice stays while the PR has no row,
+    // and goes out when the PR shows again with CI that passes. A request that leaves a full
+    // answer loses its mark, and its notice with it.
+    @Test func aWaitingNoticeStaysOverACutAnswer() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        var state = seen(key, at: R.at(-5))
+        state.requests[key]?.noticeWaitsForCI = true
+        var kept = state
+        let cut = R.answer(cut: true)
+        let none = kept.recordPoll(cut, now: R.now)
+        #expect(kept.recordNotices(R.toReview(cut, kept), arrived: none).isEmpty)
+        #expect(kept.requests[key]?.noticeWaitsForCI == true)
+        let back = R.answer(toReview: [try R.pull(key.text, requestedAt: R.at(-5), ci: .passed)])
+        let arrived = kept.recordPoll(back, now: R.at(2))
+        #expect(kept.recordNotices(R.toReview(back, kept), arrived: arrived) == [key])
+
+        var gone = state
+        gone.recordPoll(R.answer(), now: R.now)
+        #expect(gone.requests[key] == nil)
+    }
+
     @Test func aCutAnswerKeepsTheMissingEntryAndItsPause() throws {
         let shown = try R.pull("owner-a/repo-a#1")
         let missing = try R.key("owner-a/repo-a#2")

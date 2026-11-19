@@ -444,25 +444,36 @@ package struct VoicePair: Sendable, Equatable, StoredValue {
 }
 
 // The first sight of a review request. baseline is true for a request that was open at the
-// first turn-on, which never flashes. File: an entry of requests.
+// first turn-on, which never flashes. noticeWaitsForCI is true while the notification of a new
+// request waits until its CI does not fail (ReviewsState.recordNotices). File: an entry of
+// requests. noticeWaitsForCI is a field of Bifrost only: the Electron app did not write it. The
+// file has it only while it is true, so a mark with no wait has the form of the Electron app.
 package struct RequestMark: Sendable, Equatable, StoredValue {
     package var firstSeen: Date
     package var baseline: Bool
+    package var noticeWaitsForCI: Bool
 
-    package init(firstSeen: Date, baseline: Bool) {
+    package init(firstSeen: Date, baseline: Bool, noticeWaitsForCI: Bool = false) {
         self.firstSeen = firstSeen
         self.baseline = baseline
+        self.noticeWaitsForCI = noticeWaitsForCI
     }
 
     package init?(stored value: JSONValue, dropped: inout DroppedFields) {
         guard let object = StoredObject(value, place: "requests"),
             let firstSeen = object["firstSeen"]?.time
         else { return nil }
-        self.init(firstSeen: firstSeen, baseline: object.flag("baseline", &dropped))
+        self.init(
+            firstSeen: firstSeen, baseline: object.flag("baseline", &dropped),
+            noticeWaitsForCI: object.flag("noticeWaitsForCI", &dropped))
     }
 
     package var stored: JSONValue {
-        ["firstSeen": .time(firstSeen), "baseline": .bool(baseline)]
+        var fields: [String: JSONValue] = [
+            "firstSeen": .time(firstSeen), "baseline": .bool(baseline),
+        ]
+        if noticeWaitsForCI { fields["noticeWaitsForCI"] = true }
+        return .object(fields)
     }
 }
 

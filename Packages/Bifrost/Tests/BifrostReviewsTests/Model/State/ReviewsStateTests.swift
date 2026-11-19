@@ -139,6 +139,22 @@ struct ReviewsStateTests {
         #expect(hidden.autoFixConsent == nil && hidden.setUpAt == nil)
     }
 
+    // The wait of a notice for CI is a field of Bifrost only. The file has it only while it is
+    // true, so a mark with no wait keeps the form of the Electron app, and a read gives it back.
+    @Test func aNoticeThatWaitsForCIIsSavedOnlyWhileItWaits() throws {
+        let at = time(1_794_000_000_000)
+        let plain = RequestMark(firstSeen: at, baseline: false)
+        let waits = RequestMark(firstSeen: at, baseline: false, noticeWaitsForCI: true)
+        #expect(plain.stored == ["firstSeen": .time(at), "baseline": false])
+        #expect(
+            waits.stored == ["firstSeen": .time(at), "baseline": false, "noticeWaitsForCI": true])
+        var state = ReviewsState()
+        state.requests[try key("owner-a/repo-a#1")] = waits
+        state.requests[try key("owner-a/repo-a#2")] = plain
+        let read = try stored(JSONFile.encode(state))
+        #expect(read.dropped == [] && read.state == state)
+    }
+
     // A field of the wrong form gets its empty value and its name goes in the dropped names. The
     // other fields keep their values. An outbox with one bad write goes whole, so no part of a
     // damaged list of writes is ever sent.

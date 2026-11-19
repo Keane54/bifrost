@@ -10,7 +10,7 @@ package enum ReviewsTab: Sendable {
 // The state of a To review row. ToReviewRules.order gives the order of the groups of the tab.
 package enum ToReviewState: Sendable, Equatable {
     // A direct request that came after the first turn-on, with no session, no pause and no act of
-    // the user. Only this state flashes.
+    // the user. Only this state flashes, and only while the CI of the PR does not fail.
     case newRequest
     // The user has a pending review on the PR: Claude's draft or the user's own.
     case draftReady
@@ -178,6 +178,9 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
     // changes), or nil.
     package var approve: ApproveOffer?
     package var draft: DraftEvent?
+    // To review: the CI state of the PR, or nil when the PR has no checks. Failing CI stops the
+    // flash of a new request (flash).
+    package var ci: CIState?
     // My PRs: the items that wait for Handle now, the threads of the later Copilot reviews, and
     // the open questions of Claude. The row menu reads them.
     package var waiting: Int
@@ -191,8 +194,8 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
         id: PRKey, state: RowState, repo: String, title: String, dot: RowTone? = nil,
         tag: RowLabel? = nil, review: RowLabel? = nil, reviewers: [Reviewer] = [],
         notes: [String] = [], status: RowLabel, reviewable: Bool = false,
-        approve: ApproveOffer? = nil, draft: DraftEvent? = nil, waiting: Int = 0,
-        laterCopilot: Int = 0, questions: Int = 0, unsentUpdates: Bool = false
+        approve: ApproveOffer? = nil, draft: DraftEvent? = nil, ci: CIState? = nil,
+        waiting: Int = 0, laterCopilot: Int = 0, questions: Int = 0, unsentUpdates: Bool = false
     ) {
         self.id = id
         self.state = state
@@ -207,6 +210,7 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
         self.reviewable = reviewable
         self.approve = approve
         self.draft = draft
+        self.ci = ci
         self.waiting = waiting
         self.laterCopilot = laterCopilot
         self.questions = questions
@@ -220,8 +224,12 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
         }
     }
 
-    // Only a new request flashes. The panel stops the flash when the Row flash setting is off.
-    package var flash: Bool { state == .toReview(.newRequest) }
+    // Only a new request flashes, and only while its CI does not fail (user decision,
+    // 2026-11-19): the user cannot review a PR with failing CI, so it does not need the user now.
+    // The flash also makes the To review count red and the attention dot, and the notice of the
+    // request waits for it (ReviewsState.recordNotices). The panel stops the flash when the Row
+    // flash setting is off.
+    package var flash: Bool { state == .toReview(.newRequest) && ci != .failing }
 
     // Remove hides only a row that others approved (ReviewsState.hide).
     package var isRemovable: Bool { state == .toReview(.approvedByOthers) }

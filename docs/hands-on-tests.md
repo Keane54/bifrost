@@ -630,6 +630,13 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   the panel. Click Pause: the flash should stop and the row should say "Paused 60m". Turn Row flash
   off in Settings and ask again on another PR: no flash this time, but the count should still turn
   red.
+- [ ] Push a commit that makes CI fail to a test PR, then have your second account ask for your
+  review on it, with the window not focused. At the next poll its row should show "CI failing" with
+  no flash, the To review count should stay plain, the Reviews button should get no dot, and no
+  notification should arrive. Fix CI and wait for it to pass: at the next poll the row should
+  flash, the count should turn red and one notification should arrive. Make CI fail and pass again:
+  no second notification. Do it once more, but submit a review on GitHub while CI still fails: no
+  notification when CI passes. ([reviews R32](ports/reviews/DELIBERATE-DIFFERENCES.md))
 - [ ] Right-click a row of the Reviews panel, then Control-click one. The Bifrost menu should open
   at the pointer with only the items that fit the row: Open on GitHub everywhere, Open session and
   Stop session while the PR has a session, Review (Try again on a failed row), Cancel review on a

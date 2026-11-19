@@ -335,6 +335,10 @@ waiting for its round. The types are in `BifrostReviews/Model/State/`, and the s
 `Services/ReviewsStore.swift`. Its lock is the shared `FileLock` of BifrostFoundation, which the
 Daily update store uses too.
 
+Bifrost adds one field of its own. A review request has `noticeWaitsForCI` while its notification
+waits for its CI to stop failing (see "What each poll records"). The file has this field only while
+it is true, so every other request keeps the Electron form.
+
 Every field is optional, so a file from any release of the Electron app opens unchanged, and the
 read is lenient one field at a time:
 
@@ -444,6 +448,11 @@ poll. It keeps the last good answer and gives the two tabs their rows.
 - A new direct request shows one notification, only while Notifications is on and the main window
   has no focus. Draft ready, Needs you and a repository that needs trust use the same rules. A
   click opens the Reviews panel.
+- A new request whose CI fails sends no notification yet, because you can't review it. Its
+  notification waits for the first poll where its row flashes, and then it shows one time. If the
+  row stops being a new request first (you review it, start a review or pause it, or others
+  approve it), or the request ends, no notification comes. The wait is in the state, so it lasts
+  over a restart.
 - When the store can't open (another copy of Bifrost runs Reviews, or `state.json` has another
   version), the watcher doesn't poll, and the panel shows the message of the store.
 - The attention dot is on while a row flashes, a draft waits for you, or Claude has a question on
@@ -519,6 +528,13 @@ poll lists it, and it stops counting once you start a new review round on the PR
 and "The Review panel". Only a new request flashes, and the panel also stops the flash when the Row
 flash setting is off.
 
+A new request whose CI fails doesn't flash either, and it doesn't turn the To review count red or
+light the attention dot. Bifrost won't review or approve it while CI fails, so it doesn't need you
+yet. The row stays a new request: it keeps its place at the top, the "CI failing" text and the
+Pause button. At the first poll where CI is running or has passed, and you still haven't acted on
+the request, it flashes, turns the count red and notifies, as any new request does (see "The
+watcher").
+
 When Claude has a result for the row, the result replaces the text of the state, the line of the
 author, size and age gives way to what Claude did, and a dot of the same colour sits before the
 repository. The row only shows a mark of Claude that belongs to your pending review, or, for a mark
@@ -585,6 +601,19 @@ PR):
 
 The time Bifrost first saw a request is never before the request time itself, for the same reason:
 a slow clock can't make a request new at every poll.
+
+After the rows, `ReviewsState.recordNotices` decides which new requests notify. A request notifies
+one time, at the first poll where its row flashes:
+
+- A request that arrives while its CI fails gets `noticeWaitsForCI`, and it keeps that mark over the
+  polls where CI still fails.
+- The first poll where its row flashes sends the notification and clears the mark. A later fail and
+  pass of CI sends nothing.
+- The mark goes with no notification when the row stops being a new request: you acted on it,
+  started or gave a review, paused it (Pause clears it at once), or others approved it.
+- A PR with no row keeps the mark, because a cut answer can miss an open request. A request that
+  leaves a full answer loses its entry, and the mark with it. A request made again is new again,
+  with no mark.
 
 ### My PRs
 
@@ -1187,16 +1216,16 @@ When a later poll fails, the rows of the last good poll stay where they are and 
 the bottom of the panel until a poll works again. While a repository needs trust, the Trust needed
 strip sits under the tabs (see "Clones and trust").
 
-Each row has the two lines described in "The rows". A new request flashes: a red layer behind the
-row fades from full to a quarter and back once a second, the same rhythm as the Overview's red box,
-and turning Row flash off in Settings stops it (the tab count stays red). The box before "Needs you"
-on a My PRs row flashes the same way. The buttons on the right depend on the row: Approve in soft
-green where Claude suggests approval (see "Approve"), Comment in amber or Request changes in red
-where Claude left a draft for you to check (see "The Review panel"), Review on a request that waits
-for you (a new request, one you've already seen, a team request, or one Claude found nothing to flag
-on and that has no Approve), Try again on a failed review, Pause on a new request, and Remove on a
-row that others approved, which hides it in Bifrost and changes nothing on GitHub. A PR with
-failing CI gets no Review button.
+Each row has the two lines described in "The rows". A new request flashes, unless its CI fails (see
+"To review"): a red layer behind the row fades from full to a quarter and back once a second, the
+same rhythm as the Overview's red box, and turning Row flash off in Settings stops it (the tab count
+stays red). The box before "Needs you" on a My PRs row flashes the same way. The buttons on the
+right depend on the row: Approve in soft green where Claude suggests approval (see "Approve"),
+Comment in amber or Request changes in red where Claude left a draft for you to check (see "The
+Review panel"), Review on a request that waits for you (a new request, one you've already seen, a
+team request, or one Claude found nothing to flag on and that has no Approve), Try again on a failed
+review, Pause on a new request, and Remove on a row that others approved, which hides it in Bifrost
+and changes nothing on GitHub. A PR with failing CI gets no Review button.
 
 - A click on a My PRs row where Claude has questions opens the Answer panel (see "The Answer
   panel"). A click on any other row opens the chat of its PR session while that session is working

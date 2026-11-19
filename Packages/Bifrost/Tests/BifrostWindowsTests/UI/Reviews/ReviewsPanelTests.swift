@@ -250,6 +250,21 @@ struct ReviewsPanelTests {
         #expect(model.isHot(.mine))
     }
 
+    // A new request whose CI fails does not flash and does not make the count red: the user
+    // cannot review it yet. When CI passes, it does both.
+    @Test func aNewRequestWithFailingCIDoesNotFlashOrMakeTheCountRed() async throws {
+        let p = Parts()
+        var failing = try toReview("owner-a/repo-a#1", .newRequest)
+        failing.ci = .failing
+        p.feed.snapshot.toReview = [failing]
+        let model = try p.model()
+        #expect(!model.flashes(failing) && !model.isHot(.toReview))
+        var passed = failing
+        passed.ci = .passed
+        p.feed.snapshot.toReview = [passed]
+        #expect(model.flashes(passed) && model.isHot(.toReview))
+    }
+
     // Only a new request flashes, and only while the Row flash setting is on. The setting stops
     // the flash of the row, and the count of the tab stays red.
     @Test func rowFlashOffStopsTheFlash() async throws {

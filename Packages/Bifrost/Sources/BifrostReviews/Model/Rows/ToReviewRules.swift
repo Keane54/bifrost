@@ -1,7 +1,7 @@
 // The rules of the To review tab (docs/behaviour/reviews.md, "The rows"): the state of each row,
-// its flash, its texts and the order of the tab. The marks that each poll leaves in the state
-// (the first sight of each request, the pauses and the removed rows) are in
-// ReviewsState.recordPoll.
+// its texts and the order of the tab. The row gets the CI state of its PR, and ReviewRow.flash
+// gives the flash from the state and the CI. The marks that each poll leaves in the state (the
+// first sight of each request, the pauses and the removed rows) are in ReviewsState.recordPoll.
 import Foundation
 
 enum ToReviewRules {
@@ -176,7 +176,8 @@ enum ToReviewRules {
             reviewers: [], notes: notes, status: status(pr, rowState, mark, result, now: now),
             reviewable: reviewable(
                 rowState, ownDraft: rowState == .draftReady && mark != nil, pr.ci),
-            approve: approveOffer(pr, rowState, mark), draft: draftOffer(rowState, mark))
+            approve: approveOffer(pr, rowState, mark), draft: draftOffer(rowState, mark),
+            ci: pr.ci)
     }
 
     // The Approve button (user decision, 2026-11-13): a Looks good or a Draft ready row that

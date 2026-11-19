@@ -22,8 +22,10 @@ private final class Wall {
 private let viewerKey = "owner-a/repo-b#101"
 private let approvedKey = "owner-a/repo-b#102"
 
-// A poll answer where the viewer asked for a review of #101 again, after the first sight.
-private func againAnswer() throws -> Data {
+// A poll answer where the viewer asked for a review of #101 again, after the first sight. ci is
+// the state of the checks of its head commit, and pending is the ID of a pending review of the
+// viewer on it.
+private func againAnswer(ci: String = "SUCCESS", pending: String? = nil) throws -> Data {
     try FixtureFiles.edited("poll-basic") { root in
         editPR(&root, list: "toReview", number: 101) { pr in
             var events = (pr["timelineItems"] as? [String: Any]) ?? [:]
@@ -34,16 +36,26 @@ private func againAnswer() throws -> Data {
             ])
             events["nodes"] = nodes
             pr["timelineItems"] = events
+            var commits = pr["commits"] as? [String: Any] ?? [:]
+            var items = commits["nodes"] as? [[String: Any]] ?? []
+            var commit = items.first?["commit"] as? [String: Any] ?? [:]
+            var rollup = commit["statusCheckRollup"] as? [String: Any] ?? [:]
+            rollup["state"] = ci
+            commit["statusCheckRollup"] = rollup
+            items = [["commit": commit]]
+            commits["nodes"] = items
+            pr["commits"] = commits
+            if let pending { pr["pendingReviews"] = ["nodes": [["id": pending]]] }
         }
     }
 }
 
-// A poll answer with no request for #102, as after an approval of the viewer.
-private func droppedAnswer() throws -> Data {
+// A poll answer with no request for the PR of the number, as after a review of the viewer.
+private func droppedAnswer(_ number: Int = 102) throws -> Data {
     try FixtureFiles.edited("poll-basic") { root in
         edit(&root, list: "toReview") { search in
             var nodes = search["nodes"] as? [[String: Any]] ?? []
-            nodes.removeAll { $0["number"] as? Int == 102 }
+            nodes.removeAll { $0["number"] as? Int == number }
             search["nodes"] = nodes
         }
     }
@@ -151,6 +163,13 @@ private struct Harness {
     func settle() async {
         while let task = watcher.pollTask { await task.value }
         await clock.waitForSleepers(1)
+    }
+
+    // Poll now with the answer, and wait for the poll and the timer of the next poll.
+    func poll(_ answer: Data) async {
+        github.answers["poll"] = .success(answer)
+        watcher.refresh()
+        await settle()
     }
 
     // Move the clock to the end of the wait and wait for the poll that follows.
@@ -365,6 +384,71 @@ struct ReviewsWatcherTests {
         harness.notifier.refuse(0)
         #expect(refused.values.count == 1)
         #expect(harness.log.values == [.started(interval: .seconds(120))])
+        await harness.end()
+    }
+
+    // A new request whose CI fails does not need the user now (user decision, 2026-11-19): it
+    // does not flash, sets no attention dot and does not notify, over more polls too. Its notice
+    // waits in the state. The first poll where CI passes makes it flash and notify one time, and
+    // a later fail and pass of CI never notifies again.
+    @Test func aRequestWithFailingCINotifiesOnceWhenCIPasses() async throws {
+        let harness = try await Harness()
+        await harness.start()
+        let key = try #require(PRKey(text: viewerKey))
+        func row() -> ReviewRow? { harness.watcher.toReview.first { $0.id == key } }
+        func waits() -> Bool? { harness.store.state.requests[key]?.noticeWaitsForCI }
+        for _ in 0..<2 {
+            await harness.poll(try againAnswer(ci: "FAILURE"))
+            #expect(row()?.toReviewState == .newRequest && row()?.flash == false)
+            #expect(row()?.status.text == "CI failing" && row()?.reviewable == false)
+            #expect(!harness.watcher.attention && harness.notifier.shown.isEmpty)
+            #expect(waits() == true)
+        }
+        await harness.poll(try againAnswer())
+        #expect(row()?.toReviewState == .newRequest && row()?.flash == true)
+        #expect(harness.watcher.attention && harness.notifier.shown.count == 1)
+        #expect(waits() == false)
+        for ci in ["SUCCESS", "FAILURE", "PENDING", "SUCCESS"] {
+            await harness.poll(try againAnswer(ci: ci))
+        }
+        #expect(harness.notifier.shown.count == 1)
+        await harness.end()
+    }
+
+    // A review of the user ends a notice that waits for CI: a pending review on GitHub, and then
+    // its submit, which ends the request. No notification comes, also after CI passes.
+    @Test func aReviewEndsANoticeThatWaitsForCI() async throws {
+        let harness = try await Harness()
+        await harness.start()
+        let key = try #require(PRKey(text: viewerKey))
+        func waits() -> Bool? { harness.store.state.requests[key]?.noticeWaitsForCI }
+        await harness.poll(try againAnswer(ci: "FAILURE"))
+        #expect(waits() == true)
+        await harness.poll(try againAnswer(ci: "FAILURE", pending: "PRR_pending1"))
+        #expect(waits() == false)
+        await harness.poll(try againAnswer(pending: "PRR_pending1"))
+        let row = harness.watcher.toReview.first { $0.id == key }
+        #expect(row?.toReviewState == .draftReady)
+        await harness.poll(try droppedAnswer(101))
+        #expect(harness.store.state.requests[key] == nil)
+        #expect(harness.notifier.shown.isEmpty)
+        await harness.end()
+    }
+
+    // A pause is an act of the user on the request, so it ends a notice that waits for CI. After
+    // the pause, the row flashes when CI passes, with no notification.
+    @Test func aPauseEndsANoticeThatWaitsForCI() async throws {
+        let harness = try await Harness()
+        await harness.start()
+        let key = try #require(PRKey(text: viewerKey))
+        await harness.poll(try againAnswer(ci: "FAILURE"))
+        #expect(harness.store.state.requests[key]?.noticeWaitsForCI == true)
+        harness.watcher.pause(key)
+        #expect(harness.store.state.requests[key]?.noticeWaitsForCI == false)
+        harness.watcher.endPause(key)
+        await harness.poll(try againAnswer())
+        #expect(harness.watcher.toReview.first { $0.id == key }?.flash == true)
+        #expect(harness.notifier.shown.isEmpty)
         await harness.end()
     }
 

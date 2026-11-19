@@ -8,7 +8,9 @@
 //   Several refreshes during one poll give one more poll. A new interval counts from the start
 //   of the wait that runs.
 // - Each good poll first records its marks in the state (ReviewsState.recordPoll), then builds
-//   the rows. So the first poll after the first turn-on never flashes an open request.
+//   the rows. So the first poll after the first turn-on never flashes an open request. Then the
+//   new requests notify (ReviewsState.recordNotices): a request whose CI fails waits until its
+//   row flashes.
 // - A poll that fails keeps the last good answer and its rows. problem holds the reason.
 // - A second TimerSlot wakes the rows at the earliest end of a pause. No tick runs here: the
 //   panel asks for new time texts on its own display clock (refreshTimes).
@@ -55,8 +57,8 @@ package final class ReviewsWatcher {
     // the window as not focused.
     @ObservationIgnored package var focused: @MainActor () -> Bool = { false }
 
-    // True when a row flashes or needs the user: a new request, a draft to check, or a question
-    // of Claude on a PR of the user.
+    // True when a row flashes or needs the user: a new request whose CI does not fail
+    // (ReviewRow.flash), a draft to check, or a question of Claude on a PR of the user.
     package var attention: Bool {
         toReview.contains { $0.flash || $0.state == .toReview(.draftReady) }
             || mine.contains {
@@ -241,16 +243,27 @@ package final class ReviewsWatcher {
         lastPoll = time
         health.record(.poll(.reviews, .ok))
         rebuild()
-        // At most maxNotifications requests show one notification each. More give one summary.
-        let flashing = toReview.filter {
-            arrived.contains($0.id) && $0.state == .toReview(.newRequest)
-        }
-        if flashing.count > AlertRules.maxNotifications {
-            notify(.newRequests(flashing.count))
-        } else {
-            for row in flashing { notify(.newRequest(row.id)) }
-        }
+        notifyNew(arrived)
         answered(fresh)
+    }
+
+    // The notifications of the new requests, after the rows of a good poll. A new request
+    // notifies one time, at the first poll where its row flashes, so a request whose CI fails
+    // waits (ReviewsState.recordNotices). The waits go into the state only when they change. At
+    // most maxNotifications requests show one notification each. More give one summary.
+    private func notifyNew(_ arrived: Set<PRKey>) {
+        guard let store else { return }
+        let rows = toReview
+        var probe = store.state
+        let due = probe.recordNotices(rows, arrived: arrived)
+        if probe != store.state {
+            store.change { _ = $0.recordNotices(rows, arrived: arrived) }
+        }
+        if due.count > AlertRules.maxNotifications {
+            notify(.newRequests(due.count))
+        } else {
+            for pr in due { notify(.newRequest(pr)) }
+        }
     }
 
     // A poll that failed. The last good answer and its rows stay.
@@ -315,12 +328,16 @@ package final class ReviewsWatcher {
 
     // MARK: - The clicks on a row
 
-    // Pause a new request: it stops to flash until the end of the pause setting.
+    // Pause a new request: it stops to flash until the end of the pause setting. The pause is an
+    // act of the user on the request, so a notice that waits for its CI goes with no notification.
     package func pause(_ pr: PRKey) {
         guard toReview.contains(where: { $0.id == pr && $0.state == .toReview(.newRequest) })
         else { return }
         let until = now().addingTimeInterval(config.pause.seconds)
-        edit { $0.pauses[pr] = until }
+        edit { state in
+            state.pauses[pr] = until
+            state.requests[pr]?.noticeWaitsForCI = false
+        }
     }
 
     // End the pause of a PR at once.
