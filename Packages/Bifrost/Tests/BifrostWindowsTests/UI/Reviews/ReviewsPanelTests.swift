@@ -701,6 +701,9 @@ struct ReviewsPanelTests {
             model.tip(.requestChanges, draftRow)
                 == "Check Claude's draft, change it if you like, and send it.")
         #expect(ReviewsMenu.buttons(plainRow) == [.review])
+        var newCommitsRow = try toReview(plain.text, .newCommits)
+        newCommitsRow.reviewable = true
+        #expect(ReviewsMenu.buttons(newCommitsRow) == [.review])
         model.choose(.requestChanges, for: draft)
         model.choose(.comment, for: draft)
         model.choose(.approve, for: ready)

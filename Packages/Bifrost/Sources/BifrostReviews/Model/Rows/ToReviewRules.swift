@@ -10,7 +10,7 @@ enum ToReviewRules {
         switch state {
         case .newRequest: 0
         case .draftReady: 1
-        case .reviewed: 2
+        case .reviewed, .newCommits: 2
         case .failed: 3
         case .waitingForYou: 4
         case .trustNeeded: 5
@@ -61,7 +61,15 @@ enum ToReviewRules {
         let direct = pr.isDirectRequest
         guard direct || teamRequests else { return nil }
         if let reviewedHere, reviewedHere.head == pr.headSHA { return you(reviewedHere.verdict) }
-        if pr.viewerPendingReviewID != nil { return .draftReady }
+        // The draft of Claude is on an older commit than the head: the author pushed new commits.
+        if let pending = pr.viewerPendingReviewID {
+            if let mark = prState?.recommendation, mark.reviewID == pending,
+                mark.headSHA.hex != pr.headSHA
+            {
+                return .newCommits
+            }
+            return .draftReady
+        }
         let mark = state.requests[pr.key]
         // The user acted on the request (a Review click or the posts of a round) after its first
         // sight.
@@ -73,10 +81,10 @@ enum ToReviewRules {
             return you(review)
         }
         if let reason = prState?.lastError { return .failed(reason) }
-        if let mark = prState?.recommendation, mark.reviewID == nil,
-            mark.headSHA.hex == pr.headSHA
-        {
-            return .reviewed
+        // A review of Claude with no draft: on the head it is Looks good, on an older commit it
+        // is New commits.
+        if let mark = prState?.recommendation, mark.reviewID == nil {
+            return mark.headSHA.hex == pr.headSHA ? .reviewed : .newCommits
         }
         if let until = state.pauses[pr.key], now < until { return .paused(until: until) }
         if pr.reviewDecision == .approved { return .approvedByOthers }
@@ -146,7 +154,8 @@ enum ToReviewRules {
     // user. A session, a review of the user and approved by others keep their own text.
     private static func showsCI(_ state: ToReviewState) -> Bool {
         switch state {
-        case .newRequest, .waitingForYou, .teamRequest, .failed, .reviewed, .draftReady, .paused:
+        case .newRequest, .waitingForYou, .teamRequest, .failed, .reviewed, .draftReady, .paused,
+            .newCommits:
             true
         case .trustNeeded, .reviewing, .queued, .youApproved, .youRequestedChanges, .youCommented,
             .approvedByOthers:
@@ -208,8 +217,8 @@ enum ToReviewRules {
         guard ci != .failing, !ownDraft else { return false }
         switch state {
         case .reviewing, .queued, .trustNeeded: return false
-        case .newRequest, .draftReady, .reviewed, .failed, .waitingForYou, .paused, .youApproved,
-            .youRequestedChanges, .youCommented, .approvedByOthers, .teamRequest:
+        case .newRequest, .draftReady, .reviewed, .newCommits, .failed, .waitingForYou, .paused,
+            .youApproved, .youRequestedChanges, .youCommented, .approvedByOthers, .teamRequest:
             return true
         }
     }
@@ -245,6 +254,7 @@ enum ToReviewRules {
             case .youApproved: ReviewVerdict.approve.tone
             case .youRequestedChanges: ReviewVerdict.requestChanges.tone
             case .youCommented: ReviewVerdict.comment.tone
+            case .newCommits: .amber
             case .newRequest, .draftReady, .reviewed, .waitingForYou, .trustNeeded, .reviewing,
                 .queued, .paused, .approvedByOthers, .teamRequest:
                 .plain
@@ -280,8 +290,8 @@ enum ToReviewRules {
             case .requestChanges?: .changes
             case nil: nil
             }
-        case .newRequest, .failed, .waitingForYou, .trustNeeded, .reviewing, .queued, .paused,
-            .youApproved, .youRequestedChanges, .youCommented, .teamRequest:
+        case .newRequest, .newCommits, .failed, .waitingForYou, .trustNeeded, .reviewing, .queued,
+            .paused, .youApproved, .youRequestedChanges, .youCommented, .teamRequest:
             return nil
         }
     }

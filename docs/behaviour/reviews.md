@@ -658,17 +658,18 @@ first.
 | 1 | New request | The Review and Pause buttons, with no text | A direct request that arrived after the first turn-on and that you haven't acted on |
 | 2 | Draft ready | "Draft ready" | You have a pending review on the PR, Claude's or your own |
 | 3 | Looks good | "Looks good" | Claude suggested Approve for the head commit and posted nothing |
-| 4 | Review failed | "Review failed", with the reason as its tip | The last review round failed |
-| 5 | Waiting for you | "Waiting for you" | A direct request that was open at the first turn-on, or that you acted on (a Review click or a round) since Bifrost first saw it |
-| 6 | Trust needed | "Trust needed" | The review waits in the queue for you to trust the clone of its repository |
-| 7 | Reviewing | "Reviewing" | A review round runs |
-| 8 | Queued | "Queued" | The review waits for a free session |
-| 9 | Paused | "Paused 42m", the minutes left and at least 1 | You paused the request |
-| 10 | You approved | "You approved", in soft green | Your latest opinion approves the head commit |
-| 11 | You requested changes | "You requested changes", in red | Your latest opinion requests changes on the head commit |
-| 12 | You commented | "You commented", in amber | You commented on the head commit, and you haven't approved it or requested changes on it |
-| 13 | Approved by others | "Approved by others" | GitHub's review decision is approved, so your approval changes nothing |
-| 14 | Team request | "Team request" | The request only names a team of yours |
+| 4 | New commits | "New commits", in amber, with the tip "Claude reviewed an older commit. Review again to check the new changes." and a Review button | Claude's review, or its draft, is on an older commit than the head, because the author pushed new commits after it |
+| 5 | Review failed | "Review failed", with the reason as its tip | The last review round failed |
+| 6 | Waiting for you | "Waiting for you" | A direct request that was open at the first turn-on, or that you acted on (a Review click or a round) since Bifrost first saw it |
+| 7 | Trust needed | "Trust needed" | The review waits in the queue for you to trust the clone of its repository |
+| 8 | Reviewing | "Reviewing" | A review round runs |
+| 9 | Queued | "Queued" | The review waits for a free session |
+| 10 | Paused | "Paused 42m", the minutes left and at least 1 | You paused the request |
+| 11 | You approved | "You approved", in soft green | Your latest opinion approves the head commit |
+| 12 | You requested changes | "You requested changes", in red | Your latest opinion requests changes on the head commit |
+| 13 | You commented | "You commented", in amber | You commented on the head commit, and you haven't approved it or requested changes on it |
+| 14 | Approved by others | "Approved by others" | GitHub's review decision is approved, so your approval changes nothing |
+| 15 | Team request | "Team request" | The request only names a team of yours |
 
 The state comes from the first rule that holds: a running or queued round (a queued round whose
 repository needs trust is Trust needed; see "Clones and trust"), the team filter, a review you've
@@ -693,6 +694,11 @@ yet. The row stays a new request: it keeps its place at the top, the "CI failing
 Pause button. At the first poll where CI is running or has passed, and you still haven't acted on
 the request, it flashes, turns the count red and notifies, as any new request does (see "The
 watcher").
+
+New commits replaces Claude's result when the head commit has moved on since Claude's review. The
+row shows no verdict and no Approve button, because Bifrost offers Approve only for the exact commit
+that Claude reviewed. The Review button starts a new review of the head, as on a new request.
+Failing or running CI still replaces the text, so a failing CI on the new head shows "CI failing".
 
 When Claude has a result for the row, the result replaces the text of the state, the line of the
 author, size and age gives way to what Claude did, and a dot of the same colour sits before the

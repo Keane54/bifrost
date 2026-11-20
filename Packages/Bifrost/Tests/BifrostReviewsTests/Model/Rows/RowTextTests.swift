@@ -167,6 +167,39 @@ struct RowTextTests {
         #expect(deleted.notes == ["You deleted Claude's draft. Approve when you're ready."])
     }
 
+    // Claude's review on an older commit than the head: New commits, with its tip and no verdict,
+    // no dot and no Approve. The same review on the head keeps its result and its Approve. CI that
+    // fails on the new head still shows CI failing.
+    @Test func aReviewOnAnOlderCommitShowsNewCommits() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        let tip = "Claude reviewed an older commit. Review again to check the new changes."
+        func old(_ review: String?) throws -> RecommendationMark {
+            RecommendationMark(
+                value: .approve, why: "", headSHA: try R.commit("c"),
+                reviewID: try review.map(R.node), at: R.at(-5))
+        }
+        for review in [nil, "PRR_d1"] {
+            let pr = try R.pull(key.text, pending: review)
+            let stale = try row(pr) {
+                $0.prs[key, default: PRState()].recommendation = try old(review)
+            }
+            #expect(stale.toReviewState == .newCommits)
+            #expect(stale.status == label("New commits", .amber, tip))
+            #expect(stale.approve == nil && stale.dot == nil && stale.reviewable)
+            #expect(stale.notes.count == 3)
+            let current = try row(pr) {
+                $0.prs[key, default: PRState()].recommendation = try mark(.approve, review: review)
+            }
+            #expect(current.status.text == "Approval recommended" && current.approve == .ready)
+            let failing = try row(try R.pull(key.text, ci: .failing, pending: review)) {
+                $0.prs[key, default: PRState()].recommendation = try old(review)
+            }
+            #expect(failing.status.text == "CI failing" && failing.approve == nil)
+            #expect(!failing.reviewable)
+        }
+        #expect(RowText.toReview(.newCommits, now: R.now) == "New commits")
+    }
+
     @Test func approvedByOthersSaysHowManyApproved() throws {
         let line = { (approvals: Int) in
             try row(R.pull("owner-a/repo-a#1", decision: .approved, approvals: approvals)).notes

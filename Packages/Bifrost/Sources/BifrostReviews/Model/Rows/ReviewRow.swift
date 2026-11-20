@@ -17,6 +17,9 @@ package enum ToReviewState: Sendable, Equatable {
     // Claude suggests Approve and posted nothing: its mark has no draft and is for the head
     // commit. A mark whose draft the user deleted has this state too.
     case reviewed
+    // Claude reviewed an older commit than the head: the author pushed new commits after the
+    // review. The row shows no verdict and no Approve button, and offers Review.
+    case newCommits
     // The last review round failed, with its reason.
     case failed(String)
     // A direct request that was open at the first turn-on, or that the user acted on.

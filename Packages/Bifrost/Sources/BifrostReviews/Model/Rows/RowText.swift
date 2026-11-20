@@ -35,6 +35,7 @@ package enum RowText {
         case .newRequest: ""
         case .draftReady: "Draft ready"
         case .reviewed: "Looks good"
+        case .newCommits: "New commits"
         case .failed: "Review failed"
         case .waitingForYou: "Waiting for you"
         case .trustNeeded: "Trust needed"
@@ -60,11 +61,16 @@ package enum RowText {
         case .youRequestedChanges: "You requested changes on this pull request on GitHub."
         case .youCommented: "You commented on this pull request on GitHub."
         case .trustNeeded: trustTip
+        case .newCommits: newCommitsTip
         case .newRequest, .draftReady, .reviewed, .waitingForYou, .paused, .approvedByOthers,
             .teamRequest:
             nil
         }
     }
+
+    // The tip of a row whose Claude review is on an older commit than the head.
+    static let newCommitsTip =
+        "Claude reviewed an older commit. Review again to check the new changes."
 
     // The tip of a row whose work waits for the trust of its repository.
     static let trustTip =
@@ -106,8 +112,9 @@ package enum RowText {
                 ? "Click Approve to submit Claude's draft as an approval."
                 : "Click \(name) to check the draft and send it."
             return "Claude suggests: \(name).\(why) \(next)"
-        case .newRequest, .failed, .waitingForYou, .trustNeeded, .reviewing, .queued, .paused,
-            .youApproved, .youRequestedChanges, .youCommented, .approvedByOthers, .teamRequest:
+        case .newRequest, .newCommits, .failed, .waitingForYou, .trustNeeded, .reviewing, .queued,
+            .paused, .youApproved, .youRequestedChanges, .youCommented, .approvedByOthers,
+            .teamRequest:
             return nil
         }
     }

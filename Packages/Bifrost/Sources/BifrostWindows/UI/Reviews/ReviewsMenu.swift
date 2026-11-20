@@ -82,7 +82,8 @@ package enum ReviewsMenu {
         switch state {
         case .approvedByOthers: items.append(.remove)
         case .queued, .trustNeeded: items.append(.cancelReview)
-        case .newRequest, .paused, .draftReady, .reviewed, .failed, .waitingForYou, .reviewing,
+        case .newRequest, .paused, .draftReady, .reviewed, .newCommits, .failed, .waitingForYou,
+            .reviewing,
             .youApproved, .youRequestedChanges, .youCommented, .teamRequest:
             break
         }
@@ -90,8 +91,9 @@ package enum ReviewsMenu {
         switch state {
         case .newRequest: items.append(.pause)
         case .paused: items.append(.endPause)
-        case .draftReady, .reviewed, .failed, .waitingForYou, .trustNeeded, .reviewing, .queued,
-            .youApproved, .youRequestedChanges, .youCommented, .approvedByOthers, .teamRequest:
+        case .draftReady, .reviewed, .newCommits, .failed, .waitingForYou, .trustNeeded,
+            .reviewing, .queued, .youApproved, .youRequestedChanges, .youCommented,
+            .approvedByOthers, .teamRequest:
             break
         }
         return items
@@ -149,8 +151,9 @@ package enum ReviewsMenu {
     // The buttons of a To review row, in their order: Approve while the row offers it (it waits
     // while CI runs); Comment or Request changes while the row offers Claude's draft; Remove for a
     // row that others approved; Review on a request that waits for the user (Try again on a failed
-    // row) while a round can start, and on a Looks good row with no Approve; and Pause for a new
-    // request. Each button is also an item of the menu of the row, except an Approve that waits.
+    // row) while a round can start, on a New commits row, and on a Looks good row with no Approve;
+    // and Pause for a new request. Each button is also an item of the menu of the row, except an
+    // Approve that waits.
     package static func buttons(_ row: ReviewRow) -> [ReviewsMenuItem] {
         guard case .toReview(let state) = row.state else { return mineButtons(row) }
         var buttons: [ReviewsMenuItem] = []
@@ -159,7 +162,8 @@ package enum ReviewsMenu {
         switch state {
         case .approvedByOthers: buttons.append(.remove)
         case .newRequest: buttons += row.reviewable ? [.review, .pause] : [.pause]
-        case .waitingForYou, .teamRequest: if row.reviewable { buttons.append(.review) }
+        case .waitingForYou, .teamRequest, .newCommits:
+            if row.reviewable { buttons.append(.review) }
         case .reviewed: if row.reviewable && row.approve == nil { buttons.append(.review) }
         case .failed: if row.reviewable { buttons.append(.tryAgain) }
         case .draftReady, .trustNeeded, .reviewing, .queued, .paused, .youApproved,

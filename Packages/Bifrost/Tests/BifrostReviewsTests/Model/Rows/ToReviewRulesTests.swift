@@ -473,8 +473,9 @@ struct ToReviewRulesTests {
         looksGood.prs[key, default: PRState()].recommendation = RecommendationMark(
             value: .approve, why: "", headSHA: try R.commit("a"), reviewID: nil, at: R.at(-5))
         #expect(stateOf(pr, looksGood) == .reviewed)
+        // The same mark on an older commit than the head shows New commits.
         looksGood.prs[key]?.recommendation?.headSHA = try R.commit("b")
-        #expect(stateOf(pr, looksGood) == .newRequest)
+        #expect(stateOf(pr, looksGood) == .newCommits)
 
         var failed = fresh
         failed.prs[key, default: PRState()].lastError = "Claude didn't finish the review."

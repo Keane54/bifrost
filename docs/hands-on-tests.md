@@ -656,6 +656,11 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   flash, the count should turn red and one notification should arrive. Make CI fail and pass again:
   no second notification. Do it once more, but submit a review on GitHub while CI still fails: no
   notification when CI passes. ([reviews R32](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] Let Claude review a test PR until its row shows "Approval recommended" with Approve. Push a
+  new commit to the PR and wait for the next poll. The row should say "New commits" in amber, with
+  the tip "Claude reviewed an older commit. Review again to check the new changes.", a Review
+  button and no Approve. Click Review: Claude should review the new commit, and the row should
+  show its verdict with Approve again.
 - [ ] Right-click a row of the Reviews panel, then Control-click one. The Bifrost menu should open
   at the pointer with only the items that fit the row: Open on GitHub everywhere, Open session and
   Stop session while the PR has a session, Review (Try again on a failed row), Cancel review on a
