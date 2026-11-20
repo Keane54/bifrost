@@ -111,16 +111,22 @@ Be adversarial. Assume that the change has a bug, and try to find it. For each c
   a wrong result.
 - Code comments: a comment that no longer agrees with the code after the change, in the diff or in
   code that the change makes wrong. A wrong comment misleads the next reader and the next agent.
+- Fit with the codebase: new code that does a job in another way than the codebase already does
+  it; new code that writes again what an existing component, function or library already does;
+  a copy of an existing component or function where a small change to that one would serve both;
+  a class hierarchy where a composition of smaller parts would do the same job.
 
 Report a problem only when it is:
 
-- significant: it can cause wrong behaviour, an error, lost data or a security hole;
+- significant: it can cause wrong behaviour, an error, lost data or a security hole, or it does
+  not fit the codebase (see "Fit with the codebase");
 - actionable: you can name the specific change that fixes it.
 
 Never report:
 
 - style, naming, formatting or the order of the code;
-- another approach that works no better than the one in the PR;
+- another approach that works no better than the one in the PR, unless the codebase already does
+  that job in that other way;
 - a problem in code that the PR does not change, unless the change makes it worse or depends on it;
 - praise, a recap of what the PR does, or a comment for the sake of a comment;
 - a question that checks what the code does, or that asks whether the author meant a behaviour;
@@ -161,6 +167,10 @@ Then give each finding one kind:
 
 - **Bug or error:** the code does the wrong thing or fails. A security problem counts as a bug.
 - **Minor:** a real problem with a small effect. It does not need to block the PR.
+
+A finding about the fit with the codebase names the existing pattern, component, function or
+library, with its path, and says how to use or adapt it. If you can't point to one in the
+codebase, drop the finding. Such a finding is Minor.
 
 In a re-review, an earlier comment that the author did not fix counts again with its first kind,
 unless the author's answer shows that no change is necessary. It goes in the summary with a link to
