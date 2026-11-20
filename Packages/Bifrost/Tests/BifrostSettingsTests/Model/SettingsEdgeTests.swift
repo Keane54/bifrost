@@ -160,8 +160,8 @@ struct ChoiceEdgeTests {
         "a stored flag keeps true and false and refuses other values",
         arguments: [
             "accountUsage", "animatedBackground", "autoUpdate", "notifications", "redBoxSound",
-            "reviewsAutoFix", "reviewsSignedCommits", "reviewsTeamRequests", "reviewsWatch",
-            "rowFlash", "setupDone", "startAtLogin",
+            "reviewsAutoFix", "reviewsFixCI", "reviewsResolveConflicts", "reviewsSignedCommits",
+            "reviewsTeamRequests", "reviewsWatch", "rowFlash", "setupDone", "startAtLogin",
         ])
     func flag(key: String) {
         for flag in [true, false] {
@@ -181,6 +181,8 @@ struct ChoiceEdgeTests {
             ("accountUsage", \.accountUsage), ("animatedBackground", \.animatedBackground),
             ("autoUpdate", \.autoUpdate), ("notifications", \.notifications),
             ("redBoxSound", \.redBoxSound), ("reviewsAutoFix", \.reviewsAutoFix),
+            ("reviewsFixCI", \.reviewsFixCI),
+            ("reviewsResolveConflicts", \.reviewsResolveConflicts),
             ("reviewsSignedCommits", \.reviewsSignedCommits),
             ("reviewsTeamRequests", \.reviewsTeamRequests), ("reviewsWatch", \.reviewsWatch),
             ("rowFlash", \.rowFlash), ("setupDone", \.setupDone), ("startAtLogin", \.startAtLogin),

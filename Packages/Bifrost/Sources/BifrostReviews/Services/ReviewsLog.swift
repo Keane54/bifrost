@@ -17,6 +17,9 @@ package enum ReviewsLogEvent: Sendable, Equatable {
     case cloneFailed(RepoName, RepoError)
     // The reset of the worktree of the PR after a round removed this count of changes.
     case worktreeReset(PRKey, changes: Int)
+    // At the start of a round, Bifrost could not keep the worktree of the last round of the PR,
+    // so it made the worktree again (RepoStore.placeWorktree). The turn starts a new session.
+    case worktreeMadeAgain(PRKey)
 }
 
 // Where the Reviews watcher sends its events. The app uses SystemReviewsLog. A test records the
@@ -54,6 +57,12 @@ package struct SystemReviewsLog: ReviewsLog {
                 """
                 The reset of the worktree of \(pr.text, privacy: .private) removed \
                 \(changes, privacy: .public) changes.
+                """)
+        case .worktreeMadeAgain(let pr):
+            logger.notice(
+                """
+                Bifrost couldn't keep the worktree of \(pr.text, privacy: .private), so it made \
+                the worktree again. The next turn starts a new session.
                 """)
         }
     }

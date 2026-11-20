@@ -588,7 +588,8 @@ public final class Shell {
     // The services found claude: the shell makes the session input one time, and the chats get the
     // PTY manager and the session input. Each chat owns the attach of its chat view and gives its
     // chunks and its end to the session input. The session input owns each hidden attach and gives
-    // its output to a terminal model, at the session size. Then the shell makes the action runner.
+    // its output to a terminal model, at the session size. The request rounds of Reviews type
+    // their prompts through it too. Then the shell makes the action runner.
     // The services make the PTY manager, the registry and the session commands in one step, so
     // the three are there together.
     private func attachPTYs() {
@@ -601,6 +602,7 @@ public final class Shell {
             ptys: ptys, sizes: services.sessionSizes, rows: { list.rows },
             makeTerminal: { HiddenTerminalModel(size: $0) }, clock: services.clock)
         self.input = input
+        services.reviews?.input = input
         chats.attach(ptys: ptys, input: input)
         attachRunner(actions: actions, input: input, registry: registry, ptys: ptys)
         if let claude = services.claudeRunner,
@@ -669,7 +671,8 @@ public final class Shell {
     // MARK: - Reviews
 
     // The links of Reviews that need the window: the open of the chat of a PR session through
-    // the action runner, Open Settings at Settings > Reviews, and a click on a notification of
+    // the action runner, the confirm dialog of Discard these changes, Open Settings at
+    // Settings > Reviews, and a click on a notification of
     // Reviews, which shows the window and opens the Reviews panel. The notifications of Reviews
     // read the focus of the window as the box alerts do.
     private func wireReviews() {
@@ -677,6 +680,9 @@ public final class Shell {
         reviews.links.openPanel = { [layout] in layout.apply(.open($0)) }
         reviews.links.closePanel = { [layout] in layout.apply(.close($0)) }
         reviews.links.terminalFont = { [chats] in chats.terminalFont }
+        reviews.links.confirm = { [dialogs] in
+            await dialogs.confirm($0, openFolder: nil, onBusy: {})
+        }
         reviews.links.openSettings = { [weak self] in
             guard let self else { return }
             if let model = settingsPanels.model {
@@ -811,8 +817,9 @@ public final class Shell {
     //
     // The model gets the confirm dialog of the window, for Reset all keys, and the state of the
     // dialogs: while a dialog shows, Save is off. A confirmation while another dialog shows gives
-    // false. A confirmed turn-on of the automatic comment handling of Reviews reaches the Reviews
-    // part (ReviewsParts.autoFixConfirmed).
+    // false. A confirmed turn-on of the automatic comment handling, of the merge conflicts or of
+    // the failing CI of Reviews reaches the Reviews part (ReviewsParts.autoFixConfirmed,
+    // resolveConflictsConfirmed and fixCIConfirmed).
     package func settingsLinks() -> SettingsLinks {
         let dialogs = dialogs
         let modes = window.modes
@@ -831,6 +838,10 @@ public final class Shell {
             appVersion: Self.appVersion,
             reviews: ReviewsLinks(
                 confirmAutoFix: { [weak services] in services?.reviews?.autoFixConfirmed() },
+                confirmResolveConflicts: { [weak services] in
+                    services?.reviews?.resolveConflictsConfirmed()
+                },
+                confirmFixCI: { [weak services] in services?.reviews?.fixCIConfirmed() },
                 removeClones: { [weak services] in await services?.reviews?.removeAllClones() }),
             updates: UpdatesLinks(
                 version: updater.version, state: updater.state, check: updater.check,

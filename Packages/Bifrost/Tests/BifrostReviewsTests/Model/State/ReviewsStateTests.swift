@@ -38,6 +38,10 @@ private func commit(_ character: Character) throws -> CommitID {
     try #require(CommitID(String(repeating: character, count: 40)))
 }
 
+private func job(_ id: Int) throws -> JobID {
+    try #require(JobID(id))
+}
+
 private func time(_ milliseconds: Int) -> Date {
     Date(timeIntervalSince1970: Double(milliseconds) / 1000)
 }
@@ -265,6 +269,441 @@ struct ReviewsStateTests {
         #expect(try stored(Data("{}".utf8)).version == .unknown)
         #expect(try stored(Data(#"{"version": 1.0}"#.utf8)).version == .current)
         #expect(StoredReviewsState().version == .current)
+    }
+
+    // The session of a PR keeps the profile of its start flags and the count of its rounds. A
+    // session of an older file has no profile and no rounds.
+    @Test func aSessionRefKeepsItsProfileAndRounds() throws {
+        let id: SessionID = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f"
+        let ref = SessionRef(
+            sessionID: id, name: "repo-b-7-request", shortID: ShortID("1c2d3e4f"),
+            profile: String(repeating: "ab", count: 32), rounds: 3)
+        var dropped = DroppedFields()
+        #expect(SessionRef(stored: ref.stored, dropped: &dropped) == ref)
+        #expect(ref.stored.object?["rounds"] == 3)
+        #expect(ref.stored.object?["profile"] == .string(String(repeating: "ab", count: 32)))
+        #expect(dropped.sorted.isEmpty)
+
+        let old: JSONValue = [
+            "sessionId": "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f", "name": "repo-b-7-request",
+            "shortId": "1c2d3e4f",
+        ]
+        let read = try #require(SessionRef(stored: old, dropped: &dropped))
+        #expect(read.rounds == 0 && read.profile == nil)
+        #expect(dropped.sorted.isEmpty)
+
+        let bad: JSONValue = [
+            "sessionId": "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f", "name": "repo-b-7-request",
+            "rounds": -1, "profile": 5,
+        ]
+        let kept = try #require(SessionRef(stored: bad, dropped: &dropped))
+        #expect(kept.rounds == 0 && kept.profile == nil)
+        #expect(dropped.sorted == ["prs.session.profile", "prs.session.rounds"])
+    }
+
+    // The outbox of an own request keeps its mark, and the reason that the work waits for the
+    // user stays. An older file has neither: the outbox is a round's, and there is no reason. An
+    // own mark that is not a flag drops the whole outbox.
+    @Test func anOwnOutboxAndTheReasonForTheUserStay() throws {
+        let head = try #require(CommitID(String(repeating: "a", count: 40)))
+        var prState = PRState()
+        prState.outbox = Outbox(
+            headSHA: head, mergeBase: head, startedAt: Date(timeIntervalSince1970: 1_800_000_000),
+            seen: [:],
+            posts: [
+                OutboxPost(
+                    id: "commit", state: .todo,
+                    write: .commit(paths: ["a.txt"], message: "fix: it", commit: nil)),
+                OutboxPost(id: "push", state: .todo, write: .push(commit: nil, signed: false)),
+            ],
+            own: true)
+        prState.waiting = WaitsForYou(reason: "Your change is still here.", files: ["a.txt"])
+        var dropped = DroppedFields()
+        let read = PRState(stored: prState.stored, dropped: &dropped)
+        #expect(read == prState && dropped.sorted.isEmpty)
+        #expect(prState.stored.object?["outbox"]?.object?["own"] == true)
+        #expect(prState.stored.object?["waitsForYouFiles"] == ["a.txt"])
+
+        var older = prState
+        older.outbox?.own = false
+        older.waitsForYou = nil
+        #expect(older.stored.object?["outbox"]?.object?["own"] == nil)
+        #expect(older.stored.object?["waitsForYou"] == nil)
+        #expect(older.stored.object?["waitsForYouFiles"] == nil)
+        #expect(PRState(stored: older.stored, dropped: &dropped) == older)
+
+        guard case .object(var fields) = prState.stored,
+            case .object(var outbox)? = fields["outbox"]
+        else {
+            Issue.record("The stored state has no outbox object.")
+            return
+        }
+        outbox["own"] = "yes"
+        fields["outbox"] = .object(outbox)
+        #expect(PRState(stored: .object(fields), dropped: &dropped).outbox == nil)
+    }
+
+    // The consents of merge conflicts and of failing CI save under their names and read back,
+    // also a refusal (false) and no consent (null). Only a recorded consent with its setting on
+    // lets the work start, and a consent changes no other field, also not the start of new work.
+    // A bad value costs only its field.
+    @Test func theConsentsRoundTripAndGateTheWork() throws {
+        var state = ReviewsState()
+        #expect(state.conflictConsent == nil && state.ciConsent == nil)
+        #expect(!state.allowsConflictFix(true) && !state.allowsCIFix(true))
+        state.consentToConflictFix()
+        #expect(state.conflictConsent == true && state.ciConsent == nil)
+        #expect(state.allowsConflictFix(true) && !state.allowsConflictFix(false))
+        #expect(!state.allowsCIFix(true))
+        state.consentToCIFix()
+        #expect(state.ciConsent == true && state.allowsCIFix(true) && !state.allowsCIFix(false))
+        #expect(state.fixFrom == nil && state.autoFixConsent == nil)
+        let fields = try #require(try saved(state).object)
+        #expect(fields["conflictConsent"] == true && fields["ciConsent"] == true)
+        let read = try stored(JSONFile.encode(state))
+        #expect(read.dropped == [] && read.state == state)
+
+        state.conflictConsent = false
+        state.ciConsent = nil
+        #expect(!state.allowsConflictFix(true) && !state.allowsCIFix(true))
+        let other = try #require(try saved(state).object)
+        #expect(other["conflictConsent"] == false && other["ciConsent"] == .null)
+        #expect(try stored(JSONFile.encode(state)).state == state)
+
+        let text = #"{"version": 1, "conflictConsent": "yes", "ciConsent": true}"#
+        let bad = try stored(Data(text.utf8))
+        #expect(bad.dropped == ["conflictConsent"])
+        #expect(bad.state.conflictConsent == nil && bad.state.ciConsent == true)
+    }
+
+    // A CI consent (the proof that a re-run of failed jobs needs) comes only from a state with
+    // the setting on and the consent recorded. A refusal, no consent or the conflict consent
+    // gives none.
+    @Test func aCIConsentNeedsTheSettingAndTheConsent() {
+        var state = ReviewsState()
+        #expect(state.ciConsent(true) == nil && state.ciConsent(false) == nil)
+        state.ciConsent = false
+        #expect(state.ciConsent(true) == nil)
+        state.consentToConflictFix()
+        #expect(state.ciConsent(true) == nil)
+        state.consentToCIFix()
+        #expect(state.ciConsent(true) != nil && state.ciConsent(false) == nil)
+    }
+
+    // The conflict mark, the CI mark with its question, a Resolve now click and the merge start
+    // of a round save under their names and read back. A save writes only the fields that have a
+    // value, so the file of an older release reads with no mark and no click. A round and a queue
+    // entry of each kind read back, and a round of an unknown kind goes.
+    @Test func theMarksRoundTripAndAnUnknownKindDropsItsRound() throws {
+        let at = time(1_794_000_000_000)
+        let reason = "Claude couldn't resolve these conflicts: the two sides disagree."
+        var prState = PRState()
+        prState.conflict = ConflictMark(
+            head: try commit("a"), base: try commit("b"), at: at, outcome: .failed(reason))
+        let question = CIQuestion(
+            text: "Is the test of the parser flaky?", head: try commit("c"),
+            jobs: ["build", "test"], at: at, byClaude: true, answer: "Run it again.")
+        prState.ci = CIMark(
+            chain: [try commit("c"), try commit("d")], fixes: 2, retries: 1,
+            handledHead: try commit("d"), handled: [try job(101), try job(135_562_930_272)],
+            retrying: try commit("d"), question: question, userHandles: try commit("e"))
+        prState.resolveNow = true
+        prState.round = ActiveRound(
+            phase: .running, startedAt: at, at: at, headSHA: try commit("a"),
+            baseSHA: try commit("b"), kind: .conflict, token: "t1", startSHA: try commit("f"))
+        var dropped = DroppedFields()
+        #expect(PRState(stored: prState.stored, dropped: &dropped) == prState)
+        #expect(dropped.sorted.isEmpty)
+        let fields = try #require(prState.stored.object)
+        #expect(fields["resolveNow"] == true)
+        #expect(
+            fields["conflict"]
+                == [
+                    "head": .string(try commit("a").hex), "base": .string(try commit("b").hex),
+                    "at": 1_794_000_000_000, "outcome": "failed", "reason": .string(reason),
+                ])
+        let ci = try #require(fields["ci"]?.object)
+        #expect(
+            ci.keys.sorted() == [
+                "chain", "fixes", "handled", "handledHead", "question", "retries", "retrying",
+                "userHandles",
+            ])
+        #expect(ci["handled"] == [101, 135_562_930_272] && ci["fixes"] == 2)
+        #expect(
+            ci["question"]?.object?.keys.sorted() == [
+                "answer", "at", "byClaude", "head", "jobs", "text",
+            ])
+        #expect(fields["round"]?.object?["kind"] == "conflict")
+        #expect(fields["round"]?.object?["startSha"] == .string(try commit("f").hex))
+
+        for outcome in [ConflictOutcome.working, .pushed(try commit("9"))] {
+            prState.conflict?.outcome = outcome
+            #expect(PRState(stored: prState.stored, dropped: &dropped).conflict?.outcome == outcome)
+        }
+        let merge = prState.stored.object?["conflict"]?.object
+        let mergeHex = try commit("9").hex
+        #expect(merge?["outcome"] == "pushed" && merge?["merge"] == .string(mergeHex))
+        #expect(merge?["reason"] == nil)
+
+        // The empty values write nothing.
+        let empty = try #require(PRState().stored.object)
+        #expect(empty["conflict"] == nil && empty["ci"] == nil && empty["resolveNow"] == nil)
+        #expect(CIMark(chain: []).stored == [:])
+        let bare = CIQuestion(
+            text: "Why?", head: try commit("c"), jobs: [], at: at, byClaude: false)
+        #expect(bare.stored.object?.keys.sorted() == ["at", "head", "text"])
+        let plain = ActiveRound(phase: .running, startedAt: at, at: at, kind: .ci)
+        #expect(plain.stored.object?["startSha"] == nil)
+        let older = try stored(FixtureFiles.data("state-request-round")).state
+        let fixing = try #require(older.prs[key("owner-a/repo-b#7")])
+        #expect(fixing.conflict == nil && fixing.ci == nil && !fixing.resolveNow)
+        #expect(fixing.round?.startSHA == nil)
+
+        // The chain keeps its newest commits, and a question its first names of jobs.
+        let commits = try "0123456789".map { try commit($0) }
+        var chain = CIMark(chain: commits)
+        #expect(chain.chain == Array(commits.suffix(8)))
+        chain.chain.append(try commit("a"))
+        #expect(chain.chain == Array(commits.suffix(7)) + [try commit("a")])
+        var names = CIQuestion(
+            text: "Why?", head: try commit("c"), jobs: (1...7).map { "job \($0)" }, at: at,
+            byClaude: false)
+        #expect(names.jobs == (1...5).map { "job \($0)" })
+        names.jobs.append("job 8")
+        #expect(names.jobs.count == 5)
+
+        // Each kind reads back, also in the queue, and an unknown kind drops its round.
+        #expect(PRSessionKind.allCases.filter(\.isMine) == [.request, .conflict, .ci])
+        for kind in PRSessionKind.allCases {
+            let round = ActiveRound(phase: .preparing, startedAt: at, at: at, kind: kind)
+            #expect(ActiveRound(stored: round.stored, dropped: &dropped) == round)
+            let entry = QueueEntry(pr: try key("owner-a/repo-b#7"), kind: kind, at: at)
+            #expect(QueueEntry(stored: entry.stored, dropped: &dropped) == entry)
+        }
+        #expect(dropped.sorted.isEmpty)
+        guard case .object(var unknown) = prState.stored,
+            case .object(var round)? = unknown["round"]
+        else {
+            Issue.record("The stored state has no round object.")
+            return
+        }
+        round["kind"] = "rebase"
+        unknown["round"] = .object(round)
+        let read = PRState(stored: .object(unknown), dropped: &dropped)
+        #expect(read.round == nil && read.conflict == prState.conflict && read.ci == prState.ci)
+        #expect(dropped.sorted == ["prs.round"])
+    }
+
+    // A record of a PR that drops a field, or that is not an object, puts its conflict mark in
+    // doubt, and so does a list of PRs that loses a record. A record that reads in full does not,
+    // and the file never keeps the doubt.
+    @Test func aRecordThatDoesNotReadInFullPutsItsMarkInDoubt() throws {
+        var dropped = DroppedFields()
+        var good = PRState()
+        good.lastError = "A reason."
+        good.conflict = ConflictMark(
+            head: try commit("a"), base: try commit("b"), at: time(1000), outcome: .working)
+        let clean = PRState(stored: good.stored, dropped: &dropped)
+        #expect(clean == good && !clean.markInDoubt && dropped.sorted.isEmpty)
+        guard case .object(var fields) = good.stored else {
+            Issue.record("The stored state is not an object.")
+            return
+        }
+        fields["conflict"] = ["base": .string(try commit("b").hex), "outcome": "working"]
+        let lost = PRState(stored: .object(fields), dropped: &dropped)
+        #expect(lost.markInDoubt && lost.conflict == nil && lost.lastError == "A reason.")
+        #expect(dropped.sorted == ["prs.conflict"])
+        #expect(lost.stored.object?["markInDoubt"] == nil)
+        #expect(PRState(stored: "not a record", dropped: &dropped).markInDoubt)
+
+        let text = #"{"version": 1, "prs": {"owner-a/repo-b#12": {"lastError": "A"}, "no": {}}}"#
+        let state = try stored(Data(text.utf8)).state
+        let record = try key("owner-a/repo-b#12")
+        #expect(state.marksInDoubt && state.prs[record]?.markInDoubt == false)
+        #expect(try stored(Data(#"{"version": 1, "prs": 5}"#.utf8)).state.marksInDoubt)
+        #expect(try !stored(Data(#"{"version": 1, "prs": {}}"#.utf8)).state.marksInDoubt)
+        #expect(try saved(state).object?["marksInDoubt"] == nil)
+    }
+
+    // A CI mark that Bifrost can't read in full has no fix and no re-run left: a bad count, the
+    // loss of any other field, or a value that is not an object makes both counts their limits.
+    // A chain with a bad commit reads as no chain. The good fields stay, and the save of the read
+    // reads back with nothing dropped. A missing count is 0.
+    @Test func aCIMarkThatDoesNotReadInFullHasNoTriesLeft() throws {
+        let at = time(1_794_000_000_000)
+        let good = CIMark(
+            chain: [try commit("c")], fixes: 1, handledHead: try commit("c"),
+            handled: [try job(101)], retrying: try commit("c"),
+            question: CIQuestion(
+                text: "Is it flaky?", head: try commit("c"), jobs: ["test"], at: at,
+                byClaude: true),
+            userHandles: try commit("d"))
+        let fields = try #require(good.stored.object)
+        func read(_ value: JSONValue) -> (mark: CIMark?, dropped: [String]) {
+            var dropped = DroppedFields()
+            let mark = CIMark(stored: value, dropped: &dropped)
+            return (mark, dropped.sorted)
+        }
+        #expect(read(.object(fields)).mark == good && read(.object(fields)).dropped.isEmpty)
+        let counts = read(["chain": [.string(try commit("c").hex)]])
+        #expect(counts.mark?.fixes == 0 && counts.mark?.retries == 0)
+
+        let longText = String(repeating: "x", count: Question.maxText + 1)
+        let longAnswer = String(repeating: "y", count: Question.maxAnswer + 1)
+        // A good question with a text one unit over the limit: only the limit refuses it.
+        var longQuestion = try #require(fields["question"]?.object)
+        longQuestion["text"] = .string(longText)
+        let damage: [(String, JSONValue, String)] = [
+            ("fixes", -1, "prs.ci.fixes"), ("fixes", "2", "prs.ci.fixes"),
+            ("fixes", 1.5, "prs.ci.fixes"), ("retries", "one", "prs.ci.retries"),
+            ("handledHead", "not a commit", "prs.ci.handledHead"),
+            ("handled", [101, "two"], "prs.ci.handled"),
+            ("retrying", 5, "prs.ci.retrying"), ("userHandles", false, "prs.ci.userHandles"),
+            ("chain", [.string(try commit("c").hex), "bad"], "prs.ci.chain"),
+            ("question", .object(longQuestion), "prs.ci.question"),
+        ]
+        for (key, value, name) in damage {
+            var broken = fields
+            broken[key] = value
+            let (mark, names) = read(.object(broken))
+            #expect(mark?.fixes == CIRule.maxFixes && mark?.retries == CIRule.maxRetries, "\(key)")
+            #expect(names == [name], "\(key)")
+            #expect(mark?.userHandles == (key == "userHandles" ? nil : good.userHandles), "\(key)")
+        }
+        var partial = fields
+        partial["handled"] = [101, "two"]
+        #expect(read(.object(partial)).mark?.handled == [try job(101)])
+        partial["chain"] = [.string(try commit("c").hex), "bad"]
+        #expect(read(.object(partial)).mark?.chain == [])
+
+        var questions = fields
+        var answered = try #require(fields["question"]?.object)
+        for answer in [JSONValue.string(longAnswer), 5] {
+            answered["answer"] = answer
+            questions["question"] = .object(answered)
+            let (mark, names) = read(.object(questions))
+            #expect(mark?.question == nil && mark?.fixes == CIRule.maxFixes)
+            #expect(names == ["prs.ci.question"])
+        }
+        answered["text"] = .string(String(repeating: "x", count: Question.maxText))
+        answered["answer"] = .string(String(repeating: "y", count: Question.maxAnswer))
+        questions["question"] = .object(answered)
+        #expect(read(.object(questions)).mark?.question?.answer?.count == Question.maxAnswer)
+        #expect(read(.object(questions)).dropped.isEmpty)
+
+        for value: JSONValue in [5, "ci", [1]] {
+            let (mark, names) = read(value)
+            #expect(mark == CIMark(chain: [], fixes: CIRule.maxFixes, retries: CIRule.maxRetries))
+            #expect(names == ["prs.ci"])
+        }
+        var broken = fields
+        broken["fixes"] = -1
+        let spent = try #require(read(.object(broken)).mark)
+        let again = read(spent.stored)
+        #expect(again.mark == spent && again.dropped.isEmpty)
+    }
+
+    // A good save never writes a field of a CI mark with no chain. So a mark with no chain and
+    // with any other field is damaged: its counts read as their limits, and no new chain starts
+    // from 0. A mark with no field, or with only null fields, is an empty mark.
+    @Test func aCIMarkWithNoChainButOtherFieldsIsDamaged() throws {
+        func read(_ value: JSONValue) -> (mark: CIMark?, dropped: [String]) {
+            var dropped = DroppedFields()
+            let mark = CIMark(stored: value, dropped: &dropped)
+            return (mark, dropped.sorted)
+        }
+        let damaged: [JSONValue] = [
+            ["fixes": 1, "handled": [101]], ["userHandles": .string(try commit("d").hex)],
+            ["chain": [], "retries": 1], ["chain": .null, "handled": [101]],
+        ]
+        for value in damaged {
+            let (mark, names) = read(value)
+            #expect(mark?.chain == [], "\(value)")
+            #expect(mark?.fixes == CIRule.maxFixes && mark?.retries == CIRule.maxRetries)
+            #expect(names == ["prs.ci.chain"], "\(value)")
+        }
+        #expect(read(["fixes": 1, "handled": [101]]).mark?.handled == [try job(101)])
+        for value: JSONValue in [[:], ["chain": .null, "fixes": .null]] {
+            let (mark, names) = read(value)
+            #expect(mark == CIMark(chain: []) && names.isEmpty, "\(value)")
+        }
+        // The save of a mark that is not an object has spent counts and no chain, so it reads
+        // back as damaged again.
+        let spent = try #require(read(5).mark)
+        let again = read(spent.stored)
+        #expect(again.mark == spent && again.dropped == ["prs.ci.chain"])
+    }
+
+    // A conflict mark that Bifrost can't read in full keeps the pair that it tried, so no
+    // automatic round tries that pair again: an unknown outcome, a pushed outcome with no merge
+    // commit and a failed outcome with no reason read as a failure with no reason, and a bad time
+    // reads as the distant past. Only a mark with no head or no base goes.
+    @Test func aConflictMarkThatDoesNotReadInFullKeepsItsPair() throws {
+        let head = try commit("a")
+        let base = try commit("b")
+        let fields: [String: JSONValue] = [
+            "head": .string(head.hex), "base": .string(base.hex), "at": 1_794_000_000_000,
+            "outcome": "failed", "reason": "It failed.",
+        ]
+        func read(_ change: (inout [String: JSONValue]) -> Void) -> (ConflictMark?, [String]) {
+            var object = fields
+            change(&object)
+            var dropped = DroppedFields()
+            let mark = ConflictMark(stored: .object(object), dropped: &dropped)
+            return (mark, dropped.sorted)
+        }
+        let outcomes: [(String, (inout [String: JSONValue]) -> Void)] = [
+            ("unknown", { $0["outcome"] = "rebased" }), ("missing", { $0["outcome"] = nil }),
+            ("not a text", { $0["outcome"] = 3 }),
+            ("no merge", { $0["outcome"] = "pushed" }),
+            ("bad merge", {
+                $0["outcome"] = "pushed"
+                $0["merge"] = "abc"
+            }),
+            ("no reason", { $0["reason"] = nil }), ("bad reason", { $0["reason"] = 7 }),
+        ]
+        for (name, change) in outcomes {
+            let (mark, dropped) = read(change)
+            #expect(mark?.head == head && mark?.base == base, "\(name)")
+            #expect(mark?.outcome == .failed(""), "\(name)")
+            #expect(dropped == ["prs.conflict.outcome"], "\(name)")
+        }
+        let times: [(inout [String: JSONValue]) -> Void] = [
+            { $0["at"] = "soon" }, { $0["at"] = nil },
+        ]
+        for change in times {
+            let (mark, dropped) = read(change)
+            #expect(mark?.at == .distantPast && mark?.outcome == .failed("It failed."))
+            #expect(dropped == ["prs.conflict.at"])
+        }
+        #expect(read { $0["head"] = "bad" }.0 == nil)
+        #expect(read { $0["base"] = nil }.0 == nil)
+        let (kept, _) = read { $0["outcome"] = "rebased" }
+        let mark = try #require(kept)
+        var dropped = DroppedFields()
+        #expect(ConflictMark(stored: mark.stored, dropped: &dropped) == mark)
+        #expect(dropped.sorted.isEmpty)
+        let state = PRState(stored: ["conflict": ["head": "bad"]], dropped: &dropped)
+        #expect(state.conflict == nil && dropped.sorted == ["prs.conflict"])
+    }
+
+    // A CI question cuts a text or an answer over its limit at a whole character, so the file
+    // reads back.
+    @Test func aCIQuestionCutsATooLongText() throws {
+        let at = time(1_794_000_000_000)
+        let text = String(repeating: "x", count: Question.maxText - 1) + "\u{1F600}"
+        var question = CIQuestion(
+            text: text, head: try commit("c"), jobs: [], at: at, byClaude: false,
+            answer: String(repeating: "y", count: Question.maxAnswer + 5))
+        #expect(question.text == String(repeating: "x", count: Question.maxText - 1))
+        #expect(question.answer?.utf16.count == Question.maxAnswer)
+        question.text = String(repeating: "z", count: Question.maxText + 9)
+        question.answer = String(repeating: "w", count: Question.maxAnswer + 1)
+        #expect(question.text.utf16.count == Question.maxText)
+        #expect(question.answer?.utf16.count == Question.maxAnswer)
+        var dropped = DroppedFields()
+        #expect(CIQuestion(stored: question.stored, dropped: &dropped) == question)
+        #expect(dropped.sorted.isEmpty)
     }
 
     // A root that is not an object does not decode: the store treats it as a file that does not

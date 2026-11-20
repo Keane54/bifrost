@@ -145,6 +145,7 @@ private let storeSettings = """
       "projectApp" : null,
       "redBoxSound" : true,
       "reviewsAutoFix" : true,
+      "reviewsFixCI" : false,
       "reviewsIgnore" : [
         "owner/*"
       ],
@@ -152,6 +153,7 @@ private let storeSettings = """
       "reviewsPauseMinutes" : 60,
       "reviewsPollMinutes" : 2,
       "reviewsRequestModel" : "",
+      "reviewsResolveConflicts" : false,
       "reviewsReviewModel" : "",
       "reviewsSignedCommits" : false,
       "reviewsTeamRequests" : true,
@@ -584,6 +586,9 @@ struct SettingsStoreTests {
         try await store.edit { $0.pollSeconds = 10 }
         var fields = try #require(tree.fields, "the file is an object")
         fields["pollSeconds"] = 10
+        // The settings that only this app has get their defaults.
+        fields["reviewsFixCI"] = false
+        fields["reviewsResolveConflicts"] = false
         #expect(try readSaved(file) == .object(fields))
     }
 

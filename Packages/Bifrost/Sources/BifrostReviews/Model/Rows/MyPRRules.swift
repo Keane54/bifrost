@@ -174,6 +174,8 @@ enum MyPRRules {
         let since = state.fixFrom ?? state.turnedOnAt
         // With automatic rounds off, or with no consent yet, new work waits for Handle now too.
         let autoFix = state.allowsAutoFix(config.autoFix)
+        // With the CI work off, or with no consent, the CI question is hidden.
+        let showsCI = state.allowsCIFix(config.fixCI)
         let rows = answer.mine.filter { !IgnoreRule.matches(config.ignore, $0.key.repo) }.map {
             pr -> (pr: PullRequest, row: ReviewRow, rank: Int) in
             let prState = state.prs[pr.key] ?? PRState()
@@ -181,7 +183,9 @@ enum MyPRRules {
                 threads: pr.threads, reviews: pr.reviews, comments: pr.comments,
                 viewer: answer.viewer, state: prState, baseline: baseline, since: since)
             let status = Self.status(pr, viewer: answer.viewer, items: items)
-            let claude = Self.claude(pr, prState, queue: state.queue, clones: clones)
+            let ciQuestion = CIRule.visibleQuestion(pr, prState.ci, allowed: showsCI)
+            let claude = Self.claude(
+                pr, prState, queue: state.queue, clones: clones, ciQuestion: ciQuestion)
             let later = items.laterCopilot.count
             let waiting = items.older.count + (autoFix ? 0 : items.work.count)
             let row = ReviewRow(
@@ -194,8 +198,10 @@ enum MyPRRules {
                     waiting == 0 ? nil : RowText.older(waiting),
                 ].compactMap { $0 },
                 status: RowText.claude(claude), waiting: waiting, laterCopilot: later,
-                questions: prState.questions.values.count(where: { $0.answer == nil }),
-                unsentUpdates: prState.outbox != nil && prState.round == nil)
+                questions: Self.openQuestions(prState) + (ciQuestion == nil ? 0 : 1),
+                unsentUpdates: Self.hasUnsentUpdates(prState),
+                unsavedFiles: prState.waiting?.files.count ?? 0,
+                resolvable: Self.isResolvable(pr, prState, queue: state.queue))
             return (pr, row, rank(status, claude))
         }
         // A row that needs the user first, then the groups of the status, then the last update
@@ -209,8 +215,29 @@ enum MyPRRules {
         }.map(\.row)
     }
 
+    // The questions of Claude on comments that wait for an answer.
+    private static func openQuestions(_ prState: PRState) -> Int {
+        prState.questions.values.count(where: { $0.answer == nil })
+    }
+
+    // True when Resolve now can start a conflict round: GitHub says that the PR has conflicts,
+    // the PR does not come from a fork, no round runs, no round of the user's side waits in the
+    // queue, and no writes wait (an outbox).
+    static func isResolvable(_ pr: PullRequest, _ prState: PRState, queue: [QueueEntry]) -> Bool {
+        pr.mergeable == .conflicting && !pr.isCrossRepository && prState.round == nil
+            && !queue.contains { $0.pr == pr.key && $0.kind.isMine } && prState.outbox == nil
+    }
+
+    // True when the writes of a stopped round wait for Try again (a kept outbox), with no round.
+    // An own outbox counts only when it waits for the user (a reason on the row): with no reason
+    // its writes run now, or go on by themselves after a quit.
+    static func hasUnsentUpdates(_ prState: PRState) -> Bool {
+        guard prState.round == nil, let outbox = prState.outbox else { return false }
+        return !outbox.own || prState.waitsForYou != nil
+    }
+
     private static func rank(_ status: ReviewStatus, _ claude: ClaudeState) -> Int {
-        if case .needsYou = claude { return 0 }
+        if claude.needsTheUser { return 0 }
         return switch status {
         case .changesRequested: 1
         case .comments: 2
@@ -287,27 +314,60 @@ enum MyPRRules {
         }
     }
 
-    // What Claude does on the PR. The first rule that holds wins: a round runs, a round waits in
-    // the queue, Claude has open questions, the last round failed, the PR comes from a fork. A
-    // round in the queue waits for the clone of its repository while the clone runs, and for
-    // the trust of the user while the clone needs it.
+    // What Claude does on the PR. The first rule that holds wins:
+    // 1. A round runs: a request round works on its items, a conflict round resolves the
+    //    conflicts and a CI round works on the failed checks.
+    // 2. A round of the user's side waits in the queue. It waits for the clone of its repository
+    //    while the clone runs, and for the trust of the user while the clone needs it.
+    // 3. Claude has open questions on comments, or the row shows the CI question (ciQuestion).
+    // 4. The work waits for the user: an own request that did not go, or changes that no round
+    //    made.
+    // 5. The last round failed.
+    // 6. A re-run of the failed jobs of the head waits for its result.
+    // 7. The PR comes from a fork.
+    // 8. GitHub says that the PR has conflicts. The row gives the reason of the failed attempt
+    //    only when that attempt was on this head and this base.
+    // 9. Else Claude waits.
     static func claude(
         _ pr: PullRequest, _ prState: PRState, queue: [QueueEntry],
-        clones: CloneStates = CloneStates()
+        clones: CloneStates = CloneStates(), ciQuestion: CIQuestion? = nil
     ) -> ClaudeState {
-        if let round = prState.round { return .fixing(round.items.count) }
-        if queue.contains(where: { $0.pr == pr.key && $0.kind == .request }) {
+        if let round = prState.round {
+            switch round.kind {
+            case .review, .request: return .fixing(round.items.count)
+            case .conflict: return .resolvingConflicts
+            case .ci: return .fixingCI
+            }
+        }
+        if queue.contains(where: { $0.pr == pr.key && $0.kind.isMine }) {
             let repo = pr.key.repo
             if clones.cloning.contains(repo) { return .cloning }
             return clones.needsTrust.contains(repo) ? .trustNeeded : .queued
         }
-        let questions = prState.questions.values.count(where: { $0.answer == nil })
-        if questions > 0 { return .needsYou(questions) }
+        let questions = openQuestions(prState)
+        if questions > 0 || ciQuestion != nil {
+            return .needsYou(comments: questions, ci: ciQuestion != nil)
+        }
+        if let reason = prState.waitsForYou { return .waitsForYou(reason) }
         if let reason = prState.lastError { return .error(reason) }
-        return pr.isCrossRepository ? .fork : .waiting
+        if CIRule.isRetrying(pr, prState.ci) { return .retryingCI }
+        if pr.isCrossRepository { return .fork }
+        if pr.mergeable == .conflicting { return .conflicts(conflictFailure(pr, prState.conflict)) }
+        return .waiting
     }
 
-    // True when GitHub has more items in a list of the PR than the poll reads.
+    // The reason of a failed conflict attempt on the head and the base of the PR, or nil. A
+    // failure with no reason (a mark that Bifrost could not read in full) gives nil, so the row
+    // shows the tip of Resolve now.
+    private static func conflictFailure(_ pr: PullRequest, _ mark: ConflictMark?) -> String? {
+        guard let mark, mark.matches(pr), case .failed(let reason) = mark.outcome,
+            !reason.isEmpty
+        else { return nil }
+        return reason
+    }
+
+    // True when a list of the PR can lack items: GitHub has more than the poll reads, or Bifrost
+    // can't read the list.
     private static func isCut(_ pr: PullRequest) -> Bool {
         pr.truncatedThreads || pr.truncatedReviews || pr.truncatedComments || pr.truncatedChecks
     }

@@ -10,11 +10,21 @@ package struct SessionRef: Sendable, Equatable, StoredValue {
     package var sessionID: SessionID
     package var name: String
     package var shortID: ShortID?
+    // The profile of the start flags of the session (PRSessionArgs.profile). A session of an
+    // older file has none. File: profile.
+    package var profile: String?
+    // The rounds that the session ran. File: rounds, missing = 0.
+    package var rounds: Int
 
-    package init(sessionID: SessionID, name: String, shortID: ShortID? = nil) {
+    package init(
+        sessionID: SessionID, name: String, shortID: ShortID? = nil, profile: String? = nil,
+        rounds: Int = 0
+    ) {
         self.sessionID = sessionID
         self.name = name
         self.shortID = shortID
+        self.profile = profile
+        self.rounds = rounds
     }
 
     package init?(stored value: JSONValue, dropped: inout DroppedFields) {
@@ -22,9 +32,13 @@ package struct SessionRef: Sendable, Equatable, StoredValue {
             let sessionID = object["sessionId"]?.string.flatMap({ SessionID($0) }),
             let name = object["name"]?.string
         else { return nil }
+        let rounds = object.read("rounds", &dropped) { value in
+            value.wholeNumber.flatMap { $0 >= 0 ? $0 : nil }
+        }
         self.init(
             sessionID: sessionID, name: name,
-            shortID: object.read("shortId", &dropped) { $0.string.flatMap { ShortID($0) } })
+            shortID: object.read("shortId", &dropped) { $0.string.flatMap { ShortID($0) } },
+            profile: object.read("profile", &dropped, \.string), rounds: rounds ?? 0)
     }
 
     package var stored: JSONValue {
@@ -32,6 +46,8 @@ package struct SessionRef: Sendable, Equatable, StoredValue {
             "sessionId": .string(sessionID.text), "name": .string(name),
         ]
         if let shortID { fields["shortId"] = .string(shortID.text) }
+        if let profile { fields["profile"] = .string(profile) }
+        if rounds > 0 { fields["rounds"] = .int(rounds) }
         return .object(fields)
     }
 }
@@ -63,12 +79,15 @@ package struct ActiveRound: Sendable, Equatable, StoredValue {
     // Review rounds: the token that the result of the session must give back. The Electron app
     // kept no token.
     package var token: String?
+    // Conflict rounds: the commit with the conflict markers that the worktree of the round starts
+    // from (the merge start in the clone of Bifrost). File: startSha.
+    package var startSHA: CommitID?
 
     package init(
         phase: RoundPhase, startedAt: Date, at: Date, headSHA: CommitID? = nil,
         baseSHA: CommitID? = nil, shortID: ShortID? = nil, sessionID: SessionID? = nil,
         stoppedByUser: Bool = false, kind: PRSessionKind, items: [NodeID: Date] = [:],
-        fixSHA: CommitID? = nil, token: String? = nil
+        fixSHA: CommitID? = nil, token: String? = nil, startSHA: CommitID? = nil
     ) {
         self.phase = phase
         self.startedAt = startedAt
@@ -82,9 +101,10 @@ package struct ActiveRound: Sendable, Equatable, StoredValue {
         self.items = items
         self.fixSHA = fixSHA
         self.token = token
+        self.startSHA = startSHA
     }
 
-    // An unknown kind gives no round, so one job never acts on a round of the other job.
+    // An unknown kind gives no round, so one job never acts on a round of another job.
     package init?(stored value: JSONValue, dropped: inout DroppedFields) {
         guard let object = StoredObject(value, place: "prs.round"),
             let phase = object["phase"]?.string.flatMap(RoundPhase.init(rawValue:)),
@@ -106,7 +126,8 @@ package struct ActiveRound: Sendable, Equatable, StoredValue {
             stoppedByUser: object.flag("stoppedByUser", &dropped), kind: kind,
             items: object.map("items", &dropped, key: NodeID.init, \.time),
             fixSHA: object.read("fixSha", &dropped, \.commitID),
-            token: object.read("token", &dropped, \.string))
+            token: object.read("token", &dropped, \.string),
+            startSHA: object.read("startSha", &dropped, \.commitID))
     }
 
     package var stored: JSONValue {
@@ -120,6 +141,7 @@ package struct ActiveRound: Sendable, Equatable, StoredValue {
         if !items.isEmpty { fields["items"] = .times(items) }
         if let fixSHA { fields["fixSha"] = .string(fixSHA.hex) }
         if let token { fields["token"] = .string(token) }
+        if let startSHA { fields["startSha"] = .string(startSHA.hex) }
         return .object(fields)
     }
 }
@@ -199,6 +221,17 @@ package struct PRState: Sendable, Equatable, StoredValue {
     package var askedReviewers: [String: CommitID] = [:]
     // The reason of the last failed or stopped round. The row shows it with Try again.
     package var lastError: String?
+    // Why the work on the PR waits for the user (docs/behaviour/reviews.md, "Your own
+    // requests"): an own request that Bifrost did not commit or push, or changes in the worktree
+    // that no round made. The row shows Needs you with the reason. Files: waitsForYou and
+    // waitsForYouFiles.
+    package var waiting: WaitsForYou?
+
+    // The reason of waiting. A new reason through this property has no files.
+    package var waitsForYou: String? {
+        get { waiting?.reason }
+        set { waiting = newValue.map { WaitsForYou(reason: $0) } }
+    }
     package var round: ActiveRound?
     package var recommendation: RecommendationMark?
     // The time of the last Review click or of the last posts of a round.
@@ -212,39 +245,63 @@ package struct PRState: Sendable, Equatable, StoredValue {
     package var held: [NodeID] = []
     // The GitHub update time of the PR at the last full read of a request round.
     package var checkedAt: Date?
+    // The conflict attempt on the last pair of a head and a base. File: conflict.
+    package var conflict: ConflictMark?
+    // The budget, the handled failure and the question of the CI rounds. File: ci.
+    package var ci: CIMark?
+    // A Resolve now click that waits for its conflict round, until the round ends. File:
+    // resolveNow.
+    package var resolveNow = false
+    // True when the read of the record of the PR in the file dropped a field, or the record was
+    // not an object. The record can then lack the conflict mark of a pair that Bifrost tried, so
+    // the first poll that lists the PR counts its pair as tried (ReviewRounds.queueConflicts).
+    // The file does not keep it.
+    package var markInDoubt = false
 
     package init() {}
 
     // A value that is not an object gives the empty state, as the Electron app does.
     package init(stored value: JSONValue, dropped: inout DroppedFields) {
         self.init()
+        var lost = DroppedFields()
+        defer {
+            for name in lost.names { dropped.add(name) }
+            markInDoubt = !lost.names.isEmpty
+        }
         guard let object = StoredObject(value, place: "prs") else {
-            dropped.add("prs")
+            lost.add("prs")
             return
         }
-        handled = object.map("handled", &dropped, key: NodeID.init, Handled.init(stored:dropped:))
-        firstCopilotReview = object.read("firstCopilotReview", &dropped, \.nodeID)
-        lastReviewedCommit = object.read("lastReviewedCommit", &dropped, \.commitID)
-        requestSession = object.read("request", &dropped, SessionRef.init(stored:dropped:))
-        reviewSession = object.read("review", &dropped, SessionRef.init(stored:dropped:))
-        handleOlder = object.flag("handleOlder", &dropped)
-        handleCopilot = object.flag("handleCopilot", &dropped)
+        handled = object.map("handled", &lost, key: NodeID.init, Handled.init(stored:dropped:))
+        firstCopilotReview = object.read("firstCopilotReview", &lost, \.nodeID)
+        lastReviewedCommit = object.read("lastReviewedCommit", &lost, \.commitID)
+        requestSession = object.read("request", &lost, SessionRef.init(stored:dropped:))
+        reviewSession = object.read("review", &lost, SessionRef.init(stored:dropped:))
+        handleOlder = object.flag("handleOlder", &lost)
+        handleCopilot = object.flag("handleCopilot", &lost)
         askedReviewers = object.map(
-            "rerequested", &dropped, key: { $0.isEmpty ? nil : $0 }, \.commitID)
-        lastError = object.read("lastError", &dropped, \.string)
-        round = object.read("round", &dropped, ActiveRound.init(stored:dropped:))
+            "rerequested", &lost, key: { $0.isEmpty ? nil : $0 }, \.commitID)
+        lastError = object.read("lastError", &lost, \.string)
+        if let reason = object.read("waitsForYou", &lost, \.string) {
+            let files = object.list("waitsForYouFiles", &lost, \.string)
+            waiting = WaitsForYou(reason: reason, files: files)
+        }
+        round = object.read("round", &lost, ActiveRound.init(stored:dropped:))
         recommendation = object.read(
-            "recommendation", &dropped, RecommendationMark.init(stored:dropped:))
-        actedAt = object.read("actedAt", &dropped, \.time)
-        outbox = object.read("outbox", &dropped, Outbox.init(stored:dropped:))
+            "recommendation", &lost, RecommendationMark.init(stored:dropped:))
+        actedAt = object.read("actedAt", &lost, \.time)
+        outbox = object.read("outbox", &lost, Outbox.init(stored:dropped:))
         questions = object.map(
-            "questions", &dropped, key: NodeID.init, Question.init(stored:dropped:))
-        held = Self.newest(unique(object.list("held", &dropped, \.nodeID)))
-        checkedAt = object.read("checkedAt", &dropped, \.time)
+            "questions", &lost, key: NodeID.init, Question.init(stored:dropped:))
+        held = Self.newest(unique(object.list("held", &lost, \.nodeID)))
+        checkedAt = object.read("checkedAt", &lost, \.time)
+        conflict = object.read("conflict", &lost, ConflictMark.init(stored:dropped:))
+        ci = object.read("ci", &lost, CIMark.init(stored:dropped:))
+        resolveNow = object.flag("resolveNow", &lost)
     }
 
     package var stored: JSONValue {
-        [
+        var fields: [String: JSONValue] = [
             "handled": .stored(handled),
             "firstCopilotReview": .text(firstCopilotReview?.text),
             "lastReviewedCommit": .text(lastReviewedCommit?.hex),
@@ -262,6 +319,16 @@ package struct PRState: Sendable, Equatable, StoredValue {
             "held": .array(held.map { .string($0.text) }),
             "checkedAt": .time(checkedAt),
         ]
+        if let waiting {
+            fields["waitsForYou"] = .string(waiting.reason)
+            if !waiting.files.isEmpty {
+                fields["waitsForYouFiles"] = .array(waiting.files.map(JSONValue.string))
+            }
+        }
+        if let conflict { fields["conflict"] = conflict.stored }
+        if let ci { fields["ci"] = ci.stored }
+        if resolveNow { fields["resolveNow"] = true }
+        return .object(fields)
     }
 
     // Add the items to the held items. Each item shows one time, at its newest place. The newest
@@ -298,6 +365,19 @@ package struct PRState: Sendable, Equatable, StoredValue {
 
     private static func newest(_ items: [NodeID]) -> [NodeID] {
         Array(items.suffix(maxHeld))
+    }
+}
+
+// Why the work on a PR waits for the user, and the files of the worktree that are not on GitHub,
+// as Bifrost found them at that time: the changes that the safety net stopped a round for, or the
+// change of an own request that did not go. With files, the row offers Discard these changes.
+package struct WaitsForYou: Sendable, Equatable {
+    package var reason: String
+    package var files: [String]
+
+    package init(reason: String, files: [String] = []) {
+        self.reason = reason
+        self.files = files
     }
 }
 

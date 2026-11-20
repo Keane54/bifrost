@@ -157,7 +157,7 @@ struct ReviewRowView: View {
             }
             Spacer(minLength: 0)
             HStack(spacing: style.points(6)) {
-                if case .mine(_, .needsYou) = row.state {
+                if case .mine(_, let claude) = row.state, claude.needsTheUser {
                     Flashing(on: rowFlash) {
                         Rectangle().strokeBorder(
                             ThemeTokens.boxRed.color, lineWidth: style.points(1))

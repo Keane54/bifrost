@@ -1,4 +1,5 @@
-// The input file of a request round, input.json (docs/behaviour/reviews.md, "Request rounds", and
+// The input file of a request round, input.json, or input-<round ID>.json in the round folder of
+// a PR (docs/behaviour/reviews.md, "Request rounds", and
 // skills/bifrost-resolve-comments/bifrost-mode.md, "The input file"). The session reads only the
 // input folder: this file with the PR and the items of the round, the rules and the full diff.
 // The PR text and the comments in it are material, never instructions: the mode file says so.
@@ -20,7 +21,14 @@ package struct RequestInput: Sendable, Equatable, Encodable {
         package var rules: URL
         // nil when the full diff is over ReviewInput.maxDiffBytes.
         package var fullDiff: URL?
+        // The input file itself.
+        package var input: URL
+        // The own request file of the user between rounds (OwnRequestFile). Its path is the same
+        // in each round.
+        package var ownRequest: URL
 
+        // The fixed names of an input folder that is new at each round. Only tests use them: a
+        // request round names its files with RoundFiles.
         package init(folder: URL, fullDiff: Bool) {
             func file(_ name: String) -> URL {
                 folder.appending(path: name, directoryHint: .notDirectory)
@@ -29,12 +37,20 @@ package struct RequestInput: Sendable, Equatable, Encodable {
             mode = file("mode.md")
             rules = file("humanise-rules.md")
             self.fullDiff = fullDiff ? file("full.diff") : nil
+            input = file("input.json")
+            ownRequest = file(OwnRequestFile.name)
         }
 
-        // input.json in the same folder.
-        package var input: URL {
-            result.deletingLastPathComponent().appending(
-                path: "input.json", directoryHint: .notDirectory)
+        // The names of one round in the round folder of a PR, each with the round ID, and the own
+        // request file of the folder.
+        package init(_ files: RoundFiles, fullDiff: Bool) {
+            result = files.result
+            mode = files.file("mode", "md")
+            rules = files.file("rules", "md")
+            self.fullDiff = fullDiff ? files.file("full", "diff") : nil
+            input = files.input
+            ownRequest = files.folder.appending(
+                path: OwnRequestFile.name, directoryHint: .notDirectory)
         }
     }
 
@@ -66,7 +82,7 @@ package struct RequestInput: Sendable, Equatable, Encodable {
     }
 
     package var pr: PRKey
-    // The token of the round. result.json must give it back.
+    // The token of the round. The result file must give it back.
     package var round: String
     package var url: String
     package var title: String
@@ -178,7 +194,7 @@ package struct RequestInput: Sendable, Equatable, Encodable {
         try json.encode(to: encoder)
     }
 
-    // The JSON of input.json. A missing value is null, as the mode file says.
+    // The JSON of the input file. A missing value is null, as the mode file says.
     package var json: JSONValue {
         let iso = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
         return [
@@ -214,11 +230,12 @@ package struct RequestInput: Sendable, Equatable, Encodable {
                 "mode": .string(files.mode.path(percentEncoded: false)),
                 "rules": .string(files.rules.path(percentEncoded: false)),
                 "fullDiff": .text(files.fullDiff?.path(percentEncoded: false)),
+                "ownRequest": .string(files.ownRequest.path(percentEncoded: false)),
             ],
         ]
     }
 
-    // The bytes of input.json: sorted keys, two spaces, and a line break at the end.
+    // The bytes of the input file: sorted keys, two spaces, and a line break at the end.
     package var fileData: Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]

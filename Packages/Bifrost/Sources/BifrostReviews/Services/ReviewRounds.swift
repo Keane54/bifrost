@@ -9,12 +9,17 @@
 //   sandboxed session, and Bifrost commits, pushes and posts its result; the extension in
 //   RequestRounds.swift holds the clicks, the jobs and the ends of this kind, RequestRound the
 //   steps of one round and RoundWrites its writes.
+// - A conflict round: Bifrost merges the base branch into a PR of the user that has conflicts,
+//   Claude resolves them in the request session of the PR, and Bifrost checks, commits and pushes
+//   the merge. The extension in ConflictRounds.swift holds the poll, Resolve now, the jobs and the
+//   ends of this kind, and ConflictRound the steps of one round. Each failure goes to the conflict
+//   mark of the PR, never to lastError.
 //
 // The state of state.json and the queue go together: a click (or a poll) adds the entry to the
 // queue of the file, the start of the round moves it to the round of the PR, and the end clears
 // the round. At the next start, a preparing round goes back to the queue and a running round
 // waits for its session. A posting review round fails; a posting request round sends the rest
-// of its writes.
+// of its writes; a posting conflict round pushes its merge again.
 //
 // A round that runs stops at its next step when the request of the PR went (a review) or the PR
 // merged or closed (a request), when the clones go, or when the user stops its session. A round
@@ -24,10 +29,14 @@
 // start. While Remove all clones runs, no round starts, and the clicks, the polls and the ends of
 // trust steps change nothing.
 //
+// An own request of the user (OwnRequests, docs/behaviour/reviews.md, "Your own requests") runs
+// in a task of ReviewRounds while no round of the PR runs, and no round of the PR starts while it
+// runs. Like a posting round, a drop and Remove all clones wait for its writes.
+//
 // The tasks of the rounds have owners: the queue owns the task of each round, ReviewRounds the
-// task of each drop and of Remove all clones, and PRSessions its claude commands. stop() cancels
-// the rounds, and waitForEnd() waits for each of those tasks, so no git, gh or claude of the rounds
-// outlives Reviews.
+// task of each drop, of each own request and of Remove all clones, and PRSessions its claude
+// commands. stop() cancels the rounds and the own requests, and waitForEnd() waits for each of
+// those tasks, so no git, gh or claude of the rounds outlives Reviews.
 import BifrostFoundation
 import BifrostSessions
 import Foundation
@@ -52,7 +61,14 @@ package final class ReviewRounds {
     private(set) lazy var writes = RoundWrites(
         store: store, github: github, repos: repos, clock: clock, now: now,
         viewer: { [weak self] in self?.answer()?.viewer },
-        eventLine: { [weak self] in self?.eventLine($0) })
+        eventLine: { [weak self] in self?.eventLine($0) },
+        inUse: { [weak self] in self?.sessions.requestInUse($0) ?? false })
+    // The own requests of the user (RequestRounds.swift).
+    private(set) lazy var own = OwnRequests(
+        store: store, repos: repos, writes: writes, now: now,
+        signed: { [weak self] in self?.config.signedCommits ?? false },
+        eventLine: { [weak self] in self?.eventLine($0) },
+        changed: { [weak self] in self?.changed() })
     // The queue runs the round of each job (run).
     package private(set) lazy var queue: ReviewQueue = {
         let queue = ReviewQueue(maxSessions: config.maxSessions) { [weak self] job in
@@ -86,14 +102,28 @@ package final class ReviewRounds {
     let now: () -> Date
     // The clock of the wait between two GitHub writes.
     private let clock: any Clock<Duration>
+    // The time since the start on clock, for the wait after a failed full read.
+    let timeline: Timeline
+    // The time of the last failed full read of a request round of each PR. The poll waits
+    // WorkRule.readRetry after it before it queues the PR again (waitsAfterReadFailure).
+    var readFailures: [PRKey: Duration] = [:]
     private(set) var config: ReviewsConfig
     // Remove all clones while it runs (removeAll). Its result is the failure of the removal of
     // the folders.
     private var removal: Task<String?, Never>?
-    // True after stop(): a poll starts no drop.
-    private var stopped = false
+    // True after stop(): a poll starts no drop and no own request.
+    private(set) var stopped = false
     // The drop of each PR whose drop runs now. Each drop leaves the list at its end.
-    private var drops: [PRKey: Task<Void, Never>] = [:]
+    private(set) var drops: [PRKey: Task<Void, Never>] = [:]
+    // The own request of each PR that runs now apart from a round (checkOwnRequest). Each one
+    // leaves the list at its end.
+    var ownRuns: [PRKey: Task<Void, Never>] = [:]
+    // The discard of each PR that runs now (discardChanges). Each one leaves the list at its end.
+    var discards: [PRKey: Task<DiscardOutcome, Never>] = [:]
+    // The checks for an own request file at the end of a request job (run), by number. Each one
+    // leaves the list at its end.
+    private var jobEndChecks: [Int: Task<Void, Never>] = [:]
+    private var jobEndCount = 0
     // The PRs whose request round sends the writes of an earlier round now. A halt does not
     // cancel those writes (halt).
     private var finishingWrites: Set<PRKey> = []
@@ -116,6 +146,7 @@ package final class ReviewRounds {
         self.config = config
         self.now = now
         self.clock = clock
+        timeline = Timeline(clock)
     }
 
     // MARK: - Start and stop
@@ -123,8 +154,13 @@ package final class ReviewRounds {
     // Take the rounds of the state: a posting review round fails, a posting request round sends
     // the rest of its writes, a preparing round goes back to the queue (or fails when the user
     // stopped it), and a running round waits for its session. A request round that fails holds
-    // its items. Then queue each entry of the file, oldest first.
+    // its items. A conflict round that runs or posts goes on in its job, which also ends a round
+    // that the user stopped; its failures go to its conflict mark. A CI round of the state goes
+    // with no text (the CI rounds do not run yet). Then queue each entry of the file, oldest
+    // first.
     package func start() {
+        // The end of a turn of a request session: an own request of the user can go now.
+        sessions.requestFree = { [weak self] pr in self?.checkOwnRequest(pr) }
         sessions.start()
         var resumed: [QueuedJob] = []
         store.change { state in
@@ -141,22 +177,29 @@ package final class ReviewRounds {
                     next.handleOlder = false
                     next.handleCopilot = false
                 }
-                switch round.phase {
-                case .posting where kind == .request:
+                switch (kind, round.phase) {
+                case (.ci, _):
+                    // The CI rounds come in a later task. Until then a CI round of the state goes.
+                    next.round = nil
+                case (.request, .posting), (.conflict, .posting), (.conflict, .running):
                     resumed.append(QueuedJob(pr: pr, kind: kind, since: round.at))
-                case .posting:
+                case (_, .posting):
                     failed(.closedWhilePosting)
-                case .preparing where round.stoppedByUser:
+                case (.conflict, .preparing) where round.stoppedByUser:
+                    next.round = nil
+                    next.resolveNow = false
+                    next.conflict = Self.stopped(next.conflict)
+                case (_, .preparing) where round.stoppedByUser:
                     failed(.stopped)
-                case .preparing:
+                case (_, .preparing):
                     next.round = nil
                     if !state.queue.contains(where: { $0.pr == pr && $0.kind == kind }) {
                         state.queue.append(QueueEntry(pr: pr, kind: kind, at: round.at))
                     }
-                case .running where round.stoppedByUser:
+                case (_, .running) where round.stoppedByUser:
                     // The user stopped it before the quit: it never waits for its session again.
                     failed(.stopped)
-                case .running:
+                case (_, .running):
                     resumed.append(QueuedJob(pr: pr, kind: kind, since: round.at))
                 }
                 state.prs[pr] = next
@@ -178,6 +221,8 @@ package final class ReviewRounds {
     package func stop() {
         stopped = true
         queue.stop()
+        for run in ownRuns.values { run.cancel() }
+        for check in jobEndChecks.values { check.cancel() }
         sessions.stop()
     }
 
@@ -186,6 +231,9 @@ package final class ReviewRounds {
     // of its program, which a stop ends within RepoGit.stopGrace.
     package func waitForEnd() async {
         await queue.waitForEnd()
+        for run in ownRuns.values { await run.value }
+        for check in jobEndChecks.values { await check.value }
+        for discard in discards.values { _ = await discard.value }
         for drop in drops.values { await drop.value }
         _ = await removal?.value
         await sessions.waitForEnd()
@@ -201,47 +249,54 @@ package final class ReviewRounds {
     }
 
     // A good poll: the rounds that waited for the viewer can start, the review work of each PR
-    // whose request went goes, the request work of each PR of the user that merged or closed
-    // goes, and each PR of the user with new work gets a request round while the automatic
-    // rounds are on. Only a complete answer shows that a request went or a PR closed.
+    // whose request went goes, the work of each PR of the user that merged or closed goes, each
+    // PR of the user with new work gets a request round while the automatic rounds are on, and
+    // each PR of the user with conflicts gets a conflict round while the automatic conflict rounds
+    // are on. Only a complete answer shows that a request went or a PR closed.
     package func afterPoll(_ poll: PollAnswer) {
         guard !removing, !stopped else { return }
         queue.wake()
-        if !poll.toReviewCut && poll.errors.isEmpty { dropGone(poll, kind: .review) }
-        if !poll.mineCut && poll.errors.isEmpty { dropGone(poll, kind: .request) }
+        if !poll.toReviewCut && poll.errors.isEmpty { dropGone(poll, mine: false) }
+        if !poll.mineCut && poll.errors.isEmpty { dropGone(poll, mine: true) }
         queueNewWork(poll)
+        queueConflicts(poll)
+        // A round that starts now lets a waiting own request go first itself.
+        checkOwnRequests(poll)
     }
 
-    // Drop the work of the kind of each PR that the poll does not list as open.
-    private func dropGone(_ poll: PollAnswer, kind: PRSessionKind) {
-        let open = Set((kind == .review ? poll.toReview : poll.mine).map(\.key))
+    // Drop the work of each PR that the poll does not list as open, on one side: the review work
+    // of the To review PRs, or the work of the PRs of the user (mine: the request, conflict and
+    // CI rounds, which share the request session of the PR).
+    private func dropGone(_ poll: PollAnswer, mine: Bool) {
+        let open = Set((mine ? poll.mine : poll.toReview).map(\.key))
         let state = store.state
-        var keys = Set(state.queue.filter { $0.kind == kind }.map(\.pr))
-        for (pr, prState) in state.prs where prState.round?.kind == kind {
+        var keys = Set(state.queue.filter { $0.kind.isMine == mine }.map(\.pr))
+        for (pr, prState) in state.prs where prState.round?.kind.isMine == mine {
             keys.insert(pr)
         }
         for (pr, prState) in state.prs {
-            switch kind {
-            case .review where prState.reviewSession != nil: keys.insert(pr)
-            case .request
-            where prState.requestSession != nil || !prState.questions.isEmpty
-                || !prState.held.isEmpty || prState.outbox != nil:
-                keys.insert(pr)
-            default: break
-            }
+            let work =
+                mine
+                ? prState.requestSession != nil || !prState.questions.isEmpty
+                    || !prState.held.isEmpty || prState.outbox != nil || prState.conflict != nil
+                    || prState.ci != nil || prState.resolveNow
+                : prState.reviewSession != nil
+            if work { keys.insert(pr) }
         }
         for pr in keys where !open.contains(pr) && drops[pr] == nil {
-            // A round that posts ends its writes first. The next poll drops the PR.
-            if state.prs[pr]?.round?.phase == .posting { continue }
-            if let job = queue.runningJob(of: pr), job.kind == kind {
+            // A round that posts, or an own request, ends its writes first. The next poll drops
+            // the PR.
+            if state.prs[pr]?.round?.phase == .posting || ownRuns[pr] != nil
+                || discards[pr] != nil
+            {
+                continue
+            }
+            if let job = queue.runningJob(of: pr), job.kind.isMine == mine {
                 halt(pr, .requestGone)
             } else if queue.runningJob(of: pr) == nil {
                 queue.cancel(pr)
                 drops[pr] = Task {
-                    switch kind {
-                    case .review: await drop(pr)
-                    case .request: await dropRequest(pr)
-                    }
+                    if mine { await dropRequest(pr) } else { await drop(pr) }
                     drops[pr] = nil
                 }
             }
@@ -265,7 +320,8 @@ package final class ReviewRounds {
     // Remove all clones, from the stop of the rounds to the end of removeClones (the removal of
     // the folders). The waiting jobs go first, so no round starts in a slot that a stopped round
     // frees. Then each running round stops (a round that posts ends its writes first), each PR
-    // session goes, and the queued rounds go with their clicks; a request round holds its items.
+    // session goes, and the queued rounds go with their clicks; a request round holds its items,
+    // and the working conflict mark of a conflict round goes.
     // An outbox whose fix commit or push did not go names a commit of a clone that goes, so it
     // goes too, and its items wait in held.
     // The result is the failure of removeClones. A second call while one runs waits for the end
@@ -282,6 +338,9 @@ package final class ReviewRounds {
     // The steps of Remove all clones (removeAll), in the task of the removal.
     private func removeAllNow(then removeClones: @MainActor () async -> String?) async -> String? {
         for pr in queue.waiting { queue.cancel(pr) }
+        // An own request ends its writes first, as a posting round does, and a discard ends.
+        for run in ownRuns.values { await run.value }
+        for discard in discards.values { _ = await discard.value }
         let running = queue.running
         for pr in running where store.state.prs[pr]?.round?.phase != .posting {
             halt(pr, .clonesRemoved)
@@ -293,9 +352,10 @@ package final class ReviewRounds {
         }
         let time = now()
         await store.update { state in
-            for entry in state.queue where entry.kind == .request {
+            for entry in state.queue where entry.kind.isMine {
                 state.prs[entry.pr]?.handleOlder = false
                 state.prs[entry.pr]?.handleCopilot = false
+                state.prs[entry.pr]?.resolveNow = false
             }
             state.queue.removeAll()
             for (pr, prState) in state.prs {
@@ -309,6 +369,10 @@ package final class ReviewRounds {
                 else { continue }
                 state.prs[pr]?.round = nil
                 if round.kind == .request { state.prs[pr]?.hold(Self.ordered(round.items)) }
+                if round.kind == .conflict {
+                    state.prs[pr]?.resolveNow = false
+                    state.prs[pr]?.conflict = Self.withoutWorking(prState.conflict)
+                }
             }
         }
         changed()
@@ -376,9 +440,12 @@ package final class ReviewRounds {
 
     // MARK: - The queue
 
-    // A job can start after the first poll, while its repository needs no trust step.
+    // A job can start after the first poll, while its repository needs no trust step and no own
+    // request or discard of its PR runs.
     private func isReady(_ job: QueuedJob) -> Bool {
-        guard answer() != nil, !removing else { return false }
+        guard answer() != nil, !removing, ownRuns[job.pr] == nil, discards[job.pr] == nil else {
+            return false
+        }
         // A round that runs or posts after a restart can always go on.
         switch store.state.prs[job.pr]?.round?.phase {
         case .running?, .posting?: return true
@@ -388,9 +455,15 @@ package final class ReviewRounds {
         return !setup.clones.needsTrust.contains(repo) || setup.hasOneStart(repo)
     }
 
-    // The round of a job of the queue.
+    // The round of a job of the queue. At the end of a job on a PR of the user, an own request
+    // file of the user that waits (for example one that ran in the turn of a request round) can
+    // go: the check runs in a new task, after the queue frees the PR, and starts an own request
+    // only when the file is there.
     private func run(_ job: QueuedJob) async {
         let pr = job.pr
+        defer {
+            if job.kind.isMine { checkAtJobEnd(pr) }
+        }
         // A halt that came before the task ran (a drop at the first poll, for example) stops it
         // here, with its clean-up.
         if Task.isCancelled {
@@ -407,7 +480,10 @@ package final class ReviewRounds {
                 }
             case (.request, .running), (.request, .posting):
                 await runRequest(job, saved: saved)
+            case (.conflict, .running), (.conflict, .posting):
+                await runConflict(job, saved: saved)
             default:
+                // A CI round comes with the CI rounds.
                 break
             }
             return
@@ -415,8 +491,21 @@ package final class ReviewRounds {
         guard store.state.queue.contains(where: { $0.pr == pr && $0.kind == job.kind }) else {
             return
         }
-        if job.kind == .request {
+        switch job.kind {
+        case .request:
             await runRequest(job, saved: nil)
+            return
+        case .conflict:
+            await runConflict(job, saved: nil)
+            return
+        case .review, .ci:
+            break
+        }
+        // Only a review job goes on from here: a job of another kind never makes a review round.
+        // A CI job does not run here yet: its entry goes, so the row does not show Queued for it.
+        guard job.kind == .review else {
+            await store.update { $0.queue.removeAll { $0.pr == pr && $0.kind == job.kind } }
+            changed()
             return
         }
         if answer()?.toReview.first(where: { $0.key == pr })?.ci == .failing {
@@ -443,6 +532,18 @@ package final class ReviewRounds {
         changed()
         let round = makeRound(pr)
         await settle(job, round) { () async throws(ReviewRound.Stop) in try await round.start() }
+    }
+
+    // The check for an own request file at the end of a request job, in a task of ReviewRounds.
+    // The task starts now and runs after the queue frees the PR. It starts an own request only
+    // when the file is there.
+    private func checkAtJobEnd(_ pr: PRKey) {
+        jobEndCount += 1
+        let number = jobEndCount
+        jobEndChecks[number] = Task { [weak self] in
+            if let self, await self.own.waits(pr), !Task.isCancelled { self.checkOwnRequest(pr) }
+            self?.jobEndChecks[number] = nil
+        }
     }
 
     // One review round of the PR on the services of the rounds.
@@ -526,23 +627,51 @@ package final class ReviewRounds {
             await repos.resetWorktree(pr)
             await fail(pr, .stopped)
         case (.userStop?, .request):
-            // The worktree keeps a fix that the outbox has not committed yet.
-            if store.state.prs[pr]?.outbox.map(OutboxRules.commitOpen) != true {
-                await repos.resetWorktree(pr)
+            // The worktree keeps a fix that the outbox has not committed yet. Before the turn of
+            // the round started (no session ID), the worktree holds only the work of a person in
+            // the session, so it stays too.
+            let prState = store.state.prs[pr]
+            if prState?.round?.sessionID != nil,
+                prState?.outbox.map(OutboxRules.commitOpen) != true
+            {
+                // A change of a person in the turn (an own request file) stays.
+                await repos.resetIfKnown(pr)
             }
             await failRequest(pr, .stopped, hold: items)
+        case (.userStop?, .conflict):
+            // A conflict round keeps its failures in its mark, never in lastError: the mark gets
+            // the text of the stop, so no automatic round tries the pair again. The worktree goes
+            // back to the head; a change that no round made stays (resetIfKnown).
+            let prState = store.state.prs[pr]
+            if let head = prState?.round?.headSHA ?? Self.working(prState?.conflict)?.head {
+                await repos.resetIfKnown(pr, to: head)
+            }
+            await failConflict(pr, .session(.stopped), pair: conflictPair(pr))
+        case (.userStop?, .ci):
+            // A CI round keeps its failures in its own mark (the CI rounds). The stop ends it.
+            await store.update { $0.prs[pr]?.round = nil }
+            changed()
         case (.requestGone?, .review):
             await drop(pr)
-        case (.requestGone?, .request):
+        case (.requestGone?, .request), (.requestGone?, .conflict), (.requestGone?, .ci):
             await dropRequest(pr)
         case (.clonesRemoved?, let kind):
             // A request round holds its items, and its click goes, as the clicks of the queue do.
+            // A conflict round loses its click and its working mark: the clone of its merge went.
             await store.update { state in
                 state.prs[pr]?.round = nil
-                guard kind == .request else { return }
-                state.prs[pr]?.hold(items)
-                state.prs[pr]?.handleOlder = false
-                state.prs[pr]?.handleCopilot = false
+                switch kind {
+                case .request:
+                    state.prs[pr]?.hold(items)
+                    state.prs[pr]?.handleOlder = false
+                    state.prs[pr]?.handleCopilot = false
+                case .conflict:
+                    let mark = state.prs[pr]?.conflict
+                    state.prs[pr]?.resolveNow = false
+                    state.prs[pr]?.conflict = Self.withoutWorking(mark)
+                case .review, .ci:
+                    break
+                }
             }
             changed()
         case (nil, _):

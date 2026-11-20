@@ -122,7 +122,8 @@ struct SkillCheckTests {
         let expected: [String: SkillGroup] = [
             "bifrost-daily-update": .calledByName, "bifrost-grill": .listed,
             "bifrost-hand-over": .calledByName, "bifrost-humanise": .listed,
-            "bifrost-resolve-comments": .calledByName, "bifrost-review": .calledByName,
+            "bifrost-resolve-comments": .calledByName, "bifrost-resolve-conflicts": .calledByName,
+            "bifrost-review": .calledByName,
         ]
         #expect(folders == expected.keys.sorted())
         for folder in folders {

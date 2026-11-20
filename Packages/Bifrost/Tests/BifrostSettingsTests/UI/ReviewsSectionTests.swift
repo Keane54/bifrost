@@ -9,9 +9,9 @@ import Testing
 @testable import BifrostSettings
 
 // Settings > Reviews (docs/behaviour/reviews.md, "Settings > Reviews"): the rows and their order,
-// the confirm of each turn-on of Watch GitHub and of the automatic comment handling, and the
-// ignore list with the reasons of a refused entry. The tests that show views use a window that is
-// never ordered front.
+// the confirm of each turn-on of Watch GitHub and of the automatic work on the PRs of the user
+// (comments, merge conflicts and failing CI), and the ignore list with the reasons of a refused
+// entry. The tests that show views use a window that is never ordered front.
 @MainActor
 @Suite("Settings > Reviews", .serialized, .testTimeLimit, .tags(.window))
 struct ReviewsSectionTests {
@@ -20,13 +20,13 @@ struct ReviewsSectionTests {
         let p = try await SettingsParts()
         p.model.showTab(.reviews)
         let labels = await shownLabels(ReviewsSection(model: p.model))
-        #expect(labels == ReviewsSettingsRow.allCases.map(\.rawValue))
+        #expect(labels == ReviewsSettingsRow.shown.map(\.rawValue))
     }
 
     // Each turn-on asks first with the texts of the Electron app. A Cancel keeps the setting off,
     // and with no confirm dialog a turn-on saves nothing. A turn-off asks nothing. Only the
     // confirmed turn-on of the automatic comment handling gives the consent to Reviews, one time.
-    @Test(arguments: ReviewsSection.Confirmed.allCases)
+    @Test(arguments: [ReviewsSection.Confirmed.watch, .autoFix])
     func eachTurnOnAsksFirstAndACancelKeepsItOff(_ setting: ReviewsSection.Confirmed) async throws {
         let p = try await SettingsParts()
         let consents = Consents()
@@ -54,6 +54,90 @@ struct ReviewsSectionTests {
         #expect(asked.texts.count == 2)
         #expect(consents.count == (setting == .autoFix ? 1 : 0))
         #expect(p.store.settings[keyPath: path] == false)
+    }
+
+    // Each turn-on of the settings of merge conflicts and of failing CI asks first. With no confirm
+    // dialog, and after a Cancel, nothing saves and no link runs. A confirm saves and calls the
+    // link of that setting one time. A turn-off saves at once and asks nothing.
+    @Test(arguments: [ReviewsSection.Confirmed.resolveConflicts, .fixCI])
+    func eachTurnOnOfTheNewSettingsAsksFirst(_ setting: ReviewsSection.Confirmed) async throws {
+        let p = try await SettingsParts()
+        let links = LinkCalls()
+        p.model.links.reviews = ReviewsLinks(
+            confirmAutoFix: { links.calls.append(.autoFix) },
+            confirmResolveConflicts: { links.calls.append(.resolveConflicts) },
+            confirmFixCI: { links.calls.append(.fixCI) })
+        let section = ReviewsSection(model: p.model)
+        let path = setting.setting
+        #expect(p.store.settings[keyPath: path] == false)
+        #expect(await section.change(setting, to: true) == false)
+        #expect(p.store.settings[keyPath: path] == false)
+        let asked = Asked()
+        p.model.links.confirm = { asked.texts.append($0); return asked.answer }
+        #expect(await section.change(setting, to: true) == false)
+        #expect(asked.texts == [setting.confirm])
+        #expect(p.store.settings[keyPath: path] == false && links.calls.isEmpty)
+        asked.answer = true
+        #expect(await section.change(setting, to: true))
+        #expect(p.store.settings[keyPath: path] == true)
+        #expect(links.calls == [setting])
+        #expect(await section.change(setting, to: false))
+        #expect(p.store.settings[keyPath: path] == false)
+        #expect(asked.texts.count == 2 && links.calls == [setting])
+    }
+
+    // The settings of merge conflicts and of failing CI come straight after the automatic comment
+    // handling, in this order, in the list of the rows. The section does not show the Fix CI row
+    // and the search does not find it, until the CI watcher exists.
+    @Test func theRowsFollowAutoFixInOrderAndFixCIDoesNotShow() async throws {
+        let order: [ReviewsSettingsRow] = [.autoFix, .resolveConflicts, .fixCI]
+        let rows = ReviewsSettingsRow.allCases
+        let first = try #require(rows.firstIndex(of: .autoFix))
+        #expect(Array(rows[first...].prefix(3)) == order)
+        let p = try await SettingsParts()
+        p.model.showTab(.reviews)
+        let labels = await shownLabels(ReviewsSection(model: p.model))
+        let shown = try #require(labels.firstIndex(of: ReviewsSettingsRow.autoFix.rawValue))
+        #expect(
+            Array(labels[shown...].prefix(2)) == order.prefix(2).map(\.rawValue))
+        #expect(!labels.contains(ReviewsSettingsRow.fixCI.rawValue))
+        #expect(!ReviewsSettingsRow.shown.contains(.fixCI))
+    }
+
+    // The hints and the confirms of the settings of merge conflicts and of failing CI.
+    // ReviewsRowsTests has their labels.
+    @Test func theNewSettingsHaveTheirTexts() {
+        #expect(
+            ReviewsSection.resolveConflictsHint
+                == "When one of your pull requests has conflicts, Claude resolves them and "
+                + "Bifrost pushes a merge of the base branch.")
+        #expect(
+            ReviewsSection.fixCIHint
+                == "When GitHub Actions fails on one of your pull requests, Claude fixes the code "
+                + "or Bifrost re-runs the failed jobs.")
+        let conflicts = ReviewsSection.resolveConflictsConfirm
+        #expect(conflicts.title == "Resolve merge conflicts automatically?")
+        #expect(conflicts.confirm == "Turn on" && conflicts.confirmAgain == nil)
+        #expect(
+            conflicts.body
+                == "When GitHub says one of your pull requests has conflicts, Bifrost merges the "
+                + "base branch into your branch in its own copy of the repository, and Claude "
+                + "resolves the conflicts. Bifrost checks Claude's work, then commits the merge "
+                + "and pushes it to your branch. It never rebases or force-pushes, and it tries "
+                + "once for each new conflict. This includes pull requests that have conflicts "
+                + "now.")
+        let ci = ReviewsSection.fixCIConfirm
+        #expect(ci.title == "Fix failing CI automatically?")
+        #expect(ci.confirm == "Turn on" && ci.confirmAgain == nil)
+        #expect(
+            ci.body
+                == "When GitHub Actions fails on one of your pull requests, Claude reads the "
+                + "failed logs and your code. Bifrost then pushes Claude's fix to your branch, or "
+                + "re-runs the failed jobs if Claude thinks they were flaky, and asks you when "
+                + "Claude isn't sure. Each commit you push gets at most two fixes and one re-run. "
+                + "This includes pull requests that are failing now.")
+        #expect(ReviewsSection.Confirmed.resolveConflicts.confirm == conflicts)
+        #expect(ReviewsSection.Confirmed.fixCI.confirm == ci)
     }
 
     // Remove all clones asks first with the text of the Electron app. A Cancel removes nothing,
@@ -158,6 +242,12 @@ struct ReviewsSectionTests {
         #expect(labels == [ReviewsSettingsRow.pollInterval.rawValue])
         #expect(!p.model.isShown(ReviewsSettingsRow.ignore.row))
     }
+}
+
+// The calls of the consent links of a test, in their order, by the setting of each link.
+@MainActor
+private final class LinkCalls {
+    var calls: [ReviewsSection.Confirmed] = []
 }
 
 // The calls of the consent link or of the removal link of a test, and the failure that the

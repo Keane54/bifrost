@@ -47,9 +47,9 @@ private final class AnswerPanelFixture {
         thread = try #require(NodeID("PRRT_1"))
         comment = try #require(NodeID("IC_2"))
         row = ReviewRow(
-            id: pr, state: .mine(.changesRequested, .needsYou(2)), repo: "Repo-A",
-            title: "Add the cache", status: RowLabel(text: "Needs you", tone: .red, tip: nil),
-            questions: 2)
+            id: pr, state: .mine(.changesRequested, .needsYou(comments: 2, ci: false)),
+            repo: "Repo-A", title: "Add the cache",
+            status: RowLabel(text: "Needs you", tone: .red, tip: nil), questions: 2)
         panels = ReviewsPanels(
             links: links, opener: opener, look: PanelLook(), menu: { nil },
             clock: ManualClock(), now: { Date() })

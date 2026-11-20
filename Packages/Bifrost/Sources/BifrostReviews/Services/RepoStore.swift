@@ -21,9 +21,22 @@
 //   worktree, which a session can write. The worktree command prunes first, so git gives the
 //   admin folder of the new worktree the name that GitPlace.adminFolder pins.
 // - The file work runs on the blocking executor, because a slow disk can hold it.
+// - The one session of a PR keeps its working folders from round to round
+//   (docs/behaviour/reviews.md, "PR sessions"): roundFolder keeps the input folder and removes
+//   each item in it, and placeWorktree keeps the worktree and moves it to the new head. A kept
+//   worktree must be clean at the head after its reset, else placeWorktree makes it again and
+//   logs it. inputFolder and prepareWorktree make the folders again at each round.
+// - The safety net of the worktree (docs/behaviour/reviews.md, "Your own requests"): at the end
+//   of the turn of a round, markLeftovers keeps each change of the worktree with the stamp of its
+//   file, and a reset keeps what stays after it. unknownChanges gives each change that is not in
+//   that record: a change after the turn, which a person made in the session. The record is in
+//   memory only, so after a restart each change counts as a change of a person.
+// - An own request of the user: the file in the input folder (OwnRequestFile), and uncommit, which
+//   makes a commit that did not reach GitHub changes in the worktree again.
 import BifrostFoundation
 import Darwin
 import Foundation
+import OSLog
 
 // The commits of a PR after its fetch: the head, the tip of the base branch, and their merge
 // base, where the full diff of the PR starts.
@@ -36,6 +49,22 @@ package struct FetchedPR: Sendable, Equatable {
         self.head = head
         self.base = base
         self.mergeBase = mergeBase
+    }
+}
+
+// The worktree of a PR for a round: kept is the worktree of the last round at the new head, made
+// is a new worktree.
+package enum WorktreePlace: Sendable, Equatable {
+    case kept(URL), made(URL)
+
+    package var url: URL {
+        switch self {
+        case .kept(let url), .made(let url): url
+        }
+    }
+
+    package var isKept: Bool {
+        if case .kept = self { true } else { false }
     }
 }
 
@@ -111,6 +140,11 @@ package final class RepoStore {
     private var failures: [RepoName: Duration] = [:]
     // The head of the worktree of each PR, from its prepare. The reset goes back to it.
     private var heads: [PRKey: CommitID] = [:]
+    // The changes of the worktree of each PR that Bifrost knows: what a round left at the end of
+    // its turn, or what stayed after a reset. Each path has the stamp of its file.
+    private var known: [PRKey: [String: PathStamp]] = [:]
+
+    private static let logger = Logger(bifrost: "reviews")
 
     // cloneAddress gives the source of a clone: in the app, https://github.com/<owner>/<repo>.git.
     // A test gives a local bare repository. clock runs the wait after a failed clone.
@@ -220,7 +254,42 @@ package final class RepoStore {
         }
         try await files { () throws(FileError) in try folders.setPrivate(path) }
         heads[pr] = head
+        known[pr] = [:]
         return worktree
+    }
+
+    // The worktree of the PR at the head. The worktree of the last round stays when its folder
+    // (not a link) is in its place and belongs to the clone: it resets to the head in place
+    // (resetWorktree), and it gets mode 0700 again. It stays only when it is clean at the head
+    // after the reset (isClean). Else prepareWorktree makes it again, and a worktree that was in
+    // its place gets a line in the log, because the next turn starts a new session.
+    package func placeWorktree(_ pr: PRKey, head: CommitID) async throws(RepoError)
+        -> WorktreePlace
+    {
+        let worktree = layout.worktree(pr.repo, number: pr.number)
+        let (path, folders, git) = (worktree.plainPath, folders, git)
+        let found = await BlockingExecutor.run { () -> (there: Bool, inPlace: Bool) in
+            (folders.exists(path), folders.isFolder(path) && git.belongsToClone(pr))
+        }
+        if found.inPlace, await reset(pr, to: head).didReset, await isClean(pr, at: head) {
+            try await files { () throws(FileError) in try folders.setPrivate(path) }
+            return .kept(worktree)
+        }
+        if found.there { log.record(.worktreeMadeAgain(pr)) }
+        return .made(try await prepareWorktree(pr, head: head))
+    }
+
+    // True when the worktree of the PR is clean at the head after a reset: git status lists no
+    // file that git does not track (an entry "??" means that the clean failed for that file), and
+    // git gives the head as its HEAD. The check does not look at the tracked files, because line
+    // ends or the case of a name can make git list a tracked file that the reset did restore.
+    private func isClean(_ pr: PRKey, at head: CommitID) async -> Bool {
+        let status = await git.run(.status, in: .worktree(pr))
+        guard status.succeeded,
+            !status.stdout.split(separator: "\0").contains(where: { $0.hasPrefix("??") })
+        else { return false }
+        let parsed = await git.run(.revParse("HEAD^{commit}"), in: .worktree(pr))
+        return parsed.succeeded && CommitID(parsed.stdout.trimmed()) == head
     }
 
     // The input folder of the PR, new and empty, with mode 0700.
@@ -235,6 +304,16 @@ package final class RepoStore {
         return folder
     }
 
+    // The round folder of the PR: its input folder, with mode 0700. The folder itself stays, and
+    // each item in it goes, so no file of an earlier round stays. A link in it goes, not the item
+    // that it names. A missing folder, or another item at its place, becomes a new folder.
+    package func roundFolder(_ pr: PRKey) async throws(RepoError) -> URL {
+        let folder = layout.inputFolder(pr.repo, number: pr.number)
+        let (path, folders) = (folder.plainPath, folders)
+        try await files { () throws(FileError) in try folders.emptyFolder(path) }
+        return folder
+    }
+
     // After a round: count the changes of the session in the worktree (each changed, new or
     // deleted file), then reset the worktree to its head, remove each file that git does not
     // track (also the ignored files) and write its .git file again, which a session can change.
@@ -244,9 +323,15 @@ package final class RepoStore {
     // worktree, so the files that the commit does not hold go.
     @discardableResult
     package func resetWorktree(_ pr: PRKey, to newHead: CommitID? = nil) async -> Int {
+        await reset(pr, to: newHead).changes
+    }
+
+    // The steps of resetWorktree. didReset is true when git reset the worktree to a head with no
+    // error.
+    private func reset(_ pr: PRKey, to newHead: CommitID?) async -> (changes: Int, didReset: Bool) {
         let worktree = layout.worktree(pr.repo, number: pr.number).plainPath
         let folders = folders
-        guard await BlockingExecutor.run({ folders.isFolder(worktree) }) else { return 0 }
+        guard await BlockingExecutor.run({ folders.isFolder(worktree) }) else { return (0, false) }
         if let newHead { heads[pr] = newHead }
         var head = heads[pr]
         if head == nil {
@@ -258,14 +343,17 @@ package final class RepoStore {
         let entries: [Substring] = status.stdout.split(separator: "\0").filter { $0.count > 3 }
         let removed = head == nil ? entries.filter { $0.hasPrefix("??") } : entries
         let changes = status.succeeded ? removed.count : 0
-        if let head { _ = await git.run(.resetHard(head), in: .worktree(pr)) }
+        var didReset = false
+        if let head { didReset = await git.run(.resetHard(head), in: .worktree(pr)).succeeded }
         _ = await git.run(.clean, in: .worktree(pr))
         let admin = GitPlace.adminFolder(pr, layout)
         _ = try? await files { () throws(FileError) in
             try folders.writeGitFile(worktree: worktree, admin: admin)
         }
+        // Bifrost made the worktree as it is now, so what stays is no change of a person.
+        if didReset { known[pr] = await stamps(pr) }
         log.record(.worktreeReset(pr, changes: changes))
-        return changes
+        return (changes, didReset)
     }
 
     // The paths that the session changed in the worktree of the PR (each changed, new or deleted
@@ -274,11 +362,143 @@ package final class RepoStore {
     package func changedPaths(_ pr: PRKey) async -> Set<String>? {
         let status = await git.run(.status, in: .worktree(pr))
         guard status.succeeded else { return nil }
-        // Each entry is "XY <path>": two letters of state, a space and the path. The prefix is
-        // three bytes. It is not three Characters: a combining mark at the start of a path joins
-        // the space in one Character.
-        let entries = status.stdout.utf8.split(separator: 0).filter { $0.count > 3 }
+        return Self.statusPaths(status.stdout)
+    }
+
+    // The path of each entry of the output of git status (GitCommand.status). Each entry is
+    // "XY <path>": two letters of state, a space and the path. The prefix is three bytes. It is
+    // not three Characters: a combining mark at the start of a path joins the space in one
+    // Character.
+    nonisolated static func statusPaths(_ output: String) -> Set<String> {
+        let entries = output.utf8.split(separator: 0).filter { $0.count > 3 }
         return Set(entries.map { String(decoding: $0.dropFirst(3), as: UTF8.self) })
+    }
+
+    // MARK: - The safety net and the own requests
+
+    // resetWorktree, only when the worktree of the PR has no change that no round made
+    // (unknownChanges): a change of a person stays, and the next round stops with Needs you. A
+    // failed read of the changes keeps the worktree too. The result is true when the reset ran.
+    @discardableResult
+    package func resetIfKnown(_ pr: PRKey, to newHead: CommitID? = nil) async -> Bool {
+        guard let unknown = await unknownChanges(pr), unknown.isEmpty else {
+            Self.logger.notice(
+                """
+                The copy of \(pr.text, privacy: .private) has changes that no round made, so \
+                Bifrost keeps it as it is.
+                """)
+            return false
+        }
+        await resetWorktree(pr, to: newHead)
+        return true
+    }
+
+    // At the end of the turn of a round: each change of the worktree of the PR is a change of the
+    // round. A failed read keeps no change, so each change counts as a change of a person.
+    package func markLeftovers(_ pr: PRKey) async {
+        known[pr] = await stamps(pr) ?? [:]
+    }
+
+    // The changes in the worktree of the PR that no round made, sorted: each changed path that
+    // Bifrost does not know (markLeftovers, a reset), or whose file changed since then. None when
+    // the worktree is not in its place. nil when git fails.
+    package func unknownChanges(_ pr: PRKey) async -> [String]? {
+        let (path, folders, git) = (
+            layout.worktree(pr.repo, number: pr.number).plainPath, folders, git
+        )
+        guard await BlockingExecutor.run({ folders.isFolder(path) && git.belongsToClone(pr) })
+        else { return [] }
+        guard let now = await stamps(pr) else { return nil }
+        let before = known[pr] ?? [:]
+        return now.filter { before[$0.key] != $0.value }.map(\.key).sorted()
+    }
+
+    // Each change of the worktree of the PR with the stamp of its file, or nil when git fails.
+    private func stamps(_ pr: PRKey) async -> [String: PathStamp]? {
+        guard let paths = await changedPaths(pr) else { return nil }
+        let root = layout.worktree(pr.repo, number: pr.number).plainPath
+        return await BlockingExecutor.run {
+            Dictionary(uniqueKeysWithValues: paths.map { ($0, PathStamp(root + "/" + $0)) })
+        }
+    }
+
+    // The commit that the worktree of the PR is at, or nil when git fails.
+    package func worktreeHead(_ pr: PRKey) async -> CommitID? {
+        let parsed = await git.run(.revParse("HEAD^{commit}"), in: .worktree(pr))
+        return parsed.succeeded ? CommitID(parsed.stdout.trimmed()) : nil
+    }
+
+    // The commit that the worktree of the PR is at, and the head of the PR when that commit is
+    // the merge with the markers of a conflict round (ConflictMerge.autoMessage, with the head and
+    // the base as its parents): only the clone of Bifrost holds that merge. nil when git fails.
+    package func worktreeCommit(_ pr: PRKey) async -> (commit: CommitID, conflictHead: CommitID?)? {
+        guard let head = await worktreeHead(pr) else { return nil }
+        let read = await git.run(.catFile(head.hex), in: .clone(pr.repo))
+        guard read.succeeded, let object = CommitObject(read.stdout) else { return nil }
+        let merge =
+            object.parents.count == 2 && object.message.trimmed() == ConflictMerge.autoMessage
+        return (head, merge ? object.parents.first : nil)
+    }
+
+    // Discard these changes: reset the worktree of the PR to the head and clean it
+    // (resetWorktree). The result is true only when git reset the worktree.
+    package func discard(_ pr: PRKey, to head: CommitID) async -> Bool {
+        await reset(pr, to: head).didReset
+    }
+
+    // A commit of an own request that did not reach GitHub: HEAD and the index of the worktree go
+    // back to the head, and the files stay, so the change of the user is in the worktree as
+    // changes again. A worktree at the head stays as it is.
+    package func uncommit(_ pr: PRKey, to head: CommitID) async {
+        guard let now = await worktreeHead(pr), now != head else { return }
+        let result = await git.run(.resetIndex(head), in: .worktree(pr))
+        guard result.succeeded else {
+            Self.logger.error(
+                """
+                Bifrost couldn't move the copy of \(pr.text, privacy: .private) back to its head. \
+                \(Self.reason(result), privacy: .private)
+                """)
+            return
+        }
+        heads[pr] = head
+    }
+
+    // The own request file of the PR in its input folder (OwnRequestFile).
+    package func ownRequestFile(_ pr: PRKey) -> URL {
+        layout.inputFolder(pr.repo, number: pr.number).appending(
+            path: OwnRequestFile.name, directoryHint: .notDirectory)
+    }
+
+    // True when an item is at the path of the own request file of the PR.
+    package func hasOwnRequest(_ pr: PRKey) async -> Bool {
+        let (path, folders) = (ownRequestFile(pr).plainPath, folders)
+        return await BlockingExecutor.run { folders.exists(path) }
+    }
+
+    // Read the own request file of the PR, at most RequestResult.maxBytes. The read follows no
+    // link.
+    package func readOwnRequest(_ pr: PRKey) async -> ResultRead {
+        await readResult(at: ownRequestFile(pr), limit: RequestResult.maxBytes)
+    }
+
+    // Remove the own request file of the PR. A link goes as a link. The result is true when an
+    // item was there.
+    @discardableResult
+    package func removeOwnRequest(_ pr: PRKey) async -> Bool {
+        let (path, folders) = (ownRequestFile(pr).plainPath, folders)
+        let removed = await BlockingExecutor.run { () -> (there: Bool, failure: FileError?) in
+            guard folders.exists(path) else { return (false, nil) }
+            do throws(FileError) {
+                try folders.remove(path)
+            } catch {
+                return (true, error)
+            }
+            return (true, nil)
+        }
+        if let failure = removed.failure {
+            Self.logger.error("\(failure.message, privacy: .private)")
+        }
+        return removed.there
     }
 
     // Fetch the head of the PR (refs/pull/<n>/head) and its base branch into refs of Bifrost,
@@ -324,6 +544,17 @@ package final class RepoStore {
         return result.stdout
     }
 
+    // The text of the diff between the two commits in the clone, only for the paths, or nil when
+    // it is longer than the output limit of git.
+    package func diff(_ repo: RepoName, from: CommitID, to: CommitID, paths: [String])
+        async throws(RepoError) -> String?
+    {
+        let result = await git.run(.pathDiff(from, to, paths), in: .clone(repo))
+        if result.end == .overflow { return nil }
+        guard result.succeeded else { throw .git(Self.prepareFailed + Self.reason(result)) }
+        return result.stdout
+    }
+
     // Write the files in the input folder of the PR, each a new file with mode 0600.
     package func writeInput(_ pr: PRKey, _ files: [(name: String, data: Data)])
         async throws(RepoError)
@@ -337,14 +568,23 @@ package final class RepoStore {
 
     // Read the result file of the PR, at most limit bytes.
     package func readResult(_ pr: PRKey, limit: Int) async -> ResultRead {
-        let file = layout.inputFolder(pr.repo, number: pr.number).plainPath + "/result.json"
-        return await BlockingExecutor.run { RepoFolders.readRegular(file, limit: limit) }
+        await readResult(
+            at: layout.inputFolder(pr.repo, number: pr.number).appending(
+                path: "result.json", directoryHint: .notDirectory),
+            limit: limit)
+    }
+
+    // Read the result file of a round, at most limit bytes.
+    package func readResult(at file: URL, limit: Int) async -> ResultRead {
+        let path = file.plainPath
+        return await BlockingExecutor.run { RepoFolders.readRegular(path, limit: limit) }
     }
 
     // The request of the PR went: its worktree and its input folder go, and git forgets the
     // worktree. The clone stays. A missing folder is no failure.
     package func removePR(_ pr: PRKey) async {
         heads[pr] = nil
+        known[pr] = nil
         await dropWorktree(pr)
         let (input, folders) = (layout.inputFolder(pr.repo, number: pr.number).plainPath, folders)
         _ = try? await files { () throws(FileError) in try folders.remove(input) }
@@ -489,6 +729,12 @@ struct RepoFolders: Sendable {
         return lstat(path, &info) == 0 && info.st_mode & S_IFMT == S_IFDIR
     }
 
+    // True when an item is at the path. A link counts as an item, also when its target is gone.
+    func exists(_ path: String) -> Bool {
+        var info = stat()
+        return lstat(path, &info) == 0
+    }
+
     // True when the path is below the repos folder, before and after each link above its last
     // part resolves.
     func isOwned(_ path: String) -> Bool {
@@ -542,6 +788,26 @@ struct RepoFolders: Sendable {
         } catch {
             throw FileError(error, call: .createFolder, path: path)
         }
+    }
+
+    // Keep the folder and remove each item in it, then give it mode 0700. A link in it goes, not
+    // the item that it names. When the item at the path is not a folder (a link or a file), it
+    // goes, and a new folder takes its place. A missing folder is made.
+    func emptyFolder(_ path: String) throws(FileError) {
+        if !isFolder(path) {
+            try remove(path)
+            try makeFolder(path)
+        }
+        let names: [String]
+        do {
+            names = try FileManager.default.contentsOfDirectory(atPath: path)
+        } catch {
+            throw FileError(error, call: .read, path: path)
+        }
+        // Each removal checks again that its path is below the repos folder, after each link
+        // above it resolves.
+        for name in names { try remove(path + "/" + name) }
+        try setPrivate(path)
     }
 
     // Give the folder mode 0700.
@@ -643,6 +909,35 @@ struct RepoFolders: Sendable {
             rest.insert((at as NSString).lastPathComponent, at: 0)
             at = up
         }
+    }
+}
+
+// The identity, the size and the change times of the item at a path (lstat), or a missing item.
+// A write, a new file or a delete at the path gives another stamp. The safety net of the worktree
+// compares them (RepoStore.unknownChanges).
+struct PathStamp: Sendable, Equatable {
+    let exists: Bool
+    let mode: UInt16
+    let device: Int64
+    let inode: UInt64
+    let size: Int64
+    let modified: Int
+    let modifiedNanoseconds: Int
+    let changed: Int
+    let changedNanoseconds: Int
+
+    init(_ path: String) {
+        var info = stat()
+        exists = lstat(path, &info) == 0
+        if !exists { info = stat() }
+        mode = UInt16(info.st_mode)
+        device = Int64(info.st_dev)
+        inode = UInt64(info.st_ino)
+        size = Int64(info.st_size)
+        modified = info.st_mtimespec.tv_sec
+        modifiedNanoseconds = info.st_mtimespec.tv_nsec
+        changed = info.st_ctimespec.tv_sec
+        changedNanoseconds = info.st_ctimespec.tv_nsec
     }
 }
 

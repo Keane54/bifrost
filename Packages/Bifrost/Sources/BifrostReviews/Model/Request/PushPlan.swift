@@ -134,6 +134,14 @@ package struct PushTarget: Sendable, Equatable {
             branch: branch, base: full.baseRef, defaultBranch: full.defaultBranch,
             isFork: full.isCrossRepository)
     }
+
+    // The target of a fresh read of the head, or nil when its head branch is not a branch name.
+    package init?(_ read: HeadRead) {
+        guard let branch = BranchName(read.headRef) else { return nil }
+        self.init(
+            branch: branch, base: read.baseRef, defaultBranch: read.defaultBranch,
+            isFork: read.isFork)
+    }
 }
 
 // The values of the remote origin of the clone, from local git only.

@@ -19,7 +19,7 @@ package enum ReplyText {
     package static func quoted(_ request: String) -> String {
         let lines = flatLines(request).trimmed()
             .split(separator: "\n", omittingEmptySubsequences: false).prefix(quoteLines)
-        let text = cut(trimmedEnd(lines.joined(separator: "\n")), maxQuote)
+        let text = trimmedEnd(lines.joined(separator: "\n")).cut(utf16: maxQuote)
         guard !text.trimmed().isEmpty else { return "" }
         let quote = text.split(separator: "\n", omittingEmptySubsequences: false)
             .map { trimmedEnd("> " + $0) }.joined(separator: "\n")
@@ -88,20 +88,6 @@ package enum ReplyText {
     private static func trimmedEnd(_ text: some StringProtocol) -> String {
         guard let last = text.lastIndex(where: { !$0.isWhitespace }) else { return "" }
         return String(text[...last])
-    }
-
-    // The text cut to at most limit UTF-16 units, at the end of a whole Character.
-    private static func cut(_ text: String, _ limit: Int) -> String {
-        guard text.utf16.count > limit else { return text }
-        var kept = 0
-        var end = text.startIndex
-        for index in text.indices {
-            let size = text[index].utf16.count
-            guard kept + size <= limit else { break }
-            kept += size
-            end = text.index(after: index)
-        }
-        return String(text[..<end])
     }
 
     // True when the @ at the index comes right after an ASCII letter or digit, as in an email

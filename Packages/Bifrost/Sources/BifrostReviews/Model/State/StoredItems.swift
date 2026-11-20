@@ -4,10 +4,15 @@
 import BifrostFoundation
 import Foundation
 
-// The kind of a PR session and of its round: a review of the PR of another person, or a request
-// round that handles the comments on a PR of the user.
+// The kind of a round and of its entry in the queue: a review of the PR of another person, or a
+// round on a PR of the user. On a PR of the user, a request round handles the comments, a conflict
+// round resolves the merge conflicts and a CI round acts on the failed checks.
 package enum PRSessionKind: String, Sendable, Equatable, CaseIterable {
-    case review, request
+    case review, request, conflict, ci
+
+    // True for the kinds of the rounds on a PR of the user. These rounds share the request session
+    // of the PR.
+    package var isMine: Bool { self != .review }
 }
 
 // An item that Bifrost handled: when, and the newest GitHub time of its comments then. A newer
@@ -283,16 +288,21 @@ package struct Outbox: Sendable, Equatable, StoredValue {
     // them.
     package var seen: [NodeID: Date]
     package var posts: [OutboxPost]
+    // True for the outbox of an own request of the user (OwnRequests): only the commit and the
+    // push, and a change that did not reach GitHub stays in the worktree. File: own, missing =
+    // false.
+    package var own: Bool
 
     package init(
         headSHA: CommitID, mergeBase: CommitID, startedAt: Date, seen: [NodeID: Date],
-        posts: [OutboxPost]
+        posts: [OutboxPost], own: Bool = false
     ) {
         self.headSHA = headSHA
         self.mergeBase = mergeBase
         self.startedAt = startedAt
         self.seen = seen
         self.posts = posts
+        self.own = own
     }
 
     package init?(stored value: JSONValue, dropped _: inout DroppedFields) {
@@ -301,6 +311,12 @@ package struct Outbox: Sendable, Equatable, StoredValue {
             let startedAt = fields["startedAt"]?.time,
             let seenFields = fields["seen"]?.object, let items = fields["posts"]?.array
         else { return nil }
+        let own: Bool
+        switch fields["own"] {
+        case nil: own = false
+        case .bool(let flag)?: own = flag
+        default: return nil
+        }
         var seen: [NodeID: Date] = [:]
         for (text, value) in seenFields {
             guard let id = NodeID(text), let time = value.time else { return nil }
@@ -313,15 +329,18 @@ package struct Outbox: Sendable, Equatable, StoredValue {
             posts.append(post)
         }
         self.init(
-            headSHA: headSHA, mergeBase: mergeBase, startedAt: startedAt, seen: seen, posts: posts)
+            headSHA: headSHA, mergeBase: mergeBase, startedAt: startedAt, seen: seen, posts: posts,
+            own: own)
     }
 
     package var stored: JSONValue {
-        [
+        var fields: [String: JSONValue] = [
             "headSha": .string(headSHA.hex), "mergeBase": .string(mergeBase.hex),
             "startedAt": .time(startedAt), "seen": .times(seen),
             "posts": .array(posts.map(\.stored)),
         ]
+        if own { fields["own"] = true }
+        return .object(fields)
     }
 }
 

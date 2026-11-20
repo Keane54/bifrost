@@ -1,5 +1,6 @@
 import BifrostFoundation
 import Foundation
+import Synchronization
 
 // The failure of the open of the Reviews store. message is its text for the panel.
 package enum ReviewsStoreError: Error, Sendable, Equatable {
@@ -33,6 +34,27 @@ package enum ReviewsStoreError: Error, Sendable, Equatable {
             data as it is.
             """
         }
+    }
+}
+
+// The log of the Reviews store for one run of the app. Each name of a field that a read dropped
+// goes to the log one time in the run, so a damaged record that each open reads again before a
+// save gives one line. The other events pass each time.
+package final class ReviewsStoreLog: StoreLog {
+    private let base: any StoreLog
+    private let logged = Mutex<Set<String>>([])
+
+    package init(base: any StoreLog) {
+        self.base = base
+    }
+
+    package func record(_ event: StoreEvent) {
+        guard case .defaulted(let file, let keys) = event else {
+            base.record(event)
+            return
+        }
+        let new = logged.withLock { logged in keys.filter { logged.insert($0).inserted } }
+        if !new.isEmpty { base.record(.defaulted(file: file, keys: new)) }
     }
 }
 

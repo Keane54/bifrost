@@ -89,6 +89,10 @@ package final class RegistryService {
     package private(set) var usage: UsageSnapshot?
     // The number of rows that are live and not parked.
     package private(set) var liveCount = 0
+    // The turn of the last active list that the registry applied, or 0 before the first one. Each
+    // run of claude agents takes the next turn in the lock of the lists (startedLists). A wait
+    // that must know that a list came after a time reads it.
+    package private(set) var appliedListTurn = 0
     // The row IDs that Bifrost forgot for good in this run: a Delete, or a session that two
     // counted --all lists did not have. A deferred delete is not in the set, because the session
     // can come back.
@@ -148,6 +152,9 @@ package final class RegistryService {
     @ObservationIgnored private(set) var awake = 0
     // The list calls that wait for their turn.
     var queuedLists: Int { lists.waiting }
+    // The count of the runs of claude agents that started (active and --all lists). A list that
+    // starts later has a higher turn.
+    package var startedLists: Int { lists.started }
     // The number of rebuilds of the values (changed()). A test counts the rebuilds of a batch.
     @ObservationIgnored private(set) var changes = 0
 
@@ -242,6 +249,7 @@ package final class RegistryService {
         switch list {
         case .parsed(let entries, _):
             registry.applyAgents(entries, sampledAt: run.startedAt, turn: run.turn)
+            appliedListTurn = run.turn
             error = nil
             readTerminals()
             health.record(.poll(.sessions, .ok))
@@ -668,6 +676,8 @@ private final class OneAtATime {
 
     // The jobs that wait for their turn.
     var waiting: Int { queue.count }
+    // The count of the jobs that got their turn.
+    var started: Int { turns }
 
     // Run the job when the jobs before it ended. A job runs only when its task is not cancelled
     // and the lock is not closed at its turn. Else run throws, also for a call after close().

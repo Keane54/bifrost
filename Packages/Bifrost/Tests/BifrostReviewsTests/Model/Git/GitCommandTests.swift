@@ -25,15 +25,19 @@ private func samples() throws -> [GitCommand] {
     return [
         .clone(try #require(URL(string: "https://github.com/owner-a/repo-a.git"))),
         .fetch(refspec: "+refs/pull/7/head:refs/bifrost/pr/7"),
-        .worktreeAdd(folder, try commit()), .worktreePrune, .resetHard(try commit()), .clean,
+        .worktreeAdd(folder, try commit()), .worktreePrune, .resetHard(try commit()),
+        .resetIndex(try commit()), .clean,
         .status, .add(["src/a.swift"]), .commit(message: "Fix the thing"),
         .mergeTree(base: try commit(), ours: try commit(other), theirs: try commit()),
+        .mergeTreeNames(ours: try commit(other), theirs: try commit()),
+        .writeTree,
         .commitTree(tree: other, parents: [try commit(), try commit(other)], message: "Merge"),
         .revParse("HEAD^{commit}"), .catFile(head), .blob(other),
         .configGetAll("remote.origin.url"), .remoteURLs(push: true),
         .treeEntries(try commit(), ["src/a.swift"]), .treeSizes(try commit(), ["src/a.swift"]),
         .lsFilesStage(["src/a.swift"]), .headTree, .checkAttrFilter(["src/a.swift"]),
         .hashObject("src/a.swift"), .diff(try commit(), try commit(other)),
+        .pathDiff(try commit(), try commit(other), ["src/a.swift"]),
         .changedPaths(try commit(), try commit(other)), .push(try push()),
         .isAncestor(try commit(), of: try commit(other)), .revList(try commit(), max: 20),
         .mergeBase(try commit(), try commit(other)),
@@ -49,11 +53,14 @@ private func caseName(_ command: GitCommand) -> String {
     case .worktreeAdd: "worktreeAdd"
     case .worktreePrune: "worktreePrune"
     case .resetHard: "resetHard"
+    case .resetIndex: "resetIndex"
     case .clean: "clean"
     case .status: "status"
     case .add: "add"
     case .commit: "commit"
     case .mergeTree: "mergeTree"
+    case .mergeTreeNames: "mergeTreeNames"
+    case .writeTree: "writeTree"
     case .commitTree: "commitTree"
     case .revParse: "revParse"
     case .catFile: "catFile"
@@ -67,6 +74,7 @@ private func caseName(_ command: GitCommand) -> String {
     case .checkAttrFilter: "checkAttrFilter"
     case .hashObject: "hashObject"
     case .diff: "diff"
+    case .pathDiff: "pathDiff"
     case .changedPaths: "changedPaths"
     case .push: "push"
     case .isAncestor: "isAncestor"
@@ -78,7 +86,7 @@ private func caseName(_ command: GitCommand) -> String {
 @Suite("the git commands of Reviews", .testTimeLimit)
 struct GitCommandTests {
     @Test func eachCaseHasASample() throws {
-        #expect(Set(try samples().map(caseName)).count == 28)
+        #expect(Set(try samples().map(caseName)).count == 32)
     }
 
     @Test func thePushHasOneFormAndNoForce() throws {
@@ -151,8 +159,8 @@ struct GitCommandTests {
         let clone = GitPlace.clone(try pr().repo)
         let worktree = GitPlace.worktree(try pr())
         let workTree: Set = [
-            "resetHard", "clean", "status", "add", "commit", "lsFilesStage", "headTree",
-            "checkAttrFilter", "hashObject",
+            "resetHard", "resetIndex", "clean", "status", "add", "commit", "writeTree",
+            "lsFilesStage", "headTree", "checkAttrFilter", "hashObject",
         ]
         for command in try samples() {
             let name = caseName(command)
@@ -233,7 +241,9 @@ struct GitCommandTests {
     @Test func noCommandLooksIntoASubmodule() throws {
         let forms: [String: String] = [
             "status": "--ignore-submodules=all", "diff": "--ignore-submodules=all",
-            "resetHard": "--no-recurse-submodules", "fetch": "--no-recurse-submodules",
+            "pathDiff": "--ignore-submodules=all",
+            "resetHard": "--no-recurse-submodules", "resetIndex": "--no-recurse-submodules",
+            "fetch": "--no-recurse-submodules",
             "push": "--recurse-submodules=no",
         ]
         for command in try samples() {
@@ -311,7 +321,11 @@ struct GitCommandTests {
         #expect(GitCommand.worktreePrune.arguments == ["worktree", "prune"])
         #expect(
             GitCommand.resetHard(try commit()).arguments == [
-                "reset", "--hard", "--quiet", "--no-recurse-submodules", head,
+                "reset", "--hard", "--quiet", "--no-recurse-submodules", head, "--",
+            ])
+        #expect(
+            GitCommand.resetIndex(try commit()).arguments == [
+                "reset", "--mixed", "--quiet", "--no-recurse-submodules", head, "--",
             ])
         #expect(GitCommand.headTree.arguments == ["ls-tree", "-r", "-z", "--full-tree", "HEAD"])
         #expect(GitCommand.clean.arguments == ["clean", "-ffdx", "--quiet"])
@@ -332,5 +346,38 @@ struct GitCommandTests {
                 "--ignore-submodules=all", "--src-prefix=a/", "--dst-prefix=b/", head, other,
                 "--",
             ])
+    }
+
+    // A conflict round reads only the names of the conflicted files, each with a NUL after it,
+    // and no message of git. git finds each merge base itself, as git merge does. The command
+    // reads trees only, so it needs no work tree.
+    @Test func theMergeTreeNamesCommandListsOnlyNames() throws {
+        let command = GitCommand.mergeTreeNames(ours: try commit(other), theirs: try commit())
+        #expect(
+            command.arguments == [
+                "merge-tree", "--write-tree", "--name-only", "-z", "--no-messages", other, head,
+            ])
+        #expect(!command.needsWorkTree && !command.usesNetwork && !command.isRefused)
+    }
+
+    // write-tree reads the index of the worktree, so it runs only in a worktree.
+    @Test func writeTreeNeedsAWorkTree() throws {
+        #expect(GitCommand.writeTree.arguments == ["write-tree"])
+        #expect(GitCommand.writeTree.needsWorkTree && !GitCommand.writeTree.usesNetwork)
+        #expect(!GitPlace.clone(try pr().repo).allows(.writeTree))
+        #expect(GitPlace.worktree(try pr()).allows(.writeTree))
+    }
+
+    // The diff of some paths has the flags of the full diff, and each path comes after "--" as a
+    // literal path: a path like a flag or a pattern is only a path.
+    @Test func aPathDiffTakesLiteralPaths() throws {
+        let command = GitCommand.pathDiff(try commit(), try commit(other), ["-a", "src/*.swift"])
+        #expect(
+            command.arguments == [
+                "--literal-pathspecs", "diff", "--no-ext-diff", "--no-textconv", "--no-color",
+                "--find-renames", "--ignore-submodules=all", "--src-prefix=a/", "--dst-prefix=b/",
+                head, other, "--", "-a", "src/*.swift",
+            ])
+        #expect(!command.needsWorkTree && !command.usesNetwork && !command.isRefused)
     }
 }

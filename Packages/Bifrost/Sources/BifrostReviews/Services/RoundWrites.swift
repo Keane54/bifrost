@@ -27,6 +27,17 @@
 // - An item whose writes all went is handled. Each posted reply is kept with its ID and its text.
 //   Each reviewer whose latest review requests changes and whose threads are all resolved gets a
 //   new review request, one time for each head commit, never a bot.
+// - A person can use the request session of the PR after its turn. While its row works or shows
+//   a box (inUse), the writes do not reset the worktree, so the work of the person stays. The
+//   next round resets the worktree after its wait, when the changes are changes of a round
+//   (RepoStore.unknownChanges).
+// - The outbox of an own request of the user (Outbox.own, OwnRequests) has only the commit and
+//   the push. It writes no reply, so a cut read and a draft review of the user do not stop it. It
+//   never resets the worktree: after a good commit the changes that the file does not list stay,
+//   and a commit that is refused or that does not reach GitHub becomes changes again
+//   (RepoStore.uncommit).
+// - A reset after the fix commit of a round runs only when the worktree has no change that no
+//   round made (RepoStore.resetIfKnown), so a change of a person after the turn stays.
 import BifrostFoundation
 import Foundation
 import OSLog
@@ -47,11 +58,13 @@ package final class RoundWrites {
     // A line for the user in the Event log: the reason of git or of GitHub for a write that
     // stopped. The row shows a fixed text.
     private let eventLine: (String) -> Void
+    // True while a person can use the request session of the PR (PRSessions.requestInUse).
+    private let inUse: (PRKey) -> Bool
 
     package init(
         store: ReviewsStore, github: GitHubClient, repos: RepoStore, clock: any Clock<Duration>,
         now: @escaping () -> Date, viewer: @escaping () -> String?,
-        eventLine: @escaping (String) -> Void
+        eventLine: @escaping (String) -> Void, inUse: @escaping (PRKey) -> Bool = { _ in false }
     ) {
         self.store = store
         self.github = github
@@ -60,6 +73,7 @@ package final class RoundWrites {
         self.now = now
         self.viewer = viewer
         self.eventLine = eventLine
+        self.inUse = inUse
     }
 
     // Send the writes of the outbox of the PR that are not done or dropped, in order. The caller
@@ -88,6 +102,9 @@ package final class RoundWrites {
             }
         }
         await finish(pr, sending.outbox, end, asked: sending.asked)
+        // The change of the user did not reach GitHub, and its outbox goes: it stays in the
+        // worktree as changes.
+        if outbox.own && end == .drop { await repos.uncommit(pr, to: outbox.headSHA) }
         if let failure {
             Self.logger.notice(
                 """
@@ -207,20 +224,28 @@ package final class RoundWrites {
         if Task.isCancelled { throw .halted }
     }
 
-    fileprivate func commit(_ paths: [String], message: String, head: CommitID, pr: PRKey)
-        async throws(FixCommitFailure) -> CommitID
-    {
+    fileprivate func commit(
+        _ paths: [String], message: String, head: CommitID, pr: PRKey, own: Bool
+    ) async throws(FixCommitFailure) -> CommitID {
         let fix = try await FixCommit.make(
             paths: paths, message: message, head: head, pr: pr, git: repos.git)
-        // The files of the session that the commit does not hold go.
-        await repos.resetWorktree(pr, to: fix)
+        // The files of the session that the commit does not hold go, unless a person uses the
+        // session now or the worktree has a change that no round made. The changes of an own
+        // request that the file does not list stay.
+        if !own && !inUse(pr) { await repos.resetIfKnown(pr, to: fix) }
         return fix
     }
 
     // Reset the worktree of the PR to the head of the round, also when a refused fix commit is
-    // its HEAD.
-    fileprivate func resetWorktree(_ pr: PRKey, to head: CommitID) async {
-        await repos.resetWorktree(pr, to: head)
+    // its HEAD, unless a person uses the session now. The worktree of an own request keeps its
+    // files, and only a commit that git made goes back to changes.
+    fileprivate func resetWorktree(_ pr: PRKey, to head: CommitID, own: Bool) async {
+        if own {
+            await repos.uncommit(pr, to: head)
+            return
+        }
+        guard !inUse(pr) else { return }
+        await repos.resetIfKnown(pr, to: head)
     }
 
     fileprivate func push(
@@ -309,12 +334,13 @@ private final class OutboxSend {
         try await mark(index, .sending)
         let fix: CommitID
         do throws(FixCommitFailure) {
-            fix = try await parts.commit(paths, message: message, head: outbox.headSHA, pr: pr)
+            fix = try await parts.commit(
+                paths, message: message, head: outbox.headSHA, pr: pr, own: outbox.own)
         } catch {
             // A quit stopped git: the worktree keeps the fix, and the commit stays sending, so
             // the next run makes it or finds it.
             if Task.isCancelled { throw .halted }
-            await parts.resetWorktree(pr, to: outbox.headSHA)
+            await parts.resetWorktree(pr, to: outbox.headSHA, own: outbox.own)
             switch error {
             case .refused(let refusal): throw .drop(.commitRefused(refusal))
             case .git(let line):
@@ -479,6 +505,8 @@ private final class OutboxSend {
         guard full.state == .open else { throw .drop(.prClosed) }
         guard full.author.lowercased() == viewer.lowercased() else { throw .drop(.notYours) }
         guard !full.isCrossRepository else { throw .drop(.fork) }
+        // An own request writes no reply.
+        if outbox.own { return full }
         // A cut read can hide a sent reply or show a thread as gone.
         guard !full.truncated else { throw .drop(.tooManyComments) }
         guard !full.viewerPending else { throw .keep(.ownPending) }

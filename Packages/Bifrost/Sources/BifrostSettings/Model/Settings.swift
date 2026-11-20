@@ -84,6 +84,10 @@ public struct Settings: Sendable, Equatable {
     package var reviewsWatch = false
     // Fix the review comments on the PRs of the user without a request.
     package var reviewsAutoFix = true
+    // Resolve the merge conflicts of the PRs of the user without a request.
+    package var reviewsResolveConflicts = false
+    // Fix or run again the failed CI of the PRs of the user without a request.
+    package var reviewsFixCI = false
     // Show the review requests that a team gets, and not only the direct ones.
     package var reviewsTeamRequests = true
     package var reviewsMaxSessions = 3
@@ -131,9 +135,10 @@ extension Settings: Codable {
         case version, accountUsage, labels, terminalApp, projectApp, escalationMinutes, rowFlash
         case notifications, redBoxSound, startAtLogin, pollSeconds, snapDistance
         case panelTransparency, interfaceScale, animatedBackground, autoUpdate, slashCommands
-        case reviewsWatch, reviewsAutoFix, reviewsTeamRequests, reviewsMaxSessions
-        case reviewsPauseMinutes, reviewsPollMinutes, reviewsRequestModel, reviewsReviewModel
-        case reviewsSignedCommits, reviewsIgnore, terminalFont, dailyUpdate, keys, setupDone
+        case reviewsWatch, reviewsAutoFix, reviewsResolveConflicts, reviewsFixCI
+        case reviewsTeamRequests, reviewsMaxSessions, reviewsPauseMinutes, reviewsPollMinutes
+        case reviewsRequestModel, reviewsReviewModel, reviewsSignedCommits, reviewsIgnore
+        case terminalFont, dailyUpdate, keys, setupDone
     }
 
     // The lenient decode of StoredSettings.
@@ -164,6 +169,8 @@ extension Settings: Codable {
         try container.encode(slashCommands, forKey: .slashCommands)
         try container.encode(reviewsWatch, forKey: .reviewsWatch)
         try container.encode(reviewsAutoFix, forKey: .reviewsAutoFix)
+        try container.encode(reviewsResolveConflicts, forKey: .reviewsResolveConflicts)
+        try container.encode(reviewsFixCI, forKey: .reviewsFixCI)
         try container.encode(reviewsTeamRequests, forKey: .reviewsTeamRequests)
         try container.encode(reviewsMaxSessions, forKey: .reviewsMaxSessions)
         try container.encode(reviewsPauseMinutes, forKey: .reviewsPauseMinutes)
@@ -249,6 +256,8 @@ package struct StoredSettings: Sendable, Equatable, Decodable {
         }
         fields.read(.reviewsWatch, \.reviewsWatch)
         fields.read(.reviewsAutoFix, \.reviewsAutoFix)
+        fields.read(.reviewsResolveConflicts, \.reviewsResolveConflicts)
+        fields.read(.reviewsFixCI, \.reviewsFixCI)
         fields.read(.reviewsTeamRequests, \.reviewsTeamRequests)
         fields.read(
             .reviewsMaxSessions, \.reviewsMaxSessions,

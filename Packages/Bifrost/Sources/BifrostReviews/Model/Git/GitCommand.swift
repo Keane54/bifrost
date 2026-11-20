@@ -28,6 +28,9 @@ package enum GitCommand: Sendable, Equatable {
     case worktreeAdd(URL, CommitID)
     case worktreePrune
     case resetHard(CommitID)
+    // HEAD and the index go to the commit, and the files of the work tree stay as they are: the
+    // files of a commit that did not reach GitHub become changes again (RepoStore.uncommit).
+    case resetIndex(CommitID)
     // Remove each file that git does not track, also the ignored files and the nested clones.
     case clean
     // Each change of the worktree, also each new file, one entry for each path. The ignored files
@@ -41,6 +44,13 @@ package enum GitCommand: Sendable, Equatable {
     case commit(message: String)
     // The tree of a merge of ours and theirs, with no worktree and no hook.
     case mergeTree(base: CommitID, ours: CommitID, theirs: CommitID)
+    // A merge of ours and theirs, with only the path of each file that has a conflict after the
+    // tree, each with a NUL after it (MergeTreeOutput). Exit code 1 means a conflict. git finds
+    // each merge base itself, as git merge does, so a history with more than one merge base
+    // (a criss-cross history) merges as it does on GitHub.
+    case mergeTreeNames(ours: CommitID, theirs: CommitID)
+    // The tree of the index, as an object of the clone.
+    case writeTree
     // A commit of a tree with these parents. It never signs.
     case commitTree(tree: String, parents: [CommitID], message: String)
     // The commit ID of a revision, for example refs/bifrost/pr/7^{commit}.
@@ -72,6 +82,8 @@ package enum GitCommand: Sendable, Equatable {
     case hashObject(String)
     // The diff from the first commit to the second one, with fixed prefixes.
     case diff(CommitID, CommitID)
+    // The same diff of only these paths. A path is a literal path, never a pattern.
+    case pathDiff(CommitID, CommitID, [String])
     // The path of each entry that changed from the first commit to the second one, with no
     // rename (a rename gives both paths) and with each submodule entry.
     case changedPaths(CommitID, CommitID)
@@ -97,8 +109,11 @@ package enum GitCommand: Sendable, Equatable {
         case .worktreeAdd(let folder, let commit):
             ["worktree", "add", "--quiet", "--detach", "--", folder.plainPath, commit.hex]
         case .worktreePrune: ["worktree", "prune"]
+        // "--" ends the revisions, so a file named as the commit never makes it ambiguous.
         case .resetHard(let commit):
-            ["reset", "--hard", "--quiet", "--no-recurse-submodules", commit.hex]
+            ["reset", "--hard", "--quiet", "--no-recurse-submodules", commit.hex, "--"]
+        case .resetIndex(let commit):
+            ["reset", "--mixed", "--quiet", "--no-recurse-submodules", commit.hex, "--"]
         case .clean: ["clean", "-ffdx", "--quiet"]
         case .status:
             [
@@ -116,6 +131,12 @@ package enum GitCommand: Sendable, Equatable {
                 "merge-tree", "--write-tree", "--no-messages", "--merge-base=\(base.hex)", ours.hex,
                 theirs.hex,
             ]
+        case .mergeTreeNames(let ours, let theirs):
+            [
+                "merge-tree", "--write-tree", "--name-only", "-z", "--no-messages", ours.hex,
+                theirs.hex,
+            ]
+        case .writeTree: ["write-tree"]
         case .commitTree(let tree, let parents, let message):
             ["commit-tree", "--no-gpg-sign"] + parents.flatMap { ["-p", $0.hex] }
                 + ["-m", message, tree]
@@ -143,6 +164,9 @@ package enum GitCommand: Sendable, Equatable {
                 "--ignore-submodules=all", "--src-prefix=a/", "--dst-prefix=b/", from.hex, to.hex,
                 "--",
             ]
+        // The flags of diff end with "--", so the paths come after it.
+        case .pathDiff(let from, let to, let paths):
+            ["--literal-pathspecs"] + Self.diff(from, to).arguments + paths
         case .changedPaths(let from, let to):
             [
                 "diff", "--no-ext-diff", "--no-textconv", "--no-renames",
@@ -167,8 +191,8 @@ package enum GitCommand: Sendable, Equatable {
     // worktree (GitPlace.worktree).
     package var needsWorkTree: Bool {
         switch self {
-        case .resetHard, .clean, .status, .add, .commit, .lsFilesStage, .headTree,
-            .checkAttrFilter, .hashObject:
+        case .resetHard, .resetIndex, .clean, .status, .add, .commit, .writeTree, .lsFilesStage,
+            .headTree, .checkAttrFilter, .hashObject:
             true
         default: false
         }

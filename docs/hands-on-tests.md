@@ -626,6 +626,10 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   fix. Bifrost shouldn't commit or push it, and the row should say "Bifrost won't commit in a
   repository that has a submodule." Is that clear enough to act on?
   ([reviews R7](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] On one of your own PRs with between 21 and 50 checks (a matrix workflow works), make two or
+  more checks fail. The row's cross should count every failed check, and the row shouldn't say
+  "Bifrost read only the newest items of this PR." for the checks alone.
+  ([reviews R34](ports/reviews/DELIBERATE-DIFFERENCES.md))
 - [ ] After the first start of Reviews in Bifrost Dev, `~/.bifrost/reviews/state.json.before-native`
   should be there and match the state file that the Electron app left. A request round that the
   Electron app hadn't finished should show "Bifrost stopped this round before it finished. Choose
@@ -695,6 +699,38 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   of `~/.bifrost/reviews/state.json` and `~/.ssh`, while `git status` and a read of the session's
   own input.json still work. Both reads and writes of another PR's folders are refused. Stop and
   delete the sessions afterwards. ([reviews R29](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] On a test PR of yours, have your second account leave a comment that Claude can't decide
+  alone, and let a round run. Answer Claude in the Answer panel. The Overview should show one
+  `<repo>-<number>-request` session for both rounds, and its chat should hold the first round,
+  then your answer typed in as a second `/bifrost-resolve-comments` message. Leave the session
+  idle for 10 minutes so Bifrost stops it, then have them leave another comment: the next round
+  should resume the same session, with no new session in the Overview, and Claude should still
+  know the earlier rounds. ([reviews R33](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] Open the chat of the request session of one of your PRs and ask Claude to change a file
+  for you, and to add a new one. While it works, have your second account leave another comment:
+  the next round should wait until the session is idle, and both of Claude's changes should stay
+  in the worktree while it waits. Keep the session busy for over two minutes instead: the row
+  should say "Claude's session for this pull request was busy, so Bifrost didn't start the round.
+  Choose Try again when it's finished.", and the changes should still be there. Is that clear?
+  ([reviews R33](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] Between rounds, open the chat of the request session of a test PR of yours and ask Claude to
+  rename a function. When its turn ends, Bifrost should commit and push the change within a few
+  seconds: one new commit on the PR with Claude's message and only the files it changed, signed
+  when Sign commits through GitHub is on, a line in the Event log, and no reply on GitHub. Then
+  push a change to the same line from another checkout and ask Claude for another edit of it: the
+  row should show "Needs you" with "Someone pushed to this branch, and your change doesn't merge
+  cleanly ...", and the edit should still be in the worktree. Ask Claude for an edit and to skip
+  the commit request (or edit a file of the worktree yourself), then have your second account
+  leave a comment: the row should show "Needs you" with "Bifrost's copy of this pull request has
+  changes that aren't on GitHub yet ...", Claude shouldn't start, and the edit should stay. Ask
+  Claude to undo it and choose Handle now: the round should start. While a round runs, type a
+  request into its session: once the round ends, your change should go as its own commit (or, if
+  the round pushed a fix, the row should ask you to try again), and it should never vanish. Edit
+  a file of the PR's copy by hand, delete the PR's request session from the Overview, and have
+  your second account leave a comment: the row should show "Needs you", and its menu should have
+  "Discard these changes". It should ask first and name the file; Cancel should keep the edit, and
+  Discard should remove it and clear the row, so Handle now starts the round. Are the texts clear?
+  ([reviews R35](ports/reviews/DELIBERATE-DIFFERENCES.md))
 - [ ] Have a reviewer ask, on a test PR of yours, for a change to a tool configuration file (for
   example `.eslintrc.json` or the scripts of `package.json`), then choose Handle now. The request
   session should stop to ask for approval, and the row should at once show the reason "Claude
@@ -752,6 +788,25 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   with the full text, and Cancel should leave the box off. Do the same for "Handle comments on my
   PRs automatically". Turning either off should ask nothing.
   ([settings S50](ports/settings/DELIBERATE-DIFFERENCES.md))
+- [ ] In Settings > Reviews, "Resolve merge conflicts automatically" and "Fix failing CI
+  automatically" should sit straight under "Handle comments on my PRs automatically", both off.
+  Turn each one on: Bifrost's own dialog should ask first with its full text, Cancel should leave
+  the box off, and Turn on should tick it. Turning either off should ask nothing. Turn one on while
+  Watch GitHub is off, then turn Watch GitHub on: the box should stay on. Do the dialogs make it
+  clear what Bifrost will do to your branches?
+  ([reviews R36](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] On a scratch PR of yours, push a change to its base branch that conflicts with the PR. After
+  the next poll that sees GitHub's conflict, the row should show "Has conflicts" in amber, with a
+  tip that names Resolve now, and it should keep its place in its status group (no red box).
+  Resolve the conflict yourself and push: the row should go back to Waiting. Is the tip clear?
+  ([reviews R37](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] Turn on "Resolve merge conflicts automatically". On a scratch PR of yours, push a change to
+  its base branch that conflicts with the PR. After the next poll the row should show "Resolving
+  conflicts", the PR's `<repo>-<number>-request` session should resolve the files, and GitHub should
+  then show a "Merge <base> into <branch>" commit on the PR's branch, never a force push. Make a
+  second conflict that Claude can't settle (two different values for one setting): the row should
+  show "Has conflicts" in red with Claude's reason, and a later poll should start nothing until you
+  push. Is the reason clear? ([reviews R38](ports/reviews/DELIBERATE-DIFFERENCES.md))
 - [ ] Type "not a repo" in Repositories to ignore and press Enter. The reason "Use owner/repo or
   owner/*." should show in the error line of the row, with its close button, and the field should
   keep your text. ([settings S51](ports/settings/DELIBERATE-DIFFERENCES.md))
@@ -819,7 +874,7 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   first ask in Bifrost's dialog, "Remove Live details", and Cancel should change nothing. A search
   for "turn off" should find the section.
   ([settings S10](ports/settings/DELIBERATE-DIFFERENCES.md))
-- [ ] Open Settings > Skills. It should list the six
+- [ ] Open Settings > Skills. It should list the seven
   skills as `/bifrost-...`, each with "Listed" or "Called by name" and its description, under the
   dim hint about the two groups. Install should show its two steps with Install and Cancel before
   it changes anything, and while a Live details action runs the Skills buttons should be greyed

@@ -84,6 +84,27 @@ struct RepoFixture {
         return try #require(CommitID(head.stdout.trimmed()))
     }
 
+    // A new commit of the files on the last commit of the source of the repository, at
+    // refs/pull/<number>/head of the source. The result is the commit.
+    func pullHead(_ repo: RepoName, number: Int, files: [String: String]) async throws
+        -> CommitID
+    {
+        let work = root + "/work/" + repo.key
+        for (path, text) in files {
+            try text.write(toFile: work + "/" + path, atomically: false, encoding: .utf8)
+        }
+        try await setup(["add", "-A"], in: work)
+        try await setup(["commit", "-q", "-m", "next"], in: work)
+        try await setup(
+            [
+                "push", "-q", root + "/sources/" + repo.key + ".git",
+                "HEAD:refs/pull/\(number)/head",
+            ],
+            in: work)
+        let head = await gitOutput(["rev-parse", "HEAD"], in: work)
+        return try #require(CommitID(head))
+    }
+
     // A git command of the set-up, with plain git, as the user would run it.
     func setup(_ args: [String], in dir: String) async throws {
         let identity = [
@@ -141,6 +162,18 @@ struct RepoFixture {
             Command("/usr/bin/git", ["-C", dir] + args, environment: env, timeout: .seconds(30))
         ).stdout.trimmed()
     }
+
+    // The inode number of the item at the path (not of the item that a link names).
+    func inode(_ path: String) -> Int {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        return (attributes?[.systemFileNumber] as? Int) ?? -1
+    }
+
+    // True when a folder (not a link) is at the path.
+    func isFolder(_ path: String) -> Bool {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: path)
+        return attributes?[.type] as? FileAttributeType == .typeDirectory
+    }
 }
 
 private func repo(_ text: String) throws -> RepoName { try #require(RepoName(text)) }
@@ -160,6 +193,16 @@ private final class RunCounter: CommandRunner {
 
     func run(_ command: Command) async -> ExecResult {
         count.withLock { $0 += 1 }
+        return await inner.run(command)
+    }
+}
+
+// A runner of the real git that does not run git clean, and gives exit code 0 for it.
+private final class NoCleanRunner: CommandRunner {
+    private let inner = ProcessRunner()
+
+    func run(_ command: Command) async -> ExecResult {
+        if command.arguments.contains("clean") { return ExecResult(.exited(0)) }
         return await inner.run(command)
     }
 }
@@ -278,6 +321,80 @@ struct RepoStoreTests {
         #expect(changed.contains(marked) && !changed.contains("e.txt") && changed.count == 4)
     }
 
+    // The safety net of the worktree: a change counts as a change of a person until Bifrost
+    // knows it, from the end of the turn of a round (markLeftovers) or a reset. A later write to
+    // a known file, and a new file, count again. With no worktree in its place there is none.
+    @Test func unknownChangesAreTheChangesThatNoRoundMade() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let head = try await f.source(name, files: ["a.txt": "one\n", "b.txt": "two\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        #expect(await f.store.unknownChanges(pr) == [])
+        let path = try await f.store.prepareWorktree(pr, head: head).path(percentEncoded: false)
+        #expect(await f.store.unknownChanges(pr) == [])
+        try "changed\n".write(toFile: path + "a.txt", atomically: false, encoding: .utf8)
+        try FileManager.default.removeItem(atPath: path + "b.txt")
+        #expect(await f.store.unknownChanges(pr) == ["a.txt", "b.txt"])
+        // The turn of a round ends: its changes are known.
+        await f.store.markLeftovers(pr)
+        #expect(await f.store.unknownChanges(pr) == [])
+        // A person changes the file again, and adds a file.
+        try "person, later\n".write(toFile: path + "a.txt", atomically: false, encoding: .utf8)
+        try "new\n".write(toFile: path + "c.txt", atomically: false, encoding: .utf8)
+        #expect(await f.store.unknownChanges(pr) == ["a.txt", "c.txt"])
+        // A reset makes the worktree as Bifrost knows it.
+        await f.store.resetWorktree(pr)
+        #expect(await f.store.unknownChanges(pr) == [])
+    }
+
+    // A reset after a round runs only when the worktree has no change that no round made: a
+    // change of a person keeps the whole worktree, and with only known changes the reset runs.
+    @Test func resetIfKnownKeepsTheChangesOfAPerson() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let head = try await f.source(name, files: ["a.txt": "one\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let path = try await f.store.prepareWorktree(pr, head: head).path(percentEncoded: false)
+        try "round\n".write(toFile: path + "a.txt", atomically: false, encoding: .utf8)
+        await f.store.markLeftovers(pr)
+        try "person\n".write(toFile: path + "b.txt", atomically: false, encoding: .utf8)
+        #expect(await f.store.resetIfKnown(pr) == false)
+        #expect(await f.store.changedPaths(pr) == ["a.txt", "b.txt"])
+        try FileManager.default.removeItem(atPath: path + "b.txt")
+        #expect(await f.store.resetIfKnown(pr))
+        #expect(await f.store.changedPaths(pr) == [])
+    }
+
+    // A commit that did not reach GitHub goes back to changes: HEAD and the index go to the
+    // head, and the files of the commit stay. A worktree at the head stays as it is.
+    @Test func uncommitKeepsTheFilesOfTheCommit() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let head = try await f.source(name, files: ["a.txt": "one\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let path = try await f.store.prepareWorktree(pr, head: head).path(percentEncoded: false)
+        try "own\n".write(toFile: path + "a.txt", atomically: false, encoding: .utf8)
+        try "new\n".write(toFile: path + "c.txt", atomically: false, encoding: .utf8)
+        #expect(await f.git.run(.add(["a.txt", "c.txt"]), in: .worktree(pr)).succeeded)
+        #expect(await f.git.run(.commit(message: "own: change"), in: .worktree(pr)).succeeded)
+        let made = try #require(await f.store.worktreeHead(pr))
+        #expect(made != head)
+        #expect(await f.store.changedPaths(pr) == [])
+        await f.store.uncommit(pr, to: head)
+        #expect(await f.store.worktreeHead(pr) == head)
+        #expect(await f.store.changedPaths(pr) == ["a.txt", "c.txt"])
+        #expect(try String(contentsOfFile: path + "a.txt", encoding: .utf8) == "own\n")
+        await f.store.uncommit(pr, to: head)
+        #expect(await f.store.worktreeHead(pr) == head)
+        #expect(await f.store.changedPaths(pr) == ["a.txt", "c.txt"])
+    }
+
     // The input folder of a PR is empty with mode 0700 at each call. When the request goes, the
     // worktree and the input folder go, and git forgets the worktree. The clone stays.
     @Test func aGoneRequestRemovesItsWorktreeAndInputFolder() async throws {
@@ -302,6 +419,180 @@ struct RepoStoreTests {
         #expect(f.exists(f.clone(name) + ".git/HEAD"))
         // A second removal finds nothing to remove.
         await f.store.removePR(pr)
+    }
+
+    // The round folder of a PR is made with mode 0700 and stays from round to round: each call
+    // keeps the folder itself and removes each item in it, also a hidden file and a folder. So
+    // the result of the last round is gone at the start of the next round.
+    @Test func theRoundFolderStaysAndLosesTheFilesOfTheLastRound() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let folder = try await f.store.roundFolder(pr)
+        let path = folder.path(percentEncoded: false)
+        #expect(path.hasSuffix("/repos/owner-a/repo-a/.bifrost-io/7/"))
+        #expect(f.mode(path) == 0o700)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: path).isEmpty)
+        let last = RoundFiles(folder: folder, token: "0f8a2c1e-5b7d-4c3a-9e21-6d4b8f0a1c2e")
+        try "{}".write(to: last.result, atomically: false, encoding: .utf8)
+        try "x".write(toFile: path + ".hidden", atomically: false, encoding: .utf8)
+        try FileManager.default.createDirectory(
+            atPath: path + "logs", withIntermediateDirectories: true)
+        try "x".write(toFile: path + "logs/log.txt", atomically: false, encoding: .utf8)
+        #expect(await f.store.readResult(at: last.result, limit: 10) == .data(Data("{}".utf8)))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+        let inode = f.inode(path)
+        #expect(try await f.store.roundFolder(pr) == folder)
+        #expect(f.inode(path) == inode)
+        #expect(f.mode(path) == 0o700)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: path).isEmpty)
+        #expect(await f.store.readResult(at: last.result, limit: 10) == .missing)
+    }
+
+    // A link in the round folder goes, not the file or the folder that it names. A link at the
+    // place of the round folder goes too, and a new folder takes its place.
+    @Test func aLinkInTheRoundFolderGoesAsALink() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let outside = f.root + "/outside"
+        try FileManager.default.createDirectory(atPath: outside, withIntermediateDirectories: true)
+        try "keep".write(toFile: outside + "/keep.txt", atomically: false, encoding: .utf8)
+        let outsideMode = f.mode(outside)
+        let path = try await f.store.roundFolder(pr).path(percentEncoded: false)
+        try FileManager.default.createSymbolicLink(
+            atPath: path + "result-0f8a2c1e5b7d.json", withDestinationPath: outside + "/keep.txt")
+        try FileManager.default.createSymbolicLink(
+            atPath: path + "dir", withDestinationPath: outside)
+        _ = try await f.store.roundFolder(pr)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: path).isEmpty)
+        #expect(f.exists(outside + "/keep.txt"))
+        // A link at the place of the round folder.
+        let plain = String(path.dropLast())
+        try FileManager.default.removeItem(atPath: plain)
+        try FileManager.default.createSymbolicLink(atPath: plain, withDestinationPath: outside)
+        _ = try await f.store.roundFolder(pr)
+        #expect(f.isFolder(plain))
+        #expect(f.mode(plain) == 0o700)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: plain).isEmpty)
+        #expect(f.exists(outside + "/keep.txt"))
+        #expect(f.mode(outside) == outsideMode)
+    }
+
+    // A worktree of the PR that is in its place stays for the next round: the same folder moves
+    // to the new head, a file that the last round added goes, and its .git file is written again.
+    @Test func placeWorktreeKeepsTheFolderAndMovesItToTheNewHead() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let first = try await f.source(name, files: ["a.txt": "one\n"])
+        let second = try await f.pullHead(name, number: 7, files: ["a.txt": "two\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let fetched = try await f.store.fetchPR(pr, base: try #require(BranchName("main")))
+        #expect(fetched.head == second)
+        // With no worktree, the place makes it.
+        let made = try await f.store.placeWorktree(pr, head: first)
+        #expect(made == .made(f.layout.worktree(name, number: 7)) && !made.isKept)
+        let path = made.url.path(percentEncoded: false)
+        let gitFile = try String(contentsOfFile: path + ".git", encoding: .utf8)
+        let inode = f.inode(path)
+        try "new\n".write(toFile: path + "new.txt", atomically: false, encoding: .utf8)
+        try "gitdir: /tmp/elsewhere\n".write(
+            toFile: path + ".git", atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+        let kept = try await f.store.placeWorktree(pr, head: second)
+        #expect(kept == .kept(made.url) && kept.isKept && kept.url == made.url)
+        #expect(f.inode(path) == inode)
+        #expect(await f.gitOutput(["rev-parse", "HEAD"], in: path) == second.hex)
+        #expect(try String(contentsOfFile: path + "a.txt", encoding: .utf8) == "two\n")
+        #expect(!f.exists(path + "new.txt"))
+        #expect(try String(contentsOfFile: path + ".git", encoding: .utf8) == gitFile)
+        #expect(f.mode(path) == 0o700)
+        // Only a worktree that was there and that placeWorktree made again gets a log line.
+        #expect(!f.log.values.contains(.worktreeMadeAgain(pr)))
+    }
+
+    // A kept worktree needs a reset that worked. With a lock file in its admin folder, git can't
+    // reset it: at the same head the change of the last round would stay, and at a new head
+    // HEAD would not move. Each time, placeWorktree makes the worktree again and logs it.
+    @Test func placeWorktreeMakesTheWorktreeAgainWhenTheResetFails() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let first = try await f.source(name, files: ["a.txt": "one\n"])
+        let second = try await f.pullHead(name, number: 7, files: ["a.txt": "two\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        _ = try await f.store.fetchPR(pr, base: try #require(BranchName("main")))
+        let worktree = try await f.store.placeWorktree(pr, head: first).url
+        let path = worktree.path(percentEncoded: false)
+        let lock = GitPlace.adminFolder(pr, f.layout) + "/index.lock"
+        try "changed\n".write(toFile: path + "a.txt", atomically: false, encoding: .utf8)
+        try "".write(toFile: lock, atomically: false, encoding: .utf8)
+        #expect(try await f.store.placeWorktree(pr, head: first) == .made(worktree))
+        #expect(try String(contentsOfFile: path + "a.txt", encoding: .utf8) == "one\n")
+        #expect(!f.exists(lock))
+        #expect(f.log.values.filter { $0 == .worktreeMadeAgain(pr) }.count == 1)
+        try "".write(toFile: lock, atomically: false, encoding: .utf8)
+        #expect(try await f.store.placeWorktree(pr, head: second) == .made(worktree))
+        #expect(await f.gitOutput(["rev-parse", "HEAD"], in: path) == second.hex)
+        #expect(try String(contentsOfFile: path + "a.txt", encoding: .utf8) == "two\n")
+        #expect(f.log.values.filter { $0 == .worktreeMadeAgain(pr) }.count == 2)
+    }
+
+    // A file that the clean left (git status lists it as not tracked) is never kept: the
+    // worktree is made again. Here git clean does not run, so only that check finds the file.
+    @Test func placeWorktreeMakesTheWorktreeAgainWhenTheCleanLeavesAFile() async throws {
+        let f = try RepoFixture(runner: NoCleanRunner())
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let head = try await f.source(name, files: ["a.txt": "one\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let worktree = try await f.store.placeWorktree(pr, head: head).url
+        let path = worktree.path(percentEncoded: false)
+        try FileManager.default.createDirectory(
+            atPath: path + "left", withIntermediateDirectories: true)
+        try "old\n".write(toFile: path + "left/old.txt", atomically: false, encoding: .utf8)
+        #expect(try await f.store.placeWorktree(pr, head: head) == .made(worktree))
+        #expect(!f.exists(path + "left"))
+        #expect(f.log.values.contains(.worktreeMadeAgain(pr)))
+        // With no file left, the worktree stays.
+        #expect(try await f.store.placeWorktree(pr, head: head) == .kept(worktree))
+    }
+
+    // A worktree that is not the clone's is made again at the head: one whose admin folder names
+    // another folder, and a link at the place of the worktree, also when the link names the
+    // worktree of the clone. The link goes, not the folder that it names.
+    @Test func placeWorktreeMakesTheWorktreeAgainWhenItIsNotTheClones() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let head = try await f.source(name, files: ["a.txt": "one\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let worktree = try await f.store.prepareWorktree(pr, head: head)
+        let path = worktree.path(percentEncoded: false)
+        try "new\n".write(toFile: path + "new.txt", atomically: false, encoding: .utf8)
+        try "\(f.root)/elsewhere/.git\n".write(
+            toFile: GitPlace.adminFolder(pr, f.layout) + "/gitdir", atomically: false,
+            encoding: .utf8)
+        #expect(try await f.store.placeWorktree(pr, head: head) == .made(worktree))
+        #expect(!f.exists(path + "new.txt"))
+        #expect(await f.gitOutput(["rev-parse", "HEAD"], in: path) == head.hex)
+        #expect(f.git.belongsToClone(pr))
+        // The worktree moves out, and a link at its place names it. git still finds the
+        // worktree through the link, but placeWorktree does not keep a link.
+        let plain = String(path.dropLast())
+        let outside = f.root + "/outside"
+        try FileManager.default.moveItem(atPath: plain, toPath: outside)
+        try FileManager.default.createSymbolicLink(atPath: plain, withDestinationPath: outside)
+        #expect(f.git.belongsToClone(pr))
+        #expect(try await f.store.placeWorktree(pr, head: head) == .made(worktree))
+        #expect(f.isFolder(plain))
+        #expect(f.exists(outside + "/a.txt"))
+        #expect(await f.gitOutput(["rev-parse", "HEAD"], in: path) == head.hex)
     }
 
     // A failed clone leaves no folder and logs one line. The repository counts as failed for 1

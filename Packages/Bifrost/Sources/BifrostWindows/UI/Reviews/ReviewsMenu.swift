@@ -30,8 +30,10 @@ package enum ReviewsMenuItem: String, Sendable, CaseIterable {
     case answerClaude = "answer-claude"
     case handleNow = "handle-now"
     case handleCopilot = "handle-copilot"
+    case resolveNow = "resolve-now"
     case cancel
     case dropUpdates = "drop-updates"
+    case discardChanges = "discard-changes"
 
     package var label: String {
         switch self {
@@ -50,8 +52,10 @@ package enum ReviewsMenuItem: String, Sendable, CaseIterable {
         case .answerClaude: "Answer Claude"
         case .handleNow: "Handle now"
         case .handleCopilot: "Handle Copilot comments"
+        case .resolveNow: "Resolve now"
         case .cancel: "Cancel"
         case .dropUpdates: "Don't send the rest"
+        case .discardChanges: "Discard these changes"
         }
     }
 }
@@ -96,9 +100,15 @@ package enum ReviewsMenu {
     // The items of a My PRs row, in their order: Open on GitHub; then, unless the PR comes from a
     // fork, Open session while the PR has a session that is not parked; Answer Claude while Claude
     // has open questions; Handle now while items wait for it and Handle Copilot comments while
-    // later Copilot threads wait (each while Claude waits, needs the user or failed); Try again
-    // after a failed round; Don't send the rest while the writes of a stopped round wait for Try
-    // again; Cancel while a round waits in the queue; Stop session while a round runs.
+    // later Copilot threads wait (each while Claude waits, needs the user or failed, while the PR
+    // has conflicts and while a re-run of failed jobs waits for its result), and Handle now on
+    // each row whose work waits for the user, so a click clears the reason and the next round
+    // checks again; Resolve now after them while the row is resolvable; Try again after a failed
+    // round, and while an own request of the user that
+    // needs the user waits with its writes; Don't send the rest while the writes of a stopped
+    // round wait for Try again; Discard these changes on a row whose work waits for the user for
+    // files that Bifrost found in its copy, with no writes that wait; Cancel while a round waits
+    // in the queue; Stop session while a request, conflict or CI round runs.
     static func mineItems(_ row: ReviewRow, hasSession: Bool) -> [ReviewsMenuItem] {
         var items: [ReviewsMenuItem] = [.openOnGitHub]
         guard case .mine(_, let claude) = row.state, claude != .fork else { return items }
@@ -106,16 +116,27 @@ package enum ReviewsMenu {
         if row.questions > 0 { items.append(.answerClaude) }
         let handles: Bool
         switch claude {
-        case .waiting, .needsYou, .error: handles = true
-        case .fixing, .queued, .trustNeeded, .cloning, .fork: handles = false
+        case .waiting, .needsYou, .waitsForYou, .error, .conflicts, .retryingCI: handles = true
+        case .fixing, .resolvingConflicts, .fixingCI, .queued, .trustNeeded, .cloning, .fork:
+            handles = false
         }
-        if handles && row.waiting > 0 { items.append(.handleNow) }
+        let waitsForYou = if case .waitsForYou = claude { true } else { false }
+        if handles && (row.waiting > 0 || waitsForYou) { items.append(.handleNow) }
         if handles && row.laterCopilot > 0 { items.append(.handleCopilot) }
-        if case .error = claude { items.append(.tryAgain) }
+        // Resolve now starts a conflict round by hand (MyPRRules.isResolvable).
+        if row.resolvable { items.append(.resolveNow) }
+        switch claude {
+        case .error: items.append(.tryAgain)
+        case .waitsForYou where row.unsentUpdates: items.append(.tryAgain)
+        default: break
+        }
         if handles && row.unsentUpdates { items.append(.dropUpdates) }
+        if waitsForYou && row.unsavedFiles > 0 && !row.unsentUpdates {
+            items.append(.discardChanges)
+        }
         switch claude {
         case .queued, .trustNeeded, .cloning: items.append(.cancel)
-        case .fixing where hasSession: items.append(.stopSession)
+        case .fixing, .resolvingConflicts, .fixingCI: if hasSession { items.append(.stopSession) }
         default: break
         }
         return items

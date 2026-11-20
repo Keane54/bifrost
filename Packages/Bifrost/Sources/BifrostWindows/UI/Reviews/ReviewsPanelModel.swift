@@ -95,6 +95,8 @@ package enum ReviewsCommand: Sendable, Equatable {
     // request round.
     case handleNow(PRKey)
     case handleCopilot(PRKey)
+    // Resolve now: queue a conflict round.
+    case resolveNow(PRKey)
     case tryAgain(PRKey)
     case cancelRequest(PRKey)
     // Don't send the rest: the kept writes of a stopped request round go, and nothing is sent.
@@ -130,6 +132,15 @@ package final class ReviewsPanelLinks {
     package var makeDraftFlow: @MainActor () -> DraftFlow? = { nil }
     // A new flow of the Answer panel for the PR, or nil while Reviews doesn't run.
     package var makeAnswerFlow: @MainActor (PRKey) -> AnswerFlow? = { _ in nil }
+    // The check of Discard these changes: the changed files of the copy of the PR, or why the
+    // discard can't run (ReviewRounds.changesToDiscard).
+    package var changesToDiscard: @MainActor (PRKey) async -> DiscardOutcome = { _ in .notNow }
+    // Discard these changes with the click of the user, after the confirm
+    // (ReviewRounds.discardChanges).
+    package var discard: @MainActor (PRKey, UserClick) async -> DiscardOutcome = { _, _ in .notNow }
+    // Ask in Bifrost's own dialog. True only after a click on the confirm button. The shell sets
+    // it.
+    package var confirm: @MainActor (ConfirmText) async -> Bool = { _ in false }
 
     // The trust panel (TrustPanels): the trust run in the clone of a repository, the trust read
     // of that clone, the change events of ~/.claude.json, and the end of a trust step.
@@ -203,6 +214,9 @@ package final class ReviewsPanelModel {
     @ObservationIgnored package private(set) var opening: Task<Void, Never>?
     // The last approval of a click. A test waits for it.
     @ObservationIgnored package private(set) var approval: Task<Void, Never>?
+    // The last Discard these changes, from the read of the files to the command. A test waits
+    // for it.
+    @ObservationIgnored package private(set) var discarding: Task<Void, Never>?
 
     // opener opens the PR in the browser. menu gives the Bifrost menu of the window. The clock
     // runs the display clock, and now gives the wall time.
@@ -269,7 +283,7 @@ package final class ReviewsPanelModel {
             return snapshot.toReview.contains(where: \.flash)
         case .mine:
             return snapshot.mine.contains {
-                if case .mine(_, .needsYou) = $0.state { true } else { false }
+                if case .mine(_, let claude) = $0.state { claude.needsTheUser } else { false }
             }
         }
     }
@@ -438,9 +452,52 @@ package final class ReviewsPanelModel {
         case .answerClaude: links.openAnswer(pr)
         case .handleNow: links.run(.handleNow(pr))
         case .handleCopilot: links.run(.handleCopilot(pr))
+        case .resolveNow: links.run(.resolveNow(pr))
         case .cancel: links.run(.cancelRequest(pr))
         case .dropUpdates: links.run(.dropUpdates(pr, click: UserClick()))
+        case .discardChanges: discard(pr)
         }
+    }
+
+    // Discard these changes: Bifrost's own dialog names the files first, and only Discard
+    // discards them. Cancel changes nothing. A discard that can't run, or a copy with no change
+    // now, shows why in the error line.
+    private func discard(_ pr: PRKey) {
+        let links = links
+        error = nil
+        discarding = Task { [weak self] in
+            let check = await links.changesToDiscard(pr)
+            guard case .files(let files) = check else {
+                self?.error = check.message
+                return
+            }
+            guard await links.confirm(Self.discardConfirm(files)) else { return }
+            let outcome = await links.discard(pr, UserClick())
+            if let message = outcome.message { self?.error = message }
+        }
+    }
+
+    // The most file names that the confirm of Discard these changes shows.
+    nonisolated package static let discardNames = 5
+
+    // The confirm of Discard these changes, with the names of the files.
+    nonisolated package static func discardConfirm(_ files: [String]) -> ConfirmText {
+        let count = files.count
+        let shown = files.prefix(discardNames)
+        var names = shown.dropLast().joined(separator: ", ")
+        if count > discardNames {
+            names += (names.isEmpty ? "" : ", ") + (shown.last ?? "")
+            names += " and \(count - discardNames) more"
+        } else if let last = shown.last {
+            names += names.isEmpty ? last : " and \(last)"
+        }
+        let title =
+            count == 1 ? "Discard the changes in 1 file?" : "Discard the changes in \(count) files?"
+        return ConfirmText(
+            title: title,
+            body: "They aren't on GitHub, and you can't get them back: \(names). Files that git "
+                + "ignores in Bifrost's copy go too.",
+            confirm: "Discard")
     }
 
     // Show the row menu of the PR at the point (screen coordinates) over the window.

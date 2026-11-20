@@ -12,6 +12,8 @@ enum Rows {
     static let now = Date(timeIntervalSince1970: 1_794_312_000)
     // The head commit of each PR of the tests.
     static let head = String(repeating: "a", count: 40)
+    // The base commit of a PR of the user whose test gives one.
+    static let base = String(repeating: "b", count: 40)
 
     // The time that is the count of minutes after now (before now for a negative count).
     static func at(_ minutes: Double) -> Date {
@@ -64,7 +66,8 @@ enum Rows {
     }
 
     // A PR of the To review tab or of the My PRs tab. A direct request names the viewer, and a
-    // team request names only a team.
+    // team request names only a team. A PR of the user can have a merge state, a base commit and
+    // the checks of its head.
     static func pull(
         _ text: String, title: String = "A change", author: String = "user-a",
         direct: Bool = true, requestedAt: Date = Rows.at(-60), updatedAt: Date = Rows.at(-30),
@@ -72,7 +75,8 @@ enum Rows {
         viewerReviews: [ViewerOpinion] = [], approvals: Int = 0, reviewers: [String] = [],
         reviews: [PRReview] = [], decisions: [PRReview] = [], threads: [PRThread] = [],
         comments: [PRComment] = [], failedChecks: Int = 0, fork: Bool = false,
-        cutThreads: Bool = false
+        cutThreads: Bool = false, mergeable: Mergeable? = nil, base: String = "",
+        checks: HeadChecks = HeadChecks()
     ) throws -> PullRequest {
         PullRequest(
             key: try key(text), title: title, author: author, isDraft: false, additions: 12,
@@ -80,8 +84,9 @@ enum Rows {
             requestedUsers: (direct ? [viewer] : []) + reviewers,
             requestedTeams: direct ? [] : ["team-a"], isDirectRequest: direct,
             requestedAt: requestedAt, reviews: reviews, decisions: decisions, threads: threads,
-            comments: comments, failedChecks: failedChecks, ci: ci, headRef: "feature",
-            headSHA: head, baseRef: "main", isCrossRepository: fork,
+            comments: comments, failedChecks: failedChecks, ci: ci, checks: checks,
+            headRef: "feature", headSHA: head, baseRef: "main", baseSHA: base,
+            mergeable: mergeable, isCrossRepository: fork,
             viewerPendingReviewID: try pending.map(node), viewerReviews: viewerReviews,
             approvals: approvals, truncatedThreads: cutThreads, truncatedReviews: false,
             truncatedComments: false, truncatedChecks: false)

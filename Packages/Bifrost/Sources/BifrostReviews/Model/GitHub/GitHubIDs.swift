@@ -207,3 +207,29 @@ package struct NodeID: Sendable, Hashable, Codable, CustomStringConvertible {
         try container.encode(text)
     }
 }
+
+// The ID of a job of GitHub Actions: the databaseId of its check run. The read of the logs of a
+// job and the re-run of the failed jobs take it. Only a number above 0 is an ID.
+package struct JobID: Hashable, Comparable, Sendable {
+    package let value: Int
+
+    package init?(_ value: Int) {
+        guard value > 0 else { return nil }
+        self.value = value
+    }
+
+    package static func < (left: JobID, right: JobID) -> Bool { left.value < right.value }
+}
+
+// The ID of a run of a workflow of GitHub Actions: the databaseId of the workflowRun of the check
+// suite of a job. Only a number above 0 is an ID.
+package struct RunID: Hashable, Comparable, Sendable {
+    package let value: Int
+
+    package init?(_ value: Int) {
+        guard value > 0 else { return nil }
+        self.value = value
+    }
+
+    package static func < (left: RunID, right: RunID) -> Bool { left.value < right.value }
+}

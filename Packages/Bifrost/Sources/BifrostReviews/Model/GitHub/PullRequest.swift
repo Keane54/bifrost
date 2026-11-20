@@ -12,6 +12,12 @@ package enum ReviewDecision: String, Sendable, Equatable {
     case reviewRequired = "REVIEW_REQUIRED"
 }
 
+// Whether the PR merges into its base branch with no conflict, as GitHub tells it. GitHub works
+// this out in the background, so a new head or base gives UNKNOWN for a short time.
+package enum Mergeable: String, Sendable {
+    case mergeable = "MERGEABLE", conflicting = "CONFLICTING", unknown = "UNKNOWN"
+}
+
 // The combined result of the checks of the latest commit. A PR with no checks has no value.
 package enum CIState: Sendable, Equatable {
     // FAILURE or ERROR, also for an optional check.
@@ -99,9 +105,17 @@ package struct PullRequest: Sendable, Equatable {
     package var comments: [PRComment]
     package var failedChecks: Int
     package var ci: CIState?
+    // The checks of the newest commit: the first 20 on To review, the first 50 on My PRs.
+    package var checks: HeadChecks
     package var headRef: String
     package var headSHA: String
     package var baseRef: String
+    // The commit of the base branch, or empty when GitHub gave none. Only a PR of the user reads
+    // it.
+    package var baseSHA: String
+    // The merge state. Only a PR of the user reads it; it is nil on To review and when GitHub gave
+    // no known state.
+    package var mergeable: Mergeable?
     package var isCrossRepository: Bool
     package var viewerPendingReviewID: NodeID?
     // The latest opinion of the viewer: 0 or 1 review. Only a To review PR reads it.
@@ -109,9 +123,10 @@ package struct PullRequest: Sendable, Equatable {
     // The count of the other reviewers whose latest opinion approves the PR. Only a To review PR
     // reads it.
     package var approvals: Int
-    // Each flag is true when GitHub has more items than the query reads. The threads flag is also
-    // true when a thread has more comments than the query reads, and the reviews flag covers the
-    // decisions.
+    // Each flag is true when the list can lack items: GitHub has more items than the query reads,
+    // or Bifrost can't read the list (its nodes or its page info). The threads flag also covers
+    // the comments of each thread, and the reviews flag covers the decisions. The checks flag is
+    // HeadChecks.cut, so it also covers a rollup or a check node that Bifrost can't read.
     package var truncatedThreads: Bool
     package var truncatedReviews: Bool
     package var truncatedComments: Bool

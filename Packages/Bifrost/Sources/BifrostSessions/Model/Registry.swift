@@ -22,6 +22,8 @@ struct Session {
     var lastEventSeq: Int?
     // The sample time of the last status change, nil when none came.
     var statusChangedAt: Int?
+    // The sample time of the last busy sample of the session list, nil when none came.
+    var lastBusyAt: Int?
     // The time of the last park. nil when the session never parked.
     var parkedAt: Int?
     var machine = MachineState.initial
@@ -252,6 +254,7 @@ package struct SessionRegistry: Sendable {
             // The status before this sample. A new session has none.
             let prevStatus = known?.status
             if let known, known.status != entry.status { s.statusChangedAt = sampledAt }
+            if entry.status == .busy { s.lastBusyAt = sampledAt }
             // Without the mod, only the session list can clear the parked state. A sample that
             // started before the park is too old to clear it.
             let restarted = entry.pid != nil && s.parkedAt.map { sampledAt > $0 } ?? true
@@ -1231,7 +1234,8 @@ package struct SessionRegistry: Sendable {
             // A usage line is not activity (D8).
             lastActivity: [s.startedAt, s.lastEventAt, s.statusChangedAt].compactMap(\.self).max()
                 ?? s.startedAt,
-            startedAt: s.startedAt, usage: usage, live: liveOf(s.sessionId),
+            lastBusyAt: s.lastBusyAt, startedAt: s.startedAt, usage: usage,
+            live: liveOf(s.sessionId),
             branch: branches[branchDir(s)],
             worktree: record.worktree, priority: record.priority, watch: watch,
             prSession: record.prSession)

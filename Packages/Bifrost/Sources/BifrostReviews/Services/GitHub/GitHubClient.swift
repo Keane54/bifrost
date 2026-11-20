@@ -1,6 +1,6 @@
 // The reads and the writes of Reviews on GitHub (docs/behaviour/reviews.md, "The GitHub data").
-// The client has no state. Each call goes through the GitHubAccess of the app: gh in the app and
-// FakeGitHub in the tests.
+// The client keeps only the faults that it logged, of the poll and of the head read. Each call
+// goes through the GitHubAccess of the app: gh in the app and FakeGitHub in the tests.
 import BifrostFoundation
 import Foundation
 import OSLog
@@ -8,6 +8,9 @@ import OSLog
 @MainActor package final class GitHubClient {
     private static let logger = Logger(bifrost: "reviews")
     private let access: any GitHubAccess
+    // The faults that the log has. The app makes one client for its run, so each fault goes to
+    // the log one time in each run, not at each poll.
+    private(set) var loggedFaults: Set<WireFault> = []
 
     package init(access: any GitHubAccess) {
         self.access = access
@@ -25,7 +28,28 @@ import OSLog
             Self.logger.error(
                 "A poll dropped \(answer.dropped, privacy: .public) PRs that are not valid.")
         }
+        logFaults(answer.faults, read: PollQuery.name)
         return answer
+    }
+
+    // Logs the fields that a read could not read, each fault one time for this client. The read
+    // is the name of a query, and each fault is the path of a field of the query: all are fixed
+    // words, so the log shows them.
+    func logFaults(_ faults: [WireFault], read: String) {
+        let new = newFaults(faults)
+        guard !new.isEmpty else { return }
+        let names = new.map(\.rawValue).joined(separator: ", ")
+        Self.logger.error(
+            """
+            The read \(read, privacy: .public) got fields that GitHub left out or gave in another \
+            form: \(names, privacy: .public)
+            """)
+    }
+
+    // The faults that are not in the log yet, in their order. The client then counts them as
+    // logged.
+    func newFaults(_ faults: [WireFault]) -> [WireFault] {
+        faults.filter { loggedFaults.insert($0).inserted }
     }
 
     // One read: the query goes through the check of the access, which refuses a mutation.

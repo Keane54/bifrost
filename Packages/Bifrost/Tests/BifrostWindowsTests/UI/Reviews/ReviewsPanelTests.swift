@@ -246,7 +246,10 @@ struct ReviewsPanelTests {
         #expect(!model.isHot(.toReview) && !model.isHot(.mine))
         p.feed.snapshot.toReview.append(try toReview("owner-a/repo-a#2", .newRequest))
         #expect(model.isHot(.toReview) && !model.isHot(.mine))
-        p.feed.snapshot.mine.append(try mine("owner-a/repo-c#5", .needsYou(2)))
+        p.feed.snapshot.mine.append(
+            try mine("owner-a/repo-c#5", .needsYou(comments: 2, ci: false)))
+        #expect(model.isHot(.mine))
+        p.feed.snapshot.mine = [try mine("owner-a/repo-c#6", .waitsForYou("Your change."))]
         #expect(model.isHot(.mine))
     }
 
@@ -403,7 +406,7 @@ struct ReviewsPanelTests {
         var waitingRow = try mine(waiting.text, .waiting)
         waitingRow.waiting = 2
         waitingRow.laterCopilot = 1
-        var asksRow = try mine(asks.text, .needsYou(1))
+        var asksRow = try mine(asks.text, .needsYou(comments: 1, ci: false))
         asksRow.questions = 1
         var forkRow = try mine(fork.text, .fork)
         forkRow.waiting = 3
@@ -442,6 +445,202 @@ struct ReviewsPanelTests {
                 .stopSession(fixing),
             ])
         #expect(answers.values == [asks])
+    }
+
+    // Resolve now shows on a row whose PR has conflicts that a round can resolve, after Handle
+    // Copilot comments, and its choice runs the command.
+    @Test func resolveNowShowsOnAConflictingRowAndRunsTheCommand() async throws {
+        let p = Parts()
+        let conflicts = try key("owner-a/repo-a#1")
+        let plain = try key("owner-a/repo-a#2")
+        var conflictsRow = try mine(conflicts.text, .conflicts("Claude couldn't resolve them."))
+        conflictsRow.waiting = 1
+        conflictsRow.laterCopilot = 1
+        conflictsRow.resolvable = true
+        p.feed.snapshot.mine = [conflictsRow, try mine(plain.text, .waiting)]
+        let model = try p.model()
+        #expect(
+            model.menuItems(conflicts) == [
+                .openOnGitHub, .handleNow, .handleCopilot, .resolveNow,
+            ])
+        #expect(model.menuItems(plain) == [.openOnGitHub])
+        #expect(ReviewsMenuItem.resolveNow.label == "Resolve now")
+        model.choose(.resolveNow, for: conflicts)
+        // The item does not apply to a row that is not resolvable.
+        model.choose(.resolveNow, for: plain)
+        #expect(p.feed.commands == [.resolveNow(conflicts)])
+    }
+
+    // A fork row, a row with a round that runs and a row with a round that waits do not offer
+    // Resolve now (their rows are not resolvable).
+    @Test func resolveNowIsNotOfferedOnAForkOrWhileARoundRunsOrWaits() async throws {
+        let p = Parts()
+        let fork = try key("owner-a/repo-a#1")
+        let running = try key("owner-a/repo-a#2")
+        let waiting = try key("owner-a/repo-a#3")
+        var forkRow = try mine(fork.text, .fork)
+        forkRow.resolvable = true
+        let runningRow = try mine(running.text, .resolvingConflicts)
+        let waitingRow = try mine(waiting.text, .queued)
+        p.feed.snapshot.mine = [forkRow, runningRow, waitingRow]
+        let model = try p.model()
+        #expect(model.menuItems(fork) == [.openOnGitHub])
+        #expect(model.menuItems(running) == [.openOnGitHub])
+        #expect(model.menuItems(waiting) == [.openOnGitHub, .cancel])
+        model.choose(.resolveNow, for: fork)
+        model.choose(.resolveNow, for: running)
+        model.choose(.resolveNow, for: waiting)
+        #expect(p.feed.commands.isEmpty)
+    }
+
+    // A conflict round and a CI round that run offer Stop session, as a request round does, but
+    // only while the PR has a session, and no Handle now. A PR with conflicts and a re-run that
+    // waits for its result act as a waiting row: Handle now and Handle Copilot comments show for
+    // their items.
+    @Test func theRunningKindsOfferStopSession() async throws {
+        let p = Parts()
+        let resolving = try key("owner-a/repo-a#1")
+        let fixing = try key("owner-a/repo-a#2")
+        let noSession = try key("owner-a/repo-a#3")
+        let conflicts = try key("owner-a/repo-a#4")
+        let retrying = try key("owner-a/repo-a#5")
+        var resolvingRow = try mine(resolving.text, .resolvingConflicts)
+        resolvingRow.waiting = 1
+        var fixingRow = try mine(fixing.text, .fixingCI)
+        fixingRow.laterCopilot = 1
+        var conflictsRow = try mine(conflicts.text, .conflicts("Claude couldn't resolve them."))
+        conflictsRow.waiting = 2
+        conflictsRow.laterCopilot = 1
+        var retryingRow = try mine(retrying.text, .retryingCI)
+        retryingRow.waiting = 1
+        p.feed.snapshot.mine = [
+            resolvingRow, fixingRow, try mine(noSession.text, .fixingCI), conflictsRow,
+            retryingRow,
+        ]
+        p.feed.sessions[resolving] = SessionRow.test(
+            sessionId: "bifrost-test-pr-1", state: .working)
+        p.feed.sessions[fixing] = SessionRow.test(sessionId: "bifrost-test-pr-2", state: .working)
+        let model = try p.model()
+        #expect(model.menuItems(resolving) == [.openOnGitHub, .openSession, .stopSession])
+        #expect(model.menuItems(fixing) == [.openOnGitHub, .openSession, .stopSession])
+        #expect(model.menuItems(noSession) == [.openOnGitHub])
+        #expect(model.menuItems(conflicts) == [.openOnGitHub, .handleNow, .handleCopilot])
+        #expect(model.menuItems(retrying) == [.openOnGitHub, .handleNow])
+        model.choose(.stopSession, for: resolving)
+        model.choose(.stopSession, for: fixing)
+        model.choose(.handleNow, for: conflicts)
+        model.choose(.handleCopilot, for: conflicts)
+        model.choose(.handleNow, for: retrying)
+        // These items do not apply to these rows.
+        model.choose(.stopSession, for: noSession)
+        model.choose(.handleNow, for: resolving)
+        model.choose(.handleCopilot, for: fixing)
+        #expect(
+            p.feed.commands == [
+                .stopSession(resolving), .stopSession(fixing), .handleNow(conflicts),
+                .handleCopilot(conflicts), .handleNow(retrying),
+            ])
+    }
+
+    // A row whose work waits for the user (an own request that did not go, or changes that no
+    // round made) has Handle now also with no item that waits, so a click clears the reason, and
+    // Try again only while the writes of its own request wait. Don't send the rest drops those
+    // writes. Discard these changes shows only for files that Bifrost found in its copy: not on a
+    // row that waits with no files, and not on a row with a question.
+    @Test func aRowThatWaitsForTheUserGetsHandleNowAndTryAgainForItsWrites() async throws {
+        let p = Parts()
+        let held = try key("owner-a/repo-a#1")
+        let writes = try key("owner-a/repo-a#2")
+        let noFiles = try key("owner-a/repo-a#3")
+        let asks = try key("owner-a/repo-a#4")
+        var heldRow = try mine(held.text, .waitsForYou("Bifrost's copy has changes."))
+        heldRow.waiting = 1
+        heldRow.unsavedFiles = 2
+        var writesRow = try mine(writes.text, .waitsForYou("Choose Try again to push it."))
+        writesRow.unsentUpdates = true
+        writesRow.unsavedFiles = 1
+        let noFilesRow = try mine(noFiles.text, .waitsForYou("Ask Claude to try again."))
+        var asksRow = try mine(asks.text, .needsYou(comments: 1, ci: false))
+        asksRow.questions = 1
+        asksRow.unsavedFiles = 1
+        p.feed.snapshot.mine = [heldRow, writesRow, noFilesRow, asksRow]
+        let model = try p.model()
+        #expect(model.menuItems(held) == [.openOnGitHub, .handleNow, .discardChanges])
+        #expect(model.menuItems(writes) == [.openOnGitHub, .handleNow, .tryAgain, .dropUpdates])
+        #expect(model.menuItems(noFiles) == [.openOnGitHub, .handleNow])
+        #expect(model.menuItems(asks) == [.openOnGitHub, .answerClaude])
+        model.choose(.handleNow, for: held)
+        model.choose(.tryAgain, for: writes)
+        model.choose(.tryAgain, for: held)
+        #expect(p.feed.commands == [.handleNow(held), .tryAgain(writes)])
+    }
+
+    // Discard these changes asks first in Bifrost's own dialog, which names the files. Cancel
+    // changes nothing. Discard discards with a click. When the copy has no change now, or the
+    // discard can't run, or it fails, the error line says why, and nothing is asked.
+    @Test func discardTheseChangesAsksFirst() async throws {
+        let p = Parts()
+        let pr = try key("owner-a/repo-a#1")
+        var row = try mine(pr.text, .waitsForYou("Bifrost's copy has changes."))
+        row.unsavedFiles = 3
+        p.feed.snapshot.mine = [row]
+        let checks = Recorder<DiscardOutcome>()
+        checks.record(.files(["notes.txt", "src/a.swift", "src/b.swift"]))
+        let asked = Recorder<ConfirmText>()
+        let answers = Recorder<Bool>()
+        let discarded = Recorder<PRKey>()
+        let results = Recorder<DiscardOutcome>()
+        p.panels.links.changesToDiscard = { _ in checks.values.last ?? .notNow }
+        p.panels.links.confirm = { text in
+            asked.record(text)
+            return answers.values.last ?? false
+        }
+        p.panels.links.discard = { pr, _ in
+            discarded.record(pr)
+            return results.values.last ?? .discarded
+        }
+        let model = try p.model()
+        #expect(model.menuItems(pr)?.contains(.discardChanges) == true)
+        answers.record(false)
+        model.choose(.discardChanges, for: pr)
+        await model.discarding?.value
+        let text = ConfirmText(
+            title: "Discard the changes in 3 files?",
+            body: "They aren't on GitHub, and you can't get them back: notes.txt, src/a.swift and "
+                + "src/b.swift. Files that git ignores in Bifrost's copy go too.",
+            confirm: "Discard")
+        #expect(asked.values == [text])
+        #expect(discarded.values.isEmpty && model.error == nil)
+        answers.record(true)
+        model.choose(.discardChanges, for: pr)
+        await model.discarding?.value
+        #expect(discarded.values == [pr] && model.error == nil)
+        results.record(.failed)
+        model.choose(.discardChanges, for: pr)
+        await model.discarding?.value
+        #expect(model.error == DiscardOutcome.failed.message)
+        // The changes went before the click, or the discard can't run now: no dialog, and the
+        // error line says why.
+        for outcome in [DiscardOutcome.nothing, .notNow] {
+            checks.record(outcome)
+            model.choose(.discardChanges, for: pr)
+            await model.discarding?.value
+            #expect(model.error == outcome.message)
+        }
+        #expect(asked.values.count == 3 && discarded.values.count == 2)
+        // One file, and more files than the dialog names.
+        #expect(
+            ReviewsPanelModel.discardConfirm(["a.txt"])
+                == ConfirmText(
+                    title: "Discard the changes in 1 file?",
+                    body: "They aren't on GitHub, and you can't get them back: a.txt. Files that "
+                        + "git ignores in Bifrost's copy go too.",
+                    confirm: "Discard"))
+        let seven = (1...7).map { "f\($0).txt" }
+        #expect(
+            ReviewsPanelModel.discardConfirm(seven).body
+                == "They aren't on GitHub, and you can't get them back: f1.txt, f2.txt, f3.txt, "
+                + "f4.txt, f5.txt and 2 more. Files that git ignores in Bifrost's copy go too.")
     }
 
     // Approve shows as a button, and in the menu while CI doesn't run; while CI runs the button
@@ -544,7 +743,7 @@ struct ReviewsPanelTests {
                 "Open on GitHub", "Open session", "Approve", "Comment", "Request changes",
                 "Review", "Try again", "Remove", "Cancel review", "Stop session", "Pause",
                 "End pause now", "Answer Claude", "Handle now", "Handle Copilot comments",
-                "Cancel", "Don't send the rest",
+                "Resolve now", "Cancel", "Don't send the rest", "Discard these changes",
             ])
         model.choose(.pause, for: new)
         model.choose(.endPause, for: paused)

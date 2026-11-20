@@ -446,6 +446,10 @@ public struct SessionRow: Sendable, Equatable {
     package var alert: SessionAlert
     package var lastMessage: String?
     package var lastActivity: Int
+    // The sample time of the last sample of the session list that showed the session busy, or
+    // nil when no sample did. Only a busy sample moves it: not a hook event, a park, the start or
+    // another status.
+    package var lastBusyAt: Int?
     package var startedAt: Int
     // The last usage line of the mod for the session, when the row gets its live lines.
     package var usage: LiveUsage?
@@ -467,7 +471,8 @@ public struct SessionRow: Sendable, Equatable {
         pid: pid_t? = nil, cwd: String, status: AgentStatus, listing: ActiveListing = .notListed,
         waitingFor: String? = nil,
         state: SessionState, alert: SessionAlert = .none, lastMessage: String? = nil,
-        lastActivity: Int, startedAt: Int, usage: LiveUsage? = nil, live: Bool = false,
+        lastActivity: Int, lastBusyAt: Int? = nil, startedAt: Int,
+        usage: LiveUsage? = nil, live: Bool = false,
         branch: String? = nil,
         worktree: String? = nil, priority: SessionPriority? = nil, watch: RowWatch? = nil,
         resumable: Bool = false, prSession: Bool = false, terminalApp: String? = nil
@@ -488,6 +493,7 @@ public struct SessionRow: Sendable, Equatable {
         self.alert = alert
         self.lastMessage = lastMessage
         self.lastActivity = lastActivity
+        self.lastBusyAt = lastBusyAt
         self.startedAt = startedAt
         self.usage = usage
         self.live = live

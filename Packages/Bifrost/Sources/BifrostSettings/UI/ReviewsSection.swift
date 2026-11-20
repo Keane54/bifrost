@@ -3,12 +3,14 @@
 // that order. Each change saves through the model (SettingsModel.save), so a refusal shows on its
 // row.
 //
-// Each turn-on of Watch GitHub and of "Handle comments on my PRs automatically" asks first with
-// the confirm dialog of the window (SettingsLinks.confirm). A Cancel saves nothing, and with no
-// confirm dialog the box cannot turn on. A turn-off saves at once. After a confirmed turn-on of
-// "Handle comments on my PRs automatically" saves, the section tells the Reviews services
-// (ReviewsLinks.confirmAutoFix), which record the consent of the user. Only this call records the
-// consent: another write of the setting (a settings file, an import) gives none.
+// Each turn-on of Watch GitHub and of the three settings of the automatic work on the PRs of the
+// user ("Handle comments on my PRs automatically", "Resolve merge conflicts automatically" and
+// "Fix failing CI automatically") asks first with the confirm dialog of the window
+// (SettingsLinks.confirm). A Cancel saves nothing, and with no confirm dialog the box cannot turn
+// on. A turn-off saves at once. After a confirmed turn-on of one of the three settings saves, the
+// section tells the Reviews services through the link of that setting (ReviewsLinks), and they
+// record the consent of the user for that work. Only this call records a consent: another write
+// of the setting (a settings file, an import) gives none.
 //
 // The ignore list works like the list of slash commands: a field with Add, and the entries under
 // it, each with a Remove button. The field holds a draft: Enter and Add save it at once, and Save
@@ -29,15 +31,25 @@ package struct ReviewsLinks {
     // The user turned on "Handle comments on my PRs automatically" with its confirm, and the
     // setting saved. The Reviews services record the consent of the automatic request rounds.
     package var confirmAutoFix: @MainActor () -> Void
+    // The user turned on "Resolve merge conflicts automatically" with its confirm, and the
+    // setting saved. The Reviews services record the consent of the conflict rounds.
+    package var confirmResolveConflicts: @MainActor () -> Void
+    // The user turned on "Fix failing CI automatically" with its confirm, and the setting saved.
+    // The Reviews services record the consent of the CI rounds.
+    package var confirmFixCI: @MainActor () -> Void
     // The user confirmed Remove all clones. The Reviews services delete the clones. The result
     // is the friendly text of a failure, or nil when the clones went.
     package var removeClones: @MainActor () async -> String?
 
     package init(
         confirmAutoFix: @escaping @MainActor () -> Void = {},
+        confirmResolveConflicts: @escaping @MainActor () -> Void = {},
+        confirmFixCI: @escaping @MainActor () -> Void = {},
         removeClones: @escaping @MainActor () async -> String? = { nil }
     ) {
         self.confirmAutoFix = confirmAutoFix
+        self.confirmResolveConflicts = confirmResolveConflicts
+        self.confirmFixCI = confirmFixCI
         self.removeClones = removeClones
     }
 }
@@ -51,12 +63,14 @@ package struct ReviewsSection: View {
 
     // A setting whose each turn-on asks first.
     package enum Confirmed: Sendable, CaseIterable {
-        case watch, autoFix
+        case watch, autoFix, resolveConflicts, fixCI
 
         package var row: ReviewsSettingsRow {
             switch self {
             case .watch: .watch
             case .autoFix: .autoFix
+            case .resolveConflicts: .resolveConflicts
+            case .fixCI: .fixCI
             }
         }
 
@@ -64,6 +78,8 @@ package struct ReviewsSection: View {
             switch self {
             case .watch: \.reviewsWatch
             case .autoFix: \.reviewsAutoFix
+            case .resolveConflicts: \.reviewsResolveConflicts
+            case .fixCI: \.reviewsFixCI
             }
         }
 
@@ -71,6 +87,20 @@ package struct ReviewsSection: View {
             switch self {
             case .watch: ReviewsSection.watchConfirm
             case .autoFix: ReviewsSection.autoFixConfirm
+            case .resolveConflicts: ReviewsSection.resolveConflictsConfirm
+            case .fixCI: ReviewsSection.fixCIConfirm
+            }
+        }
+
+        // The link that records the consent after a confirmed turn-on, or nil for a setting
+        // whose turn-on gives no consent.
+        @MainActor
+        func consent(_ links: ReviewsLinks) -> (@MainActor () -> Void)? {
+            switch self {
+            case .watch: nil
+            case .autoFix: links.confirmAutoFix
+            case .resolveConflicts: links.confirmResolveConflicts
+            case .fixCI: links.confirmFixCI
             }
         }
     }
@@ -96,6 +126,24 @@ package struct ReviewsSection: View {
             + "before now wait until you choose Handle now.",
         confirm: "Turn on")
 
+    nonisolated package static let resolveConflictsConfirm = ConfirmText(
+        title: "Resolve merge conflicts automatically?",
+        body: "When GitHub says one of your pull requests has conflicts, Bifrost merges the base "
+            + "branch into your branch in its own copy of the repository, and Claude resolves "
+            + "the conflicts. Bifrost checks Claude's work, then commits the merge and pushes it "
+            + "to your branch. It never rebases or force-pushes, and it tries once for each new "
+            + "conflict. This includes pull requests that have conflicts now.",
+        confirm: "Turn on")
+
+    nonisolated package static let fixCIConfirm = ConfirmText(
+        title: "Fix failing CI automatically?",
+        body: "When GitHub Actions fails on one of your pull requests, Claude reads the failed "
+            + "logs and your code. Bifrost then pushes Claude's fix to your branch, or re-runs "
+            + "the failed jobs if Claude thinks they were flaky, and asks you when Claude isn't "
+            + "sure. Each commit you push gets at most two fixes and one re-run. This includes "
+            + "pull requests that are failing now.",
+        confirm: "Turn on")
+
     nonisolated package static let removeClonesConfirm = ConfirmText(
         title: "Remove all clones?",
         body: "Bifrost will delete its copies of your repositories, the review sessions that use "
@@ -112,6 +160,14 @@ package struct ReviewsSection: View {
     nonisolated package static let autoFixHint =
         "Claude fixes or answers new review comments on your pull requests. Bifrost then pushes "
         + "the fixes and posts the replies."
+
+    nonisolated package static let resolveConflictsHint =
+        "When one of your pull requests has conflicts, Claude resolves them and Bifrost pushes a "
+        + "merge of the base branch."
+
+    nonisolated package static let fixCIHint =
+        "When GitHub Actions fails on one of your pull requests, Claude fixes the code or Bifrost "
+        + "re-runs the failed jobs."
 
     nonisolated package static let signedCommitsHint =
         "Bifrost sends each fix to GitHub with your gh login, and GitHub signs the commit, so it "
@@ -140,9 +196,9 @@ package struct ReviewsSection: View {
 
     // Change a setting whose turn-on asks first. A turn-on saves only after the user confirms. A
     // Cancel, or no confirm dialog, saves nothing. A turn-off, and a value that does not change,
-    // save at once. After a confirmed turn-on of "Handle comments on my PRs automatically" saves,
-    // the Reviews services get the consent (ReviewsLinks.confirmAutoFix). The result is true when
-    // the change saved.
+    // save at once. After a confirmed turn-on of a setting with a consent saves, the Reviews
+    // services get the consent through the link of that setting (Confirmed.consent). The result
+    // is true when the change saved.
     @discardableResult
     package func change(_ setting: Confirmed, to on: Bool) async -> Bool {
         let turnOn = on && !model.store.settings[keyPath: setting.setting]
@@ -153,7 +209,7 @@ package struct ReviewsSection: View {
         }
         let path = setting.setting
         let saved = await model.save(setting.row.row) { $0[keyPath: path] = on }.value
-        if saved && turnOn && setting == .autoFix { model.links.reviews.confirmAutoFix() }
+        if saved && turnOn, let consent = setting.consent(model.links.reviews) { consent() }
         return saved
     }
 
@@ -211,6 +267,9 @@ package struct ReviewsSection: View {
         VStack(alignment: .leading, spacing: 0) {
             confirmedRow(.watch, hint: nil, style)
             confirmedRow(.autoFix, hint: Self.autoFixHint, style)
+            confirmedRow(.resolveConflicts, hint: Self.resolveConflictsHint, style)
+            // The Fix CI row stays hidden until the CI watcher exists. Its setting, key and
+            // consent stay.
             checkRow(.signedCommits, hint: Self.signedCommitsHint, \.reviewsSignedCommits)
             checkRow(.teamRequests, hint: nil, \.reviewsTeamRequests)
             NumberRow(

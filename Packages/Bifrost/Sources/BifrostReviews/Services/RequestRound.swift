@@ -15,17 +15,31 @@
 //    this time. No item ends the round and spends the click. A cut read with items fails and
 //    holds them all, because the cut part can hide a reply of an earlier round. The read time and
 //    the first Copilot review are saved.
-// 4. The fetch of the head, then the earlier request session of the PR goes, so it can never
-//    write into the folders of this round. Then the worktree at the head and the input folder:
-//    input.json (with a new token of the round), full.diff (when it is not too large), mode.md
-//    and humanise-rules.md.
-// 5. The session with the sandbox (RequestSandbox) in the worktree, with --restricted, so no
-//    settings file of the user or of the PR head changes its rules. The start spends the click
-//    and takes the items out of held.
-// 6. The wait for the end of the turn, at most requestLimit. A prompt (for example the approval
-//    of a write to a settings, git or tool configuration file under --restricted) stops the
-//    session at once, and its result counts only when it is good.
-// 7. The strict check of result.json (RequestResult) against the changes of the worktree, and the
+// 4. The fetch of the head.
+// 5. The turn in the one request session of the PR (PRSessions.beginTurn,
+//    docs/behaviour/reviews.md, "PR sessions"). The turn first waits until no person can use the
+//    session (prepare). An own request file of the user then goes first (OwnRequests): the round
+//    stops with ownRequestFirst, and its job starts it again after the own request. Changes in
+//    the worktree that no round made (RepoStore.unknownChanges) stay, and the round fails with
+//    changesNotOnGitHub (Needs you). Only then does the round change the folders of the session:
+//    the worktree of the last round at the new head (placeWorktree), the round folder with no
+//    file of the last round (roundFolder), and the files of the round, each with the round ID of
+//    a new token in its name (RoundFiles): the input file, the full diff (when it is not too
+//    large),
+//    the mode file and the rules. The first round starts the session with the sandbox
+//    (RequestSandbox) in the worktree, with --restricted, so no settings file of the user or of
+//    the PR head changes its rules. A later round types its prompt into the live session, or
+//    resumes the stopped session. The session stays after the round. The start of the turn
+//    spends the click and takes the items out of held.
+// 6. The wait for the end of the turn on the result file of this round, at most requestLimit. A
+//    late result of an earlier round has another name, so it never ends this turn. A prompt (for
+//    example the approval of a write to a settings, git or tool configuration file under
+//    --restricted) stops the session at once, and its result counts only when it is good. At the
+//    end of the turn, the changes of the worktree count as changes of the round
+//    (RepoStore.markLeftovers). An own request file shows that a request of the user ran in the
+//    turn (a message that the user typed while the round ran): then no change counts as a change
+//    of the round, so no reset removes it, and the file goes as an own request after the round.
+// 7. The strict check of the result (RequestResult) against the changes of the worktree, and the
 //    check that each "by" commit is a commit of the PR. Then a fresh read: a closed PR posts
 //    nothing.
 // 8. The outcome: each Needs you item gets its question with the place of the item, each No action
@@ -34,9 +48,12 @@
 //    writes nothing. The worktree keeps the fix for the commit.
 // 9. The writes (RoundWrites): the fix commit, the push, the replies, the resolves and the new
 //    review requests. Then the round ends.
-// A failure from step 3 on holds the items of the round (chosen), and each failure after the
-// session resets the worktree. Writes that stop end the round with the items where the outbox
-// rules put them. A round whose session ran when Bifrost started goes on at step 6 (resume).
+// A failure from step 3 on holds the items of the round (chosen). A failure before the turn
+// starts does not reset the worktree. After the turn, a reset runs only while no person uses the
+// session and the worktree has no change that no round made (resetAfterTurn,
+// RepoStore.resetIfKnown); the next round checks the worktree again. Writes that stop end the
+// round with the items where the outbox rules put them. A round whose session ran when Bifrost
+// started goes on at step 6 (resume).
 import BifrostFoundation
 import BifrostSessions
 import Foundation
@@ -51,6 +68,9 @@ final class RequestRound {
         case waitForTrust(refused: Bool)
         // The task of the round was cancelled.
         case halted
+        // An own request file of the user waits. The round changed nothing: the own request goes
+        // first, then the job starts the round again.
+        case ownRequestFirst
         // The writes of an outbox stopped. The outbox rules put the items (handled, held, or in
         // the outbox that stays for Try again).
         case wrote(RoundFailure)
@@ -74,6 +94,7 @@ final class RequestRound {
         let setup: RepoSetup
         let sessions: PRSessions
         let writes: RoundWrites
+        let own: OwnRequests
         let skills: URL
         // The home of the user in the user database, which holds the secret paths of the sandbox.
         let userHome: URL
@@ -87,6 +108,9 @@ final class RequestRound {
     let pr: PRKey
     // The items of the round, oldest first, once it chose them. A failure from then on holds them.
     private(set) var chosen: [NodeID] = []
+    // The changes that the safety net found and that stopped the round, sorted. The reason of the
+    // row keeps them for Discard these changes.
+    private(set) var unsavedFiles: [String] = []
 
     private let parts: Parts
     private let trigger: RoundTrigger
@@ -180,19 +204,17 @@ final class RequestRound {
             try await repos.fetchPR(pr, base: base)
         }
         try checkHalt()
-        // Each round starts a new session. The earlier one goes before the folders of this round
-        // are made, so it never writes into them.
-        await sessions.remove(pr, .request)
-        try checkHalt()
-        let worktree = try await git { () async throws(RepoError) in
-            try await repos.prepareWorktree(pr, head: fetched.head)
-        }
         let token = UUID().uuidString.lowercased()
-        let input = try await writeInput(
-            full: full, items: items, fetched: fetched, viewer: viewer, token: token)
-        try checkHalt()
-        let row = try await startSession(input: input, worktree: worktree)
-        let startedAt = sessions.time
+        // The preparation writes the input of the round. Each way to start a turn prepares it.
+        var written: RequestInput?
+        let begun = try await beginTurn { () async throws(RoundFailure) -> MineTurn in
+            let prepared = try await prepare(
+                full: full, items: items, fetched: fetched, viewer: viewer, token: token)
+            written = prepared.input
+            return prepared.turn
+        }
+        guard let input = written else { throw .failed(.startFailed) }
+        let row = begun.row
         let (time, taken) = (parts.now(), Set(chosen))
         let seen = Dictionary(
             items.map { ($0.id, full.newestTime(of: $0.id) ?? $0.since) }) { first, _ in first }
@@ -206,17 +228,19 @@ final class RequestRound {
             round.sessionID = SessionID(row.sessionId)
             round.token = token
             round.items = seen
-            // The time limit counts from the start of the session.
+            // The time limit counts from the start of the turn.
             round.startedAt = time
             prState.round = round
-            // Only a session that started spends the click and takes its items out of held.
+            // Only a turn that started spends the click and takes its items out of held.
             prState.handleOlder = false
             prState.handleCopilot = false
             prState.held.removeAll { taken.contains($0) }
             state.prs[pr] = prState
         }
         changed()
-        return try await finish(input: input, session: row.sessionId, startedAt: startedAt)
+        return try await finish(
+            input: input, session: row.sessionId, startedAt: begun.startedAt,
+            begun: row)
     }
 
     // A round whose session ran when Bifrost started: wait for its end, then check its result
@@ -230,25 +254,81 @@ final class RequestRound {
         guard let head = round.headSHA, let mergeBase = round.baseSHA, let token = round.token,
             let id = round.sessionID?.text, viewer() != nil
         else { throw .failed(.noResult) }
-        let folder = repos.layout.inputFolder(pr.repo, number: pr.number)
+        let files = RoundFiles(
+            folder: repos.layout.inputFolder(pr.repo, number: pr.number), token: token)
         let input = RequestInput(
             resumed: pr, round: token, headSHA: head, mergeBase: mergeBase,
-            itemIDs: chosen, files: RequestInput.Files(folder: folder, fullDiff: false))
+            itemIDs: chosen, files: RequestInput.Files(files, fullDiff: false))
         let elapsed = Duration.seconds(max(parts.now().timeIntervalSince(round.startedAt), 0))
-        return try await finish(input: input, session: id, startedAt: sessions.time - elapsed)
+        return try await finish(
+            input: input, session: id, startedAt: sessions.time - elapsed, begun: nil)
     }
 
-    // Step 5: the session with the sandbox.
-    private func startSession(input: RequestInput, worktree: URL) async throws(Stop) -> SessionRow {
-        if stopRequested() {
-            await repos.resetWorktree(pr)
-            throw .failed(.stopped)
+    // Step 5: the turn in the one session of the PR. When the turn does not start, the round does
+    // not reset the worktree: before the preparation the worktree holds only the work of a person
+    // (for example after sessionBusy, or an Interrupt at the send), and after it the next round
+    // checks it again after its wait. A prepared turn that waits again checks the worktree again
+    // before its next send (checkWorktree).
+    private func beginTurn(
+        _ prepare: () async throws(RoundFailure) -> MineTurn
+    ) async throws(Stop) -> BegunTurn {
+        if stopRequested() { throw .failed(.stopped) }
+        let worktree = repos.layout.worktree(pr.repo, number: pr.number)
+        let begun: BegunTurn
+        do throws(RoundFailure) {
+            begun = try await sessions.beginTurn(
+                pr, worktree: worktree, prepare: prepare,
+                recheck: { () async throws(RoundFailure) in try await checkWorktree() })
+        } catch .notTrusted {
+            throw .waitForTrust(refused: true)
+        } catch .ownRequestWaits {
+            throw .ownRequestFirst
+        } catch {
+            try checkHalt()
+            throw .failed(error)
         }
+        startedSession()
+        return begun
+    }
+
+    // Before the round changes the worktree: an own request of the user goes first, and changes
+    // that no round made stay (the safety net). In both cases the round changes nothing.
+    private func checkWorktree() async throws(RoundFailure) {
+        if await parts.own.waits(pr) { throw .ownRequestWaits }
+        guard let unknown = await repos.unknownChanges(pr) else { throw .prepareFailed }
+        guard unknown.isEmpty else {
+            unsavedFiles = unknown
+            Self.logger.notice(
+                """
+                The copy of \(self.pr.text, privacy: .private) has \
+                \(unknown.count, privacy: .public) changes that no round made, so the round does \
+                not start.
+                """)
+            throw .changesNotOnGitHub
+        }
+    }
+
+    // The preparation of the turn, which PRSessions runs only when no person can use the session
+    // of the PR: the worktree at the head, the files of the round and the sandbox. An own request
+    // of the user goes first, and changes that no round made stay (the safety net): in both
+    // cases the round changes nothing.
+    private func prepare(
+        full: FullPR, items: [WorkItem], fetched: FetchedPR, viewer: String, token: String
+    ) async throws(RoundFailure) -> (input: RequestInput, turn: MineTurn) {
+        let (pr, repos) = (pr, repos)
+        try await checkWorktree()
+        let worktree = try await repoStep { () async throws(RepoError) in
+            try await repos.placeWorktree(pr, head: fetched.head)
+        }
+        if Task.isCancelled { throw .stopped }
+        let input = try await writeInput(
+            full: full, items: items, fetched: fetched, viewer: viewer, token: token)
+        if Task.isCancelled { throw .stopped }
         // Claude Code compares real paths, so the rules name the real paths of the folders and
         // --add-dir gets the real path of the input folder. With no real path or no settings, a
         // rule can miss its path, so the session does not start.
         let (clonePath, treePath, folderPath, reviewsPath, homePath) = (
-            repos.layout.clone(pr.repo).plainPath, worktree.plainPath,
+            repos.layout.clone(pr.repo).plainPath, worktree.url.plainPath,
             input.files.result.deletingLastPathComponent().plainPath,
             repos.layout.folder.plainPath, parts.userHome.plainPath
         )
@@ -264,34 +344,18 @@ final class RequestRound {
                 SessionPaths(
                     clone: clone, worktree: tree, inputFolder: folder, reviews: reviews,
                     home: home))
-        else {
-            try checkHalt()
-            await repos.resetWorktree(pr)
-            throw .failed(.startFailed)
-        }
-        let args = PRSessionArgs.request(
-            name: sessions.name(pr, .request), model: model,
-            inputFolder: URL(filePath: folder, directoryHint: .isDirectory), skills: parts.skills,
-            settings: settings, prompt: PRSessionArgs.requestPrompt(input.files.input))
-        let row: SessionRow
-        do throws(RoundFailure) {
-            row = try await sessions.start(pr, .request, args: args, in: worktree)
-        } catch .notTrusted {
-            await repos.resetWorktree(pr)
-            throw .waitForTrust(refused: true)
-        } catch {
-            try checkHalt()
-            await repos.resetWorktree(pr)
-            throw .failed(error)
-        }
-        startedSession()
-        return row
+        else { throw .startFailed }
+        let turn = MineTurn(
+            pr: pr, model: model, inputFolder: URL(filePath: folder, directoryHint: .isDirectory),
+            skills: parts.skills, settings: settings,
+            prompt: PRSessionArgs.requestPrompt(input.files.input), worktree: worktree)
+        return (input, turn)
     }
 
     // Steps 6 to 8: the end of the turn, the checks of the result, a fresh read and the outcome.
-    private func finish(input: RequestInput, session: String, startedAt: Duration)
-        async throws(Stop) -> Ended
-    {
+    private func finish(
+        input: RequestInput, session: String, startedAt: Duration, begun: SessionRow?
+    ) async throws(Stop) -> Ended {
         // The bytes of the result that the last check of the turn end accepted. The round checks
         // these bytes and never reads the file again, so a session that writes the file after the
         // end changes nothing.
@@ -299,10 +363,19 @@ final class RequestRound {
         var blocked = false
         do throws(RoundFailure) {
             // The turn ends at once when the result passes the check of the round.
-            let end = try await sessions.waitForTurnEnd(
-                id: session, startedAt: startedAt, resultFile: input.files.result,
-                limit: ReviewRounds.requestLimit,
-                check: { (try? RequestResult.check($0, input: input).get()) != nil ? $0 : nil })
+            let end: TurnEnd<Data>
+            do throws(RoundFailure) {
+                end = try await sessions.waitForTurnEnd(
+                    id: session, startedAt: startedAt, resultFile: input.files.result,
+                    limit: ReviewRounds.requestLimit, begun: begun,
+                    check: { (try? RequestResult.check($0, input: input).get()) != nil ? $0 : nil })
+            } catch {
+                // A cancel (Stop session, a halt) ends the wait. The record of the turn runs in a
+                // task of its own, so git still runs, and the reset of the stop can use it.
+                await Task { await self.afterTurn() }.value
+                throw error
+            }
+            await afterTurn()
             switch end {
             case .ended(let bytes):
                 accepted = bytes
@@ -313,11 +386,11 @@ final class RequestRound {
             }
         } catch .timeout {
             await sessions.stop(id: session)
-            await repos.resetWorktree(pr)
+            await resetAfterTurn(session, stoppedIt: true)
             throw .failed(.timeout)
         } catch {
             try checkHalt()
-            await repos.resetWorktree(pr)
+            await resetAfterTurn(session, stoppedIt: false)
             throw .failed(.stopped)
         }
         try checkHalt()
@@ -329,27 +402,64 @@ final class RequestRound {
             outcome = try await result(accepted, input: input, blocked: blocked)
         } catch {
             try checkHalt()
-            await repos.resetWorktree(pr)
+            await resetAfterTurn(session, stoppedIt: blocked)
             throw .failed(error)
         }
         let full: FullPR
         do throws(Stop) {
             full = try await read()
         } catch {
-            await repos.resetWorktree(pr)
+            await resetAfterTurn(session, stoppedIt: blocked)
             throw error
         }
         guard full.state == .open else {
-            await repos.resetWorktree(pr)
+            await resetAfterTurn(session, stoppedIt: blocked)
             await end(full, spent: false)
             return .closed
         }
         // With no fix to commit, the files of the session go now.
-        if outcome.commit == nil { await repos.resetWorktree(pr) }
+        if outcome.commit == nil { await resetAfterTurn(session, stoppedIt: blocked) }
         let (added, outbox) = try await accept(outcome, full: full)
         try await send(outbox)
         await succeed()
         return .accepted(outcome, added: added)
+    }
+
+    // At the end of the turn: each change of the worktree is a change of the round, so a reset
+    // can remove it (RepoStore.markLeftovers). An own request file shows that a request of the
+    // user ran in the turn, for example a message that the user typed while the round ran. Then
+    // no change counts as a change of the round: no reset removes the changes of the user, the
+    // file stays, and it goes as an own request after the round (its head check refuses it when
+    // the fix commit of the round moved the head, and the changes then stay with Needs you).
+    private func afterTurn() async {
+        guard await parts.own.waits(pr) else {
+            await repos.markLeftovers(pr)
+            return
+        }
+        parts.own.cameFromRound(pr)
+        Self.logger.notice(
+            """
+            A request of the user ran in the turn of a round of \
+            \(self.pr.text, privacy: .private), so Bifrost keeps the worktree.
+            """)
+    }
+
+    // Reset the worktree after the turn, so the files of the session go. A person can use the
+    // session after its turn: while its row works or shows a box, the reset does not run. The
+    // reset also does not run while the worktree has a change that no round made
+    // (RepoStore.resetIfKnown); the next round then stops with Needs you. stoppedIt: the round
+    // stopped the session (a time limit or a prompt), so no person uses it, also while a list
+    // still shows its row.
+    private func resetAfterTurn(_ session: String, stoppedIt: Bool) async {
+        if !stoppedIt, sessions.inUse(id: session) {
+            Self.logger.notice(
+                """
+                A person uses the session of \(self.pr.text, privacy: .private), so Bifrost \
+                keeps its worktree as it is.
+                """)
+            return
+        }
+        await repos.resetIfKnown(pr)
     }
 
     // Step 7: the strict check of the bytes that ended the turn, against the changes of the
@@ -361,7 +471,8 @@ final class RequestRound {
         guard let data = accepted else {
             if blocked { throw .blocked }
             let limit = RequestResult.maxBytes
-            throw await repos.readResult(pr, limit: limit).failure(limit: limit) { data in
+            let read = await repos.readResult(at: input.files.result, limit: limit)
+            throw read.failure(limit: limit) { data in
                 if case .failure(let refusal) = RequestResult.check(data, input: input) {
                     refusal
                 } else {
@@ -458,15 +569,27 @@ final class RequestRound {
     // Step 1: the writes of an earlier round. A halt does not cancel them (only a quit does), and
     // a halt that came while they ran stops the round right after them. A stop of the user then
     // fails the round with a text that says that the earlier writes went.
+    // The writes of an own request of the user go through OwnRequests, with its texts, its Event
+    // log lines and its Needs you. When they do not go, the round stops: the change of the user
+    // is in the worktree (or in its commit, which the outbox keeps), so the round must not move
+    // the worktree. The row keeps the reason of the own request.
     private func sendEarlier(_ outbox: Outbox) async throws(Stop) {
         holdHalts()
-        do throws(Stop) {
-            try await send(outbox)
-        } catch {
-            _ = releaseHalts()
-            throw error
+        var went = true
+        if outbox.own {
+            went = await parts.own.resend(pr)
+        } else {
+            do throws(Stop) {
+                try await send(outbox)
+            } catch {
+                _ = releaseHalts()
+                throw error
+            }
         }
-        guard releaseHalts() else { return }
+        let halted = releaseHalts()
+        if Task.isCancelled { throw .halted }
+        if !went { throw .failed(.changesNotOnGitHub) }
+        guard halted else { return }
         if stopRequested() { throw .failed(.stoppedAfterEarlierWrites) }
         throw .halted
     }
@@ -478,6 +601,7 @@ final class RequestRound {
             guard state.prs[pr]?.round?.kind == .request else { return }
             state.prs[pr]?.round = nil
             state.prs[pr]?.lastError = nil
+            state.prs[pr]?.waitsForYou = nil
         }
         changed()
     }
@@ -503,26 +627,12 @@ final class RequestRound {
             body.trimmed().isEmpty
             ? nil
             : body.utf16.count <= Question.maxQuote
-                ? body : cut(body, Question.maxQuote - 1) + "\u{2026}"
+                ? body : body.cut(utf16: Question.maxQuote - 1) + "\u{2026}"
         return Question(
-            text: text, place: cut(place, Question.maxPlace),
-            author: cut(request.comment.author.login, Question.maxAuthor), body: quote,
+            text: text, place: place.cut(utf16: Question.maxPlace),
+            author: request.comment.author.login.cut(utf16: Question.maxAuthor), body: quote,
             url: request.comment.url.flatMap { Question.commentURL($0.absoluteString) },
             kind: request.inThread ? .thread : .comment, at: time, seenUntil: seenUntil)
-    }
-
-    // The text cut to at most limit UTF-16 units, at the end of a whole character.
-    private static func cut(_ text: String, _ limit: Int) -> String {
-        guard text.utf16.count > limit else { return text }
-        var kept = 0
-        var end = text.startIndex
-        for index in text.indices {
-            let size = text[index].utf16.count
-            guard kept + size <= limit else { break }
-            kept += size
-            end = text.index(after: index)
-        }
-        return String(text[..<end])
     }
 
     // MARK: - The parts of the steps
@@ -589,24 +699,38 @@ final class RequestRound {
         return value
     }
 
-    // Step 4: the input folder. The full diff comes from git in the clone, the rules from the
-    // skills. A full diff over ReviewInput.maxDiffBytes stays out: the session reads the files.
+    // A step of the repo store in the preparation of the turn. A failure goes to the log, and
+    // the row gets a fixed text.
+    private func repoStep<Value>(_ step: () async throws(RepoError) -> Value)
+        async throws(RoundFailure) -> Value
+    {
+        do throws(RepoError) {
+            return try await step()
+        } catch {
+            Self.logger.error("\(error.message, privacy: .private)")
+            throw .prepareFailed
+        }
+    }
+
+    // The files of the round in the round folder, each with the round ID of the token in its
+    // name. The full diff comes from git in the clone, the rules from the skills. A full diff
+    // over ReviewInput.maxDiffBytes stays out: the session reads the files.
     private func writeInput(
         full: FullPR, items: [WorkItem], fetched: FetchedPR, viewer: String, token: String
-    ) async throws(Stop) -> RequestInput {
+    ) async throws(RoundFailure) -> RequestInput {
         let (pr, repos) = (pr, repos)
-        let text = try await git { () async throws(RepoError) in
+        let text = try await repoStep { () async throws(RepoError) in
             try await repos.diff(pr.repo, from: fetched.mergeBase, to: fetched.head)
         }
         let diff = text.flatMap { $0.utf8.count <= ReviewInput.maxDiffBytes ? $0 : nil }
-        let folder = try await git { () async throws(RepoError) in
-            try await repos.inputFolder(pr)
+        let folder = try await repoStep { () async throws(RepoError) in
+            try await repos.roundFolder(pr)
         }
+        let round = RoundFiles(folder: folder, token: token)
         let input = RequestInput(
             full: full, items: items, questions: store.state.prs[pr]?.questions ?? [:],
             round: token, viewer: viewer, baseSHA: fetched.base, headSHA: fetched.head,
-            mergeBase: fetched.mergeBase,
-            files: RequestInput.Files(folder: folder, fullDiff: diff != nil))
+            mergeBase: fetched.mergeBase, files: RequestInput.Files(round, fullDiff: diff != nil))
         let (skills, modeFile) = (parts.skills, Self.modeFile)
         let rules = await BlockingExecutor.run { () -> (mode: Data, rules: Data)? in
             guard
@@ -618,17 +742,21 @@ final class RequestRound {
             else { return nil }
             return (mode, rules)
         }
-        guard let rules else { throw .failed(.inputFailed) }
+        guard let rules else { throw .inputFailed }
+        let names = input.files
         var files: [(name: String, data: Data)] = [
-            ("mode.md", rules.mode), ("humanise-rules.md", rules.rules),
-            ("input.json", input.fileData),
+            (names.mode.lastPathComponent, rules.mode),
+            (names.rules.lastPathComponent, rules.rules),
+            (names.input.lastPathComponent, input.fileData),
         ]
-        if let diff { files.append(("full.diff", Data(diff.utf8))) }
+        if let diff, let path = names.fullDiff {
+            files.append((path.lastPathComponent, Data(diff.utf8)))
+        }
         do throws(RepoError) {
             try await repos.writeInput(pr, files)
         } catch {
             Self.logger.error("\(error.message, privacy: .private)")
-            throw .failed(.inputFailed)
+            throw .inputFailed
         }
         return input
     }

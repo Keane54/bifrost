@@ -114,4 +114,15 @@ struct GitHubIDsTests {
             #expect(NodeID(text) == nil, "\(text.debugDescription)")
         }
     }
+
+    @Test func jobAndRunIDsArePositive() throws {
+        #expect(JobID(0) == nil && JobID(-1) == nil && JobID(.min) == nil)
+        #expect(RunID(0) == nil && RunID(-5) == nil)
+        #expect(JobID(1)?.value == 1 && RunID(1)?.value == 1)
+        // A job ID of GitHub is larger than a 32-bit number.
+        #expect(JobID(54_321_098_765)?.value == 54_321_098_765)
+        let low = try #require(JobID(101)), high = try #require(JobID(102))
+        #expect(low < high && [high, low].sorted() == [low, high])
+        #expect(try #require(RunID(9001)) < #require(RunID(9002)))
+    }
 }

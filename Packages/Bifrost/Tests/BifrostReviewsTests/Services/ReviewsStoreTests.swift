@@ -140,6 +140,40 @@ struct ReviewsStoreTests {
         #expect(try Data(contentsOf: layout.stateCopy) == electron)
     }
 
+    // The fields that the read of state.json dropped go to the log one time in a run of the app:
+    // a second open of the same file in the run logs nothing more, and a new run logs them again.
+    // A damaged CI mark reads with no fix and no re-run left.
+    @Test func aDroppedFieldIsLoggedOneTimeInARun() async throws {
+        let (folder, layout) = try home()
+        defer { folder.remove() }
+        let head = String(repeating: "a", count: 40)
+        let text = """
+            {"version": 1, "prs": {"owner-a/repo-a#1": {
+            "ci": {"chain": ["\(head)"], "fixes": "two"},
+            "conflict": {"head": "\(head)", "base": "\(head)", "at": 1, "outcome": "later"}}}}
+            """
+        try put(Data(text.utf8), at: layout.stateFile)
+        // A safety copy that differs from the file: no take-over, so the open does not save.
+        try put(Data("{}".utf8), at: layout.stateCopy)
+        let events = Recorder<StoreEvent>()
+        let run = ReviewsStoreLog(base: events)
+        let first = try await ReviewsStore.open(layout: layout, log: run, now: now)
+        let pr = try key("owner-a/repo-a#1")
+        #expect(first.state.prs[pr]?.ci?.fixes == CIRule.maxFixes)
+        #expect(first.state.prs[pr]?.conflict?.outcome == .failed(""))
+        await first.close().value
+        #expect(try Data(contentsOf: layout.stateFile) == Data(text.utf8))
+        let second = try await ReviewsStore.open(layout: layout, log: run, now: now)
+        await second.close().value
+        let path = layout.stateFile.path(percentEncoded: false)
+        let names = ["prs.ci.fixes", "prs.conflict.outcome"]
+        #expect(events.values == [.defaulted(file: path, keys: names)])
+        let next = try await ReviewsStore.open(
+            layout: layout, log: ReviewsStoreLog(base: events), now: now)
+        await next.close().value
+        #expect(events.values == Array(repeating: .defaulted(file: path, keys: names), count: 2))
+    }
+
     // A quit after the copy and before the first save leaves state.json equal to the copy. The
     // next open takes the state over again, and the copy stays as it is.
     @Test func aTakeOverThatDidNotSaveRunsAgain() async throws {

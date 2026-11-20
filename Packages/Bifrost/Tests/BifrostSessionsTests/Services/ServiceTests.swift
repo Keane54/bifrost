@@ -242,6 +242,21 @@ struct RegistryPollTests {
         #expect(h.deps.activeCalls == [0, 2000, 4000, 7000])
     }
 
+    // Each run of claude agents takes the next turn, and only an active list that the registry
+    // applied gives its turn to appliedListTurn. So a wait can tell that a list started after a
+    // time (PRSessions.waitForTurnEnd): a failed list took a turn but applied nothing.
+    @Test func anAppliedActiveListGivesItsTurn() async {
+        let h = RegistryHarness { $0.active = { n in n == 3 ? failed("boom") : list(bg()) } }
+        await h.start()
+        #expect(h.service.appliedListTurn >= 1)
+        let started = h.service.startedLists
+        await h.run(for: .seconds(2))
+        let applied = h.service.appliedListTurn
+        #expect(applied > started)
+        await h.run(for: .seconds(2))
+        #expect(h.service.startedLists > applied && h.service.appliedListTurn == applied)
+    }
+
     @Test func theFullPollRunsEvery30Seconds() async {
         let h = RegistryHarness()
         await h.start()

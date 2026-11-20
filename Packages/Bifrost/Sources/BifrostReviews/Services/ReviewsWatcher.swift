@@ -58,11 +58,12 @@ package final class ReviewsWatcher {
     @ObservationIgnored package var focused: @MainActor () -> Bool = { false }
 
     // True when a row flashes or needs the user: a new request whose CI does not fail
-    // (ReviewRow.flash), a draft to check, or a question of Claude on a PR of the user.
+    // (ReviewRow.flash), a draft to check, or a question of Claude or work that waits for the
+    // user on a PR of the user.
     package var attention: Bool {
         toReview.contains { $0.flash || $0.state == .toReview(.draftReady) }
             || mine.contains {
-                if case .mine(_, .needsYou) = $0.state { true } else { false }
+                if case .mine(_, let claude) = $0.state { claude.needsTheUser } else { false }
             }
     }
 

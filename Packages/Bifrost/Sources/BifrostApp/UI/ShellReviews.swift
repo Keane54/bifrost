@@ -1,6 +1,6 @@
 // The Reviews part of the app (docs/behaviour/reviews.md, "The panel" and "Settings > Reviews"):
-// the store of the Reviews state, the GitHub client, the watcher and the consent of the automatic
-// request rounds, and the links of the Reviews panel to them.
+// the store of the Reviews state, the GitHub client, the watcher and the consents of the automatic
+// work on the PRs of the user, and the links of the Reviews panel to them.
 //
 // - The part follows the Reviews settings (ReviewsConfig of the settings), from start() to
 //   stop(). While Watch GitHub is on, it opens the store and makes the watcher with the result
@@ -10,16 +10,20 @@
 //   of the open and the close before it, so two stores of one run never hold the lock together.
 // - The settings effects of Reviews stay no-ops: the part follows the settings itself, and gives
 //   each new value to the watcher.
-// - The consent of the automatic request rounds: at each open, when "Handle comments on my PRs
-//   automatically" is on and the store has no consent, the part turns the setting off with one
-//   settings edit, so the switch shows the real state. That is the case after the take-over of
-//   the Electron state. Only the confirmed turn-on of Settings > Reviews gives the consent: after
-//   its save, Settings calls autoFixConfirmed() (ReviewsLinks.confirmAutoFix), and the store
-//   records the consent and the start of new work (ReviewsState.consentToAutoFix). A change of
-//   the setting itself gives no consent, so another write of true (the Debug test port, an
-//   import, a settings file) does not, and no order of the observed values can lose a confirm.
-//   A confirm while no store is open gives the consent at the next open of this run, while the
-//   setting stays on.
+// - The consents of the automatic work on the PRs of the user: one for each of the settings
+//   "Handle comments on my PRs automatically" (the request rounds), "Resolve merge conflicts
+//   automatically" (the conflict rounds) and "Fix failing CI automatically" (the CI rounds). At
+//   each open, the part turns off each of these settings that is on with no consent in the store,
+//   all in one settings edit, so each switch shows the real state. For the comments that is the
+//   case after the take-over of the Electron state. Only the confirmed turn-on of Settings >
+//   Reviews gives a consent: after its save, Settings calls the link of that setting
+//   (ReviewsLinks), which calls autoFixConfirmed(), resolveConflictsConfirmed() or
+//   fixCIConfirmed(). Then the store records the consent (ReviewsState.consentToAutoFix,
+//   consentToConflictFix or consentToCIFix). The consent of the comments also moves the start
+//   of new work. A change of the setting itself gives no consent, so another write of true (the
+//   Debug test port, an import, a settings file) does not, and no order of the observed values
+//   can lose a confirm. A confirm while no store is open gives the consent at the next open of
+//   this run, while the setting stays on.
 // - The clones (docs/behaviour/reviews.md, "Clones and trust"): while the store is open, a
 //   RepoSetup clones the repositories of each good poll and lists the ones that need trust. The
 //   rows read its clone states, and each change of them builds the rows again. The trust panel
@@ -34,7 +38,9 @@
 //   that closed, and queue the request rounds of new work while the automatic rounds are on; a
 //   change of the state builds the rows again, and the end of a round polls at once. A request
 //   session runs in the sandbox of RequestSandbox, which refuses the secret paths of the home of
-//   the user (SessionParts.userHome).
+//   the user (SessionParts.userHome). The request rounds of a PR share one session: a later turn
+//   types its prompt through the session input of the shell (input), which the rounds read at
+//   the time of each turn.
 //   At the start of the rounds, a request round that was posting when Bifrost quit sends the rest
 //   of its writes (RoundWrites.resume). The reason of git or of GitHub for a write that stopped
 //   goes to the Event log (eventLine). A repository whose trust step ended wakes the queue
@@ -65,6 +71,7 @@ extension ReviewsConfig {
     package init(_ settings: Settings) {
         self.init(
             watch: settings.reviewsWatch, autoFix: settings.reviewsAutoFix,
+            resolveConflicts: settings.reviewsResolveConflicts, fixCI: settings.reviewsFixCI,
             teamRequests: settings.reviewsTeamRequests,
             signedCommits: settings.reviewsSignedCommits, rowFlash: settings.rowFlash,
             notifications: settings.notifications, maxSessions: settings.reviewsMaxSessions,
@@ -96,6 +103,12 @@ package final class ReviewsParts {
     // The consent of the automatic request rounds in the open store, or nil while no store is
     // open (ReviewsState.autoFixConsent).
     package private(set) var autoFixConsent: Bool?
+    // The consent of the conflict rounds in the open store, or nil while no store is open
+    // (ReviewsState.conflictConsent).
+    package private(set) var conflictConsent: Bool?
+    // The consent of the CI rounds in the open store, or nil while no store is open
+    // (ReviewsState.ciConsent).
+    package private(set) var ciConsent: Bool?
     // The clones of the polls and their trust, while the store is open.
     package var setup: RepoSetup? { open?.setup }
     // The review rounds, while the store is open and the part can start sessions.
@@ -104,6 +117,9 @@ package final class ReviewsParts {
     package var approver: ApproveFlow? { open?.approver }
     // The progress and the result of the review writes of the rows, while the store is open.
     package var writes: ReviewWrites? { open?.writes }
+    // The text input of the sessions. The shell owns it and sets it when it makes it. A turn of
+    // a request round types its prompt through it (PRSessions.beginTurn).
+    @ObservationIgnored package weak var input: (any PromptInput)?
 
     // The parts of Reviews while the store is open.
     private struct OpenParts {
@@ -171,9 +187,8 @@ package final class ReviewsParts {
     @ObservationIgnored private var following: Task<Void, Never>?
     // The number of the last open. An open that ends after a newer open or a close is stale.
     @ObservationIgnored private var opens = 0
-    // A turn-on of the automatic rounds while no store was open. The next open gives the
-    // consent.
-    @ObservationIgnored private var consentWaits = false
+    // The confirmed turn-ons while no store was open. The next open gives their consents.
+    @ObservationIgnored private var consentWaits: Set<Consent> = []
 
     // access is the way to GitHub (gh in the app). focused tells whether the window has the
     // focus, refused runs when macOS refuses a notification, and openPanel opens the Reviews
@@ -196,7 +211,8 @@ package final class ReviewsParts {
         client = GitHubClient(access: access)
         self.notifier = notifier
         self.health = health
-        self.storeLog = storeLog
+        // The part lives for the run, so each dropped field of state.json is logged one time.
+        self.storeLog = ReviewsStoreLog(base: storeLog)
         self.log = log
         self.clock = clock
         self.now = now
@@ -280,6 +296,7 @@ package final class ReviewsParts {
         case .stopSession(let pr): roundCommand { await $0.stopSession(pr) }
         case .handleNow(let pr): roundCommand { await $0.handle(pr, copilot: false) }
         case .handleCopilot(let pr): roundCommand { await $0.handle(pr, copilot: true) }
+        case .resolveNow(let pr): roundCommand { await $0.resolveNow(pr) }
         case .tryAgain(let pr): roundCommand { await $0.tryAgain(pr) }
         case .cancelRequest(let pr): roundCommand { await $0.cancelRequest(pr) }
         case .dropUpdates(let pr, let click):
@@ -406,7 +423,7 @@ package final class ReviewsParts {
         config = new
         guard new != old else { return }
         // A turn-off ends a confirm that waits for the next open.
-        if !new.autoFix { consentWaits = false }
+        consentWaits = consentWaits.filter { new[keyPath: $0.config] }
         switch (new.watch, phase) {
         case (true, .off): openStore()
         case (false, .off): break
@@ -423,37 +440,70 @@ package final class ReviewsParts {
     // the setting saved (ReviewsLinks.confirmAutoFix). The open store records the consent. With
     // no open store, the next open of this run records it.
     package func autoFixConfirmed() {
+        confirmed(.autoFix)
+    }
+
+    // The user confirmed a turn-on of "Resolve merge conflicts automatically" in Settings, and
+    // the setting saved (ReviewsLinks.confirmResolveConflicts). As autoFixConfirmed().
+    package func resolveConflictsConfirmed() {
+        confirmed(.conflicts)
+    }
+
+    // The user confirmed a turn-on of "Fix failing CI automatically" in Settings, and the setting
+    // saved (ReviewsLinks.confirmFixCI). As autoFixConfirmed().
+    package func fixCIConfirmed() {
+        confirmed(.ci)
+    }
+
+    private func confirmed(_ consent: Consent) {
         guard let store else {
-            consentWaits = true
+            consentWaits.insert(consent)
             return
         }
-        recordConsent(store)
+        recordConsent(consent, in: store)
     }
 
     // Record the consent in the open store, at once. The store saves it, and the close of the
     // store waits for that save.
-    private func recordConsent(_ store: ReviewsStore) {
-        store.change { [now] in $0.consentToAutoFix(now: now()) }
-        autoFixConsent = store.state.autoFixConsent
+    private func recordConsent(_ consent: Consent, in store: ReviewsStore) {
+        store.change { [now] in consent.record(in: &$0, now: now()) }
+        readConsents(store)
     }
 
-    // At the open of a store: with the setting on and no consent in the store, a confirm of this
-    // run that waits gives the consent, else the setting goes off.
-    private func settleConsent(_ store: ReviewsStore) {
-        defer { consentWaits = false }
-        guard settings.settings.reviewsAutoFix, store.state.autoFixConsent != true else { return }
-        if consentWaits {
-            recordConsent(store)
-            return
+    // The consents of the open store, for the observers of the part.
+    private func readConsents(_ store: ReviewsStore) {
+        autoFixConsent = store.state.autoFixConsent
+        conflictConsent = store.state.conflictConsent
+        ciConsent = store.state.ciConsent
+    }
+
+    // At the open of a store: for each setting that is on with no consent in the store, a confirm
+    // of this run that waits gives the consent, else the setting goes off. One settings edit
+    // turns off all these settings.
+    private func settleConsents(_ store: ReviewsStore) {
+        defer { consentWaits = [] }
+        var off: [Consent] = []
+        for consent in Consent.allCases {
+            guard settings.settings[keyPath: consent.setting],
+                store.state[keyPath: consent.state] != true
+            else { continue }
+            if consentWaits.contains(consent) {
+                recordConsent(consent, in: store)
+            } else {
+                off.append(consent)
+            }
         }
+        guard !off.isEmpty else { return }
         let settings = settings
         lifecycle.add {
             do throws(SettingsError) {
-                try await settings.edit { $0.reviewsAutoFix = false }
+                try await settings.edit { edit in
+                    for consent in off { edit[keyPath: consent.setting] = false }
+                }
             } catch {
                 Self.logger.error(
                     """
-                    Bifrost cannot turn off the automatic comment handling. \
+                    Bifrost cannot turn off the automatic work on your pull requests. \
                     \(error.message, privacy: .private)
                     """)
             }
@@ -500,7 +550,7 @@ package final class ReviewsParts {
         watcher.refused = refused
         switch result {
         case .success(let store):
-            autoFixConsent = store.state.autoFixConsent
+            readConsents(store)
             let setup = makeSetup(store, watcher: watcher)
             let writes = ReviewWrites(
                 clock: clock, progressEnded: { [weak watcher] in watcher?.refreshTimes() })
@@ -517,7 +567,7 @@ package final class ReviewsParts {
                         makeRounds(store, setup: $0, watcher: watcher, writes: writes)
                     },
                     approver: approver, writes: writes))
-            settleConsent(store)
+            settleConsents(store)
         case .failure(let failure):
             phase = .refused(failure, watcher)
         }
@@ -572,7 +622,8 @@ package final class ReviewsParts {
         guard let parts = sessionParts, let repos else { return nil }
         let sessions = PRSessions(
             store: store, registry: parts.registry, actions: parts.actions, claude: parts.claude,
-            clock: clock, now: now, testPrefix: parts.testPrefix)
+            clock: clock, now: now, testPrefix: parts.testPrefix,
+            input: { [weak self] in self?.input })
         let rounds = ReviewRounds(
             store: store, github: client, repos: repos, setup: setup, sessions: sessions,
             skills: parts.skills, userHome: parts.userHome,
@@ -604,6 +655,8 @@ package final class ReviewsParts {
         clonesFollow?.cancel()
         clonesFollow = nil
         autoFixConsent = nil
+        conflictConsent = nil
+        ciConsent = nil
         var (store, rounds): (ReviewsStore?, ReviewRounds?) = (nil, nil)
         switch old {
         case .on(let open):
@@ -632,6 +685,50 @@ package final class ReviewsParts {
         if case .on(let open) = old { open.setup?.stop() }
         let repos = repos
         return Task { await repos?.cancelClones() }
+    }
+}
+
+// The automatic work on the PRs of the user that needs a consent: the setting, its value in the
+// config, the consent in the state and the record of the consent.
+private enum Consent: CaseIterable {
+    // "Handle comments on my PRs automatically": the request rounds.
+    case autoFix
+    // "Resolve merge conflicts automatically": the conflict rounds.
+    case conflicts
+    // "Fix failing CI automatically": the CI rounds.
+    case ci
+
+    var setting: WritableKeyPath<Settings, Bool> {
+        switch self {
+        case .autoFix: \.reviewsAutoFix
+        case .conflicts: \.reviewsResolveConflicts
+        case .ci: \.reviewsFixCI
+        }
+    }
+
+    var config: KeyPath<ReviewsConfig, Bool> {
+        switch self {
+        case .autoFix: \.autoFix
+        case .conflicts: \.resolveConflicts
+        case .ci: \.fixCI
+        }
+    }
+
+    var state: KeyPath<ReviewsState, Bool?> {
+        switch self {
+        case .autoFix: \.autoFixConsent
+        case .conflicts: \.conflictConsent
+        case .ci: \.ciConsent
+        }
+    }
+
+    // The consent of the comments also moves the start of new work to now.
+    func record(in state: inout ReviewsState, now: Date) {
+        switch self {
+        case .autoFix: state.consentToAutoFix(now: now)
+        case .conflicts: state.consentToConflictFix()
+        case .ci: state.consentToCIFix()
+        }
     }
 }
 
@@ -690,6 +787,12 @@ extension Shell {
         links.writes = { [weak services] in services?.reviews?.writes }
         links.makeDraftFlow = { [weak services] in services?.reviews?.draftFlow() }
         links.makeAnswerFlow = { [weak services] in services?.reviews?.answerFlow(for: $0) }
+        links.changesToDiscard = { [weak services] pr in
+            await services?.reviews?.rounds?.changesToDiscard(pr) ?? .notNow
+        }
+        links.discard = { [weak services] pr, click in
+            await services?.reviews?.rounds?.discardChanges(pr, click: click) ?? .notNow
+        }
         return links
     }
 }

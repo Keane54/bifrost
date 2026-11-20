@@ -569,7 +569,7 @@ struct ShellTests {
             #expect(shell.live.warning)
             #expect(shell.sideBar.dot(.settings) != nil)
             #expect(shell.liveDetailsState.object?["plugin"] == "unknown")
-            #expect(shell.skillsPluginState.object?["skills"]?.array?.count == 6)
+            #expect(shell.skillsPluginState.object?["skills"]?.array?.count == 7)
             await waitUntil { shell.settingsPanels.model != nil }
             let model = try #require(shell.settingsPanels.model)
             #expect(model.live === shell.live)
@@ -621,7 +621,7 @@ struct ShellTests {
             await scope.services.start()
             await waitUntil { live.skillsStatus?.skills.isEmpty == false }
             #expect(live.status?.error == "claude was not found.")
-            #expect(live.skillsStatus?.skills.count == 6)
+            #expect(live.skillsStatus?.skills.count == 7)
             let found = await scope.shell.runPluginAction(.install, skills: false)
             #expect(found == "claude was not found.")
         }
@@ -657,9 +657,9 @@ struct ShellTests {
 
     // The shell joins Reviews to the window: the notifications of Reviews read the focus of the
     // alerts (a headless window counts as focused), a click on one shows the window and opens the
-    // Reviews panel, and the confirm of the automatic comment handling in Settings reaches the
-    // Reviews part, which records the consent. A turn-off of Watch GitHub closes the Review panel
-    // and the Answer panel.
+    // Reviews panel, and the confirms of the automatic comment handling, of the merge conflicts
+    // and of the failing CI in Settings reach the Reviews part, which records each consent. A
+    // turn-off of Watch GitHub closes the Review panel and the Answer panel.
     @Test func theShellJoinsReviewsToTheWindow() async throws {
         try await withShell { scope in
             let shell = scope.shell
@@ -680,6 +680,15 @@ struct ShellTests {
             shell.settingsLinks().reviews.confirmAutoFix()
             await parts.settled()
             #expect(parts.autoFixConsent == true)
+            _ = try await settings.edit {
+                $0.reviewsResolveConflicts = true
+                $0.reviewsFixCI = true
+            }
+            #expect(parts.conflictConsent == nil && parts.ciConsent == nil)
+            shell.settingsLinks().reviews.confirmResolveConflicts()
+            #expect(parts.conflictConsent == true && parts.ciConsent == nil)
+            shell.settingsLinks().reviews.confirmFixCI()
+            #expect(parts.ciConsent == true)
             let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
             shell.reviews.draft.open(pr)
             shell.reviews.answer.open(pr)

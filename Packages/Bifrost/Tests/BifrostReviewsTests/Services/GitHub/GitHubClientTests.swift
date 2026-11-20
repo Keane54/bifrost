@@ -58,4 +58,24 @@ struct GitHubClientTests {
             try await GitHubClient(access: github).poll()
         }
     }
+
+    @Test func eachFaultGoesToTheLogOneTime() {
+        let client = GitHubClient(access: FakeGitHub())
+        let first: [WireFault] = [.jobID, .mergeable]
+        #expect(client.newFaults(first) == first)
+        // The next poll or head read with the same faults logs nothing, and a new fault only.
+        #expect(client.newFaults(first).isEmpty)
+        #expect(client.newFaults([.baseRefOid, .mergeable]) == [.baseRefOid])
+        #expect(client.newFaults([]).isEmpty)
+    }
+
+    @Test func thePollSendsItsFaultsToTheLog() async throws {
+        let odd = try FixtureFiles.edited("poll-mine-health") { root in
+            editPR(&root, list: "mine", number: 55) { $0["mergeable"] = "SOMETIMES" }
+        }
+        let github = FakeGitHub(answers: ["poll": .success(odd)])
+        let client = GitHubClient(access: github)
+        _ = try await client.poll()
+        #expect(client.loggedFaults == [.mergeable])
+    }
 }

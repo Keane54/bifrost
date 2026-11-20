@@ -363,6 +363,12 @@
           "headRefOid": "aaaa111",
           "isCrossRepository": false,
           "isDraft": false,
+          "latestOpinionatedReviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false
+            }
+          },
           "number": 101,
           "pendingReviews": {
             "nodes": []
@@ -443,6 +449,12 @@
           "headRefOid": "aaaa111",
           "isCrossRepository": false,
           "isDraft": false,
+          "latestOpinionatedReviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false
+            }
+          },
           "number": 7,
           "pendingReviews": {
             "nodes": []
@@ -516,6 +528,12 @@
           "headRefOid": "aaaa111",
           "isCrossRepository": false,
           "isDraft": false,
+          "latestOpinionatedReviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false
+            }
+          },
           "number": 102,
           "pendingReviews": {
             "nodes": []

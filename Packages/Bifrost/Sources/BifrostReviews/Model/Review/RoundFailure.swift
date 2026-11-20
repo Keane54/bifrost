@@ -87,10 +87,32 @@ package enum RoundFailure: Error, Sendable, Equatable {
     case ownPending
     // Request rounds: a reply went into a draft review of the user.
     case replyPending
+    // Rounds on a PR of the user: the session of the PR was not ready for PRSessions.busyWait.
+    // It worked, it showed a box that a person can answer, or a list still showed it as active.
+    // The round did not start, and Bifrost did not stop the session.
+    case sessionBusy
+    // Request rounds: an own request file of the user waits in the input folder of the PR. The
+    // round does not start: the own request goes first, then the round starts again.
+    case ownRequestWaits
+    // Request rounds: the worktree has changes that no round made, for example a change that the
+    // user asked for in the session with no own request file. The changes stay, and the round
+    // does not start. The row shows Needs you (waitsForYou).
+    case changesNotOnGitHub
+
+    // True when the row shows the failure as Needs you (PRState.waitsForYou), not as an error:
+    // only the user can clear it.
+    package var waitsForYou: Bool { self == .changesNotOnGitHub }
 
     // The text of the failure for a round of the kind. The request rounds have their own texts
     // for the failures that both kinds share.
     package func message(for kind: PRSessionKind) -> String {
+        // A conflict round keeps its failures in its mark (ConflictFailure). Only the safety net
+        // gives it a reason of the row (Needs you).
+        if kind == .conflict, self == .changesNotOnGitHub {
+            return "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so "
+                + "Bifrost didn't push a merge of the base branch. Ask Claude in its session to "
+                + "commit or undo them, then choose Resolve now."
+        }
         guard kind == .request else { return message }
         switch self {
         case .stopped:
@@ -219,6 +241,15 @@ package enum RoundFailure: Error, Sendable, Equatable {
         case .replyPending:
             "A reply went into your draft review on GitHub. Submit or delete the draft, then "
                 + "choose Try again."
+        case .sessionBusy:
+            "Claude's session for this pull request was busy, so Bifrost didn't start the round. "
+                + "Choose Try again when it's finished."
+        case .ownRequestWaits:
+            "Bifrost is sending the change you asked Claude for first, then it starts the round."
+        case .changesNotOnGitHub:
+            "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so "
+                + "Claude didn't start on the new comments. Ask Claude in its session to commit "
+                + "or undo them, then choose Handle now."
         }
     }
 

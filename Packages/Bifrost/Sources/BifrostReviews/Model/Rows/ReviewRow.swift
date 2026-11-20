@@ -46,21 +46,46 @@ package enum ReviewStatus: Sendable {
 
 // What Claude does on a PR of the user.
 package enum ClaudeState: Sendable, Equatable {
-    // Claude has open questions for the user: their count.
-    case needsYou(Int)
+    // Claude has questions for the user: the count of the open questions on comments, and true
+    // when the CI question shows (CIRule.visibleQuestion).
+    case needsYou(comments: Int, ci: Bool)
+    // The work on the PR waits for the user, with the reason (PRState.waitsForYou): an own
+    // request that Bifrost did not commit or push, or changes in the worktree that no round made.
+    case waitsForYou(String)
     // A request round works on the count of items.
     case fixing(Int)
-    // A request round waits in the queue for a free session slot.
+    // A conflict round works on the merge conflicts.
+    case resolvingConflicts
+    // A CI round works on the failed checks.
+    case fixingCI
+    // A round waits in the queue for a free session slot.
     case queued
-    // A request round waits in the queue for the trust of the clone of its repository.
+    // A round waits in the queue for the trust of the clone of its repository.
     case trustNeeded
-    // A request round waits in the queue for the clone of its repository.
+    // A round waits in the queue for the clone of its repository.
     case cloning
     case waiting
     // The last round failed, with its reason.
     case error(String)
+    // Bifrost re-ran the failed jobs of the head and waits for their result
+    // (CIRule.isRetrying).
+    case retryingCI
     // The PR comes from a fork: Bifrost starts no round for it.
     case fork
+    // GitHub says that the PR has conflicts with its base branch. The reason of the failed
+    // conflict attempt on this head and base, or nil when no attempt on this pair failed.
+    case conflicts(String?)
+
+    // True when the row needs the user: open questions, or work that waits for the user. The
+    // row then comes first, shows the red box, and makes the tab count red.
+    package var needsTheUser: Bool {
+        switch self {
+        case .needsYou, .waitsForYou: true
+        case .fixing, .resolvingConflicts, .fixingCI, .queued, .trustNeeded, .cloning, .waiting,
+            .error, .retryingCI, .fork, .conflicts:
+            false
+        }
+    }
 }
 
 // The colour of a text, a dot or a name of a row. The panel gives each one a colour of the look.
@@ -182,20 +207,30 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
     // flash of a new request (flash).
     package var ci: CIState?
     // My PRs: the items that wait for Handle now, the threads of the later Copilot reviews, and
-    // the open questions of Claude. The row menu reads them.
+    // the open questions of Claude. A CI question that the row shows counts as one question. The
+    // row menu reads them.
     package var waiting: Int
     package var laterCopilot: Int
     package var questions: Int
     // My PRs: true when the writes of an earlier round that stopped wait for Try again (a kept
     // outbox) and no round runs. The row menu can drop them.
     package var unsentUpdates: Bool
+    // My PRs: the count of the files that Bifrost found in the copy of the PR, not on GitHub,
+    // when the work started to wait for the user (WaitsForYou.files). The row menu offers
+    // Discard these changes for them.
+    package var unsavedFiles: Int
+    // My PRs: true when a click can start a conflict round (Resolve now): GitHub says that the PR
+    // has conflicts, the PR does not come from a fork, and no round runs or waits and no writes
+    // wait for the PR. The setting of the conflict rounds does not change it.
+    package var resolvable: Bool
 
     package init(
         id: PRKey, state: RowState, repo: String, title: String, dot: RowTone? = nil,
         tag: RowLabel? = nil, review: RowLabel? = nil, reviewers: [Reviewer] = [],
         notes: [String] = [], status: RowLabel, reviewable: Bool = false,
         approve: ApproveOffer? = nil, draft: DraftEvent? = nil, ci: CIState? = nil,
-        waiting: Int = 0, laterCopilot: Int = 0, questions: Int = 0, unsentUpdates: Bool = false
+        waiting: Int = 0, laterCopilot: Int = 0, questions: Int = 0, unsentUpdates: Bool = false,
+        unsavedFiles: Int = 0, resolvable: Bool = false
     ) {
         self.id = id
         self.state = state
@@ -215,6 +250,8 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
         self.laterCopilot = laterCopilot
         self.questions = questions
         self.unsentUpdates = unsentUpdates
+        self.unsavedFiles = unsavedFiles
+        self.resolvable = resolvable
     }
 
     package var tab: ReviewsTab {

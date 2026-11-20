@@ -14,12 +14,14 @@ user.
 ## Started by Bifrost
 
 If `$ARGUMENTS` starts with `bifrost-input=`, Bifrost started this session, and the rest of the
-arguments is the path of the input file. The path can hold spaces. Read `mode.md` in the folder of
-that file, and obey it.
+arguments is the path of the input file. The path can hold spaces. Read the input file. Then read
+the mode file at the path in its `files.mode` field, and obey it. Each later message that starts
+this skill with `bifrost-input=` is a new round: read its input file and its mode file again. A
+message of the user between rounds is a request of the user: the mode file says what to do.
 
-`mode.md` replaces steps 1, 2, 3, 7, 8, 9 and 10, the reference file, and the rules about the
-push, the replies and the resolve. Steps 4, 5 and 6 still apply, with the changes of `mode.md`.
-Where the two files differ, `mode.md` applies.
+The mode file replaces steps 1, 2, 3, 7, 8, 9 and 10, the reference file, and the rules about the
+push, the replies and the resolve. Steps 4, 5 and 6 still apply, with the changes of the mode
+file. Where the two files differ, the mode file applies.
 
 ## Started by hand
 

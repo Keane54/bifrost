@@ -46,18 +46,32 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
     // confirmed it. false: the take-over asks for that confirm. nil: nothing asked for it. Only
     // true lets an automatic request round start (allowsAutoFix).
     package var autoFixConsent: Bool?
+    // true: the user turned on "Resolve merge conflicts automatically" in this app and confirmed
+    // it. nil: nothing asked for it. Only true lets an automatic conflict round start
+    // (allowsConflictFix). The file of the Electron app does not have this field.
+    package var conflictConsent: Bool?
+    // true: the user turned on "Fix failing CI automatically" in this app and confirmed it. nil:
+    // nothing asked for it. Only true lets a CI round start, and only true gives the CIConsent of
+    // a re-run (ciConsent(_:)). The file of the Electron app does not have this field.
+    package var ciConsent: Bool?
     // The To review PRs that the user removed in Bifrost, with the time of the remove. A new
     // review request after that time shows the PR again.
     package var hidden: [PRKey: Date] = [:]
     // The top-level fields that the state does not know. A save writes them back.
     package var unknown = UnknownFields()
+    // True when the read of the PR records lost a record: prs was not an object, a key was not a
+    // PR, two keys named one PR, or a record was not an object. A lost record can hold the
+    // conflict mark of a pair that Bifrost tried, so each PR of the next complete poll counts its
+    // pair as tried (ReviewRounds.queueConflicts). The file does not keep it.
+    package var marksInDoubt = false
 
     package init() {}
 
     // The names of the top-level fields of the file.
     private static let known: Set<String> = [
         "version", "turnedOnAt", "baseline", "requests", "pauses", "prs", "posted", "drafts",
-        "voicePairs", "queue", "repos", "setUpAt", "fixFrom", "autoFixConsent", "hidden",
+        "voicePairs", "queue", "repos", "setUpAt", "fixFrom", "autoFixConsent",
+        "conflictConsent", "ciConsent", "hidden",
     ]
 
     // A value that is not an object gives the empty state. A version other than 1 gives the
@@ -75,9 +89,12 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
         requests = object.map(
             "requests", &dropped, key: { PRKey(text: $0) }, RequestMark.init(stored:dropped:))
         pauses = object.map("pauses", &dropped, key: { PRKey(text: $0) }, \.time)
-        prs = object.map("prs", &dropped, key: { PRKey(text: $0) }) { value, dropped in
+        var lost = DroppedFields()
+        prs = object.map("prs", &lost, key: { PRKey(text: $0) }) { value, dropped in
             PRState(stored: value, dropped: &dropped)
         }
+        for name in lost.names { dropped.add(name) }
+        marksInDoubt = lost.names.contains("prs")
         posted = Self.newest(object.entries("posted", &dropped), Self.maxPosted, \.at)
         drafts = Self.newest(object.entries("drafts", &dropped), Self.maxDrafts, \.at)
         voicePairs = Self.newest(
@@ -87,6 +104,8 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
         setUpAt = object.read("setUpAt", &dropped, \.time)
         fixFrom = object.read("fixFrom", &dropped, \.time)
         autoFixConsent = object.read("autoFixConsent", &dropped, \.flag)
+        conflictConsent = object.read("conflictConsent", &dropped, \.flag)
+        ciConsent = object.read("ciConsent", &dropped, \.flag)
         hidden = object.map("hidden", &dropped, key: { PRKey(text: $0) }, \.time)
     }
 
@@ -107,6 +126,8 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
                 "setUpAt": .time(setUpAt),
                 "fixFrom": .time(fixFrom),
                 "autoFixConsent": autoFixConsent.map(JSONValue.bool) ?? .null,
+                "conflictConsent": conflictConsent.map(JSONValue.bool) ?? .null,
+                "ciConsent": ciConsent.map(JSONValue.bool) ?? .null,
                 "hidden": .times(hidden),
             ]))
     }
@@ -124,6 +145,39 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
     package mutating func consentToAutoFix(now: Date) {
         autoFixConsent = true
         fixFrom = now
+    }
+
+    // True when a conflict on a PR of the user can start a conflict round by itself: the setting
+    // "Resolve merge conflicts automatically" is on, and the user confirmed it in this app
+    // (conflictConsent is true).
+    package func allowsConflictFix(_ setting: Bool) -> Bool {
+        setting && conflictConsent == true
+    }
+
+    // True when a failed CI on a PR of the user can start a CI round by itself: the setting "Fix
+    // failing CI automatically" is on, and the user confirmed it in this app (ciConsent is true).
+    package func allowsCIFix(_ setting: Bool) -> Bool {
+        setting && ciConsent == true
+    }
+
+    // The proof of the CI consent that a re-run of failed jobs needs, or nil when the setting is
+    // off or the user did not confirm it in this app. Only the state can make the proof.
+    package func ciConsent(_ setting: Bool) -> CIConsent? {
+        allowsCIFix(setting) ? CIConsent() : nil
+    }
+
+    // The user turned on "Resolve merge conflicts automatically" in this app and confirmed it.
+    // The start of new work (fixFrom) does not change: the confirm text tells the user that a PR
+    // that has conflicts now is in the work too.
+    package mutating func consentToConflictFix() {
+        conflictConsent = true
+    }
+
+    // The user turned on "Fix failing CI automatically" in this app and confirmed it. The start of
+    // new work (fixFrom) does not change: the confirm text tells the user that a PR whose CI
+    // fails now is in the work too.
+    package mutating func consentToCIFix() {
+        ciConsent = true
     }
 
     // The entries in the order of their times (a stable sort), with the newest limit kept.
@@ -186,6 +240,13 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
             prs[key] = pr
         }
     }
+}
+
+// The proof that the user turned on "Fix failing CI automatically" in this app and confirmed it,
+// while the setting is on. Only ReviewsState.ciConsent(_:) makes it, so a write that needs it (a
+// re-run of failed jobs) cannot start without the consent.
+package struct CIConsent: Sendable, Equatable {
+    fileprivate init() {}
 }
 
 // The pair that the queue holds one time.

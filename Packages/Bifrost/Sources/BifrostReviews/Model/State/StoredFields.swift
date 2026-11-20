@@ -142,6 +142,23 @@ struct StoredObject {
     }
 }
 
+extension String {
+    // The text cut to at most limit UTF-16 units, at the end of a whole character. A text within
+    // the limit stays as it is.
+    func cut(utf16 limit: Int) -> String {
+        guard utf16.count > limit else { return self }
+        var kept = 0
+        var end = startIndex
+        for index in indices {
+            let size = self[index].utf16.count
+            guard kept + size <= limit else { break }
+            kept += size
+            end = self.index(after: index)
+        }
+        return String(self[..<end])
+    }
+}
+
 // The values of the stored fields.
 extension JSONValue {
     // The largest wall time of the file, in milliseconds from 1970: the limit of a JavaScript

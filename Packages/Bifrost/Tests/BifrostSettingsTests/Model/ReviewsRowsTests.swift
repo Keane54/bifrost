@@ -6,19 +6,21 @@ import Testing
 
 @Suite("the Reviews rows")
 struct ReviewsRowsTests {
-    // The labels of the Electron app, in the order of its Reviews section. A change of a label is
-    // a change that the user sees.
+    // The labels of the Electron app, in the order of its Reviews section, with the two settings
+    // of this app for merge conflicts and failing CI after the automatic comment handling. A
+    // change of a label is a change that the user sees.
     @Test func eachReviewsRowHasItsExactLabel() {
         #expect(
             ReviewsSettingsRow.allCases.map(\.rawValue) == [
                 "Watch GitHub", "Handle comments on my PRs automatically",
+                "Resolve merge conflicts automatically", "Fix failing CI automatically",
                 "Sign commits through GitHub", "Show team requests", "Maximum PR sessions",
                 "Pause time", "GitHub poll interval", "Model for request sessions",
                 "Model for review sessions", "Repositories to ignore", "Remove all clones",
             ])
     }
 
-    @Test(arguments: ReviewsSettingsRow.allCases)
+    @Test(arguments: ReviewsSettingsRow.shown)
     func theSearchFindsEachReviewsRow(_ row: ReviewsSettingsRow) {
         let index = SettingsSearch.index(
             general: [], slash: [], keys: [], live: [], skills: [], shown: [.reviews])

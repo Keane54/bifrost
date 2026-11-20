@@ -362,4 +362,105 @@ struct PusherTests {
         #expect(f.state?.round == nil && f.state?.outbox == nil)
         await f.end()
     }
+
+    // MARK: - The merge of a conflict round
+
+    // The merge of the head of the round and a new commit of the base branch main, as a conflict
+    // round makes it. The result is the merge and the base.
+    private func mergeOfBase(_ f: PushTestRepo) async throws -> (merge: CommitID, base: CommitID) {
+        try await f.commit(on: "main", ["b.txt": "base\n"])
+        let base = try await f.fetch("main", to: "refs/bifrost/base/7")
+        return (try await f.merge(head: f.head, base: base), base)
+    }
+
+    // A merge must have the head and the base as its parents, in that order. With no parents
+    // given, the one parent must be the head, so a merge is refused, and a fix is refused as a
+    // merge. Each refusal comes before any network call.
+    @Test func aMergePushChecksBothParents() async throws {
+        let f = try await PushTestRepo.make()
+        defer { f.remove() }
+        let (merge, base) = try await mergeOfBase(f)
+        let fix = try await f.fix(["a.txt": "fixed\n"])
+        let pusher = Pusher(git: f.git, address: f.address)
+        let refused: [(CommitID, [CommitID]?)] = [
+            (merge, nil), (merge, [f.head]), (merge, [base, f.head]), (merge, [f.head, fix]),
+            (fix, [f.head, base]),
+        ]
+        for (commit, parents) in refused {
+            await #expect(throws: PushRefusal.target) {
+                _ = try await pusher.push(
+                    commit, head: f.head, pr: f.pr, to: try f.target, parents: parents,
+                    onMove: .stop)
+            }
+        }
+        #expect(f.runner.fetches.isEmpty && f.runner.pushes.isEmpty)
+        let result = try await pusher.push(
+            merge, head: f.head, pr: f.pr, to: try f.target, parents: [f.head, base],
+            onMove: .stop)
+        #expect(result.commit == merge && f.runner.pushes.count == 1)
+        #expect(try await f.branch() == merge)
+    }
+
+    // Another person pushed to the branch after the round read it: a conflict round pushes
+    // nothing and makes no merge of its own, because the new head is a new case.
+    @Test func aMovedBranchStopsAMergePush() async throws {
+        let f = try await PushTestRepo.make()
+        defer { f.remove() }
+        let (merge, base) = try await mergeOfBase(f)
+        let other = try await f.moveBranch("d.txt", "theirs\n")
+        await #expect(throws: PushRefusal.moved) {
+            _ = try await Pusher(git: f.git, address: f.address)
+                .push(
+                    merge, head: f.head, pr: f.pr, to: try f.target, parents: [f.head, base],
+                    onMove: .stop)
+        }
+        #expect(f.runner.pushes.isEmpty && f.runner.fetches.count == 1)
+        #expect(!f.runner.all.contains { $0.contains("merge-tree") || $0.contains("commit-tree") })
+        #expect(try await f.branch() == other)
+    }
+
+    // The base branch and the default branch are never the target of a merge, in any case.
+    @Test func aMergePushToTheBaseBranchIsRefused() async throws {
+        let f = try await PushTestRepo.make()
+        defer { f.remove() }
+        let (merge, base) = try await mergeOfBase(f)
+        let targets = [("main", "main", "main"), ("Develop", "develop", "main")]
+        for (branch, baseName, main) in targets {
+            let target = PushTarget(
+                branch: try #require(BranchName(branch)), base: baseName, defaultBranch: main,
+                isFork: false)
+            await #expect(throws: PushRefusal.target) {
+                _ = try await Pusher(git: f.git, address: f.address)
+                    .push(
+                        merge, head: f.head, pr: f.pr, to: target, parents: [f.head, base],
+                        onMove: .stop)
+            }
+        }
+        #expect(f.runner.fetches.isEmpty && f.runner.pushes.isEmpty)
+        #expect(try await f.output(["rev-parse", "main"], in: f.repo.source) == base.hex)
+    }
+
+    // The branch is still at the head: the merge goes as one fast-forward push with no force, and
+    // the branch then has the merge with its two parents.
+    @Test func aMergePushIsAFastForwardWithNoForce() async throws {
+        let f = try await PushTestRepo.make()
+        defer { f.remove() }
+        let (merge, base) = try await mergeOfBase(f)
+        let result = try await Pusher(git: f.git, address: f.address)
+            .push(
+                merge, head: f.head, pr: f.pr, to: try f.target, parents: [f.head, base],
+                onMove: .stop)
+        let push = GitPush(commit: merge, branch: try f.target.branch)
+        #expect(result == PushResult(step: .push(push), commit: merge))
+        #expect(try await f.branch() == merge)
+        let parents = try await f.output(
+            ["rev-list", "--parents", "-n", "1", merge.hex], in: f.repo.source)
+        #expect(parents == "\(merge.hex) \(f.head.hex) \(base.hex)")
+        #expect(f.runner.pushes.count == 1)
+        for args in f.runner.pushes {
+            #expect(!args.contains { $0.hasPrefix("--force") || $0 == "-f" })
+            #expect(args.last == "\(merge.hex):refs/heads/feat")
+        }
+        #expect(try await f.output(["rev-parse", "main"], in: f.repo.source) == base.hex)
+    }
 }

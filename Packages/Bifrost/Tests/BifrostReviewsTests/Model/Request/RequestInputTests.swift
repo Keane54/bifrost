@@ -93,6 +93,29 @@ struct RequestInputTests {
         #expect(input.fileData.last == UInt8(ascii: "\n"))
     }
 
+    // The input of a round in the round folder of a PR names the files of that round: each name
+    // has the round ID, also the name of the input file itself.
+    @Test func theInputNamesTheFilesOfItsRound() throws {
+        let token = "0f8a2c1e-5b7d-4c3a-9e21-6d4b8f0a1c2e"
+        let round = RoundFiles(
+            folder: URL(filePath: "/tmp/io/7", directoryHint: .isDirectory), token: token)
+        let files = RequestInput.Files(round, fullDiff: true)
+        #expect(files.input == round.input && files.result == round.result)
+        let input = RequestInput(
+            resumed: try Rows.key("Owner-A/Repo-A#7"), round: token,
+            headSHA: try Rows.commit("c"), mergeBase: try Rows.commit("b"), itemIDs: [],
+            files: files)
+        let json = try #require(input.json.object?["files"]?.object)
+        #expect(json["result"] == "/tmp/io/7/result-0f8a2c1e5b7d.json")
+        #expect(json["mode"] == "/tmp/io/7/mode-0f8a2c1e5b7d.md")
+        #expect(json["rules"] == "/tmp/io/7/rules-0f8a2c1e5b7d.md")
+        #expect(json["fullDiff"] == "/tmp/io/7/full-0f8a2c1e5b7d.diff")
+        #expect(files.input.path(percentEncoded: false) == "/tmp/io/7/input-0f8a2c1e5b7d.json")
+        // The own request file has one path for each PR, with no round ID.
+        #expect(json["ownRequest"] == "/tmp/io/7/own-request.json")
+        #expect(RequestInput.Files(round, fullDiff: false).fullDiff == nil)
+    }
+
     // A long comment and a long diff hunk are cut, with the marker after the kept text.
     @Test func aLongTextIsCut() throws {
         let input = try Self.input()

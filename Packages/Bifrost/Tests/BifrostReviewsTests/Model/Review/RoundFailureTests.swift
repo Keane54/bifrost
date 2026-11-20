@@ -54,7 +54,23 @@ struct RoundFailureTests {
         // under --restricted) gets a reason that says so.
         #expect(RoundFailure.blocked.message(for: .request).contains("approval"))
         #expect(RoundFailure.fork.message == RowText.forkReason)
+        // The session of the PR was busy for busyWait: the round did not start.
+        #expect(
+            RoundFailure.sessionBusy.message(for: .request)
+                == "Claude's session for this pull request was busy, so Bifrost didn't start the "
+                + "round. Choose Try again when it's finished.")
         #expect(!RoundFailure.endFailed.message(for: .request).contains("Nothing was posted"))
+    }
+
+    // A conflict round keeps its failures in its mark (ConflictFailure). Only the safety net gives
+    // it a reason of the row, which sends the user to Resolve now, not to Handle now.
+    @Test func aConflictRoundHasTheTextOfTheSafetyNet() {
+        #expect(
+            RoundFailure.changesNotOnGitHub.message(for: .conflict)
+                == "Bifrost's copy of this pull request has changes that aren't on GitHub yet, "
+                + "so Bifrost didn't push a merge of the base branch. Ask Claude in its session "
+                + "to commit or undo them, then choose Resolve now.")
+        #expect(RoundFailure.stopped.message(for: .conflict) == RoundFailure.stopped.message)
     }
 
     // The writes of a request round: a refusal before any write says that nothing was posted,

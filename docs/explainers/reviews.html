@@ -427,8 +427,10 @@ a review round must leave exactly one pending review and nothing else.</p>
   <dt id="g-closed">Closed type</dt><dd>A Swift enum or struct with a fixed set of cases, such as
   <code>GitHubWrite</code> or <code>GitCommand</code>. Code can only do what one of its cases says, so a new kind of
   write has to be added to the type, where review and the checks see it.</dd>
-  <dt id="g-consent">Consent</dt><dd><code>autoFixConsent</code> in the state: true only after you turn on "Handle
-  comments on my PRs automatically" in this app and confirm. Without it no request round starts by itself.</dd>
+  <dt id="g-consent">Consent</dt><dd><code>autoFixConsent</code>, <code>conflictConsent</code> and
+  <code>ciConsent</code> in the state: each is true only after you turn on its setting ("Handle comments on my PRs
+  automatically", "Resolve merge conflicts automatically" or "Fix failing CI automatically") in this app and
+  confirm. Without it, that work never starts by itself.</dd>
   <dt id="g-forbidden">Forbidden rules</dt><dd>The rules of <code>scripts/check_forbidden.py</code>
   (<code>github-write</code>, <code>github-never</code>, <code>git-push</code>, <code>user-click</code> and
   <code>reviews-process</code>) that stop code outside the closed types from naming a write, building a push or

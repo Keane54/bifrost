@@ -1,9 +1,9 @@
-// The result file of a request round, result.json (docs/behaviour/reviews.md, "Request rounds",
-// and skills/bifrost-resolve-comments/bifrost-mode.md, "The result file"). The session writes it
-// after it read the comments of the PR, so Bifrost trusts none of it. The check is strict: one
-// failed rule refuses the whole file, and Bifrost then commits nothing and posts nothing. A
-// refusal names a known field or a limit only; it never holds text from the file, because the row
-// shows it and the log keeps it.
+// The result file of a request round, result-<round ID>.json (docs/behaviour/reviews.md, "Request
+// rounds", and skills/bifrost-resolve-comments/bifrost-mode.md, "The result file"). The session
+// writes it after it read the comments of the PR, so Bifrost trusts none of it. The check is
+// strict: one failed rule refuses the whole file, and Bifrost then commits nothing and posts
+// nothing. A refusal names a known field or a limit only; it never holds text from the file,
+// because the row shows it and the log keeps it.
 import BifrostFoundation
 import Foundation
 
@@ -128,7 +128,7 @@ package enum RequestResult {
             throw ResultRefusal("the round field is not this request round")
         }
         let results = try items(fields["items"], expected: input.itemIDs)
-        let commit = try commit(fields["commit"], changed: changed)
+        let commit = try commitPlan(fields["commit"], changed: changed)
         guard let checks = fields["checks"]?.string.flatMap(ChecksState.init(rawValue:)) else {
             throw ResultRefusal("the checks field is not passed, failed, blocked or none")
         }
@@ -239,8 +239,9 @@ package enum RequestResult {
         return text
     }
 
-    // null, or an object with the message and the paths.
-    private static func commit(_ value: JSONValue?, changed: Set<String>?)
+    // null, or an object with the message and the paths. The own request file of the user uses
+    // the same rules (OwnRequestFile).
+    package static func commitPlan(_ value: JSONValue?, changed: Set<String>?)
         throws(ResultRefusal) -> CommitPlan?
     {
         guard let value, value != .null else { return nil }
@@ -290,8 +291,8 @@ package enum RequestResult {
             }
             let parts = path.split(separator: "/", omittingEmptySubsequences: false)
             let dots = parts.contains { $0.isEmpty || $0 == "." || $0 == ".." }
-            if path.contains("\\") || dots || path.unicodeScalars.contains(where: isControl)
-            {
+            let control = path.unicodeScalars.contains(where: \.isControlOrDirection)
+            if path.contains("\\") || dots || control {
                 throw ResultRefusal("path \(n) of the commit is not a clean relative path")
             }
             // A file system that ignores case finds the .git folder also with another case.
@@ -324,12 +325,7 @@ package enum RequestResult {
     private static func hasControl(_ text: String, tabs: Bool) -> Bool {
         text.unicodeScalars.contains {
             if $0 == "\n" || (tabs && $0 == "\t") { return false }
-            return isControl($0)
+            return $0.isControlOrDirection
         }
-    }
-
-    // A control character (Cc), or a character that changes the direction of the text.
-    private static func isControl(_ scalar: Unicode.Scalar) -> Bool {
-        scalar.properties.generalCategory == .control || scalar.properties.isBidiControl
     }
 }

@@ -146,7 +146,7 @@ package enum ReviewResult {
         guard let text = value?.string else { throw ResultRefusal("the why field is not text") }
         let line = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !line.isEmpty else { throw ResultRefusal("the why field is empty") }
-        guard !line.unicodeScalars.contains(where: isControl) else {
+        guard !line.unicodeScalars.contains(where: \.isControlOrDirection) else {
             throw ResultRefusal("the why field has a control character")
         }
         guard line.utf16.count <= maxReason else {
@@ -222,11 +222,6 @@ package enum ReviewResult {
         return number
     }
 
-    // A control character (Cc), or a character that changes the direction of the text.
-    private static func isControl(_ scalar: Unicode.Scalar) -> Bool {
-        scalar.properties.generalCategory == .control || scalar.properties.isBidiControl
-    }
-
     // A number of 0 or more with a comma for each group of 3 digits: 10,000.
     static func count(_ number: Int) -> String {
         let digits = Array(String(number))
@@ -245,5 +240,13 @@ package enum ReviewResult {
         case .comment: "Comment"
         case .requestChanges: "Request changes"
         }
+    }
+}
+
+extension Unicode.Scalar {
+    // True for a control character (Cc), or a character that changes the direction of the text.
+    // The checks of the result files refuse both in a text, because the row and the log show it.
+    package var isControlOrDirection: Bool {
+        properties.generalCategory == .control || properties.isBidiControl
     }
 }

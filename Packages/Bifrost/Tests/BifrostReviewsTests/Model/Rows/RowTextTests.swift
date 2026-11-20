@@ -281,11 +281,11 @@ struct RowTextTests {
             + "comments to you."
         let expected: [(ClaudeState, RowLabel)] = [
             (
-                .needsYou(1),
+                .needsYou(comments: 1, ci: false),
                 label("Needs you", .red, "Claude needs your answer on 1 comment. Click to answer.")
             ),
             (
-                .needsYou(2),
+                .needsYou(comments: 2, ci: false),
                 label("Needs you", .red, "Claude needs your answer on 2 comments. Click to answer.")
             ),
             (.fixing(1), label("Fixing 1", .plain, "Claude is working on 1 comment.")),
@@ -296,6 +296,10 @@ struct RowTextTests {
             (.waiting, label("Waiting", .dim)),
             (.error("The push failed."), label("Error", .red, "The push failed.")),
             (.fork, label("Fork", .dim, fork)),
+            (
+                .waitsForYou("Your change is still here."),
+                label("Needs you", .red, "Your change is still here.")
+            ),
         ]
         for (state, label) in expected {
             #expect(RowText.claude(state) == label)
@@ -328,5 +332,64 @@ struct RowTextTests {
         let one = try #require(
             R.mine(R.answer(mine: [try R.pull("owner-a/repo-a#1", failedChecks: 1)]), state).first)
         #expect(one.tag?.tip == "1 check failed" && one.notes.isEmpty)
+    }
+
+    // The states of the conflict and CI work, and Needs you with a CI question, have the texts,
+    // the colours and the tips of the plan. Only Needs you needs the user.
+    @Test func theNewStatesHaveTheirTexts() {
+        let failure =
+            "Claude left conflict markers in a file, so Bifrost didn't push the merge. Choose "
+            + "Resolve now to try again."
+        let expected: [(ClaudeState, RowLabel)] = [
+            (
+                .resolvingConflicts,
+                label(
+                    "Resolving conflicts", .plain,
+                    "Claude is resolving the merge conflicts with the base branch.")
+            ),
+            (
+                .conflicts(nil),
+                label(
+                    "Has conflicts", .amber,
+                    "This branch has conflicts with its base branch. Choose Resolve now to let "
+                        + "Claude resolve them.")
+            ),
+            (.conflicts(failure), label("Has conflicts", .red, failure)),
+            (.fixingCI, label("Fixing CI", .plain, "Claude is looking at the failed checks.")),
+            (
+                .retryingCI,
+                label(
+                    "Retrying CI", .dim,
+                    "Bifrost re-ran the failed jobs and is waiting for the result.")
+            ),
+            (
+                .needsYou(comments: 1, ci: false),
+                label("Needs you", .red, "Claude needs your answer on 1 comment. Click to answer.")
+            ),
+            (
+                .needsYou(comments: 0, ci: true),
+                label(
+                    "Needs you", .red,
+                    "Claude needs your help with the failed checks. Click to answer.")
+            ),
+            (
+                .needsYou(comments: 1, ci: true),
+                label(
+                    "Needs you", .red,
+                    "Claude needs your answer on 1 comment and on the failed checks. Click to "
+                        + "answer.")
+            ),
+            (
+                .needsYou(comments: 3, ci: true),
+                label(
+                    "Needs you", .red,
+                    "Claude needs your answer on 3 comments and on the failed checks. Click to "
+                        + "answer.")
+            ),
+        ]
+        for (state, label) in expected {
+            #expect(RowText.claude(state) == label, "\(state)")
+            #expect(state.needsTheUser == (label.text == "Needs you"), "\(state)")
+        }
     }
 }

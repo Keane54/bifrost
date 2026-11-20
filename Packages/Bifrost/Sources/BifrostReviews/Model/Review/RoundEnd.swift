@@ -12,7 +12,9 @@
 // 6. An idle row that worked, with no ready result, for settle: the turn ended with no result.
 //    The settle time stands in for a signal that does not exist: Claude Code gives no "turn
 //    ended" event, and the registry samples the rows each 2 s, so an idle sample can come
-//    between two tools, before more work.
+//    between two tools, before more work. The idle sample can also be old (a hidden window
+//    samples each 15 s), so the wait of the turn (PRSessions.waitForTurnEnd) ends it only at a
+//    later sample that still shows the row idle.
 // 7. An idle row that never worked, for noStart: the session did not start to work.
 
 // What the session row shows for the rule.

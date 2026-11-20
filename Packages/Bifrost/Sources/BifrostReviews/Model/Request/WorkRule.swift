@@ -36,6 +36,10 @@ package struct WorkItem: Sendable, Equatable {
 
 package enum WorkRule {
     package static let maxItems = 30
+    // The wait after a request round whose full read failed before a poll queues the next
+    // automatic round of the PR. Such a round chose no items, so without the wait each poll
+    // would queue it and read again.
+    package static let readRetry: Duration = .seconds(15 * 60)
 
     // The items of a round of the PR, oldest first, at most maxItems. autoFix: the automatic
     // rounds are on (ReviewsState.allowsAutoFix). baseline: the items that were open at the

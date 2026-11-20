@@ -1,16 +1,19 @@
-// The push of the fix commit of a request round (docs/behaviour/reviews.md, "The push and the
-// writes"). It is the only git write to GitHub, and it has one form (GitCommand.push): a fast
-// forward of one commit to the head branch of the PR, with no force, so GitHub refuses each push
-// that is not a fast-forward. Each git command runs in Bifrost's clone (GitPlace.clone).
+// The push of the fix commit of a request round, or of the merge of a conflict round
+// (docs/behaviour/reviews.md, "The push and the writes"). It is the only git write to GitHub, and
+// it has one form (GitCommand.push): a fast forward of one commit to the head branch of the PR,
+// with no force, so GitHub refuses each push that is not a fast-forward. Each git command runs in
+// Bifrost's clone (GitPlace.clone).
 //
 // 1. The checks of the target, with local git only, before any network call (PushPlan): not a
 //    fork, not the base branch or the default branch, origin has one URL (the address of the
-//    clone) and no push URL, no insteadOf or pushInsteadOf rule changes the address, and the one
-//    parent of the fix is the head of the round.
-// 2. The fetch of the branch. A branch that has the fix gets nothing. A branch without the head
-//    of the round was rewritten, and gets nothing. A branch with new commits gets a merge of the
-//    fix and the branch (merge-tree and commit-tree: no worktree, no hook, no signature); a
-//    conflict gets nothing.
+//    clone) and no push URL, no insteadOf or pushInsteadOf rule changes the address, and the
+//    parents of the commit are the expected parents: the head of the round for a fix, or the
+//    head and the base for a merge.
+// 2. The fetch of the branch. A branch that has the commit gets nothing. A branch without the
+//    head of the round was rewritten, and gets nothing. A branch with new commits gets a merge of
+//    the commit and the branch (merge-tree and commit-tree: no worktree, no hook, no signature);
+//    a conflict gets nothing. With BranchMoved.stop, a branch with new commits gets nothing, and
+//    the push throws moved: the new head is a new case for the round.
 // 3. The push. GitHub refuses a push that is not a fast-forward when the branch moved after the
 //    fetch: then one more fetch and one more try (PushPlan.maxTries). A push that made a new
 //    branch shows that GitHub deleted the branch. After a push, a fetch of the branch gives the
@@ -34,6 +37,14 @@ package struct PushResult: Sendable, Equatable {
     }
 }
 
+// What the push does when the branch on GitHub has new commits on top of the head of the round.
+package enum BranchMoved: Sendable {
+    // Merge the commit and the branch, and push the merge (a request round).
+    case merge
+    // Push nothing and throw moved (a conflict round): the new head is a new case.
+    case stop
+}
+
 package struct Pusher: Sendable {
     private let git: RepoGit
     // The source of the clone: the one address that the push can go to.
@@ -44,27 +55,32 @@ package struct Pusher: Sendable {
         self.address = address
     }
 
-    // Push the fix of the round on the head to the branch of the target.
-    package func push(_ fix: CommitID, head: CommitID, pr: PRKey, to target: PushTarget)
-        async throws(PushRefusal) -> PushResult
-    {
-        try await checkTarget(fix, head: head, pr: pr, target: target)
+    // Push the commit of the round on the head to the branch of the target. parents: the parents
+    // that the commit must have, in their order; nil means the head only (a fix). onMove: what a
+    // branch with new commits gets.
+    package func push(
+        _ commit: CommitID, head: CommitID, pr: PRKey, to target: PushTarget,
+        parents: [CommitID]? = nil, onMove: BranchMoved = .merge
+    ) async throws(PushRefusal) -> PushResult {
+        try await checkTarget(commit, head: head, pr: pr, target: target, parents: parents)
         for _ in 1...PushPlan.maxTries {
             let remote = try await fetchBranch(target.branch, pr: pr)
             let need = try PushPlan.need(
-                fixOnBranch: try await isAncestor(fix, of: remote, pr: pr),
+                fixOnBranch: try await isAncestor(commit, of: remote, pr: pr),
                 headOnBranch: try await isAncestor(head, of: remote, pr: pr),
-                branchInFix: try await isAncestor(remote, of: fix, pr: pr))
+                branchInFix: try await isAncestor(remote, of: commit, pr: pr))
             let push: GitPush
             let step: PushStep
-            switch need {
-            case .nothing:
-                return PushResult(step: .nothing(remote), commit: fix)
-            case .fastForward:
-                push = GitPush(commit: fix, branch: target.branch)
+            switch (need, onMove) {
+            case (.nothing, _):
+                return PushResult(step: .nothing(remote), commit: commit)
+            case (.fastForward, _):
+                push = GitPush(commit: commit, branch: target.branch)
                 step = .push(push)
-            case .merge:
-                let merged = try await merge(fix, head: head, remote: remote, pr: pr, target)
+            case (.merge, .stop):
+                throw .moved
+            case (.merge, .merge):
+                let merged = try await merge(commit, head: head, remote: remote, pr: pr, target)
                 push = GitPush(commit: merged, branch: target.branch)
                 step = .merge(push)
             }
@@ -100,10 +116,12 @@ package struct Pusher: Sendable {
     // MARK: - The parts, also of the signed push
 
     // The checks of the target with local git only (PushPlan.targetRefusal), and the check that
-    // the one parent of the fix is the head of the round.
-    func checkTarget(_ fix: CommitID, head: CommitID, pr: PRKey, target: PushTarget)
-        async throws(PushRefusal)
-    {
+    // the parents of the commit are the parents, in their order. nil means the head of the round
+    // only (a fix).
+    func checkTarget(
+        _ commit: CommitID, head: CommitID, pr: PRKey, target: PushTarget,
+        parents: [CommitID]? = nil
+    ) async throws(PushRefusal) {
         if target.isFork { throw .fork }
         let remote = RemoteURLs(
             urls: try await values(.configGetAll("remote.origin.url"), pr),
@@ -113,7 +131,9 @@ package struct Pusher: Sendable {
         if let refusal = PushPlan.targetRefusal(target, remote: remote, address: address) {
             throw refusal
         }
-        guard try await object(fix, pr: pr).parents == [head] else { throw .target }
+        guard try await object(commit, pr: pr).parents == (parents ?? [head]) else {
+            throw .target
+        }
     }
 
     // Fetch the branch into a ref of Bifrost, and give its commit. A branch that GitHub does not

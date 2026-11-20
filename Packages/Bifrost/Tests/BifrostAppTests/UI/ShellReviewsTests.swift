@@ -50,9 +50,36 @@ private enum Poll {
         return pr
     }
 
-    static func answer(_ toReview: [[String: Any]]) throws -> Data {
+    // A PR of the user that GitHub says has conflicts, with only the fields that the rows read.
+    static func conflicting(_ number: Int) -> [String: Any] {
+        let page = ["hasNextPage": false]
+        let before = ["hasPreviousPage": false]
+        return [
+            "number": number, "title": "Change \(number)", "isDraft": false, "additions": 3,
+            "deletions": 1, "createdAt": "2026-11-01T09:00:00Z",
+            "updatedAt": "2026-11-01T09:00:00Z",
+            "repository": ["name": "repo-a", "owner": ["login": "owner-a"]],
+            "author": ["login": viewer], "headRefOid": String(repeating: "a", count: 40),
+            "headRefName": "change-\(number)", "baseRefName": "main",
+            "baseRefOid": String(repeating: "b", count: 40), "mergeable": "CONFLICTING",
+            "isCrossRepository": false, "reviewDecision": NSNull(),
+            "comments": ["nodes": [Any](), "pageInfo": before] as [String: Any],
+            "reviews": ["nodes": [Any](), "pageInfo": page] as [String: Any],
+            "reviewThreads": ["nodes": [Any](), "pageInfo": before] as [String: Any],
+            "latestOpinionatedReviews": ["nodes": [Any](), "pageInfo": page] as [String: Any],
+            "reviewRequests": ["nodes": [Any]()], "timelineItems": ["nodes": [Any]()],
+            "pendingReviews": ["nodes": [Any]()],
+            "commits": ["nodes": [Any]()],
+        ]
+    }
+
+    static func answer(_ toReview: [[String: Any]], mine: [[String: Any]] = []) throws -> Data {
+        // A full page of each search, so the answer is not cut.
+        let page = ["hasNextPage": false]
         let data: [String: Any] = [
-            "viewer": ["login": viewer], "toReview": ["nodes": toReview], "mine": ["nodes": []],
+            "viewer": ["login": viewer],
+            "toReview": ["nodes": toReview, "pageInfo": page] as [String: Any],
+            "mine": ["nodes": mine, "pageInfo": page] as [String: Any],
         ]
         return try JSONSerialization.data(withJSONObject: ["data": data])
     }
@@ -74,6 +101,12 @@ private final class ArmedGate: Sendable {
                 try system.sync(handle)
             }, rename: system.rename)
     }
+}
+
+// The session input of the shell: the test checks only which rounds get it.
+@MainActor
+private final class ShellInput: PromptInput {
+    func send(_ session: String, _ text: String) async throws(InputRefusal) {}
 }
 
 @MainActor
@@ -104,7 +137,8 @@ private final class Harness {
     // with the real git (its sources are missing, so each clone fails) and the parts of the PR
     // sessions, so the review rounds run.
     init(
-        _ toReview: [[String: Any]] = [Poll.pr(101)], state: String? = nil,
+        _ toReview: [[String: Any]] = [Poll.pr(101)], mine: [[String: Any]] = [],
+        state: String? = nil,
         steps: WriteSteps = .system, holding: Bool = false, sessions: Bool = false
     ) async throws {
         folder = try TemporaryFolder()
@@ -119,7 +153,7 @@ private final class Harness {
                 at: layout.folder, withIntermediateDirectories: true)
             try Data(state.utf8).write(to: layout.stateFile)
         }
-        github = FakeGitHub(answers: ["poll": .success(try Poll.answer(toReview))])
+        github = FakeGitHub(answers: ["poll": .success(try Poll.answer(toReview, mine: mine))])
         (health, events) = HealthReporter.make()
         let wall = wall
         var repos: RepoStore?
@@ -173,8 +207,8 @@ private final class Harness {
         _ = try await settings.edit(change)
     }
 
-    // Settings > Reviews, with a confirm dialog that always confirms and the link of the consent
-    // to the part, as the shell gives them (Shell.settingsLinks).
+    // Settings > Reviews, with a confirm dialog that always confirms and the links of the
+    // consents to the part, as the shell gives them (Shell.settingsLinks).
     lazy var section: ReviewsSection = {
         let parts = parts
         let model = SettingsModel(
@@ -182,14 +216,23 @@ private final class Harness {
             layout: WindowLayoutModel(layout: WindowLayout(bounds: LayoutSize(w: 1200, h: 800))),
             links: SettingsLinks(
                 confirm: { _ in true },
-                reviews: ReviewsLinks(confirmAutoFix: { parts.autoFixConfirmed() })))
+                reviews: ReviewsLinks(
+                    confirmAutoFix: { parts.autoFixConfirmed() },
+                    confirmResolveConflicts: { parts.resolveConflictsConfirmed() },
+                    confirmFixCI: { parts.fixCIConfirmed() })))
         return ReviewsSection(model: model)
     }()
 
     // Turn on "Handle comments on my PRs automatically" as Settings does: the confirm, the save,
     // then the consent. Wait for the edit of the part.
     func confirmAutoFix() async {
-        #expect(await section.change(.autoFix, to: true))
+        await confirm(.autoFix)
+    }
+
+    // Turn on a setting as Settings does: the confirm, the save, then the consent of the setting.
+    // Wait for the edit of the part.
+    func confirm(_ setting: ReviewsSection.Confirmed) async {
+        #expect(await section.change(setting, to: true))
         await parts.settled()
     }
 
@@ -525,6 +568,120 @@ struct ShellReviewsTests {
         await h.end()
     }
 
+    // A settings file, an import or the Debug test port that turns on the settings of merge
+    // conflicts and of failing CI gives no consent. The open of the store turns them off with the
+    // automatic comment handling (one settings edit), and a later write of true while the store is
+    // open records nothing, so the next open turns it off again.
+    @Test func aSettingsFileThatTurnsOnConflictsGivesNoConsent() async throws {
+        let h = try await Harness()
+        try await h.set {
+            $0.reviewsResolveConflicts = true
+            $0.reviewsFixCI = true
+        }
+        try await h.watch()
+        let store = try #require(h.parts.store)
+        let settings = { h.settings.settings }
+        #expect(!settings().reviewsResolveConflicts && !settings().reviewsFixCI)
+        #expect(!settings().reviewsAutoFix)
+        #expect(h.parts.conflictConsent == nil && h.parts.ciConsent == nil)
+        #expect(store.state.conflictConsent == nil && store.state.ciConsent == nil)
+        #expect(!store.state.allowsConflictFix(true) && store.state.ciConsent(true) == nil)
+        try await h.set { $0.reviewsResolveConflicts = true }
+        #expect(await waitUntil { h.parts.config?.resolveConflicts == true })
+        await h.parts.settled()
+        #expect(h.parts.conflictConsent == nil && store.state.conflictConsent == nil)
+        #expect(settings().reviewsResolveConflicts)
+        try await h.unwatch()
+        try await h.watch()
+        #expect(!settings().reviewsResolveConflicts && h.parts.conflictConsent == nil)
+        await h.end()
+    }
+
+    // The confirmed turn-on of each setting records its own consent in the open store at once,
+    // and moves no start of new work. The saved state holds both consents. A turn-off keeps the
+    // consents and stops the work.
+    @Test func theConfirmedTurnOnRecordsTheConsent() async throws {
+        let h = try await Harness()
+        try await h.watch()
+        let store = try #require(h.parts.store)
+        let fixFrom = store.state.fixFrom
+        h.wall.date += 600
+        await h.confirm(.resolveConflicts)
+        #expect(h.parts.conflictConsent == true && h.parts.ciConsent == nil)
+        #expect(store.state.conflictConsent == true && store.state.ciConsent == nil)
+        #expect(store.state.allowsConflictFix(h.settings.settings.reviewsResolveConflicts))
+        await h.confirm(.fixCI)
+        #expect(h.parts.ciConsent == true && store.state.ciConsent == true)
+        #expect(store.state.ciConsent(h.settings.settings.reviewsFixCI) != nil)
+        #expect(store.state.fixFrom == fixFrom && store.state.autoFixConsent == false)
+        #expect(h.parts.autoFixConsent == false)
+        // The consents changed the state at once. Wait for the write of the current state.
+        #expect(await store.saved(store.change { _ in }))
+        let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: h.layout.stateFile))
+        let fields = saved as? [String: Any]
+        #expect(fields?["conflictConsent"] as? Bool == true)
+        #expect(fields?["ciConsent"] as? Bool == true)
+        try await h.set {
+            $0.reviewsResolveConflicts = false
+            $0.reviewsFixCI = false
+        }
+        #expect(!store.state.allowsConflictFix(h.settings.settings.reviewsResolveConflicts))
+        #expect(store.state.ciConsent(h.settings.settings.reviewsFixCI) == nil)
+        #expect(store.state.conflictConsent == true && store.state.ciConsent == true)
+        await h.end()
+    }
+
+    // A confirmed turn-on while Watch GitHub is off gives the consent at the next open of this
+    // run, and the setting stays on. A turn-off before that open ends the wait of that setting
+    // only, so a later write of true with no confirm goes off at the open.
+    @Test func aConfirmWithNoStoreGivesTheConsentAtTheNextOpen() async throws {
+        let h = try await Harness()
+        try await h.watch()
+        try await h.unwatch()
+        await h.confirm(.resolveConflicts)
+        await h.confirm(.fixCI)
+        let settings = { h.settings.settings }
+        #expect(h.parts.conflictConsent == nil && h.parts.ciConsent == nil)
+        #expect(settings().reviewsResolveConflicts && settings().reviewsFixCI)
+        try await h.set { $0.reviewsFixCI = false }
+        #expect(await waitUntil { h.parts.config?.fixCI == false })
+        try await h.set { $0.reviewsFixCI = true }
+        #expect(await waitUntil { h.parts.config?.fixCI == true })
+        try await h.watch()
+        let store = try #require(h.parts.store)
+        #expect(h.parts.conflictConsent == true && settings().reviewsResolveConflicts)
+        #expect(store.state.conflictConsent == true)
+        #expect(h.parts.ciConsent == nil && store.state.ciConsent == nil)
+        #expect(!settings().reviewsFixCI)
+        await h.end()
+    }
+
+    // A store that already holds the recorded consents of merge conflicts and of failing CI
+    // keeps both settings on at its next open, also when a settings file turned them on.
+    @Test func recordedConsentsKeepTheNewSettingsOnAtTheOpen() async throws {
+        let h = try await Harness()
+        try await h.watch()
+        try await h.unwatch()
+        // The file holds both consents, as after a confirmed turn-on of each in an earlier run.
+        let data = try Data(contentsOf: h.layout.stateFile)
+        var fields = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        fields["conflictConsent"] = true
+        fields["ciConsent"] = true
+        try JSONSerialization.data(withJSONObject: fields).write(to: h.layout.stateFile)
+        try await h.set {
+            $0.reviewsResolveConflicts = true
+            $0.reviewsFixCI = true
+        }
+        try await h.watch()
+        let store = try #require(h.parts.store)
+        let settings = { h.settings.settings }
+        #expect(settings().reviewsResolveConflicts && settings().reviewsFixCI)
+        #expect(h.parts.conflictConsent == true && h.parts.ciConsent == true)
+        #expect(store.state.allowsConflictFix(settings().reviewsResolveConflicts))
+        #expect(store.state.ciConsent(settings().reviewsFixCI) != nil)
+        await h.end()
+    }
+
     // The close of the quit ends only when the last save of the store is on the disk and the lock
     // is free: a consent that saves just before the quit is not lost. A stop after it does
     // nothing more.
@@ -616,6 +773,21 @@ struct ShellReviewsTests {
         await h.end()
     }
 
+    // Resolve now queues a conflict round for a PR of the user with conflicts, with the setting
+    // "Resolve merge conflicts automatically" off: the round runs and its clone fails here, which
+    // the conflict mark of the pair shows.
+    @Test func resolveNowQueuesAConflictRound() async throws {
+        let h = try await Harness([], mine: [Poll.conflicting(55)], sessions: true)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#55"))
+        try await h.watch()
+        let store = try #require(h.parts.store)
+        #expect(store.state.prs[pr]?.conflict == nil && store.state.queue.isEmpty)
+        h.parts.run(.resolveNow(pr))
+        #expect(await waitUntil { store.state.prs[pr]?.conflict != nil })
+        try await h.unwatch()
+        await h.end()
+    }
+
     // While the store is open, the Approve button has its flow, each open of the Review panel
     // gets a new flow, and the Answer panel gets one while the rounds run. A turn-off drops them.
     @Test func thePanelsThatWriteFollowTheStore() async throws {
@@ -630,6 +802,26 @@ struct ShellReviewsTests {
         try await h.unwatch()
         #expect(h.parts.approver == nil && h.parts.draftFlow() == nil)
         #expect(h.parts.answerFlow(for: pr) == nil)
+        await h.parts.setupTask?.value
+        await h.end()
+    }
+
+    // The rounds type their prompts through the session input that the shell gives the part.
+    // They read it at the time of each turn, so an input that comes after the open of the store
+    // counts, and the rounds of a later open get it too.
+    @Test func theRoundsGetTheSessionInputOfTheShell() async throws {
+        let h = try await Harness(sessions: true)
+        try await h.watch()
+        let rounds = try #require(h.parts.rounds)
+        #expect(rounds.sessions.currentInput == nil)
+        let input = ShellInput()
+        h.parts.input = input
+        #expect(rounds.sessions.currentInput === input)
+        try await h.unwatch()
+        await h.parts.setupTask?.value
+        try await h.watch()
+        #expect(h.parts.rounds !== rounds)
+        #expect(h.parts.rounds?.sessions.currentInput === input)
         await h.parts.setupTask?.value
         await h.end()
     }

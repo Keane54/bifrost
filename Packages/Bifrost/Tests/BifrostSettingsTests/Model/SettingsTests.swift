@@ -26,11 +26,13 @@ private let defaultsJSON: JSONValue = [
     "projectApp": .null,
     "redBoxSound": true,
     "reviewsAutoFix": true,
+    "reviewsFixCI": false,
     "reviewsIgnore": [],
     "reviewsMaxSessions": 3,
     "reviewsPauseMinutes": 60,
     "reviewsPollMinutes": 2,
     "reviewsRequestModel": "",
+    "reviewsResolveConflicts": false,
     "reviewsReviewModel": "",
     "reviewsSignedCommits": false,
     "reviewsTeamRequests": true,
@@ -126,7 +128,7 @@ struct SettingsDecodeTests {
         settings.keys = ["open:key": "K"]
         settings.dailyUpdate = .defaults
         let fields = try #require(try encoded(settings).fields, "the JSON form is an object")
-        #expect(fields.count == 31)
+        #expect(fields.count == 33)
         let data = try JSONEncoder().encode(settings)
         #expect(try JSONDecoder().decode(Settings.self, from: data).unknown.values.isEmpty)
     }
@@ -281,6 +283,29 @@ struct ReviewsSettingsTests {
         let many = (0..<51).map { "acme/r\($0)" }
         #expect(reasonOf { $0.reviewsIgnore = many } == refused)
         #expect(reasonOf { $0.reviewsIgnore = Array(many.prefix(50)) } == nil)
+    }
+
+    // The settings of the merge conflicts and of the failing CI of the PRs of the user are off by
+    // default. A stored true or false stays, and the encode writes it with its key. A value that
+    // is not a flag gets the default and lists its key.
+    @Test func theNewReviewsSettingsDefaultOffAndRoundTrip() throws {
+        let defaults = Settings()
+        #expect(!defaults.reviewsResolveConflicts && !defaults.reviewsFixCI)
+        for flag in [true, false] {
+            let value = stored([
+                "reviewsResolveConflicts": .bool(flag), "reviewsFixCI": .bool(!flag),
+            ])
+            let settings = decodedSettings(value)
+            #expect(settings.reviewsResolveConflicts == flag && settings.reviewsFixCI == !flag)
+            #expect(defaultedKeys(value) == [])
+            #expect(savedField(settings, "reviewsResolveConflicts") == .bool(flag))
+            #expect(savedField(settings, "reviewsFixCI") == .bool(!flag))
+            let data = try JSONEncoder().encode(settings)
+            #expect(try JSONDecoder().decode(Settings.self, from: data) == settings)
+        }
+        let bad = stored(["reviewsResolveConflicts": "true", "reviewsFixCI": 1])
+        #expect(!decodedSettings(bad).reviewsResolveConflicts && !decodedSettings(bad).reviewsFixCI)
+        #expect(defaultedKeys(bad) == ["reviewsFixCI", "reviewsResolveConflicts"])
     }
 }
 

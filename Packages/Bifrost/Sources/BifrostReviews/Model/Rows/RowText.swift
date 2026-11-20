@@ -184,15 +184,32 @@ package enum RowText {
     // The Claude state on the right of a My PRs row.
     package static func claude(_ state: ClaudeState) -> RowLabel {
         switch state {
-        case .needsYou(let questions):
-            RowLabel(
-                text: "Needs you", tone: .red,
-                tip: "Claude needs your answer on \(count(questions, "comment", "comments")). "
-                    + "Click to answer.")
+        case .needsYou(let comments, let ci):
+            RowLabel(text: "Needs you", tone: .red, tip: needsYouTip(comments: comments, ci: ci))
+        case .waitsForYou(let reason):
+            RowLabel(text: "Needs you", tone: .red, tip: reason)
         case .fixing(let items):
             RowLabel(
                 text: "Fixing \(items)", tone: .plain,
                 tip: "Claude is working on \(count(items, "comment", "comments")).")
+        case .resolvingConflicts:
+            RowLabel(
+                text: "Resolving conflicts", tone: .plain,
+                tip: "Claude is resolving the merge conflicts with the base branch.")
+        case .fixingCI:
+            RowLabel(
+                text: "Fixing CI", tone: .plain, tip: "Claude is looking at the failed checks.")
+        case .retryingCI:
+            RowLabel(
+                text: "Retrying CI", tone: .dim,
+                tip: "Bifrost re-ran the failed jobs and is waiting for the result.")
+        case .conflicts(let reason?):
+            RowLabel(text: "Has conflicts", tone: .red, tip: reason)
+        case .conflicts(nil):
+            RowLabel(
+                text: "Has conflicts", tone: .amber,
+                tip: "This branch has conflicts with its base branch. Choose Resolve now to let "
+                    + "Claude resolve them.")
         case .queued:
             RowLabel(text: "Queued", tone: .dim, tip: "Waiting for a free session slot.")
         case .trustNeeded:
@@ -206,6 +223,16 @@ package enum RowText {
         case .fork:
             RowLabel(text: "Fork", tone: .dim, tip: forkReason)
         }
+    }
+
+    // The tip of Needs you: the questions on comments, the CI question, or both.
+    private static func needsYouTip(comments: Int, ci: Bool) -> String {
+        let questions = count(comments, "comment", "comments")
+        if !ci { return "Claude needs your answer on \(questions). Click to answer." }
+        if comments == 0 {
+            return "Claude needs your help with the failed checks. Click to answer."
+        }
+        return "Claude needs your answer on \(questions) and on the failed checks. Click to answer."
     }
 
     // The cross after the title of a PR with failed checks.

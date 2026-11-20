@@ -253,12 +253,17 @@ struct MyPRRulesTests {
         #expect(try claude(state, R.pull(key.text, fork: true)) == .fork)
         state.prs[key, default: PRState()].lastError = "The push failed."
         #expect(try claude(state, R.pull(key.text, fork: true)) == .error("The push failed."))
+        state.prs[key]?.waitsForYou = "Your change is still here."
+        #expect(try claude(state, pr) == .waitsForYou("Your change is still here."))
+        #expect(try row(pr, state).unsavedFiles == 0)
+        state.prs[key]?.waiting?.files = ["a.txt", "b.txt"]
+        #expect(try row(pr, state).unsavedFiles == 2)
         for id in ["PRRT_1", "PRRT_2"] {
             let item = try R.node(id)
             state.prs[key]?.questions[item] = Question(
                 text: "Which?", place: "src/a.swift line 1", at: R.at(-5), seenUntil: R.at(-5))
         }
-        #expect(try claude(state, pr) == .needsYou(2))
+        #expect(try claude(state, pr) == .needsYou(comments: 2, ci: false))
         state.queue = [QueueEntry(pr: key, kind: .request, at: R.at(-1))]
         #expect(try claude(state, pr) == .queued)
         state.prs[key]?.round = ActiveRound(
@@ -285,6 +290,14 @@ struct MyPRRulesTests {
         state.prs[key]?.round = ActiveRound(
             phase: .posting, startedAt: R.at(-1), at: R.at(-1), kind: .request)
         #expect(try row(pr, state).unsentUpdates == false)
+        // The outbox of an own request counts only while it waits for the user: with no reason
+        // its writes run now, or go on by themselves after a quit.
+        state.prs[key]?.round = nil
+        state.prs[key]?.outbox?.own = true
+        state.prs[key]?.lastError = nil
+        #expect(try row(pr, state).unsentUpdates == false)
+        state.prs[key]?.waitsForYou = "Bifrost couldn't push your change."
+        #expect(try row(pr, state).unsentUpdates == true)
     }
 
     // A queued request round waits for the clone of its repository while the clone runs, then
@@ -330,6 +343,10 @@ struct MyPRRulesTests {
         ])
         let order = [keys[5], keys[3], keys[2], keys[4], keys[1], keys[0]]
         #expect(R.mine(answer, state).map(\.id) == order)
+        // Work that waits for the user comes first too, with the last update first in the group.
+        state.prs[keys[1], default: PRState()].waitsForYou = "Your change is still here."
+        let waits = [keys[1], keys[5], keys[3], keys[2], keys[4], keys[0]]
+        #expect(R.mine(answer, state).map(\.id) == waits)
     }
 
     // Only the consent of the user in this app lets new work go to an automatic round. With no
@@ -382,4 +399,273 @@ struct MyPRRulesTests {
         #expect(cut.review?.tip == "Bifrost read only the newest items of this PR.")
         #expect(try row(R.pull("owner-a/repo-a#1")).review?.tip == nil)
     }
+
+    // A PR that GitHub says has conflicts shows Has conflicts in amber, with the tip that names
+    // Resolve now, and it does not need the user. A PR that merges, or whose merge state GitHub
+    // doesn't know, waits. A fork with conflicts stays a fork.
+    @Test func aConflictingPRShowsHasConflicts() throws {
+        let shown = try row(conflicting())
+        #expect(shown.mineState?.claude == .conflicts(nil))
+        #expect(
+            shown.status
+                == RowLabel(
+                    text: "Has conflicts", tone: .amber,
+                    tip: "This branch has conflicts with its base branch. Choose Resolve now to "
+                        + "let Claude resolve them."))
+        #expect(shown.mineState?.claude.needsTheUser == false)
+        for state in [Mergeable.mergeable, .unknown] {
+            #expect(try claudeState(conflicting(state)) == .waiting)
+        }
+        #expect(try claudeState(R.pull("owner-a/repo-a#1", base: R.base)) == .waiting)
+        #expect(try claudeState(conflicting(fork: true)) == .fork)
+    }
+
+    // A failed conflict attempt on the head and the base of the PR shows its reason in red. An
+    // attempt that runs, that pushed, or that failed with no reason (a mark that Bifrost could not
+    // read in full) gives no reason.
+    @Test func aFailedAttemptOnThisPairShowsItsReason() throws {
+        let reason =
+            "Claude left conflict markers in a file, so Bifrost didn't push the merge. Choose "
+            + "Resolve now to try again."
+        var state = R.turnedOn()
+        state.prs[try key(), default: PRState()].conflict = try attempt(.failed(reason))
+        let shown = try row(conflicting(), state)
+        #expect(shown.mineState?.claude == .conflicts(reason))
+        #expect(shown.status == RowLabel(text: "Has conflicts", tone: .red, tip: reason))
+        for outcome in [ConflictOutcome.working, .pushed(try R.commit("f")), .failed("")] {
+            state.prs[try key()]?.conflict = try attempt(outcome)
+            #expect(try claudeState(conflicting(), state) == .conflicts(nil))
+        }
+    }
+
+    // A failed attempt on an older head or an older base is not about the conflicts of now: the
+    // row shows Has conflicts in amber, so Resolve now can try the new pair. A PR whose base
+    // commit GitHub didn't give gets no reason either.
+    @Test func anAttemptOnAnOlderHeadShowsNoReason() throws {
+        var state = R.turnedOn()
+        let failed = ConflictOutcome.failed("Claude couldn't resolve these conflicts.")
+        state.prs[try key(), default: PRState()].conflict = try attempt(failed, head: "c")
+        #expect(try claudeState(conflicting(), state) == .conflicts(nil))
+        state.prs[try key()]?.conflict = try attempt(failed, base: "c")
+        #expect(try claudeState(conflicting(), state) == .conflicts(nil))
+        state.prs[try key()]?.conflict = try attempt(failed)
+        let noBase = try R.pull("owner-a/repo-a#1", mergeable: .conflicting)
+        #expect(try claudeState(noBase, state) == .conflicts(nil))
+    }
+
+    // A running round shows the state of its kind, also on a PR with conflicts and a failed
+    // attempt. A round of any kind of the user's side that waits in the queue shows Queued (or
+    // Cloning and Trust needed), and a review entry does not.
+    @Test func eachRoundKindShowsItsState() throws {
+        let pr = try conflicting()
+        var state = R.turnedOn()
+        state.prs[try key(), default: PRState()].conflict = try attempt(.failed("It failed."))
+        let item = try R.node("PRRT_1")
+        let expected: [(PRSessionKind, ClaudeState)] = [
+            (.request, .fixing(1)), (.conflict, .resolvingConflicts), (.ci, .fixingCI),
+        ]
+        for (kind, claude) in expected {
+            state.prs[try key()]?.round = ActiveRound(
+                phase: .running, startedAt: R.at(-1), at: R.at(-1), kind: kind,
+                items: kind == .request ? [item: R.at(-9)] : [:])
+            #expect(try claudeState(pr, state) == claude, "\(kind)")
+        }
+        state.prs[try key()]?.round = nil
+        for kind in [PRSessionKind.request, .conflict, .ci] {
+            state.queue = [QueueEntry(pr: try key(), kind: kind, at: R.at(-1))]
+            #expect(try claudeState(pr, state) == .queued, "\(kind)")
+            let repo = try key().repo
+            let cloning = R.mine(R.answer(mine: [pr]), state, clones: CloneStates(cloning: [repo]))
+            #expect(cloning.first?.mineState?.claude == .cloning, "\(kind)")
+        }
+        state.queue = [QueueEntry(pr: try key(), kind: .review, at: R.at(-1))]
+        #expect(try claudeState(pr, state) == .conflicts("It failed."))
+    }
+
+    // A CI question on the head counts as one question, and the row shows Needs you with the
+    // tip of the failed checks, alone or with the questions on comments. Without the CI setting
+    // or its consent, the question hides. An answered question, or one on an older head, never
+    // shows.
+    @Test func aCIQuestionCountsAndHidesWithoutConsent() throws {
+        let pr = try R.pull("owner-a/repo-a#1")
+        var state = R.turnedOn()
+        state.ciConsent = true
+        var config = ReviewsConfig()
+        config.fixCI = true
+        let question = CIQuestion(
+            text: "Is the test of the parser flaky?", head: try R.commit("a"), jobs: ["test"],
+            at: R.at(-5), byClaude: true)
+        state.prs[try key(), default: PRState()].ci = CIMark(
+            chain: [try R.commit("a")], question: question)
+        var shown = try row(pr, state, config)
+        #expect(shown.mineState?.claude == .needsYou(comments: 0, ci: true) && shown.questions == 1)
+        #expect(
+            shown.status.tip == "Claude needs your help with the failed checks. Click to answer.")
+        state.prs[try key()]?.questions[try R.node("PRRT_1")] = Question(
+            text: "Which name?", place: "src/a.swift line 4", at: R.at(-5), seenUntil: R.at(-5))
+        shown = try row(pr, state, config)
+        #expect(shown.mineState?.claude == .needsYou(comments: 1, ci: true) && shown.questions == 2)
+
+        config.fixCI = false
+        shown = try row(pr, state, config)
+        #expect(shown.mineState?.claude == .needsYou(comments: 1, ci: false))
+        #expect(shown.questions == 1)
+        config.fixCI = true
+        for consent in [nil, false] as [Bool?] {
+            state.ciConsent = consent
+            shown = try row(pr, state, config)
+            #expect(shown.mineState?.claude == .needsYou(comments: 1, ci: false))
+            #expect(shown.questions == 1)
+        }
+
+        state.ciConsent = true
+        state.prs[try key()]?.questions = [:]
+        state.prs[try key()]?.ci?.question?.answer = "Run it again."
+        shown = try row(pr, state, config)
+        #expect(shown.mineState?.claude == .waiting && shown.questions == 0)
+        state.prs[try key()]?.ci?.question?.answer = nil
+        state.prs[try key()]?.ci?.question?.head = try R.commit("c")
+        shown = try row(pr, state, config)
+        #expect(shown.mineState?.claude == .waiting && shown.questions == 0)
+    }
+
+    // After a re-run of the failed jobs of the head, the row shows Retrying CI while CI runs or
+    // while the poll still shows the same failed jobs. New results end it: the jobs passed, or
+    // failed again as new jobs. A re-run of another head shows nothing.
+    @Test func retryingShowsUntilNewResults() throws {
+        let head = try R.commit("a")
+        let first = try job(101, .failed("FAILURE"))
+        var state = R.turnedOn()
+        state.prs[try key(), default: PRState()].ci = CIMark(
+            chain: [head], retries: 1, handledHead: head, handled: [try #require(first.job)],
+            retrying: head)
+        let same = try withChecks(.failing, [first])
+        let shown = try row(same, state)
+        #expect(shown.mineState?.claude == .retryingCI)
+        #expect(
+            shown.status
+                == RowLabel(
+                    text: "Retrying CI", tone: .dim,
+                    tip: "Bifrost re-ran the failed jobs and is waiting for the result."))
+        #expect(try claudeState(withChecks(.running, [job(201, .running)]), state) == .retryingCI)
+        #expect(try claudeState(withChecks(.passed, [job(201, .passed)]), state) == .waiting)
+        let again = try withChecks(.failing, [job(201, .failed("FAILURE"))])
+        #expect(try claudeState(again, state) == .waiting)
+        state.prs[try key()]?.ci?.retrying = try R.commit("c")
+        #expect(try claudeState(same, state) == .waiting)
+        // With no failure key, only a running CI shows the re-run: a pass with no failed jobs
+        // ends it.
+        state.prs[try key()]?.ci = CIMark(chain: [head], retrying: head)
+        #expect(try claudeState(withChecks(.passed, []), state) == .waiting)
+        #expect(try claudeState(withChecks(.running, []), state) == .retryingCI)
+    }
+
+    // After the round and the queue, the rules keep their order: the questions (on comments, then
+    // the CI question), the work that waits for the user, the failed round, the re-run, the fork
+    // and the conflicts. The test removes the first state that holds, one at a time.
+    @Test func theRulesAfterTheQueueKeepTheirOrder() throws {
+        let head = try R.commit("a")
+        var state = R.turnedOn()
+        state.ciConsent = true
+        var config = ReviewsConfig()
+        config.fixCI = true
+        var prState = PRState()
+        prState.questions[try R.node("PRRT_1")] = Question(
+            text: "Which name?", place: "src/a.swift line 4", at: R.at(-5), seenUntil: R.at(-5))
+        prState.ci = CIMark(
+            chain: [head], retries: 1, retrying: head,
+            question: CIQuestion(
+                text: "Is it flaky?", head: head, jobs: ["test"], at: R.at(-5), byClaude: true))
+        prState.waitsForYou = "Your change is still here."
+        prState.lastError = "The push failed."
+        state.prs[try key()] = prState
+        var fork = true
+        func shown() throws -> ClaudeState? {
+            let pr = try R.pull(
+                "owner-a/repo-a#1", ci: .running, fork: fork, mergeable: .conflicting,
+                base: R.base)
+            return try row(pr, state, config).mineState?.claude
+        }
+        #expect(try shown() == .needsYou(comments: 1, ci: true))
+        state.prs[try key()]?.questions = [:]
+        #expect(try shown() == .needsYou(comments: 0, ci: true))
+        state.prs[try key()]?.ci?.question = nil
+        #expect(try shown() == .waitsForYou("Your change is still here."))
+        state.prs[try key()]?.waitsForYou = nil
+        #expect(try shown() == .error("The push failed."))
+        state.prs[try key()]?.lastError = nil
+        #expect(try shown() == .retryingCI)
+        state.prs[try key()]?.ci?.retrying = nil
+        #expect(try shown() == .fork)
+        fork = false
+        #expect(try shown() == .conflicts(nil))
+    }
+
+    // Resolve now can start a conflict round only on a PR with conflicts that is not a fork,
+    // with no round, no entry of the user's side in the queue and no writes that wait. The
+    // setting of the conflict rounds (off here) and a failed attempt do not change it.
+    @Test func resolvableNeedsNoRoundNoEntryAndNoOutbox() throws {
+        let pr = try conflicting()
+        var state = R.turnedOn()
+        state.prs[try key(), default: PRState()].conflict = try attempt(.failed("It failed."))
+        #expect(try row(pr, state).resolvable)
+        #expect(try !row(conflicting(.mergeable), state).resolvable)
+        #expect(try !row(conflicting(.unknown), state).resolvable)
+        #expect(try !row(conflicting(fork: true), state).resolvable)
+        for kind in PRSessionKind.allCases {
+            state.prs[try key()]?.round = ActiveRound(
+                phase: .preparing, startedAt: R.at(-1), at: R.at(-1), kind: kind)
+            #expect(try !row(pr, state).resolvable, "\(kind)")
+        }
+        state.prs[try key()]?.round = nil
+        for kind in [PRSessionKind.request, .conflict, .ci] {
+            state.queue = [QueueEntry(pr: try key(), kind: kind, at: R.at(-1))]
+            #expect(try !row(pr, state).resolvable, "\(kind)")
+        }
+        state.queue = [QueueEntry(pr: try key(), kind: .review, at: R.at(-1))]
+        #expect(try row(pr, state).resolvable)
+        let head = try R.commit("a")
+        state.prs[try key()]?.outbox = Outbox(
+            headSHA: head, mergeBase: head, startedAt: R.at(-10), seen: [:],
+            posts: [OutboxPost(id: "rerequest", state: .todo, write: .rerequest(logins: nil))])
+        #expect(try !row(pr, state).resolvable)
+    }
+}
+
+private func key() throws -> PRKey {
+    try R.key("owner-a/repo-a#1")
+}
+
+// The PR of the tests of the automatic work, with the merge state and the base commit.
+private func conflicting(
+    _ mergeable: Mergeable = .conflicting, fork: Bool = false
+) throws -> PullRequest {
+    try R.pull("owner-a/repo-a#1", fork: fork, mergeable: mergeable, base: R.base)
+}
+
+// The Claude state of the one My PRs row of the PR.
+private func claudeState(
+    _ pr: PullRequest, _ state: ReviewsState = R.turnedOn()
+) throws -> ClaudeState? {
+    try row(pr, state).mineState?.claude
+}
+
+// A conflict attempt on the head (a) and the base (b) of the tests, or on another commit.
+private func attempt(
+    _ outcome: ConflictOutcome, head: Character = "a", base: Character = "b"
+) throws -> ConflictMark {
+    ConflictMark(
+        head: try R.commit(head), base: try R.commit(base), at: R.at(-5), outcome: outcome)
+}
+
+// A check of a job of GitHub Actions.
+private func job(_ id: Int, _ outcome: CheckOutcome) throws -> HeadCheck {
+    HeadCheck(
+        name: "test", outcome: outcome,
+        source: .actions(job: try #require(JobID(id)), run: try #require(RunID(9001))))
+}
+
+// The PR of the tests with its CI state and the checks of its head.
+private func withChecks(_ ci: CIState, _ checks: [HeadCheck]) throws -> PullRequest {
+    try R.pull("owner-a/repo-a#1", ci: ci, checks: HeadChecks(checks: checks, onHead: true))
 }

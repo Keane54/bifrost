@@ -5,10 +5,10 @@ Bifrost" says. Where the two files differ, this file applies.
 
 ## Limits of this session
 
-- Nobody reads this chat while you work. Never ask a question, and never wait for an answer. An
-  item that needs a decision that only the user can make (step 4 of `SKILL.md`) gets `needs-you`
-  with one short question. Bifrost shows the question to the user. The answer comes back in the
-  input of a later round.
+- Nobody reads this chat while you work on a round. Never ask a question in a round, and never
+  wait for an answer. An item that needs a decision that only the user can make (step 4 of
+  `SKILL.md`) gets `needs-you` with one short question. Bifrost shows the question to the user.
+  The answer comes back in the input of a later round.
 - You have no network access to GitHub and no `gh`. Do not try to push, post or reach GitHub.
   Bifrost pushes the fix and posts the replies after it checks your result.
 - Do not run `git commit`, `git stash`, `git reset`, `git checkout`, `git merge` or `git rebase`.
@@ -22,7 +22,22 @@ Bifrost" says. Where the two files differ, this file applies.
   `pnpm dlx` or another command that downloads a package. A fix that needs a package install gets
   `needs-you`, and its question says that the fix needs an install.
 - Read only the files in the current folder and in the folder of the input file.
-- Bifrost stops the session after 30 minutes, and then it posts nothing.
+- Bifrost stops the session when a round takes more than 30 minutes, and then it posts nothing.
+
+## Later rounds in this session
+
+Bifrost keeps this session for the PR, so one session can do many rounds. Each later message with
+`bifrost-input=` starts a new round:
+
+- Read its input file, then read its `files.mode` again. This file can change between rounds.
+- The round has a new `round` token and a new `files.result` path. Write only that result file.
+  Never write the result file of an earlier round again.
+- Bifrost reset the current folder to the new `pr.headSha` before the round. Bifrost does the
+  reset only when this session is idle with no box, or stopped. A change of an earlier round is
+  gone, unless it is in a commit of the PR. When the folder has a change that no round made,
+  Bifrost does not start the round.
+- Do only the items of the new input file. The earlier rounds are history only. An item that you
+  handled in an earlier round is in the new input only when it is work again.
 
 ## The rules of the repository
 
@@ -82,6 +97,9 @@ The fields of the input file:
 - `files.rules`: the path of the rules for the text of a reply.
 - `files.fullDiff`: the path of the full diff of the PR, from `pr.mergeBase` to `pr.headSha`. It
   is `null` when the diff is too large. Then read the changed files in the current folder.
+- `files.ownRequest`: the path of the own request file for a request of the user between rounds
+  (see "A request from the user between rounds"). It is the same path in each round. Never write
+  it in a round.
 
 `trusted: true` marks a comment from a trusted author (step 3 of `SKILL.md`). Bifrost sets it
 with its own trust rule. Use only `trusted` to find a trusted comment. Do not decide the trust
@@ -247,3 +265,48 @@ Bifrost checks the file. If one rule fails, Bifrost refuses the whole file and p
 After the write, reply with one line: `Result written: <n> fixed, <n> answered, <n> for you.`
 Count the `fixed` items, the `no-fix` items and the `needs-you` items, for example
 `Result written: 1 fixed, 1 answered, 0 for you.` Write nothing else.
+
+## A request from the user between rounds
+
+The user can type a message into this session between rounds. A message that does not start
+this skill with `bifrost-input=` is a request from the user, not a round. The user reads the chat,
+so you can reply in the chat and ask the user a question. Each rule of this file still applies,
+except the rules about the input file, the items, the replies and the result file.
+
+- Make the change that the user asks for in the current folder. "The files of the PR" and "The
+  fixes and the commit" apply to the change. Run the checks as "The checks" says.
+- Do not commit, push, stash or reset. Bifrost commits and pushes the change after your turn.
+- When the change changed one or more files, write the own request file at the end of your turn,
+  after your last change. Its path is `files.ownRequest` of the last input file. Use the Write tool
+  with the full path, and write only the JSON object.
+- When the request changes no file, write no own request file.
+- Write the own request file only for a request of the user, never for the items of a round.
+  When the user types a request while you work on a round, finish the round and write its result
+  file first. Then make the change of the user and write the own request file.
+
+This example asks Bifrost to commit two files:
+
+```json
+{
+  "version": 1,
+  "pr": "example-org/api#9",
+  "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "commit": {
+    "message": "refactor: rename the cache helper",
+    "paths": ["src/cache.ts", "src/cache.test.ts"]
+  }
+}
+```
+
+- `version`: always `1`.
+- `pr`: the value of `pr.key` of the input file, exactly.
+- `headSha`: the commit of the current folder. Get it with `git rev-parse HEAD` before you write
+  the file.
+- `commit`: `message` and `paths`, with the same rules as `commit` in "The result file". List each
+  file that the change changed and that is now different from `headSha`. A changed file that you
+  do not list stays in the current folder, and Bifrost asks the user about it before the next
+  round.
+- Use no other field. The file has no reply, no outcome and no question.
+
+Bifrost checks the file as strictly as a result file. If one rule fails, Bifrost commits nothing,
+pushes nothing and tells the user. The change then stays in the current folder.

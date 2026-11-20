@@ -234,16 +234,20 @@ private final class RoundFixture {
 
     // The turn ends: the result file lands and the row is idle, which ends the turn at once when
     // the result passes the check. With no result (or a bad one), the clock moves to the end of
-    // the settle time after work.
+    // the settle time after work, and a later session list still shows the row idle. Until that
+    // list, the wait holds only the timer of its time limit.
     func endTurn(result: Data?, passes: Bool = true) async throws {
         if let result {
             try result.write(to: URL(filePath: input + "/result.json"))
         }
+        let limit = deps.clock.nextDeadline?.offset
         await show(.idle)
         guard result == nil || !passes else { return }
         let due = deps.clock.now.offset + RoundEnd.settle
         await waitUntil { self.deps.clock.nextDeadline?.offset == due }
         deps.clock.advance(by: RoundEnd.settle)
+        await waitUntil { self.deps.clock.nextDeadline?.offset == limit }
+        await deps.poll()
     }
 
     var writes: [GitHubWrite] {
@@ -425,6 +429,30 @@ struct ReviewRoundTests {
         #expect(rows.first?.status.text == "Review failed")
         #expect(rows.first?.status.tip == reason)
         #expect(rows.first?.reviewable == true)
+        await f.end()
+    }
+
+    // A review round still starts a new session at each round, with the fixed names of its
+    // input folder: Try again deletes the session of the last round first, then starts another.
+    @Test func aReviewRoundStillStartsAFreshSession() async throws {
+        let f = try await RoundFixture()
+        let first = try await f.review()
+        await f.sessionWorks()
+        try await f.endTurn(result: nil)
+        await f.ended(first)
+        #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
+        let second = try await f.review()
+        await waitUntil { f.deps.calls.claudeRuns.filter { $0.first == "--bg" }.count == 2 }
+        let runs = f.deps.calls.claudeRuns
+        let removed = try #require(runs.firstIndex(of: ["rm", "abcdef12"]))
+        let started = try #require(runs.lastIndex { $0.first == "--bg" })
+        #expect(removed < started)
+        let input = URL(filePath: f.input + "/input.json", directoryHint: .notDirectory)
+        #expect(runs[started].last == PRSessionArgs.reviewPrompt(input))
+        await f.sessionWorks()
+        try await f.endTurn(result: f.result())
+        await f.ended(second)
+        #expect(f.store.state.prs[f.pr]?.lastError == nil)
         await f.end()
     }
 
@@ -688,6 +716,21 @@ struct ReviewRoundTests {
         #expect(f.writes.count == 1)
         #expect(f.store.state.prs[f.pr]?.recommendation?.reviewID != nil)
         #expect(f.deps.calls.claudeRuns.filter { $0.first == "--bg" }.count == 1)
+        await f.end()
+    }
+
+    // A queued CI entry in the state (only a later build writes one) starts no round, no clone
+    // read and no session, and its entry goes, so the row does not wait in the queue. A conflict
+    // entry runs a conflict round (ConflictRoundTests).
+    @Test func aQueuedCIEntryStartsNothingAndGoes() async throws {
+        let other = try ReviewData.pr("Owner-A/Repo-A#8")
+        let f = try await RoundFixture { state, _ in
+            state.queue = [QueueEntry(pr: other, kind: .ci, at: Rows.at(-1))]
+        }
+        #expect(await waitUntil { f.store.state.queue.isEmpty })
+        #expect(f.store.state.prs[other]?.round == nil)
+        #expect(f.rounds.queue.task(of: other) == nil)
+        #expect(f.deps.calls.claudeRuns.isEmpty && f.github.calls.isEmpty)
         await f.end()
     }
 

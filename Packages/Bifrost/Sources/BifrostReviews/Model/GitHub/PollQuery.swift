@@ -10,6 +10,8 @@ package enum PollQuery {
     package static let pullRequestsPerSearch = 50
     package static let reviewsLimit = 30, opinionsLimit = 20, threadsLimit = 20
     package static let threadCommentsLimit = 10, commentsLimit = 30, checksLimit = 20
+    // A PR of the user reads more checks, because the CI rounds act only on a full list.
+    package static let mineChecksLimit = 50
 
     package static var query: GitHubQuery {
         GitHubQuery(
@@ -35,19 +37,26 @@ package enum PollQuery {
         pendingReviews: reviews(states: PENDING, first: 1) { nodes { id } }
         """
 
-    private static let checks = """
+    // The checks of the newest commit, the first limit of them, and the head and base of the PR.
+    // A check run names its app and, for GitHub Actions, its job and its workflow run. HeadQueries
+    // reads the same fields.
+    static func checks(_ limit: Int) -> String {
+        """
         commits(last: 1) {
           nodes {
             commit {
               oid
               statusCheckRollup {
                 state
-                contexts(first: \(checksLimit)) {
+                contexts(first: \(limit)) {
                   pageInfo { hasNextPage }
                   nodes {
                     __typename
-                    ... on CheckRun { conclusion }
-                    ... on StatusContext { state }
+                    ... on CheckRun {
+                      name status conclusion databaseId detailsUrl
+                      checkSuite { app { slug } workflowRun { databaseId } }
+                    }
+                    ... on StatusContext { context state targetUrl }
                   }
                 }
               }
@@ -56,6 +65,10 @@ package enum PollQuery {
         }
         headRefName headRefOid baseRefName isCrossRepository
         """
+    }
+
+    // The merge state and the base commit: only a PR of the user reads them.
+    static let mergeState = "mergeable baseRefOid"
 
     // The latest opinion of each reviewer. A To review row reads the opinion of the viewer and
     // counts the approvals of the others.
@@ -99,7 +112,9 @@ package enum PollQuery {
             nodes { ... on PullRequest { ...MineFields } }
           }
         }
-        fragment ToReviewFields on PullRequest { \(head) \(opinions) \(checks) }
-        fragment MineFields on PullRequest { \(head) \(opinions) \(conversation) \(checks) }
+        fragment ToReviewFields on PullRequest { \(head) \(opinions) \(checks(checksLimit)) }
+        fragment MineFields on PullRequest {
+          \(head) \(opinions) \(conversation) \(checks(mineChecksLimit)) \(mergeState)
+        }
         """
 }

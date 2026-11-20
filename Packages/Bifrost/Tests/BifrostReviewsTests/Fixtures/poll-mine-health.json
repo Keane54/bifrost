@@ -1,0 +1,260 @@
+{
+  "data": {
+    "mine": {
+      "nodes": [
+        {
+          "additions": 40,
+          "author": {
+            "login": "viewer-a"
+          },
+          "baseRefName": "main",
+          "baseRefOid": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "comments": {
+            "nodes": [],
+            "pageInfo": {
+              "hasPreviousPage": false
+            }
+          },
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [
+                        {
+                          "__typename": "CheckRun",
+                          "checkSuite": {
+                            "app": {
+                              "slug": "github-actions"
+                            },
+                            "workflowRun": {
+                              "databaseId": 9001
+                            }
+                          },
+                          "conclusion": "SUCCESS",
+                          "databaseId": 102,
+                          "detailsUrl": "https://github.com/owner-a/repo-a/actions/runs/9001/job/102",
+                          "name": "lint",
+                          "status": "COMPLETED"
+                        },
+                        {
+                          "__typename": "CheckRun",
+                          "checkSuite": {
+                            "app": {
+                              "slug": "github-actions"
+                            },
+                            "workflowRun": {
+                              "databaseId": 9001
+                            }
+                          },
+                          "conclusion": "FAILURE",
+                          "databaseId": 101,
+                          "detailsUrl": "https://github.com/owner-a/repo-a/actions/runs/9001/job/101",
+                          "name": "build",
+                          "status": "COMPLETED"
+                        },
+                        {
+                          "__typename": "CheckRun",
+                          "checkSuite": {
+                            "app": {
+                              "slug": "github-actions"
+                            },
+                            "workflowRun": {
+                              "databaseId": 9002
+                            }
+                          },
+                          "conclusion": "CANCELLED",
+                          "databaseId": 103,
+                          "detailsUrl": "https://github.com/owner-a/repo-a/actions/runs/9002/job/103",
+                          "name": "deploy",
+                          "status": "COMPLETED"
+                        },
+                        {
+                          "__typename": "CheckRun",
+                          "checkSuite": {
+                            "app": {
+                              "slug": "preview-app"
+                            },
+                            "workflowRun": null
+                          },
+                          "conclusion": "FAILURE",
+                          "databaseId": 5005,
+                          "detailsUrl": "https://preview.example.com/builds/5005",
+                          "name": "Preview",
+                          "status": "COMPLETED"
+                        },
+                        {
+                          "__typename": "StatusContext",
+                          "context": "ci/legacy",
+                          "state": "ERROR",
+                          "targetUrl": "https://ci.example.com/jobs/77"
+                        },
+                        {
+                          "__typename": "StatusContext",
+                          "context": "docs",
+                          "state": "SUCCESS",
+                          "targetUrl": null
+                        }
+                      ],
+                      "pageInfo": {
+                        "hasNextPage": false
+                      }
+                    },
+                    "state": "FAILURE"
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-12T09:00:00Z",
+          "deletions": 12,
+          "headRefName": "move-parser",
+          "headRefOid": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "latestOpinionatedReviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false
+            }
+          },
+          "mergeable": "CONFLICTING",
+          "number": 55,
+          "pendingReviews": {
+            "nodes": []
+          },
+          "repository": {
+            "name": "repo-a",
+            "owner": {
+              "login": "owner-a"
+            }
+          },
+          "reviewDecision": null,
+          "reviewRequests": {
+            "nodes": []
+          },
+          "reviewThreads": {
+            "nodes": [],
+            "pageInfo": {
+              "hasPreviousPage": false
+            }
+          },
+          "reviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false
+            }
+          },
+          "timelineItems": {
+            "nodes": []
+          },
+          "title": "Move the parser",
+          "updatedAt": "2026-11-18T16:00:00Z"
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false
+      }
+    },
+    "toReview": {
+      "nodes": [
+        {
+          "additions": 8,
+          "author": {
+            "login": "user-b"
+          },
+          "baseRefName": "main",
+          "commits": {
+            "nodes": [
+              {
+                "commit": {
+                  "oid": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+                  "statusCheckRollup": {
+                    "contexts": {
+                      "nodes": [
+                        {
+                          "__typename": "CheckRun",
+                          "checkSuite": {
+                            "app": {
+                              "slug": "github-actions"
+                            },
+                            "workflowRun": {
+                              "databaseId": 9101
+                            }
+                          },
+                          "conclusion": null,
+                          "databaseId": 201,
+                          "detailsUrl": "https://github.com/owner-a/repo-c/actions/runs/9101/job/201",
+                          "name": "test",
+                          "status": "IN_PROGRESS"
+                        }
+                      ],
+                      "pageInfo": {
+                        "hasNextPage": false
+                      }
+                    },
+                    "state": "PENDING"
+                  }
+                }
+              }
+            ]
+          },
+          "createdAt": "2026-11-17T09:00:00Z",
+          "deletions": 1,
+          "headRefName": "add-cache",
+          "headRefOid": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "isCrossRepository": false,
+          "isDraft": false,
+          "latestOpinionatedReviews": {
+            "nodes": [],
+            "pageInfo": {
+              "hasNextPage": false
+            }
+          },
+          "number": 12,
+          "pendingReviews": {
+            "nodes": []
+          },
+          "repository": {
+            "name": "repo-c",
+            "owner": {
+              "login": "owner-a"
+            }
+          },
+          "reviewDecision": "REVIEW_REQUIRED",
+          "reviewRequests": {
+            "nodes": [
+              {
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "viewer-a"
+                }
+              }
+            ]
+          },
+          "timelineItems": {
+            "nodes": [
+              {
+                "createdAt": "2026-11-17T09:05:00Z",
+                "requestedReviewer": {
+                  "__typename": "User",
+                  "login": "viewer-a"
+                }
+              }
+            ]
+          },
+          "title": "Add a cache",
+          "updatedAt": "2026-11-18T10:00:00Z"
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false
+      }
+    },
+    "viewer": {
+      "login": "viewer-a"
+    }
+  }
+}

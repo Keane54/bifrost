@@ -26,6 +26,9 @@ package final class FakeGitHub: GitHubAccess {
     // Runs at each write before its answer, as GitHub makes the change. A test plays GitHub with
     // it, for example by moving a branch of a local repository and setting the answer.
     package var onWrite: (@MainActor (GitHubWrite) async -> Void)?
+    // Runs at each read before its answer, with the name of its query. A test acts while Bifrost
+    // reads, for example as a person who types into a session.
+    package var onRead: (@MainActor (String) async -> Void)?
 
     package init(answers: [String: Result<Data, GitHubError>] = [:]) {
         self.answers = answers
@@ -40,6 +43,7 @@ package final class FakeGitHub: GitHubAccess {
     @MainActor package func read(_ query: GitHubQuery) async throws(GitHubError) -> Data {
         guard query.isRead else { throw .notSent }
         calls.append(.read(query.name))
+        await onRead?(query.name)
         return try answer(query.name)
     }
 

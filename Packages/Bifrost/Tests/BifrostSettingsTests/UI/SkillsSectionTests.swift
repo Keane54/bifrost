@@ -18,7 +18,7 @@ import Testing
 // The skills of the bundled skills folder of the repo, by name.
 private let bundledSkills = [
     "bifrost-daily-update", "bifrost-grill", "bifrost-hand-over", "bifrost-humanise",
-    "bifrost-resolve-comments", "bifrost-review",
+    "bifrost-resolve-comments", "bifrost-resolve-conflicts", "bifrost-review",
 ]
 
 @MainActor
