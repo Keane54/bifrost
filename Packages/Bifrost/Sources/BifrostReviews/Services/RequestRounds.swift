@@ -445,7 +445,9 @@ extension ReviewRounds {
             if failure.waitsForYou {
                 // A reason that is there already (an own request that did not go) says more. The
                 // files of the safety net are newer than its files.
-                var waiting = prState.waiting ?? WaitsForYou(reason: failure.message(for: .request))
+                var waiting =
+                    prState.waiting
+                    ?? WaitsForYou(reason: failure.message(for: .request), kind: .unpushedRequest)
                 if !files.isEmpty { waiting.files = files }
                 prState.waiting = waiting
                 prState.lastError = nil

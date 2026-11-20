@@ -348,7 +348,14 @@ enum MyPRRules {
         if questions > 0 || ciQuestion != nil {
             return .needsYou(comments: questions, ci: ciQuestion != nil)
         }
-        if let reason = prState.waitsForYou { return .waitsForYou(reason) }
+        if let waiting = prState.waiting {
+            switch waiting.kind {
+            case .unpushed: return .unpushedChanges
+            case .unpushedRequest: return .unpushedComments
+            case .askAgain: return .askAgain
+            case .other: return .waitsForYou(waiting.reason)
+            }
+        }
         if let reason = prState.lastError { return .error(reason) }
         if CIRule.isRetrying(pr, prState.ci) { return .retryingCI }
         if pr.isCrossRepository { return .fork }

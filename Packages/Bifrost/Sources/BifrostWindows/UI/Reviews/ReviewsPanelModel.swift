@@ -385,6 +385,8 @@ package final class ReviewsPanelModel {
     // True when a button of the row acts now: Approve waits while CI runs. Approve, Comment and
     // Request changes wait while a review write of the PR has a progress. Each other button acts.
     package func isEnabled(_ item: ReviewsMenuItem, _ row: ReviewRow) -> Bool {
+        // Open session on a My PRs row acts only while the PR has a session.
+        if item == .openSession { return links.session(row.id) != nil }
         guard Self.writeItems.contains(item) else { return true }
         guard progress(row.id) == nil else { return false }
         return item != .approve || row.approve == .ready

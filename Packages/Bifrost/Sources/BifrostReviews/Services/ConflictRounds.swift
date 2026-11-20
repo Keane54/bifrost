@@ -306,6 +306,7 @@ extension ReviewRounds {
             if let waiting {
                 var kept = prState.waiting ?? waiting
                 if !waiting.files.isEmpty { kept.files = waiting.files }
+                if kept.kind == .other { kept.kind = waiting.kind }
                 prState.waiting = kept
             }
             state.prs[pr] = prState

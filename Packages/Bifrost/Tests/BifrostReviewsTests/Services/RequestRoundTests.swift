@@ -1291,12 +1291,14 @@ struct RequestRoundTests {
         let state = try #require(f.store.state.prs[f.pr])
         let item = try f.node("PRRT_2")
         #expect(state.waitsForYou == reason && state.lastError == nil)
+        #expect(state.waiting?.kind == .unpushedRequest)
         #expect(state.round == nil && state.held == [item])
         #expect(f.prompts.sends.isEmpty && f.writes.isEmpty)
         #expect(f.workOfThePersonStays)
         #expect(f.inputNames.allSatisfy { $0.contains(one.id) })
         let answer = try f.answer(threads: ["PRRT_1", "PRRT_2"])
-        #expect(Rows.mine(answer, f.store.state).first?.mineState?.claude == .waitsForYou(reason))
+        #expect(
+            Rows.mine(answer, f.store.state).first?.mineState?.claude == .unpushedComments)
         // The reason keeps the files, so the row offers Discard these changes for them.
         #expect(state.waiting?.files == ["notes.txt", "src/a.swift"])
         #expect(Rows.mine(answer, f.store.state).first?.unsavedFiles == 2)

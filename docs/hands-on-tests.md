@@ -721,8 +721,8 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   row should show "Needs you" with "Someone pushed to this branch, and your change doesn't merge
   cleanly ...", and the edit should still be in the worktree. Ask Claude for an edit and to skip
   the commit request (or edit a file of the worktree yourself), then have your second account
-  leave a comment: the row should show "Needs you" with "Bifrost's copy of this pull request has
-  changes that aren't on GitHub yet ...", Claude shouldn't start, and the edit should stay. Ask
+  leave a comment: the row should show "Unpushed changes" in amber, with the buttons Open session
+  and Discard changes, Claude shouldn't start, and the edit should stay. Ask
   Claude to undo it and choose Handle now: the round should start. While a round runs, type a
   request into its session: once the round ends, your change should go as its own commit (or, if
   the round pushed a fix, the row should ask you to try again), and it should never vanish. Edit
@@ -731,6 +731,11 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   "Discard these changes". It should ask first and name the file; Cancel should keep the edit, and
   Discard should remove it and clear the row, so Handle now starts the round. Are the texts clear?
   ([reviews R35](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] On a test PR of yours with conflicts, edit a file of its copy by hand and click Resolve now:
+  the row should show "Unpushed changes" in amber, with a tip and the buttons Open session and
+  Discard changes. Then ask Claude in the session for an edit while a conflict round runs: the row
+  should show "Ask again" with the button Discard edits. Discard changes and Discard edits should
+  ask first and name the files. Are the short texts and the buttons clear?
 - [ ] Have a reviewer ask, on a test PR of yours, for a change to a tool configuration file (for
   example `.eslintrc.json` or the scripts of `package.json`), then choose Handle now. The request
   session should stop to ask for approval, and the row should at once show the reason "Claude

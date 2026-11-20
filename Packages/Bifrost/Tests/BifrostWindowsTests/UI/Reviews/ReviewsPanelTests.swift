@@ -575,6 +575,27 @@ struct ReviewsPanelTests {
         #expect(p.feed.commands == [.handleNow(held), .tryAgain(writes)])
     }
 
+    // The short conflict texts have buttons on the row: Unpushed changes has Open session and
+    // Discard changes, and Ask again has Discard edits. The menu keeps its own labels.
+    @Test func theConflictTextsHaveRowButtons() throws {
+        let pr = try key("owner-a/repo-a#1")
+        var unpushed = try mine(pr.text, .unpushedChanges)
+        unpushed.unsavedFiles = 2
+        var asks = try mine(pr.text, .askAgain)
+        asks.unsavedFiles = 1
+        #expect(ReviewsMenu.buttons(unpushed) == [.openSession, .discardChanges])
+        #expect(ReviewsMenu.buttons(asks) == [.discardChanges])
+        var comments = try mine(pr.text, .unpushedComments)
+        comments.unsavedFiles = 2
+        #expect(ReviewsMenu.buttons(comments) == [.openSession, .discardChanges])
+        #expect(ReviewsMenu.buttonLabel(.discardChanges, comments) == "Discard changes")
+        #expect(ReviewsMenu.buttonLabel(.discardChanges, unpushed) == "Discard changes")
+        #expect(ReviewsMenu.buttonLabel(.discardChanges, asks) == "Discard edits")
+        #expect(ReviewsMenu.items(asks, hasSession: false).contains(.discardChanges))
+        asks.unsavedFiles = 0
+        #expect(ReviewsMenu.buttons(asks).isEmpty)
+    }
+
     // Discard these changes asks first in Bifrost's own dialog, which names the files. Cancel
     // changes nothing. Discard discards with a click. When the copy has no change now, or the
     // discard can't run, or it fails, the error line says why, and nothing is asked.

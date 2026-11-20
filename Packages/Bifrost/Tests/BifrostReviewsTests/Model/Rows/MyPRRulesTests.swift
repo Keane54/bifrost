@@ -591,6 +591,12 @@ struct MyPRRulesTests {
         #expect(try shown() == .needsYou(comments: 0, ci: true))
         state.prs[try key()]?.ci?.question = nil
         #expect(try shown() == .waitsForYou("Your change is still here."))
+        state.prs[try key()]?.waiting?.kind = .unpushed
+        #expect(try shown() == .unpushedChanges)
+        state.prs[try key()]?.waiting?.kind = .unpushedRequest
+        #expect(try shown() == .unpushedComments)
+        state.prs[try key()]?.waiting?.kind = .askAgain
+        #expect(try shown() == .askAgain)
         state.prs[try key()]?.waitsForYou = nil
         #expect(try shown() == .error("The push failed."))
         state.prs[try key()]?.lastError = nil

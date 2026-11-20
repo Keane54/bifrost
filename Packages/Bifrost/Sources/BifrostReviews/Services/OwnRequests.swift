@@ -198,7 +198,8 @@ final class OwnRequests {
         let files = (await repos.changedPaths(pr) ?? []).sorted()
         await store.update { state in
             var prState = state.prs[pr] ?? PRState()
-            prState.waiting = WaitsForYou(reason: text, files: files)
+            prState.waiting = WaitsForYou(
+                reason: text, files: files, kind: reason == .conflictMerge ? .askAgain : .other)
             state.prs[pr] = prState
         }
         changed()

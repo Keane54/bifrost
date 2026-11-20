@@ -297,6 +297,28 @@ struct RowTextTests {
             (.error("The push failed."), label("Error", .red, "The push failed.")),
             (.fork, label("Fork", .dim, fork)),
             (
+                .unpushedChanges,
+                label(
+                    "Unpushed changes", .amber,
+                    "Bifrost won't merge the base branch over changes that aren't on GitHub. Ask "
+                        + "Claude to commit them, or discard them.")
+            ),
+            (
+                .unpushedComments,
+                label(
+                    "Unpushed changes", .amber,
+                    "Bifrost won't handle new comments over changes that aren't on GitHub. Ask "
+                        + "Claude to commit them, or discard them.")
+            ),
+            (
+                .askAgain,
+                label(
+                    "Ask again", .amber,
+                    "Bifrost didn't apply your change, because Claude was busy resolving "
+                        + "conflicts. Discard the edits Claude made for your request so the merge "
+                        + "can be resolved first, then ask again.")
+            ),
+            (
                 .waitsForYou("Your change is still here."),
                 label("Needs you", .red, "Your change is still here.")
             ),

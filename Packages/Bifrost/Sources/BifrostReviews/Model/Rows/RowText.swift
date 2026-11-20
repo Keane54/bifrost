@@ -181,6 +181,17 @@ package enum RowText {
         "This pull request comes from a fork. Bifrost can't push there, so Claude leaves its "
         + "comments to you."
 
+    static let unpushedTip =
+        "Bifrost won't merge the base branch over changes that aren't on GitHub. Ask Claude to "
+        + "commit them, or discard them."
+    static let unpushedCommentsTip =
+        "Bifrost won't handle new comments over changes that aren't on GitHub. Ask Claude to "
+        + "commit them, or discard them."
+    static let askAgainTip =
+        "Bifrost didn't apply your change, because Claude was busy resolving conflicts. Discard "
+        + "the edits Claude made for your request so the merge can be resolved first, then ask "
+        + "again."
+
     // The Claude state on the right of a My PRs row.
     package static func claude(_ state: ClaudeState) -> RowLabel {
         switch state {
@@ -188,6 +199,12 @@ package enum RowText {
             RowLabel(text: "Needs you", tone: .red, tip: needsYouTip(comments: comments, ci: ci))
         case .waitsForYou(let reason):
             RowLabel(text: "Needs you", tone: .red, tip: reason)
+        case .unpushedChanges:
+            RowLabel(text: "Unpushed changes", tone: .amber, tip: unpushedTip)
+        case .unpushedComments:
+            RowLabel(text: "Unpushed changes", tone: .amber, tip: unpushedCommentsTip)
+        case .askAgain:
+            RowLabel(text: "Ask again", tone: .amber, tip: askAgainTip)
         case .fixing(let items):
             RowLabel(
                 text: "Fixing \(items)", tone: .plain,

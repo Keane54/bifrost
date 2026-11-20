@@ -116,18 +116,22 @@ package enum ReviewsMenu {
         if row.questions > 0 { items.append(.answerClaude) }
         let handles: Bool
         switch claude {
-        case .waiting, .needsYou, .waitsForYou, .error, .conflicts, .retryingCI: handles = true
+        case .waiting, .needsYou, .waitsForYou, .unpushedChanges, .unpushedComments, .askAgain,
+            .error, .conflicts, .retryingCI:
+            handles = true
         case .fixing, .resolvingConflicts, .fixingCI, .queued, .trustNeeded, .cloning, .fork:
             handles = false
         }
-        let waitsForYou = if case .waitsForYou = claude { true } else { false }
+        let waitsForYou = claude.waitsForUser
         if handles && (row.waiting > 0 || waitsForYou) { items.append(.handleNow) }
         if handles && row.laterCopilot > 0 { items.append(.handleCopilot) }
         // Resolve now starts a conflict round by hand (MyPRRules.isResolvable).
         if row.resolvable { items.append(.resolveNow) }
         switch claude {
         case .error: items.append(.tryAgain)
-        case .waitsForYou where row.unsentUpdates: items.append(.tryAgain)
+        case .waitsForYou where row.unsentUpdates, .unpushedChanges where row.unsentUpdates,
+            .unpushedComments where row.unsentUpdates, .askAgain where row.unsentUpdates:
+            items.append(.tryAgain)
         default: break
         }
         if handles && row.unsentUpdates { items.append(.dropUpdates) }
@@ -148,7 +152,7 @@ package enum ReviewsMenu {
     // row) while a round can start, and on a Looks good row with no Approve; and Pause for a new
     // request. Each button is also an item of the menu of the row, except an Approve that waits.
     package static func buttons(_ row: ReviewRow) -> [ReviewsMenuItem] {
-        guard case .toReview(let state) = row.state else { return [] }
+        guard case .toReview(let state) = row.state else { return mineButtons(row) }
         var buttons: [ReviewsMenuItem] = []
         if row.approve != nil { buttons.append(.approve) }
         if let draft = row.draft { buttons.append(draftItem(draft)) }
@@ -163,6 +167,31 @@ package enum ReviewsMenu {
             break
         }
         return buttons
+    }
+
+    // The buttons of a My PRs row: Unpushed changes has Open session (while the PR has a session)
+    // and Discard changes, and Ask again has Discard edits. Each one is an item of the row menu.
+    package static func mineButtons(_ row: ReviewRow) -> [ReviewsMenuItem] {
+        guard case .mine(_, let claude) = row.state, row.unsavedFiles > 0, !row.unsentUpdates
+        else { return [] }
+        switch claude {
+        case .unpushedChanges, .unpushedComments: return [.openSession, .discardChanges]
+        case .askAgain: return [.discardChanges]
+        default: return []
+        }
+    }
+
+    // The label of a button of the row. On a My PRs row, the discard button has a short label of
+    // its own; the menu keeps Discard these changes.
+    package static func buttonLabel(_ item: ReviewsMenuItem, _ row: ReviewRow) -> String {
+        guard item == .discardChanges, case .mine(_, let claude) = row.state else {
+            return item.label
+        }
+        switch claude {
+        case .unpushedChanges, .unpushedComments: return "Discard changes"
+        case .askAgain: return "Discard edits"
+        default: return item.label
+        }
     }
 
     // The item that opens the Review panel for a draft of the event.

@@ -702,6 +702,7 @@ struct ConflictRoundTests {
         await round.value
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.waiting?.reason == OwnRequestStop.conflictMerge.message)
+        #expect(state.waiting?.kind == .askAgain)
         #expect(state.waiting?.files == ["src/a.swift"])
         #expect(state.conflict == nil && state.round == nil && state.lastError == nil)
         #expect(!FileManager.default.fileExists(atPath: f.input + "/" + OwnRequestFile.name))
@@ -755,6 +756,7 @@ struct ConflictRoundTests {
         #expect(f.prompts.sends.isEmpty && f.bgRuns.count == 1)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.waiting?.reason == RoundFailure.changesNotOnGitHub.message(for: .conflict))
+        #expect(state.waiting?.kind == .unpushed)
         #expect(state.waiting?.files == ["src/a.swift"] && state.conflict == nil)
         #expect(f.fileA == "person\n")
         #expect(await f.worktreeHead() == f.head)

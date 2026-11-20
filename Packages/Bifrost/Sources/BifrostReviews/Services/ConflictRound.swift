@@ -315,7 +315,7 @@ final class ConflictRound {
             throw .forYou(
                 WaitsForYou(
                     reason: RoundFailure.changesNotOnGitHub.message(for: .conflict),
-                    files: unsavedFiles))
+                    files: unsavedFiles, kind: .unpushed))
         } catch {
             // Before the preparation, the worktree holds only the work of a person: it stays.
             if placed { await resetWorktree(to: head) }
@@ -592,7 +592,7 @@ final class ConflictRound {
             throw .forYou(
                 WaitsForYou(
                     reason: RoundFailure.changesNotOnGitHub.message(for: .conflict),
-                    files: unknown))
+                    files: unknown, kind: .unpushed))
         }
     }
 

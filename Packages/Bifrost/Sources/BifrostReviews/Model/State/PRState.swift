@@ -284,7 +284,9 @@ package struct PRState: Sendable, Equatable, StoredValue {
         lastError = object.read("lastError", &lost, \.string)
         if let reason = object.read("waitsForYou", &lost, \.string) {
             let files = object.list("waitsForYouFiles", &lost, \.string)
-            waiting = WaitsForYou(reason: reason, files: files)
+            let kind = object.read("waitsForYouKind", &lost, \.string)
+                .flatMap(WaitsForYou.Kind.init(rawValue:))
+            waiting = WaitsForYou(reason: reason, files: files, kind: kind ?? .other)
         }
         round = object.read("round", &lost, ActiveRound.init(stored:dropped:))
         recommendation = object.read(
@@ -324,6 +326,7 @@ package struct PRState: Sendable, Equatable, StoredValue {
             if !waiting.files.isEmpty {
                 fields["waitsForYouFiles"] = .array(waiting.files.map(JSONValue.string))
             }
+            if waiting.kind != .other { fields["waitsForYouKind"] = .string(waiting.kind.rawValue) }
         }
         if let conflict { fields["conflict"] = conflict.stored }
         if let ci { fields["ci"] = ci.stored }
@@ -372,12 +375,25 @@ package struct PRState: Sendable, Equatable, StoredValue {
 // as Bifrost found them at that time: the changes that the safety net stopped a round for, or the
 // change of an own request that did not go. With files, the row offers Discard these changes.
 package struct WaitsForYou: Sendable, Equatable {
+    // The cause decides the short text of the row. other keeps Needs you with the reason as tip.
+    package enum Kind: String, Sendable {
+        // The safety net stopped a conflict round for changes that are not on GitHub.
+        case unpushed
+        // The user asked for a change while Claude resolved conflicts.
+        case askAgain
+        // The safety net stopped a request round for changes that are not on GitHub.
+        case unpushedRequest
+        case other
+    }
+
     package var reason: String
     package var files: [String]
+    package var kind: Kind
 
-    package init(reason: String, files: [String] = []) {
+    package init(reason: String, files: [String] = [], kind: Kind = .other) {
         self.reason = reason
         self.files = files
+        self.kind = kind
     }
 }
 

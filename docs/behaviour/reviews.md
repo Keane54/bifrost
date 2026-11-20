@@ -826,6 +826,9 @@ comment doesn't change it:
 | --- | --- | --- | --- |
 | Needs you | "Needs you" | Red | "Claude needs your answer on 2 comments. Click to answer." With a question about failed CI as well: "Claude needs your answer on 2 comments and on the failed checks. Click to answer.", or with only that question: "Claude needs your help with the failed checks. Click to answer." |
 | Needs you, for your change | "Needs you" | Red | Why your own request didn't go, or why the round didn't start (see "Your own requests") |
+| Unpushed changes | "Unpushed changes" | Amber | "Bifrost won't merge the base branch over changes that aren't on GitHub. Ask Claude to commit them, or discard them." Buttons: Open session, Discard changes |
+| Unpushed changes, for a comment round | "Unpushed changes" | Amber | "Bifrost won't handle new comments over changes that aren't on GitHub. Ask Claude to commit them, or discard them." Buttons: Open session, Discard changes |
+| Ask again | "Ask again" | Amber | "Bifrost didn't apply your change, because Claude was busy resolving conflicts. Discard the edits Claude made for your request so the merge can be resolved first, then ask again." Button: Discard edits |
 | Fixing | "Fixing 3", the items of the round | Plain | "Claude is working on 3 comments." |
 | Resolving conflicts | "Resolving conflicts" | Plain | "Claude is resolving the merge conflicts with the base branch." |
 | Fixing CI | "Fixing CI" | Plain | "Claude is looking at the failed checks." |
@@ -1558,11 +1561,11 @@ and the reason stay, and the error line says so.
 
 | Case | Row tip |
 | --- | --- |
-| Changes no round made | "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so Claude didn't start on the new comments. Ask Claude in its session to commit or undo them, then choose Handle now." |
+| Changes no round made | "Unpushed changes" in amber, with the tip "Bifrost won't handle new comments over changes that aren't on GitHub. Ask Claude to commit them, or discard them." and the buttons Open session and Discard changes. The Event log keeps the long text: "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so Claude didn't start on the new comments ..." |
 | Discard these changes (the dialog) | Title "Discard the changes in `<n>` files?" ("1 file" for one), body "They aren't on GitHub, and you can't get them back: `<names>`. Files that git ignores in Bifrost's copy go too.", button "Discard" |
 | Discard these changes (the error line) | "There's nothing to discard: Bifrost's copy of this pull request has no changes now." / "Bifrost can't discard the changes now, because Claude or a round is using this pull request's copy. Try again when it's finished." / "Bifrost couldn't discard the changes, so they're still there. The Event log has the details." |
 | A refused file | "Claude wrote a commit request Bifrost couldn't use (`<reason>`), so Bifrost didn't commit your change." + K + " Ask Claude in its session to try again." |
-| A file while the copy holds a conflict round's merge | "Claude was resolving merge conflicts in Bifrost's copy of this pull request, so Bifrost didn't commit your change or push the merge." + K + " Choose Discard these changes, then ask Claude again." |
+| A file while the copy holds a conflict round's merge | The row shows "Ask again" (see "Merge conflicts"). The Event log has: "Claude was resolving merge conflicts in Bifrost's copy of this pull request, so Bifrost didn't commit your change or push the merge." + K + " Choose Discard these changes, then ask Claude again." |
 | A listed file a commit rule refuses | "Bifrost didn't commit your change. `<rule>`" + K |
 | git couldn't commit | "Bifrost couldn't commit your change. The Event log has the details." + K |
 | A conflict | "Someone pushed to this branch, and your change doesn't merge cleanly, so Bifrost didn't push it." + K + A |
@@ -1642,7 +1645,7 @@ round ends, so a restart in between doesn't lose it. It's the "Resolve now" item
 | The merge reached GitHub | Kept with the merge, which also joins the CI chain of the head; the worktree moves to the merge, and a poll runs at once | The next poll shows the new head |
 | A failure | Kept with the reason, which only Resolve now or a new head or base clears | "Has conflicts" in red, with the reason |
 | A quiet end (closed, no conflict now, a moved head or branch, the setting off) | Dropped, so the pair counts as not tried | As GitHub shows the PR |
-| Your work in the way (the safety net, an own request in the turn) | Dropped, and the worktree stays as it is | "Needs you", with Discard these changes |
+| Your work in the way (the safety net, an own request in the turn) | Dropped, and the worktree stays as it is | "Unpushed changes" or "Ask again" in amber, with Discard changes or Discard edits |
 
 After a failure the worktree goes back to the PR's head, unless someone's using the session or it
 holds a change that no round made. The Event log gets git's line when the merge or the push failed
@@ -1658,8 +1661,8 @@ pushed twice), and one you stopped before the quit fails with the stop text.
 
 | Case | Row tip |
 | --- | --- |
-| Changes that no round made | "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so Bifrost didn't push a merge of the base branch. Ask Claude in its session to commit or undo them, then choose Resolve now." |
-| An own request file in the turn | The text of "Your own requests" for a file while the copy holds a conflict round's merge |
+| Changes that no round made | "Unpushed changes" in amber, with the tip "Bifrost won't merge the base branch over changes that aren't on GitHub. Ask Claude to commit them, or discard them." and the buttons Open session and Discard changes. The Event log keeps the long text: "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so Bifrost didn't push a merge of the base branch ..." |
+| An own request file in the turn | "Ask again" in amber, with the tip "Bifrost didn't apply your change, because Claude was busy resolving conflicts. Discard the edits Claude made for your request so the merge can be resolved first, then ask again." and the button Discard edits |
 
 `ReviewRounds` runs the rounds, with the poll, Resolve now and the ends in
 `BifrostReviews/Services/ConflictRounds.swift` and the steps of one round in `ConflictRound.swift`.

@@ -52,6 +52,13 @@ package enum ClaudeState: Sendable, Equatable {
     // The work on the PR waits for the user, with the reason (PRState.waitsForYou): an own
     // request that Bifrost did not commit or push, or changes in the worktree that no round made.
     case waitsForYou(String)
+    // Like waitsForYou, with a short text and a tip of its own (RowText): the safety net stopped
+    // a conflict round for changes that are not on GitHub (Unpushed changes), or the user asked
+    // for a change while Claude resolved conflicts (Ask again).
+    case unpushedChanges
+    // The same for a request round: the tip names new comments, not the base branch.
+    case unpushedComments
+    case askAgain
     // A request round works on the count of items.
     case fixing(Int)
     // A conflict round works on the merge conflicts.
@@ -76,11 +83,19 @@ package enum ClaudeState: Sendable, Equatable {
     // conflict attempt on this head and base, or nil when no attempt on this pair failed.
     case conflicts(String?)
 
+    // True when the work waits for the user with a reason (PRState.waitsForYou).
+    package var waitsForUser: Bool {
+        switch self {
+        case .waitsForYou, .unpushedChanges, .unpushedComments, .askAgain: true
+        default: false
+        }
+    }
+
     // True when the row needs the user: open questions, or work that waits for the user. The
     // row then comes first, shows the red box, and makes the tab count red.
     package var needsTheUser: Bool {
         switch self {
-        case .needsYou, .waitsForYou: true
+        case .needsYou, .waitsForYou, .unpushedChanges, .unpushedComments, .askAgain: true
         case .fixing, .resolvingConflicts, .fixingCI, .queued, .trustNeeded, .cloning, .waiting,
             .error, .retryingCI, .fork, .conflicts:
             false

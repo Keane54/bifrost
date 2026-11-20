@@ -166,6 +166,14 @@ struct ReviewRowView: View {
                     .accessibilityHidden(true)
                 }
                 label(row.status)
+                ForEach(ReviewsMenu.buttons(row), id: \.self) { item in
+                    Button(ReviewsMenu.buttonLabel(item, row)) {
+                        model.choose(item, for: row.id)
+                    }
+                    .buttonStyle(RowButtonStyle(tone: .plain, style: style))
+                    .disabled(!model.isEnabled(item, row))
+                    .focusable(false)
+                }
             }
             .fixedSize()
         }
