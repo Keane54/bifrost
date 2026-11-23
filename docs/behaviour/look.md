@@ -46,6 +46,11 @@ the app icon.
 - The motion moves 30 times a second on the CSS ease-in-out curve, and each cycle runs forwards
   and then back. One Metal shader draws all the layers, and a Mac with no Metal device shows the
   plain background colour instead.
+- The background draws on a thread of its own, never on the main thread, so a busy Mac or a slow
+  window server can't hold up typing. It draws at most 30 frames a second, one for each step of
+  the motion, into a small set of buffers that the window shows in turn. If every buffer is still
+  in use, it skips that frame instead of waiting. While the window is minimised or fully covered
+  it draws nothing, and it catches up as soon as the window shows again.
 - The fields move only when the Animated background setting is on, the window is active (focused
   and visible) and reduced motion is off. When the window becomes inactive, the fields pause where
   they are. Turning the setting off after the fields have moved also pauses them, so they don't

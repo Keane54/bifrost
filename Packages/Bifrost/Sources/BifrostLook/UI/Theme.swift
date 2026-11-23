@@ -8,6 +8,7 @@ extension TokenColour {
     // The colour in the sRGB colour space.
     package var nsColor: NSColor { NSColor(srgbRed: r, green: g, blue: b, alpha: a) }
     package var cgColor: CGColor { CGColor(srgbRed: r, green: g, blue: b, alpha: a) }
-    // The red, green and blue for a shader, with no alpha.
-    var rgb: SIMD3<Float> { SIMD3(Float(r), Float(g), Float(b)) }
+    // The red, green and blue for a shader, with no alpha. The render thread of the background
+    // uses it, so it has no isolation.
+    nonisolated var rgb: SIMD3<Float> { SIMD3(Float(r), Float(g), Float(b)) }
 }

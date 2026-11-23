@@ -1,158 +1,77 @@
 // The animated background (docs/behaviour/look.md, "The animated background") in Metal. One
 // fragment shader draws the base and the six fields at half the device pixels
-// (Motion.canvasScale), 30 times each second while the motion runs, with the grain and a dither
-// in the shader. It needs no large images.
+// (Motion.canvasScale), with the grain and a dither in the shader. It needs no large images.
 //
-// While the background does not move, no draw loop runs: the view draws again only after a
-// change of its size. With no Metal device, the view shows the plain background colour.
+// The main thread never draws and never waits for a surface. A display link on the main thread
+// asks for the frame of each step of the motion, at most 30 times each second (Motion.rate). A
+// render thread of its own (BackgroundRenderLoop.swift) draws the frame into an IOSurface, and
+// the main thread then puts that surface into the layer. When each surface is busy, for example
+// because the window server is slow, the render thread skips the frame.
+//
+// While the background does not move, the display link stops: the view asks for a frame only
+// after a change of its size, of its scale or of the motion. While the window is not visible
+// (minimised, or fully covered), the view asks for no frame, and the display link stops. With no
+// Metal device, the view shows the plain background colour.
 //
 // The shader is Background.metal. The app build compiles it into the default library of the
 // module bundle. A command-line build (swift build, swift test) compiles no Metal: it copies the
 // file into the bundle, and the renderer compiles it at run time.
 import AppKit
-import BifrostFoundation
-import MetalKit
-import OSLog
+import Metal
 import QuartzCore
 
-// The renderer of the Metal view. It reads the motion time at each draw.
-@MainActor
-private final class BackgroundRenderer: NSObject, MTKViewDelegate {
-    private let pipeline: any MTLRenderPipelineState
-    private let queue: any MTLCommandQueue
-    var time: () -> Double = { 0 }
-
-    init?(device: any MTLDevice) {
-        guard let queue = device.makeCommandQueue(), let library = Self.library(device)
-        else { return nil }
-        let description = MTLRenderPipelineDescriptor()
-        description.vertexFunction = library.makeFunction(name: "vtx")
-        description.fragmentFunction = library.makeFunction(name: "frg")
-        description.colorAttachments[0].pixelFormat = .bgra8Unorm
-        guard let pipeline = try? device.makeRenderPipelineState(descriptor: description)
-        else { return nil }
-        self.pipeline = pipeline
-        self.queue = queue
-    }
-
-    private static let logger = Logger(bifrost: "background")
-
-    // The library that the app build compiled, else the library of the copied source. With
-    // neither, the view shows the plain background colour.
-    private static func library(_ device: any MTLDevice) -> (any MTLLibrary)? {
-        if let built = try? device.makeDefaultLibrary(bundle: .module),
-            built.makeFunction(name: "frg") != nil
-        {
-            return built
-        }
-        guard let file = Bundle.module.url(forResource: "Background", withExtension: "metal"),
-            let source = try? String(contentsOf: file, encoding: .utf8),
-            let library = try? device.makeLibrary(source: source, options: nil)
-        else {
-            logger.error(
-                "The background shader has no compiled library and its source did not compile")
-            return nil
-        }
-        return library
-    }
-
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
-
-    func draw(in view: MTKView) {
-        guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
-            let buffer = queue.makeCommandBuffer(),
-            let encoder = buffer.makeRenderCommandEncoder(descriptor: pass)
-        else { return }
-        // The motion moves 30 times each second.
-        let t = Motion.step(time())
-        let width = Double(view.bounds.width)
-        let height = Double(view.bounds.height)
-        var data = layerData(at: t, width: width, height: height)
-        var stops = Motion.baseColours.map { SIMD4<Float>($0.rgb, 1) }
-        let drawn = view.drawableSize
-        var info = SIMD4<Float>(
-            Float(width / max(1, Double(drawn.width))),
-            Float(height / max(1, Double(drawn.height))), 0, 0)
-        var look = SIMD4<Float>(ThemeTokens.bg.rgb, Float(Motion.noise))
-        encoder.setRenderPipelineState(pipeline)
-        encoder.setFragmentBytes(&data, length: data.count * 16, index: 0)
-        encoder.setFragmentBytes(&stops, length: stops.count * 16, index: 1)
-        encoder.setFragmentBytes(&info, length: 16, index: 2)
-        encoder.setFragmentBytes(&look, length: 16, index: 3)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        encoder.endEncoding()
-        buffer.present(drawable)
-        buffer.commit()
-    }
-
-    // The 5 values of each layer at a time, in the paint order: the base, then the fields.
-    private func layerData(at t: Double, width: Double, height: Double) -> [SIMD4<Float>] {
-        var data: [SIMD4<Float>] = []
-        for layer in [Motion.base] + Motion.fields {
-            let pose = Motion.state(layer, at: t)
-            let w = layer.w * width
-            let h = layer.h * height
-            let cx = layer.left * width + w / 2 + pose.tx / 100 * w
-            let cy = layer.top * height + h / 2 + pose.ty / 100 * h
-            let turn = -pose.rot * .pi / 180
-            let inverse = 1 / pose.scale
-            // The inverse of rotate(rot) scale(scale), as two columns.
-            let c = Float(cos(turn) * inverse)
-            let s = Float(sin(turn) * inverse)
-            data.append(SIMD4(Float(cx), Float(cy), Float(w / 2), Float(h / 2)))
-            data.append(SIMD4(c, s, -s, c))
-            if let icon = layer.icon {
-                let alpha = Motion.glow * layer.weight * pose.opacity
-                data.append(SIMD4(ThemeTokens.icon(icon).rgb, Float(alpha)))
-                data.append(.zero)
-                data.append(.zero)
-            } else {
-                let (x0, y0, x1, y1) = Motion.gradientLine(Motion.baseAngle, w, h)
-                let dx = x1 - x0
-                let dy = y1 - y0
-                let length2 = dx * dx + dy * dy
-                data.append(SIMD4(0, 0, 0, Float(Motion.baseAlpha * pose.opacity)))
-                data.append(
-                    SIMD4(Float(x0), Float(y0), Float(dx / length2), Float(dy / length2)))
-                data.append(SIMD4(1, 0, 0, 0))
-            }
-        }
-        return data
-    }
-}
-
 public final class MetalBackground: NSView {
-    // The Metal view, or nil when the system has no Metal device or the shader does not build.
-    let metalView: MTKView?
-    private let renderer: BackgroundRenderer?
+    // The frame rates of the display link. The motion moves 30 times each second, so a higher
+    // rate gives no change. Under load the system can go down to 15.
+    static let frameRates = CAFrameRateRange(
+        minimum: Float(Motion.rate / 2), maximum: Float(Motion.rate),
+        preferred: Float(Motion.rate))
+
+    // The layer that shows the surfaces of the render thread, or nil when the system has no
+    // Metal device or the shader does not build.
+    let surfaceLayer: CALayer?
+    private let loop: BackgroundRenderLoop?
     private let now: () -> Double
     private var clock = MotionClock()
+    private let ticker = BackgroundTicker()
+    private var link: CADisplayLink?
+    // True while the window shows on the screen: not minimised and not fully covered.
+    private(set) var visible = false
+    // The size of the surfaces in pixels.
+    private(set) var pixels: PixelSize?
+    // The newest frame that the view asked for.
+    private var requested: BackgroundFrame?
+    // The number of frames that the view asked for.
+    private(set) var requestedFrames = 0
 
-    // `now` gives the time in seconds on a clock that never goes back. The tests give their own.
-    init(frame: NSRect, now: @escaping () -> Double) {
+    // `now` gives the time in seconds on a clock that never goes back. `report` gets each try of
+    // the render thread, on that thread. The tests give their own.
+    init(
+        frame: NSRect, now: @escaping () -> Double,
+        report: (@Sendable (BackgroundReport) -> Void)? = nil
+    ) {
         self.now = now
-        let device = MTLCreateSystemDefaultDevice()
-        let renderer = device.flatMap { BackgroundRenderer(device: $0) }
-        self.renderer = renderer
-        metalView = renderer.flatMap { _ in MTKView(frame: frame, device: device) }
+        let renderer = MTLCreateSystemDefaultDevice().flatMap { BackgroundRenderer(device: $0) }
+        loop = renderer.map { BackgroundRenderLoop(renderer: $0) }
+        surfaceLayer = renderer.map { _ in CALayer() }
         super.init(frame: frame)
         wantsLayer = true
         layer?.backgroundColor = ThemeTokens.bg.cgColor
-        guard let metalView, let renderer else { return }
-        renderer.time = { [weak self] in self?.motionTime ?? 0 }
-        metalView.colorPixelFormat = .bgra8Unorm
-        metalView.framebufferOnly = true
-        metalView.autoResizeDrawable = false
-        metalView.preferredFramesPerSecond = 30
-        if let metalLayer = metalView.layer as? CAMetalLayer {
-            metalLayer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
-            metalLayer.isOpaque = true
+        guard let surfaceLayer, let loop else { return }
+        // The surfaces fill the layer. Core Animation scales them up with no animation.
+        surfaceLayer.isOpaque = true
+        surfaceLayer.contentsGravity = .resize
+        surfaceLayer.actions = [
+            "contents": NSNull(), "bounds": NSNull(), "position": NSNull(), "frame": NSNull(),
+        ]
+        surfaceLayer.frame = bounds
+        layer?.addSublayer(surfaceLayer)
+        ticker.background = self
+        loop.start { [weak self] result in
+            report?(result)
+            guard result.outcome == .drawn else { return }
+            Task { @MainActor [weak self] in self?.showFinishedFrame() }
         }
-        metalView.delegate = renderer
-        metalView.autoresizingMask = [.width, .height]
-        metalView.frame = bounds
-        addSubview(metalView)
-        stopDrawLoop()
     }
 
     package convenience override init(frame: NSRect) {
@@ -162,41 +81,102 @@ public final class MetalBackground: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
+    isolated deinit {
+        link?.invalidate()
+        loop?.stop()
+    }
+
     // The time of the motion in seconds.
     var motionTime: Double { clock.time(at: now()) }
 
+    // True while the display link asks for a frame at each step of the motion.
+    var animating: Bool { visible && clock.running }
+
+    // True while the display link runs: while the background moves, or while a frame waits.
+    var linkRunning: Bool { link.map { !$0.isPaused } ?? false }
+
+    // The frame rates of the display link, or nil with no display link.
+    var linkFrameRates: CAFrameRateRange? { link?.preferredFrameRateRange }
+
+    // MARK: - The size and the window
+
+    public override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateGeometry()
+    }
+
     public override func layout() {
         super.layout()
-        updateDrawableSize()
+        updateGeometry()
     }
 
     public override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        updateDrawableSize()
+        updateGeometry()
     }
 
-    // The drawable has half the device pixels. Core Animation scales the image up.
-    private func updateDrawableSize() {
-        guard let metalView else { return }
-        let scale = Double(window?.backingScaleFactor ?? 2)
-        let size = Motion.canvasSize(
-            width: Double(bounds.width) * scale, height: Double(bounds.height) * scale)
-        let drawable = CGSize(width: size.width, height: size.height)
-        if metalView.drawableSize != drawable { metalView.drawableSize = drawable }
-        metalView.needsDisplay = true
+    public override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        NotificationCenter.default.removeObserver(self)
+        link?.invalidate()
+        link = nil
     }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let window, loop != nil {
+            let names = [
+                NSWindow.didChangeOcclusionStateNotification,
+                NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification,
+            ]
+            for name in names {
+                NotificationCenter.default.addObserver(
+                    self, selector: #selector(windowStateChanged(_:)), name: name, object: window)
+            }
+            let link = displayLink(target: ticker, selector: #selector(BackgroundTicker.tick(_:)))
+            link.preferredFrameRateRange = Self.frameRates
+            link.isPaused = true
+            link.add(to: .main, forMode: .common)
+            self.link = link
+        }
+        updateGeometry()
+        updateVisibility()
+    }
+
+    @objc private func windowStateChanged(_ notification: Notification) {
+        updateVisibility()
+    }
+
+    // The window is visible when it is not minimised and some part of it shows on the screen.
+    private func updateVisibility() {
+        let shows = window.map { $0.occlusionState.contains(.visible) && !$0.isMiniaturized }
+        let visible = shows ?? false
+        guard visible != self.visible else { return }
+        self.visible = visible
+        update()
+    }
+
+    // The surfaces have half the device pixels. Core Animation scales the image up.
+    private func updateGeometry() {
+        guard let surfaceLayer else { return }
+        surfaceLayer.frame = bounds
+        let scale = Double(window?.backingScaleFactor ?? 2)
+        pixels = Motion.canvasSize(
+            width: Double(bounds.width) * scale, height: Double(bounds.height) * scale)
+        update()
+    }
+
+    // MARK: - The motion
 
     // Move the layers, or stop them where they are.
     package func setMoving(_ moving: Bool) {
         guard moving != clock.running else { return }
         if moving {
             clock.start(at: now())
-            metalView?.enableSetNeedsDisplay = false
-            metalView?.isPaused = false
         } else {
             clock.stop(at: now())
-            stopDrawLoop()
         }
+        update()
     }
 
     // Show a phase of the motion: moving, paused in place, or the still position (the first
@@ -207,14 +187,58 @@ public final class MetalBackground: NSView {
         case .paused: setMoving(false)
         case .still:
             clock.reset()
-            stopDrawLoop()
+            update()
         }
     }
 
-    // No draw loop: the view draws one time now, and again after a change of its size.
-    private func stopDrawLoop() {
-        metalView?.isPaused = true
-        metalView?.enableSetNeedsDisplay = true
-        metalView?.needsDisplay = true
+    // MARK: - The frames
+
+    // Ask the render thread for the frame of now when it differs from the newest request. The
+    // display link calls this at each tick. A frame that waits after a skip gets a retry. While
+    // the window is not visible, the view asks for no frame.
+    func update() {
+        if let loop, visible, let pixels {
+            let frame = BackgroundFrame(
+                time: Motion.step(motionTime), width: Double(bounds.width),
+                height: Double(bounds.height), pixels: pixels)
+            if frame != requested {
+                requested = frame
+                requestedFrames += 1
+                loop.request(frame)
+            } else {
+                loop.retry()
+            }
+        }
+        updateLink()
+    }
+
+    // The display link runs while the window is visible and the background moves or a frame
+    // waits. Else it stops, and the view draws nothing.
+    private func updateLink() {
+        guard let link else { return }
+        let run = visible && (clock.running || loop?.busy == true)
+        if link.isPaused == run { link.isPaused = !run }
+    }
+
+    // Show the newest surface of the render thread. Only the layer changes on the main thread.
+    private func showFinishedFrame() {
+        guard let surfaceLayer, let surface = loop?.takeFinished() else { return }
+        surfaceLayer.contents = surface
+        updateLink()
+    }
+}
+
+// The target of the display link. The display link keeps its target, so the target keeps only a
+// weak reference to the view. With no view, the first tick stops the display link.
+@MainActor
+private final class BackgroundTicker: NSObject {
+    weak var background: MetalBackground?
+
+    @objc func tick(_ link: CADisplayLink) {
+        guard let background else {
+            link.invalidate()
+            return
+        }
+        background.update()
     }
 }

@@ -84,6 +84,12 @@ sessions with New session, and give each new session a `bifrost-test-` name.
 - [ ] Look at text in the interface that has arrows, key symbols such as ⌫ and ⏎, maths signs,
   circled digits or Greek letters. They should draw in Geist Mono, matching the text around them,
   and small text should still look crisp. ([look F2](ports/look/DELIBERATE-DIFFERENCES.md))
+- [ ] With the animated background on, the background should look and move as it did before:
+  the same colours, the same drift and the same speed. Then put the Mac under load, for example
+  with a large build, and type fast in a chat. The typing should stay smooth, and the Performance
+  panel shouldn't say that Bifrost's main process was slow to respond. Resize the window, then
+  minimise it and bring it back: the background should fill the window at once, with no blank
+  or stretched frame left behind.
 - [ ] Start with no saved layout (a new test home). The Overview should be at the top left and
   the Selected Item to its right, 16 apart and lined up at the top.
 - [ ] Look at the side bar: Selected Item should sit below New Overview, then a line, then New

@@ -1,6 +1,6 @@
 // The shader of the animated background (MetalBackground.swift). The app build compiles this
 // file into the default library of the BifrostLook bundle. A command-line build (swift build,
-// swift test) copies the file into the bundle, and MetalBackground compiles it at run time.
+// swift test) copies the file into the bundle, and BackgroundRenderer compiles it at run time.
 #include <metal_stdlib>
 using namespace metal;
 struct VOut { float4 pos [[position]]; };
