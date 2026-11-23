@@ -88,6 +88,9 @@ review of the code.
 Before you look for problems, find out what the PR is meant to do.
 
 - Read the title, the description, the linked issues and the commit messages.
+- List the goals of the PR. Take them from the description and from the linked issues, with their
+  acceptance criteria. Mark a goal as main or smaller. A goal that the PR or the issue says is for
+  later, or out of scope, is not a goal of this PR.
 - Read the full diff (reference: "The full diff").
 - Read each changed file in full at the head commit, not only the hunks. Read the code that calls
   the changed code and the code that it calls, as far as the change can reach.
@@ -109,6 +112,10 @@ Be adversarial. Assume that the change has a bug, and try to find it. For each c
   default.
 - The description: code that does not do what the PR description says, when the difference gives
   a wrong result.
+- The goals: check that the diff delivers each goal from step 3. Look for the code and the tests
+  that do the work. A main goal that is missing or only half done is a Bug or error. A smaller goal
+  that is missing is Minor. Name the goal and what is missing. The finding is never a question.
+  A goal for later or out of scope is not a finding.
 - Code comments: a comment that no longer agrees with the code after the change, in the diff or in
   code that the change makes wrong. A wrong comment misleads the next reader and the next agent.
 - Fit with the codebase: new code that does a job in another way than the codebase already does
@@ -132,7 +139,8 @@ Never report:
 - a question that checks what the code does, or that asks whether the author meant a behaviour;
 - a changed behaviour that the tests of the PR expect, or that similar code in the codebase
   already has;
-- a difference from the PR description that gives no wrong result;
+- a difference from the PR description that gives no wrong result (a missing goal is not such a
+  difference: see "The goals" in step 4);
 - advice with no failure behind it, such as "consider" or "you may want to".
 
 ## 5. Check each finding
