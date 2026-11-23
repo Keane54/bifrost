@@ -575,6 +575,14 @@ package enum WireFault: String, Sendable, Comparable, CaseIterable {
     case runID = "CheckRun.checkSuite.workflowRun.databaseId"
     case statusContext = "StatusContext.context"
     case statusState = "StatusContext.state"
+    // The issues that a PR closes, in the read of a review round: the list, a node that is not an
+    // issue (no number), and a field of an issue that is missing or not a text.
+    case closingIssues = "closingIssuesReferences"
+    case closingIssueNumber = "closingIssuesReferences.nodes.number"
+    case closingIssueRepo = "closingIssuesReferences.nodes.repository.nameWithOwner"
+    case closingIssueTitle = "closingIssuesReferences.nodes.title"
+    case closingIssueBody = "closingIssuesReferences.nodes.body"
+    case closingIssueURL = "closingIssuesReferences.nodes.url"
 
     package static func < (left: WireFault, right: WireFault) -> Bool {
         left.rawValue < right.rawValue

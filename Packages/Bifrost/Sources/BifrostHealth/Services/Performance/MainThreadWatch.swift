@@ -10,6 +10,8 @@ package struct PassWindow: Sendable {
     private var start = Duration.zero
     private(set) var current: Duration?
     private var last: Duration?
+    // The number of the windows that ended. It names the window of `last`.
+    private(set) var ended = 0
 
     package init() {}
 
@@ -27,6 +29,7 @@ package struct PassWindow: Sendable {
     private mutating func roll(to now: Duration) {
         guard now - start >= Self.length else { return }
         let windows = Int(((now - start) / Self.length).rounded(.down))
+        ended += windows
         // Only the window just before the current one counts. An older window is too old.
         last = windows == 1 ? current : nil
         current = nil
@@ -51,8 +54,9 @@ package final class MainThreadWatch: Sendable {
         var passStart: Duration?
     }
 
-    private let clock = SuspendingClock()
-    private let origin: SuspendingClock.Instant
+    // The time since the start of the watch. The clock stops while the Mac sleeps. A test gives
+    // its own time.
+    private let elapsed: @Sendable () -> Duration
     private let state = Mutex(State())
     // The run loop to observe, and the observers of the start and of the end of a pass while the
     // watch runs. The run loop is not Sendable, so it stays in the lock.
@@ -62,9 +66,14 @@ package final class MainThreadWatch: Sendable {
     }
     private let hooks: Mutex<Hooks>
 
-    package init(runLoop: sending CFRunLoop = CFRunLoopGetMain()) {
+    package init(
+        runLoop: sending CFRunLoop = CFRunLoopGetMain(),
+        elapsed: (@Sendable () -> Duration)? = nil
+    ) {
         hooks = Mutex(Hooks(runLoop: runLoop))
-        origin = clock.now
+        let clock = SuspendingClock()
+        let origin = clock.now
+        self.elapsed = elapsed ?? { origin.duration(to: clock.now) }
     }
 
     deinit {
@@ -98,8 +107,21 @@ package final class MainThreadWatch: Sendable {
 
     // The longest pass of the last full 60 s window, or nil.
     package func longest() -> Duration? {
-        let now = origin.duration(to: clock.now)
+        let now = elapsed()
         return state.withLock { $0.window.longest(at: now) }
+    }
+
+    // The longest pass of the last full window, with the number of that window. The number tells
+    // two reads of the same window from two windows.
+    package func longestWindow() -> (delay: Duration?, window: Int) {
+        let now = elapsed()
+        return state.withLock { ($0.window.longest(at: now), $0.window.ended) }
+    }
+
+    // Record a pass that ended now. A test uses it, with no run loop.
+    func recordPass(_ pass: Duration) {
+        let now = elapsed()
+        state.withLock { $0.window.record(pass, at: now) }
     }
 
     // The observers on the run loop. A test reads them.
@@ -116,12 +138,12 @@ package final class MainThreadWatch: Sendable {
     }
 
     private func passStarted() {
-        let now = origin.duration(to: clock.now)
+        let now = elapsed()
         state.withLock { $0.passStart = now }
     }
 
     private func passEnded() {
-        let now = origin.duration(to: clock.now)
+        let now = elapsed()
         state.withLock { s in
             guard let start = s.passStart else { return }
             s.window.record(now - start, at: now)

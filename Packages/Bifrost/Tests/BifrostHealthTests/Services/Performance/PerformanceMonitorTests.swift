@@ -32,6 +32,20 @@ private final class CountingProcesses: ProcessSampling {
     }
 }
 
+// The run loop of a thread that ended. It never runs, so its observers never fire.
+private func idleRunLoop() -> sending CFRunLoop {
+    final class Box: @unchecked Sendable { var loop: CFRunLoop? }
+    let box = Box()
+    let done = DispatchSemaphore(value: 0)
+    let thread = Thread {
+        box.loop = CFRunLoopGetCurrent()
+        done.signal()
+    }
+    thread.start()
+    done.wait()
+    return box.loop!
+}
+
 @MainActor
 private final class Fixture {
     let clock = ManualClock()
@@ -40,7 +54,7 @@ private final class Fixture {
     let reporter: HealthReporter
     let monitor: PerformanceMonitor
 
-    init() throws {
+    init(watch: MainThreadWatch = MainThreadWatch()) throws {
         temp = try TemporaryFolder()
         let (reporter, events) = HealthReporter.make()
         self.reporter = reporter
@@ -52,7 +66,7 @@ private final class Fixture {
                 pressure: { nil }, swap: { nil }, cpuTicks: { nil }, thermal: { .nominal },
                 battery: { nil }),
             network: nil, disk: DiskState(home: temp.url, clones: nil), github: nil,
-            mainThread: MainThreadWatch())
+            mainThread: watch)
         monitor = PerformanceMonitor(
             events: events, samplers: samplers, log: HealthLog(folder: temp.url), clock: clock,
             now: { start })
@@ -170,6 +184,35 @@ struct PerformanceMonitorTests {
                 "poll failed: sessions (3 in a row)", "save failed: the settings",
                 "live details did not start: No socket.",
             ])
+    }
+
+    // A slow pass of the main thread goes to the health log one time. The next ticks read the same
+    // window, so they add no line. A later window with a slow pass adds one line.
+    @Test func aSlowMainThreadGoesToTheHealthLogOncePerWindow() async throws {
+        let time = Mutex(Duration.seconds(10))
+        // The run loop of a thread that ended never runs, so only the passes of the test count.
+        let watch = MainThreadWatch(runLoop: idleRunLoop(), elapsed: { time.withLock { $0 } })
+        let f = try Fixture(watch: watch)
+        defer { f.end() }
+        watch.recordPass(.milliseconds(250))
+        time.withLock { $0 = .seconds(70) }
+        f.monitor.start()
+        await f.monitor.tickTask?.value
+        await waitUntil { f.logLines.count == 1 }
+        #expect(f.logLines.first?.hasSuffix(" main thread slow to respond: up to 250 ms") == true)
+        await f.nextTick(after: PerformanceMonitor.tick)
+        await f.nextTick(after: PerformanceMonitor.tick)
+        #expect(f.processes.reads == 3)
+        #expect(f.logLines.count == 1)
+        // The next window has a pass that is not slow, and then one that is.
+        watch.recordPass(.milliseconds(90))
+        time.withLock { $0 = .seconds(130) }
+        await f.nextTick(after: PerformanceMonitor.tick)
+        watch.recordPass(.milliseconds(1500))
+        time.withLock { $0 = .seconds(190) }
+        await f.nextTick(after: PerformanceMonitor.tick)
+        await waitUntil { f.logLines.count == 2 }
+        #expect(f.logLines.last?.hasSuffix(" main thread slow to respond: up to 1500 ms") == true)
     }
 
     @Test func clearSendsANewSnapshotAtOnce() async throws {

@@ -166,6 +166,8 @@ package enum ReviewAnswer {
         package var head: ReviewContext?
         package var reviews: [ViewerReview]
         package var next: String?
+        // The fields that GitHub left out or gave in a form that Bifrost can't read.
+        package var faults: [WireFault] = []
     }
 
     // One page of the threads of the PR, with only the threads that the viewer started.
@@ -193,6 +195,8 @@ package enum ReviewAnswer {
             guard let state = node["state"]?.string.flatMap(PRLifecycle.init(rawValue:)),
                 let head = node["headRefOid"]?.string.flatMap(CommitID.init)
             else { return .failure(.badAnswer) }
+            var faults = WireFaults()
+            let issues = linkedIssues(node["closingIssuesReferences"], &faults)
             let pending = node["pending"].nodes.lazy.compactMap { item -> PendingDraft? in
                 guard item["viewerDidAuthor"] == .bool(true),
                     let id = item["id"]?.string.flatMap(NodeID.init)
@@ -207,9 +211,9 @@ package enum ReviewAnswer {
                 author: node["author"]?.object?["login"]?.string ?? "", state: state,
                 baseRef: node["baseRefName"]?.string ?? "",
                 headRef: node["headRefName"]?.string ?? "", headSHA: head,
-                linkedIssues: node["closingIssuesReferences"].nodes.compactMap(linkedIssue),
-                pending: pending)
-            return .success(ContextPage(head: context, reviews: reviews, next: next))
+                linkedIssues: issues, pending: pending)
+            return .success(
+                ContextPage(head: context, reviews: reviews, next: next, faults: faults.sorted))
         }
     }
 
@@ -278,13 +282,33 @@ package enum ReviewAnswer {
         }
     }
 
-    // An issue that the PR closes. A node with no number is not an issue, so the read drops it.
-    private static func linkedIssue(_ item: [String: JSONValue]) -> LinkedIssue? {
-        guard let number = item["number"]?.wholeNumber else { return nil }
-        return LinkedIssue(
-            number: number, repo: item["repository"]?.object?["nameWithOwner"]?.string ?? "",
-            title: item["title"]?.string ?? "", body: item["body"]?.string ?? "",
-            url: item["url"]?.string ?? "")
+    // The issues that the PR closes. A node with no number is not an issue, so the read drops it.
+    // A list, a node or a field that is missing or in another form goes to the faults.
+    private static func linkedIssues(_ list: JSONValue?, _ faults: inout WireFaults)
+        -> [LinkedIssue]
+    {
+        guard let items = list?.object?["nodes"]?.array else {
+            faults.add(.closingIssues)
+            return []
+        }
+        func text(_ value: JSONValue?, _ fault: WireFault, _ faults: inout WireFaults) -> String {
+            if let string = value?.string { return string }
+            faults.add(fault)
+            return ""
+        }
+        return items.compactMap { value -> LinkedIssue? in
+            guard let item = value.object, let number = item["number"]?.wholeNumber else {
+                faults.add(.closingIssueNumber)
+                return nil
+            }
+            return LinkedIssue(
+                number: number,
+                repo: text(
+                    item["repository"]?.object?["nameWithOwner"], .closingIssueRepo, &faults),
+                title: text(item["title"], .closingIssueTitle, &faults),
+                body: text(item["body"], .closingIssueBody, &faults),
+                url: text(item["url"], .closingIssueURL, &faults))
+        }
     }
 
     private static func review(_ item: [String: JSONValue]) -> ViewerReview? {

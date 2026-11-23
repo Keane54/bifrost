@@ -82,6 +82,40 @@ struct ReviewContextTests {
         #expect(try page(#","closingIssuesReferences":{"nodes":7}"#).linkedIssues.isEmpty)
     }
 
+    // A missing or bad field of the linked issues gives a fault, each one time. A good list and an
+    // empty list give none.
+    @Test func aBadLinkedIssueFieldGivesAFault() throws {
+        func faults(_ field: String) throws -> [WireFault] {
+            let text =
+                #"{"data":{"repository":{"pullRequest":{"state":"OPEN","#
+                + #""headRefOid":"\#(String(repeating: "b", count: 40))"\#(field)}}}}"#
+            return try ReviewAnswer.contextPage(
+                Data(text.utf8), pr: try ReviewData.pr(), withHead: true
+            ).get().faults
+        }
+        let issue =
+            #"{"number":4,"title":"T","body":"B","url":"u","#
+            + #""repository":{"nameWithOwner":"o/r"}}"#
+        #expect(try faults(#","closingIssuesReferences":{"nodes":[\#(issue)]}"#).isEmpty)
+        #expect(try faults(#","closingIssuesReferences":{"nodes":[]}"#).isEmpty)
+        #expect(try faults("") == [.closingIssues])
+        #expect(try faults(#","closingIssuesReferences":{"nodes":7}"#) == [.closingIssues])
+        #expect(
+            try faults(#","closingIssuesReferences":{"nodes":[{"title":"x"},3]}"#)
+                == [.closingIssueNumber])
+        #expect(
+            try faults(#","closingIssuesReferences":{"nodes":[{"number":4}]}"#)
+                == [
+                    .closingIssueBody, .closingIssueRepo, .closingIssueTitle, .closingIssueURL,
+                ])
+        // A later page has no PR fields, so it has no fault of the issues.
+        let later = try ReviewAnswer.contextPage(
+            Data(#"{"data":{"repository":{"pullRequest":{"reviews":{"nodes":[]}}}}}"#.utf8),
+            pr: try ReviewData.pr(), withHead: false
+        ).get()
+        #expect(later.faults.isEmpty)
+    }
+
     // An answer with errors fails, also next to data, so a part of the data never looks whole.
     // A PR with no state is a bad answer.
     @Test func anAnswerWithErrorsFails() throws {

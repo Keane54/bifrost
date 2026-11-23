@@ -90,6 +90,25 @@ struct ReviewQueriesTests {
         #expect(github.queries.map(\.name) == ["reviewContext"])
     }
 
+    // A bad field of the linked issues goes to the log of the client one time in the run: a
+    // second round reads the same fault and the client logs no new one.
+    @Test func aBadLinkedIssueFieldGoesToTheLogOnce() async throws {
+        let text =
+            #"{"data":{"repository":{"pullRequest":{"state":"OPEN","#
+            + #""headRefOid":"\#(String(repeating: "b", count: 40))","#
+            + #""closingIssuesReferences":{"nodes":[{"title":"No number"}]}}}}}"#
+        let github = PagedGitHub(pages: [
+            ReviewQueries.contextName: [Data(text.utf8), Data(text.utf8)]
+        ])
+        let client = GitHubClient(access: github)
+        #expect(client.loggedFaults.isEmpty)
+        _ = try await ReviewQueries.context(try ReviewData.pr(), viewer: "user-v", on: client)
+        #expect(client.loggedFaults == [.closingIssueNumber])
+        #expect(client.newFaults([.closingIssueNumber]).isEmpty)
+        _ = try await ReviewQueries.context(try ReviewData.pr(), viewer: "user-v", on: client)
+        #expect(client.loggedFaults == [.closingIssueNumber])
+    }
+
     // A failed page fails the whole read.
     @Test func aFailedPageFailsTheRead() async throws {
         let github = PagedGitHub(pages: [

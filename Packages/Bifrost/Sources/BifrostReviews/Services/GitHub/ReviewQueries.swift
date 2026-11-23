@@ -91,6 +91,7 @@ package enum ReviewQueries {
             let answer = try ReviewAnswer.contextPage(
                 await github.read(query), pr: pr, withHead: page == 1
             ).get()
+            github.logFaults(answer.faults, read: contextName)
             if page == 1 { head = answer.head }
             reviews += answer.reviews
             after = answer.next

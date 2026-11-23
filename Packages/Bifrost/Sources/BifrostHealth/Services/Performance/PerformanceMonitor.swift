@@ -151,6 +151,7 @@ package final class PerformanceMonitor {
     @ObservationIgnored private var orphanWatch = OrphanWatch()
     @ObservationIgnored private var orphans = 0
     @ObservationIgnored private var mainThreadDelay: Duration?
+    @ObservationIgnored private var slowMainLog = SlowMainLog()
     @ObservationIgnored private var past = PastEvents()
     @ObservationIgnored private var showing = false
     // The burst values of the frame counter in this count, the newest last.
@@ -330,7 +331,12 @@ package final class PerformanceMonitor {
         history.add(
             reading.table, app: samplers.app.app, terminals: reading.terminals.map(\.pid))
         orphans = orphanWatch.count(reading.terminals, chatPanels: reading.chatPanels, at: at)
-        mainThreadDelay = samplers.mainThread.longest()
+        let main = samplers.mainThread.longestWindow()
+        mainThreadDelay = main.delay
+        // A slow pass leaves a line in the health log, so a freeze leaves a trace.
+        if let line = slowMainLog.line(delay: main.delay, window: main.window) {
+            lines.yield(LogLine(text: line, time: now()))
+        }
         if showing {
             await readPanel(at: at)
             guard !Task.isCancelled else { return }

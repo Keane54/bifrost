@@ -187,7 +187,11 @@ in UTC with milliseconds, and reads like one of these:
 - `poll failed: sessions (3 in a row)`
 - `save failed: the settings`
 - `live details did not start: <the error>`
+- `main thread slow to respond: up to 450 ms`
 - `cleared by the user`
+
+A slow main thread gets one line for each 60-second window that has a pass above 200 ms, so a
+freeze leaves a trace even when the panel isn't open.
 
 Clear doesn't touch the file. When it reaches 1 MB, it becomes `health.old.log` and a new file
 starts, and a write error never gets in Bifrost's way. A test home writes its log inside the test
