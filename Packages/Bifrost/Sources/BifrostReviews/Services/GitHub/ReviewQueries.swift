@@ -29,6 +29,9 @@ package enum ReviewQueries {
               baseRefName @include(if: $head)
               headRefName @include(if: $head)
               headRefOid @include(if: $head)
+              closingIssuesReferences(first: 10) @include(if: $head) {
+                nodes { number title body url repository { nameWithOwner } }
+              }
               pending: reviews(states: PENDING, first: 10) @include(if: $head) {
                 nodes { id body viewerDidAuthor commit { oid } }
               }

@@ -1100,17 +1100,21 @@ A round goes like this:
    until the next trust step; if it starts, the clone counts as trusted from then on. That way a
    trust the read can't see (say Claude Code keeps it somewhere else) never leaves a repository
    stuck at Trust needed.
-2. **The PR.** Bifrost reads the PR from GitHub and fetches its head and its base branch into the
-   clone. A PR that has closed fails the round, and so does one whose head moved between the read
-   and the fetch. If Claude's own draft review for this commit is still pending on GitHub, the
-   round fails too, because a second round would add every comment again.
+2. **The PR.** Bifrost reads the PR from GitHub, with the issues it closes (up to 10), and
+   fetches its head and its base branch into the clone. A PR that has closed fails the round, and
+   so does one whose head moved between the read and the fetch. If Claude's own draft review for
+   this commit is still pending on GitHub, the round fails too, because a second round would add
+   every comment again.
 3. **The input folder.** The previous session of the PR is deleted first, so it can never write
    into the new round's folders. Then the worktree goes to the head, and the input folder gets
    `input.json`, `full.diff` (from the merge base to the head), `since.diff` for a re-review,
    `mode.md` (a copy of the review skill's Bifrost mode) and `humanise-rules.md`. `input.json`
    carries a fresh token for the round, which the result file has to give back, so a result
    written by any other session (an earlier one, one a stop left behind, or another PR's) never
-   counts. A diff over 3 MiB means no review.
+   counts. A diff over 3 MiB means no review. The issues the PR closes go in `pr.linkedIssues`
+   (number, repository, title, URL and body), so the session can check that the PR does what its
+   description and those issues ask. Each body is cut at 20,000 characters, as the PR description
+   is. If the read of the issues fails or has nothing, the list is empty and the round goes on.
 4. **The session.** The review session starts and Bifrost waits for its turn to end (see "When a
    turn ends"). Then it counts what the session changed in its worktree, logs the count, and
    resets the worktree.

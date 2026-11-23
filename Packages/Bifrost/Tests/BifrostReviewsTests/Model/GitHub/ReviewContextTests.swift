@@ -46,6 +46,42 @@ struct ReviewContextTests {
         #expect(second.next == nil)
     }
 
+    // The query asks for the issues that the PR closes, on page 1 only.
+    @Test @MainActor func theQueryAsksForTheClosingIssues() {
+        let text = ReviewQueries.contextText
+        #expect(text.contains("closingIssuesReferences(first: 10) @include(if: $head)"))
+        for field in ["number", "title", "body", "url", "repository { nameWithOwner }"] {
+            #expect(text.contains(field), "\(field)")
+        }
+    }
+
+    // The issues that the PR closes stay in the context. A missing or bad field, or a node with
+    // no number, gives no issue and no failure.
+    @Test func theLinkedIssuesStayAndABadFieldGivesNone() throws {
+        func page(_ field: String) throws -> ReviewContext {
+            let text =
+                #"{"data":{"repository":{"pullRequest":{"state":"OPEN","#
+                + #""headRefOid":"\#(String(repeating: "b", count: 40))"\#(field)}}}}"#
+            let page = try ReviewAnswer.contextPage(
+                Data(text.utf8), pr: try ReviewData.pr(), withHead: true
+            ).get()
+            return try #require(page.head)
+        }
+        let good = try page(
+            #","closingIssuesReferences":{"nodes":["#
+                + #"{"number":4,"title":"Retry","body":"Retry twice.","url":"https://x/4","#
+                + #""repository":{"nameWithOwner":"o/r"}},{"title":"No number"}]}"#)
+        #expect(
+            good.linkedIssues == [
+                LinkedIssue(
+                    number: 4, repo: "o/r", title: "Retry", body: "Retry twice.",
+                    url: "https://x/4")
+            ])
+        #expect(try page("").linkedIssues.isEmpty)
+        #expect(try page(#","closingIssuesReferences":"bad""#).linkedIssues.isEmpty)
+        #expect(try page(#","closingIssuesReferences":{"nodes":7}"#).linkedIssues.isEmpty)
+    }
+
     // An answer with errors fails, also next to data, so a part of the data never looks whole.
     // A PR with no state is a bad answer.
     @Test func anAnswerWithErrorsFails() throws {

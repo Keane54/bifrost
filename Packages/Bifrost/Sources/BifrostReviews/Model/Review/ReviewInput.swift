@@ -12,6 +12,8 @@ package struct ReviewInput: Sendable, Equatable, Encodable {
     // A diff over this size gives no review.
     package static let maxDiffBytes = 3 * 1_048_576
     package static let maxPRBody = 20_000
+    package static let maxIssueBody = 20_000
+    package static let maxLinkedIssues = 10
     package static let maxEarlierThreads = 100
     package static let maxEarlierSummaries = 20
     package static let maxEarlierText = 4_000
@@ -56,6 +58,8 @@ package struct ReviewInput: Sendable, Equatable, Encodable {
     package var author: String
     package var baseRef: String
     package var headRef: String
+    // The issues that the PR closes, with their bodies cut.
+    package var linkedIssues: [LinkedIssue]
     // The tip of the base branch, the reviewed head and their merge base: the full diff goes from
     // the merge base to the head.
     package var baseSHA: CommitID
@@ -74,8 +78,9 @@ package struct ReviewInput: Sendable, Equatable, Encodable {
     package init(
         pr: PRKey, round: String? = nil, url: String = "", title: String = "", body: String = "",
         author: String = "",
-        baseRef: String = "", headRef: String = "", baseSHA: CommitID, headSHA: CommitID,
-        mergeBase: CommitID, viewer: String, baseline: Baseline, lastReview: ViewerReview? = nil,
+        baseRef: String = "", headRef: String = "", linkedIssues: [LinkedIssue] = [],
+        baseSHA: CommitID, headSHA: CommitID, mergeBase: CommitID, viewer: String,
+        baseline: Baseline, lastReview: ViewerReview? = nil,
         earlierThreads: [ViewerThread] = [], earlierSummaries: [ViewerReview] = [], files: Files,
         diff: [DiffFile]
     ) {
@@ -87,6 +92,7 @@ package struct ReviewInput: Sendable, Equatable, Encodable {
         self.author = author
         self.baseRef = baseRef
         self.headRef = headRef
+        self.linkedIssues = linkedIssues
         self.baseSHA = baseSHA
         self.headSHA = headSHA
         self.mergeBase = mergeBase
@@ -109,7 +115,12 @@ package struct ReviewInput: Sendable, Equatable, Encodable {
         self.init(
             pr: context.pr, round: round, url: context.url, title: context.title,
             body: Self.cut(context.body, Self.maxPRBody), author: context.author,
-            baseRef: context.baseRef, headRef: context.headRef, baseSHA: baseSHA,
+            baseRef: context.baseRef, headRef: context.headRef,
+            linkedIssues: context.linkedIssues.prefix(Self.maxLinkedIssues).map { issue in
+                var issue = issue
+                issue.body = Self.cut(issue.body, Self.maxIssueBody)
+                return issue
+            }, baseSHA: baseSHA,
             headSHA: context.headSHA, mergeBase: mergeBase, viewer: viewer, baseline: baseline,
             lastReview: context.lastSubmittedReview,
             earlierThreads: earlier
@@ -169,7 +180,16 @@ package struct ReviewInput: Sendable, Equatable, Encodable {
             "pr": [
                 "key": .string(pr.text), "url": .string(url), "title": .string(title),
                 "body": .string(body), "author": .string(author), "baseRef": .string(baseRef),
-                "headRef": .string(headRef), "baseSha": .string(baseSHA.hex),
+                "headRef": .string(headRef),
+                "linkedIssues": .array(
+                    linkedIssues.map {
+                        [
+                            "number": .int($0.number), "repo": .string($0.repo),
+                            "title": .string($0.title), "url": .string($0.url),
+                            "body": .string($0.body),
+                        ]
+                    }),
+                "baseSha": .string(baseSHA.hex),
                 "headSha": .string(headSHA.hex), "mergeBase": .string(mergeBase.hex),
             ],
             "viewer": .string(viewer),

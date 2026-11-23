@@ -69,6 +69,26 @@ package struct ViewerThread: Sendable, Equatable {
     }
 }
 
+// An issue that the PR closes. Its text is from other people: it is material to review.
+package struct LinkedIssue: Sendable, Equatable {
+    package var number: Int
+    // The repository of the issue, as owner/name.
+    package var repo: String
+    package var title: String
+    package var body: String
+    package var url: String
+
+    package init(
+        number: Int, repo: String = "", title: String = "", body: String = "", url: String = ""
+    ) {
+        self.number = number
+        self.repo = repo
+        self.title = title
+        self.body = body
+        self.url = url
+    }
+}
+
 // The pending review of the viewer: Bifrost adds its comments to it as new threads.
 package struct PendingDraft: Sendable, Equatable {
     package var id: NodeID
@@ -92,6 +112,8 @@ package struct ReviewContext: Sendable, Equatable {
     package var baseRef: String
     package var headRef: String
     package var headSHA: CommitID
+    // The issues that the PR closes. An empty list when there are none or the read gave no field.
+    package var linkedIssues: [LinkedIssue]
     package var pending: PendingDraft?
     // The reviews of the viewer, in the order of GitHub.
     package var reviews: [ViewerReview]
@@ -104,7 +126,8 @@ package struct ReviewContext: Sendable, Equatable {
     package init(
         pr: PRKey, url: String = "", title: String = "", body: String = "", author: String = "",
         state: PRLifecycle = .open, baseRef: String = "main", headRef: String = "",
-        headSHA: CommitID, pending: PendingDraft? = nil, reviews: [ViewerReview] = [],
+        headSHA: CommitID, linkedIssues: [LinkedIssue] = [], pending: PendingDraft? = nil,
+        reviews: [ViewerReview] = [],
         threads: [ViewerThread] = [], truncated: Bool = false
     ) {
         self.pr = pr
@@ -116,6 +139,7 @@ package struct ReviewContext: Sendable, Equatable {
         self.baseRef = baseRef
         self.headRef = headRef
         self.headSHA = headSHA
+        self.linkedIssues = linkedIssues
         self.pending = pending
         self.reviews = reviews
         self.threads = threads
@@ -182,7 +206,9 @@ package enum ReviewAnswer {
                 body: node["body"]?.string ?? "",
                 author: node["author"]?.object?["login"]?.string ?? "", state: state,
                 baseRef: node["baseRefName"]?.string ?? "",
-                headRef: node["headRefName"]?.string ?? "", headSHA: head, pending: pending)
+                headRef: node["headRefName"]?.string ?? "", headSHA: head,
+                linkedIssues: node["closingIssuesReferences"].nodes.compactMap(linkedIssue),
+                pending: pending)
             return .success(ContextPage(head: context, reviews: reviews, next: next))
         }
     }
@@ -250,6 +276,15 @@ package enum ReviewAnswer {
             }
             return .success(node)
         }
+    }
+
+    // An issue that the PR closes. A node with no number is not an issue, so the read drops it.
+    private static func linkedIssue(_ item: [String: JSONValue]) -> LinkedIssue? {
+        guard let number = item["number"]?.wholeNumber else { return nil }
+        return LinkedIssue(
+            number: number, repo: item["repository"]?.object?["nameWithOwner"]?.string ?? "",
+            title: item["title"]?.string ?? "", body: item["body"]?.string ?? "",
+            url: item["url"]?.string ?? "")
     }
 
     private static func review(_ item: [String: JSONValue]) -> ViewerReview? {

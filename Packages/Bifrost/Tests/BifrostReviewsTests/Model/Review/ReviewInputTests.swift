@@ -82,6 +82,36 @@ struct ReviewInputTests {
         #expect(input.json.object?["review"]?.object?["since"] == .null)
     }
 
+    // The issues that the PR closes go in pr.linkedIssues, each body cut with the marker. No
+    // issue gives an empty list.
+    @Test func theLinkedIssuesHaveCutBodies() throws {
+        var withIssue = try context()
+        withIssue.linkedIssues = [
+            LinkedIssue(
+                number: 4, repo: "o/r", title: "Retry",
+                body: String(repeating: "a", count: ReviewInput.maxIssueBody + 5),
+                url: "https://x/4")
+        ]
+        func input(_ context: ReviewContext) throws -> ReviewInput {
+            ReviewInput(
+                context: context, round: nil, viewer: "user-v", baseSHA: try D.commit(D.baseHex),
+                mergeBase: try D.commit(D.baseHex), baseline: Baseline(kind: .first),
+                files: ReviewInput.Files(
+                    folder: URL(filePath: "/io/7", directoryHint: .isDirectory), reReview: false),
+                diff: D.diff)
+        }
+        let issues = try #require(
+            try input(withIssue).json.object?["pr"]?.object?["linkedIssues"]?.array)
+        let issue = try #require(issues.first?.object)
+        #expect(issues.count == 1 && issue["number"] == 4 && issue["repo"] == "o/r")
+        #expect(issue["title"] == "Retry" && issue["url"] == "https://x/4")
+        #expect(
+            issue["body"]
+                == .string(String(repeating: "a", count: ReviewInput.maxIssueBody)
+                    + ReviewInput.cutMarker))
+        #expect(try input(context()).json.object?["pr"]?.object?["linkedIssues"] == [])
+    }
+
     // A long text is cut at a whole character, with the marker of the mode file.
     @Test func aLongTextIsCutWithTheMarker() {
         #expect(ReviewInput.cut("short", 10) == "short")
