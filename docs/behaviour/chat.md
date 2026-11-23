@@ -33,6 +33,8 @@ can't attach.
 - A failed open isn't retried, which stops a loop of errors. You close the window and open it
   again.
 - Closing a window sends SIGHUP to the attach child only, so the session keeps running.
+- A good Stop session closes the window of its session in the same way. A failed Stop keeps the
+  window. A session that ends by itself keeps its window, with the closing line below.
 
 While a window can't attach, it shows one of these reasons:
 

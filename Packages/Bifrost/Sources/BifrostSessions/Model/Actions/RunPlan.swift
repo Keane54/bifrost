@@ -16,9 +16,10 @@ package enum ApiCall: Sendable, Equatable {
 
 // What the runner does with the chat window after a call that did not fail. Take control opens
 // its chat window before the call, with the loader. After the call, the runner restarts the
-// chat, because an ended terminal attaches again only after a restart.
+// chat, because an ended terminal attaches again only after a restart. After a good Stop, the
+// runner closes the chat window and keeps the selection, because the session stays in the list.
 package enum AfterCall: Sendable {
-    case none, closeChat, restartChat
+    case none, closeChat, closeWindow, restartChat
 }
 
 // The next step of an Open from a click on a notification.
@@ -91,7 +92,9 @@ package enum RunPlan: Sendable, Equatable {
                 .takeControl, confirm: Confirm.text(.takeControl, row, ctx.labels),
                 after: .restartChat)
         // A session that does not work gets no confirmation.
-        case .stop: return .call(.stop, confirm: Confirm.text(.stop, row, ctx.labels), after: .none)
+        case .stop:
+            return .call(
+                .stop, confirm: Confirm.text(.stop, row, ctx.labels), after: .closeWindow)
         // The runner makes the final text after the check for unmerged work.
         case .delete:
             return .call(

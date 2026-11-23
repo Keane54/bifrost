@@ -426,6 +426,10 @@ one. What opens can depend on the default apps of your Mac.
   Overview, which can take up to about 60 seconds: the menu should close with it. Do the same
   again, but right-click a different `bifrost-test-` row this time: that menu should stay open
   when the other row goes.
+- [ ] Open the chat of a `bifrost-test-` session and another one, then choose Stop session on the
+  first: its chat window should close and the other chat should stay. Make a Stop fail if you can:
+  the window should stay with the message. Kill a session's process by hand: its window should stay
+  with the closing line. ([actions X34](ports/actions/DELIBERATE-DIFFERENCES.md))
 - [ ] Stop a `bifrost-test-` session and at once open its row menu. Delete session... should be
   greyed out with "Another action is still running on this session." Keep the menu open: when the
   row turns grey (parked), a second or two later, Delete session... should turn on in the open

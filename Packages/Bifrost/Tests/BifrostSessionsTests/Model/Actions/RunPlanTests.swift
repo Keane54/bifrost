@@ -111,13 +111,14 @@ struct RunPlanTests {
     @Test func stopOfAWorkingSessionAsksFirstAndStopOfAnIdleOneDoesNot() {
         #expect(
             plan(.stop, working)
-                == .call(.stop, confirm: Confirm.text(.stop, working, .plain), after: .none))
+                == .call(
+                    .stop, confirm: Confirm.text(.stop, working, .plain), after: .closeWindow))
         guard case .call(_, let confirm?, _) = plan(.stop, working) else {
             Issue.record("Stop of a working session has no confirmation.")
             return
         }
         #expect(confirm.body.hasPrefix("fix-a is working right now."))
-        #expect(plan(.stop, owned) == call(.stop))
+        #expect(plan(.stop, owned) == .call(.stop, confirm: nil, after: .closeWindow))
     }
 
     // The runner opens the chat window with the loader before the call, and restarts the chat

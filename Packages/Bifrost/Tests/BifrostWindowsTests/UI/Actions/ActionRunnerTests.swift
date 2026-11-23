@@ -231,6 +231,45 @@ struct ActionRunnerTests {
         #expect(h.chatOpen(s1))
     }
 
+    // A good Stop closes the chat window of its session and keeps the selection. The chat of
+    // another session stays.
+    @Test func aGoodStopClosesTheChatOfItsSessionOnly() async throws {
+        let h = try await ActionsHarness(
+            active: [Entry.running(s1), Entry.running(s2)], all: [Entry.stopped(s1)])
+        h.layout.openChat(s1)
+        h.layout.openChat(s2)
+        h.selection.selectedId = s1
+        h.runner.run(.stop, s1)
+        let stop = try #require(h.runner.lastTask)
+        await waitUntil { !h.calls.claudeRuns.isEmpty }
+        #expect(h.chatOpen(s1))
+        await h.deps.show([]) { $0.first?.state == .parked }
+        await h.finish(stop)
+        #expect(h.runner.error == nil)
+        #expect(!h.chatOpen(s1))
+        #expect(h.chatOpen(s2))
+        #expect(h.selection.selectedId == s1)
+    }
+
+    // A Stop that fails keeps the chat window open, with the error.
+    @Test func aFailedStopKeepsTheChat() async throws {
+        let h = try await ActionsHarness(active: [Entry.running(s1)])
+        h.calls.answerClaude { _ in ExecResult(.exited(1), stderr: "boom") }
+        h.layout.openChat(s1)
+        h.runner.run(.stop, s1)
+        await h.settle()
+        #expect(h.runner.error == ActionRefusal.claudeReported("boom").message)
+        #expect(h.chatOpen(s1))
+    }
+
+    // A session that ends by itself keeps its chat window, so the closing line stays readable.
+    @Test func aSessionThatEndsByItselfKeepsItsChat() async throws {
+        let h = try await ActionsHarness(active: [Entry.running(s1)], all: [Entry.stopped(s1)])
+        h.layout.openChat(s1)
+        await h.deps.show([]) { $0.first?.state == .parked }
+        #expect(h.chatOpen(s1))
+    }
+
     // A refusal of Interrupt shows in the error line: a session with no process ID yet gets no
     // hidden attach.
     @Test func theInterruptRefusalShowsInTheErrorLine() async throws {

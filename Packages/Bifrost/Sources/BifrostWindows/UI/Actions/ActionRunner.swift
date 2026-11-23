@@ -459,6 +459,8 @@ package final class ActionRunner {
             }
             switch after {
             case .closeChat: closeChat(sessionId)
+            case .closeWindow:
+                if let session = SessionID(sessionId) { layout.apply(.close(.chat(session))) }
             case .restartChat: chats?.terminal(sessionId)?.restart()
             case .none: break
             }

@@ -162,7 +162,7 @@ fit the action.
 | Compact | `/compact` is sent straight away, with no argument and no confirmation |
 | Rename | The Rename dialog opens |
 | Show Info | The session's Show Info panel opens |
-| Stop session | The session stops, after a confirmation only while it's working |
+| Stop session | The session stops, after a confirmation only while it's working, and its chat window closes once the Stop has worked |
 | Delete session | The session is deleted after a confirmation, and its chat window closes |
 | Take control | The session is taken over after a confirmation, and its chat restarts |
 | Resume | The session resumes, and its chat restarts so an open window attaches again |
@@ -170,6 +170,12 @@ fit the action.
 | Add to watchlist | The session joins the watchlist in the colour you picked, or in light blue from a button or a key |
 | Interrupt, Copy session ID, Open in terminal, Remove from watchlist, Hand over | The action runs with no confirmation |
 | New session, Resume all | Nothing here, because they don't need a row |
+
+A good Stop closes the chat window of that session in the same way as Close window, from every
+place that runs it. The row stays selected. A Stop that fails or is refused keeps the window and
+shows its message. The chat window of another session stays open. A session that ends by itself
+keeps its window and its closing line. Delete session closes its chat window too, and it also
+clears the selection ([actions X34](../ports/actions/DELIBERATE-DIFFERENCES.md)).
 
 Take control opens the chat window with its loader before the takeover starts. Afterwards the chat
 restarts, because a terminal that has ended only attaches again after a restart. Open project only
