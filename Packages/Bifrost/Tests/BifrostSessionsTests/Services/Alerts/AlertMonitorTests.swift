@@ -80,6 +80,7 @@ struct AlertMonitorTests {
         #expect(scope.notifier.shown.isEmpty)
         #expect(scope.calls.isEmpty)
         scope.settings = AlertSettings(notifications: true, redBoxSound: true)
+        scope.monitor?.rows([alertRow(a, .none, state: .working)])
         scope.monitor?.rows([alertRow(a, .red(.prompt, since: 2000))])
         #expect(scope.notifier.shown.count == 1)
         #expect(scope.calls == [.sound])
@@ -89,11 +90,15 @@ struct AlertMonitorTests {
     @Test func theSoundGapCountsOnTheClock() {
         let scope = Scope()
         scope.newBox(.red(.prompt, since: 1))
+        let b = "bbbbbbbb-0000-4000-8000-000000000002"
+        let first = alertRow(a, .red(.prompt, since: 1))
         scope.clock.advance(by: .milliseconds(1999))
-        scope.monitor?.rows([alertRow(a, .red(.prompt, since: 2))])
+        scope.monitor?.rows([first, alertRow(b, .none)])
+        scope.monitor?.rows([first, alertRow(b, .red(.prompt, since: 2))])
         #expect(scope.calls == [.sound])
         scope.clock.advance(by: .milliseconds(1))
-        scope.monitor?.rows([alertRow(a, .red(.prompt, since: 3))])
+        scope.monitor?.rows([first, alertRow(b, .none, state: .working)])
+        scope.monitor?.rows([first, alertRow(b, .red(.prompt, since: 3))])
         #expect(scope.calls == [.sound, .sound])
     }
 
@@ -133,6 +138,7 @@ struct AlertMonitorTests {
     @Test func aRefusedNotificationTellsTheApp() {
         let scope = Scope()
         scope.newBox(.yellow(since: 1000))
+        scope.monitor?.rows([alertRow(a, .none, state: .working)])
         scope.monitor?.rows([alertRow(a, .yellow(since: 2000))])
         scope.notifier.refuse(0)
         scope.notifier.refuse(1)

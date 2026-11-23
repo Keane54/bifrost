@@ -10,8 +10,8 @@ package enum AlertEffect: Sendable, Equatable {
 }
 
 package struct AlertMonitorCore: Sendable {
-    // The marks of the last update, or nil before the first update.
-    private var marks: [String: SessionAlert]?
+    // The tracks of the last update, or nil before the first update.
+    private var tracks: [String: AlertTrack]?
     // The time of the last sound.
     private var lastSound: Duration?
     private var effects: [AlertEffect] = []
@@ -21,24 +21,24 @@ package struct AlertMonitorCore: Sendable {
     // An update of the rows. now is the time of the update on the clock of the service. The
     // notifications show only with the setting on and with no focus in the window: at most
     // maxNotifications, else one summary. The sound plays only with its setting on, for a new red
-    // box, at most once each soundGap, also when the window has the focus.
+    // box that starts a requirement or turns a yellow box of it red, at most once each soundGap,
+    // also when the window has the focus. A session gives one notification and one sound for each
+    // requirement, and the requirement ends when the session works again.
     package mutating func update(
         _ rows: [SessionRow], now: Duration, notifications: Bool, redBoxSound: Bool,
         focused: Bool
     ) {
-        let found = AlertRules.newBoxes(marks, rows)
-        marks = found.marks
+        let found = AlertRules.newBoxes(tracks, rows)
+        tracks = found.tracks
         let added = found.added
-        guard !added.isEmpty else { return }
-        if notifications, !focused {
+        if notifications, !focused, !added.isEmpty {
             if added.count <= AlertRules.maxNotifications {
                 for box in added { notify(AlertRules.text(box), .box(sessionId: box.sessionId)) }
             } else {
                 notify(AlertRules.summary(count: added.count), .boxSummary)
             }
         }
-        let newRed = added.contains { if case .red = $0.alert { true } else { false } }
-        if redBoxSound, newRed {
+        if redBoxSound, found.soundDue {
             if let lastSound, now - lastSound < AlertRules.soundGap { return }
             lastSound = now
             effects.append(.playSound)

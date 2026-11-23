@@ -84,13 +84,15 @@ struct AlertMonitorCoreTests {
         #expect(monitor.notes.isEmpty)
         monitor.now = .seconds(10)
         monitor.redBoxSound = false
-        monitor.update([alertRow(a, .red(.prompt, since: 2000))])
+        monitor.update([alertRow(a, .red(.prompt, since: 2000), state: .working)])
+        monitor.update([alertRow(a, .red(.prompt, since: 3000))])
         #expect(monitor.sounds == [.zero])
     }
 
-    @Test func anEscalatedBoxIsANewRedBox() {
+    @Test func anEscalatedBoxAtTheStartPlaysNoSoundAndAfterAStartPlaysOne() {
         var monitor = Monitor()
-        monitor.update([alertRow(a, .yellow(since: 1000))])
+        monitor.update([alertRow(a, .none)])
+        monitor.update([alertRow(a, .none, state: .working)])
         monitor.update([alertRow(a, .red(.escalated, since: 601_000))])
         #expect(monitor.notes.map(\.body) == ["Claude needs you."])
         #expect(monitor.sounds.count == 1)
@@ -106,19 +108,80 @@ struct AlertMonitorCoreTests {
         #expect(monitor.sounds == [.zero])
     }
 
-    @Test func aBoxThatClearsAndComesBackIsNew() {
+    @Test func aBoxThatClearsAndComesBackIsTheSameRequirement() {
         var monitor = Monitor()
         monitor.update([alertRow(a, .none)])
         monitor.update([alertRow(a, .yellow(since: 1000))])
         monitor.update([alertRow(a, .none)])
         monitor.update([alertRow(a, .yellow(since: 1000))])
+        #expect(monitor.notes.count == 1)
+    }
+
+    // A prompt with 3 pages: the time of the red box changes, and the box clears and returns.
+    @Test func aPromptWith3PagesGivesOneNotificationAndOneSound() {
+        var monitor = Monitor()
+        monitor.update([alertRow(a, .none)])
+        monitor.update([alertRow(a, .red(.prompt, since: 1000))])
+        monitor.now = .seconds(10)
+        monitor.update([alertRow(a, .red(.prompt, since: 2000))])
+        monitor.now = .seconds(20)
+        monitor.update([alertRow(a, .none)])
+        monitor.update([alertRow(a, .red(.prompt, since: 3000))])
+        #expect(monitor.notes.count == 1)
+        #expect(monitor.sounds == [.zero])
+    }
+
+    @Test func workBetweenTwoPromptsGivesTwoNotificationsAndTwoSounds() {
+        var monitor = Monitor()
+        monitor.update([alertRow(a, .none)])
+        monitor.update([alertRow(a, .red(.prompt, since: 1000))])
+        monitor.now = .seconds(10)
+        monitor.update([alertRow(a, .none, state: .working)])
+        monitor.update([alertRow(a, .red(.prompt, since: 2000))])
         #expect(monitor.notes.count == 2)
+        #expect(monitor.sounds == [.zero, .seconds(10)])
+    }
+
+    // A busy sample of the registry between two updates is work, also when no update shows the
+    // working state.
+    @Test func aBusySampleBetweenTwoPromptsIsWork() {
+        var monitor = Monitor()
+        monitor.update([alertRow(a, .none)])
+        monitor.update([alertRow(a, .red(.prompt, since: 1000))])
+        monitor.now = .seconds(10)
+        monitor.update([alertRow(a, .red(.prompt, since: 2000), busyAt: 1500)])
+        #expect(monitor.notes.count == 2)
+        #expect(monitor.sounds.count == 2)
+    }
+
+    @Test func yellowThenRedGivesOneNotificationAndOneSoundAtTheRedBox() {
+        var monitor = Monitor()
+        monitor.update([alertRow(a, .none)])
+        monitor.update([alertRow(a, .yellow(since: 1000))])
+        #expect(monitor.sounds.isEmpty)
+        monitor.now = .seconds(10)
+        monitor.update([alertRow(a, .red(.escalated, since: 601_000))])
+        monitor.update([alertRow(a, .red(.escalated, since: 602_000))])
+        #expect(monitor.notes.map(\.body) == ["Claude finished its turn."])
+        #expect(monitor.sounds == [.seconds(10)])
+    }
+
+    @Test func eachSessionHasItsOwnRequirement() {
+        var monitor = Monitor()
+        let b = "bbbbbbbb-0000-4000-8000-000000000002"
+        monitor.update([alertRow(a, .none), alertRow(b, .none)])
+        monitor.update([alertRow(a, .red(.prompt, since: 1)), alertRow(b, .none)])
+        monitor.now = .seconds(5)
+        monitor.update([alertRow(a, .red(.prompt, since: 2)), alertRow(b, .red(.prompt, since: 3))])
+        monitor.update([alertRow(a, .red(.prompt, since: 4)), alertRow(b, .red(.prompt, since: 5))])
+        #expect(monitor.notes.map(\.sessionId) == [a, b])
+        #expect(monitor.sounds == [.zero, .seconds(5)])
     }
 
     @Test func moreThan3NewBoxesGiveOneSummaryNotification() {
         var monitor = Monitor()
         let ids = alertIds(8)
-        monitor.update(ids.map { alertRow($0, .yellow(since: 1000)) })
+        monitor.update(ids.map { alertRow($0, .none) })
         monitor.update(ids.map { alertRow($0, .red(.escalated, since: 601_000)) })
         #expect(monitor.notes == [note("Bifrost", "8 sessions need you.", nil)])
         #expect(monitor.sounds.count == 1)
@@ -134,10 +197,14 @@ struct AlertMonitorCoreTests {
 
     @Test func theSoundPlaysAtMostOnceEach2Seconds() {
         var monitor = Monitor()
-        monitor.update([alertRow(a, .none)])
-        for (time, since) in [(Duration.zero, 1), (.milliseconds(1500), 2), (.seconds(2), 3)] {
+        let ids = alertIds(3)
+        monitor.update(ids.map { alertRow($0, .none) })
+        for (index, time) in [Duration.zero, .milliseconds(1500), .seconds(2)].enumerated() {
             monitor.now = time
-            monitor.update([alertRow(a, .red(.prompt, since: since))])
+            monitor.update(
+                ids.enumerated().map { place, id in
+                    alertRow(id, place <= index ? .red(.prompt, since: 1) : .none)
+                })
         }
         #expect(monitor.sounds == [.zero, .seconds(2)])
     }

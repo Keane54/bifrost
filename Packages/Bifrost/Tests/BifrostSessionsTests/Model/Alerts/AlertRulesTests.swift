@@ -18,44 +18,51 @@ struct AlertRulesTests {
         #expect(AlertRules.soundGap == .seconds(2))
     }
 
-    // The first update after the start has no marks before it, so it only records the marks. A
-    // row with no box has no mark.
-    @Test func theFirstUpdateOnlyRecordsTheMarks() {
+    // The first update after the start has no tracks before it, so it only records them. A red
+    // box of that update has its sound spent.
+    @Test func theFirstUpdateOnlyRecordsTheTracks() {
         let found = AlertRules.newBoxes(
             nil, [alertRow(a, .red(.prompt, since: 5)), alertRow("x2", .none)])
         #expect(found.added.isEmpty)
-        #expect(found.marks == [a: .red(.prompt, since: 5)])
+        #expect(!found.soundDue)
+        #expect(found.tracks[a] == AlertTrack(needsYou: true, soundSpent: true))
+        #expect(found.tracks["x2"] == AlertTrack())
     }
 
-    @Test func aSessionThatGoesAwayLosesItsMark() {
+    @Test func aSessionThatGoesAwayLosesItsTrack() {
         let first = AlertRules.newBoxes(nil, [alertRow(a, .yellow(since: 1))])
-        let next = AlertRules.newBoxes(first.marks, [])
-        #expect(next.marks.isEmpty)
+        let next = AlertRules.newBoxes(first.tracks, [])
+        #expect(next.tracks.isEmpty)
         #expect(next.added.isEmpty)
     }
 
-    @Test func aChangeOfTheBoxOrOfItsTimeIsANewBox() {
-        let previous: [String: SessionAlert] = [a: .yellow(since: 1000)]
-        func added(_ alert: SessionAlert) -> Int {
-            AlertRules.newBoxes(previous, [alertRow(a, alert)]).added.count
-        }
-        #expect(added(.yellow(since: 1000)) == 0)
-        #expect(added(.yellow(since: 2000)) == 1)
-        #expect(added(.red(.escalated, since: 1000)) == 1)
+    // A change of the time, of the colour or of the cause is not a new box in one requirement.
+    @Test func aChangeOfTheBoxIsNotANewBoxUntilTheSessionWorks() {
+        let previous = AlertRules.newBoxes(nil, [alertRow(a, .yellow(since: 1000))]).tracks
+        func added(_ rows: [SessionRow]) -> Int { AlertRules.newBoxes(previous, rows).added.count }
+        #expect(added([alertRow(a, .yellow(since: 2000))]) == 0)
+        #expect(added([alertRow(a, .red(.escalated, since: 1000))]) == 0)
+        #expect(added([alertRow(a, .none)]) == 0)
+        #expect(added([alertRow(a, .yellow(since: 2000), state: .working)]) == 1)
+        #expect(added([alertRow(a, .yellow(since: 2000), busyAt: 50)]) == 1)
     }
 
-    // Only the colour and the time of a box make it new. The cause of a red box does not.
-    @Test func anotherCauseAtTheSameTimeIsTheSameBox() {
-        let previous: [String: SessionAlert] = [a: .red(.prompt, since: 1000)]
-        let found = AlertRules.newBoxes(previous, [alertRow(a, .red(.error, since: 1000))])
-        #expect(found.added.isEmpty)
-        #expect(found.marks == [a: .red(.error, since: 1000)])
+    @Test func theSoundIsDueOneTimeEachRequirementAtTheRedBox() {
+        let first = AlertRules.newBoxes(nil, [alertRow(a, .none)])
+        let yellow = AlertRules.newBoxes(first.tracks, [alertRow(a, .yellow(since: 1))])
+        #expect(yellow.added.count == 1)
+        #expect(!yellow.soundDue)
+        let red = AlertRules.newBoxes(yellow.tracks, [alertRow(a, .red(.escalated, since: 9))])
+        #expect(red.added.isEmpty)
+        #expect(red.soundDue)
+        let again = AlertRules.newBoxes(red.tracks, [alertRow(a, .red(.prompt, since: 10))])
+        #expect(!again.soundDue)
     }
 
     // A new box keeps the name and the state of its row.
     @Test func theNewBoxesComeInTheOrderOfTheRows() {
         let ids = alertIds(3)
-        let previous = AlertRules.newBoxes(nil, ids.map { alertRow($0, .none) }).marks
+        let previous = AlertRules.newBoxes(nil, ids.map { alertRow($0, .none) }).tracks
         let rows = ids.reversed().map {
             alertRow($0, .red(.prompt, since: 7), name: "n\($0.suffix(1))")
         }

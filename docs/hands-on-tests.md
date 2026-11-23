@@ -538,6 +538,10 @@ one. What opens can depend on the default apps of your Mac.
 - [ ] Let a session need you, once with the Bifrost window focused and once with another app in
   front. Each time you should hear the Ping sound once, at a normal volume, and it should sound
   like the Electron app's alert. ([alerts A1](ports/alerts/DELIBERATE-DIFFERENCES.md))
+- [ ] Let a session ask a prompt with three questions, with another app in front. You should hear
+  the Ping sound once and see one notification, not one for each page. Answer the prompt and let
+  the session need you again after it works: that gives a new sound and a new notification.
+  ([alerts A7](ports/alerts/DELIBERATE-DIFFERENCES.md))
 - [ ] In Settings > General, turn Notifications off and let a session finish its turn with another
   app in front: no notification should show. Turn Red box sound off and let a session need you:
   no sound should play.

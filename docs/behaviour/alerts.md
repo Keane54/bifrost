@@ -17,13 +17,19 @@ The shell gives the session rows to the alert service each time they change, sta
 first active poll of the session list. The service remembers the box of every row, which means its
 colour and the time it appeared, and compares each update with the one before.
 
-- A box is new when its row had no box last time, had a box of the other colour, or had one that
-  appeared at a different time. A red box whose cause changes while its time stays the same isn't
-  new.
+- A box is new when it starts a requirement. A requirement starts when a session stops and needs
+  you, which means a yellow or red box appears. It ends only when the session works again.
+- Within one requirement a session gives one notification and one sound, however many prompts,
+  pages, causes or box times come. A prompt with three pages gives one alert, not three.
+- A box that clears and comes back with no work between is the same requirement. A yellow box
+  that turns red is the same requirement, and so is a red box whose cause or time changes.
+- Work means that the session list shows the session busy, the row is in the working state, or
+  the row has a newer busy sample than the last update. Live events of the Live details mod give
+  the working state too. There is no timer. Without the mod, a burst of work shorter than one
+  read of the session list can be missed, and a quick new requirement then gives no second alert.
 - The first update after Bifrost starts only records the boxes that are already there, so a
   start never sets off notifications for old boxes.
-- A box that clears and later comes back counts as new again, even with the same time.
-- A session that leaves the list loses its box, and new boxes are handled in the order of the
+- A session that leaves the list ends its requirement, and new boxes are handled in the order of the
   rows.
 
 ## The texts
@@ -60,9 +66,11 @@ colour and the time it appeared, and compares each update with the one before.
 
 ## The alert sound
 
-- While Red box sound is on in Settings, a new red box plays the macOS system sound Ping,
-  whether or not the window has the focus. A yellow box never plays it.
-- The sound plays at most once every 2 seconds, however many red boxes appear. The gap is
+- While Red box sound is on in Settings, a red box plays the macOS system sound Ping,
+  whether or not the window has the focus. A yellow box never plays it. Each requirement plays it
+  once, when its box is red: a yellow box that turns red plays it at the red box, and a red box
+  that was already there at the start of Bifrost plays none.
+- The sound plays at most once every 2 seconds, however many sessions need you. The gap is
   measured on a clock that doesn't jump when the Mac's time changes.
 - A test home plays no sound, so a test run is always silent.
 - If the sound can't play, Bifrost logs it and carries on.

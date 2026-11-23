@@ -7,7 +7,7 @@ import BifrostTestSupport
 // or a yellow box, and needs you for a red box.
 func alertRow(
     _ sessionId: String, _ alert: SessionAlert, name: String? = nil, state: SessionState? = nil,
-    lastActivity: Int = 1
+    lastActivity: Int = 1, busyAt: Int? = nil
 ) -> SessionRow {
     let standard: SessionState =
         switch alert {
@@ -18,6 +18,7 @@ func alertRow(
         sessionId: sessionId, shortId: nil, name: name ?? "bifrost-test-\(sessionId.suffix(1))",
         state: state ?? standard, lastActivity: lastActivity)
     row.alert = alert
+    row.lastBusyAt = busyAt
     return row
 }
 
