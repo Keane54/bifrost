@@ -409,13 +409,19 @@ struct ProcessRunnerTests {
         #expect(withStderr.stderr == "bad\n")
     }
 
-    // Bifrost stops a program at a cancel. An empty stderr becomes the text of the stop.
+    // Bifrost stops a program at a cancel. An empty stderr becomes the text of the stop. The
+    // program sleeps for two wait limits. The cancel comes at most one wait limit after the
+    // start, so only the cancel can end the program, also on a busy machine. A cancel that does
+    // not work gives a wrong result after two wait limits, inside the time limit of the suite.
     @MainActor
     @Test func aCancelGivesTheStopText() async throws {
         let temp = try TemporaryFolder()
         defer { temp.remove() }
         let mark = temp.appending("started")
-        let task = Task { await run(Command("/bin/sh", ["-c", ": > '\(mark)'; exec sleep 5"])) }
+        let sleep = 2 * testWaitLimit.components.seconds
+        let task = Task {
+            await run(Command("/bin/sh", ["-c", ": > '\(mark)'; exec sleep \(sleep)"]))
+        }
         defer { task.cancel() }
         try #require(await waitUntil { fileExists(mark) })
         task.cancel()
