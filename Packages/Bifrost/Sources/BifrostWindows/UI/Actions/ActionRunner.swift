@@ -463,8 +463,8 @@ package final class ActionRunner {
             case .none: break
             }
             // The restart comes first, so an ended chat waits again. The chat does not attach while
-            // Take control runs, so the finish makes it attach to the moved session, and its
-            // first output ends the loader.
+            // Take control runs. The finish makes it attach to the moved session. Its first output
+            // ends the loader.
             if call == .takeControl { loader(sessionId, .finish) }
         } catch {
             fail(error)

@@ -63,7 +63,7 @@ private func terminalSurfaces() -> [(String, RGB)] {
             mix(ReadableColours.watch[7].colour, ReadableColours.watchRowOpacity, panel)
         ),
         ("a selected row", mix(RGB(ThemeTokens.accent), 0.15, panel)),
-        ("a loader rainbow", mix(brightest, 0.25, panel)),
+        ("a loader band", mix(brightest, 0.25, panel)),
     ]
     var surfaces: [(String, RGB)] = []
     for (place, backdrop) in backdrops {

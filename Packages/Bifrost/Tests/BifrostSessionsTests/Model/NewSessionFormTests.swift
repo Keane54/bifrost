@@ -97,7 +97,7 @@ struct NewSessionFormTests {
     }
 
     // A name that the user types counts as edited, also when it ends as the suggested name: each
-    // key changes the text on the way.
+    // key changes the text before the last key.
     @Test func eachNameChangeMarksTheNameAsEdited() {
         let start = form(History(recentDirs: ["/p/app"]))
         let typed = applying(.name("app-a1b2"), to: applying(.name("app-a1b"), to: start))

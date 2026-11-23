@@ -281,9 +281,9 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
 
     // Only a new request flashes, and only while its CI does not fail (user decision,
     // 2026-11-19): the user cannot review a PR with failing CI, so it does not need the user now.
-    // The flash also makes the To review count red and the attention dot, and the notice of the
-    // request waits for it (ReviewsState.recordNotices). The panel stops the flash when the Row
-    // flash setting is off.
+    // The flash also makes the To review count red and sets the attention dot, and the notice of
+    // the request waits for it (ReviewsState.recordNotices). The panel stops the flash when the
+    // Row flash setting is off.
     package var flash: Bool { state == .toReview(.newRequest) && ci != .failing }
 
     // Remove hides only a row that others approved (ReviewsState.hide).

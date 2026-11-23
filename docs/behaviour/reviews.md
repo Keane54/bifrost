@@ -691,9 +691,9 @@ flash setting is off.
 A new request whose CI fails doesn't flash either, and it doesn't turn the To review count red or
 light the attention dot. Bifrost won't review or approve it while CI fails, so it doesn't need you
 yet. The row stays a new request: it keeps its place at the top, the "CI failing" text and the
-Pause button. At the first poll where CI is running or has passed, and you still haven't acted on
-the request, it flashes, turns the count red and notifies, as any new request does (see "The
-watcher").
+Pause button. At the first poll where CI no longer fails (it runs, it passed, or the PR has no
+checks), and you still haven't acted on the request, it flashes, turns the count red and notifies,
+as any new request does (see "The watcher").
 
 New commits replaces Claude's result when the head commit has moved on since Claude's review. The
 row shows no verdict and no Approve button, because Bifrost offers Approve only for the exact commit

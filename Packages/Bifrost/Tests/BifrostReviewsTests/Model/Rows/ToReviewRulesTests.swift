@@ -233,6 +233,33 @@ struct ToReviewRulesTests {
         #expect(ended.allSatisfy { $0.due.isEmpty && $0.waits == false })
     }
 
+    // A review that the user submits on GitHub can show while the search still lists the PR, as a
+    // team request. With team requests on, the row is a "You ..." state and the wait clears with
+    // no notification. With team requests off, the PR has no row, the wait stays and no notice
+    // goes out.
+    @Test func aReviewOnGitHubEndsOrKeepsAWaitingNoticeByTheTeamSetting() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        var waiting = seen(key, at: R.at(-5))
+        waiting.requests[key]?.noticeWaitsForCI = true
+        let review = ViewerOpinion(state: .approved, commit: R.head, submittedAt: R.at(-1))
+        let pr = try R.pull(
+            key.text, direct: false, requestedAt: R.at(-5), ci: .passed, viewerReviews: [review])
+        func notices(
+            _ config: ReviewsConfig
+        ) -> (state: ToReviewState?, due: [PRKey], waits: Bool?) {
+            var state = waiting
+            let rows = R.toReview(R.answer(toReview: [pr]), state, config)
+            let due = state.recordNotices(rows, arrived: [])
+            return (rows.first?.toReviewState, due, state.requests[key]?.noticeWaitsForCI)
+        }
+        let on = notices(ReviewsConfig())
+        #expect(on.state == .youApproved && on.due.isEmpty && on.waits == false)
+        var off = ReviewsConfig()
+        off.teamRequests = false
+        let hidden = notices(off)
+        #expect(hidden.state == nil && hidden.due.isEmpty && hidden.waits == true)
+    }
+
     // A cut answer can miss an open request, so a waiting notice stays while the PR has no row,
     // and goes out when the PR shows again with CI that passes. A request that leaves a full
     // answer loses its mark, and its notice with it.

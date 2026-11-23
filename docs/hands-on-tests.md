@@ -173,7 +173,8 @@ sessions with New session, and give each new session a `bifrost-test-` name.
 - [ ] Take control of an external `bifrost-test-` session. Its chat window should open at once
   with "Taking control of <name>..." and a soft band in the bottom two fifths, fading in from
   nothing at its top edge and drifting slowly from side to side. Its colours should match the
-  window background behind the panels: green, blue, violet and red, with no yellow or orange.
+  base gradient of the window background: green, blue, violet and red. The yellow and orange
+  glows of the background fields aren't in the band.
   The loader should go as soon as Claude shows in the terminal. Turn on Reduce motion (System
   Settings > Accessibility > Display) and take control again: the band should stay still.
   ([chat C25](ports/chat/DELIBERATE-DIFFERENCES.md))
@@ -656,8 +657,9 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
 - [ ] Push a commit that makes CI fail to a test PR, then have your second account ask for your
   review on it, with the window not focused. At the next poll its row should show "CI failing" with
   no flash, the To review count should stay plain, the Reviews button should get no dot, and no
-  notification should arrive. Fix CI and wait for it to pass: at the next poll the row should
-  flash, the count should turn red and one notification should arrive. Make CI fail and pass again:
+  notification should arrive. Push a fix for CI: at the first poll after the push the row
+  should flash, the count should turn red and one notification should arrive, even while the new
+  checks still run. Make CI fail and pass again:
   no second notification. Do it once more, but submit a review on GitHub while CI still fails: no
   notification when CI passes. ([reviews R32](ports/reviews/DELIBERATE-DIFFERENCES.md))
 - [ ] Let Claude review a test PR until its row shows "Approval recommended" with Approve. Push a
@@ -668,7 +670,7 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
 - [ ] Right-click a row of the Reviews panel, then Control-click one. The Bifrost menu should open
   at the pointer with only the items that fit the row: Open on GitHub everywhere, Open session and
   Stop session while the PR has a session, Review (Try again on a failed row), Cancel review on a
-  queued review, Pause on a request that flashes, End pause now on a paused row and Remove on a row
+  queued review, Pause on a new request, End pause now on a paused row and Remove on a row
   that others approved. On a My PRs row it should show Open on GitHub, then Answer Claude while
   Claude has questions, Handle now and Handle Copilot comments while those comments wait, Try
   again after a failed round, Cancel on a queued round and Stop session while a round runs; a PR

@@ -110,6 +110,8 @@ struct DialogFocusTests {
         #expect(model.busy)
         // The focus is in the layer during the save, not in the field.
         await waitUntil { p.layerHasFocus }
+        // A click on the box during the save gives the focus to the layer.
+        #expect(p.window.makeFirstResponder(p.h.dialogs.view))
         gate.openAll()
         await p.h.finish(save)
         #expect(model.reason != nil)

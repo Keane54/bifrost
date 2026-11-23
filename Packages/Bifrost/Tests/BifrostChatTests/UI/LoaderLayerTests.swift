@@ -40,7 +40,7 @@ struct LoaderLayerTests {
     }
 
     // The layer covers the body, the terminal and the note are transparent, and a click goes
-    // through. The rainbow fills the bottom two fifths, fades in from its top edge and shifts.
+    // through. The band fills the bottom two fifths, fades in from its top edge and shifts.
     @Test func theLoaderCoversTheChatBodyAndHidesTheTerminal() async throws {
         let chat = try ChatFixture(fakePTY: true)
         chat.chats.reduceMotion = { false }
@@ -83,7 +83,7 @@ struct LoaderLayerTests {
         await chat.close()
     }
 
-    @Test func withReducedMotionTheRainbowDoesNotMove() async throws {
+    @Test func withReducedMotionTheBandDoesNotMove() async throws {
         let chat = try ChatFixture(fakePTY: true)
         chat.chats.reduceMotion = { true }
         chat.open()
@@ -138,8 +138,8 @@ struct LoaderLayerTests {
         await chat.close()
     }
 
-    // While Take control runs, the chat does not attach, also when its row can attach. The
-    // finish ends that hold: the chat attaches, and its first output ends the loader.
+    // While Take control runs, the chat does not attach, also when its row can attach. After the
+    // finish, the chat attaches. Its first output ends the loader.
     @Test func theChatAttachesOnlyWhenTakeControlEnds() async throws {
         let chat = try ChatFixture(
             rows: { [FakeSession.row(folder: $0, kind: .external)] }, fakePTY: true)
@@ -157,9 +157,8 @@ struct LoaderLayerTests {
         await chat.close()
     }
 
-    // A failed Take control also ends the hold: a chat that stays open attaches when its row can
-    // attach.
-    @Test func aStopEndsTheHoldOfTheAttach() async throws {
+    // After a failed Take control, a chat that stays open also attaches when its row can attach.
+    @Test func aStopEndsTheWaitOfTheAttach() async throws {
         let chat = try ChatFixture(fakePTY: true)
         chat.chats.startLoader(id)
         chat.open()
@@ -168,6 +167,31 @@ struct LoaderLayerTests {
         chat.chats.stopLoader(id)
         await waitUntil { terminal.state.attached }
         #expect(chat.fakes.spawns.count == 1)
+        await chat.close()
+    }
+
+    // A chat that closes and opens again while Take control runs waits again, and the finish
+    // attaches the new terminal. Take control of one session does not hold the chat of another
+    // session.
+    @Test func aReopenedChatWaitsForTakeControlAndAnotherChatDoesNot() async throws {
+        let chat = try ChatFixture(
+            rows: {
+                [
+                    FakeSession.row(folder: $0),
+                    FakeSession.row(FakeSession.second, folder: $0),
+                ]
+            }, fakePTY: true)
+        chat.chats.startLoader(id)
+        chat.open()
+        chat.model.apply(.close(chat.panel()))
+        chat.open()
+        let again = try chat.terminal()
+        #expect({ if case .waiting = again.attachState { true } else { false } }())
+        chat.open(FakeSession.second, at: LayoutRect(x: 700, y: 0, w: 400, h: 400))
+        try #require(await chat.waitForAttach(FakeSession.second))
+        #expect(chat.fakeChild(id) == nil)
+        chat.chats.finishLoader(id)
+        try #require(await chat.waitForAttach(id))
         await chat.close()
     }
 

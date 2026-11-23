@@ -329,8 +329,9 @@ package final class ReviewsWatcher {
 
     // MARK: - The clicks on a row
 
-    // Pause a new request: it stops to flash until the end of the pause setting. The pause is an
-    // act of the user on the request, so a notice that waits for its CI goes with no notification.
+    // Pause a new request. The pause holds the row until the end of the pause setting, and it
+    // stops the flash when the row has one. The pause is an act of the user on the request, so a
+    // notice that waits for its CI goes with no notification.
     package func pause(_ pr: PRKey) {
         guard toReview.contains(where: { $0.id == pr && $0.state == .toReview(.newRequest) })
         else { return }

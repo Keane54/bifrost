@@ -1,8 +1,9 @@
 // The shell of one chat window: the terminal view, its attach to one session and its chat input
 // (docs/behaviour/chat.md).
 //
-// The attach: one AttachState. A window waits for a row that can attach. A window that is not
-// focused reads the session size one time. Then one async method opens the attach of the view
+// The attach: one AttachState. A window waits for a row that can attach and for no Take control
+// of its session. A window that is not focused reads the session size one time. Then one async
+// method opens the attach of the view
 // PTYView.chat, and the window owns the PTYAttach: it reads the output and the exit, and it writes,
 // resizes and closes. Each chunk and the end of the attach also go to the session input and to the
 // size watcher of the owner. Each end of the window writes one line (an exit, a failed write or a
@@ -195,7 +196,8 @@ public final class ChatTerminal {
 
     // MARK: - The inputs of the owner
 
-    // Each update of the session list. A window that waits attaches when its row can attach.
+    // Each update of the session list. A window that waits attaches when its row can attach and
+    // no Take control of its session runs.
     func setRow(_ row: SessionRow?, loaded: Bool) {
         guard !isClosed else { return }
         // A choice that typed text can answer stops a dictation at once.
@@ -262,9 +264,10 @@ public final class ChatTerminal {
     }
 
     // Attach again after the end of the window (the Resume of phase 4). A window that did not
-    // end does nothing. The attach waits for a row that can attach. The agent view guard starts
-    // again, so the next agent view stops the input again. The attach history of the session
-    // stays. The action runner calls it after Resume and Take control.
+    // end does nothing. The attach waits for a row that can attach and for the end of a Take
+    // control. The agent view guard starts again, so the next agent view stops the input again.
+    // The attach history of the session stays. The action runner calls it after Resume and Take
+    // control.
     package func restart() {
         guard case .ended = attachState else { return }
         move(to: .waiting)

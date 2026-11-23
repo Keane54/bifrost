@@ -23,9 +23,9 @@ struct TakeControlChatTests {
     }
 
     // The open chat attaches to the session after the move, with no close and no new open. While
-    // Take control runs, the row already reads as an owned session that runs, but the chat makes
-    // no attach: the move is not done until Take control checks that the new process stays.
-    // After the good Take control, the chat attaches by itself, and its first output ends the
+    // Take control runs, the row already reads as an owned session that runs. But the chat makes
+    // no attach, because the move is not done until Take control checks that the new process
+    // stays. After the good Take control, the chat attaches by itself. Its first output ends the
     // loader.
     @Test func theOpenChatAttachesToTheSessionAfterTakeControl() async throws {
         let temp = try transcripts(s3)

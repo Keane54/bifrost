@@ -79,6 +79,11 @@ struct NewSessionDialogTests {
         #expect(model.reason == nil)
         await model.submit()
         #expect(model.reason == ActionRefusal.nameFlag.message)
+        // The same folder text keeps the reason, and a new prompt clears it.
+        model.apply(.cwd("/p"))
+        #expect(model.reason == ActionRefusal.nameFlag.message)
+        model.apply(.prompt("x"))
+        #expect(model.reason == nil)
         #expect(h.dialogs.isOpen)
         #expect(h.calls.claudeRuns.isEmpty)
     }

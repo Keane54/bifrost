@@ -33,8 +33,8 @@
 //
 // While Take control runs, the chat of the session does not attach (holdsAttach). Take control
 // ends the process in the other terminal and starts the session again in the background. The row
-// can show the new process as an owned session before Take control checks that the process stays,
-// and an attach at that time can stay on a session that the move did not finish. The restart of
+// can show the new process as an owned session before Take control checks that the process stays.
+// An attach at that time can stay on a session that the move did not finish. The restart of
 // the action runner after a good Take control acts only on a chat that ended, so it does not
 // replace such an attach. Thus the chat attaches when Take control ends: a stop or a finish of
 // the loader.
@@ -132,7 +132,7 @@ public final class ChatTerminals: PanelBodiesPart {
     private var loaderTimers: [String: TimerSlot] = [:]
     private var shownWatches: [String: ShownWatch] = [:]
     private var watchCount = 0
-    // True when macOS asks for reduced motion. The rainbow of a loader then does not move. A
+    // True when macOS asks for reduced motion. The band of a loader then does not move. A
     // test gives a fixed value.
     package var reduceMotion: () -> Bool = {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

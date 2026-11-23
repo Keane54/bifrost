@@ -115,7 +115,7 @@ public class BifrostWindow: NSWindow {
     // Each change of the first responder goes to the filter. While a dialog shows, a responder
     // outside its layer, the window itself and nil give the focus to the focus holder of the
     // layer (DialogLayerView.focusHolder): for example a field of the dialog that a busy save
-    // turns off gives up the focus to the window. The holder is not the layer itself, so SwiftUI
+    // turns off gives the focus to the window. The holder is not the layer itself, so SwiftUI
     // sees that the field lost the focus.
     override public func makeFirstResponder(_ responder: NSResponder?) -> Bool {
         let before = firstResponder
