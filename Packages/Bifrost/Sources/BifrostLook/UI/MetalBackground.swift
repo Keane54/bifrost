@@ -10,8 +10,8 @@
 //
 // While the background does not move, the display link stops: the view asks for a frame only
 // after a change of its size, of its scale or of the motion. While the window is not visible
-// (minimised, or fully covered), the view asks for no frame, and the display link stops. With no
-// Metal device, the view shows the plain background colour.
+// (minimised, or fully covered), the view asks for no frame after its first frame, and the
+// display link stops. With no Metal device, the view shows the plain background colour.
 //
 // The shader is Background.metal. The app build compiles it into the default library of the
 // module bundle. A command-line build (swift build, swift test) compiles no Metal: it copies the
@@ -26,6 +26,12 @@ public final class MetalBackground: NSView {
     static let frameRates = CAFrameRateRange(
         minimum: Float(Motion.rate / 2), maximum: Float(Motion.rate),
         preferred: Float(Motion.rate))
+
+    // The changes of the window that can show or hide the view.
+    private static let windowChanges = [
+        NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification,
+        NSWindow.didDeminiaturizeNotification,
+    ]
 
     // The layer that shows the surfaces of the render thread, or nil when the system has no
     // Metal device or the shader does not build.
@@ -117,7 +123,11 @@ public final class MetalBackground: NSView {
 
     public override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
-        NotificationCenter.default.removeObserver(self)
+        if let window {
+            for name in Self.windowChanges {
+                NotificationCenter.default.removeObserver(self, name: name, object: window)
+            }
+        }
         link?.invalidate()
         link = nil
     }
@@ -125,11 +135,7 @@ public final class MetalBackground: NSView {
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let window, loop != nil {
-            let names = [
-                NSWindow.didChangeOcclusionStateNotification,
-                NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification,
-            ]
-            for name in names {
+            for name in Self.windowChanges {
                 NotificationCenter.default.addObserver(
                     self, selector: #selector(windowStateChanged(_:)), name: name, object: window)
             }
@@ -195,9 +201,12 @@ public final class MetalBackground: NSView {
 
     // Ask the render thread for the frame of now when it differs from the newest request. The
     // display link calls this at each tick. A frame that waits after a skip gets a retry. While
-    // the window is not visible, the view asks for no frame.
+    // the window is not visible, the view asks for no frame. The exception is the first frame in
+    // a window: it does not wait for the first report of the occlusion state, so the colours
+    // come with the first paint.
     func update() {
-        if let loop, visible, let pixels {
+        let first = window != nil && surfaceLayer?.contents == nil
+        if let loop, visible || first, let pixels {
             let frame = BackgroundFrame(
                 time: Motion.step(motionTime), width: Double(bounds.width),
                 height: Double(bounds.height), pixels: pixels)

@@ -182,6 +182,90 @@ struct MetalBackgroundTests {
         #expect(background.motionTime == 0)
     }
 
+    // The test that fails when the main thread waits for the render thread again. The gate holds
+    // the render thread in its check of a surface (isInUse), as a slow window server does. While
+    // it waits there, the calls of the main thread run to their end: a new request, a retry, the
+    // busy state and the take of the finished surface for the layer. A detached task makes these
+    // calls, so a defect fails the wait below at its limit and does not stop the main actor.
+    @Test func theMainThreadNeverWaitsWhileTheRenderThreadWaits() async throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let renderer = try #require(BackgroundRenderer(device: device))
+        let gate = TestGate()
+        defer { gate.openAll() }
+        let loop = BackgroundRenderLoop(
+            renderer: renderer,
+            inUse: { _ in
+                gate.passBlocking()
+                return false
+            })
+        let reports = Reports()
+        loop.start { reports.add($0) }
+        defer { loop.stop() }
+        func frame(_ step: Int) -> BackgroundFrame {
+            BackgroundFrame(
+                time: Double(step) / 30, width: 100, height: 80,
+                pixels: PixelSize(width: 100, height: 80))
+        }
+        // Frames 1 and 2 make two surfaces. Frame 3 checks the first surface, and waits at the
+        // gate.
+        loop.request(frame(1))
+        #expect(await waitUntil { reports.all.count == 1 })
+        loop.request(frame(2))
+        #expect(await waitUntil { reports.all.count == 2 })
+        loop.request(frame(3))
+        #expect(await gate.waitUntilHolding(1))
+        let next = frame(4)
+        let done = TestSignal()
+        let calls = Task.detached {
+            loop.request(next)
+            loop.retry()
+            let busy = loop.busy
+            let finished = loop.takeFinished()
+            done.send()
+            return (busy, finished)
+        }
+        let ended = await done.wait(for: "end of the calls of the main thread")
+        gate.openAll()
+        let (busy, finished) = await calls.value
+        #expect(ended)
+        #expect(busy)
+        // The layer gets the surface of frame 2 while the render thread still waits.
+        let surface = try #require(finished)
+        let layer = CALayer()
+        layer.contents = surface
+        #expect(!gate.ranOnTheMainThread)
+        // After the gate opens, the render thread draws frames 3 and 4.
+        #expect(await waitUntil { reports.all.count == 4 })
+        #expect(reports.outcomes == [.drawn, .drawn, .drawn, .drawn])
+    }
+
+    // With the real check of the window server, the render thread uses its three surfaces in
+    // turn: six frames, each one drawn, in three surfaces. The test takes each odd frame for the
+    // layer, so the layer shows one surface and another surface waits for its show.
+    @Test func theRenderThreadUsesItsThreeSurfacesInTurn() async throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let renderer = try #require(BackgroundRenderer(device: device))
+        let loop = BackgroundRenderLoop(renderer: renderer)
+        let reports = Reports()
+        loop.start { reports.add($0) }
+        defer { loop.stop() }
+        var taken: [IOSurface] = []
+        for step in 1...6 {
+            loop.request(
+                BackgroundFrame(
+                    time: Double(step) / 30, width: 100, height: 80,
+                    pixels: PixelSize(width: 100, height: 80)))
+            #expect(await waitUntil { reports.all.count == step })
+            if step % 2 == 1, let surface = loop.takeFinished(),
+                !taken.contains(where: { $0 === surface })
+            {
+                taken.append(surface)
+            }
+        }
+        #expect(reports.outcomes == Array(repeating: .drawn, count: 6))
+        #expect(taken.count == BackgroundSurfaces.limit)
+    }
+
     // Each surface is busy, for example because the window server is slow. The render thread
     // skips the frame at once, and a retry draws it when a surface comes free.
     @Test func theRenderThreadSkipsAFrameWhenNoSurfaceIsFreeAndDoesNotWait() async throws {
@@ -216,13 +300,14 @@ struct MetalBackgroundTests {
         #expect(reports.all.allSatisfy { !$0.onMainThread })
     }
 
-    @Test func theBackgroundDrawsNothingWhileTheWindowIsCoveredOrMinimised() throws {
+    @Test func theBackgroundDrawsNothingWhileTheWindowIsCoveredOrMinimised() async throws {
         let time = TestTime()
         let background = MetalBackground(
             frame: NSRect(x: 0, y: 0, width: 400, height: 300), now: { time.now })
         let host = window(background)
         defer { host.close() }
         _ = try #require(background.surfaceLayer)
+        #expect(await waitUntil { shown(background) != nil })
         background.setMoving(true)
         #expect(background.linkRunning)
         let start = background.requestedFrames

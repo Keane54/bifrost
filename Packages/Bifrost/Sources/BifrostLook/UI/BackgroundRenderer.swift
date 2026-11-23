@@ -145,6 +145,14 @@ struct BackgroundTarget {
 // busy and the set is full, the frame gets no surface, and the render thread skips the frame.
 // The render thread never waits for a surface.
 struct BackgroundSurfaces {
+    // The result of a pick: a free surface, no free surface, or a new surface that the system
+    // could not make.
+    enum Pick {
+        case target(BackgroundTarget)
+        case busy
+        case failed
+    }
+
     // The most surfaces of one size: the surface on the screen, the surface that waits for its
     // show, and the surface of the next draw.
     static let limit = 3
@@ -163,9 +171,9 @@ struct BackgroundSurfaces {
     // The number of surfaces of the current size.
     var count: Int { targets.count }
 
-    // A free surface with this size, or nil. `busy` has the surfaces that the layer shows or
-    // that wait for their show. A change of the size removes the surfaces of the old size.
-    mutating func free(_ pixels: PixelSize, busy: [IOSurface]) -> BackgroundTarget? {
+    // A free surface with this size. `busy` has the surfaces that the layer shows or that wait
+    // for their show. A change of the size removes the surfaces of the old size.
+    mutating func pick(_ pixels: PixelSize, busy: [IOSurface]) -> Pick {
         if size != pixels {
             size = pixels
             targets = []
@@ -173,10 +181,11 @@ struct BackgroundSurfaces {
         let free = targets.first { target in
             !busy.contains { $0 === target.surface } && !inUse(target.surface)
         }
-        if let free { return free }
-        guard targets.count < Self.limit, let made = make(pixels) else { return nil }
+        if let free { return .target(free) }
+        guard targets.count < Self.limit else { return .busy }
+        guard let made = make(pixels) else { return .failed }
         targets.append(made)
-        return made
+        return .target(made)
     }
 
     private func make(_ pixels: PixelSize) -> BackgroundTarget? {

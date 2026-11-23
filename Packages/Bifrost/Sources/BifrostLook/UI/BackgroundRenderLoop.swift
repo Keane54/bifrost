@@ -5,8 +5,10 @@
 // The main thread only writes the request and reads the result. Both are in a Mutex, and the
 // render thread holds the lock only to read or write these values, never during a draw. Thus the
 // main thread never waits for a surface, for the GPU or for the window server.
+import BifrostFoundation
 import Foundation
 import IOSurface
+import OSLog
 import Synchronization
 
 // The result of one try of the render thread.
@@ -15,7 +17,8 @@ enum BackgroundOutcome: Sendable, Equatable {
     case drawn
     // Each surface was busy, so the thread did not draw. A later request or retry tries again.
     case skipped
-    // Metal could not draw the frame.
+    // Metal could not make a surface or draw the frame. The thread does not try that request
+    // again.
     case failed
 }
 
@@ -56,6 +59,10 @@ final class BackgroundRenderLoop: Sendable {
         case none
         case draw(BackgroundFrame, number: Int, busy: [IOSurface])
     }
+
+    // The number of skips in a row that gives a log line: one second of frames.
+    static let skipsToLog = Int(Motion.rate)
+    private static let logger = Logger(bifrost: "background")
 
     private let state = Mutex(State())
     private let semaphore = DispatchSemaphore(value: 0)
@@ -135,6 +142,10 @@ final class BackgroundRenderLoop: Sendable {
 
     private func run(_ report: @Sendable (BackgroundReport) -> Void) {
         var surfaces = BackgroundSurfaces(device: renderer.device, inUse: inUse)
+        // The skips since the last drawn frame, and true after a failure with no drawn frame
+        // after it. Each gives one log line, so a background that stops leaves evidence.
+        var skips = 0
+        var failing = false
         while true {
             semaphore.wait()
             let job = state.withLock { s -> Job in
@@ -152,18 +163,40 @@ final class BackgroundRenderLoop: Sendable {
                 let outcome = autoreleasepool {
                     tryDraw(frame, number: number, busy: busy, surfaces: &surfaces)
                 }
+                switch outcome {
+                case .drawn:
+                    skips = 0
+                    failing = false
+                case .skipped:
+                    skips += 1
+                    if skips == Self.skipsToLog {
+                        Self.logger.notice(
+                            "The background skipped \(skips) frames: no surface is free")
+                    }
+                case .failed:
+                    if !failing { Self.logger.error("The background could not draw a frame") }
+                    failing = true
+                }
                 report(BackgroundReport(outcome: outcome, onMainThread: Thread.isMainThread))
             }
         }
     }
 
     // Draw the frame into a free surface, or skip it when no surface is free. A skip does not
-    // mark the request as tried, so a retry draws it.
+    // mark the request as tried, so a retry draws it. The lock is not held during the pick or the
+    // draw, so the main thread never waits for them.
     private func tryDraw(
         _ frame: BackgroundFrame, number: Int, busy: [IOSurface],
         surfaces: inout BackgroundSurfaces
     ) -> BackgroundOutcome {
-        guard let target = surfaces.free(frame.pixels, busy: busy) else { return .skipped }
+        let target: BackgroundTarget
+        switch surfaces.pick(frame.pixels, busy: busy) {
+        case .target(let free): target = free
+        case .busy: return .skipped
+        case .failed:
+            state.withLock { $0.tried = max($0.tried, number) }
+            return .failed
+        }
         let drawn = renderer.draw(frame, into: target.texture)
         state.withLock { s in
             s.tried = max(s.tried, number)
