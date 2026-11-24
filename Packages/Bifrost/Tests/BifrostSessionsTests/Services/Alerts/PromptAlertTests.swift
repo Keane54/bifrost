@@ -165,6 +165,30 @@ struct PromptAlertTests {
         #expect(flow.sounds == 1)
     }
 
+    // A quiet yellow box that escalates turns red on the row, with no notification and no sound.
+    @Test func aQuietFinishedTurnStaysQuietWhenItEscalates() {
+        var flow = Flow()
+        flow.turn(person: false)
+        flow.now += 600_001
+        flow.registry.tick(now: flow.now)
+        flow.update()
+        #expect(flow.registry.row("s1")?.alert.colour == .red)
+        #expect(flow.notes.isEmpty)
+        #expect(flow.sounds == 0)
+    }
+
+    // A yellow box that notified keeps the old rule: its escalation plays the sound once.
+    @Test func aNotifiedFinishedTurnPlaysTheSoundWhenItEscalates() {
+        var flow = Flow()
+        flow.turn(person: true)
+        flow.now += 600_001
+        flow.registry.tick(now: flow.now)
+        flow.update()
+        #expect(flow.registry.row("s1")?.alert.colour == .red)
+        #expect(flow.bodies == [finished])
+        #expect(flow.sounds == 1)
+    }
+
     // A mod with no prompt lines, and Live details off, keep the old rule: each new yellow box
     // notifies.
     @Test func withNoPromptLinesEachFinishedTurnNotifies() {

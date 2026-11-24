@@ -59,6 +59,25 @@ struct AlertRulesTests {
         #expect(!again.soundDue)
     }
 
+    // A quiet yellow box (no prompt of a person before it) gives no alert, and neither does its
+    // escalation. A red box with its own cause in the same requirement gives the alert.
+    @Test func aRedBoxWithItsOwnCauseAfterAQuietYellowBoxAlerts() {
+        func row(_ alert: SessionAlert) -> SessionRow {
+            var row = alertRow(a, alert)
+            row.personPrompt = 0
+            return row
+        }
+        let first = AlertRules.newBoxes(nil, [row(.none)])
+        let quiet = AlertRules.newBoxes(first.tracks, [row(.yellow(since: 1))])
+        #expect(quiet.added.isEmpty)
+        let escalated = AlertRules.newBoxes(quiet.tracks, [row(.red(.escalated, since: 9))])
+        #expect(escalated.added.isEmpty)
+        #expect(!escalated.soundDue)
+        let error = AlertRules.newBoxes(escalated.tracks, [row(.red(.error, since: 10))])
+        #expect(error.added.map(\.alert) == [.red(.error, since: 10)])
+        #expect(error.soundDue)
+    }
+
     // A new box keeps the name and the state of its row.
     @Test func theNewBoxesComeInTheOrderOfTheRows() {
         let ids = alertIds(3)

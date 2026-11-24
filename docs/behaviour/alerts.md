@@ -50,9 +50,12 @@ sent the session a prompt.
   tell you about it again.
 - A prompt you type while a woken turn is still running counts, so the end of that turn notifies
   you.
-- Red boxes work as before. A permission prompt, a question or an error notifies you and plays the
-  sound, whatever started the turn. A quiet yellow box that waits long enough to escalate turns red
-  within the same requirement, so it plays the sound but doesn't add a notification.
+- A red box with its own cause works as before. A permission prompt, a question or an error
+  notifies you and plays the sound, whatever started the turn, and that's also true when it follows
+  a quiet yellow box with no work between.
+- A quiet yellow box that waits long enough to escalate still turns red on the row, but it plays no
+  sound and sends no notification, because nothing is waiting for your reply. A yellow box that did
+  notify you escalates as before, with its one sound.
 - Bifrost learns who sent each prompt from the Live details mod (see "Who sent a prompt" in
   `docs/behaviour/live.md`), and only while the session's row is live. Without that, for example
   with Live details off or in a session that still runs an older copy of the mod, every new yellow

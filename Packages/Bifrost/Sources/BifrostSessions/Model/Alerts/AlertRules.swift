@@ -16,14 +16,19 @@ package struct AlertTrack: Sendable, Equatable {
     // The newest prompt of a person (SessionRow.personPrompt) that a yellow box of the session
     // used. 0 when no yellow box used a prompt.
     package var promptUsed: Int
+    // True when the requirement started with a quiet yellow box (a yellow box with no prompt of a
+    // person before it) and had no alert since. The escalation of that box gives no alert.
+    package var quiet: Bool
 
     package init(
-        needsYou: Bool = false, soundSpent: Bool = false, busyAt: Int? = nil, promptUsed: Int = 0
+        needsYou: Bool = false, soundSpent: Bool = false, busyAt: Int? = nil, promptUsed: Int = 0,
+        quiet: Bool = false
     ) {
         self.needsYou = needsYou
         self.soundSpent = soundSpent
         self.busyAt = busyAt
         self.promptUsed = promptUsed
+        self.quiet = quiet
     }
 }
 
@@ -52,10 +57,12 @@ package enum AlertRules {
     // starts a requirement: the row has a box and its last requirement has ended. A requirement
     // ends only when the session works again. Until then a box that clears, comes back, changes
     // its time or changes its cause is the same requirement. A yellow box that starts a
-    // requirement is new only after a prompt of a person (prompted). The sound is due once for
-    // each requirement, when its box is red. A nil previous is the first update after the start:
-    // it only records the tracks, and a red box of that update has its sound spent. A session
-    // that is not in the rows loses its track.
+    // requirement is new only after a prompt of a person (prompted). Else the requirement is
+    // quiet: the escalation of its yellow box gives no notification and no sound, and a red box
+    // with its own cause (a prompt or an error) is new and ends the quiet. The sound is due once
+    // for each requirement, when its box is red. A nil previous is the first update after the
+    // start: it only records the tracks, and a red box of that update has its sound spent. A
+    // session that is not in the rows loses its track.
     package static func newBoxes(
         _ previous: [String: AlertTrack]?, _ rows: [SessionRow]
     ) -> (tracks: [String: AlertTrack], added: [NewBox], soundDue: Bool) {
@@ -67,27 +74,29 @@ package enum AlertRules {
             if works(row, track) {
                 track.needsYou = false
                 track.soundSpent = false
+                track.quiet = false
             }
             track.busyAt = row.lastBusyAt
             defer { tracks[row.sessionId] = track }
             guard row.alert != .none else { continue }
             let isRed = if case .red = row.alert { true } else { false }
+            let escalated = if case .red(.escalated, _) = row.alert { true } else { false }
             if previous == nil {
                 track.needsYou = true
                 track.soundSpent = track.soundSpent || isRed
-                if !isRed { _ = prompted(row, &track) }
+                if !isRed { track.quiet = !prompted(row, &track) }
                 continue
             }
+            let box = NewBox(
+                sessionId: row.sessionId, name: row.name, alert: row.alert, state: row.state)
             if !track.needsYou {
                 track.needsYou = true
-                if isRed || prompted(row, &track) {
-                    added.append(
-                        NewBox(
-                            sessionId: row.sessionId, name: row.name, alert: row.alert,
-                            state: row.state))
-                }
+                if isRed || prompted(row, &track) { added.append(box) } else { track.quiet = true }
+            } else if track.quiet, isRed, !escalated {
+                track.quiet = false
+                added.append(box)
             }
-            if isRed, !track.soundSpent {
+            if isRed, !track.soundSpent, !track.quiet {
                 track.soundSpent = true
                 soundDue = true
             }
