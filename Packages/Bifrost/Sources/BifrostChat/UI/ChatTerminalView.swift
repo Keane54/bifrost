@@ -72,6 +72,12 @@ package final class ChatTerminalView: TerminalView, ChatKeyTarget, TerminalViewD
         // A Cmd key never goes to the program before the key filter of the window: the Bifrost
         // keys act first, also when Claude Code turns on the kitty keyboard protocol.
         shouldSendCommandKeyToTerminal = { _ in false }
+        // A key does not restart the blink of the cursor. That restart takes the render lock of
+        // SwiftTerm on the main thread. The render thread holds the same lock while it waits for
+        // a drawable, and that wait can be 1 s when the window server is slow. Then each key
+        // stopped the main thread for up to 1 s. The only visible change: while the user types,
+        // a cursor that shows keeps its blink.
+        cursorBlinkResetsOnInput = false
         addSlider()
     }
 

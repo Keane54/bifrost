@@ -70,6 +70,8 @@ struct ChatTerminalTests {
         #expect(view.linkHighlightMode == .hoverWithModifier)
         #expect(view.allowMouseReporting)
         #expect(view.bellStyle == .none)
+        // A key takes no render lock on the main thread (no blink restart).
+        #expect(!view.cursorBlinkResetsOnInput)
         #expect(view.terminalDelegate === view)
         let event = try #require(
             USKeyboard.keyEvent(
