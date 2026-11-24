@@ -146,10 +146,11 @@ package struct ReviewsSection: View {
 
     nonisolated package static let removeClonesConfirm = ConfirmText(
         title: "Remove all clones?",
-        body: "Bifrost will delete its copies of your repositories, the review sessions that use "
-            + "them and any queued reviews. Your own checkouts and your draft reviews on GitHub "
-            + "stay as they are. While Watch GitHub is on, Bifrost copies the repositories of "
-            + "your open pull requests again.",
+        body: "Bifrost will delete its copies of your repositories, the review and request "
+            + "sessions that use them and any queued reviews. Changes in a copy that aren't on "
+            + "GitHub yet go too. Your own checkouts and your draft reviews on GitHub stay as "
+            + "they are. While Watch GitHub is on, Bifrost copies the repositories of your open "
+            + "pull requests again.",
         confirm: "Remove")
 
     nonisolated package static let removeClonesHint =

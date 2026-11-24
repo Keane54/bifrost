@@ -227,10 +227,21 @@ package struct PRState: Sendable, Equatable, StoredValue {
     // waitsForYouFiles.
     package var waiting: WaitsForYou?
 
-    // The reason of waiting. A new reason through this property has no files.
-    package var waitsForYou: String? {
-        get { waiting?.reason }
-        set { waiting = newValue.map { WaitsForYou(reason: $0) } }
+    // The reason of waiting.
+    package var waitsForYou: String? { waiting?.reason }
+
+    // A round stopped for the work of a person. A reason that is there already (an own request
+    // that did not go) says more, so it stays. The files of the round are newer, so they
+    // replace the files that are there. adoptsKind: a kind of the new value replaces the kind
+    // other of the old value.
+    package mutating func keepWaiting(_ new: WaitsForYou, adoptsKind: Bool) {
+        var kept = waiting ?? new
+        if !new.files.isEmpty {
+            kept.files = new.files
+            kept.fileCount = new.fileCount
+        }
+        if adoptsKind, kept.kind == .other { kept.kind = new.kind }
+        waiting = kept
     }
     package var round: ActiveRound?
     package var recommendation: RecommendationMark?
@@ -255,7 +266,8 @@ package struct PRState: Sendable, Equatable, StoredValue {
     // True when the read of the record of the PR in the file dropped a field, or the record was
     // not an object. The record can then lack the conflict mark of a pair that Bifrost tried, so
     // the first poll that lists the PR counts its pair as tried (ReviewRounds.queueConflicts).
-    // The file does not keep it.
+    // An explicit null in conflict or ci counts as a lost mark too. The file keeps the doubt
+    // (markInDoubt, only when true) until a poll settles it, so a quit does not lose it.
     package var markInDoubt = false
 
     package init() {}
@@ -264,9 +276,10 @@ package struct PRState: Sendable, Equatable, StoredValue {
     package init(stored value: JSONValue, dropped: inout DroppedFields) {
         self.init()
         var lost = DroppedFields()
+        var savedDoubt = false
         defer {
             for name in lost.names { dropped.add(name) }
-            markInDoubt = !lost.names.isEmpty
+            markInDoubt = !lost.names.isEmpty || savedDoubt
         }
         guard let object = StoredObject(value, place: "prs") else {
             lost.add("prs")
@@ -286,7 +299,9 @@ package struct PRState: Sendable, Equatable, StoredValue {
             let files = object.list("waitsForYouFiles", &lost, \.string)
             let kind = object.read("waitsForYouKind", &lost, \.string)
                 .flatMap(WaitsForYou.Kind.init(rawValue:))
-            waiting = WaitsForYou(reason: reason, files: files, kind: kind ?? .other)
+            let count = object.read("waitsForYouFileCount", &lost) { $0.wholeNumber }
+            waiting = WaitsForYou(
+                reason: reason, files: files, fileCount: count, kind: kind ?? .other)
         }
         round = object.read("round", &lost, ActiveRound.init(stored:dropped:))
         recommendation = object.read(
@@ -300,6 +315,11 @@ package struct PRState: Sendable, Equatable, StoredValue {
         conflict = object.read("conflict", &lost, ConflictMark.init(stored:dropped:))
         ci = object.read("ci", &lost, CIMark.init(stored:dropped:))
         resolveNow = object.flag("resolveNow", &lost)
+        // Bifrost never writes null here, so a null is a mark that something damaged.
+        for key in ["conflict", "ci"] where object.fields[key] == .null {
+            lost.add(object.name(key))
+        }
+        savedDoubt = object.flag("markInDoubt", &lost)
     }
 
     package var stored: JSONValue {
@@ -325,11 +345,15 @@ package struct PRState: Sendable, Equatable, StoredValue {
             fields["waitsForYou"] = .string(waiting.reason)
             if !waiting.files.isEmpty {
                 fields["waitsForYouFiles"] = .array(waiting.files.map(JSONValue.string))
+                if waiting.fileCount > waiting.files.count {
+                    fields["waitsForYouFileCount"] = .int(waiting.fileCount)
+                }
             }
             if waiting.kind != .other { fields["waitsForYouKind"] = .string(waiting.kind.rawValue) }
         }
         if let conflict { fields["conflict"] = conflict.stored }
         if let ci { fields["ci"] = ci.stored }
+        if markInDoubt { fields["markInDoubt"] = .bool(true) }
         if resolveNow { fields["resolveNow"] = true }
         return .object(fields)
     }
@@ -386,13 +410,30 @@ package struct WaitsForYou: Sendable, Equatable {
         case other
     }
 
+    // The state keeps at most this count of names. Discard these changes and the drop read the
+    // worktree again for the real list.
+    package static let maxNames = 5
+
     package var reason: String
-    package var files: [String]
+    // The first names of the files, sorted as the caller gave them. A bigger list shortens here,
+    // and fileCount holds the full count.
+    package private(set) var names: [String]
+    package var fileCount: Int
     package var kind: Kind
 
-    package init(reason: String, files: [String] = [], kind: Kind = .other) {
+    // The files in the state: the first names (maxNames). Setting the files sets the count too.
+    package var files: [String] {
+        get { names }
+        set {
+            names = Array(newValue.prefix(Self.maxNames))
+            fileCount = newValue.count
+        }
+    }
+
+    package init(reason: String, files: [String] = [], fileCount: Int? = nil, kind: Kind = .other) {
         self.reason = reason
-        self.files = files
+        names = Array(files.prefix(Self.maxNames))
+        self.fileCount = max(fileCount ?? files.count, names.count)
         self.kind = kind
     }
 }

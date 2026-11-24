@@ -292,11 +292,17 @@ package struct Outbox: Sendable, Equatable, StoredValue {
     // push, and a change that did not reach GitHub stays in the worktree. File: own, missing =
     // false.
     package var own: Bool
+    // The stamp of the file of each listed path (RepoStore.recordedStamps) when the round took
+    // its result, or when an own request read its file. The commit compares them with the files
+    // as they are then, so an edit after that point never goes into the commit, also after a
+    // restart. nil: no record (an outbox of an older version). File: stamps, missing = nil.
+    package var stamps: [String: PathStamp]?
 
     package init(
         headSHA: CommitID, mergeBase: CommitID, startedAt: Date, seen: [NodeID: Date],
-        posts: [OutboxPost], own: Bool = false
+        posts: [OutboxPost], own: Bool = false, stamps: [String: PathStamp]? = nil
     ) {
+        self.stamps = stamps
         self.headSHA = headSHA
         self.mergeBase = mergeBase
         self.startedAt = startedAt
@@ -322,6 +328,16 @@ package struct Outbox: Sendable, Equatable, StoredValue {
             guard let id = NodeID(text), let time = value.time else { return nil }
             seen[id] = time
         }
+        var stamps: [String: PathStamp]?
+        if let stored = fields["stamps"] {
+            guard let list = stored.object else { return nil }
+            var read: [String: PathStamp] = [:]
+            for (path, value) in list {
+                guard let stamp = PathStamp(stored: value) else { return nil }
+                read[path] = stamp
+            }
+            stamps = read
+        }
         var posts: [OutboxPost] = []
         for item in items {
             guard let post = OutboxPost(stored: item), !posts.contains(where: { $0.id == post.id })
@@ -330,7 +346,7 @@ package struct Outbox: Sendable, Equatable, StoredValue {
         }
         self.init(
             headSHA: headSHA, mergeBase: mergeBase, startedAt: startedAt, seen: seen, posts: posts,
-            own: own)
+            own: own, stamps: stamps)
     }
 
     package var stored: JSONValue {
@@ -340,6 +356,7 @@ package struct Outbox: Sendable, Equatable, StoredValue {
             "posts": .array(posts.map(\.stored)),
         ]
         if own { fields["own"] = true }
+        if let stamps { fields["stamps"] = .object(stamps.mapValues(\.stored)) }
         return .object(fields)
     }
 }

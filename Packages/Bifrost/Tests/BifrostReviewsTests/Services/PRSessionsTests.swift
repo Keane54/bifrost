@@ -479,6 +479,21 @@ struct PRSessionsTests {
         await f.end()
     }
 
+    // A session whose row goes for good is not a stop of the user: the wait fails with the
+    // session-ended failure.
+    @Test func aRowThatGoesEndsTheTurnAsASessionThatEnded() async throws {
+        let f = try await SessionsFixture()
+        await f.deps.start()
+        let row = try await f.show(SessionsFixture.entry(.busy))
+        let wait = f.waitForTurnEnd(row)
+        await waitUntil { f.deadline == .seconds(1800) }
+        await f.deps.show([]) { rows in rows.isEmpty }
+        f.deps.clock.advance(by: .seconds(70))
+        await f.deps.poll()
+        #expect(await wait.value == .sessionEnded)
+        await f.end()
+    }
+
     // The wait sleeps once, until the next deadline of the rule, and wakes there: a session that
     // worked and went idle ends 10 s later, at the next session list, with no tick in between.
     @Test func theWaitWakesAtTheDeadlineWithNoTick() async throws {

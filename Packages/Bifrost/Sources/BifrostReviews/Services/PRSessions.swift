@@ -895,7 +895,7 @@ package final class PRSessions {
             case .ended: return .ended(accepted: accepted)
             case .blocked: return .blocked(accepted: accepted)
             case .timeout: throw .timeout
-            case .gone: throw .stopped
+            case .gone: throw .sessionEnded
             case .wait(let next?): timer.start(after: next - now) { wake.yield() }
             case .wait(nil): timer.stop()
             }

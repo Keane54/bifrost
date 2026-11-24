@@ -541,6 +541,89 @@ struct RepoStoreTests {
         #expect(f.log.values.filter { $0 == .worktreeMadeAgain(pr) }.count == 2)
     }
 
+    // A discard whose reset fails (a lock file in the admin folder) cleans nothing: the changed
+    // file, the new file and the ignored file of the person all stay. With the lock gone, the
+    // same discard resets and cleans.
+    @Test func aFailedResetNeverCleansTheFilesOfThePerson() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let head = try await f.source(name, files: ["a.txt": "one\n", ".gitignore": "*.log\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let path = try await f.store.prepareWorktree(pr, head: head).path(percentEncoded: false)
+        try "changed\n".write(toFile: path + "a.txt", atomically: false, encoding: .utf8)
+        try "new\n".write(toFile: path + "new.txt", atomically: false, encoding: .utf8)
+        try "log\n".write(toFile: path + "d.log", atomically: false, encoding: .utf8)
+        let lock = GitPlace.adminFolder(pr, f.layout) + "/index.lock"
+        try "".write(toFile: lock, atomically: false, encoding: .utf8)
+        #expect(await f.store.discard(pr, to: head) == false)
+        #expect(try String(contentsOfFile: path + "a.txt", encoding: .utf8) == "changed\n")
+        #expect(f.exists(path + "new.txt") && f.exists(path + "d.log"))
+        try FileManager.default.removeItem(atPath: lock)
+        #expect(await f.store.discard(pr, to: head))
+        #expect(!f.exists(path + "new.txt") && !f.exists(path + "d.log"))
+        #expect(try String(contentsOfFile: path + "a.txt", encoding: .utf8) == "one\n")
+    }
+
+    // A folder at the place of the worktree that does not belong to the clone (its admin folder
+    // is damaged) is never deleted: it moves aside with its files, the log names its new path,
+    // and the worktree is made again at the head.
+    @Test func aFolderThatIsNotTheClonesMovesAsideWithItsFiles() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let head = try await f.source(name, files: ["a.txt": "one\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let worktree = try await f.store.prepareWorktree(pr, head: head)
+        let path = worktree.path(percentEncoded: false)
+        try "work\n".write(toFile: path + "mine.txt", atomically: false, encoding: .utf8)
+        try FileManager.default.removeItem(atPath: GitPlace.adminFolder(pr, f.layout) + "/gitdir")
+        #expect(!f.git.belongsToClone(pr))
+        #expect(try await f.store.placeWorktree(pr, head: head) == .made(worktree))
+        #expect(!f.exists(path + "mine.txt") && f.git.belongsToClone(pr))
+        let parent = (String(path.dropLast()) as NSString).deletingLastPathComponent
+        let aside = try FileManager.default.contentsOfDirectory(atPath: parent)
+            .filter { $0.contains("~kept-") }
+        let kept = try #require(aside.first)
+        #expect(aside.count == 1)
+        let full = parent + "/" + kept
+        #expect(try String(contentsOfFile: full + "/mine.txt", encoding: .utf8) == "work\n")
+        #expect(f.log.values.contains(.worktreeKeptAside(pr, path: full)))
+    }
+
+    // The drop of a PR (removePR) follows the same rule: a folder that is not the clone's moves
+    // aside with its files, and a worktree of the clone goes.
+    @Test func theDropOfAPRKeepsAFolderThatIsNotTheClones() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        let head = try await f.source(name, files: ["a.txt": "one\n"])
+        try await f.store.ensureClone(name)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        let path = try await f.store.prepareWorktree(pr, head: head).path(percentEncoded: false)
+        try "work\n".write(toFile: path + "mine.txt", atomically: false, encoding: .utf8)
+        try FileManager.default.removeItem(atPath: GitPlace.adminFolder(pr, f.layout) + "/gitdir")
+        await f.store.removePR(pr)
+        let parent = (String(path.dropLast()) as NSString).deletingLastPathComponent
+        let aside = try FileManager.default.contentsOfDirectory(atPath: parent)
+            .filter { $0.contains("~kept-") }
+        let kept = try #require(aside.first)
+        #expect(!f.exists(path) && aside.count == 1)
+        #expect(
+            try String(contentsOfFile: parent + "/" + kept + "/mine.txt", encoding: .utf8)
+                == "work\n")
+        #expect(f.log.values.contains(.worktreeKeptAside(pr, path: parent + "/" + kept)))
+        // A worktree of the clone goes, with no folder kept.
+        let again = try await f.store.prepareWorktree(pr, head: head).path(percentEncoded: false)
+        await f.store.removePR(pr)
+        #expect(!f.exists(again))
+        #expect(
+            try FileManager.default.contentsOfDirectory(atPath: parent)
+                .filter { $0.contains("~kept-") }.count == 1)
+    }
+
     // A file that the clean left (git status lists it as not tracked) is never kept: the
     // worktree is made again. Here git clean does not run, so only that check finds the file.
     @Test func placeWorktreeMakesTheWorktreeAgainWhenTheCleanLeavesAFile() async throws {
@@ -752,5 +835,20 @@ struct RepoStoreTests {
         _ = await f.store.resetWorktree(pr)
         await f.store.removePR(pr)
         #expect(!f.exists(marker))
+    }
+
+    // The device is not in the compare of two stamps: a volume can get another number after a
+    // reboot. Another inode, size or time is a change.
+    @Test func aStampWithAnotherDeviceIsTheSameStamp() throws {
+        func stamp(device: Int = 16_777_234, inode: Int = 5, size: Int = 10) throws -> PathStamp {
+            let list: [JSONValue] = [
+                .int(1), .int(33_188), .int(device), .int(inode), .int(size), .int(100), .int(2),
+                .int(100), .int(3),
+            ]
+            return try #require(PathStamp(stored: .array(list)))
+        }
+        #expect(try stamp() == stamp(device: 99))
+        #expect(try stamp() != stamp(inode: 6))
+        #expect(try stamp() != stamp(size: 11))
     }
 }

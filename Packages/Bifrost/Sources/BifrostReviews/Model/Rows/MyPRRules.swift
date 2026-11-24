@@ -200,7 +200,7 @@ enum MyPRRules {
                 status: RowText.claude(claude), waiting: waiting, laterCopilot: later,
                 questions: Self.openQuestions(prState) + (ciQuestion == nil ? 0 : 1),
                 unsentUpdates: Self.hasUnsentUpdates(prState),
-                unsavedFiles: prState.waiting?.files.count ?? 0,
+                unsavedFiles: prState.waiting?.fileCount ?? 0,
                 resolvable: Self.isResolvable(pr, prState, queue: state.queue))
             return (pr, row, rank(status, claude))
         }

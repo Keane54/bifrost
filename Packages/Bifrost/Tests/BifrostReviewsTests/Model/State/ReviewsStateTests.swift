@@ -301,6 +301,24 @@ struct ReviewsStateTests {
         #expect(dropped.sorted == ["prs.session.profile", "prs.session.rounds"])
     }
 
+    // The reason keeps the count of the files and only the first five names, so a big folder
+    // never makes the file big. The count and the names survive a save and a read.
+    @Test func theReasonKeepsFiveNamesAndTheCount() throws {
+        let paths = (0..<5000).map { "big/file-\($0).txt" }
+        var prState = PRState()
+        prState.waiting = WaitsForYou(reason: "Your change is still here.", files: paths)
+        #expect(prState.waiting?.files == Array(paths.prefix(5)))
+        #expect(prState.waiting?.fileCount == 5000)
+        #expect(prState.stored.object?["waitsForYouFiles"]?.array?.count == 5)
+        var dropped = DroppedFields()
+        let read = PRState(stored: prState.stored, dropped: &dropped)
+        #expect(read == prState && read.waiting?.fileCount == 5000 && dropped.sorted.isEmpty)
+        // A short list stores no count of its own.
+        prState.waiting?.files = ["a.txt", "b.txt"]
+        #expect(prState.waiting?.fileCount == 2)
+        #expect(prState.stored.object?["waitsForYouFileCount"] == nil)
+    }
+
     // The outbox of an own request keeps its mark, and the reason that the work waits for the
     // user stays. An older file has neither: the outbox is a round's, and there is no reason. An
     // own mark that is not a flag drops the whole outbox.
@@ -326,7 +344,7 @@ struct ReviewsStateTests {
 
         var older = prState
         older.outbox?.own = false
-        older.waitsForYou = nil
+        older.waiting = nil
         #expect(older.stored.object?["outbox"]?.object?["own"] == nil)
         #expect(older.stored.object?["waitsForYou"] == nil)
         #expect(older.stored.object?["waitsForYouFiles"] == nil)
@@ -513,7 +531,7 @@ struct ReviewsStateTests {
         let lost = PRState(stored: .object(fields), dropped: &dropped)
         #expect(lost.markInDoubt && lost.conflict == nil && lost.lastError == "A reason.")
         #expect(dropped.sorted == ["prs.conflict"])
-        #expect(lost.stored.object?["markInDoubt"] == nil)
+        #expect(lost.stored.object?["markInDoubt"] == true)
         #expect(PRState(stored: "not a record", dropped: &dropped).markInDoubt)
 
         let text = #"{"version": 1, "prs": {"owner-a/repo-b#12": {"lastError": "A"}, "no": {}}}"#
@@ -522,7 +540,28 @@ struct ReviewsStateTests {
         #expect(state.marksInDoubt && state.prs[record]?.markInDoubt == false)
         #expect(try stored(Data(#"{"version": 1, "prs": 5}"#.utf8)).state.marksInDoubt)
         #expect(try !stored(Data(#"{"version": 1, "prs": {}}"#.utf8)).state.marksInDoubt)
-        #expect(try saved(state).object?["marksInDoubt"] == nil)
+        #expect(try saved(state).object?["marksInDoubt"] == true)
+        #expect(try saved(stored(Data(#"{"version": 1, "prs": {}}"#.utf8)).state)
+            .object?["marksInDoubt"] == nil)
+    }
+
+    // An explicit null in the conflict or CI field is a mark that something damaged, because
+    // Bifrost never writes null there. The doubt survives a save and a read before the first poll.
+    @Test func aNullMarkIsInDoubtAndTheDoubtSurvivesASave() throws {
+        for field in ["conflict", "ci"] {
+            var dropped = DroppedFields()
+            let read = PRState(stored: .object([field: .null]), dropped: &dropped)
+            #expect(read.markInDoubt && dropped.sorted == ["prs.\(field)"], "\(field)")
+        }
+        var dropped = DroppedFields()
+        var doubt = PRState()
+        doubt.markInDoubt = true
+        let again = PRState(stored: doubt.stored, dropped: &dropped)
+        #expect(again.markInDoubt && dropped.sorted.isEmpty)
+        var settled = doubt
+        settled.markInDoubt = false
+        #expect(settled.stored.object?["markInDoubt"] == nil)
+        #expect(!PRState(stored: settled.stored, dropped: &dropped).markInDoubt)
     }
 
     // A CI mark that Bifrost can't read in full has no fix and no re-run left: a bad count, the

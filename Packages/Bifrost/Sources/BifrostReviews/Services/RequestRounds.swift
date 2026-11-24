@@ -106,23 +106,27 @@ extension ReviewRounds {
     // halt does not cancel it, and a halt that came while it ran stops the round right after it.
     // Then the round starts again from its first step, so it reads the new head of the PR. A
     // round yields at most maxYields times; after that it fails as busy.
-    private func yieldToOwnRequest(
-        _ job: QueuedJob, _ round: RequestRound, yields: Int
+    // The conflict round does the same (ConflictRounds.swift). busy: the end of a round that
+    // yielded too many times. chosen: the items that a halt gives back. restart: the round again,
+    // with the count of its yields.
+    func yieldToOwnRequest(
+        _ job: QueuedJob, yields: Int, chosen: [NodeID], busy: () async -> Void,
+        restart: (_ yields: Int) async -> Void
     ) async {
         let pr = job.pr
         guard yields < Self.maxYields else {
-            await failRequest(pr, .sessionBusy, hold: round.chosen)
+            await busy()
             return
         }
         holdHalts(pr)
         await own.run(pr)
         let halted = releaseHalts(pr)
         if halted || Task.isCancelled {
-            await Task { await self.halted(job, chosen: round.chosen) }.value
+            await Task { await self.halted(job, chosen: chosen) }.value
             return
         }
         changed()
-        await runRequest(job, saved: nil, yields: yields + 1)
+        await restart(yields + 1)
     }
 
     // The most times that one request job lets an own request go first.
@@ -248,7 +252,7 @@ extension ReviewRounds {
             guard var prState = state.prs[pr], prState.round == nil else { return }
             prState.dropOutbox(now: time)
             prState.lastError = nil
-            prState.waitsForYou = nil
+            prState.waiting = nil
             state.prs[pr] = prState
         }
         changed()
@@ -326,7 +330,7 @@ extension ReviewRounds {
                 prState.handleOlder = true
             }
             prState.lastError = nil
-            prState.waitsForYou = nil
+            prState.waiting = nil
             state.prs[pr] = prState
             state.queue.append(QueueEntry(pr: pr, kind: .request, at: time))
         }
@@ -385,11 +389,7 @@ extension ReviewRounds {
             trigger: job.trigger ?? Self.requestTrigger(store.state.prs[pr]),
             model: config.requestModel, signed: config.signedCommits,
             autoFix: { [weak self] in self?.config.autoFix ?? false },
-            viewer: { [weak self] in self?.answer()?.viewer },
-            stopRequested: { [weak self] in self?.userStopped(pr) ?? false },
-            takeTryOnce: { [weak self] in self?.setup.takeOneStart(pr.repo) ?? false },
-            startedSession: { [weak self] in self?.startedSession(pr.repo) },
-            changed: { [weak self] in self?.changed() },
+            hooks: roundHooks(pr),
             holdHalts: { [weak self] in self?.holdHalts(pr) },
             releaseHalts: { [weak self] in self?.releaseHalts(pr) ?? false })
     }
@@ -418,10 +418,14 @@ extension ReviewRounds {
             case .failed(let failure):
                 await failRequest(pr, failure, hold: round.chosen, files: round.unsavedFiles)
             case .wrote(let failure):
-                await failRequest(pr, failure, hold: [])
+                await failRequest(pr, failure, hold: [], files: round.unsavedFiles)
                 ended()
             case .waitForTrust(let refused): await waitForTrust(job, refused: refused)
-            case .ownRequestFirst: await yieldToOwnRequest(job, round, yields: yields)
+            case .ownRequestFirst:
+                await yieldToOwnRequest(
+                    job, yields: yields, chosen: round.chosen,
+                    busy: { await failRequest(pr, .sessionBusy, hold: round.chosen) },
+                    restart: { await runRequest(job, saved: nil, yields: $0) })
             case .halted:
                 await Task { await self.halted(job, chosen: round.chosen) }.value
             }
@@ -443,13 +447,11 @@ extension ReviewRounds {
             guard var prState = state.prs[pr] else { return }
             prState.round = nil
             if failure.waitsForYou {
-                // A reason that is there already (an own request that did not go) says more. The
-                // files of the safety net are newer than its files.
-                var waiting =
-                    prState.waiting
-                    ?? WaitsForYou(reason: failure.message(for: .request), kind: .unpushedRequest)
-                if !files.isEmpty { waiting.files = files }
-                prState.waiting = waiting
+                prState.keepWaiting(
+                    WaitsForYou(
+                        reason: failure.message(for: .request), files: files,
+                        kind: failure == .fixHadEdits ? .other : .unpushedRequest),
+                    adoptsKind: false)
                 prState.lastError = nil
             } else {
                 prState.lastError = failure.message(for: .request)
@@ -481,7 +483,7 @@ extension ReviewRounds {
             prState.outbox = nil
             prState.questions = [:]
             prState.requestSession = nil
-            prState.waitsForYou = nil
+            prState.waiting = nil
             prState.conflict = nil
             prState.ci = nil
             if prState.round == nil || prState.round?.kind.isMine == true {

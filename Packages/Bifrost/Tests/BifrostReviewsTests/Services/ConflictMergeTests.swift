@@ -277,6 +277,20 @@ struct ConflictMergeTests {
         #expect(try await r.f.branch() == r.head)
     }
 
+    // The commit of the merge runs one submodule check: the head tree and the index are listed
+    // one time each, and git add lists nothing more.
+    @Test func theCommitListsTheHeadTreeAndTheIndexOnce() async throws {
+        let r = try await ConflictRepo.lineEleven()
+        defer { r.remove() }
+        let start = try await r.startInWorktree()
+        try r.write("src/a.swift", resolved)
+        let before = r.f.runner.all.count
+        _ = try await r.commit(start)
+        let runs = r.f.runner.all.dropFirst(before)
+        #expect(runs.filter { $0.contains("ls-tree") && $0.contains("HEAD") }.count == 1)
+        #expect(runs.filter { $0.contains("ls-files") && $0.last == "--" }.count == 1)
+    }
+
     // The user pushed to the branch after the start. The merge of the start does not hold the new
     // commit, so a commit on the new head would drop it: Bifrost refuses it, and also a commit on
     // another base.

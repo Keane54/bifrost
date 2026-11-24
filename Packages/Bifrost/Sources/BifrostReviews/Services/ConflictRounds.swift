@@ -35,7 +35,8 @@ extension ReviewRounds {
         let config = config
         guard state.allowsConflictFix(config.resolveConflicts) else { return }
         let keys = poll.mine.filter { pr in
-            ConflictRule.startsRound(
+            !waitsAfterQuietEnd(pr)
+                && ConflictRule.startsRound(
                 pr, state.prs[pr.key] ?? PRState(), state: state, config: config,
                 busy: conflictBusy(pr.key))
         }.map(\.key)
@@ -50,6 +51,15 @@ extension ReviewRounds {
         }
         changed()
         for pr in added { queue.add(QueuedJob(pr: pr, kind: .conflict, since: time)) }
+    }
+
+    // True while a round ended with no text on this head and base less than WorkRule.readRetry
+    // ago (for example, the poll said conflicting and the fresh read did not). A poll that sees
+    // the same pair waits, so a flap of GitHub costs no clone check and no read at each poll. A
+    // new head or base, and a click, never wait. The wait is in memory only.
+    private func waitsAfterQuietEnd(_ pr: PullRequest) -> Bool {
+        guard let quiet = quietPairs[pr.key], quiet.pair == Self.pair(pr) else { return false }
+        return timeline.now() - quiet.at < WorkRule.readRetry
     }
 
     private func conflictBusy(_ pr: PRKey) -> Bool {
@@ -133,8 +143,10 @@ extension ReviewRounds {
     func runConflict(_ job: QueuedJob, saved: ActiveRound?, yields: Int = 0) async {
         let pr = job.pr
         let round = makeConflictRound(job)
+        let polled = answer()?.mine.first { $0.key == pr }.flatMap(Self.pair)
         if let saved {
-            await settleConflict(job, round) { () async throws(ConflictRound.Stop) in
+            await settleConflict(job, round, polled: polled) {
+                () async throws(ConflictRound.Stop) in
                 saved.phase == .posting
                     ? try await round.resumePosting(saved) : try await round.resume(saved)
             }
@@ -149,7 +161,8 @@ extension ReviewRounds {
             state.prs[pr] = prState
         }
         changed()
-        await settleConflict(job, round, yields: yields) { () async throws(ConflictRound.Stop) in
+        await settleConflict(job, round, polled: polled, yields: yields) {
+            () async throws(ConflictRound.Stop) in
             try await round.start()
         }
     }
@@ -170,23 +183,20 @@ extension ReviewRounds {
                 guard let self else { return false }
                 return self.store.state.allowsConflictFix(self.config.resolveConflicts)
             },
-            viewer: { [weak self] in self?.answer()?.viewer },
-            stopRequested: { [weak self] in self?.userStopped(pr) ?? false },
-            takeTryOnce: { [weak self] in self?.setup.takeOneStart(pr.repo) ?? false },
-            startedSession: { [weak self] in self?.startedSession(pr.repo) },
-            changed: { [weak self] in self?.changed() })
+            hooks: roundHooks(pr))
     }
 
     // Run the steps of the conflict round, then end it by how they stopped: a pushed merge polls
     // at once; a failure goes to the mark, and a push that may have reached GitHub polls at once;
     // an own request of the user goes first, then the round starts again.
     private func settleConflict(
-        _ job: QueuedJob, _ round: ConflictRound, yields: Int = 0,
+        _ job: QueuedJob, _ round: ConflictRound, polled: ConflictRound.Pair?, yields: Int = 0,
         _ steps: () async throws(ConflictRound.Stop) -> CommitID
     ) async {
         let pr = job.pr
         do throws(ConflictRound.Stop) {
             let merge = try await steps()
+            quietPairs[pr] = nil
             await pushedConflict(pr, merge: merge, pair: round.pair)
             ended()
         } catch {
@@ -196,33 +206,24 @@ extension ReviewRounds {
             case .failed(let failure):
                 await failConflict(pr, failure, pair: round.pair)
                 if case .push = failure { ended() }
-            case .quiet: await endQuietly(pr)
+            case .quiet:
+                // The pair of the poll waits, so the next polls do not start the same round.
+                // A closed setting keeps no wait, so turning it on works at the next poll.
+                if let polled, store.state.allowsConflictFix(config.resolveConflicts) {
+                    quietPairs[pr] = (polled, timeline.now())
+                }
+                await endQuietly(pr)
+            case .busy: await endQuietly(pr)
             case .forYou(let waiting): await keepForPerson(pr, waiting, pair: round.pair)
             case .waitForTrust(let refused): await waitForTrust(job, refused: refused)
-            case .ownRequestFirst: await yieldConflict(job, round, yields: yields)
+            case .ownRequestFirst:
+                await yieldToOwnRequest(
+                    job, yields: yields, chosen: [],
+                    busy: { await failConflict(pr, .session(.sessionBusy), pair: round.pair) },
+                    restart: { await runConflict(job, saved: nil, yields: $0) })
             case .halted: await Task { await self.halted(job, chosen: []) }.value
             }
         }
-    }
-
-    // The round found an own request of the user before it changed the worktree. The own request
-    // goes first, as for a request round (yieldToOwnRequest), then the round starts again from
-    // its first step with its click.
-    private func yieldConflict(_ job: QueuedJob, _ round: ConflictRound, yields: Int) async {
-        let pr = job.pr
-        guard yields < Self.maxYields else {
-            await failConflict(pr, .session(.sessionBusy), pair: round.pair)
-            return
-        }
-        holdHalts(pr)
-        await own.run(pr)
-        let halted = releaseHalts(pr)
-        if halted || Task.isCancelled {
-            await Task { await self.halted(job, chosen: []) }.value
-            return
-        }
-        changed()
-        await runConflict(job, saved: nil, yields: yields + 1)
     }
 
     // MARK: - The ends
@@ -236,6 +237,8 @@ extension ReviewRounds {
             guard var prState = state.prs[pr] else { return }
             if prState.round?.kind == .conflict { prState.round = nil }
             prState.resolveNow = false
+            // The prepare of the round proved the copy clean, so an old reason no longer holds.
+            prState.waiting = nil
             if let pair {
                 prState.conflict = ConflictMark(
                     head: pair.head, base: pair.base, at: time, outcome: .pushed(merge))
@@ -264,6 +267,14 @@ extension ReviewRounds {
         guard !message.isEmpty else {
             await endQuietly(pr)
             return
+        }
+        quietPairs[pr] = nil
+        if pair == nil, Self.working(store.state.prs[pr]?.conflict) == nil {
+            // No mark can show the text, so the Event log keeps a trace of it.
+            eventLine(
+                TokenMask.mask(
+                    "Reviews: Bifrost couldn't resolve the conflicts of \(pr.text). \(message)",
+                    token: nil))
         }
         await store.update { state in
             guard var prState = state.prs[pr] else { return }
@@ -303,12 +314,7 @@ extension ReviewRounds {
             if prState.round?.kind == .conflict { prState.round = nil }
             prState.resolveNow = false
             prState.conflict = Self.withoutWorking(prState.conflict)
-            if let waiting {
-                var kept = prState.waiting ?? waiting
-                if !waiting.files.isEmpty { kept.files = waiting.files }
-                if kept.kind == .other { kept.kind = waiting.kind }
-                prState.waiting = kept
-            }
+            if let waiting { prState.keepWaiting(waiting, adoptsKind: true) }
             state.prs[pr] = prState
         }
         changed()

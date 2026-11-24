@@ -16,6 +16,8 @@ package enum FixCommitFailure: Error, Sendable, Equatable {
     case refused(CommitFileRefusal)
     // A git command failed. The text is for the log.
     case git(String)
+    // The commit holds an edit of a person, and git could not move it back to changes.
+    case uncommitFailed
 }
 
 package enum FixCommit {
@@ -36,11 +38,11 @@ package enum FixCommit {
             try await checkMade(now, head: head, paths: paths, pr: pr, git: git)
             return now
         }
-        if let refusal = await CommitFileCheck.check(paths, in: pr, git: git) {
-            throw .refused(refusal)
-        }
-        try await mustRun(.add(paths), git, place)
-        try await mustRun(.commit(message: message), git, place)
+        let checked = await CommitFileCheck.prove(paths, in: pr, git: git)
+        if let refusal = checked.refusal { throw .refused(refusal) }
+        // The proof of the one submodule check covers the add. The commit lists the index again.
+        try await mustRun(.add(paths), git, place, checked.proof)
+        try await mustRun(.commit(message: message), git, place, checked.proof)
         let made = try await headCommit(git, place)
         guard made != head, let object = await object(made, git, place), object.parents == [head],
             !object.signed
@@ -96,10 +98,10 @@ package enum FixCommit {
         return result.succeeded ? CommitObject(result.stdout) : nil
     }
 
-    private static func mustRun(_ command: GitCommand, _ git: RepoGit, _ place: GitPlace)
-        async throws(FixCommitFailure)
-    {
-        let result = await git.run(command, in: place)
+    private static func mustRun(
+        _ command: GitCommand, _ git: RepoGit, _ place: GitPlace, _ proof: CommitProof? = nil
+    ) async throws(FixCommitFailure) {
+        let result = await git.run(command, in: place, proof: proof)
         guard result.succeeded else { throw .git(RepoStore.reason(result)) }
     }
 

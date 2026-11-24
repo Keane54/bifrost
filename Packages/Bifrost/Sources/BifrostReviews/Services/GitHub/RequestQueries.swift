@@ -118,23 +118,50 @@ package enum RequestQueries {
         }
         """
 
-    // The state of the PR on GitHub: open, closed or merged. An answer with no known state is a
-    // bad answer.
-    package static func state(_ pr: PRKey, client: GitHubClient) async throws(GitHubError)
-        -> PRLifecycle
-    {
-        let query = GitHubQuery(
+    private static func stateQuery(_ pr: PRKey) -> GitHubQuery {
+        GitHubQuery(
             name: stateName, text: stateText,
             variables: [
                 "owner": .string(pr.repo.owner), "repo": .string(pr.repo.name),
                 "number": .int(pr.number),
             ])
-        let data = try await client.read(query)
+    }
+
+    // The state of the PR on GitHub: open, closed or merged. An answer with no known state is a
+    // bad answer.
+    package static func state(_ pr: PRKey, client: GitHubClient) async throws(GitHubError)
+        -> PRLifecycle
+    {
+        let data = try await client.read(stateQuery(pr))
         let answer = try? JSONDecoder().decode(JSONValue.self, from: data)
         let pull = answer?.object?["data"]?.object?["repository"]?.object?["pullRequest"]
         guard let text = pull?.object?["state"]?.string, let state = PRLifecycle(rawValue: text)
         else { throw .badAnswer }
         return state
+    }
+
+    // The same read for a PR that the search of the poll does not list (ReviewRounds.dropIfClosed).
+    // The result is nil when GitHub says that the PR, or its repository, is not found: the
+    // answer has a NOT_FOUND error and a null for the PR or the repository. Each other answer
+    // without a known state is a bad answer.
+    package static func stateOrGone(_ pr: PRKey, client: GitHubClient) async throws(GitHubError)
+        -> PRLifecycle?
+    {
+        let data = try await client.read(stateQuery(pr))
+        let answer = try? JSONDecoder().decode(JSONValue.self, from: data)
+        let repository = answer?.object?["data"]?.object?["repository"]
+        let pull = repository?.object?["pullRequest"]
+        if let text = pull?.object?["state"]?.string, let state = PRLifecycle(rawValue: text) {
+            return state
+        }
+        let notFound =
+            answer?.object?["errors"]?.array?.contains {
+                $0.object?["type"]?.string == "NOT_FOUND"
+            } ?? false
+        if notFound, repository == .null || (repository?.object != nil && pull == .null) {
+            return nil
+        }
+        throw .badAnswer
     }
 
     // The PR with every thread, comment and review that the limits allow.

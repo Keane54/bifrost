@@ -62,7 +62,8 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
     // True when the read of the PR records lost a record: prs was not an object, a key was not a
     // PR, two keys named one PR, or a record was not an object. A lost record can hold the
     // conflict mark of a pair that Bifrost tried, so each PR of the next complete poll counts its
-    // pair as tried (ReviewRounds.queueConflicts). The file does not keep it.
+    // pair as tried (ReviewRounds.queueConflicts). The file keeps it (only when true) until a
+    // complete poll settles it.
     package var marksInDoubt = false
 
     package init() {}
@@ -71,7 +72,7 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
     private static let known: Set<String> = [
         "version", "turnedOnAt", "baseline", "requests", "pauses", "prs", "posted", "drafts",
         "voicePairs", "queue", "repos", "setUpAt", "fixFrom", "autoFixConsent",
-        "conflictConsent", "ciConsent", "hidden",
+        "conflictConsent", "ciConsent", "hidden", "marksInDoubt",
     ]
 
     // A value that is not an object gives the empty state. A version other than 1 gives the
@@ -94,7 +95,7 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
             PRState(stored: value, dropped: &dropped)
         }
         for name in lost.names { dropped.add(name) }
-        marksInDoubt = lost.names.contains("prs")
+        marksInDoubt = lost.names.contains("prs") || object.flag("marksInDoubt", &dropped)
         posted = Self.newest(object.entries("posted", &dropped), Self.maxPosted, \.at)
         drafts = Self.newest(object.entries("drafts", &dropped), Self.maxDrafts, \.at)
         voicePairs = Self.newest(
@@ -129,7 +130,7 @@ package struct ReviewsState: Sendable, Equatable, StoredValue {
                 "conflictConsent": conflictConsent.map(JSONValue.bool) ?? .null,
                 "ciConsent": ciConsent.map(JSONValue.bool) ?? .null,
                 "hidden": .times(hidden),
-            ]))
+            ].merging(marksInDoubt ? ["marksInDoubt": .bool(true)] : [:]) { $1 }))
     }
 
     // True when new work on a PR of the user can start a request round by itself: the setting

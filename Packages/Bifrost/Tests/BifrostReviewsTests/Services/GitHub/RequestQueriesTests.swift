@@ -225,4 +225,50 @@ struct RequestQueriesTests {
             _ = try await RequestQueries.full(pr, client: GitHubClient(access: noHead))
         }
     }
+
+    // The state read for a PR that the search leaves out: only NOT_FOUND with a null PR or a null
+    // repository says that the PR is gone.
+    @Test func theStateReadTellsNotFoundFromARefusal() async throws {
+        let pr = try ReviewData.pr("owner-a/repo-a#9")
+        func read(_ answer: JSONValue) async throws -> PRLifecycle? {
+            let github = AnsweringGitHub { _ throws(GitHubError) in ReviewData.json(answer) }
+            return try await RequestQueries.stateOrGone(pr, client: GitHubClient(access: github))
+        }
+        let missing: JSONValue = [["type": "NOT_FOUND", "message": "Could not resolve."]]
+        let noPR: JSONValue = ["repository": ["pullRequest": .null]]
+        #expect(try await read(["data": noPR, "errors": missing]) == nil)
+        #expect(try await read(["data": ["repository": .null], "errors": missing]) == nil)
+        #expect(
+            try await read(["data": ["repository": ["pullRequest": ["state": "MERGED"]]]])
+                == .merged)
+    }
+
+    // A refusal that comes with data (SAML single sign-on, a rate limit) or an answer with no
+    // state is a bad answer, so the PR keeps its work.
+    @Test(arguments: ["forbidden", "rateLimited", "noState"])
+    func aRefusalIsNotNotFound(_ kind: String) async throws {
+        let pr = try ReviewData.pr("owner-a/repo-a#9")
+        let answer: JSONValue
+        switch kind {
+        case "forbidden":
+            answer = [
+                "data": ["repository": .null],
+                "errors": [["type": "FORBIDDEN", "message": "Resource protected by SAML."]],
+            ]
+        case "rateLimited":
+            answer = [
+                "data": ["repository": ["pullRequest": .null]],
+                "errors": [["type": "RATE_LIMITED", "message": "API rate limit exceeded."]],
+            ]
+        default:
+            answer = [
+                "data": ["repository": ["pullRequest": [:]]],
+                "errors": [["type": "NOT_FOUND", "message": "Could not resolve."]],
+            ]
+        }
+        let github = AnsweringGitHub { _ throws(GitHubError) in ReviewData.json(answer) }
+        await #expect(throws: GitHubError.badAnswer) {
+            _ = try await RequestQueries.stateOrGone(pr, client: GitHubClient(access: github))
+        }
+    }
 }

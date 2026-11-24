@@ -114,12 +114,15 @@ package enum ConflictMerge {
         guard RepoStore.statusPaths(status.stdout).isSubset(of: conflicted) else {
             throw .otherFiles
         }
-        switch await CommitFileCheck.check(start.conflicted, in: pr, git: git) {
+        let checked = await CommitFileCheck.prove(start.conflicted, in: pr, git: git)
+        switch checked.refusal {
         case nil: break
         case .unchecked?: throw .git(uncheckedLine)
         case let refusal?: throw .commitRefused(refusal)
         }
-        let added = await git.run(.add(start.conflicted), in: worktree)
+        // The proof of the one submodule check covers the add. Between them, only git commands
+        // that read run, and none of them changes the index or HEAD.
+        let added = await git.run(.add(start.conflicted), in: worktree, proof: checked.proof)
         guard added.succeeded else { throw .git(RepoStore.reason(added)) }
         let written = await git.run(.writeTree, in: worktree)
         let tree = written.stdout.trimmed()

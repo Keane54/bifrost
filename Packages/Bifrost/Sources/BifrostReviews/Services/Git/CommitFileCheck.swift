@@ -14,15 +14,31 @@ package enum CommitFileCheck {
     @concurrent package static func check(_ paths: [String], in pr: PRKey, git: RepoGit) async
         -> CommitFileRefusal?
     {
+        await prove(paths, in: pr, git: git).refusal
+    }
+
+    // The same check, with the proof of its one submodule check. The proof is nil when the check
+    // ran no submodule check, found a submodule, or could not check (the refusal is then set).
+    // The caller uses it only with no refusal.
+    @concurrent package static func prove(_ paths: [String], in pr: PRKey, git: RepoGit) async
+        -> (refusal: CommitFileRefusal?, proof: CommitProof?)
+    {
         for path in paths {
-            if let refusal = CommitFileRule.pathRefusal(path) { return refusal }
+            if let refusal = CommitFileRule.pathRefusal(path) { return (refusal, nil) }
         }
-        guard !paths.isEmpty else { return nil }
-        switch await git.holdsSubmodule(pr) {
-        case true?: return .repositoryWithSubmodule
-        case nil: return .unchecked
+        guard !paths.isEmpty else { return (nil, nil) }
+        let (holds, proof) = await git.submoduleCheck(pr)
+        switch holds {
+        case true?: return (.repositoryWithSubmodule, nil)
+        case nil: return (.unchecked, nil)
         case false?: break
         }
+        return (await files(paths, in: pr, git: git), proof)
+    }
+
+    private static func files(_ paths: [String], in pr: PRKey, git: RepoGit) async
+        -> CommitFileRefusal?
+    {
 
         let listed = await git.run(.lsFilesStage(paths), in: .worktree(pr))
         guard listed.succeeded, let modes = indexModes(listed.stdout) else { return .unchecked }

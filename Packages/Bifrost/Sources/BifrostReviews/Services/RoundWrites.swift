@@ -36,6 +36,18 @@
 //   never resets the worktree: after a good commit the changes that the file does not list stay,
 //   and a commit that is refused or that does not reach GitHub becomes changes again
 //   (RepoStore.uncommit).
+// - A fix commit never holds an edit of a person. Before the commit, a listed path with a change
+//   that no round made (RepoStore.unknownChanges) stops the fix, and after the commit a listed
+//   path with another stamp than before it does the same: the commit goes back to changes
+//   (RepoStore.uncommit), the writes that say "Fixed by" drop, the other writes go, the items
+//   wait in held, and the row shows Needs you (RoundFailure.fixHadEdits). The outbox keeps the
+//   stamps of its listed paths (Outbox.stamps): the round saves them from its record at the end
+//   of the turn, an own request from the read of its file. They stay after a restart. A change
+//   gives uncommit, and an own outbox stays for a later run. An outbox with no stamps takes the
+//   files that are there with no record as the changes of the round.
+// - A round outbox that drops before its push went also resets the worktree to the head of the
+//   round (its commit is made), unless a person uses the session, so the next own request
+//   commits on its head.
 // - A reset after the fix commit of a round runs only when the worktree has no change that no
 //   round made (RepoStore.resetIfKnown), so a change of a person after the turn stays.
 import BifrostFoundation
@@ -89,7 +101,9 @@ package final class RoundWrites {
         let failure: RoundFailure?
         do throws(WriteStop) {
             try await sending.send()
-            if let conflict = sending.conflict {
+            if !sending.edited.isEmpty {
+                (end, failure) = (.drop, .fixHadEdits)
+            } else if let conflict = sending.conflict {
                 (end, failure) = (.drop, .pushFailed(conflict))
             } else {
                 (end, failure) = (.done, nil)
@@ -105,6 +119,20 @@ package final class RoundWrites {
         // The change of the user did not reach GitHub, and its outbox goes: it stays in the
         // worktree as changes.
         if outbox.own && end == .drop { await repos.uncommit(pr, to: outbox.headSHA) }
+        // A round whose fix commit is made but not pushed (a conflict, a refusal, a drop of the
+        // writes) leaves the fix as HEAD: the worktree goes back to the head of the round, so the
+        // next own request commits on it. A pushed fix stays.
+        let posts = sending.outbox.posts
+        let committed = posts.contains { post in
+            // The commit ID is there once the commit was made (a dropped fix keeps it).
+            if case .commit(_, _, let made) = post.write { made != nil } else { false }
+        }
+        let pushed = posts.contains { post in
+            if case .push = post.write { post.state == .done } else { false }
+        }
+        if !outbox.own && end == .drop && committed && !pushed && !sending.resetBlocked {
+            await resetWorktree(pr, to: outbox.headSHA, own: false)
+        }
         if let failure {
             Self.logger.notice(
                 """
@@ -132,7 +160,9 @@ package final class RoundWrites {
             await endRound(pr, nil, hold: [])
         } catch {
             if Task.isCancelled { return }
-            await endRound(pr, error, hold: [])
+            // The files of a fix that has an edit that no round made, for the row.
+            let files = error.waitsForYou ? (await repos.unknownChanges(pr) ?? []) : []
+            await endRound(pr, error, hold: [], files: files)
         }
     }
 
@@ -176,11 +206,19 @@ package final class RoundWrites {
     }
 
     // The end of a resumed round: the round clears, with the reason of a failure.
-    private func endRound(_ pr: PRKey, _ failure: RoundFailure?, hold: [NodeID]) async {
+    private func endRound(
+        _ pr: PRKey, _ failure: RoundFailure?, hold: [NodeID], files: [String] = []
+    ) async {
         await store.update { state in
             guard var prState = state.prs[pr], prState.round?.kind == .request else { return }
             prState.round = nil
-            prState.lastError = failure?.message(for: .request)
+            if let failure, failure.waitsForYou {
+                prState.waiting = WaitsForYou(
+                    reason: failure.message(for: .request), files: files, kind: .other)
+                prState.lastError = nil
+            } else {
+                prState.lastError = failure?.message(for: .request)
+            }
             prState.handleOlder = false
             prState.handleCopilot = false
             prState.hold(hold)
@@ -211,6 +249,10 @@ package final class RoundWrites {
         try await RequestQueries.full(pr, client: github)
     }
 
+    fileprivate func readHead(_ pr: PRKey) async throws(GitHubError) -> HeadRead {
+        try await HeadQueries.read(pr, client: github)
+    }
+
     fileprivate func lifecycle(_ pr: PRKey) async throws(GitHubError) -> PRLifecycle {
         try await RequestQueries.state(pr, client: github)
     }
@@ -224,16 +266,58 @@ package final class RoundWrites {
         if Task.isCancelled { throw .halted }
     }
 
+    // The result of the fix commit: the commit, or the listed paths with an edit that no round
+    // made. In the second case the worktree holds no commit of the run.
+    fileprivate enum CommitResult {
+        case made(CommitID)
+        case edited([String])
+    }
+
     fileprivate func commit(
-        _ paths: [String], message: String, head: CommitID, pr: PRKey, own: Bool
-    ) async throws(FixCommitFailure) -> CommitID {
+        _ paths: [String], message: String, head: CommitID, pr: PRKey, own: Bool,
+        stamps: [String: PathStamp]?
+    ) async throws(FixCommitFailure) -> CommitResult {
+        // The stamps of the listed files before git reads them. The outbox keeps them from the
+        // result of the round or from the read of the own request file, also after a restart.
+        var before = stamps
+        if let kept = before {
+            let changed = await repos.pathsChanged(pr, paths, since: kept)
+            if !changed.isEmpty {
+                // A commit of an earlier run (a quit in the commit) must not stay as HEAD.
+                guard await repos.uncommit(pr, to: head) else { throw .uncommitFailed }
+                return .edited(changed)
+            }
+        } else if !own {
+            // An outbox with no stamps comes from a version that saved none. With no record of
+            // the worktree (a restart), the files that are there now count as the round's.
+            if !repos.hasRecord(pr) { await repos.markLeftovers(pr) }
+            // The stamps come first: an edit before them shows in the check of the record, and
+            // an edit after them shows in the compare after the commit. No edit fits between.
+            before = await repos.pathStamps(pr, paths)
+            guard let unknown = await repos.unknownChanges(pr) else {
+                throw .git("Bifrost couldn't read the changes of its copy.")
+            }
+            let listed = Set(paths)
+            let edited = unknown.filter { listed.contains($0) }
+            if !edited.isEmpty { return .edited(edited) }
+        }
+        if before == nil { before = await repos.pathStamps(pr, paths) }
         let fix = try await FixCommit.make(
             paths: paths, message: message, head: head, pr: pr, git: repos.git)
+        // A listed file that changed while git made the commit can be in it: the commit goes back
+        // to changes, so no edit of a person goes to GitHub inside it.
+        if let before {
+            let changed = await repos.pathsChanged(pr, paths, since: before)
+            if !changed.isEmpty {
+                guard await repos.uncommit(pr, to: head) else { throw .uncommitFailed }
+                return .edited(changed)
+            }
+        }
         // The files of the session that the commit does not hold go, unless a person uses the
         // session now or the worktree has a change that no round made. The changes of an own
         // request that the file does not list stay.
         if !own && !inUse(pr) { await repos.resetIfKnown(pr, to: fix) }
-        return fix
+        return .made(fix)
     }
 
     // Reset the worktree of the PR to the head of the round, also when a refused fix commit is
@@ -286,6 +370,10 @@ private final class OutboxSend {
     private(set) var asked: [String: CommitID] = [:]
     // The push that did not go, so the writes of the fix dropped.
     private(set) var conflict: PushRefusal?
+    // The listed paths with an edit that no round made, so the writes of the fix dropped.
+    private(set) var edited: [String] = []
+    // True when a commit with an edit of a person stays as HEAD: no reset may remove it.
+    private(set) var resetBlocked = false
 
     private let viewer: String
     private let parts: RoundWrites
@@ -307,7 +395,18 @@ private final class OutboxSend {
 
     func send() async throws(WriteStop) {
         if Task.isCancelled { throw .halted }
-        let full = try await freshRead()
+        // An own outbox has only a commit and a push, which need the state, the author, the fork
+        // flag and the push target of the PR. The small read of the head gives them, so no thread
+        // page is read. A write of another kind reads the whole PR, as before.
+        var full: FullPR?
+        let target: PushTarget?
+        if outbox.own {
+            target = try await freshHead()
+        } else {
+            let read = try await freshRead()
+            full = read
+            target = PushTarget(read)
+        }
         while let index = OutboxRules.next(outbox) {
             if Task.isCancelled { throw .halted }
             let post = outbox.posts[index]
@@ -315,44 +414,81 @@ private final class OutboxSend {
             case .commit(let paths, let message, _):
                 try await commit(index, paths: paths, message: message)
             case .push(_, let signed):
-                try await push(index, signed: signed, full: full)
+                try await push(index, signed: signed, target: target)
             case .reply(let item, _, _, _):
-                try await reply(index, item: item, full: full)
+                try await reply(index, item: item, full: try await whole(&full))
             case .resolve(let item):
-                try await resolve(index, item: item, full: full)
+                try await resolve(index, item: item, full: try await whole(&full))
             case .comment(let item, _, _, _, _):
-                try await comment(index, item: item, full: full)
+                try await comment(index, item: item, full: try await whole(&full))
             case .rerequest:
-                try await rerequest(index, full: full)
+                try await rerequest(index, full: try await whole(&full))
             }
         }
+    }
+
+    // The whole read of the PR of this run: the one that the run made, or else a fresh one.
+    private func whole(_ read: inout FullPR?) async throws(WriteStop) -> FullPR {
+        if let read { return read }
+        let full = try await freshRead()
+        read = full
+        return full
     }
 
     // MARK: - The writes
 
     private func commit(_ index: Int, paths: [String], message: String) async throws(WriteStop) {
         try await mark(index, .sending)
-        let fix: CommitID
+        let made: RoundWrites.CommitResult
         do throws(FixCommitFailure) {
-            fix = try await parts.commit(
-                paths, message: message, head: outbox.headSHA, pr: pr, own: outbox.own)
+            made = try await parts.commit(
+                paths, message: message, head: outbox.headSHA, pr: pr, own: outbox.own,
+                stamps: outbox.stamps)
         } catch {
             // A quit stopped git: the worktree keeps the fix, and the commit stays sending, so
             // the next run makes it or finds it.
             if Task.isCancelled { throw .halted }
-            await parts.resetWorktree(pr, to: outbox.headSHA, own: outbox.own)
+            // A commit with an edit that git could not move back stays as it is: a reset would
+            // remove the edit from the worktree.
+            if error == .uncommitFailed {
+                resetBlocked = true
+            } else {
+                await parts.resetWorktree(pr, to: outbox.headSHA, own: outbox.own)
+            }
             switch error {
+            case .uncommitFailed:
+                parts.event("Reviews: Bifrost couldn't move the fix commit of \(pr.text) back.")
+                throw .drop(.commitFailed)
             case .refused(let refusal): throw .drop(.commitRefused(refusal))
             case .git(let line):
                 parts.event("Reviews: the fix commit of \(pr.text) failed. git said: \(line)")
                 throw .drop(.commitFailed)
             }
         }
+        let fix: CommitID
+        switch made {
+        case .made(let commit): fix = commit
+        case .edited(let files):
+            parts.event(
+                "Reviews: a file of the fix on \(pr.text) has a change that Claude did not make, "
+                    + "so Bifrost made no commit of it: "
+                    + "\(files.prefix(3).joined(separator: ", ")).")
+            // An own request stays for a run later. The stamps go, so the run commits the files
+            // as they are then.
+            if outbox.own {
+                outbox.stamps = nil
+                throw .keep(.ownFilesChanged)
+            }
+            // A round drops its fix: the writes that say "Fixed by" go, and the others go on.
+            OutboxRules.dropFix(&outbox)
+            edited = files
+            return try await parts.save(outbox, for: pr)
+        }
         outbox.posts[index].write = .commit(paths: paths, message: message, commit: fix)
         try await mark(index, .done)
     }
 
-    private func push(_ index: Int, signed: Bool, full: FullPR) async throws(WriteStop) {
+    private func push(_ index: Int, signed: Bool, target: PushTarget?) async throws(WriteStop) {
         var fix: CommitID?
         var paths: [String] = []
         for post in outbox.posts {
@@ -360,7 +496,7 @@ private final class OutboxSend {
                 (fix, paths) = (commit, listed)
             }
         }
-        guard let fix, let target = PushTarget(full) else {
+        guard let fix, let target else {
             throw .drop(.pushFailed(.target))
         }
         try await beforeWrite(index)
@@ -489,6 +625,25 @@ private final class OutboxSend {
     }
 
     // MARK: - The steps
+
+    // A fresh read of the head of the PR for an own outbox, with the checks that stop the writes
+    // (as freshRead). It gives the push target, or nil when the head branch is not a branch name.
+    private func freshHead() async throws(WriteStop) -> PushTarget? {
+        let read: HeadRead
+        do throws(GitHubError) {
+            read = try await parts.readHead(pr)
+        } catch {
+            if Task.isCancelled { throw .halted }
+            parts.event("Reviews: Bifrost couldn't read \(pr.text). \(error.message)")
+            throw stop(error)
+        }
+        if Task.isCancelled { throw .halted }
+        readFresh = true
+        guard read.state == .open else { throw .drop(.prClosed) }
+        guard read.author.lowercased() == viewer.lowercased() else { throw .drop(.notYours) }
+        guard !read.isFork else { throw .drop(.fork) }
+        return PushTarget(read)
+    }
 
     // A fresh read of the PR, and the checks that stop the writes.
     private func freshRead() async throws(WriteStop) -> FullPR {

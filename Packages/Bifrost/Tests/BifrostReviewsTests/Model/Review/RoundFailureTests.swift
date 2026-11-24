@@ -36,7 +36,8 @@ struct RoundFailureTests {
     // round stay.
     @Test func aRequestRoundHasItsOwnTexts() {
         let shared: [RoundFailure] = [
-            .stopped, .timeout, .noResult, .badResult(ResultRefusal("a missing item")), .blocked,
+            .stopped, .sessionEnded, .timeout, .noResult,
+            .badResult(ResultRefusal("a missing item")), .blocked,
             .prepareFailed, .inputFailed, .startFailed,
         ]
         for failure in shared {
@@ -60,6 +61,16 @@ struct RoundFailureTests {
                 == "Claude's session for this pull request was busy, so Bifrost didn't start the "
                 + "round. Choose Try again when it's finished.")
         #expect(!RoundFailure.endFailed.message(for: .request).contains("Nothing was posted"))
+    }
+
+    // A session that went has a text of its own, not the stop text.
+    @Test func aSessionThatEndedIsNotAStop() {
+        #expect(
+            RoundFailure.sessionEnded.message(for: .request)
+                == "Claude's session ended before the round finished, so Bifrost posted nothing. "
+                + "Choose Try again to start over.")
+        #expect(!RoundFailure.sessionEnded.message.contains("You stopped"))
+        #expect(RoundFailure.sessionEnded.message != RoundFailure.stopped.message)
     }
 
     // A conflict round keeps its failures in its mark (ConflictFailure). Only the safety net gives

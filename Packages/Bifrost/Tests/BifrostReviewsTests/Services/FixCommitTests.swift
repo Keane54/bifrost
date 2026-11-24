@@ -36,6 +36,21 @@ struct FixCommitTests {
         #expect(again == fix)
     }
 
+    // The fix commit lists the head tree one time (the one submodule check) and the whole index
+    // two times: in that check, and again before git commit, because git add changed the index.
+    @Test func aFixCommitRunsTheSubmoduleListingsOnlyAsOftenAsNeeded() async throws {
+        let f = try await PushTestRepo.make()
+        defer { f.remove() }
+        try f.repo.write("a.txt", "fixed\n", in: f.repo.worktree)
+        _ = try await FixCommit.make(
+            paths: ["a.txt"], message: "fix: a", head: f.head, pr: f.pr, git: f.git)
+        let runs = f.runner.all
+        let trees = runs.filter { $0.contains("ls-tree") && $0.contains("HEAD") }
+        let indexes = runs.filter { $0.contains("ls-files") && $0.last == "--" }
+        #expect(trees.count == 1)
+        #expect(indexes.count == 2)
+    }
+
     // A listed workflow file stops the commit before git add: no commit, and the round posts
     // nothing. The outbox goes and its item waits in held.
     @Test func aRefusedFileStopsTheCommitAndPostsNothing() async throws {

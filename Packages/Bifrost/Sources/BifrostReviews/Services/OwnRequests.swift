@@ -20,6 +20,10 @@
 //   An own request on it is refused (OwnRequestStop.conflictMerge): a commit on it would push
 //   that merge. A conflict round that finds the file at the end of its turn refuses it too
 //   (refuse).
+// - A listed file that changes between the read of the file and the end of the commit never goes
+//   into the commit: the outbox keeps the stamps of the listed paths (Outbox.stamps),
+//   and a change gives uncommit and a later run (the next poll or turn end while the session is
+//   free).
 // - An own outbox that a quit cut off (with no reason on the row) sends the rest at the next run.
 //   An outbox that waits for Try again, or the outbox of a round, stays as it is. Try again
 //   sends a kept own outbox through resend, from the first step of a round.
@@ -96,6 +100,7 @@ final class OwnRequests {
             return
         }
         // An own request has no diff, so the merge base of its outbox is its head.
+        let stamps = await repos.pathStamps(pr, plan.paths)
         let outbox = Outbox(
             headSHA: head, mergeBase: head, startedAt: now(), seen: [:],
             posts: [
@@ -106,12 +111,12 @@ final class OwnRequests {
                     id: OutboxRules.pushID, state: .todo,
                     write: .push(commit: nil, signed: signed())),
             ],
-            own: true)
+            own: true, stamps: stamps)
         let saved = await store.update { state in
             var prState = state.prs[pr] ?? PRState()
             guard prState.outbox == nil else { return }
             prState.outbox = outbox
-            prState.waitsForYou = nil
+            prState.waiting = nil
             state.prs[pr] = prState
         }
         guard saved, store.state.prs[pr]?.outbox == outbox else {
@@ -129,7 +134,7 @@ final class OwnRequests {
     // on the row, or when a cancel (a quit) stopped them.
     func resend(_ pr: PRKey) async -> Bool {
         guard let outbox = store.state.prs[pr]?.outbox, outbox.own else { return true }
-        await store.update { $0.prs[pr]?.waitsForYou = nil }
+        await store.update { $0.prs[pr]?.waiting = nil }
         changed()
         return await send(outbox, for: pr)
     }
@@ -175,10 +180,13 @@ final class OwnRequests {
         } catch {
             // A quit: the outbox stays, and the next run sends the rest.
             if Task.isCancelled { return false }
+            // A listed file changed during the commit: the commit went back to changes, and the
+            // outbox stays for a run at the next turn end. The row shows no reason.
+            if error == .ownFilesChanged { return false }
             await stop(pr, .wrote(error), fromRound: fromRound)
             return false
         }
-        await store.update { $0.prs[pr]?.waitsForYou = nil }
+        await store.update { $0.prs[pr]?.waiting = nil }
         changed()
         eventLine(
             fromRound

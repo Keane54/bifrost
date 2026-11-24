@@ -253,11 +253,14 @@ struct MyPRRulesTests {
         #expect(try claude(state, R.pull(key.text, fork: true)) == .fork)
         state.prs[key, default: PRState()].lastError = "The push failed."
         #expect(try claude(state, R.pull(key.text, fork: true)) == .error("The push failed."))
-        state.prs[key]?.waitsForYou = "Your change is still here."
+        state.prs[key]?.waiting = WaitsForYou(reason: "Your change is still here.")
         #expect(try claude(state, pr) == .waitsForYou("Your change is still here."))
         #expect(try row(pr, state).unsavedFiles == 0)
         state.prs[key]?.waiting?.files = ["a.txt", "b.txt"]
         #expect(try row(pr, state).unsavedFiles == 2)
+        state.prs[key]?.waiting?.files = (0..<50).map { "f\($0).txt" }
+        #expect(try row(pr, state).unsavedFiles == 50)
+        state.prs[key]?.waiting?.files = ["a.txt", "b.txt"]
         for id in ["PRRT_1", "PRRT_2"] {
             let item = try R.node(id)
             state.prs[key]?.questions[item] = Question(
@@ -296,7 +299,7 @@ struct MyPRRulesTests {
         state.prs[key]?.outbox?.own = true
         state.prs[key]?.lastError = nil
         #expect(try row(pr, state).unsentUpdates == false)
-        state.prs[key]?.waitsForYou = "Bifrost couldn't push your change."
+        state.prs[key]?.waiting = WaitsForYou(reason: "Bifrost couldn't push your change.")
         #expect(try row(pr, state).unsentUpdates == true)
     }
 
@@ -344,7 +347,8 @@ struct MyPRRulesTests {
         let order = [keys[5], keys[3], keys[2], keys[4], keys[1], keys[0]]
         #expect(R.mine(answer, state).map(\.id) == order)
         // Work that waits for the user comes first too, with the last update first in the group.
-        state.prs[keys[1], default: PRState()].waitsForYou = "Your change is still here."
+        state.prs[keys[1], default: PRState()].waiting = WaitsForYou(
+            reason: "Your change is still here.")
         let waits = [keys[1], keys[5], keys[3], keys[2], keys[4], keys[0]]
         #expect(R.mine(answer, state).map(\.id) == waits)
     }
@@ -576,7 +580,7 @@ struct MyPRRulesTests {
             chain: [head], retries: 1, retrying: head,
             question: CIQuestion(
                 text: "Is it flaky?", head: head, jobs: ["test"], at: R.at(-5), byClaude: true))
-        prState.waitsForYou = "Your change is still here."
+        prState.waiting = WaitsForYou(reason: "Your change is still here.")
         prState.lastError = "The push failed."
         state.prs[try key()] = prState
         var fork = true
@@ -597,7 +601,7 @@ struct MyPRRulesTests {
         #expect(try shown() == .unpushedComments)
         state.prs[try key()]?.waiting?.kind = .askAgain
         #expect(try shown() == .askAgain)
-        state.prs[try key()]?.waitsForYou = nil
+        state.prs[try key()]?.waiting = nil
         #expect(try shown() == .error("The push failed."))
         state.prs[try key()]?.lastError = nil
         #expect(try shown() == .retryingCI)

@@ -15,8 +15,10 @@ package enum RoundFailure: Error, Sendable, Equatable {
     case prClosed
     // The session ended with no result file.
     case noResult
-    // The user stopped the session of the round, or it went.
+    // The user stopped the session of the round.
     case stopped
+    // The session of the round went before the round ended (its row is gone, not stopped).
+    case sessionEnded
     // Request rounds: the user stopped the round while it sent the rest of the writes of an
     // earlier round. Those writes went, and Claude did not start.
     case stoppedAfterEarlierWrites
@@ -98,10 +100,17 @@ package enum RoundFailure: Error, Sendable, Equatable {
     // user asked for in the session with no own request file. The changes stay, and the round
     // does not start. The row shows Needs you (waitsForYou).
     case changesNotOnGitHub
+    // Request rounds: a listed file of the fix has an edit that no round made (a request that
+    // the user typed in the turn, or an edit before the commit). Bifrost made no fix commit, so
+    // no edit of the user goes into it. The other writes went. The row shows Needs you.
+    case fixHadEdits
+    // Own requests: a listed file changed while Bifrost made the commit. The commit went back to
+    // changes, and the next turn end sends it again.
+    case ownFilesChanged
 
     // True when the row shows the failure as Needs you (PRState.waitsForYou), not as an error:
     // only the user can clear it.
-    package var waitsForYou: Bool { self == .changesNotOnGitHub }
+    package var waitsForYou: Bool { self == .changesNotOnGitHub || self == .fixHadEdits }
 
     // The text of the failure for a round of the kind. The request rounds have their own texts
     // for the failures that both kinds share.
@@ -118,6 +127,9 @@ package enum RoundFailure: Error, Sendable, Equatable {
         case .stopped:
             return "You stopped Claude, so Bifrost posted nothing. Choose Try again to start "
                 + "over."
+        case .sessionEnded:
+            return "Claude's session ended before the round finished, so Bifrost posted "
+                + "nothing. Choose Try again to start over."
         case .timeout:
             return "Claude took more than 30 minutes, so Bifrost stopped it and posted nothing."
         case .noResult: return "Claude finished without a result, so Bifrost posted nothing."
@@ -154,6 +166,8 @@ package enum RoundFailure: Error, Sendable, Equatable {
             "The review session ended without a result. Nothing was posted. Try again."
         case .stopped:
             "You stopped the review. Nothing was posted."
+        case .sessionEnded:
+            "Claude's session ended before the review finished. Nothing was posted. Try again."
         case .stoppedAfterEarlierWrites:
             "You stopped the round after Bifrost sent the rest of the earlier updates, so Claude "
                 + "didn't start. Choose Try again to start over."
@@ -250,6 +264,13 @@ package enum RoundFailure: Error, Sendable, Equatable {
             "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so "
                 + "Claude didn't start on the new comments. Ask Claude in its session to commit "
                 + "or undo them, then choose Handle now."
+        case .fixHadEdits:
+            "A file of Claude's fix changed in Bifrost's copy while the round ran, so Bifrost "
+                + "didn't commit the fix. Replies that need no fix went. Ask Claude in its "
+                + "session to commit or undo the changes, then choose Handle now."
+        case .ownFilesChanged:
+            "A file of your change changed while Bifrost made the commit, so Bifrost will send "
+                + "it again at the end of the next turn."
         }
     }
 

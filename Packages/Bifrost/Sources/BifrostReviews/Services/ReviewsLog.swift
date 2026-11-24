@@ -20,6 +20,9 @@ package enum ReviewsLogEvent: Sendable, Equatable {
     // At the start of a round, Bifrost could not keep the worktree of the last round of the PR,
     // so it made the worktree again (RepoStore.placeWorktree). The turn starts a new session.
     case worktreeMadeAgain(PRKey)
+    // A folder at the place of the worktree of the PR did not belong to the clone, so Bifrost
+    // did not delete it. It moved the folder to this path, with all its files.
+    case worktreeKeptAside(PRKey, path: String)
 }
 
 // Where the Reviews watcher sends its events. The app uses SystemReviewsLog. A test records the
@@ -63,6 +66,13 @@ package struct SystemReviewsLog: ReviewsLog {
                 """
                 Bifrost couldn't keep the worktree of \(pr.text, privacy: .private), so it made \
                 the worktree again. The next turn starts a new session.
+                """)
+        case .worktreeKeptAside(let pr, let path):
+            logger.notice(
+                """
+                A folder at the place of the worktree of \(pr.text, privacy: .private) did not \
+                belong to the clone. Bifrost kept it at \(path, privacy: .private). Use it only to \
+                copy files out.
                 """)
         }
     }

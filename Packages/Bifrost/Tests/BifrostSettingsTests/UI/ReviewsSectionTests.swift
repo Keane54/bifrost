@@ -171,6 +171,8 @@ struct ReviewsSectionTests {
         #expect(confirm.title == "Remove all clones?")
         #expect(confirm.confirm == "Remove")
         #expect(confirm.body.hasPrefix("Bifrost will delete its copies of your repositories"))
+        #expect(confirm.body.contains("review and request sessions"))
+        #expect(confirm.body.contains("Changes in a copy that aren't on GitHub yet go too."))
     }
 
     @Test func theConfirmsHaveTheTextsOfTheElectronApp() {

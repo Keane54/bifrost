@@ -54,7 +54,6 @@ package enum QuestionAnswer: Sendable, Equatable {
 package final class ReviewRounds {
     // The time limit of a review session and of a request session.
     package static let limit = Duration.seconds(30 * 60)
-    package static let requestLimit = Duration.seconds(30 * 60)
 
     package let sessions: PRSessions
     // The writes of the request rounds (RequestRounds.swift).
@@ -107,6 +106,9 @@ package final class ReviewRounds {
     // The time of the last failed full read of a request round of each PR. The poll waits
     // WorkRule.readRetry after it before it queues the PR again (waitsAfterReadFailure).
     var readFailures: [PRKey: Duration] = [:]
+    // The pair of the poll of each PR whose last automatic conflict round ended with no text, and
+    // the time of that end. The poll waits WorkRule.readRetry after it (waitsAfterQuietEnd).
+    var quietPairs: [PRKey: (pair: ConflictRound.Pair, at: Duration)] = [:]
     private(set) var config: ReviewsConfig
     // Remove all clones while it runs (removeAll). Its result is the failure of the removal of
     // the folders.
@@ -291,16 +293,86 @@ package final class ReviewRounds {
             {
                 continue
             }
-            if let job = queue.runningJob(of: pr), job.kind.isMine == mine {
-                halt(pr, .requestGone)
-            } else if queue.runningJob(of: pr) == nil {
+            if mine {
+                // The search can leave out an open PR. The drop first reads the state of the PR.
+                drops[pr] = Task {
+                    await dropIfClosed(pr)
+                    drops[pr] = nil
+                    queue.wake()
+                }
+            } else if let job = queue.runningJob(of: pr) {
+                if !job.kind.isMine { halt(pr, .requestGone) }
+            } else {
                 queue.cancel(pr)
                 drops[pr] = Task {
-                    if mine { await dropRequest(pr) } else { await drop(pr) }
+                    await drop(pr)
                     drops[pr] = nil
                 }
             }
         }
+    }
+
+    // The search did not list the PR of the user. One read gives its state. Only a PR that is
+    // merged, closed or not found loses its work. After a failed read, or for an open PR, the work
+    // stays and the next poll looks again. The work of a round that runs stops first, and the
+    // next poll drops the PR. When the worktree has changes that no round made, one line of the
+    // Event log names them.
+    private func dropIfClosed(_ pr: PRKey) async {
+        let lifecycle: PRLifecycle?
+        do throws(GitHubError) {
+            lifecycle = try await RequestQueries.stateOrGone(pr, client: github)
+        } catch {
+            Self.logger.notice(
+                """
+                Bifrost could not read the state of \(pr.text, privacy: .private): \
+                \(error.message, privacy: .private). It keeps it.
+                """)
+            return
+        }
+        guard lifecycle != .open, !removing, !stopped, !Task.isCancelled else { return }
+        // A round that posts, or an own request, ends its writes first.
+        if store.state.prs[pr]?.round?.phase == .posting || ownRuns[pr] != nil
+            || discards[pr] != nil
+        {
+            return
+        }
+        if let job = queue.runningJob(of: pr) {
+            if job.kind.isMine { halt(pr, .requestGone) }
+            return
+        }
+        queue.cancel(pr)
+        let (files, unread) = await changesOfNoRound(pr)
+        await dropRequest(pr)
+        if unread {
+            eventLine(
+                "Reviews: Bifrost deleted its copy of \(pr.text), but git didn't show the changes "
+                    + "in it first, so some may not be on GitHub.")
+        }
+        if !files.isEmpty {
+            let names = files.prefix(3).joined(separator: ", ")
+            let more = files.count > 3 ? ", and more" : ""
+            eventLine(
+                "Reviews: Bifrost deleted its copy of \(pr.text) with \(files.count) "
+                    + "\(files.count == 1 ? "change" : "changes") that no round made and that "
+                    + "are not on GitHub: \(names)\(more).")
+        }
+    }
+
+    // The files of the worktree of the PR that no round made: the unknown changes, the files that
+    // the row keeps, and the files of an own request that did not go. Each file is there once.
+    // The second value is true when git did not show the unknown changes.
+    private func changesOfNoRound(_ pr: PRKey) async -> (files: [String], unread: Bool) {
+        let prState = store.state.prs[pr]
+        let unknown = await repos.unknownChanges(pr)
+        var files = unknown ?? []
+        files += prState?.waiting?.files ?? []
+        if let outbox = prState?.outbox, outbox.own {
+            for post in outbox.posts {
+                if case .commit(let paths, _, _) = post.write { files += paths }
+            }
+        }
+        var seen: Set<String> = []
+        return (files.filter { seen.insert($0).inserted }, unknown == nil)
     }
 
     // The trust step of the repository ended: its rounds can start.
@@ -341,6 +413,7 @@ package final class ReviewRounds {
         // An own request ends its writes first, as a posting round does, and a discard ends.
         for run in ownRuns.values { await run.value }
         for discard in discards.values { _ = await discard.value }
+        for drop in drops.values { await drop.value }
         let running = queue.running
         for pr in running where store.state.prs[pr]?.round?.phase != .posting {
             halt(pr, .clonesRemoved)
@@ -441,11 +514,11 @@ package final class ReviewRounds {
     // MARK: - The queue
 
     // A job can start after the first poll, while its repository needs no trust step and no own
-    // request or discard of its PR runs.
+    // request, discard or drop of its PR runs.
     private func isReady(_ job: QueuedJob) -> Bool {
-        guard answer() != nil, !removing, ownRuns[job.pr] == nil, discards[job.pr] == nil else {
-            return false
-        }
+        guard answer() != nil, !removing, ownRuns[job.pr] == nil, discards[job.pr] == nil,
+            drops[job.pr] == nil
+        else { return false }
         // A round that runs or posts after a restart can always go on.
         switch store.state.prs[job.pr]?.round?.phase {
         case .running?, .posting?: return true
@@ -708,6 +781,16 @@ package final class ReviewRounds {
     }
 
     // MARK: - The gates of the request part
+
+    // The calls that a request round and a conflict round of the PR make back to the coordinator.
+    func roundHooks(_ pr: PRKey) -> RoundHooks {
+        RoundHooks(
+            viewer: { [weak self] in self?.answer()?.viewer },
+            stopRequested: { [weak self] in self?.userStopped(pr) ?? false },
+            takeTryOnce: { [weak self] in self?.setup.takeOneStart(pr.repo) ?? false },
+            startedSession: { [weak self] in self?.startedSession(pr.repo) },
+            changed: { [weak self] in self?.changed() })
+    }
 
     // The request round of the PR starts to send the writes of an earlier round: from now on, a
     // halt does not cancel it.

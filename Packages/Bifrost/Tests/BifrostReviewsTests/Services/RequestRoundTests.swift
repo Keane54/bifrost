@@ -100,6 +100,7 @@ private final class RequestFixture {
             RequestQueries.threadsName: .success(Self.threads(threads)),
             RequestQueries.commentsName: .success(Self.comments()),
             RequestQueries.stateName: .success(WritesData.lifecycle()),
+            HeadQueries.name: .success(WritesData.headRead(head: head)),
             "addPullRequestReviewThreadReply": .success(WritesData.replied("PRRC_R1")),
             "resolveReviewThread": .success(WritesData.resolved("PRRT_1")),
         ])
@@ -138,15 +139,15 @@ private final class RequestFixture {
         store: ReviewsStore, deps: FakeActionDeps, github: FakeGitHub, repos: RepoFixture,
         setup: RepoSetup, skills: URL, home: URL, config: ReviewsConfig, answer: PollAnswer,
         notices: Recorder<ReviewsNotice>, polls: Recorder<Bool>, events: Recorder<String>,
-        prompts: RecordingPromptInput, clock: GapClock
+        prompts: RecordingPromptInput, clock: GapClock, repoStore: RepoStore? = nil
     ) -> ReviewRounds {
         let sessions = PRSessions(
             store: store, registry: deps.registry, actions: deps.makeActions(),
             claude: deps.claudeRunner(), clock: deps.clock, now: { Rows.now }, testPrefix: true,
             input: { prompts })
         let rounds = ReviewRounds(
-            store: store, github: GitHubClient(access: github), repos: repos.store, setup: setup,
-            sessions: sessions, skills: skills, userHome: home, config: config,
+            store: store, github: GitHubClient(access: github), repos: repoStore ?? repos.store,
+            setup: setup, sessions: sessions, skills: skills, userHome: home, config: config,
             now: { Rows.now }, clock: clock)
         rounds.answer = { answer }
         rounds.notify = { notices.record($0) }
@@ -156,13 +157,15 @@ private final class RequestFixture {
     }
 
     // A quit and a new start of Bifrost on the same state.
-    func restart() async throws {
+    // freshRepoStore: the new start has a new RepoStore, so it has no record of the worktree.
+    func restart(freshRepoStore: Bool = false) async throws {
         rounds.stop()
         await rounds.waitForEnd()
+        let fresh = freshRepoStore ? restartedRepoStore() : nil
         rounds = Self.rounds(
             store: store, deps: deps, github: github, repos: repos, setup: setup, skills: skills,
             home: home, config: config, answer: answer, notices: notices,
-            polls: polls, events: events, prompts: prompts, clock: clock)
+            polls: polls, events: events, prompts: prompts, clock: clock, repoStore: fresh)
         rounds.start()
     }
 
@@ -282,7 +285,7 @@ private final class RequestFixture {
     // the turn (RoundEnd rule 4), not at a time after an idle row. The clock did not move since
     // the start of the turn.
     func turnWaitSawWork() async {
-        let limit = deps.clock.now.offset + ReviewRounds.requestLimit
+        let limit = deps.clock.now.offset + ReviewRounds.limit
         await waitUntil { self.deps.clock.nextDeadline?.offset == limit }
     }
 
@@ -466,6 +469,20 @@ private final class RequestFixture {
     // The line of the Event log for an own request of PR 7 that did not go.
     static func ownStopLine(_ reason: String) -> String {
         "Reviews: Bifrost didn't push the change you asked for on Owner-A/Repo-A#7. \(reason)"
+    }
+
+    // The writes of a new start of Bifrost: a new RepoStore has no record of the worktree.
+    func restartedRepoStore() -> RepoStore {
+        RepoStore(
+            layout: repos.layout, git: repos.git, cloneAddress: repos.address,
+            clock: ManualClock(), log: Recorder<ReviewsLogEvent>())
+    }
+
+    func restartedWrites() -> RoundWrites {
+        let fresh = restartedRepoStore()
+        return RoundWrites(
+            store: store, github: GitHubClient(access: github), repos: fresh, clock: GapClock(),
+            now: { Rows.now }, viewer: { Rows.viewer }, eventLine: { _ in })
     }
 
     // The text of src/a.swift in the worktree.
@@ -655,9 +672,9 @@ struct RequestRoundTests {
         let f = try await RequestFixture()
         let round = try await f.poll()
         await f.sessionWorks()
-        let limit = f.deps.clock.now.offset + ReviewRounds.requestLimit
+        let limit = f.deps.clock.now.offset + ReviewRounds.limit
         await waitUntil { f.deps.clock.nextDeadline?.offset == limit }
-        f.deps.clock.advance(by: ReviewRounds.requestLimit)
+        f.deps.clock.advance(by: ReviewRounds.limit)
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
         await round.value
@@ -677,6 +694,7 @@ struct RequestRoundTests {
         let f = try await RequestFixture()
         let round = try await f.poll()
         await f.sessionWorks()
+        f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle("MERGED"))
         f.rounds.afterPoll(Rows.answer(mine: []))
         await round.value
         #expect(f.deps.calls.claudeRuns.contains(["stop", "abcdef12"]))
@@ -1040,7 +1058,12 @@ struct RequestRoundTests {
             guard case .replyToThread(first, _) = write else { return }
             switch halt {
             case "stop": await rounds.stopSession(pr)
-            case "drop": rounds.afterPoll(Rows.answer(mine: []))
+            case "drop":
+                // Only the read of the drop sees the merge; the checks of the writes see it open.
+                f.github.queued[RequestQueries.stateName] = [
+                    .success(WritesData.lifecycle("MERGED"))
+                ]
+                rounds.afterPoll(Rows.answer(mine: []))
             default: removal.record(Task { await rounds.removeAll { nil } })
             }
         }
@@ -1446,6 +1469,7 @@ struct RequestRoundTests {
         let f = try await RequestFixture()
         _ = try await f.firstRound()
         let notes = f.worktree + "/notes.txt"
+        let callsBefore = f.github.calls.count
         try await f.personTurn {
             try RequestFixture.lineEleven("line eleven, renamed").write(
                 toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
@@ -1453,6 +1477,11 @@ struct RequestRoundTests {
             try f.writeOwnRequest(paths: ["src/a.swift"], message: "refactor: rename line 11")
         }
         await f.ownEnded()
+        // An own outbox reads the small head of the PR one time, and no page of threads.
+        let reads = f.github.calls.dropFirst(callsBefore).compactMap { call -> String? in
+            if case .read(let name) = call { name } else { nil }
+        }
+        #expect(reads == [HeadQueries.name])
         let pushed = try await f.branch()
         #expect(pushed != f.head)
         #expect(
@@ -1683,6 +1712,58 @@ struct RequestRoundTests {
         await f.end()
     }
 
+    // A discard whose reset fails (a lock file in the admin folder) keeps the files of the
+    // person and the reason of the row, and says so in the Event log. With the lock gone, the
+    // same discard works.
+    @Test func aFailedDiscardKeepsTheFilesAndTheReason() async throws {
+        let f = try await RequestFixture()
+        _ = try await f.firstRound()
+        try await f.personTurn { try f.personWorks() }
+        let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
+        await second.value
+        let lock = GitPlace.adminFolder(f.pr, f.repos.layout) + "/index.lock"
+        try "".write(toFile: lock, atomically: false, encoding: .utf8)
+        #expect(await f.rounds.discardChanges(f.pr, click: UserClick()) == .failed)
+        #expect(f.workOfThePersonStays)
+        #expect(f.store.state.prs[f.pr]?.waiting?.files == ["notes.txt", "src/a.swift"])
+        #expect(
+            f.events.values.last
+                == "Reviews: Bifrost couldn't discard the changes in its copy of "
+                + "Owner-A/Repo-A#7. git didn't reset it.")
+        try FileManager.default.removeItem(atPath: lock)
+        #expect(await f.rounds.discardChanges(f.pr, click: UserClick()) == .discarded)
+        #expect(!FileManager.default.fileExists(atPath: f.worktree + "/notes.txt"))
+        await f.end()
+    }
+
+    // The safety net of a big change (a new folder of many files) keeps the count and five names
+    // in the state, and Discard these changes still lists each real file of the copy.
+    @Test func aBigChangeKeepsFiveNamesAndDiscardListsEachFile() async throws {
+        let f = try await RequestFixture()
+        _ = try await f.firstRound()
+        try await f.personTurn {
+            try f.personWorks()
+            try FileManager.default.createDirectory(
+                atPath: f.worktree + "/big", withIntermediateDirectories: true)
+            for index in 0..<40 {
+                try "x\n".write(
+                    toFile: f.worktree + "/big/f\(index).txt", atomically: false, encoding: .utf8)
+            }
+        }
+        let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
+        await second.value
+        let waiting = try #require(f.store.state.prs[f.pr]?.waiting)
+        #expect(waiting.files.count == 5 && waiting.fileCount == 42)
+        let answer = try f.answer(threads: ["PRRT_1", "PRRT_2"])
+        #expect(Rows.mine(answer, f.store.state).first?.unsavedFiles == 42)
+        guard case .files(let listed) = await f.rounds.changesToDiscard(f.pr) else {
+            Issue.record("Discard listed no files.")
+            return
+        }
+        #expect(listed.count == 42 && listed.contains("big/f39.txt"))
+        await f.end()
+    }
+
     // A prompt box refuses the send of the round, and a person works in the session through the
     // box. When the session is free again, the round checks the worktree again before it types:
     // the changes of the person stay, nothing more is typed, and the row needs the user.
@@ -1714,7 +1795,7 @@ struct RequestRoundTests {
         _ = try await f.firstRound()
         let offered = Recorder<Bool>()
         f.github.onRead = { name in
-            guard name == RequestQueries.contextName, f.store.state.prs[f.pr]?.outbox != nil
+            guard name == HeadQueries.name, f.store.state.prs[f.pr]?.outbox != nil
             else { return }
             f.github.onRead = nil
             offered.record(Rows.mine(f.answer, f.store.state).first?.unsentUpdates == true)
@@ -1758,7 +1839,7 @@ struct RequestRoundTests {
                         write: .push(commit: nil, signed: false)),
                 ],
                 own: true)
-            state.prs[pr]?.waitsForYou = "Bifrost couldn't push your change."
+            state.prs[pr]?.waiting = WaitsForYou(reason: "Bifrost couldn't push your change.")
         }
         #expect(Rows.mine(f.answer, f.store.state).first?.unsentUpdates == true)
         await f.rounds.tryAgain(f.pr)
@@ -1862,8 +1943,8 @@ struct RequestRoundTests {
         f.rounds.checkOwnRequest(f.pr, in: fork)
         #expect(f.rounds.ownRuns[f.pr] == nil)
         #expect(FileManager.default.fileExists(atPath: f.ownRequestFile))
-        f.github.answers[RequestQueries.contextName] = .success(
-            RequestFixture.context(head: f.head, fork: true))
+        f.github.answers[HeadQueries.name] = .success(
+            WritesData.headRead(head: f.head, fork: true))
         let answer = f.answer
         f.rounds.answer = { answer }
         f.rounds.checkOwnRequest(f.pr)
@@ -1873,6 +1954,31 @@ struct RequestRoundTests {
         #expect(try await f.branch() == f.head)
         #expect(await f.worktreeHead() == f.head)
         #expect(f.fileA == changed)
+        await f.end()
+    }
+
+    // The head read of an own request checks the state and the author too: a closed PR, or a PR
+    // that is not the user's, never gets a commit or a push, and the change stays.
+    @Test(arguments: [("CLOSED", Rows.viewer, RoundFailure.prClosed),
+        ("OPEN", "someone-else", RoundFailure.notYours)])
+    func aClosedOrForeignPRGetsNoOwnPush(
+        state: String, author: String, failure: RoundFailure
+    ) async throws {
+        let f = try await RequestFixture()
+        _ = try await f.firstRound()
+        let changed = RequestFixture.lineEleven("line eleven, renamed")
+        try changed.write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        try f.writeOwnRequest(paths: ["src/a.swift"])
+        f.github.answers[HeadQueries.name] = .success(
+            WritesData.headRead(head: f.head, author: author, state: state))
+        let answer = f.answer
+        f.rounds.answer = { answer }
+        f.rounds.checkOwnRequest(f.pr)
+        await f.ownEnded()
+        #expect(try await f.branch() == f.head)
+        #expect(await f.worktreeHead() == f.head)
+        #expect(f.fileA == changed)
+        #expect(f.store.state.prs[f.pr]?.waitsForYou == OwnRequestStop.wrote(failure).message)
         await f.end()
     }
 
@@ -1889,12 +1995,199 @@ struct RequestRoundTests {
         await round.value
         #expect(f.store.state.prs[f.pr]?.requestSession != nil)
         #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
+        f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle("MERGED"))
         f.rounds.afterPoll(Rows.answer(mine: []))
         await waitUntil { f.store.state.prs[f.pr]?.questions.isEmpty == true }
         #expect(f.deps.calls.claudeRuns.contains(["rm", "abcdef12"]))
         #expect(f.store.state.prs[f.pr]?.requestSession == nil)
         #expect(!FileManager.default.fileExists(atPath: f.worktree))
         #expect(!FileManager.default.fileExists(atPath: f.input))
+        await f.end()
+    }
+
+    // A PR of the user with a session that waits for an answer, and a change of no round in its
+    // worktree when withChange is true.
+    private func fixtureWithSession(withChange: Bool = false) async throws -> RequestFixture {
+        let f = try await RequestFixture()
+        let round = try await f.poll()
+        await f.sessionWorks()
+        try await f.endTurn(
+            result: f.result([
+                ["id": "PRRT_1", "outcome": "needs-you", "question": "Rename it or keep it?"]
+            ]))
+        await round.value
+        if withChange {
+            try "mine\n".write(
+                toFile: f.worktree + "/mine.txt", atomically: false, encoding: .utf8)
+        }
+        return f
+    }
+
+    private func stateReads(_ f: RequestFixture) -> Int {
+        f.github.calls.filter { $0 == .read(RequestQueries.stateName) }.count
+    }
+
+    // A search that leaves out an open PR (an index gap) must not delete its session and its copy.
+    // The poll reads the state of the PR, and an open PR stays.
+    @Test func anOpenPRThatTheSearchLeavesOutKeepsItsWork() async throws {
+        let f = try await fixtureWithSession(withChange: true)
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+        #expect(stateReads(f) == 1)
+        #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(f.store.state.prs[f.pr]?.questions.isEmpty == false)
+        #expect(FileManager.default.fileExists(atPath: f.worktree + "/mine.txt"))
+        #expect(f.events.values.isEmpty)
+        await f.end()
+    }
+
+    // A merged, a closed and a not found PR lose their session and their copy.
+    @Test(arguments: ["MERGED", "CLOSED", "NOT_FOUND", "NO_REPOSITORY"])
+    func aPRThatReallyClosedIsDropped(_ kind: String) async throws {
+        let f = try await fixtureWithSession()
+        switch kind {
+        case "NOT_FOUND":
+            f.github.answers[RequestQueries.stateName] = .success(
+                ReviewData.json([
+                    "data": ["repository": ["pullRequest": .null]],
+                    "errors": [["type": "NOT_FOUND", "message": "Could not resolve to a PR."]],
+                ]))
+        case "NO_REPOSITORY":
+            f.github.answers[RequestQueries.stateName] = .success(
+                ReviewData.json([
+                    "data": ["repository": .null],
+                    "errors": [["type": "NOT_FOUND", "message": "Could not resolve."]],
+                ]))
+        default:
+            f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle(kind))
+        }
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+        #expect(f.deps.calls.claudeRuns.contains(["rm", "abcdef12"]))
+        #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        #expect(!FileManager.default.fileExists(atPath: f.worktree))
+        #expect(f.events.values.isEmpty)
+        await f.end()
+    }
+
+    // A failed read keeps the PR, and the next poll reads again.
+    @Test func aFailedStateReadKeepsThePRAndTheNextPollReadsAgain() async throws {
+        let f = try await fixtureWithSession()
+        f.github.answers[RequestQueries.stateName] = .failure(.unknownOutcome("Bad gateway"))
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+        #expect(stateReads(f) == 1)
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(FileManager.default.fileExists(atPath: f.worktree))
+        f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle("CLOSED"))
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+        #expect(stateReads(f) == 2)
+        #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        #expect(!FileManager.default.fileExists(atPath: f.worktree))
+        await f.end()
+    }
+
+    // A dropped copy with a change that no round made leaves one line in the Event log.
+    @Test func aDroppedCopyWithUnknownChangesLogsThem() async throws {
+        let f = try await fixtureWithSession(withChange: true)
+        f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle("MERGED"))
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+        #expect(!FileManager.default.fileExists(atPath: f.worktree))
+        let line = "Reviews: Bifrost deleted its copy of \(f.pr.text) with 1 change that no "
+        #expect(f.events.values.count == 1)
+        #expect(f.events.values.first?.hasPrefix(line) == true)
+        #expect(f.events.values.first?.hasSuffix("are not on GitHub: mine.txt.") == true)
+        await f.end()
+    }
+
+    // A hold for the read of a state: the read waits until the test opens the gate.
+    @MainActor private final class ReadGate {
+        private var waiter: CheckedContinuation<Void, Never>?
+        private var isOpen = false
+
+        func wait() async {
+            if isOpen { return }
+            await withCheckedContinuation { waiter = $0 }
+        }
+
+        func open() {
+            isOpen = true
+            waiter?.resume()
+            waiter = nil
+        }
+    }
+
+    // An answer that comes while the drop reads the state starts no round. The round waits, and it
+    // starts after the drop ends.
+    @Test func anAnswerDuringTheReadOfADropStartsNoRound() async throws {
+        let f = try await fixtureWithSession()
+        let item = try f.node("PRRT_1")
+        let (rounds, pr) = (f.rounds, f.pr)
+        let seen = Recorder<Bool>()
+        f.github.onRead = { name in
+            guard name == RequestQueries.stateName else { return }
+            #expect(await rounds.answerQuestions(pr, [item: .text("Rename it.")]))
+            seen.record(rounds.queue.runningJob(of: pr) == nil && rounds.queue.waiting == [pr])
+        }
+        rounds.afterPoll(Rows.answer(mine: []))
+        await waitUntil { rounds.drops[pr] == nil }
+        #expect(seen.values == [true])
+        await waitUntil { rounds.queue.runningJob(of: pr) != nil }
+        await f.end()
+    }
+
+    // Remove all clones waits for a drop that reads the state: the folders go after the drop.
+    @Test func removeAllClonesWaitsForARunningDrop() async throws {
+        let f = try await fixtureWithSession()
+        let (rounds, pr) = (f.rounds, f.pr)
+        let gate = ReadGate()
+        f.github.onRead = { name in
+            if name == RequestQueries.stateName { await gate.wait() }
+        }
+        rounds.afterPoll(Rows.answer(mine: []))
+        let dropRuns = Recorder<Bool>()
+        let removal = Task {
+            await rounds.removeAll {
+                dropRuns.record(rounds.drops[pr] == nil)
+                return nil
+            }
+        }
+        try await Task.sleep(for: .milliseconds(500))
+        gate.open()
+        #expect(await removal.value == nil)
+        #expect(dropRuns.values == [true])
+        await f.end()
+    }
+
+    // The Event log line also names the files of the row and the files of an own request that
+    // did not go.
+    @Test func aDroppedCopyLogsTheFilesOfTheRowAndOfAnOwnRequest() async throws {
+        let f = try await fixtureWithSession(withChange: true)
+        let head = f.head
+        await f.store.update { state in
+            state.prs[f.pr]?.waiting = WaitsForYou(reason: "Kept.", files: ["row.txt"])
+            state.prs[f.pr]?.outbox = Outbox(
+                headSHA: head, mergeBase: head, startedAt: Rows.at(-10), seen: [:],
+                posts: [Posts.commit(["own.txt"]), Posts.push()], own: true)
+        }
+        f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle("CLOSED"))
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+        #expect(f.events.values.first?.contains("with 3 changes") == true)
+        #expect(f.events.values.first?.hasSuffix(": mine.txt, row.txt, own.txt.") == true)
+        await f.end()
+    }
+
+    // A PR that the search lists again needs no read, and its work stays.
+    @Test func aPRThatTheSearchListsNeedsNoStateRead() async throws {
+        let f = try await fixtureWithSession()
+        f.rounds.afterPoll(f.answer)
+        #expect(f.rounds.drops[f.pr] == nil)
+        #expect(stateReads(f) == 0)
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
         await f.end()
     }
 
@@ -1909,6 +2202,340 @@ struct RequestRoundTests {
         #expect(await f.rounds.removeAll { nil } == nil)
         #expect(f.deps.calls.claudeRuns.contains(["rm", "abcdef12"]))
         #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        await f.end()
+    }
+
+    // MARK: - Edits of a person never ride in a fix commit
+
+    private static let fixCommit: JSONValue = [
+        "message": "fix: use the new name", "paths": ["src/a.swift"],
+    ]
+
+    // A request that the person types in the turn of a round edits a file that the fix lists, and
+    // Claude writes the own request file. No fix commit carries the edit: the fix stops with
+    // Needs you, the reply "Fixed by" does not go, the item waits in held, and the own request
+    // then goes alone on the head of the round.
+    @Test func aRequestTypedInTheTurnNeverRidesInTheFixCommit() async throws {
+        let f = try await RequestFixture()
+        let round = try await f.poll()
+        await f.sessionWorks()
+        let changed = RequestFixture.lineEleven("line eleven, renamed")
+        try changed.write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        try f.writeOwnRequest(paths: ["src/a.swift"], message: "refactor: rename line 11")
+        try await f.endTurn(
+            result: f.result(
+                [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
+        await round.value
+        await f.ownEnded()
+        let log = await f.sourceGit(["log", "--format=%P|%s", "\(f.head.hex)..feat"])
+        #expect(log == "\(f.head.hex)|refactor: rename line 11")
+        #expect(f.writes.isEmpty)
+        let state = try #require(f.store.state.prs[f.pr])
+        #expect(state.held.contains(try f.node("PRRT_1")) && state.handled.isEmpty)
+        #expect(state.round == nil && state.outbox == nil && state.waitsForYou == nil)
+        #expect(f.fileA == changed)
+        await f.end()
+    }
+
+    // A person edits a listed file in the seconds between the result and the commit: no fix
+    // commit goes, the row shows Needs you with the file, and the edit stays in the worktree.
+    @Test func anEditBetweenTheResultAndTheCommitStopsTheFix() async throws {
+        let f = try await RequestFixture(threads: ["PRRT_1", "PRRT_2"])
+        let round = try await f.poll()
+        await f.sessionWorks()
+        try "fixed\n".write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        let edited = Recorder<Bool>()
+        f.github.onRead = { _ in
+            guard edited.values.isEmpty, f.store.state.prs[f.pr]?.round?.phase == .posting
+            else { return }
+            edited.record(true)
+            try? "person\n".write(
+                toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        }
+        try await f.endTurn(
+            result: f.result(
+                [
+                    ["id": "PRRT_1", "outcome": "fixed"],
+                    ["id": "PRRT_2", "outcome": "no-fix", "reply": "We keep it."],
+                ], commit: Self.fixCommit, checks: "passed"))
+        await round.value
+        #expect(edited.values == [true])
+        #expect(try await f.branch() == f.head)
+        // The reply that needs no fix goes, and no "Fixed by" reply does.
+        let other = try f.node("PRRT_2")
+        #expect(f.writes.first == .replyToThread(thread: other, body: "We keep it."))
+        let fixedBy = f.writes.contains {
+            if case .replyToThread(_, let body) = $0 { body.hasPrefix("Fixed by") } else { false }
+        }
+        #expect(!fixedBy)
+        let state = try #require(f.store.state.prs[f.pr])
+        #expect(state.waiting?.files == ["src/a.swift"])
+        #expect(state.waitsForYou == RoundFailure.fixHadEdits.message(for: .request))
+        #expect(state.held.contains(try f.node("PRRT_1")) && state.round == nil)
+        #expect(state.waiting?.kind == .other)
+        #expect(f.fileA == "person\n" && state.outbox == nil)
+        await f.end()
+    }
+
+    // A person edits the listed file after the last check, right before git adds it: the commit
+    // that git made goes back to changes, so the edit never goes to GitHub inside the fix.
+    @Test func anEditWhileGitMakesTheFixCommitGoesBackToChanges() async throws {
+        let runner = EditBeforeAddRunner()
+        let f = try await RequestFixture(runner: runner)
+        let round = try await f.poll()
+        await f.sessionWorks()
+        try "fixed\n".write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        runner.arm(file: f.worktree + "/src/a.swift", text: "person\n")
+        try await f.endTurn(
+            result: f.result(
+                [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
+        await round.value
+        #expect(try await f.branch() == f.head && f.writes.isEmpty)
+        #expect(await f.worktreeHead() == f.head && f.fileA == "person\n")
+        #expect(f.store.state.prs[f.pr]?.waiting?.files == ["src/a.swift"])
+        await f.end()
+    }
+
+    // A listed file of an own request changes after the read of its file (or while git makes the
+    // commit): the commit goes back to changes, nothing is pushed, the outbox stays, and the run
+    // at the next turn end commits the file as it is then.
+    @Test(arguments: ["read", "add"])
+    func anOwnRequestWhoseFileChangesGoesBackToChanges(_ when: String) async throws {
+        let runner = EditBeforeAddRunner()
+        let f = try await RequestFixture(runner: runner)
+        _ = try await f.firstRound()
+        let file = f.worktree + "/src/a.swift"
+        if when == "add" {
+            runner.arm(file: file, text: "person\n")
+        } else {
+            let edited = Recorder<Bool>()
+            f.github.onRead = { _ in
+                guard edited.values.isEmpty else { return }
+                edited.record(true)
+                try? "person\n".write(toFile: file, atomically: false, encoding: .utf8)
+            }
+        }
+        try await f.personTurn {
+            try "mine\n".write(toFile: file, atomically: false, encoding: .utf8)
+            try f.writeOwnRequest(paths: ["src/a.swift"], message: "refactor: mine")
+        }
+        await waitUntil {
+            f.store.state.prs[f.pr]?.outbox != nil && f.rounds.ownRuns[f.pr] == nil
+        }
+        #expect(try await f.branch() == f.head)
+        #expect(await f.worktreeHead() == f.head)
+        #expect(f.fileA == "person\n" && f.store.state.prs[f.pr]?.waitsForYou == nil)
+        #expect(f.store.state.prs[f.pr]?.outbox?.own == true)
+        f.rounds.checkOwnRequest(f.pr)
+        await f.ownEnded()
+        let pushed = try await f.branch()
+        #expect(
+            await f.sourceGit(["log", "-1", "--format=%P %s", pushed.hex])
+                == "\(f.head.hex) refactor: mine")
+        #expect(await f.sourceGit(["show", "feat:src/a.swift"]) == "person")
+        await f.end()
+    }
+
+    // A round that was posting when Bifrost quit still commits and pushes its fix after the
+    // restart: the files of the worktree are changes of the round (marked at the start), not
+    // edits of a person.
+    @Test func aPostingRoundAfterARestartStillCommitsItsFix() async throws {
+        let f = try await RequestFixture()
+        _ = try await f.firstRound()
+        try "fixed\n".write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        let (pr, head, item) = (f.pr, f.head, try f.node("PRRT_1"))
+        let posts = [
+            Posts.commit(["src/a.swift"]), Posts.push(), try Posts.reply("PRRT_1", nil),
+            try Posts.resolve("PRRT_1"),
+        ]
+        await f.store.update { state in
+            state.prs[pr]?.round = ActiveRound(
+                phase: .posting, startedAt: Rows.at(-20), at: Rows.at(-30), headSHA: head,
+                baseSHA: head, kind: .request, items: [item: RequestFixture.threadTime])
+            state.prs[pr]?.outbox = Outbox(
+                headSHA: head, mergeBase: head, startedAt: Rows.at(-10),
+                seen: [item: RequestFixture.threadTime],
+                posts: posts)
+        }
+        let restarted = f.restartedWrites()
+        await restarted.resume(f.pr)
+        let fix = try await f.branch()
+        #expect(fix != f.head)
+        #expect(f.writes.first == .replyToThread(thread: item, body: "Fixed by \(fix.short)"))
+        let state = try #require(f.store.state.prs[f.pr])
+        #expect(state.round == nil && state.outbox == nil && state.handled[item] != nil)
+        await f.end()
+    }
+
+    // A round outbox that stays for Try again after a restart (a new RepoStore has no record of
+    // the worktree): the stamps that the outbox keeps tell Claude's fix from a later edit of a
+    // person. A clean fix commits and pushes again. An edit after the result stops it, and the
+    // row shows Needs you with the file.
+    @Test(arguments: [false, true])
+    func aKeptOutboxAfterARestartTellsTheFixFromAnEdit(_ edit: Bool) async throws {
+        let f = try await RequestFixture()
+        _ = try await f.firstRound()
+        let file = f.worktree + "/src/a.swift"
+        try "fixed\n".write(toFile: file, atomically: false, encoding: .utf8)
+        let (pr, head, item) = (f.pr, f.head, try f.node("PRRT_1"))
+        let stamps = await f.repos.store.pathStamps(pr, ["src/a.swift"])
+        if edit { try "person\n".write(toFile: file, atomically: false, encoding: .utf8) }
+        let posts = [
+            Posts.commit(["src/a.swift"]), Posts.push(), try Posts.reply("PRRT_1", nil),
+            try Posts.resolve("PRRT_1"),
+        ]
+        await f.store.update { state in
+            state.prs[pr]?.round = ActiveRound(
+                phase: .posting, startedAt: Rows.at(-20), at: Rows.at(-30), headSHA: head,
+                baseSHA: head, kind: .request, items: [item: RequestFixture.threadTime])
+            state.prs[pr]?.outbox = Outbox(
+                headSHA: head, mergeBase: head, startedAt: Rows.at(-10),
+                seen: [item: RequestFixture.threadTime], posts: posts, stamps: stamps)
+        }
+        await f.restartedWrites().resume(f.pr)
+        let state = try #require(f.store.state.prs[f.pr])
+        if edit {
+            #expect(try await f.branch() == f.head && f.writes.isEmpty)
+            #expect(state.waiting?.files == ["src/a.swift"] && state.round == nil)
+            #expect(f.fileA == "person\n")
+        } else {
+            let fix = try await f.branch()
+            #expect(fix != f.head)
+            #expect(f.writes.first == .replyToThread(thread: item, body: "Fixed by \(fix.short)"))
+            #expect(state.outbox == nil && state.handled[item] != nil)
+        }
+        await f.end()
+    }
+
+    // Bifrost restarts in the turn of a round in which the user typed a request: the new start
+    // has no record of the worktree, and Claude lists the file that the request edited. The
+    // fix never takes that edit: no fix commit goes, the item waits in held, and the own request
+    // goes alone on the head of the round.
+    @Test func aRestartInTheTurnNeverLetsATypedRequestRideInTheFix() async throws {
+        let f = try await RequestFixture()
+        _ = try await f.poll()
+        await f.sessionWorks()
+        try await f.restart(freshRepoStore: true)
+        let round = try #require(f.rounds.queue.task(of: f.pr))
+        let changed = RequestFixture.lineEleven("line eleven, renamed")
+        try changed.write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        try f.writeOwnRequest(paths: ["src/a.swift"], message: "refactor: rename line 11")
+        try await f.endTurn(
+            result: f.result(
+                [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
+        await round.value
+        await f.ownEnded()
+        let log = await f.sourceGit(["log", "--format=%P|%s", "\(f.head.hex)..feat"])
+        #expect(log == "\(f.head.hex)|refactor: rename line 11")
+        #expect(f.writes.isEmpty)
+        let state = try #require(f.store.state.prs[f.pr])
+        #expect(state.held.contains(try f.node("PRRT_1")) && state.handled.isEmpty)
+        await f.end()
+    }
+
+    // The stamps of an outbox are part of the stored file.
+    @Test func theStampsOfAnOutboxSurviveTheStoredForm() async throws {
+        let (head, item) = (try ReviewData.commit(), try ReviewData.node("PRRT_1"))
+        let stamps = ["a.txt": PathStamp("/etc/hosts")]
+        let outbox = Outbox(
+            headSHA: head, mergeBase: head, startedAt: Rows.at(-10), seen: [item: Rows.at(-20)],
+            posts: [Posts.commit(["a.txt"])], stamps: stamps)
+        var dropped = DroppedFields()
+        #expect(Outbox(stored: outbox.stored, dropped: &dropped) == outbox)
+    }
+
+    // A fix that did not go (a push conflict) leaves no local fix commit as the HEAD of the
+    // worktree: it goes back to the head of the round, so the next own request pushes.
+    @Test func aPushConflictMovesTheCopyBackToTheHeadOfTheRound() async throws {
+        let f = try await RequestFixture()
+        let round = try await f.poll()
+        await f.sessionWorks()
+        try RequestFixture.lineEleven("line eleven, mine").write(
+            toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        let theirs = Recorder<CommitID>()
+        f.github.onRead = { _ in
+            guard theirs.values.isEmpty, f.store.state.prs[f.pr]?.round?.phase == .posting
+            else { return }
+            if let pushed = try? await f.otherPush(lineEleven: "line eleven, theirs") {
+                theirs.record(pushed)
+            }
+        }
+        try await f.endTurn(
+            result: f.result(
+                [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
+        await round.value
+        #expect(try await f.branch() == theirs.values.first)
+        #expect(await f.worktreeHead() == f.head)
+        await f.end()
+    }
+
+    // The writes stop before the commit (the PR closed in the seconds after the result): the fix
+    // of Claude stays in the worktree, so a later round or the user can use it.
+    @Test func aDropBeforeTheCommitKeepsTheFixInTheWorktree() async throws {
+        let f = try await RequestFixture()
+        let round = try await f.poll()
+        await f.sessionWorks()
+        try "fixed\n".write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        f.github.onRead = { name in
+            guard name == RequestQueries.contextName,
+                f.store.state.prs[f.pr]?.round?.phase == .posting
+            else { return }
+            f.github.answers[RequestQueries.contextName] = .success(
+                RequestFixture.context(head: f.head, state: "MERGED"))
+        }
+        try await f.endTurn(
+            result: f.result(
+                [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
+        await round.value
+        #expect(try await f.branch() == f.head && f.writes.isEmpty)
+        #expect(f.store.state.prs[f.pr]?.lastError == RoundFailure.prClosed.message(for: .request))
+        #expect(await f.worktreeHead() == f.head)
+        #expect(f.fileA == "fixed\n")
+        await f.end()
+    }
+
+    // A fix commit with an edit of a person that git cannot move back stays as it is: no reset
+    // removes the edit from the worktree, and nothing is pushed.
+    @Test func aFailedMoveBackOfTheFixCommitRunsNoReset() async throws {
+        let runner = EditBeforeAddRunner()
+        let f = try await RequestFixture(runner: runner)
+        let round = try await f.poll()
+        await f.sessionWorks()
+        try "fixed\n".write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        runner.arm(file: f.worktree + "/src/a.swift", text: "person\n")
+        runner.failMixedReset()
+        try await f.endTurn(
+            result: f.result(
+                [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
+        await round.value
+        #expect(try await f.branch() == f.head && f.writes.isEmpty)
+        let at = try #require(await f.worktreeHead())
+        #expect(at != f.head)
+        #expect(
+            await f.repos.gitOutput(["show", "\(at.hex):src/a.swift"], in: f.worktree) == "person")
+        #expect(f.fileA == "person\n")
+        await f.end()
+    }
+
+    // A restart in the turn of a round with no own request file: the clean fix of Claude still
+    // commits and pushes on the new repo store, as the record of the end of the turn gives its
+    // stamps.
+    @Test func aRestartInTheTurnStillCommitsACleanFix() async throws {
+        let f = try await RequestFixture()
+        _ = try await f.poll()
+        await f.sessionWorks()
+        try await f.restart(freshRepoStore: true)
+        let round = try #require(f.rounds.queue.task(of: f.pr))
+        try "fixed\n".write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        try await f.endTurn(
+            result: f.result(
+                [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
+        await round.value
+        let fix = try await f.branch()
+        #expect(fix != f.head)
+        #expect(f.writes.first == .replyToThread(
+            thread: try f.node("PRRT_1"), body: "Fixed by \(fix.short)"))
+        #expect(f.store.state.prs[f.pr]?.waiting == nil)
         await f.end()
     }
 }

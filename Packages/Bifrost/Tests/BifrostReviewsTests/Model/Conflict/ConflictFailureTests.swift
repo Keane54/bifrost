@@ -92,6 +92,11 @@ struct ConflictFailureTests {
         let texts: [(RoundFailure, String)] = [
             (.stopped, "You stopped Claude, so Bifrost pushed nothing." + again),
             (
+                .sessionEnded,
+                "Claude's session ended before the round finished, so Bifrost pushed nothing."
+                    + again
+            ),
+            (
                 .timeout,
                 "Claude took more than 30 minutes, so Bifrost stopped it and pushed nothing."
                     + again

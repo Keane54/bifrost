@@ -154,6 +154,26 @@ enum WritesData {
         ReviewData.json(["data": .object([field: value])])
     }
 
+    // The fresh read of the head of PR 7, open and of the user, that an own outbox makes.
+    static func headRead(
+        head: CommitID, author: String = Rows.viewer, fork: Bool = false, state: String = "OPEN"
+    ) -> Data {
+        ReviewData.json([
+            "data": [
+                "repository": [
+                    "pullRequest": [
+                        "state": .string(state), "author": ["login": .string(author)],
+                        "repository": ["defaultBranchRef": ["name": "main"]],
+                        "mergeable": "MERGEABLE", "baseRefOid": .string(head.hex),
+                        "headRefName": "feat", "headRefOid": .string(head.hex),
+                        "baseRefName": "main", "isCrossRepository": .bool(fork),
+                        "commits": ["nodes": []],
+                    ]
+                ]
+            ]
+        ])
+    }
+
     // A fake GitHub with the full read, the read of the state of the PR, and an answer for each
     // write: reply R1, resolve, comment C1 and the review request.
     @MainActor

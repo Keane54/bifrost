@@ -81,6 +81,8 @@ package enum ConflictFailure: Error, Sendable, Equatable {
     private static func message(_ failure: RoundFailure, _ again: String) -> String {
         switch failure {
         case .stopped: "You stopped Claude, so Bifrost pushed nothing." + again
+        case .sessionEnded:
+            "Claude's session ended before the round finished, so Bifrost pushed nothing." + again
         case .timeout:
             "Claude took more than 30 minutes, so Bifrost stopped it and pushed nothing." + again
         case .noResult: "Claude finished without a result, so Bifrost pushed nothing." + again

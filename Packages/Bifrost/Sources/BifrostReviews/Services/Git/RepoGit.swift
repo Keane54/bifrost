@@ -33,6 +33,10 @@ package struct RepoGit: Sendable {
     package static let stopGrace = Duration.seconds(1)
     // The limit of stdout and of stderr. The status of a worktree with many new files can be long.
     package static let outputLimit = 16 * 1_048_576
+    // The limit of the two listings of the submodule check (the whole index and the whole tree of
+    // HEAD). Their size grows with the number of files, and a listing that passes the limit
+    // would make each commit of a large repository refused as unchecked.
+    package static let listingLimit = 256 * 1_048_576
 
     // The GIT_ variables that stay in the env. A test home sets them, so that git reads no config
     // of the user. Each other GIT_ variable goes, because it can point git at another repository,
@@ -102,12 +106,15 @@ package struct RepoGit: Sendable {
 
     // Run the command at the place. A refused command (GitCommand.isRefused), a command that the
     // place does not allow, a command in a worktree that does not belong to its clone, and an add
-    // or a commit in a worktree with a submodule (holdsSubmodule) start no git. The clone and the
+    // or a commit in a worktree with a submodule (holdsSubmodule) start no git. A CommitProof
+    // stands in for the listings of that check (see CommitProof). The clone and the
     // checkout of a worktree download files, so they get the long limit. git gets SIGTERM at a
     // limit or a cancel, so that it removes its lock files, and SIGKILL when it still runs at the
     // end of stopGrace. After a cancel, the run ends only when git ended, so no git outlives its
     // caller, and the caller can remove the folder of a stopped clone.
-    @concurrent package func run(_ command: GitCommand, in place: GitPlace) async -> ExecResult {
+    @concurrent package func run(
+        _ command: GitCommand, in place: GitPlace, proof: CommitProof? = nil
+    ) async -> ExecResult {
         guard !command.isRefused else { return Self.notRun("Bifrost won't run this git command.") }
         guard place.allows(command) else {
             return Self.notRun("Bifrost won't run this git command in this folder.")
@@ -117,7 +124,21 @@ package struct RepoGit: Sendable {
         }
         switch (command, place) {
         case (.add, .worktree(let pr)), (.commit, .worktree(let pr)):
-            if await holdsSubmodule(pr) != false {
+            let clear: Bool
+            if let proof, proof.pr == pr {
+                // The index and the head of the worktree held no submodule at the proof. Only
+                // Bifrost runs git there, and the session cannot write the git folder, so
+                // nothing changes them between the proof and the add. The add changes the index,
+                // so the commit looks at the index again. The add cannot change the head.
+                if case .add = command {
+                    clear = true
+                } else {
+                    clear = await holdsSubmodule(pr, listing: [.lsFilesStage([])]) == false
+                }
+            } else {
+                clear = await holdsSubmodule(pr) == false
+            }
+            if !clear {
                 return Self.notRun("Bifrost won't commit in a repository that has a submodule.")
             }
         default:
@@ -129,11 +150,16 @@ package struct RepoGit: Sendable {
         default: limit = Self.timeout
         }
         let keepsBytes = if case .blob = command { true } else { false }
+        let output =
+            switch command {
+            case .headTree, .lsFilesStage([]): Self.listingLimit
+            default: Self.outputLimit
+            }
         return await runner.run(
             Command(
                 path, arguments(for: command, in: place), directory: place.folder(layout),
                 environment: environment, timeout: limit, killSignal: .terminate,
-                terminateGrace: Self.stopGrace, outputLimit: Self.outputLimit, waitsForEnd: true,
+                terminateGrace: Self.stopGrace, outputLimit: output, waitsForEnd: true,
                 keepsStdoutBytes: keepsBytes))
     }
 
@@ -142,12 +168,24 @@ package struct RepoGit: Sendable {
     // git can run a program of that folder: a commit with nothing staged looks into it, as a
     // status with no --ignore-submodules does. So Bifrost never commits in such a worktree.
     package func holdsSubmodule(_ pr: PRKey) async -> Bool? {
-        for command in [GitCommand.lsFilesStage([]), .headTree] {
+        await holdsSubmodule(pr, listing: [.lsFilesStage([]), .headTree])
+    }
+
+    // The same check for the given listings: the index, the head tree, or both.
+    private func holdsSubmodule(_ pr: PRKey, listing: [GitCommand]) async -> Bool? {
+        for command in listing {
             let result = await run(command, in: .worktree(pr))
             guard result.succeeded, let modes = Self.entryModes(result.stdout) else { return nil }
             if modes.contains("160000") { return true }
         }
         return false
+    }
+
+    // The one check of the submodule of a commit flow: the answer of holdsSubmodule, and a proof
+    // when the answer is false.
+    package func submoduleCheck(_ pr: PRKey) async -> (holds: Bool?, proof: CommitProof?) {
+        let holds = await holdsSubmodule(pr)
+        return (holds, holds == false ? CommitProof(pr: pr) : nil)
     }
 
     // The mode of each entry of a listing of ls-files --stage -z or ls-tree -z, in which each
@@ -189,4 +227,14 @@ package struct RepoGit: Sendable {
         else { return false }
         return named == expected
     }
+}
+
+// The proof of one submodule check (RepoGit.submoduleCheck) of the worktree of one PR. With it,
+// RepoGit adds with no new listing, and lists only the index before the commit. A proof is for
+// one commit flow: the caller makes it, uses it for the add and the commit that follow at once,
+// and drops it. It is not a cache, and only a successful check makes one.
+package struct CommitProof: Sendable, Equatable {
+    fileprivate let pr: PRKey
+
+    fileprivate init(pr: PRKey) { self.pr = pr }
 }

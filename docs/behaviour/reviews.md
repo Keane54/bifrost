@@ -164,6 +164,10 @@ there. So `status` and `diff` pass `--ignore-submodules=all`, `reset` passes
 a submodule: a commit with nothing staged would look inside it. A review round still works on such
 a repository; only a fix commit is refused.
 
+The submodule check lists the whole index and the whole tree of the head, so it runs once for each
+commit. Its result is a proof that the add uses. The commit lists only the index again, because the
+add changed it. These two listings may be larger than other output, so they have a larger limit.
+
 Every command gets these config items:
 
 | Item | Why |
@@ -258,6 +262,14 @@ it never starts on top of that work. Because each pair gets one attempt, a failu
 until the branch or its base moves. A poll that doesn't give both commits starts nothing, since
 there would be no pair to remember.
 
+A round that ends with nothing to show doesn't spend the pair: the PR closed, GitHub no longer
+sees the conflict, the head moved, or the setting went off. The poll that started it can be a
+minute old, so the same pair would start the same round at every poll. Bifrost keeps that pair in
+memory and skips it for 15 minutes, unless the setting is off. A new head or base, and Resolve
+now, never wait. A person using Claude's session when the round reaches its turn also leaves the
+pair untried, and the next poll after the session is free starts the round. Resolve now shows the
+reason in that case instead.
+
 First, Bifrost merges in its clone with `merge-tree`, which needs no worktree and runs no hook, and
 reads the list of conflicted files. git works out the merge bases itself, so when the two branches
 have more than one (each merged the other at some point, which stacked PRs can cause), it merges
@@ -337,6 +349,22 @@ head and the base as its parents, and a branch that gained new commits since the
 nothing at all, not even a merge, because the new head is a new conflict to look at. The texts of a
 failed merge are in `ConflictFailure` (`BifrostReviews/Model/Conflict/`), and `ConflictMergeTests`
 runs real git against a local repository that stands in for GitHub.
+
+Each end leaves the copy on a commit that GitHub has, and the person's work stays:
+
+- A push that went moves the copy to the merge. When the copy can't be reset (a person uses the
+  session, or a change that no round made is in it), Bifrost still moves HEAD and the index to the
+  merge and leaves the files, so the copy isn't left on the commit with the markers.
+- At the end of every turn, only the conflicted files count as the round's. A file of yours that
+  changed during the turn stays, the round stops with Needs you, and nothing deletes the file.
+- A turn that runs out of time after Claude edited a conflicted file counts those edits as the
+  round's, because the round made them on its own merge commit, and the copy goes back to the head.
+  A change to any other file stays, so the copy stays as it is and the next round stops for you.
+- A round that was posting when Bifrost quit first looks at the branch. A merge that's already
+  there counts as pushed even when the setting is off now.
+- A pushed merge clears an old reason on the row, because the round proved the copy clean.
+- A failure that has no pair to mark, such as Resolve now with no base commit and a failed read,
+  writes a line in the Event log.
 
 ### IDs
 
@@ -497,12 +525,14 @@ read is lenient one field at a time:
   outcome can't be read keeps its head and base as a failed attempt with no reason, so Bifrost never
   tries that pair again by itself and the row offers Resolve now; only a record without a readable
   head or base goes. You can still start a round with a click.
-- A PR record that loses any field, or isn't an object at all, may have lost its conflict record
-  with it, and so may a list of PRs that loses a record (a list that isn't an object, a key that
-  isn't a PR, or two keys for one PR). Bifrost doesn't guess which pair was tried: the first poll
-  that lists such a PR records its current head and base as a failed attempt with no reason, so
-  no automatic round starts on that pair and the row offers Resolve now. When the list itself lost
-  records, every PR of the next complete poll is treated that way. The log says which PRs.
+- A PR record that loses any field, isn't an object at all, or holds a null conflict or CI field
+  (Bifrost never writes null there), may have lost its conflict record with it, and so may a
+  list of PRs that loses a record (a list that isn't an object, a key that isn't a PR, or two
+  keys for one PR). Bifrost doesn't guess which pair was tried: the first poll that lists such a
+  PR records its current head and base as a failed attempt with no reason, so no automatic round
+  starts on that pair and the row offers Resolve now. When the list itself lost records, every PR
+  of the next complete poll is treated that way. The log says which PRs. The file keeps this
+  doubt until a poll settles it, so a quit before the first poll doesn't lose it.
 - A top-level field that Bifrost doesn't know survives a save untouched.
 - PR keys keep GitHub's spelling, `Owner/Repo#12`, but a lookup ignores case, so the poll's
   `owner/repo` #12 finds the PR the Electron app stored as `Owner/Repo#12`. If two keys differ only
@@ -902,8 +932,10 @@ repository is left alone for an hour; the next poll after that tries again, and 
 tries straight away. After a round, Bifrost counts
 the changes the session made in its worktree, logs the count, resets the worktree to its head,
 removes everything git doesn't track (ignored files included) and writes the worktree's `.git`
-file back, since a session can change it. Because the request session of a PR works in the same
-folders from round to round, and you can use that session yourself, a request round never touches
+file back, since a session can change it. The removal runs only after a reset that worked. If the
+reset fails, for example because of a lock file, every file stays where it is. Because the
+request session of a PR works in the same folders from round to round, and you can use that
+session yourself, a request round never touches
 those folders while the session is working or showing a box: it waits until the session is idle
 with no box, has stopped, or is gone (see "PR sessions"), so it never changes them while you're
 using the session. A reset after a request round is skipped in the same way while you're using
@@ -914,10 +946,16 @@ itself is reset as usual. Then the round keeps the worktree of the last round wh
 place (a real folder, not a link, that belongs to the clone): it resets it to the new head and
 cleans it the same way. If the reset fails, `git status` still lists a file that git doesn't
 track, or the worktree's `HEAD` isn't the new head, Bifrost makes the worktree again instead and
-logs why, and the round then starts a new session. When a review request goes,
-its worktree and input folder go too. The clones themselves stay until you use Remove all clones
-in Settings. Every removal first checks that the path really is below the repos folder, also after
-resolving the links above it, and a link inside it is removed as a link, never followed.
+logs why, and the round then starts a new session. A folder at that place that doesn't belong to
+the clone (its admin folder is damaged) can't be checked for changes, so Bifrost never deletes
+it: it moves the folder next to the worktree as `<worktree>~kept-<time>`, with all its files, and
+the log gives the new path. A request that goes (merged or closed) follows the same rule. Use the
+kept folder only to copy files out: its `.git` file names the admin folder of the new
+worktree. Remove all clones deletes it too, and you can delete it earlier yourself. When a
+review request goes, its worktree and input folder go too. The clones themselves stay until you use
+Remove all clones in Settings. Every removal first checks that the path really is below the repos
+folder, also after resolving the links above it, and a link inside it is removed as a link, never
+followed.
 
 Claude Code won't start a background session in a folder you haven't trusted, and it keeps that
 trust per folder in `~/.claude.json`. Bifrost never accepts the trust prompt for you and never
@@ -1026,7 +1064,9 @@ PR: the same session ID, a Bifrost session marked as a PR session, the same name
 worktree as its folder. Anything else gets a new session, and so do a few cases where carrying on
 wouldn't be right: after ten rounds, so the context doesn't grow without limit; when Bifrost had
 to make the worktree again; and when the flags would change, for example because you picked
-another model for request sessions, since a resume can't change them. Like a review session, the
+another model for request sessions, since a resume can't change them. A new session replaces the
+old one: Bifrost removes the old session with its chat and its own requests, so read or copy
+anything you need from it before then. Like a review session, the
 request session stays after each round so you can read its chat, and Bifrost stops it after 10
 minutes idle with nothing open on it. Between rounds you can also ask it for a change yourself, and
 Bifrost commits and pushes that change for you (see "Your own requests"). It goes for good when the
@@ -1329,10 +1369,22 @@ A failed round holds its items, spends its click, shows Error with the reason in
 again in the menu, and sends no notification. When a PR merges or closes (a complete poll no longer
 lists it), its round stops with nothing more posted, and its request session, worktree, input
 folder and queue entry go, along with its clicks, held items, questions and outbox; the items
-Bifrost already handled stay. At the next start, a round that was getting ready goes back to the
-queue, one whose session was running waits for it again, and one that was posting sends the rest of
-its writes. Remove all clones stops the request rounds as well, and they hold their items, though a
-round that's posting finishes its writes first.
+Bifrost already handled stay. The search can leave out an open PR, so a PR that the poll doesn't
+list gets one small read of its state first (`RequestQueries.stateOrGone`), and only a merged,
+closed or not found PR is dropped. An open PR keeps everything, and so does a PR whose read
+failed: the next poll reads again. An open PR that the search never lists (an archived
+repository, for example) keeps its work, and each poll reads it, until the search lists it again or
+you use Remove all clones. GitHub also answers "not found" for a private repository that the
+signed-in `gh` account can't see, so after a switch of account the work of its PRs goes.
+A PR that the poll lists needs no read. No round or own request
+of the PR starts while its drop runs, and Remove all clones waits for the drop. When the copy had
+changes that no round made (the safety net's files, the files of the row, or an own request that
+didn't go), the Event log gets one line with the PR, the count and the first three file names:
+"Reviews: Bifrost deleted its copy of owner/repo#7 with 2 changes that no round made and that
+are not on GitHub: a.swift, b.swift." At the next start, a round that was getting ready goes back
+to the queue, one whose session was running waits for it again, and one that was posting sends the
+rest of its writes. Remove all clones stops the request rounds as well, and they hold their items,
+though a round that's posting finishes its writes first.
 
 `ReviewRounds` owns the queue for both kinds of round, and its extension in `RequestRounds.swift`
 holds the request side (the clicks, the jobs and how they end). `RequestRound`
@@ -1433,6 +1485,7 @@ round that didn't go.
 | A listed file breaks a rule, git couldn't commit, the push target is refused, GitHub turned the branch down (a protected branch, for example), a signed fix can't go (too large, a link, or GitHub refused it), the branch is gone, or the PR closed, isn't yours, comes from a fork or has more than Bifrost can read | Goes. Items whose writes all went are handled, and the rest wait in held | The reason, and Try again starts a new round |
 | GitHub refused a read or a write in a way that would come back on every try (anything but its rate limits, such as a comment "submitted too quickly") | Goes. Items whose writes all went are handled, and the rest wait in held | "GitHub stopped after 2 of 5 updates." with GitHub's reason, and "Bifrost dropped the rest, so choose Try again to start over." |
 | A conflict, a rewritten branch or a branch that kept moving | Goes after the other writes. The "Fixed by" writes drop, and their items wait in held | The reason, and Try again starts a new round on the new code |
+| A listed file has an edit that no round made (see "Your edits never ride in a fix") | Goes after the other writes. The "Fixed by" writes drop, and their items wait in held | "Needs you", with the files, and Handle now starts a new round once you dealt with them |
 | A read or a write failed on the network, hit one of GitHub's rate limits or found gh logged out, a draft review of yours is in the way, git couldn't reach GitHub for the push, or Bifrost can't tell whether a write or the push landed | Stays, with the writes that are left | "GitHub stopped after 2 of 5 updates." with the reason, and Try again sends the rest before a new round |
 
 A write that GitHub may have made is never sent again by itself. Only Try again goes on with it,
@@ -1474,6 +1527,9 @@ PR's worktree, but it can't commit, push or reach GitHub from there, and no roun
 it changed. So your request ends the way a round does: Claude describes the change in a small file,
 and Bifrost checks that file, then commits and pushes the change itself.
 
+When the PR merges or closes, an own request that didn't go is deleted with the copy, and the
+Event log names its files (see "Request rounds").
+
 **The file.** When the change touched files, Claude ends its turn by writing the own request file,
 `own-request.json` in the PR's input folder (every round's input file names it as
 `files.ownRequest`, and the path never changes). It holds a version, the PR, the commit the
@@ -1504,14 +1560,34 @@ worktree's head has moved, so the file is refused and the row shows "Needs you":
 again. A message with no file can't be told apart from the round's own work (the session runs with
 no hooks, so Bifrost doesn't see your prompt), and its changes count as the round's.
 
+**Your edits never ride in a fix.** Bifrost makes a fix commit from the listed files, and an edit of
+yours in one of them must not go to GitHub inside Claude's commit. So it checks the listed files
+before and after it makes the commit. A listed file with a change that no round made (for example a
+request you typed that Claude did in the same turn, or an edit of yours in the seconds after the
+result) stops the fix: Bifrost makes no commit, or moves a commit it made back to plain changes, the
+"Fixed by" replies don't go, their items wait in held, and the row shows "Needs you" with the files.
+The other replies still go. When Claude wrote an own request file in that turn, every listed file
+counts as changed, so the fix stops and your own request goes alone, on the head of the round. A fix
+that is committed but doesn't reach GitHub (a conflict, for example) also moves the worktree back to
+the head of the round, unless you are using the session, so the next own request pushes. Each outbox
+keeps the stamp of every listed file from the end of the turn (or, for an own request, from the read
+of its file), so this holds also after Bifrost quit: a clean fix commits and pushes again, and an
+edit after the result still stops it. A round that finds no record of the copy (Bifrost restarted in
+a turn that left an own request file) stops the fix too. Only an outbox saved by an older version,
+with no stamps, counts the files that are there as the round's.
+
 **The commit and the push.** Bifrost reads the file and removes it straight away, so nothing reads
 it twice. Then it saves an outbox with just two writes, the commit and the push, and sends them
 through the same path as a round's fix (see "The push and the writes"): the same file rules, the
 same local commit with your git identity, "Sign commits through GitHub" when it's on, the same
 checks of the push target, the same fetch, and the same outcomes when the branch has moved,
 conflicts, was rewritten or is gone. Unlike a fix, a file Claude changed but didn't list stays in
-the worktree after the commit, so the next round stops and asks you about it (see "The safety
-net"). If Bifrost quits half way, the next poll carries on from where it stopped.
+the worktree after the commit, so the next round stops and asks you about it (see "The safety net").
+Bifrost keeps the stamp of each listed file when it reads the file. When a listed file changes
+before or while Bifrost commits, it moves the commit back to plain changes and sends the change
+again later (at the next poll or the end of the next turn, while nobody uses the session), so the
+commit holds the file as it is then. If Bifrost quits half way, the next poll carries on from where
+it stopped.
 
 **When it doesn't go.** A refused file, a listed file that a commit rule refuses, or a push that
 doesn't land makes the PR's row show "Needs you", with the reason as its tip, and the same reason
@@ -1573,7 +1649,7 @@ and the reason stay, and the error line says so.
 | --- | --- |
 | Changes no round made | "Unpushed changes" in amber, with the tip "Bifrost won't handle new comments over changes that aren't on GitHub. Ask Claude to commit them, or discard them." and the buttons Open session and Discard changes. The Event log keeps the long text: "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so Claude didn't start on the new comments ..." |
 | Discard these changes (the dialog) | Title "Discard the changes in `<n>` files?" ("1 file" for one), body "They aren't on GitHub, and you can't get them back: `<names>`. Files that git ignores in Bifrost's copy go too.", button "Discard" |
-| Discard these changes (the error line) | "There's nothing to discard: Bifrost's copy of this pull request has no changes now." / "Bifrost can't discard the changes now, because Claude or a round is using this pull request's copy. Try again when it's finished." / "Bifrost couldn't discard the changes, so they're still there. The Event log has the details." |
+| Discard these changes (the error line) | "There's nothing to discard: Bifrost's copy of this pull request has no changes now." / "Bifrost can't discard the changes now, because Claude or a round is using this pull request's copy. Try again when it's finished." / "Bifrost couldn't discard the changes, so they're still there. The Event log has the details." A failed reset leaves every file and the reason of the row as they are |
 | A refused file | "Claude wrote a commit request Bifrost couldn't use (`<reason>`), so Bifrost didn't commit your change." + K + " Ask Claude in its session to try again." |
 | A file while the copy holds a conflict round's merge | The row shows "Ask again" (see "Merge conflicts"). The Event log has: "Claude was resolving merge conflicts in Bifrost's copy of this pull request, so Bifrost didn't commit your change or push the merge." + K + " Choose Discard these changes, then ask Claude again." |
 | A listed file a commit rule refuses | "Bifrost didn't commit your change. `<rule>`" + K |
@@ -1668,6 +1744,10 @@ round and drops its attempt. At the next start, a round that was getting ready g
 queue, one whose session was running waits for it and goes on with the merge it saved, one that
 was posting pushes again (the push checks the branch first, so a merge that already landed isn't
 pushed twice), and one you stopped before the quit fails with the stop text.
+
+A session that ends by itself during a round (its row goes, and nobody stopped it) records "Claude's
+session ended before the round finished, so Bifrost pushed nothing." in the same way. A request
+round shows the same wording with "posted nothing".
 
 | Case | Row tip |
 | --- | --- |

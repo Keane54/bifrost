@@ -11,9 +11,38 @@ import BifrostFoundation
 import BifrostSessions
 import BifrostTestSupport
 import Foundation
+import Synchronization
 import Testing
 
 @testable import BifrostReviews
+
+// The runner of git of the conflict tests: it runs a one-time action after the first git status
+// that follows its arm (the count of the changes at the end of the turn), or right before the
+// first git add that follows its arm (the commit of the merge). The action plays a person.
+private final class ConflictHookRunner: CommandRunner {
+    private let real = ProcessRunner()
+    private let afterStatus = Mutex<(@Sendable () -> Void)?>(nil)
+    private let beforeAdd = Mutex<(@Sendable () -> Void)?>(nil)
+
+    func afterFirstStatus(_ action: @escaping @Sendable () -> Void) {
+        afterStatus.withLock { $0 = action }
+    }
+
+    func beforeFirstAdd(_ action: @escaping @Sendable () -> Void) {
+        beforeAdd.withLock { $0 = action }
+    }
+
+    func run(_ command: Command) async -> ExecResult {
+        if command.arguments.contains("add"), let action = beforeAdd.withLock({ $0.take() }) {
+            action()
+        }
+        let result = await real.run(command)
+        if command.arguments.contains("status"), let action = afterStatus.withLock({ $0.take() }) {
+            action()
+        }
+        return result
+    }
+}
 
 @MainActor
 private final class ConflictFixture {
@@ -45,10 +74,11 @@ private final class ConflictFixture {
     // the automatic conflict rounds. saved: the state before the start of the rounds.
     init(
         config: ReviewsConfig = ReviewsConfig(resolveConflicts: true), conflict: Bool = true,
-        consent: Bool = true, fork: Bool = false, saved: (inout ReviewsState) -> Void = { _ in }
+        consent: Bool = true, fork: Bool = false, runner: any CommandRunner = ProcessRunner(),
+        saved: (inout ReviewsState) -> Void = { _ in }
     ) async throws {
         self.config = config
-        repos = try RepoFixture()
+        repos = try RepoFixture(runner: runner)
         let repo = try #require(RepoName("Owner-A/Repo-A"))
         pr = try #require(PRKey(repo: repo, number: 7))
         try await repos.source(repo, files: ["src/a.swift": Self.lines()])
@@ -243,12 +273,15 @@ private final class ConflictFixture {
         return try #require(rounds.queue.task(of: pr))
     }
 
-    func show(_ status: AgentStatus) async {
+    func show(_ status: AgentStatus, waitingFor: String? = nil) async {
         let entry = AgentEntry(
             sessionId: Self.id, cwd: worktree, isBackground: true, startedAt: 1, name: Self.name,
-            status: status, pid: 4242, id: Self.shortID)
+            status: status, pid: 4242, id: Self.shortID, waitingFor: waitingFor)
         await deps.show([entry]) { rows in
-            rows.contains { $0.sessionId == Self.id && ($0.state == .working) == (status == .busy) }
+            rows.contains {
+                $0.sessionId == Self.id && ($0.state == .working) == (status == .busy)
+                    && $0.alert.blocksPrompt == (waitingFor != nil)
+            }
         }
     }
 
@@ -271,7 +304,7 @@ private final class ConflictFixture {
 
     // The wait for the end of the turn saw the working row: its timer is at the time limit.
     func turnWaitSawWork() async {
-        let limit = deps.clock.now.offset + ReviewRounds.requestLimit
+        let limit = deps.clock.now.offset + ReviewRounds.limit
         await waitUntil { self.deps.clock.nextDeadline?.offset == limit }
     }
 
@@ -329,6 +362,37 @@ private final class ConflictFixture {
         return try await branch()
     }
 
+    // The state of a round that was posting when Bifrost quit: the merge of the resolved file is
+    // committed in the worktree, and the round keeps it as its fix. pushed: the merge is on
+    // GitHub already. The result is the merge.
+    func postingRound(pushed: Bool) async throws -> CommitID {
+        let store = repos.store
+        try await store.ensureClone(pr.repo)
+        _ = try await store.fetchPR(pr, base: try #require(BranchName("main")))
+        let start = try await ConflictMerge.start(pr: pr, head: head, base: base, git: store.git)
+        _ = try await store.placeWorktree(pr, head: start.auto)
+        try resolve()
+        let merge = try await ConflictMerge.commit(
+            pr: pr, start: start, head: head, base: base, message: "Merge main into feat",
+            git: store.git)
+        await store.markLeftovers(pr)
+        if pushed {
+            try await repos.setup(
+                ["push", "-q", bare, "\(merge.hex):refs/heads/feat"], in: repos.clone(pr.repo))
+        }
+        let (pr, head, base) = (pr, head, base)
+        await self.store.update { state in
+            var prState = PRState()
+            prState.round = ActiveRound(
+                phase: .posting, startedAt: Rows.now, at: Rows.now, headSHA: head,
+                baseSHA: base, kind: .conflict, fixSHA: merge, token: "t1", startSHA: start.auto)
+            prState.conflict = ConflictMark(
+                head: head, base: base, at: Rows.now, outcome: .working)
+            state.prs[pr] = prState
+        }
+        return merge
+    }
+
     var bgRuns: [[String]] { deps.calls.claudeRuns.filter { $0.first == "--bg" } }
 
     // The stop of the session ran, and its wait for the park sleeps on the clock, so a move of the
@@ -351,11 +415,62 @@ private final class ConflictFixture {
 
     // The own request file of the PR, with the commit of the worktree as its head.
     func writeOwnRequest(head: CommitID) throws {
-        let fields: JSONValue = [
+        try Self.ownRequest(head: head).write(to: URL(filePath: input + "/" + OwnRequestFile.name))
+    }
+
+    // The bytes of an own request file for the head.
+    static func context(head: CommitID) -> Data {
+        ReviewData.json([
+            "data": [
+                "repository": [
+                    "pullRequest": [
+                        "id": "PR_kwDOrepo7", "url": "https://github.com/Owner-A/Repo-A/pull/7",
+                        "title": "Add the cache", "body": "The body.", "state": "OPEN",
+                        "author": ["login": .string(Rows.viewer)], "isCrossRepository": false,
+                        "baseRefName": "main", "headRefName": "feat",
+                        "headRefOid": .string(head.hex), "updatedAt": "2026-11-10T11:30:00Z",
+                        "repository": ["defaultBranchRef": ["name": "main"]],
+                        "pending": ["nodes": []],
+                        "reviews": [
+                            "nodes": [], "pageInfo": ["hasNextPage": false, "endCursor": .null],
+                        ],
+                    ]
+                ]
+            ]
+        ])
+    }
+
+    // The read of the threads and of the comments of the PR: none.
+    static func noThreads() -> Data {
+        ReviewData.json([
+            "data": [
+                "repository": [
+                    "pullRequest": [
+                        "reviewThreads": [
+                            "nodes": [], "pageInfo": ["hasNextPage": false, "endCursor": .null],
+                        ],
+                        "comments": [
+                            "nodes": [], "pageInfo": ["hasNextPage": false, "endCursor": .null],
+                        ],
+                    ]
+                ]
+            ]
+        ])
+    }
+
+    static func ownRequest(head: CommitID) -> Data {
+        ReviewData.json([
             "version": 1, "pr": "Owner-A/Repo-A#7", "headSha": .string(head.hex),
             "commit": ["message": "refactor: rename the helper", "paths": ["src/a.swift"]],
-        ]
-        try ReviewData.json(fields).write(to: URL(filePath: input + "/" + OwnRequestFile.name))
+        ])
+    }
+
+    // The source refuses each push, as GitHub does for a protected branch.
+    func protectBranch() throws {
+        let hook = bare + "/hooks/pre-receive"
+        try "#!/bin/sh\necho 'protected branch' >&2\nexit 1\n".write(
+            toFile: hook, atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook)
     }
 }
 
@@ -503,7 +618,7 @@ struct ConflictRoundTests {
         await f.end()
     }
 
-    // Claude also adds a file that has no conflict: Bifrost pushes nothing.
+    // Claude also adds a file that has no conflict: Bifrost pushes nothing and keeps the file.
     @Test func aChangeOutsideTheConflictsPushesNothing() async throws {
         let f = try await ConflictFixture()
         let round = try f.pollNow()
@@ -512,9 +627,11 @@ struct ConflictRoundTests {
         try "notes\n".write(toFile: f.worktree + "/notes.txt", atomically: false, encoding: .utf8)
         try await f.endTurn(result: f.result())
         await round.value
-        #expect(f.mark?.outcome == .failed(ConflictFailure.otherFiles.message))
+        // The file is no change of the round, so it stays and the row shows Needs you.
+        #expect(f.mark == nil)
+        #expect(f.store.state.prs[f.pr]?.waiting?.files == ["notes.txt"])
         #expect(try await f.branch() == f.head)
-        #expect(!FileManager.default.fileExists(atPath: f.worktree + "/notes.txt"))
+        #expect(FileManager.default.fileExists(atPath: f.worktree + "/notes.txt"))
         await f.end()
     }
 
@@ -543,6 +660,7 @@ struct ConflictRoundTests {
         #expect(try await f.branch() == moved)
         #expect(f.mark == nil && f.store.state.prs[f.pr]?.round == nil)
         #expect(f.store.state.prs[f.pr]?.lastError == nil)
+        #expect(await f.worktreeHead() == f.head)
         await f.end()
     }
 
@@ -599,31 +717,7 @@ struct ConflictRoundTests {
     @Test(arguments: [false, true])
     func aPostingRoundPushesAfterARestart(_ alreadyPushed: Bool) async throws {
         let f = try await ConflictFixture()
-        let store = f.repos.store
-        try await store.ensureClone(f.pr.repo)
-        _ = try await store.fetchPR(f.pr, base: try #require(BranchName("main")))
-        let start = try await ConflictMerge.start(
-            pr: f.pr, head: f.head, base: f.base, git: store.git)
-        _ = try await store.placeWorktree(f.pr, head: start.auto)
-        try f.resolve()
-        let merge = try await ConflictMerge.commit(
-            pr: f.pr, start: start, head: f.head, base: f.base, message: "Merge main into feat",
-            git: store.git)
-        if alreadyPushed {
-            try await f.repos.setup(
-                ["push", "-q", f.bare, "\(merge.hex):refs/heads/feat"],
-                in: f.repos.clone(f.pr.repo))
-        }
-        await f.store.update { state in
-            var prState = PRState()
-            prState.round = ActiveRound(
-                phase: .posting, startedAt: Rows.now, at: Rows.now, headSHA: f.head,
-                baseSHA: f.base, kind: .conflict, fixSHA: merge, token: "t1",
-                startSHA: start.auto)
-            prState.conflict = ConflictMark(
-                head: f.head, base: f.base, at: Rows.now, outcome: .working)
-            state.prs[f.pr] = prState
-        }
+        let merge = try await f.postingRound(pushed: alreadyPushed)
         await f.restart()
         let round = try #require(f.rounds.queue.task(of: f.pr))
         await round.value
@@ -657,6 +751,7 @@ struct ConflictRoundTests {
         let f = try await ConflictFixture()
         let round = try f.pollNow()
         await f.sessionWorks()
+        f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle("MERGED"))
         f.rounds.afterPoll(Rows.answer(mine: []))
         await round.value
         await waitUntil { f.rounds.drops[f.pr] == nil }
@@ -683,6 +778,7 @@ struct ConflictRoundTests {
         #expect(f.mark?.outcome == .failed(ConflictFailure.session(.stopped).message))
         #expect(f.store.state.prs[f.pr]?.round == nil)
         #expect(f.store.state.prs[f.pr]?.lastError == nil)
+        #expect(await f.worktreeHead() == f.head)
         f.rounds.afterPoll(f.poll)
         #expect(f.store.state.queue.isEmpty)
         await f.end()
@@ -784,6 +880,573 @@ struct ConflictRoundTests {
         try f.github(head: f.head, base: base)
         let merge = try await f.resolvedRound()
         #expect(f.mark?.outcome == .pushed(merge))
+        await f.end()
+    }
+
+    // MARK: - The checks before the push
+
+    // A person adds a file to the worktree after the end of the turn and before the commit: the
+    // round pushes nothing, the file stays, and the row shows Needs you with it.
+    @Test func aChangeAfterTheTurnBeforeTheCommitNeedsYouAndPushesNothing() async throws {
+        let runner = ConflictHookRunner()
+        let f = try await ConflictFixture(runner: runner)
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        try f.resolve()
+        let file = f.worktree + "/person.txt"
+        runner.afterFirstStatus {
+            try? "mine\n".write(toFile: file, atomically: false, encoding: .utf8)
+        }
+        try await f.endTurn(result: f.result())
+        await round.value
+        let state = try #require(f.store.state.prs[f.pr])
+        #expect(state.waiting?.kind == .unpushed && state.waiting?.files == ["person.txt"])
+        #expect(state.conflict == nil && state.round == nil && state.lastError == nil)
+        #expect(try await f.branch() == f.head)
+        #expect(FileManager.default.fileExists(atPath: file))
+        await f.end()
+    }
+
+    // An own request file lands while git adds the files of the merge: the round pushes nothing,
+    // and the file goes with its reason on the row.
+    @Test func anOwnRequestWhileGitAddsTheMergePushesNothing() async throws {
+        let runner = ConflictHookRunner()
+        let f = try await ConflictFixture(runner: runner)
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        try f.resolve()
+        let auto = try #require(await f.worktreeHead())
+        let (data, file) = (
+            ConflictFixture.ownRequest(head: auto), f.input + "/" + OwnRequestFile.name
+        )
+        runner.beforeFirstAdd { try? data.write(to: URL(filePath: file)) }
+        try await f.endTurn(result: f.result())
+        await round.value
+        let state = try #require(f.store.state.prs[f.pr])
+        #expect(state.waiting?.reason == OwnRequestStop.conflictMerge.message)
+        #expect(state.conflict == nil && state.round == nil)
+        #expect(try await f.branch() == f.head)
+        await f.end()
+    }
+
+    // MARK: - The copy at the end of a failed round
+
+    // A person uses the session when the round fails after it committed the merge: the copy stays
+    // where it is, so the work in the session is not moved under the person.
+    @Test func aSessionInUseKeepsTheCopyAtAFailure() async throws {
+        let f = try await ConflictFixture()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        try f.resolve()
+        _ = try await f.otherPush()
+        f.github.onRead = { name in
+            guard name == HeadQueries.name else { return }
+            await f.show(.busy)
+        }
+        try await f.endTurn(result: f.result())
+        await round.value
+        f.github.onRead = nil
+        #expect(try await f.branch() != f.head)
+        let at = try #require(await f.worktreeHead())
+        #expect(at != f.head)
+        await f.end()
+    }
+
+    // GitHub refuses the push (a protected branch): the mark shows the failure, and the copy goes
+    // back to the head of the PR.
+    @Test func aRefusedPushPutsTheCopyBackAtTheHead() async throws {
+        let f = try await ConflictFixture()
+        try f.protectBranch()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        try f.resolve()
+        try await f.endTurn(result: f.result())
+        await round.value
+        guard case .failed(let text)? = f.mark?.outcome else {
+            Issue.record("The mark is not a failure.")
+            return await f.end()
+        }
+        #expect(!text.isEmpty)
+        #expect(try await f.branch() == f.head)
+        #expect(await f.worktreeHead() == f.head)
+        #expect(f.store.state.prs[f.pr]?.round == nil)
+        await f.end()
+    }
+
+    // A turn that passes the time limit gets a stop: the round pushes nothing, and the copy goes
+    // back to the head also while the row still runs.
+    @Test func aTurnThatTimesOutStopsTheSessionAndResetsTheCopy() async throws {
+        let f = try await ConflictFixture()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        f.deps.clock.advance(by: ReviewRounds.limit)
+        await f.parkWaitStarted()
+        f.deps.clock.advance(by: SessionActions.parkWait)
+        await round.value
+        #expect(f.mark?.outcome == .failed(ConflictFailure.session(.timeout).message))
+        #expect(try await f.branch() == f.head)
+        #expect(await f.worktreeHead() == f.head)
+        #expect(f.fileA == ConflictFixture.lines([11: "line eleven feat"]))
+        await f.end()
+    }
+
+    // A session that shows a prompt box must never ask: the round stops the session and pushes
+    // nothing, and the copy goes back to the head also while the row shows the box.
+    @Test func aPromptBoxStopsTheSessionAndResetsTheCopy() async throws {
+        let f = try await ConflictFixture()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        await f.show(.waiting, waitingFor: "permission")
+        await f.parkWaitStarted()
+        f.deps.clock.advance(by: SessionActions.parkWait)
+        await round.value
+        #expect(f.mark?.outcome == .failed(ConflictFailure.session(.blocked).message))
+        #expect(try await f.branch() == f.head)
+        #expect(await f.worktreeHead() == f.head)
+        #expect(f.fileA == ConflictFixture.lines([11: "line eleven feat"]))
+        await f.end()
+    }
+
+    // MARK: - The start and the end of the rounds
+
+    // A start of Bifrost takes over the conflict rounds of the state: a stopped round that did
+    // not run gets the text of the stop and loses its click, a CI round goes, and a round that
+    // did not run goes back to the queue.
+    @Test func aStartTakesOverTheConflictRoundsOfTheState() async throws {
+        let f = try await ConflictFixture()
+        let (pr, head, base) = (f.pr, f.head, f.base)
+        func round(stopped: Bool, kind: PRSessionKind) -> ActiveRound {
+            ActiveRound(
+                phase: .preparing, startedAt: Rows.now, at: Rows.now, headSHA: head, baseSHA: base,
+                stoppedByUser: stopped, kind: kind)
+        }
+        let working = ConflictMark(head: head, base: base, at: Rows.now, outcome: .working)
+        await f.store.update { state in
+            var prState = PRState()
+            prState.round = round(stopped: true, kind: .conflict)
+            prState.conflict = working
+            prState.resolveNow = true
+            state.prs[pr] = prState
+        }
+        await f.restart()
+        var state = try #require(f.store.state.prs[pr])
+        #expect(state.round == nil && !state.resolveNow && f.store.state.queue.isEmpty)
+        #expect(state.conflict?.outcome == .failed(ConflictFailure.session(.stopped).message))
+        await f.store.update { state in
+            var prState = PRState()
+            prState.round = round(stopped: false, kind: .ci)
+            state.prs[pr] = prState
+        }
+        await f.restart()
+        #expect(f.store.state.prs[pr]?.round == nil && f.store.state.queue.isEmpty)
+        await f.store.update { state in
+            var prState = PRState()
+            prState.round = round(stopped: false, kind: .conflict)
+            state.prs[pr] = prState
+        }
+        await f.restart()
+        state = try #require(f.store.state.prs[pr])
+        #expect(state.round == nil && f.store.state.queue.map(\.pr) == [pr])
+        await f.end()
+    }
+
+    // Remove all clones while a conflict round runs: the round, its working mark and its click
+    // go, and nothing is pushed.
+    @Test func removeAllClonesEndsAConflictRound() async throws {
+        let f = try await ConflictFixture()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        let pr = f.pr
+        await f.store.update { $0.prs[pr]?.resolveNow = true }
+        #expect(f.mark?.outcome == .working)
+        #expect(await f.rounds.removeAll(then: { nil }) == nil)
+        await round.value
+        let state = try #require(f.store.state.prs[pr])
+        #expect(state.round == nil && state.conflict == nil && !state.resolveNow)
+        #expect(f.store.state.queue.isEmpty)
+        #expect(try await f.branch() == f.head)
+        await f.end()
+    }
+
+    // An own request of the user waits when a conflict round starts: it goes first and pushes
+    // alone on the head of the PR. A round that already yielded twice fails as busy and keeps
+    // the file.
+    @Test func anOwnRequestBeforeAConflictRoundGoesFirst() async throws {
+        let f = try await ConflictFixture()
+        let store = f.repos.store
+        try await store.ensureClone(f.pr.repo)
+        _ = try await store.fetchPR(f.pr, base: try #require(BranchName("main")))
+        _ = try await store.roundFolder(f.pr)
+        _ = try await store.placeWorktree(f.pr, head: f.head)
+        try ConflictFixture.lines([11: "line eleven renamed"]).write(
+            toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        try f.writeOwnRequest(head: f.head)
+        f.github.answers[RequestQueries.contextName] = .success(
+            ConflictFixture.context(head: f.head))
+        f.github.answers[RequestQueries.threadsName] = .success(ConflictFixture.noThreads())
+        f.github.answers[RequestQueries.commentsName] = .success(ConflictFixture.noThreads())
+        f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle())
+        f.rounds.afterPoll(f.poll)
+        for _ in 0..<200 where try await f.branch() == f.head {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let pushed = try await f.branch()
+        #expect(
+            await f.sourceGit(["log", "-1", "--format=%P %s", pushed.hex])
+                == "\(f.head.hex) refactor: rename the helper")
+        await f.end()
+    }
+
+    // The third time that an own request waits, the round fails as busy and pushes nothing.
+    @Test func aThirdYieldToAnOwnRequestFailsAsBusy() async throws {
+        let f = try await ConflictFixture()
+        let store = f.repos.store
+        try await store.ensureClone(f.pr.repo)
+        _ = try await store.fetchPR(f.pr, base: try #require(BranchName("main")))
+        _ = try await store.roundFolder(f.pr)
+        _ = try await store.placeWorktree(f.pr, head: f.head)
+        try ConflictFixture.lines([11: "line eleven renamed"]).write(
+            toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
+        try f.writeOwnRequest(head: f.head)
+        f.rounds.afterPoll(f.poll)
+        f.store.change { $0.queue.removeAll() }
+        f.rounds.queue.cancel(f.pr)
+        await f.rounds.runConflict(
+            QueuedJob(pr: f.pr, kind: .conflict, since: Rows.now), saved: nil,
+            yields: ReviewRounds.maxYields)
+        #expect(f.mark?.outcome == .failed(ConflictFailure.session(.sessionBusy).message))
+        #expect(try await f.branch() == f.head)
+        #expect(FileManager.default.fileExists(atPath: f.input + "/" + OwnRequestFile.name))
+        await f.end()
+    }
+
+    // A pushed merge goes on the CI chain of its head, so it counts in the budget of that head.
+    @Test func aPushedMergeJoinsTheCIChainOfItsHead() async throws {
+        let f = try await ConflictFixture()
+        let (pr, head) = (f.pr, f.head)
+        await f.store.update { state in
+            var prState = PRState()
+            prState.ci = CIMark(chain: [head])
+            state.prs[pr] = prState
+        }
+        let merge = try await f.resolvedRound()
+        #expect(f.store.state.prs[pr]?.ci?.chain == [head, merge])
+        await f.end()
+    }
+
+    // A round that was posting when Bifrost quit, with the gate closed now (the setting is off
+    // and no click waits): it ends with no text, pushes nothing, and the copy goes back to the
+    // head.
+    @Test func aPostingRoundWithTheGateClosedPushesNothing() async throws {
+        let f = try await ConflictFixture(config: ReviewsConfig(resolveConflicts: false))
+        _ = try await f.postingRound(pushed: false)
+        await f.restart()
+        let round = try #require(f.rounds.queue.task(of: f.pr))
+        await round.value
+        #expect(try await f.branch() == f.head)
+        #expect(f.mark == nil && f.store.state.prs[f.pr]?.round == nil)
+        #expect(await f.worktreeHead() == f.head)
+        await f.end()
+    }
+
+    // MARK: - The ends of a round
+
+    // A merge that went, while the copy cannot be reset (a person uses the session, or a change
+    // that no round made is in the copy): HEAD and the index go to the merge, and the files stay.
+    // The copy is not left on the commit with the markers, which GitHub does not have.
+    @Test(arguments: ["session in use", "change of a person"])
+    func aMergeThatWentMovesTheCopyToTheMerge(_ why: String) async throws {
+        let f = try await ConflictFixture()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        try f.resolve()
+        let file = f.worktree + "/person.txt"
+        f.github.onRead = { name in
+            guard name == HeadQueries.name else { return }
+            if why == "session in use" {
+                await f.show(.busy)
+            } else {
+                try? "mine\n".write(toFile: file, atomically: false, encoding: .utf8)
+            }
+        }
+        try await f.endTurn(result: f.result())
+        await round.value
+        f.github.onRead = nil
+        let merge = try await f.branch()
+        #expect(merge != f.head)
+        #expect(f.mark?.outcome == .pushed(merge))
+        #expect(await f.worktreeHead() == merge)
+        #expect(f.fileA == ConflictFixture.lines([11: "line eleven both"]))
+        #expect(FileManager.default.fileExists(atPath: file) == (why != "session in use"))
+        await f.end()
+    }
+
+    // A turn that times out after Claude edited a conflicted file: the edit is a change of the
+    // round, so the copy goes back to the head.
+    @Test func aTurnThatTimesOutAfterEditsResetsTheCopy() async throws {
+        let f = try await ConflictFixture()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        try f.resolve()
+        f.deps.clock.advance(by: ReviewRounds.limit)
+        await f.parkWaitStarted()
+        f.deps.clock.advance(by: SessionActions.parkWait)
+        await round.value
+        #expect(f.mark?.outcome == .failed(ConflictFailure.session(.timeout).message))
+        #expect(try await f.branch() == f.head)
+        #expect(await f.worktreeHead() == f.head)
+        #expect(f.fileA == ConflictFixture.lines([11: "line eleven feat"]))
+        await f.end()
+    }
+
+    // A turn that times out when a person added a file too: the copy stays as it is, with the
+    // file, so no work of the person is lost.
+    @Test func aTurnThatTimesOutWithAFileOfAPersonKeepsTheCopy() async throws {
+        let f = try await ConflictFixture()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        try f.resolve()
+        let file = f.worktree + "/person.txt"
+        try "mine\n".write(toFile: file, atomically: false, encoding: .utf8)
+        f.deps.clock.advance(by: ReviewRounds.limit)
+        await f.parkWaitStarted()
+        f.deps.clock.advance(by: SessionActions.parkWait)
+        await round.value
+        #expect(f.mark?.outcome == .failed(ConflictFailure.session(.timeout).message))
+        #expect(try await f.branch() == f.head)
+        #expect(try String(contentsOfFile: file, encoding: .utf8) == "mine\n")
+        #expect(await f.worktreeHead() != f.head)
+        await f.end()
+    }
+
+    // A person uses the session when an automatic round reaches its turn: the pair is not tried.
+    // The round ends with no text and no mark, and the next free poll starts it.
+    @Test func aBusySessionLeavesThePairUntriedForTheNextFreePoll() async throws {
+        let f = try await ConflictFixture()
+        let first = try f.pollNow()
+        await f.sessionWorks()
+        try await f.endTurn(result: f.result(needsYou: "Only you can pick the line."))
+        await first.value
+        await f.show(.busy)
+        let base = try await f.pushMain(lineEleven: "line main again")
+        try f.github(head: f.head, base: base)
+        let ended = Recorder<Bool>()
+        let job = QueuedJob(pr: f.pr, kind: .conflict, since: Rows.now)
+        let run = Task {
+            await f.rounds.runConflict(job, saved: nil)
+            ended.record(true)
+        }
+        var turns = 0
+        while ended.values.isEmpty, turns < 2000 {
+            f.deps.clock.advance(by: .seconds(30))
+            try await Task.sleep(for: .milliseconds(2))
+            turns += 1
+        }
+        await run.value
+        #expect(f.mark == nil && f.store.state.prs[f.pr]?.round == nil)
+        #expect(f.store.state.prs[f.pr]?.waiting == nil)
+        await f.show(.idle)
+        f.rounds.afterPoll(f.poll)
+        #expect(f.rounds.queue.task(of: f.pr) != nil)
+        await f.end()
+    }
+
+    // A posting round with the merge already on GitHub, and the gate closed now: the merge is
+    // recorded as pushed, so it counts for the CI chain and for the mark.
+    @Test func aPostingRoundWhoseMergeIsOnTheBranchRecordsItWithTheGateClosed() async throws {
+        let f = try await ConflictFixture(config: ReviewsConfig(resolveConflicts: false))
+        let merge = try await f.postingRound(pushed: true)
+        await f.restart()
+        let round = try #require(f.rounds.queue.task(of: f.pr))
+        await round.value
+        #expect(try await f.branch() == merge)
+        #expect(f.mark?.outcome == .pushed(merge) && f.store.state.prs[f.pr]?.round == nil)
+        await f.end()
+    }
+
+    // A poll says conflicting and the fresh read does not: the round ends with no text. The next
+    // polls on the same pair queue nothing until WorkRule.readRetry has passed.
+    @Test func aQuietPairWaitsForTheRetryTime() async throws {
+        let f = try await ConflictFixture()
+        f.github.answers[HeadQueries.name] = .success(
+            ConflictFixture.headRead(head: f.head, base: f.base, mergeable: "MERGEABLE"))
+        await (try f.pollNow()).value
+        #expect(f.mark == nil && f.store.state.queue.isEmpty)
+        f.rounds.afterPoll(f.poll)
+        #expect(f.rounds.queue.task(of: f.pr) == nil)
+        try await f.clock.sleep(for: WorkRule.readRetry - .seconds(1))
+        f.rounds.afterPoll(f.poll)
+        #expect(f.rounds.queue.task(of: f.pr) == nil)
+        try await f.clock.sleep(for: .seconds(2))
+        f.rounds.afterPoll(f.poll)
+        let again = try #require(f.rounds.queue.task(of: f.pr))
+        await again.value
+        await f.end()
+    }
+
+    // A failure with no pair (the poll has no base commit and the head read fails) has no mark to
+    // show it, so the Event log gets one line.
+    @Test func aFailureWithNoPairWritesALineInTheEventLog() async throws {
+        let f = try await ConflictFixture()
+        f.poll.mine[0].baseSHA = ""
+        f.github.answers[HeadQueries.name] = .failure(.unknownOutcome("Bad gateway"))
+        f.rounds.afterPoll(f.poll)
+        await f.rounds.resolveNow(f.pr)
+        let round = try #require(f.rounds.queue.task(of: f.pr))
+        await round.value
+        #expect(f.mark == nil && f.store.state.prs[f.pr]?.round == nil)
+        let line = try #require(f.events.values.first)
+        #expect(line.contains("Owner-A/Repo-A#7") && line.contains("couldn't load"))
+        await f.end()
+    }
+
+    // A pushed merge clears an old reason of the row: the round proved the copy clean first.
+    @Test func aPushedMergeClearsAnOldReason() async throws {
+        let f = try await ConflictFixture()
+        await f.store.update { state in
+            var prState = PRState()
+            prState.waiting = WaitsForYou(reason: "An old reason.")
+            state.prs[f.pr] = prState
+        }
+        f.rounds.afterPoll(f.poll)
+        await f.rounds.resolveNow(f.pr)
+        let round = try #require(f.rounds.queue.task(of: f.pr))
+        await f.sessionWorks()
+        try f.resolve()
+        try await f.endTurn(result: f.result())
+        await round.value
+        let merge = try await f.branch()
+        #expect(f.mark?.outcome == .pushed(merge))
+        #expect(f.store.state.prs[f.pr]?.waiting == nil)
+        await f.end()
+    }
+
+    // A person adds a file outside the conflicted files during the turn. At the normal end the
+    // file is no change of the round: the merge is refused, the file stays, and the row shows
+    // Needs you.
+    @Test func aFileOfAPersonDuringTheTurnSurvivesTheNormalEnd() async throws {
+        let f = try await ConflictFixture()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        try f.resolve()
+        let file = f.worktree + "/person.txt"
+        try "mine\n".write(toFile: file, atomically: false, encoding: .utf8)
+        try await f.endTurn(result: f.result())
+        await round.value
+        #expect(try String(contentsOfFile: file, encoding: .utf8) == "mine\n")
+        #expect(f.store.state.prs[f.pr]?.waiting?.files == ["person.txt"])
+        #expect(try await f.branch() == f.head)
+        await f.end()
+    }
+
+    // The same file, and the user stops the session: the copy stays, and nothing is pushed.
+    @Test func aFileOfAPersonDuringTheTurnSurvivesAStop() async throws {
+        let f = try await ConflictFixture()
+        let round = try f.pollNow()
+        await f.sessionWorks()
+        let file = f.worktree + "/person.txt"
+        try "mine\n".write(toFile: file, atomically: false, encoding: .utf8)
+        let stop = Task { await f.rounds.stopSession(f.pr) }
+        await round.value
+        await f.parkWaitStarted()
+        f.deps.clock.advance(by: SessionActions.parkWait)
+        await stop.value
+        #expect(try String(contentsOfFile: file, encoding: .utf8) == "mine\n")
+        #expect(try await f.branch() == f.head)
+        await f.end()
+    }
+
+    // A quiet end with the setting off keeps no wait, so turning the setting on works at the
+    // next poll.
+    @Test func aQuietEndWithTheSettingOffKeepsNoWait() async throws {
+        let f = try await ConflictFixture(config: ReviewsConfig(resolveConflicts: false))
+        f.github.answers[HeadQueries.name] = .success(
+            ConflictFixture.headRead(head: f.head, base: f.base, mergeable: "MERGEABLE"))
+        f.rounds.afterPoll(f.poll)
+        await f.rounds.resolveNow(f.pr)
+        await (try #require(f.rounds.queue.task(of: f.pr))).value
+        #expect(f.rounds.quietPairs.isEmpty)
+        await f.end()
+    }
+
+    // MARK: - The marks in doubt
+
+    // Records that the file lost: a poll that is cut keeps the doubt, so the next complete poll
+    // counts the pair as tried and then clears it.
+    @Test func lostRecordsAreInDoubtUntilACompletePoll() async throws {
+        let f = try await ConflictFixture()
+        await f.store.update { $0.marksInDoubt = true }
+        var cut = f.poll
+        cut.mineCut = true
+        f.rounds.afterPoll(cut)
+        #expect(f.store.state.marksInDoubt)
+        #expect(f.store.state.queue.isEmpty && f.rounds.queue.task(of: f.pr) == nil)
+        f.rounds.afterPoll(f.poll)
+        #expect(!f.store.state.marksInDoubt)
+        #expect(f.store.state.queue.isEmpty && f.rounds.queue.task(of: f.pr) == nil)
+        #expect(f.mark?.outcome == .failed(""))
+        await f.end()
+    }
+
+    // MARK: - The other work of the PR
+
+    // A poll starts no round while an own request or a discard of the PR runs, nor while a person
+    // uses its session. When the work ends, the next poll starts the round.
+    @Test(arguments: ["own request", "discard", "session"])
+    func aPollStartsNoRoundWhileOtherWorkOfThePRRuns(_ work: String) async throws {
+        let f = try await ConflictFixture()
+        let gate = Recorder<Bool>()
+        if work == "own request" {
+            f.rounds.ownRuns[f.pr] = Task { await waitUntil { !gate.values.isEmpty } }
+        } else if work == "discard" {
+            f.rounds.discards[f.pr] = Task {
+                await waitUntil { !gate.values.isEmpty }
+                return .discarded
+            }
+        } else {
+            let first = try f.pollNow()
+            await f.sessionWorks()
+            try await f.endTurn(result: f.result(needsYou: "Only you can pick the line."))
+            await first.value
+            await f.show(.busy)
+            let base = try await f.pushMain(lineEleven: "line main again")
+            try f.github(head: f.head, base: base)
+        }
+        f.rounds.afterPoll(f.poll)
+        #expect(f.store.state.queue.isEmpty && f.rounds.queue.task(of: f.pr) == nil)
+        gate.record(true)
+        if work == "own request" {
+            await f.rounds.ownRuns[f.pr]?.value
+            f.rounds.ownRuns[f.pr] = nil
+        } else if work == "discard" {
+            _ = await f.rounds.discards[f.pr]?.value
+            f.rounds.discards[f.pr] = nil
+        } else {
+            await f.show(.idle)
+        }
+        f.rounds.afterPoll(f.poll)
+        #expect(f.rounds.queue.task(of: f.pr) != nil)
+        await f.end()
+    }
+
+    // Resolve now does nothing while an own request or a discard of the PR runs.
+    @Test(arguments: ["own request", "discard"])
+    func resolveNowDoesNothingWhileOtherWorkOfThePRRuns(_ work: String) async throws {
+        let f = try await ConflictFixture(config: ReviewsConfig(resolveConflicts: false))
+        let gate = Recorder<Bool>()
+        if work == "own request" {
+            f.rounds.ownRuns[f.pr] = Task { await waitUntil { !gate.values.isEmpty } }
+        } else {
+            f.rounds.discards[f.pr] = Task {
+                await waitUntil { !gate.values.isEmpty }
+                return .discarded
+            }
+        }
+        f.rounds.afterPoll(f.poll)
+        await f.rounds.resolveNow(f.pr)
+        #expect(f.store.state.queue.isEmpty && f.rounds.queue.task(of: f.pr) == nil)
+        #expect(f.store.state.prs[f.pr]?.resolveNow != true)
+        gate.record(true)
         await f.end()
     }
 }

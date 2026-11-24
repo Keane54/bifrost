@@ -20,3 +20,31 @@ final class RewritingRunner: CommandRunner {
         return await real.run(command)
     }
 }
+
+// The runner of git of the round tests that writes a file right before the first git add after
+// arm: the edit of a person in the seconds between the last check and the fix commit.
+final class EditBeforeAddRunner: CommandRunner {
+    private let real = ProcessRunner()
+    private let edit = Mutex<(file: String, text: String)?>(nil)
+    private let failsReset = Mutex(false)
+
+    func arm(file: String, text: String) {
+        edit.withLock { $0 = (file, text) }
+    }
+
+    // From now on git fails each reset that moves the index back (the move of a commit back to
+    // changes).
+    func failMixedReset() {
+        failsReset.withLock { $0 = true }
+    }
+
+    func run(_ command: Command) async -> ExecResult {
+        if command.arguments.contains("--mixed"), failsReset.withLock({ $0 }) {
+            return ExecResult(.exited(1), stderr: "fatal: the reset failed")
+        }
+        if command.arguments.contains("add"), let job = edit.withLock({ $0.take() }) {
+            try? job.text.write(toFile: job.file, atomically: false, encoding: .utf8)
+        }
+        return await real.run(command)
+    }
+}

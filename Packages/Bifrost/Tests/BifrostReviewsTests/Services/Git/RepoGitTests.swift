@@ -121,6 +121,80 @@ struct RepoGitTests {
         #expect(RepoGit.timeout == .seconds(120) && RepoGit.cloneTimeout == .seconds(900))
     }
 
+    // A proof of the one submodule check stands in for the listings of an add, and the commit
+    // lists only the index again. With no proof, or the proof of another PR, each runs both.
+    @Test func aProofCutsTheListingsOfAnAddAndACommit() async throws {
+        let fake = try FakeLayout()
+        defer { fake.folder.remove() }
+        let runner = FakeRunner(ExecResult(.exited(0)))
+        let repoGit = git(runner, layout: fake.layout)
+        let place = GitPlace.worktree(try pr())
+        func listings(_ command: GitCommand, _ proof: CommitProof?) async -> [String] {
+            let before = runner.commands.count
+            _ = await repoGit.run(command, in: place, proof: proof)
+            return runner.commands.dropFirst(before).compactMap {
+                $0.arguments.contains("ls-files") ? "index"
+                    : $0.arguments.contains("ls-tree") ? "tree" : nil
+            }
+        }
+        let proof = await repoGit.submoduleCheck(try pr()).proof
+        #expect(proof != nil)
+        #expect(await listings(.add(["a.txt"]), proof).isEmpty)
+        #expect(await listings(.commit(message: "Fix"), proof) == ["index"])
+        #expect(await listings(.add(["a.txt"]), nil) == ["index", "tree"])
+        #expect(await listings(.commit(message: "Fix"), nil) == ["index", "tree"])
+        let other = try #require(PRKey(text: "Owner-A/Repo-A#8"))
+        let otherProof = await repoGit.submoduleCheck(other).proof
+        #expect(await listings(.add(["a.txt"]), otherProof) == ["index", "tree"])
+    }
+
+    // Only a check that found no submodule gives a proof, so a refused add stays refused.
+    @Test func aSubmoduleGivesNoProof() async throws {
+        let fake = try FakeLayout()
+        defer { fake.folder.remove() }
+        let entry = "160000 commit 0123456789012345678901234567890123456789\t" + "sub\0"
+        let runner = FakeRunner(ExecResult(.exited(0), stdout: entry))
+        let repoGit = git(runner, layout: fake.layout)
+        let result = await repoGit.submoduleCheck(try pr())
+        #expect(result.holds == true && result.proof == nil)
+        let added = await repoGit.run(.add(["a.txt"]), in: .worktree(try pr()))
+        #expect(added.end == .notStarted)
+    }
+
+    // A proof does not skip the listing of the index at a commit: a gitlink that the add staged
+    // after the check still refuses the commit.
+    @Test func aCommitWithAProofStillRefusesAGitlinkInTheIndex() async throws {
+        let fake = try FakeLayout()
+        defer { fake.folder.remove() }
+        let clean = FakeRunner(ExecResult(.exited(0)))
+        let proof = try #require(await git(clean, layout: fake.layout).submoduleCheck(pr()).proof)
+        let entry = "160000 commit 0123456789012345678901234567890123456789\t" + "sub\0"
+        let runner = FakeRunner(ExecResult(.exited(0), stdout: entry))
+        let committed = await git(runner, layout: fake.layout)
+            .run(.commit(message: "Fix"), in: .worktree(try pr()), proof: proof)
+        #expect(committed.end == .notStarted)
+        #expect(!runner.commands.contains { $0.arguments.contains("commit") })
+    }
+
+    // The two listings of the check get a larger limit, so a large repository passes. Each other
+    // command keeps the usual limit.
+    @Test func theSubmoduleListingsGetALargerOutputLimit() async throws {
+        let fake = try FakeLayout()
+        defer { fake.folder.remove() }
+        let runner = FakeRunner(ExecResult(.exited(0)))
+        let repoGit = git(runner, layout: fake.layout)
+        let place = GitPlace.worktree(try pr())
+        _ = await repoGit.run(.lsFilesStage([]), in: place)
+        _ = await repoGit.run(.headTree, in: place)
+        _ = await repoGit.run(.lsFilesStage(["a.txt"]), in: place)
+        _ = await repoGit.run(.status, in: place)
+        #expect(
+            runner.commands.map(\.outputLimit)
+                == [RepoGit.listingLimit, RepoGit.listingLimit, RepoGit.outputLimit,
+                    RepoGit.outputLimit])
+        #expect(RepoGit.listingLimit >= 8 * RepoGit.outputLimit)
+    }
+
     @Test func aTestHomeCanAllowLocalRemotesAndNothingElse() throws {
         let layout = ReviewsLayout(folder: URL(filePath: "/nonexistent-bifrost-test/reviews"))
         let runner = FakeRunner(ExecResult(.exited(0)))

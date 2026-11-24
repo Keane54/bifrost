@@ -22,7 +22,7 @@
 //    with the markers (placeWorktree), ConflictMerge.checkWorktree refuses a filter attribute or
 //    a submodule before Claude starts, and the round folder gets the files of the round, each
 //    with the round ID of a new token in its name.
-// 6. The wait for the end of the turn on the result file of the round, at most requestLimit. An
+// 6. The wait for the end of the turn on the result file of the round, at most the limit. An
 //    own request file at the end of the turn shows that Claude changed files for a request in the
 //    turn: Bifrost refuses the file, commits nothing, keeps the worktree and asks the user (Needs
 //    you). A result of needs-you fails with the reason of Claude.
@@ -59,6 +59,9 @@ final class ConflictRound {
         case forYou(WaitsForYou?)
         // The clone needs the trust of the user. refused: claude refused the start.
         case waitForTrust(refused: Bool)
+        // An automatic round found the session in use by a person. The round ends with no text and
+        // its working mark goes, as for quiet, but the next free poll may start it again.
+        case busy
         // The task of the round was cancelled.
         case halted
         // An own request file of the user waits. The round changed nothing: the own request goes
@@ -122,12 +125,7 @@ final class ConflictRound {
     // The gate of an automatic round now: the setting and its consent
     // (ReviewsState.allowsConflictFix).
     private let allowed: () -> Bool
-    private let viewer: () -> String?
-    // True when the user stopped the round with Stop session.
-    private let stopRequested: () -> Bool
-    private let takeTryOnce: () -> Bool
-    private let startedSession: () -> Void
-    private let changed: () -> Void
+    private let hooks: RoundHooks
     // A failure of the preparation of the turn that is a failure of the merge (the check of the
     // worktree, the input), which the turn gives as a failure of the session.
     private var refused: ConflictFailure?
@@ -138,9 +136,7 @@ final class ConflictRound {
 
     init(
         pr: PRKey, parts: Parts, pair: Pair?, title: String, clicked: Bool, model: ModelChoice,
-        allowed: @escaping () -> Bool, viewer: @escaping () -> String?,
-        stopRequested: @escaping () -> Bool, takeTryOnce: @escaping () -> Bool,
-        startedSession: @escaping () -> Void, changed: @escaping () -> Void
+        allowed: @escaping () -> Bool, hooks: RoundHooks
     ) {
         self.pr = pr
         self.parts = parts
@@ -149,22 +145,29 @@ final class ConflictRound {
         self.clicked = clicked
         self.model = model
         self.allowed = allowed
-        self.viewer = viewer
-        self.stopRequested = stopRequested
-        self.takeTryOnce = takeTryOnce
-        self.startedSession = startedSession
-        self.changed = changed
+        self.hooks = hooks
     }
 
     private var store: ReviewsStore { parts.store }
     private var repos: RepoStore { parts.repos }
     private var sessions: PRSessions { parts.sessions }
+    // The steps that this round shares with the request round.
+    private var shared: RequestSessionTurn { sharedAtEnd(conflicted: []) }
+
+    // The conflicted files count only at the end of the turn (RequestSessionTurn.Kind).
+    private func sharedAtEnd(conflicted: [String]) -> RequestSessionTurn {
+        RequestSessionTurn(
+            pr: pr, kind: .conflict(Set(conflicted)), repos: repos, sessions: sessions,
+            own: parts.own, skills: parts.skills, userHome: parts.userHome, model: model)
+    }
 
     // MARK: - The steps
 
     // Steps 1 to 10 of a new round, whose state is preparing. The result is the merge on GitHub.
     func start() async throws(Stop) -> CommitID {
-        guard let viewer = viewer() else { throw .failed(.session(.readFailed(.notLoggedIn))) }
+        guard let viewer = hooks.viewer() else {
+            throw .failed(.session(.readFailed(.notLoggedIn)))
+        }
         do throws(RepoError) {
             try await repos.ensureClone(pr.repo)
         } catch {
@@ -173,7 +176,7 @@ final class ConflictRound {
         }
         try checkHalt()
         guard store.state.prs[pr]?.outbox == nil else { throw .quiet }
-        guard await parts.setup.trustsForStart(pr.repo) || takeTryOnce() else {
+        guard await parts.setup.trustsForStart(pr.repo) || hooks.takeTryOnce() else {
             throw .waitForTrust(refused: false)
         }
         try checkHalt()
@@ -228,7 +231,7 @@ final class ConflictRound {
             prState.round = round
             state.prs[pr] = prState
         }
-        changed()
+        hooks.changed()
         let turn = Turn(
             input: input, start: start, head: read.head, base: fetched.base,
             session: row.sessionId, startedAt: begun.startedAt, begun: row)
@@ -244,7 +247,7 @@ final class ConflictRound {
         guard !round.stoppedByUser else { throw .failed(.session(.stopped)) }
         // A round with no token has no result that can count.
         guard let head = round.headSHA, let base = round.baseSHA, let auto = round.startSHA,
-            let token = round.token, let id = round.sessionID?.text, let viewer = viewer()
+            let token = round.token, let id = round.sessionID?.text, let viewer = hooks.viewer()
         else { throw .failed(.session(.noResult)) }
         let again = try await merge(head: head, base: base)
         let start = MergeStart(auto: auto, conflicted: again.conflicted)
@@ -269,10 +272,9 @@ final class ConflictRound {
         } catch {
             throw .failed(error)
         }
-        let elapsed = Duration.seconds(max(parts.now().timeIntervalSince(round.startedAt), 0))
         let turn = Turn(
             input: input, start: start, head: head, base: base, session: id,
-            startedAt: sessions.time - elapsed, begun: nil)
+            startedAt: shared.resumedStart(since: round.startedAt, now: parts.now()), begun: nil)
         return try await finish(turn, names: nil)
     }
 
@@ -281,9 +283,15 @@ final class ConflictRound {
     func resumePosting(_ round: ActiveRound) async throws(Stop) -> CommitID {
         pair = savedPair() ?? pair
         guard let head = round.headSHA, let base = round.baseSHA, let merge = round.fixSHA,
-            let viewer = viewer()
+            let viewer = hooks.viewer()
         else { throw .failed(.session(.endFailed)) }
         let read = try await readHead()
+        // A merge that reached GitHub before the quit is a good end, also when the gate is
+        // closed now: the coordinator records it as pushed.
+        if await isOnBranch(merge, read: read) {
+            await moveToMerge(merge)
+            return merge
+        }
         guard read.state == .open, gateOpen() else {
             await resetWorktree(to: head)
             throw .quiet
@@ -300,12 +308,11 @@ final class ConflictRound {
     private func beginTurn(
         head: CommitID, _ prepare: () async throws(RoundFailure) -> MineTurn
     ) async throws(Stop) -> BegunTurn {
-        if stopRequested() { throw .failed(.session(.stopped)) }
-        let worktree = repos.layout.worktree(pr.repo, number: pr.number)
+        if hooks.stopRequested() { throw .failed(.session(.stopped)) }
         let begun: BegunTurn
         do throws(RoundFailure) {
-            begun = try await sessions.beginTurn(
-                pr, worktree: worktree, prepare: prepare,
+            begun = try await shared.begin(
+                prepare: prepare,
                 recheck: { () async throws(RoundFailure) in try await checkWorktree() })
         } catch .notTrusted {
             throw .waitForTrust(refused: true)
@@ -320,27 +327,19 @@ final class ConflictRound {
             // Before the preparation, the worktree holds only the work of a person: it stays.
             if placed { await resetWorktree(to: head) }
             try checkHalt()
+            // A person uses the session. An automatic round did not try the pair, so it ends with
+            // no text. A click gets the reason.
+            if error == .sessionBusy, !clicked, refused == nil { throw .busy }
             throw .failed(refused ?? .session(error))
         }
-        startedSession()
+        hooks.startedSession()
         return begun
     }
 
     // Before the round changes the worktree: an own request of the user goes first, and changes
     // that no round made stay (the safety net). In both cases the round changes nothing.
     private func checkWorktree() async throws(RoundFailure) {
-        if await parts.own.waits(pr) { throw .ownRequestWaits }
-        guard let unknown = await repos.unknownChanges(pr) else { throw .prepareFailed }
-        guard unknown.isEmpty else {
-            unsavedFiles = unknown
-            Self.logger.notice(
-                """
-                The copy of \(self.pr.text, privacy: .private) has \
-                \(unknown.count, privacy: .public) changes that no round made, so the conflict \
-                round does not start.
-                """)
-            throw .changesNotOnGitHub
-        }
+        try await shared.checkWorktree { unsavedFiles = $0 }
     }
 
     // The preparation of the turn, which PRSessions runs only when no person can use the session
@@ -351,7 +350,7 @@ final class ConflictRound {
     ) async throws(RoundFailure) -> (input: ConflictInput, turn: MineTurn) {
         let (pr, repos) = (pr, repos)
         try await checkWorktree()
-        let worktree = try await repoStep { () async throws(RepoError) in
+        let worktree = try await RequestSessionTurn.repoStep { () async throws(RepoError) in
             try await repos.placeWorktree(pr, head: start.auto)
         }
         placed = true
@@ -365,31 +364,10 @@ final class ConflictRound {
         let input = try await writeInput(
             read: read, fetched: fetched, start: start, viewer: viewer, token: token)
         if Task.isCancelled { throw .stopped }
-        // Claude Code compares real paths, so the rules name the real paths of the folders and
-        // --add-dir gets the real path of the input folder (as for a request round).
-        let (clonePath, treePath, folderPath, reviewsPath, homePath) = (
-            repos.layout.clone(pr.repo).plainPath, worktree.url.plainPath,
-            input.files.result.deletingLastPathComponent().plainPath,
-            repos.layout.folder.plainPath, parts.userHome.plainPath
-        )
-        let real = await BlockingExecutor.run {
-            (
-                RealPath.of(clonePath), RealPath.of(treePath), RealPath.of(folderPath),
-                RealPath.of(reviewsPath), RealPath.of(homePath)
-            )
-        }
-        guard let clone = real.0, let tree = real.1, let folder = real.2, let reviews = real.3,
-            let home = real.4,
-            let settings = RequestSandbox.settings(
-                SessionPaths(
-                    clone: clone, worktree: tree, inputFolder: folder, reviews: reviews,
-                    home: home))
-        else { throw .startFailed }
-        let turn = MineTurn(
-            pr: pr, model: model, inputFolder: URL(filePath: folder, directoryHint: .isDirectory),
-            skills: parts.skills, settings: settings,
-            prompt: PRSessionArgs.conflictPrompt(input.files.input), worktree: worktree)
-        return (input, turn)
+        let mine = try await shared.sandboxTurn(
+            worktree: worktree, resultFile: input.files.result,
+            prompt: PRSessionArgs.conflictPrompt(input.files.input))
+        return (input, mine)
     }
 
     // The files of the round in the round folder, each with the round ID of the token in its
@@ -401,14 +379,14 @@ final class ConflictRound {
     ) async throws(RoundFailure) -> ConflictInput {
         let (pr, repos, paths) = (pr, repos, start.conflicted)
         func diff(to commit: CommitID) async throws(RoundFailure) -> String? {
-            let text = try await repoStep { () async throws(RepoError) in
+            let text = try await RequestSessionTurn.repoStep { () async throws(RepoError) in
                 try await repos.diff(pr.repo, from: fetched.mergeBase, to: commit, paths: paths)
             }
             return text.flatMap { $0.utf8.count <= ReviewInput.maxDiffBytes ? $0 : nil }
         }
         let ours = try await diff(to: read.head)
         let theirs = try await diff(to: fetched.base)
-        let folder = try await repoStep { () async throws(RepoError) in
+        let folder = try await RequestSessionTurn.repoStep { () async throws(RepoError) in
             try await repos.roundFolder(pr)
         }
         let input: ConflictInput
@@ -474,43 +452,24 @@ final class ConflictRound {
     // result is missing or bad.
     private func result(of turn: Turn) async throws(Stop) -> ConflictAnswer {
         let input = turn.input
-        let accepted: ConflictAnswer?
-        var blocked = false
-        var request = false
-        do throws(RoundFailure) {
-            let end: TurnEnd<ConflictAnswer>
-            do throws(RoundFailure) {
-                end = try await sessions.waitForTurnEnd(
-                    id: turn.session, startedAt: turn.startedAt, resultFile: input.files.result,
-                    limit: ReviewRounds.requestLimit, begun: turn.begun,
-                    check: { try? ConflictResult.check($0, input: input).get() })
-            } catch {
-                // A cancel ends the wait. The record of the turn runs in a task of its own, so
-                // git still runs, and the reset of the stop can use it.
-                _ = await Task { await self.afterTurn() }.value
-                throw error
-            }
-            request = await afterTurn()
-            switch end {
-            case .ended(let answer):
-                accepted = answer
-            case .blocked(let answer):
-                // A session of a round must never ask. Its result counts only when it is good.
-                (accepted, blocked) = (answer, true)
-                await sessions.stop(id: turn.session)
-            }
+        let ended: RequestSessionTurn.TurnEnded<ConflictAnswer>
+        do throws(RequestSessionTurn.Stopped) {
+            ended = try await sharedAtEnd(conflicted: turn.start.conflicted).waitForEnd(
+                session: turn.session, startedAt: turn.startedAt, resultFile: input.files.result,
+                begun: turn.begun,
+                check: { try? ConflictResult.check($0, input: input).get() },
+                reset: { await resetWorktree(to: turn.head, stoppedIt: $0) })
         } catch .timeout {
-            await sessions.stop(id: turn.session)
-            await resetWorktree(to: turn.head, stoppedIt: true)
             throw .failed(.session(.timeout))
+        } catch .halted {
+            throw .halted
         } catch {
-            try checkHalt()
-            await resetWorktree(to: turn.head)
             throw .failed(.session(.stopped))
         }
+        let (accepted, blocked, request) = (ended.accepted, ended.blocked, ended.ownRequest)
         try checkHalt()
         if request { try await refuseOwnRequest() }
-        if stopRequested() || store.state.prs[pr]?.round?.stoppedByUser == true {
+        if hooks.stopRequested() || store.state.prs[pr]?.round?.stoppedByUser == true {
             await resetWorktree(to: turn.head, stoppedIt: blocked)
             throw .failed(.session(.stopped))
         }
@@ -528,23 +487,6 @@ final class ConflictRound {
                         nil
                     }
                 }))
-    }
-
-    // At the end of the turn: each change of the worktree is a change of the round, so a reset can
-    // remove it (RepoStore.markLeftovers). An own request file shows that Claude changed files for
-    // a request in the turn: then no change counts as a change of the round, so no reset removes
-    // it. The result is true in that case.
-    private func afterTurn() async -> Bool {
-        guard await parts.own.waits(pr) else {
-            await repos.markLeftovers(pr)
-            return false
-        }
-        Self.logger.notice(
-            """
-            The turn of a conflict round of \(self.pr.text, privacy: .private) left an own \
-            request file, so Bifrost keeps the worktree.
-            """)
-        return true
     }
 
     // An own request file of the turn, or one that came before the commit: the worktree holds the
@@ -610,7 +552,7 @@ final class ConflictRound {
             await resetWorktree(to: turn.head)
             throw .quiet
         }
-        guard let viewer = viewer(), read.author.lowercased() == viewer.lowercased() else {
+        guard let viewer = hooks.viewer(), read.author.lowercased() == viewer.lowercased() else {
             await resetWorktree(to: turn.head)
             throw .failed(.session(.notYours))
         }
@@ -631,7 +573,7 @@ final class ConflictRound {
             prState.round = round
             state.prs[pr] = prState
         }
-        changed()
+        hooks.changed()
         guard saved, store.state.prs[pr]?.round?.phase == .posting else {
             await resetWorktree(to: turn.head)
             throw .failed(.session(.notSaved))
@@ -658,8 +600,27 @@ final class ConflictRound {
             await resetWorktree(to: head)
             throw .failed(.push(error))
         }
-        await resetWorktree(to: merge)
+        await moveToMerge(merge)
         return merge
+    }
+
+    // After a merge on GitHub: the worktree goes to the merge. When the reset does not run (a
+    // person uses the session, or the worktree holds a change that no round made), HEAD and the
+    // index still move to the merge, and the files stay. So the copy is not left on the commit
+    // with the markers, which GitHub does not have.
+    private func moveToMerge(_ merge: CommitID) async {
+        if await resetWorktree(to: merge) { return }
+        await repos.uncommit(pr, to: merge)
+    }
+
+    // True when the merge is on the head branch of the PR on GitHub (a fetch of the branch).
+    private func isOnBranch(_ merge: CommitID, read: HeadRead) async -> Bool {
+        guard let target = PushTarget(read) else { return false }
+        let pusher = Pusher(git: repos.git, address: repos.address(of: pr.repo))
+        guard let remote = try? await pusher.fetchBranch(target.branch, pr: pr) else {
+            return false
+        }
+        return (try? await pusher.isAncestor(merge, of: remote, pr: pr)) == true
     }
 
     // MARK: - The parts of the steps
@@ -679,7 +640,7 @@ final class ConflictRound {
                 head: pair.head, base: pair.base, at: time, outcome: .working)
             state.prs[pr] = prState
         }
-        changed()
+        hooks.changed()
     }
 
     // The pair of the conflict mark of the state, for a round that goes on after a restart.
@@ -722,29 +683,10 @@ final class ConflictRound {
     // the markers and the files of the session go. It does not run while a person can use the
     // session (it works or shows a box), and it keeps a change that no round made
     // (RepoStore.resetIfKnown). stoppedIt: the round stopped the session, so nobody uses it.
-    private func resetWorktree(to commit: CommitID, stoppedIt: Bool = false) async {
-        if !stoppedIt, sessions.requestInUse(pr) {
-            Self.logger.notice(
-                """
-                A person uses the session of \(self.pr.text, privacy: .private), so Bifrost \
-                keeps its worktree as it is.
-                """)
-            return
-        }
-        await repos.resetIfKnown(pr, to: commit)
-    }
-
-    // A step of the repo store in the preparation of the turn. A failure goes to the log, and the
-    // mark gets a fixed text.
-    private func repoStep<Value>(_ step: () async throws(RepoError) -> Value)
-        async throws(RoundFailure) -> Value
-    {
-        do throws(RepoError) {
-            return try await step()
-        } catch {
-            Self.logger.error("\(error.message, privacy: .private)")
-            throw .prepareFailed
-        }
+    // The result is true when the reset ran.
+    @discardableResult
+    private func resetWorktree(to commit: CommitID, stoppedIt: Bool = false) async -> Bool {
+        await shared.reset(to: commit, use: .request, stoppedIt: stoppedIt)
     }
 
     private func checkHalt() throws(Stop) {
