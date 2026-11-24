@@ -6,9 +6,9 @@ TypeScript code on purpose. That code (`alert-monitor.ts`, `notifier.ts` and `pe
 decide, not for how they get there. The last column says whether you'd notice the difference in
 normal use, and a row marked "for the hands-on test" is one to check by hand in the real app.
 
-None of the rows changes what a user sees or hears. The notification is the system one in both
-apps, and A1 keeps the same sound. A1 is marked for the hands-on test so that someone listens to
-the sound in the real app.
+Apart from A7 and A8, none of the rows changes what a user sees or hears. The notification is the
+system one in both apps, and A1 keeps the same sound. A1 is marked for the hands-on test so that
+someone listens to the sound in the real app, and so is A8.
 
 A few parts look different and decide the same things. The core of the monitor returns its
 notifications and its sound as effects, and the alert service runs them, where
@@ -26,3 +26,4 @@ the fakes of the tests, where `notifier.ts` switched on a module flag.
 | A5 | The record of a test home | The list is `globalThis.bifrostNotifications`, which a smoke test reads in the main process. | The list is `RecordingNotifier.recorded`, which the unit tests read. No smoke test reads it yet. | The native app has no global object for a smoke test. The debug test port can show the list when a smoke test needs it. | No. |
 | A6 | The Dock icon of a development start | A `pnpm dev` start runs inside the Electron binary, so `devDockIcon` (`src/main/window/dock-icon.ts`) swaps the Electron icon in the Dock for the Bifrost icon with a "dev" badge. | No rule, and no test. | Bifrost Dev is a bundle of its own with its own icon, so the Dock already shows the right one. | No. |
 | A7 | One alert for each requirement | A box is new when its colour or its time changes, so each page of a multi-question prompt gives a notification and a sound. | A box is new only when it starts a requirement, which ends when the session works again (`AlertRules.newBoxes`). A yellow box that turns red gives its one sound at the red box. | User decision (2026-11-23): a session that stops to need you dings once for that requirement. | Yes. A prompt with several pages gives one alert. |
+| A8 | A finished turn that you didn't start | Each new yellow box gives a notification. | A new yellow box gives a notification only when the Live details mod reported a prompt from a person since the session's last yellow box (`AlertRules.newBoxes`, `SessionRow.personPrompt`). A turn that a background task, another session or agent, or a system message started stays quiet. Without prompt lines (Live details off, or an older mod), each new yellow box notifies as before. Red boxes are unchanged. | User decision (2026-11-24): a session that runs background agents woke up for each report and notified again and again, with nothing new to answer. | Yes. A background wake-up no longer notifies. For the hands-on test. |

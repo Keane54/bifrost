@@ -13,6 +13,7 @@ import Foundation
 // | session.start | none                                           | SessionStart                 |
 // | session.end   | reason (string)                                | SessionEnd                   |
 // | turn.start    | none                                           | UserPromptSubmit             |
+// | prompt        | person (true or false)                         | prompt line                  |
 // | ask           | none                                           | PreToolUse (AskUserQuestion) |
 // | tool.done     | tool (string)                                  | PostToolUse                  |
 // | permission    | tool (string)                                  | PermissionRequest            |
@@ -55,6 +56,8 @@ extension LiveEvent {
         switch mod.content {
         case .usage(let usage):
             self = .usage(sessionId: mod.sessionId, at: at, usage)
+        case .prompt(let person):
+            self = .prompt(sessionId: mod.sessionId, at: at, person: person)
         case .state(let name, let toolName, let message, let reason):
             self = .state(
                 HookEvent(
@@ -77,7 +80,7 @@ private struct ModLine: Decodable {
     enum Kind: String, Decodable {
         case sessionStart = "session.start", sessionEnd = "session.end"
         case turnStart = "turn.start", ask, toolDone = "tool.done", permission
-        case turnComplete = "turn.complete", stopFailure = "stop.failure", usage
+        case turnComplete = "turn.complete", stopFailure = "stop.failure", usage, prompt
     }
 
     // The reason of a turn.complete line.
@@ -89,10 +92,12 @@ private struct ModLine: Decodable {
             HookEventName, toolName: String? = nil, message: String? = nil,
             reason: String? = nil)
         case usage(LiveUsage)
+        // True when a person sent the prompt.
+        case prompt(person: Bool)
     }
 
     enum Key: String, CodingKey {
-        case v, sid, at, seq, kind, reason, tool, answer
+        case v, sid, at, seq, kind, reason, tool, answer, person
         case model, context, costUsd, rateLimits, version, effort, permissionMode, transcriptPath
     }
 
@@ -131,6 +136,8 @@ private struct ModLine: Decodable {
         case .toolDone: return .state(.postToolUse, toolName: try c.requiredText(.tool))
         case .permission: return .state(.permissionRequest, toolName: try c.requiredText(.tool))
         case .stopFailure: return .state(.stopFailure)
+        // The flag is a JSON true or false. A missing flag or another value makes the line bad.
+        case .prompt: return .prompt(person: try c.decode(Bool.self, forKey: .person))
         case .turnComplete:
             let answer = c.shortText(.answer, max: LiveLimits.answerMax, lines: true)
             switch try c.decode(Ending.self, forKey: .reason) {

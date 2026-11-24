@@ -23,7 +23,8 @@ package struct AlertMonitorCore: Sendable {
     // maxNotifications, else one summary. The sound plays only with its setting on, for a new red
     // box that starts a requirement or turns a yellow box of it red, at most once each soundGap,
     // also when the window has the focus. A session gives one notification and one sound for each
-    // requirement, and the requirement ends when the session works again.
+    // requirement, and the requirement ends when the session works again. A new yellow box gives
+    // a notification only after a prompt of a person (AlertRules.newBoxes).
     package mutating func update(
         _ rows: [SessionRow], now: Duration, notifications: Bool, redBoxSound: Bool,
         focused: Bool

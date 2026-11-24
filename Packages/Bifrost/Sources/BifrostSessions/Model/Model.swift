@@ -318,10 +318,12 @@ package struct LiveUsage: Sendable, Equatable {
     }
 }
 
-// One line of the Live details mod: a state event or a usage line.
+// One line of the Live details mod: a state event, a usage line or a prompt line. A prompt line
+// tells if a person sent the prompt (docs/behaviour/alerts.md).
 package enum LiveEvent: Sendable, Equatable {
     case state(HookEvent)
     case usage(sessionId: String, at: Int, LiveUsage)
+    case prompt(sessionId: String, at: Int, person: Bool)
 }
 
 // The newest rate limits, chosen from the usage lines of all sessions.
@@ -455,6 +457,12 @@ public struct SessionRow: Sendable, Equatable {
     package var usage: LiveUsage?
     // True when the mod sent a line for the session in the last 90 s.
     package var live: Bool
+    // The newest prompt of a person in the session, from the prompt lines of the mod
+    // (docs/behaviour/alerts.md). The value is the order number of that prompt in this run of the
+    // app, and the numbers of all sessions increase together. 0 when the mod sent prompt lines
+    // but no prompt came from a person. nil when the row is not live, or when the mod sent no
+    // prompt line for the current session ID: Live details is off, or the mod is older.
+    package var personPrompt: Int?
     package var branch: String?
     package var worktree: String?
     package var priority: SessionPriority?
@@ -472,7 +480,7 @@ public struct SessionRow: Sendable, Equatable {
         waitingFor: String? = nil,
         state: SessionState, alert: SessionAlert = .none, lastMessage: String? = nil,
         lastActivity: Int, lastBusyAt: Int? = nil, startedAt: Int,
-        usage: LiveUsage? = nil, live: Bool = false,
+        usage: LiveUsage? = nil, live: Bool = false, personPrompt: Int? = nil,
         branch: String? = nil,
         worktree: String? = nil, priority: SessionPriority? = nil, watch: RowWatch? = nil,
         resumable: Bool = false, prSession: Bool = false, terminalApp: String? = nil
@@ -497,6 +505,7 @@ public struct SessionRow: Sendable, Equatable {
         self.startedAt = startedAt
         self.usage = usage
         self.live = live
+        self.personPrompt = personPrompt
         self.branch = branch
         self.worktree = worktree
         self.priority = priority

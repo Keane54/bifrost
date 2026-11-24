@@ -98,8 +98,8 @@ package final class RegistryService {
     // can come back.
     package private(set) var forgotten: Set<String> = []
     // Each state event of the Live details mod, after the registry applied it, with the row ID as
-    // its session ID. A usage line gives no event. The stream has one reader. With no reader, it
-    // keeps the newest 1000 events. It ends at stop().
+    // its session ID. A usage line and a prompt line give no event. The stream has one reader.
+    // With no reader, it keeps the newest 1000 events. It ends at stop().
     package let events: AsyncStream<HookEvent>
 
     private enum Phase {
@@ -557,6 +557,8 @@ package final class RegistryService {
                 told.append(event)
             case .usage(let sessionId, let at, let usage):
                 registry.applyUsage(sessionId, usage, at: at)
+            case .prompt(let sessionId, let at, let person):
+                registry.applyPrompt(sessionId, person: person, at: at)
             }
         }
         changed()

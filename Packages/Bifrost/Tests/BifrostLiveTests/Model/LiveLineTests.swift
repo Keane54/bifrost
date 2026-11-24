@@ -105,6 +105,8 @@ private let kindRows: [([String: JSONValue], LiveEvent?)] = [
     (["kind": "stop.failure"], state(.stopFailure)),
     (usageFields, .usage(sessionId: S, at: 1000, fullUsage)),
     (["kind": "usage"], .usage(sessionId: S, at: 1000, LiveUsage())),
+    (["kind": "prompt", "person": true], .prompt(sessionId: S, at: 1000, person: true)),
+    (["kind": "prompt", "person": false], .prompt(sessionId: S, at: 1000, person: false)),
     // The header.
     (["kind": "turn.start", "v": 2], nil),
     (["kind": "turn.start", "sid": "abc"], nil),
@@ -124,6 +126,11 @@ private let kindRows: [([String: JSONValue], LiveEvent?)] = [
     (["answer": "A", "kind": "turn.complete", "reason": "other"], nil),
     (["answer": "A", "kind": "turn.complete", "reason": 7], nil),
     (["answer": 7, "kind": "turn.complete", "reason": "answer"], state(.stop)),
+    // The flag of a prompt line is a JSON true or false.
+    (["kind": "prompt"], nil),
+    (["kind": "prompt", "person": "true"], nil),
+    (["kind": "prompt", "person": 1], nil),
+    (["kind": "prompt", "person": .null], nil),
     // The fields of a usage line.
     badUsage(["model": 7]) { $0.model = nil },
     badUsage(["model": ""]) { $0.model = nil },

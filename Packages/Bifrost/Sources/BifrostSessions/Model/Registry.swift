@@ -206,6 +206,11 @@ package struct SessionRegistry: Sendable {
     // The time of the newest line of the mod for each session ID.
     var liveAt: [String: Int] = [:]
     var usageLines: [String: UsageLine] = [:]
+    // The newest prompt of a person for each session ID that sent a prompt line: the order number
+    // of that prompt, or 0 when no prompt of the session came from a person (applyPrompt).
+    var personPrompts: [String: Int] = [:]
+    // The order number of the newest prompt of a person in this run, of any session.
+    var promptOrder = 0
     // The newest time that applyAgents, applyEvents, applyUsage or tick got.
     var clock = 0
     var branches: [String: String] = [:]
@@ -619,6 +624,22 @@ package struct SessionRegistry: Sendable {
         usageLines[sessionId] = line
     }
 
+    // Keep the newest prompt of a person of a session (docs/behaviour/alerts.md). The session can
+    // be unknown. A prompt of a person gets the next order number of the run. A prompt of another
+    // source only makes the prompts of the session known. A prompt line is not activity: the
+    // turn.start line of the prompt gives the activity.
+    package mutating func applyPrompt(_ sessionId: String, person: Bool, at: Int) {
+        advance(at)
+        touch(sessionId, at: at)
+        if !hasRow(sessionId) { noteUnknown(sessionId) }
+        if person {
+            promptOrder += 1
+            personPrompts[sessionId] = promptOrder
+        } else if personPrompts[sessionId] == nil {
+            personPrompts[sessionId] = 0
+        }
+    }
+
     // The windows that reset from now to now + rateWindowHorizon, or nil when none does.
     private func trusted(_ limits: RateLimits?) -> RateLimits? {
         let last = clock + Int(Self.rateWindowHorizon / .milliseconds(1))
@@ -647,6 +668,7 @@ package struct SessionRegistry: Sendable {
             let id = unknownIds.removeFirst()
             liveAt[id] = nil
             usageLines[id] = nil
+            personPrompts[id] = nil
             pending.removeAll { $0.sessionId == id }
         }
     }
@@ -729,6 +751,7 @@ package struct SessionRegistry: Sendable {
         where !rowsOfCurrent(id).contains(where: { $0 != sessionId }) {
             pending.removeAll { $0.sessionId == id }
             usageLines[id] = nil
+            personPrompts[id] = nil
             liveAt[id] = nil
         }
         if byCurrent[current] == sessionId { byCurrent[current] = nil }
@@ -1213,11 +1236,13 @@ package struct SessionRegistry: Sendable {
         return String(s.sessionId.prefix(8))
     }
 
-    // The usage and the live flag come from the current ID, when the row gets its live lines.
+    // The usage, the live flag and the prompt of a person come from the current ID, when the row
+    // gets its live lines. The prompt of a person counts only while the row is live.
     private func row(_ s: Session, watchOrder: [String: Int]) -> SessionRow {
         let m = s.machine
         let current = currentOf(s.sessionId)
         let usage = ownsCurrent(s.sessionId) ? usageLines[current]?.usage : nil
+        let live = liveOf(s.sessionId)
         let record = stored[row: s.sessionId]
         let watch = record.watch.flatMap { colour in
             watchOrder[s.sessionId].map { RowWatch(colour: colour, order: $0) }
@@ -1235,7 +1260,7 @@ package struct SessionRegistry: Sendable {
             lastActivity: [s.startedAt, s.lastEventAt, s.statusChangedAt].compactMap(\.self).max()
                 ?? s.startedAt,
             lastBusyAt: s.lastBusyAt, startedAt: s.startedAt, usage: usage,
-            live: liveOf(s.sessionId),
+            live: live, personPrompt: live ? personPrompts[current] : nil,
             branch: branches[branchDir(s)],
             worktree: record.worktree, priority: record.priority, watch: watch,
             prSession: record.prSession)

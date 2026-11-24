@@ -4,10 +4,12 @@ When a session needs you, Bifrost tells you, even while you're working in anothe
 row can carry an alert box: a yellow box once Claude has finished its turn, and a red box when it
 needs you, which happens at a permission prompt, after an error, or when a yellow box has waited
 long enough to escalate. Bifrost watches for boxes as they appear, shows a macOS notification for
-each new one, and plays a short sound for a new red box. This page covers the rules behind those
-alerts. The rules live in `BifrostSessions/Model/Alerts/AlertRules.swift`, the alert service that
-applies them in `BifrostSessions/Services/Alerts/`, and the two parts that talk to macOS, the
-system notifier and the alert sound, in `BifrostSessions/UI/Alerts/`.
+each new one, and plays a short sound for a new red box. A yellow box is the one exception: it only
+notifies you when you're actually waiting on it, which means after you've sent the session a
+prompt. This page covers the rules behind those alerts. The rules live in
+`BifrostSessions/Model/Alerts/AlertRules.swift`, the alert service that applies them in
+`BifrostSessions/Services/Alerts/`, and the two parts that talk to macOS, the system notifier and
+the alert sound, in `BifrostSessions/UI/Alerts/`.
 `docs/ports/alerts/DELIBERATE-DIFFERENCES.md` lists where they deliberately differ from the
 Electron app.
 
@@ -31,6 +33,30 @@ colour and the time it appeared, and compares each update with the one before.
   start never sets off notifications for old boxes.
 - A session that leaves the list ends its requirement, and new boxes are handled in the order of the
   rows.
+
+## A finished turn
+
+A session doesn't only work when you ask it to. When it runs background agents or tasks, each one
+that reports back wakes the session for a turn of its own, and so does a message from another
+session or agent. Each of those turns ends with a yellow box like any other, and a notification
+for every one of them would tell you nothing new, so a yellow box only notifies you after you've
+sent the session a prompt.
+
+- A new yellow box gives a notification only when you've sent the session a prompt since its last
+  yellow box, or since Bifrost started. A turn that a background task, another session or agent, a
+  schedule or a system message started stays quiet, though its box still shows on the row.
+- Each new yellow box uses up the prompts before it, even when no notification shows because the
+  window has the focus or Notifications is off. Once you've seen the answer, a later wake-up won't
+  tell you about it again.
+- A prompt you type while a woken turn is still running counts, so the end of that turn notifies
+  you.
+- Red boxes work as before. A permission prompt, a question or an error notifies you and plays the
+  sound, whatever started the turn. A quiet yellow box that waits long enough to escalate turns red
+  within the same requirement, so it plays the sound but doesn't add a notification.
+- Bifrost learns who sent each prompt from the Live details mod (see "Who sent a prompt" in
+  `docs/behaviour/live.md`), and only while the session's row is live. Without that, for example
+  with Live details off or in a session that still runs an older copy of the mod, every new yellow
+  box notifies, as it always did.
 
 ## The texts
 

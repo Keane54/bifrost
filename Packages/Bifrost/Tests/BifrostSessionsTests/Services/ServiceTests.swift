@@ -394,6 +394,20 @@ struct RegistryPollTests {
         #expect(h.service.rows.map { "\($0.model ?? "") \($0.sessionId)" } == ["Opus 5.5 s1"])
     }
 
+    // A prompt line of the mod gives the row its newest prompt of a person (alerts.md, "A
+    // finished turn").
+    @Test func aPromptLineGivesTheRowItsPromptOfAPerson() async {
+        let h = RegistryHarness {
+            $0.active = { _ in list(bg()) }
+            $0.held = [.active]
+        }
+        h.service.pushLive(.prompt(sessionId: "s1", at: epoch, person: true))
+        await h.start()
+        await h.release(.active)
+        #expect(h.service.loaded)
+        #expect(h.service.rows.map(\.personPrompt) == [1])
+    }
+
     @Test func aFailedFullPollKeepsTheLastFullList() async {
         let parked = bg(id: "f7f7f7f7", pid: nil, sessionId: "s7", status: .unknown)
         let h = RegistryHarness { $0.all = { n in n == 1 ? list(parked) : failed("boom") } }

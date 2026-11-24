@@ -1,4 +1,4 @@
-import type { EngineInterface, Register, SessionUsage } from 'claude-code'
+import type { EngineInterface, PromptSubmitInput, Register, SessionUsage } from 'claude-code'
 
 // The Live details mod of Bifrost.
 // The mod sends one line for each event to the Bifrost socket on this Mac.
@@ -6,8 +6,9 @@ import type { EngineInterface, Register, SessionUsage } from 'claude-code'
 // A missing socket fails in about 1 ms and shows nothing.
 //
 // Each line is one JSON object in one HTTP POST over the socket. Each line has v, kind, sid,
-// at and seq, and the fields of its kind. The Bifrost parser (src/main/live/live-event.ts)
-// has the table of the kinds. This file keeps its own copy and imports nothing from Bifrost.
+// at and seq, and the fields of its kind. The Bifrost parser
+// (Packages/Bifrost/Sources/BifrostLive/Model/LiveLine.swift) has the table of the kinds. This
+// file keeps its own copy and imports nothing from Bifrost.
 
 const URL = 'http://bifrost/v1/event'
 const SOCKET = '/.bifrost/live.sock'
@@ -32,6 +33,7 @@ type Kind =
   | 'session.start'
   | 'session.end'
   | 'turn.start'
+  | 'prompt'
   | 'ask'
   | 'tool.done'
   | 'permission'
@@ -40,6 +42,17 @@ type Kind =
   | 'usage'
 
 type Data = Record<string, unknown>
+
+// The origins of a prompt that a person sent: Enter at the prompt of a terminal, a Remote
+// Control client, the host of an SDK session, a ping of the owner from Slack, and the follow-up
+// of the engine to an action of the person in the interface.
+const PERSON_ORIGINS: ReadonlySet<string> = new Set([
+  'auto-continuation',
+  'bridge',
+  'composer',
+  'sdk',
+  'slack-ping',
+])
 type Figures = Pick<SessionUsage, 'context' | 'cost' | 'rateLimits'>
 
 // The values of the newest classic.Stop input of one session.
@@ -82,6 +95,25 @@ function wholePath(path: string | undefined): string | undefined {
 function readHome($: EngineInterface): Promise<string | undefined> {
   home ??= $.env.get('HOME').catch(() => undefined)
   return home
+}
+
+// Return true when a person sent the prompt, false when the harness or another program sent it,
+// and undefined when the event has no origin. The engine sets the origin, and no hook can set it.
+// The mod reads no text of the prompt.
+// - A prompt of a plugin counts only when the plugin sent it as the words of the person (asUser).
+// - An unclassified prompt counts when the person sees it as typed (no isMeta). A same-user
+//   socket that the engine cannot attest gives this origin. An idle notice or a delivery receipt
+//   of the engine has isMeta, so it does not count.
+// - Each other origin does not count: a background task, a schedule, another session or agent,
+//   a channel of an MCP server, a coordinator, an observer, or an origin that this mod does not
+//   know.
+function fromPerson(e: PromptSubmitInput): boolean | undefined {
+  const origin = e.origin
+  if (typeof origin?.kind !== 'string') return undefined
+  if (PERSON_ORIGINS.has(origin.kind)) return true
+  if (origin.kind === 'plugin') return origin.asUser === true
+  if (origin.kind === 'unclassified') return e.isMeta !== true
+  return false
 }
 
 // Return the Claude Code version, or undefined. The promise never rejects.
@@ -198,6 +230,15 @@ export const register: Register = on => {
 
   on('turn.start', ($, e, next) => {
     if (e.agentId === undefined) void send($, 'turn.start')
+    return next(e)
+  }).catch((_, e, next) => next(e))
+
+  // Tell Bifrost if a person sent the prompt. Bifrost shows the notification of a finished turn
+  // only after a prompt of a person. The line holds no text of the prompt. With no origin, the
+  // mod sends no line, so Bifrost notifies each finished turn as before.
+  on('prompt.submit', ($, e, next) => {
+    const person = fromPerson(e)
+    if (person !== undefined) void send($, 'prompt', { person })
     return next(e)
   }).catch((_, e, next) => next(e))
 

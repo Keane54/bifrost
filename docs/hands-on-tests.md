@@ -553,6 +553,13 @@ one. What opens can depend on the default apps of your Mac.
   the Ping sound once and see one notification, not one for each page. Answer the prompt and let
   the session need you again after it works: that gives a new sound and a new notification.
   ([alerts A7](ports/alerts/DELIBERATE-DIFFERENCES.md))
+- [ ] With Live details on, ask a session to start a background agent that reports back after a
+  minute or so, then click into another app. Your prompt's finished turn should give one "Claude
+  finished its turn." notification. When the agent reports back and the session finishes its extra
+  turn, the row should show its yellow box but no notification should arrive. Send the session a
+  new prompt: its finished turn should notify again. Then turn Live details off in Settings and
+  let the session finish a turn: that notifies as before.
+  ([alerts A8](ports/alerts/DELIBERATE-DIFFERENCES.md))
 - [ ] In Settings > General, turn Notifications off and let a session finish its turn with another
   app in front: no notification should show. Turn Red box sound off and let a session need you:
   no sound should play.

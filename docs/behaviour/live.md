@@ -47,6 +47,7 @@ line only loses that field.
 | `session.start` | none | SessionStart |
 | `session.end` | `reason` (required) | SessionEnd |
 | `turn.start` | none | UserPromptSubmit |
+| `prompt` | `person` (required, `true` or `false`) | a prompt line (see "Who sent a prompt" below) |
 | `ask` | none | PreToolUse of AskUserQuestion |
 | `tool.done` | `tool` (required) | PostToolUse |
 | `permission` | `tool` (required) | PermissionRequest |
@@ -95,6 +96,46 @@ The rest of the line rules:
   time with a fraction gives the whole millisecond towards zero.
 - A lone surrogate in a JSON text becomes U+FFFD, and the line stays (L1). This step can go once
   the mod of phase 4d cuts its texts on Character boundaries.
+
+## Who sent a prompt
+
+Claude Code doesn't only start a turn when you type. A background task that finishes, a message
+from another session or agent, a schedule or a channel can each hand a session a prompt, and
+Bifrost has to tell those apart from yours, so that it only notifies you about the turns you're
+waiting on ("A finished turn" in `docs/behaviour/alerts.md`).
+
+The mod makes that call inside Claude Code and sends a `prompt` line for every prompt the session
+receives, with one flag, `person`. No text of the prompt leaves Claude Code. Instead of looking at
+the words, the mod reads the prompt's origin, which Claude Code stamps where the prompt was queued
+and which no plugin can change:
+
+| Origin | Counts as yours? |
+| --- | --- |
+| `composer` (Enter at the prompt, also through `claude attach`), `bridge` (a Remote Control client), `sdk` (the host of an SDK session), `slack-ping` (you pinging the session from Slack), `auto-continuation` (Claude Code following up on something you chose in its interface) | Yes |
+| `plugin` | Only when the plugin sent it as your own words (`asUser`) |
+| `unclassified` | Yes, unless Claude Code hides it from you (`isMeta`), as it does an idle notice or a delivery receipt |
+| `task-notification`, `scheduled-trigger`, `peer`, `peer-send-message`, `projects-relay`, `channel`, `coordinator`, `observer`, `observer-activity`, and any origin the mod doesn't know | No |
+
+A prompt with no origin, which an older Claude Code could give, gets no line at all. Bifrost keeps
+the newest prompt that counts as yours for each session ID, numbered from one counter for the
+whole run, so a `/clear` that moves the row to a new session ID can't hide a prompt or repeat
+one. The number only counts while the row is live, so with Live details off every yellow box
+notifies as before.
+
+The flag is only as good as the origin, and that has limits:
+
+- A prompt that reaches the session over a channel Claude Code can't vouch for, such as a socket
+  of the same user, arrives as `unclassified` and counts as yours. A message from a teammate in an
+  agent team arrives unstamped too, so it counts as yours unless Claude Code hides it.
+- An origin that a later Claude Code adds counts as not yours until the mod learns it. A new way
+  for you to send a prompt would stay quiet until then.
+- A message from a channel that an MCP server relays (`channel`) never counts, even when you wrote
+  it, because anyone in the channel can write there.
+- A program that drives a session through the SDK counts as you, so its turns still notify.
+- The mod sends the line as the prompt is submitted, before the plugins after it have their say,
+  so a prompt that another plugin then drops still counts.
+- A running session picks up a new copy of the mod only after `/reload-plugins` or a restart (see
+  "The Live details control" below). Until then it sends no prompt lines and keeps the old rule.
 
 ## The HTTP rules
 
