@@ -619,11 +619,11 @@ struct AppServicesTests {
     }
 
     // The stop of the services at a quit stops the dictation, so the microphone of the fake
-    // engine closes. A test home uses the fake
-    // engine.
+    // engine closes. A test home uses the fake engine. The services run on a manual clock. Thus
+    // the engine limit of the dictation (10 s) cannot end a boot that a busy test host makes slow.
     @Test func aStopClosesTheMicrophoneOfADictation() async throws {
         try await withScope { scope in
-            let (services, _) = try scope.services()
+            let (services, _) = try scope.services(clock: ManualClock())
             let engine = try #require(services.dictation.speechEngine as? FakeSpeechEngine)
             let chat = try #require(SessionID(FakeClaude.alpha.sessionId))
             services.dictation.start(chat: chat)

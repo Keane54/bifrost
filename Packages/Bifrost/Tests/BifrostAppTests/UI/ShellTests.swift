@@ -179,9 +179,10 @@ struct ShellTests {
     }
 
     // A window close detaches each chat and stops the dictation service, so the microphone
-    // closes.
+    // closes. The services run on a manual clock. Thus the engine limit of the dictation (10 s)
+    // cannot end a boot that a busy test host makes slow.
     @Test func aWindowCloseDetachesEachChatAndClosesTheMicrophone() async throws {
-        try await withShell { scope in
+        try await withShell(clock: ManualClock()) { scope in
             let chat = try #require(SessionID(FakeClaude.alpha.sessionId))
             scope.shell.layout.apply(.open(.chat(chat)))
             #expect(scope.shell.chats.sessionIds == [FakeClaude.alpha.sessionId])
