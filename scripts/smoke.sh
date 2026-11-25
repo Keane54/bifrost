@@ -380,8 +380,11 @@ pattern='\{"attached":true,"blocked":false,"ended":false,"metal":(true|false),'
 pattern="$pattern"'"note":(null|"[^"]*"),"session":"'"$fixture_session"'"\}'
 chat_attached() { request '{"op":"state"}' | grep -q -E "$pattern"; }
 
-# Phases 2 and 3 rule: the debug test port listens only in the test home, with mode 0600.
-wait_until 15 "the test port at $port" test -S "$port"
+# Phases 2 and 3 rule: the debug test port listens only in the test home, with mode 0600. The
+# socket file starts with mode 0755. The app sets 0600 and checks it before it takes the first
+# connection, so the check of the mode comes after the first answer of the port.
+port_answers() { request '{"op":"state"}' | grep -q .; }
+wait_until 15 "the first answer of the test port at $port" port_answers
 mode=$(stat -f %Lp "$port") || fail "cannot read the mode of $port"
 [ "$mode" = 600 ] || fail "the mode of $port is $mode, not 600"
 
