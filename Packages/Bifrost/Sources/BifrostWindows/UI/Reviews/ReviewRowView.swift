@@ -237,13 +237,15 @@ extension RowTone {
     static let approveGreen = TokenColour.rgb(0x86, 0xc4, 0x8f)
 
     // The colour of the tone in the look: green, the amber of a yellow box, the red of a red
-    // box, the blue of the priority 3, the text colour and the dim text colour.
+    // box, the blue of the priority 3, the light cyan accent, the text colour and the dim text
+    // colour.
     @MainActor var colour: Color {
         switch self {
         case .green: Self.approveGreen.color
         case .amber: ThemeTokens.boxYellow.color
         case .red: ThemeTokens.boxRed.color
         case .blue: ThemeTokens.priorities[2].color
+        case .accent: ThemeTokens.accent.color
         case .plain: ThemeTokens.text.color
         case .dim: ThemeTokens.textDim.color
         }

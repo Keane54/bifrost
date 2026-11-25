@@ -699,7 +699,7 @@ first.
 | 12 | You requested changes | "You requested changes", in red | Your latest opinion requests changes on the head commit |
 | 13 | You commented | "You commented", in amber | You commented on the head commit, and you haven't approved it or requested changes on it |
 | 14 | Approved by others | "Approved by others" | GitHub's review decision is approved, so your approval changes nothing |
-| 15 | Team request | "Team request" | The request only names a team of yours |
+| 15 | Team request | "Team request", in the light cyan accent | The request only names a team of yours |
 
 The state comes from the first rule that holds: a running or queued round (a queued round whose
 repository needs trust is Trust needed; see "Clones and trust"), the team filter, a review you've

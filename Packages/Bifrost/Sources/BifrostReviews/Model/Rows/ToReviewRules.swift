@@ -255,8 +255,9 @@ enum ToReviewRules {
             case .youRequestedChanges: ReviewVerdict.requestChanges.tone
             case .youCommented: ReviewVerdict.comment.tone
             case .newCommits: .amber
+            case .teamRequest: .accent
             case .newRequest, .draftReady, .reviewed, .waitingForYou, .trustNeeded, .reviewing,
-                .queued, .paused, .approvedByOthers, .teamRequest:
+                .queued, .paused, .approvedByOthers:
                 .plain
             }
         return RowLabel(text: RowText.toReview(rowState, now: now), tone: tone, tip: stateTip)

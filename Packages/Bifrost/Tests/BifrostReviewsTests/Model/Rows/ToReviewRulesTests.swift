@@ -27,6 +27,13 @@ private func seen(
 
 @Suite("the To review rows", .testTimeLimit)
 struct ToReviewRulesTests {
+    // A team request shows its text in the light cyan accent.
+    @Test func aTeamRequestShowsItsTextInTheAccent() throws {
+        let team = try R.pull("owner-a/repo-a#2", direct: false, requestedAt: R.at(-60))
+        let rows = R.toReview(R.answer(toReview: [team]), ReviewsState())
+        #expect(rows.map(\.status) == [RowLabel(text: "Team request", tone: .accent, tip: nil)])
+    }
+
     @Test func theRequestsOpenAtTheFirstTurnOnDoNotFlash() throws {
         var state = ReviewsState()
         let open = try R.pull("owner-a/repo-a#1", requestedAt: R.at(-90))

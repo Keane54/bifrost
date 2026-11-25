@@ -116,6 +116,8 @@ package enum RowTone: Sendable, Equatable {
     case red
     // The blue of the Comments status.
     case blue
+    // The light cyan accent of a team request.
+    case accent
     case plain
     case dim
 }
