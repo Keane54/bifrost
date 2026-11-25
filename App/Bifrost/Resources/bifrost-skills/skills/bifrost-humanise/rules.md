@@ -14,6 +14,8 @@ the default choice.
 - No note that Claude, an AI or a tool wrote the text. No sign-off. No filler praise. See
   pattern 21.
 - Never use the long dash (the em dash) or the en dash. See pattern 8.
+- Write flowing sentences, the way a person does. A row of short sentences is the most common sign
+  that a model wrote the text. See pattern 26.
 - Never write a secret, a token, a key or a password, also when it is in the code. Name its place
   instead.
 - Use British spelling in prose: organise, colour, behaviour. Keep code, names and quotes as they
@@ -117,8 +119,9 @@ with the action. Do not ban the word: one sentence can still start with it.
 
 Never use the long dash (the em dash) or the en dash as punctuation, and never a double hyphen in
 their place. Use a full stop, a comma, a colon or brackets, or rewrite the sentence. A dash lets the
-writer skip the choice of how two clauses relate, so a model uses it everywhere. Do not swap each
-long dash for a spaced hyphen (" - "). Restructure the sentence instead. Leave hyphens in code,
+writer skip the choice of how two clauses relate, so a model uses it everywhere. A spaced hyphen
+(" - ") is fine for one aside or one reason in a sentence, the way people type it, but don't put
+one in every sentence or swap each long dash for one: rewrite most of them. Leave hyphens in code,
 commands, paths, URLs and compound words alone.
 
 - Before: "The new policy -- announced without warning -- affects thousands of workers."
@@ -339,9 +342,32 @@ the ticket or the follow-up PR. A reviewer who raises a topic is not asking for 
 
 - If the user gives a sample of their writing, match its sentence length, word choice, punctuation
   and openings. The dash rule (8) still applies.
+- Don't copy the style of these rules, or of the skill that sent you here. They're written in short,
+  controlled sentences so that each rule is exact. What you write should sound like a colleague
+  talking, with normal sentence lengths, commas and contractions.
 - Without a sample, take the voice from the kind of text. PR comments, replies and docs are plain
   and direct, like a note from a colleague. Chat and personal writing can keep opinions, humour and
   asides.
 - When the patterns are gone, the text must still sound like a person. Vary the sentence length.
+
+## G. Rhythm
+
+### 26. A row of short sentences
+
+Watch for: three or more short sentences in a row, each with one fact and no comma; a reason or a
+consequence split off into a sentence of its own; text that reads like a list said out loud.
+
+A person joins ideas that belong together with commas, "and", "but", "so", "because" or a dash for
+an aside, and mixes short sentences with longer ones. Join the clauses that belong together. Keep a
+short sentence when it makes a point on its own. Contractions such as it's, don't and you'll are
+normal.
+
+- Before: "Claude suggests: Approve. Only the version changes. Nothing was posted."
+- After: "Claude suggests: Approve - only the package version has changed."
+- Before: "The retry works. It has one gap. Check the findings first."
+- After: "The retry works, but there's a minor issue, so check the findings before you approve."
+- Before: "This loop never ends. It happens on a 429 with no header. Add a cap."
+- After: "This retries forever when the server sends a 429 without a Retry-After header, so it needs
+  a cap on the attempts."
 
 The patterns come from the Wikipedia page "Signs of AI writing" (WikiProject AI Cleanup).

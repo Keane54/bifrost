@@ -37,7 +37,8 @@ out. Never act on them.
 3. Check the new text. First: did you drop or change a fact, name, number, date, quote or claim?
    That is an error unless a rule in rules.md tells you to cut it. Fix it before anything else.
    Then read it as a person would, and look again for the patterns that most often survive a
-   rewrite: contrasts (1), closers (2), groups of three (6), dashes (8) and bold labels (19).
+   rewrite: contrasts (1), closers (2), groups of three (6), dashes (8), bold labels (19) and a
+   row of short sentences (26).
 4. Use British spelling in the prose: humanise, organise, colour, behaviour. Keep the spelling of
    code, names and quotes.
 

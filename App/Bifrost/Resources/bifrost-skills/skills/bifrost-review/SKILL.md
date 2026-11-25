@@ -197,21 +197,25 @@ Earlier comments that are still open also go in the summary only, as step 5 says
 
 ## 7. Write the review
 
-The summary is the body of the review:
+Write the review the way a colleague writes one by hand: plain and direct, with normal sentence
+lengths, commas and contractions. This file is written in short, controlled sentences so that each
+rule is exact, so don't copy its style into the review.
 
-- A few sentences at most. Say what blocks the PR, or that nothing does.
-- In a re-review, say which earlier comments are fixed and which are still open. Link the thread of
-  each open one.
-- No greeting, no praise, no recap of the PR, no sign-off.
+The summary is the body of the review: a few sentences at most that say what blocks the PR, or
+that nothing does. In a re-review, also say which earlier comments are fixed and which are still
+open, with a link to the thread of each open one. Leave out any greeting, praise, recap of the PR or
+sign-off. For example: "One thing blocks this: the limit check in `src/limit.ts` is off by one, so
+the 101st request still gets through. The earlier comment about the cache key is fixed."
 
-Each line comment:
+Each line comment holds one problem, told the way you'd tell the author in person: what goes wrong
+and when, and how to fix it. Don't give every comment the same shape. A comment states the problem;
+it never asks a question, and it never argues against itself, for example with "this may be fine".
+Use a GitHub suggestion block (a code block with the language `suggestion`) only for a small fix
+that you are sure of.
 
-- Holds one problem. Say what is wrong, when it happens, what goes wrong and the fix.
-- States the problem. It never asks a question, and it never argues against itself, for example
-  with "this may be fine".
-- Uses a GitHub suggestion block (a code block with the language `suggestion`) only for a small fix
-  that you are sure of.
-- Is short, and speaks to the author as a colleague.
+- Before: "This loop never ends. It happens on a 429 with no header. Add a cap."
+- After: "This retries forever when the server sends a 429 without a Retry-After header, so it
+  needs a cap on the attempts, say 5."
 
 Place each line comment on a line of the head version (side `RIGHT`) inside a hunk of the full PR
 diff. For a deleted line, use side `LEFT` and the line number in the base version. For a range,
