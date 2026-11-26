@@ -543,9 +543,17 @@ final class FrameView: NSView {
     override func mouseDragged(with event: NSEvent) { canvas?.dragged(event) }
     override func mouseUp(with event: NSEvent) { canvas?.released(event) }
 
+    // A right or other-button press that nothing in the frame used goes straight to the canvas.
+    // With super, AppKit hands the press to whatever is under it at that point, which is the
+    // frame beneath: that frame came to the front and passed a right press back up, so the two
+    // frames swapped until the main thread ran out of stack.
     override func rightMouseDown(with event: NSEvent) {
         focus()
-        super.rightMouseDown(with: event)
+        nextResponder?.rightMouseDown(with: event)
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        nextResponder?.otherMouseDown(with: event)
     }
 
     override func resetCursorRects() {

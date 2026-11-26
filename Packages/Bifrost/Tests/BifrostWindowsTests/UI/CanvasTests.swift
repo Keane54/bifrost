@@ -196,6 +196,41 @@ struct CanvasTests {
         #expect(f.model.layout.topFrame?.id == b)
     }
 
+    // A right or other-button press that the top frame passes on never reaches the frame under
+    // it. AppKit hands a press that a view passes on to the view beneath it at the same point, so
+    // a right press on overlapping title bars went into the lower frame, which came to the front
+    // and passed it back up, and the two frames swapped until the main thread ran out of stack
+    // (the right-click crash of 1.3.0). The test lets the canvas see only the first few layout
+    // changes, so the old swap ends with a failure here, not a crash.
+    @Test func aPressOnTheTopFrameNeverReachesTheFrameUnderIt() throws {
+        let f = CanvasFixture()
+        defer { f.close() }
+        // The title bar of the lower frame is at y 80 to 108 and its body starts at 108. The top
+        // frame's title bar is at y 90 to 118, over both.
+        _ = f.open("watchlist", at: rect(150, 80, 400, 300))
+        let top = f.open("settings", at: rect(100, 90, 400, 300))
+        let lowerBody = try #require(f.bodies.views[panel("watchlist")])
+        var changes = 0
+        let forward = f.model.onChange
+        f.model.onChange = { change in
+            changes += 1
+            if changes <= 8 { forward?(change) }
+        }
+        let overTitleBars = CGPoint(x: 300, y: 100)
+        let overLowerBody = CGPoint(x: 300, y: 114)
+        for point in [overTitleBars, overLowerBody] {
+            for type in [NSEvent.EventType.rightMouseDown, .otherMouseDown] {
+                let hit = f.mouse.down(at: point, in: f.canvas, type: type)
+                #expect(hit === f.view(top).titleBar)
+            }
+        }
+        #expect(changes == 0)
+        #expect(f.model.layout.focusedFrame?.id == top)
+        #expect(f.view(top).isTop)
+        #expect(lowerBody.rightPresses == 0)
+        #expect(lowerBody.otherPresses == 0)
+    }
+
     // A press on a title bar button of a lower frame brings the frame to the front before the
     // click.
     @Test func aPressOnATitleButtonOfALowerFrameBringsItToTheFront() {

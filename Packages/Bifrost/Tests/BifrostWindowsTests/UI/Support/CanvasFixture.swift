@@ -9,13 +9,17 @@ import Observation
 
 // A body that takes each press, as a terminal or a SwiftUI control does: the press does not go
 // up the responder chain to the frame. It can be the first responder. It counts each time it
-// leaves its window.
+// leaves its window, and the right and other-button presses it gets, so a test can tell when a
+// press meant for another frame reached it.
 final class FakeBody: NSView {
     private(set) var leftWindow = 0
+    private(set) var rightPresses = 0
+    private(set) var otherPresses = 0
 
     override var acceptsFirstResponder: Bool { true }
     override func mouseDown(with event: NSEvent) {}
-    override func rightMouseDown(with event: NSEvent) {}
+    override func rightMouseDown(with event: NSEvent) { rightPresses += 1 }
+    override func otherMouseDown(with event: NSEvent) { otherPresses += 1 }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
