@@ -118,8 +118,8 @@ package enum ReviewsMenu {
         if row.questions > 0 { items.append(.answerClaude) }
         let handles: Bool
         switch claude {
-        case .waiting, .needsYou, .waitsForYou, .unpushedChanges, .unpushedComments, .askAgain,
-            .error, .conflicts, .retryingCI:
+        case .waiting, .needsYou, .waitsForYou, .unpushedChanges, .unpushedComments, .unpushedCI,
+            .askAgain, .error, .conflicts, .retryingCI:
             handles = true
         case .fixing, .resolvingConflicts, .fixingCI, .queued, .trustNeeded, .cloning, .fork:
             handles = false
@@ -132,7 +132,8 @@ package enum ReviewsMenu {
         switch claude {
         case .error: items.append(.tryAgain)
         case .waitsForYou where row.unsentUpdates, .unpushedChanges where row.unsentUpdates,
-            .unpushedComments where row.unsentUpdates, .askAgain where row.unsentUpdates:
+            .unpushedComments where row.unsentUpdates, .unpushedCI where row.unsentUpdates,
+            .askAgain where row.unsentUpdates:
             items.append(.tryAgain)
         default: break
         }
@@ -179,7 +180,8 @@ package enum ReviewsMenu {
         guard case .mine(_, let claude) = row.state, row.unsavedFiles > 0, !row.unsentUpdates
         else { return [] }
         switch claude {
-        case .unpushedChanges, .unpushedComments: return [.openSession, .discardChanges]
+        case .unpushedChanges, .unpushedComments, .unpushedCI:
+            return [.openSession, .discardChanges]
         case .askAgain: return [.discardChanges]
         default: return []
         }
@@ -192,7 +194,7 @@ package enum ReviewsMenu {
             return item.label
         }
         switch claude {
-        case .unpushedChanges, .unpushedComments: return "Discard changes"
+        case .unpushedChanges, .unpushedComments, .unpushedCI: return "Discard changes"
         case .askAgain: return "Discard edits"
         default: return item.label
         }

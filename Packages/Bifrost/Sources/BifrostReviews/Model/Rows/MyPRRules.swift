@@ -353,6 +353,7 @@ enum MyPRRules {
             case .unpushed: return .unpushedChanges
             case .unpushedRequest: return .unpushedComments
             case .askAgain: return .askAgain
+            case .unpushedCI: return .unpushedCI
             case .other: return .waitsForYou(waiting.reason)
             }
         }

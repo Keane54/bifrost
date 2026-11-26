@@ -579,6 +579,14 @@ package final class PRSessions {
         ref(pr, .request).map { inUse(id: $0.sessionID.text) } ?? false
     }
 
+    // requestInUse after a fresh poll of the active list, for a step that deletes the worktree.
+    // The registry polls only each few seconds, so a turn that a person just started can be
+    // missing in its rows. A poll that fails counts as in use.
+    package func requestInUseNow(_ pr: PRKey) async -> Bool {
+        guard case .applied = await registry.checkActive() else { return true }
+        return requestInUse(pr)
+    }
+
     // True when the row is the session of the ref in the worktree: the same session ID, an owned
     // session with the mark of a PR session, the same name, and the worktree as its folder (real
     // paths). Only then does a turn type into the session or resume it.

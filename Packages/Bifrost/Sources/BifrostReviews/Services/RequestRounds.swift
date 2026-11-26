@@ -470,6 +470,7 @@ extension ReviewRounds {
     // reviewers stay. Nothing posts.
     func dropRequest(_ pr: PRKey) async {
         readFailures[pr] = nil
+        openReads[pr] = nil
         own.forgetRoundMark(pr)
         await sessions.remove(pr, .request)
         await repos.removePR(pr)
@@ -486,6 +487,8 @@ extension ReviewRounds {
             prState.waiting = nil
             prState.conflict = nil
             prState.ci = nil
+            prState.leftOutSince = nil
+            prState.leftOutNoted = false
             if prState.round == nil || prState.round?.kind.isMine == true {
                 prState.round = nil
                 prState.lastError = nil

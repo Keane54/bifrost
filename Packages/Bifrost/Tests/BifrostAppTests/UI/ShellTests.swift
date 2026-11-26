@@ -570,7 +570,7 @@ struct ShellTests {
             #expect(shell.live.warning)
             #expect(shell.sideBar.dot(.settings) != nil)
             #expect(shell.liveDetailsState.object?["plugin"] == "unknown")
-            #expect(shell.skillsPluginState.object?["skills"]?.array?.count == 7)
+            #expect(shell.skillsPluginState.object?["skills"]?.array?.count == 8)
             await waitUntil { shell.settingsPanels.model != nil }
             let model = try #require(shell.settingsPanels.model)
             #expect(model.live === shell.live)
@@ -622,7 +622,7 @@ struct ShellTests {
             await scope.services.start()
             await waitUntil { live.skillsStatus?.skills.isEmpty == false }
             #expect(live.status?.error == "claude was not found.")
-            #expect(live.skillsStatus?.skills.count == 7)
+            #expect(live.skillsStatus?.skills.count == 8)
             let found = await scope.shell.runPluginAction(.install, skills: false)
             #expect(found == "claude was not found.")
         }

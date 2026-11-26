@@ -719,21 +719,6 @@ struct ReviewRoundTests {
         await f.end()
     }
 
-    // A queued CI entry in the state (only a later build writes one) starts no round, no clone
-    // read and no session, and its entry goes, so the row does not wait in the queue. A conflict
-    // entry runs a conflict round (ConflictRoundTests).
-    @Test func aQueuedCIEntryStartsNothingAndGoes() async throws {
-        let other = try ReviewData.pr("Owner-A/Repo-A#8")
-        let f = try await RoundFixture { state, _ in
-            state.queue = [QueueEntry(pr: other, kind: .ci, at: Rows.at(-1))]
-        }
-        #expect(await waitUntil { f.store.state.queue.isEmpty })
-        #expect(f.store.state.prs[other]?.round == nil)
-        #expect(f.rounds.queue.task(of: other) == nil)
-        #expect(f.deps.calls.claudeRuns.isEmpty && f.github.calls.isEmpty)
-        await f.end()
-    }
-
     // The session can write any file of its worktree: after the round, the worktree is back at
     // the head, and the log counts the change.
     @Test func theWorktreeIsResetAfterTheRound() async throws {

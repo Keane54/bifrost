@@ -15,8 +15,9 @@
 // - A pushed merge keeps its commit in the mark, goes on the CI chain of the head, and polls at
 //   once.
 // - A record of a PR that Bifrost could not read in full can lack the mark of a pair that a
-//   round tried. Each such PR counts its pair of the next poll as tried, so the damage never
-//   starts a second automatic try (settleMarksInDoubt).
+//   round tried, or the CI mark of its head. Each such PR counts its pair of the next poll as
+//   tried and spends the CI budget of its head, so the damage never starts a second automatic try
+//   (settleMarksInDoubt).
 import BifrostFoundation
 import Foundation
 import OSLog
@@ -62,33 +63,44 @@ extension ReviewRounds {
         return timeline.now() - quiet.at < WorkRule.readRetry
     }
 
-    private func conflictBusy(_ pr: PRKey) -> Bool {
+    // The CI rounds use the same rule (queueCIWork).
+    func conflictBusy(_ pr: PRKey) -> Bool {
         queue.runningJob(of: pr) != nil || ownRuns[pr] != nil || drops[pr] != nil
             || discards[pr] != nil || sessions.requestInUse(pr)
     }
 
     // The records that the read of the file could not read in full: each PR of the poll with such
     // a record, or each PR of the poll when the file lost records, counts the pair of the poll as
-    // tried (a failed mark with no reason, so the row offers Resolve now). The doubt of a record
-    // ends at the first poll that lists the PR with its pair; the doubt of lost records ends at
-    // the first complete poll.
+    // tried (a failed mark with no reason, so the row offers Resolve now), and spends the CI
+    // budget of the head of the poll (a CI mark of that head with no fix and no re-run left), so
+    // its next failure gets the limits question. The CI part needs only the head. The doubt of a
+    // record ends at the first poll that lists the PR with its head and its base, so both parts
+    // ran; the doubt of lost records ends at the first complete poll.
     private func settleMarksInDoubt(_ poll: PollAnswer) {
         let state = store.state
         guard state.marksInDoubt || state.prs.values.contains(where: \.markInDoubt) else { return }
         let time = now()
         let complete = !poll.mineCut && poll.errors.isEmpty
         var tried: [PRKey] = []
+        var spent: [PRKey] = []
         store.change { state in
             for pr in poll.mine {
                 guard state.marksInDoubt || state.prs[pr.key]?.markInDoubt == true,
-                    let head = CommitID(pr.headSHA), let base = CommitID(pr.baseSHA)
+                    let head = CommitID(pr.headSHA)
                 else { continue }
                 var prState = state.prs[pr.key] ?? PRState()
-                prState.markInDoubt = false
-                if prState.conflict?.matches(pr) != true {
-                    prState.conflict = ConflictMark(
-                        head: head, base: base, at: time, outcome: .failed(""))
-                    tried.append(pr.key)
+                if prState.ci?.chain.contains(head) != true {
+                    prState.ci = CIMark(
+                        chain: [head], fixes: CIRule.maxFixes, retries: CIRule.maxRetries)
+                    spent.append(pr.key)
+                }
+                if let base = CommitID(pr.baseSHA) {
+                    prState.markInDoubt = false
+                    if prState.conflict?.matches(pr) != true {
+                        prState.conflict = ConflictMark(
+                            head: head, base: base, at: time, outcome: .failed(""))
+                        tried.append(pr.key)
+                    }
                 }
                 state.prs[pr.key] = prState
             }
@@ -99,6 +111,13 @@ extension ReviewRounds {
                 """
                 The record of \(pr.text, privacy: .private) did not read in full, so Bifrost \
                 counts its head and base as tried.
+                """)
+        }
+        for pr in spent {
+            Self.conflictLogger.notice(
+                """
+                The record of \(pr.text, privacy: .private) did not read in full, so Bifrost \
+                counts the CI budget of its head as spent.
                 """)
         }
         changed()

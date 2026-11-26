@@ -269,6 +269,13 @@ package struct PRState: Sendable, Equatable, StoredValue {
     // An explicit null in conflict or ci counts as a lost mark too. The file keeps the doubt
     // (markInDoubt, only when true) until a poll settles it, so a quit does not lose it.
     package var markInDoubt = false
+    // The time of the first complete poll that left out this own PR while GitHub said it is open
+    // (ReviewRounds.dropIfClosed). A poll that lists the PR again, or the end of its work, clears
+    // it. Files: leftOutSince and leftOutNoted.
+    package var leftOutSince: Date?
+    // True after the Event log line about the kept copy of a PR that was left out for a day: the
+    // line shows one time for each time that the search leaves the PR out.
+    package var leftOutNoted = false
 
     package init() {}
 
@@ -320,6 +327,8 @@ package struct PRState: Sendable, Equatable, StoredValue {
             lost.add(object.name(key))
         }
         savedDoubt = object.flag("markInDoubt", &lost)
+        leftOutSince = object.read("leftOutSince", &lost, \.time)
+        leftOutNoted = object.flag("leftOutNoted", &lost)
     }
 
     package var stored: JSONValue {
@@ -355,6 +364,10 @@ package struct PRState: Sendable, Equatable, StoredValue {
         if let ci { fields["ci"] = ci.stored }
         if markInDoubt { fields["markInDoubt"] = .bool(true) }
         if resolveNow { fields["resolveNow"] = true }
+        if let leftOutSince {
+            fields["leftOutSince"] = .time(leftOutSince)
+            if leftOutNoted { fields["leftOutNoted"] = .bool(true) }
+        }
         return .object(fields)
     }
 
@@ -407,6 +420,9 @@ package struct WaitsForYou: Sendable, Equatable {
         case askAgain
         // The safety net stopped a request round for changes that are not on GitHub.
         case unpushedRequest
+        // The safety net stopped a CI round for changes that are not on GitHub. An older build
+        // reads it as other.
+        case unpushedCI
         case other
     }
 

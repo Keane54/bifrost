@@ -95,6 +95,10 @@ package enum GitCommand: Sendable, Equatable {
     // The newest commits from the commit, each with its parents, for the lookup of the commit
     // that GitHub made for a signed fix.
     case revList(CommitID, max: Int)
+    // One commit of HEAD that is not on GitHub: a commit that neither a remote ref nor the head of
+    // the PR that Bifrost fetched (refs/bifrost/pr/<number>) holds. No output means that GitHub
+    // has every commit of HEAD. A missing ref makes the command fail.
+    case unpublished(number: Int)
 
     // The argv after the config items of RepoGit.
     package var arguments: [String] {
@@ -184,6 +188,11 @@ package enum GitCommand: Sendable, Equatable {
         case .revList(let commit, let max):
             // A count below 1 would list the whole history.
             ["rev-list", "--parents", "--max-count=\(Swift.max(max, 1))", commit.hex]
+        case .unpublished(let number):
+            [
+                "rev-list", "--max-count=1", "HEAD", "--not", "--remotes",
+                "refs/bifrost/pr/\(number)", "--",
+            ]
         }
     }
 

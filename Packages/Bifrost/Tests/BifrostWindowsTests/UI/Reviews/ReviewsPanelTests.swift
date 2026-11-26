@@ -596,6 +596,26 @@ struct ReviewsPanelTests {
         #expect(ReviewsMenu.buttons(asks).isEmpty)
     }
 
+    // The safety net of a CI round acts as the one of a conflict round: the row has Open session
+    // and Discard changes, and the menu has the same items as Unpushed changes.
+    @Test func theCISafetyNetOffersDiscard() throws {
+        let pr = try key("owner-a/repo-a#1")
+        var ci = try mine(pr.text, .unpushedCI)
+        ci.unsavedFiles = 2
+        var unpushed = try mine(pr.text, .unpushedChanges)
+        unpushed.unsavedFiles = 2
+        #expect(ReviewsMenu.buttons(ci) == [.openSession, .discardChanges])
+        #expect(ReviewsMenu.buttonLabel(.discardChanges, ci) == "Discard changes")
+        let items = ReviewsMenu.items(ci, hasSession: true)
+        #expect(items == ReviewsMenu.items(unpushed, hasSession: true))
+        #expect(items.contains(.discardChanges) && items.contains(.openSession))
+        ci.unsentUpdates = true
+        unpushed.unsentUpdates = true
+        #expect(
+            ReviewsMenu.items(ci, hasSession: true)
+                == ReviewsMenu.items(unpushed, hasSession: true))
+    }
+
     // Discard these changes asks first in Bifrost's own dialog, which names the files. Cancel
     // changes nothing. Discard discards with a click. When the copy has no change now, or the
     // discard can't run, or it fails, the error line says why, and nothing is asked.

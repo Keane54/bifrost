@@ -13,6 +13,26 @@ import Testing
 
 @testable import BifrostReviews
 
+// The wall time of the rounds: a test moves it with RequestFixture.pass.
+@MainActor
+private final class WallTime {
+    var date = Rows.now
+}
+
+// A runner of the real git that holds each command that the test chooses at a gate.
+private final class GateRunner: CommandRunner {
+    let gate = TestGate()
+    private let holds: @Sendable ([String]) -> Bool
+    private let inner = ProcessRunner()
+
+    init(holds: @escaping @Sendable ([String]) -> Bool) { self.holds = holds }
+
+    func run(_ command: Command) async -> ExecResult {
+        if holds(command.arguments) { await gate.pass() }
+        return await inner.run(command)
+    }
+}
+
 @MainActor
 private final class RequestFixture {
     static let id = "22222222-3333-4444-5555-666666666666"
@@ -40,6 +60,8 @@ private final class RequestFixture {
     let events = Recorder<String>()
     // The clock of the rounds: a sleep on it moves the time of the rounds at once.
     let clock = GapClock()
+    // The wall time of the rounds (the saved times).
+    let wall = WallTime()
     // The text input of the sessions: it records each prompt that a round types.
     let prompts = RecordingPromptInput()
     let pr: PRKey
@@ -119,7 +141,7 @@ private final class RequestFixture {
         rounds = Self.rounds(
             store: store, deps: deps, github: github, repos: repos, setup: setup, skills: skills,
             home: home, config: config, answer: answer, notices: notices,
-            polls: polls, events: events, prompts: prompts, clock: clock)
+            polls: polls, events: events, prompts: prompts, clock: clock, wall: wall)
         deps.calls.answerClaude { args in
             args.first == "--bg"
                 ? ExecResult(.exited(0), stdout: "backgrounded \u{B7} abcdef12 \u{B7} name\n")
@@ -139,7 +161,8 @@ private final class RequestFixture {
         store: ReviewsStore, deps: FakeActionDeps, github: FakeGitHub, repos: RepoFixture,
         setup: RepoSetup, skills: URL, home: URL, config: ReviewsConfig, answer: PollAnswer,
         notices: Recorder<ReviewsNotice>, polls: Recorder<Bool>, events: Recorder<String>,
-        prompts: RecordingPromptInput, clock: GapClock, repoStore: RepoStore? = nil
+        prompts: RecordingPromptInput, clock: GapClock, wall: WallTime,
+        repoStore: RepoStore? = nil
     ) -> ReviewRounds {
         let sessions = PRSessions(
             store: store, registry: deps.registry, actions: deps.makeActions(),
@@ -148,7 +171,7 @@ private final class RequestFixture {
         let rounds = ReviewRounds(
             store: store, github: GitHubClient(access: github), repos: repoStore ?? repos.store,
             setup: setup, sessions: sessions, skills: skills, userHome: home, config: config,
-            now: { Rows.now }, clock: clock)
+            now: { wall.date }, clock: clock)
         rounds.answer = { answer }
         rounds.notify = { notices.record($0) }
         rounds.ended = { polls.record(true) }
@@ -165,8 +188,15 @@ private final class RequestFixture {
         rounds = Self.rounds(
             store: store, deps: deps, github: github, repos: repos, setup: setup, skills: skills,
             home: home, config: config, answer: answer, notices: notices,
-            polls: polls, events: events, prompts: prompts, clock: clock, repoStore: fresh)
+            polls: polls, events: events, prompts: prompts, clock: clock, wall: wall,
+            repoStore: fresh)
         rounds.start()
+    }
+
+    // Let the time pass: the wall time and the clock of the rounds move together.
+    func pass(_ span: Duration) async throws {
+        wall.date = wall.date.addingTimeInterval(Double(span.components.seconds))
+        try await clock.sleep(for: span)
     }
 
     func end() async {
@@ -287,6 +317,13 @@ private final class RequestFixture {
     func turnWaitSawWork() async {
         let limit = deps.clock.now.offset + ReviewRounds.limit
         await waitUntil { self.deps.clock.nextDeadline?.offset == limit }
+    }
+
+    // The row of the session in the list of the fake, as the registry shows it after a poll.
+    func entry(_ status: AgentStatus) -> AgentEntry {
+        AgentEntry(
+            sessionId: Self.id, cwd: worktree, isBackground: true, startedAt: 1, name: Self.name,
+            status: status, pid: 4242, id: Self.shortID, waitingFor: nil)
     }
 
     func show(_ status: AgentStatus, waitingFor: String? = nil) async {
@@ -1309,7 +1346,13 @@ struct RequestRoundTests {
         // The person is done: a box goes when the session works again, then the row is idle.
         if use == "box" { await f.show(.busy) }
         await f.show(.idle)
-        await second.value
+        // A cancel of the test (its time limit) stops the round too, so a round that wrongly
+        // starts its turn cannot hold the test.
+        await withTaskCancellationHandler {
+            await second.value
+        } onCancel: {
+            second.cancel()
+        }
         let reason = RoundFailure.changesNotOnGitHub.message(for: .request)
         let state = try #require(f.store.state.prs[f.pr])
         let item = try f.node("PRRT_2")
@@ -2007,8 +2050,10 @@ struct RequestRoundTests {
 
     // A PR of the user with a session that waits for an answer, and a change of no round in its
     // worktree when withChange is true.
-    private func fixtureWithSession(withChange: Bool = false) async throws -> RequestFixture {
-        let f = try await RequestFixture()
+    private func fixtureWithSession(
+        withChange: Bool = false, runner: any CommandRunner = ProcessRunner()
+    ) async throws -> RequestFixture {
+        let f = try await RequestFixture(runner: runner)
         let round = try await f.poll()
         await f.sessionWorks()
         try await f.endTurn(
@@ -2086,6 +2131,277 @@ struct RequestRoundTests {
         #expect(stateReads(f) == 2)
         #expect(f.store.state.prs[f.pr]?.requestSession == nil)
         #expect(!FileManager.default.fileExists(atPath: f.worktree))
+        await f.end()
+    }
+
+    // A poll that leaves the PR out, and the end of the drop task that it starts.
+    private func leaveOut(_ f: RequestFixture) async {
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+    }
+
+    private static func keptLine(_ pr: PRKey) -> String {
+        "Reviews: GitHub's search hasn't listed \(pr.text) for a day. Bifrost kept its copy, "
+            + "because it has changes that aren't on GitHub. Remove all clones deletes it."
+    }
+
+    private static func droppedLine(_ pr: PRKey) -> String {
+        "Reviews: GitHub's search hasn't listed \(pr.text) for a day, so Bifrost deleted its copy."
+    }
+
+    // An open PR that the search leaves out for good costs one state read in each
+    // WorkRule.readRetry, not one in each poll.
+    @Test func anOpenPRThatTheSearchLeavesOutIsReadAtMostEachFifteenMinutes() async throws {
+        let f = try await fixtureWithSession(withChange: true)
+        for _ in 0...15 {
+            await leaveOut(f)
+            try await f.pass(.seconds(120))
+        }
+        #expect(stateReads(f) == 2)
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        await f.end()
+    }
+
+    // The copy of an open PR that the search left out for a day goes, when it is clean.
+    @Test func aCleanOpenPRThatTheSearchLeavesOutForADayIsDropped() async throws {
+        let f = try await fixtureWithSession()
+        await leaveOut(f)
+        #expect(f.store.state.prs[f.pr]?.leftOutSince == f.wall.date)
+        try await f.pass(.seconds(24 * 3600 - 16 * 60))
+        await leaveOut(f)
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        try await f.pass(.seconds(16 * 60))
+        await leaveOut(f)
+        #expect(f.deps.calls.claudeRuns.contains(["rm", "abcdef12"]))
+        #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        #expect(f.store.state.prs[f.pr]?.leftOutSince == nil)
+        #expect(!FileManager.default.fileExists(atPath: f.worktree))
+        #expect(f.events.values == [Self.droppedLine(f.pr)])
+        await f.end()
+    }
+
+    // A copy with a change that no round made, with an outbox, or with a git read that fails
+    // stays with its session. One line of the Event log says so, one time for each time that the
+    // search leaves the PR out.
+    @Test(arguments: ["change", "outbox", "git"])
+    func anOpenPRWithChangesThatAreNotOnGitHubKeepsItsCopy(_ kind: String) async throws {
+        let f = try await fixtureWithSession(withChange: kind == "change")
+        if kind == "outbox" {
+            let head = f.head
+            await f.store.update { state in
+                state.prs[f.pr]?.outbox = Outbox(
+                    headSHA: head, mergeBase: head, startedAt: Rows.at(-10), seen: [:],
+                    posts: [Posts.push()], own: false)
+            }
+        }
+        if kind == "git" {
+            let link = try String(contentsOfFile: f.worktree + "/.git", encoding: .utf8)
+            let admin = link.replacingOccurrences(of: "gitdir:", with: "").trimmed()
+            try "broken".write(toFile: admin + "/index", atomically: false, encoding: .utf8)
+        }
+        await leaveOut(f)
+        try await f.pass(.seconds(24 * 3600))
+        await leaveOut(f)
+        #expect(f.events.values == [Self.keptLine(f.pr)])
+        for _ in 0..<3 {
+            try await f.pass(WorkRule.readRetry)
+            await leaveOut(f)
+        }
+        #expect(f.events.values == [Self.keptLine(f.pr)])
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
+        #expect(FileManager.default.fileExists(atPath: f.worktree))
+        // The search lists the PR again: the time and the mark of the line go, so the line shows
+        // again when the search leaves the PR out later.
+        #expect(f.store.state.prs[f.pr]?.leftOutNoted == true)
+        f.rounds.afterPoll(f.answer)
+        await waitUntil { f.rounds.ownRuns[f.pr] == nil }
+        #expect(f.store.state.prs[f.pr]?.leftOutSince == nil)
+        #expect(f.store.state.prs[f.pr]?.leftOutNoted == false)
+        await f.end()
+    }
+
+    // A round that runs while the search leaves the PR out for a day is not stopped, and its copy
+    // stays, with a change or with an outbox. After the round ends, a clean copy goes at the next
+    // read, and the polls in between read nothing.
+    @Test(arguments: ["change", "outbox", "clean"])
+    func aRunningRoundOnlyDefersTheDropOfAnOpenPR(_ kind: String) async throws {
+        let f = try await RequestFixture()
+        let round = try await f.poll()
+        await f.sessionWorks()
+        await leaveOut(f)
+        if kind == "change" {
+            try "mine\n".write(
+                toFile: f.worktree + "/mine.txt", atomically: false, encoding: .utf8)
+        }
+        if kind == "outbox" {
+            let head = f.head
+            await f.store.update { state in
+                state.prs[f.pr]?.outbox = Outbox(
+                    headSHA: head, mergeBase: head, startedAt: Rows.at(-10), seen: [:],
+                    posts: [Posts.push()], own: false)
+            }
+        }
+        try await f.pass(.seconds(24 * 3600))
+        await leaveOut(f)
+        #expect(f.rounds.queue.halt(of: f.pr) == nil)
+        #expect(f.rounds.queue.runningJob(of: f.pr) != nil)
+        #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(FileManager.default.fileExists(atPath: f.worktree))
+        // The next poll waits for the read time: the running round costs no read in each poll.
+        let reads = stateReads(f)
+        try await f.pass(.seconds(120))
+        await leaveOut(f)
+        #expect(stateReads(f) == reads)
+        guard kind == "clean" else {
+            await f.end()
+            return
+        }
+        try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
+        await round.value
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        try await f.pass(WorkRule.readRetry)
+        await leaveOut(f)
+        #expect(f.deps.calls.claudeRuns.contains(["rm", "abcdef12"]))
+        #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        #expect(f.events.values == [Self.droppedLine(f.pr)])
+        await f.end()
+    }
+
+    // A session that a person uses keeps its copy, also when the copy is clean. When the session
+    // is free again, the next read drops the copy.
+    @Test func aSessionInUseKeepsTheCopyOfAnOpenPRThatTheSearchLeavesOut() async throws {
+        let f = try await fixtureWithSession()
+        await leaveOut(f)
+        await f.show(.busy)
+        try await f.pass(.seconds(24 * 3600))
+        await leaveOut(f)
+        #expect(f.rounds.sessions.requestInUse(f.pr))
+        #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(FileManager.default.fileExists(atPath: f.worktree))
+        #expect(f.events.values.isEmpty)
+        await f.show(.idle)
+        try await f.pass(WorkRule.readRetry)
+        await leaveOut(f)
+        #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        #expect(f.events.values == [Self.droppedLine(f.pr)])
+        await f.end()
+    }
+
+    // A job that runs while its session is idle (the prepare step) is the only guard against the
+    // drop: the round of an open PR that the search leaves out for a day is not stopped.
+    @Test func aRunningJobWithAnIdleSessionDefersTheDropOfAnOpenPR() async throws {
+        let runner = GateRunner { $0.contains("worktree") && $0.contains("add") }
+        let f = try await RequestFixture(runner: runner)
+        _ = try await f.poll()
+        await runner.gate.waitUntilHolding()
+        await leaveOut(f)
+        try await f.pass(.seconds(24 * 3600))
+        await leaveOut(f)
+        #expect(f.rounds.queue.halt(of: f.pr) == nil)
+        #expect(f.rounds.queue.runningJob(of: f.pr) != nil)
+        #expect(f.store.state.prs[f.pr]?.round != nil)
+        #expect(f.store.state.prs[f.pr]?.leftOutSince != nil)
+        runner.gate.openAll()
+        await f.end()
+    }
+
+    // A person starts a turn while the drop reads git: the fresh poll before the drop sees it,
+    // and the copy stays.
+    @Test func aTurnThatStartsDuringTheGitReadsKeepsTheCopy() async throws {
+        let runner = GateRunner { $0.contains("rev-list") && $0.contains("--not") }
+        let f = try await fixtureWithSession(runner: runner)
+        await leaveOut(f)
+        try await f.pass(.seconds(24 * 3600))
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await runner.gate.waitUntilHolding()
+        // The list of claude has the turn, and the registry has not polled it yet.
+        f.deps.lists.active = [f.entry(.busy)]
+        #expect(!f.rounds.sessions.requestInUse(f.pr))
+        runner.gate.open()
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+        #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(FileManager.default.fileExists(atPath: f.worktree))
+        #expect(f.events.values.isEmpty)
+        await f.end()
+    }
+
+    // A commit in the worktree that GitHub lacks is a change that is not on GitHub, also when the
+    // tree is clean.
+    @Test func anOpenPRWithACommitThatIsNotOnGitHubKeepsItsCopy() async throws {
+        let f = try await fixtureWithSession()
+        await leaveOut(f)
+        try "local\n".write(
+            toFile: f.worktree + "/local.txt", atomically: false, encoding: .utf8)
+        try await f.repos.setup(["add", "local.txt"], in: f.worktree)
+        try await f.repos.setup(["commit", "-q", "-m", "local"], in: f.worktree)
+        try await f.pass(.seconds(24 * 3600))
+        await leaveOut(f)
+        #expect(f.events.values == [Self.keptLine(f.pr)])
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(FileManager.default.fileExists(atPath: f.worktree))
+        await f.end()
+    }
+
+    // A PR with no worktree (only its held items, questions or marks are left) loses them after a
+    // day with no line about a copy.
+    @Test func aPRWithNoWorktreeIsDroppedWithNoLine() async throws {
+        let f = try await fixtureWithSession()
+        await leaveOut(f)
+        try FileManager.default.removeItem(atPath: f.worktree)
+        try await f.pass(.seconds(24 * 3600))
+        await leaveOut(f)
+        #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        #expect(f.store.state.prs[f.pr]?.leftOutSince == nil)
+        #expect(f.events.values.isEmpty)
+        await f.end()
+    }
+
+    // A PR that the search lists again starts its time again: the first 24 hours do not count.
+    @Test func anOpenPRThatComesBackKeepsItsWork() async throws {
+        let f = try await fixtureWithSession()
+        await leaveOut(f)
+        try await f.pass(.seconds(23 * 3600))
+        f.rounds.afterPoll(f.answer)
+        #expect(f.store.state.prs[f.pr]?.leftOutSince == nil)
+        await waitUntil { f.rounds.ownRuns[f.pr] == nil }
+        try await f.pass(.seconds(3600))
+        await leaveOut(f)
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(f.store.state.prs[f.pr]?.leftOutSince == f.wall.date)
+        try await f.pass(.seconds(23 * 3600))
+        await leaveOut(f)
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(f.events.values.isEmpty)
+        try await f.pass(.seconds(3600))
+        await leaveOut(f)
+        #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        await f.end()
+    }
+
+    // The time is in the file, so a new start of the app does not start the 24 hours again.
+    @Test func theLeftOutTimeSurvivesARestart() async throws {
+        let f = try await fixtureWithSession()
+        await leaveOut(f)
+        let since = try #require(f.store.state.prs[f.pr]?.leftOutSince)
+        var lost = DroppedFields()
+        let stored = try #require(f.store.state.prs[f.pr]).stored
+        #expect(PRState(stored: stored, dropped: &lost).leftOutSince == since)
+        #expect(lost.names.isEmpty)
+        try await f.restart()
+        try await f.pass(.seconds(24 * 3600))
+        // The start of the new rounds checks for an own request at a time that no signal marks,
+        // and a poll that comes during that check waits. So the poll repeats until the drop ran,
+        // within the wait limit.
+        await waitUntil {
+            f.rounds.afterPoll(Rows.answer(mine: []))
+            return !f.events.values.isEmpty
+        }
+        #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        #expect(f.events.values == [Self.droppedLine(f.pr)])
         await f.end()
     }
 

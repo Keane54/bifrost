@@ -115,12 +115,17 @@ package enum RoundFailure: Error, Sendable, Equatable {
     // The text of the failure for a round of the kind. The request rounds have their own texts
     // for the failures that both kinds share.
     package func message(for kind: PRSessionKind) -> String {
-        // A conflict round keeps its failures in its mark (ConflictFailure). Only the safety net
-        // gives it a reason of the row (Needs you).
+        // A conflict round keeps its failures in its mark (ConflictFailure), and a CI round in its
+        // CI question (CIStop). Only the safety net gives them a reason of the row (Needs you).
         if kind == .conflict, self == .changesNotOnGitHub {
             return "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so "
                 + "Bifrost didn't push a merge of the base branch. Ask Claude in its session to "
                 + "commit or undo them, then choose Resolve now."
+        }
+        if kind == .ci, self == .changesNotOnGitHub {
+            return "Bifrost's copy of this pull request has changes that aren't on GitHub yet, so "
+                + "Claude didn't start on the failed checks. Ask Claude in its session to commit "
+                + "or undo them."
         }
         guard kind == .request else { return message }
         switch self {

@@ -10,6 +10,8 @@ import Foundation
 package protocol GitHubAccess: Sendable {
     func read(_ query: GitHubQuery) async throws(GitHubError) -> Data
     func write(_ write: GitHubWrite) async throws(GitHubError) -> Data
+    // A REST read, for example the log of a job. The answer is the bytes of stdout.
+    func fetch(_ read: GitHubRead) async throws(GitHubError) -> Data
     // The scopes of the login, or nil when the login has no scope header.
     func scopes() async throws(GitHubError) -> GitHubScopes?
 }
@@ -24,6 +26,8 @@ package struct GHRunner: GitHubAccess {
     // The signed commit can carry 4 MiB of files, so it gets more time. A timeout of a write is
     // an unknown result.
     package static let signedCommitTimeout = Duration.seconds(120)
+    // A job log can be large, so its read gets more time.
+    package static let logTimeout = Duration.seconds(60)
     // The longest error line, in characters.
     static let lineLimit = 200
 
@@ -68,6 +72,23 @@ package struct GHRunner: GitHubAccess {
         return Data(result.stdout.utf8)
     }
 
+    // A REST read has no stdin. Each error throws, and no data is kept. An older gh does not know
+    // the flag that lets escape sequences pass: only that error gets one more read without it.
+    package func fetch(_ read: GitHubRead) async throws(GitHubError) -> Data {
+        var result = await run(read.arguments, input: nil, timeout: Self.logTimeout)
+        if Self.isUnknownFlag(result, GitHubRead.escapeFlag) {
+            result = await run(read.argumentsWithoutFlag, input: nil, timeout: Self.logTimeout)
+        }
+        if let error = Self.error(of: result) { throw error }
+        return Data(result.stdout.utf8)
+    }
+
+    // True when gh ended with an error that says it does not know the flag.
+    private static func isUnknownFlag(_ result: ExecResult, _ flag: String) -> Bool {
+        guard case .exited(let code) = result.end, code != 0 else { return false }
+        return result.stderr.contains("unknown flag") && result.stderr.contains(flag)
+    }
+
     // The scopes of the login: the one closed read `gh api --include user`, which has no input.
     // Only the scope names leave this call. The body of the answer is the user of the login, and
     // it is dropped. Bifrost never reads or keeps a token.
@@ -77,7 +98,7 @@ package struct GHRunner: GitHubAccess {
         return GitHubScopes(output: result.stdout)
     }
 
-    private func run(_ arguments: [String], input: Data, timeout: Duration) async -> ExecResult {
+    private func run(_ arguments: [String], input: Data?, timeout: Duration) async -> ExecResult {
         await gh.run(arguments, input: input, timeout: timeout, outputLimit: Self.outputLimit)
     }
 

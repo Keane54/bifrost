@@ -10,11 +10,15 @@ package final class FakeGitHub: GitHubAccess {
         // A read, by the name of its query.
         case read(String)
         case write(GitHubWrite)
+        // A REST read, by its name (GitHubRead.name).
+        case fetch(String)
     }
 
-    // The key of the REST create of a pending review in answers. Each other write has the key of
-    // its GraphQL field (GitHubWrite.mutation).
+    // The key of the REST create of a pending review in answers. The re-run has rerunKey. Each
+    // other write has the key of its GraphQL field (GitHubWrite.mutation).
     package static let pendingReviewKey = "POST pulls/reviews"
+    // The key of the REST re-run of the failed jobs of a run.
+    package static let rerunKey = "POST actions/runs/rerun-failed-jobs"
 
     package private(set) var calls: [Call] = []
     // The answer of each read (by the name of its query) and of each write (by key(_:)). A call
@@ -40,7 +44,11 @@ package final class FakeGitHub: GitHubAccess {
     }
 
     package static func key(_ write: GitHubWrite) -> String {
-        write.mutation ?? pendingReviewKey
+        switch write {
+        case .rerunFailedJobs: rerunKey
+        case .createPendingReview: pendingReviewKey
+        default: write.mutation ?? pendingReviewKey
+        }
     }
 
     // The protocol is not isolated, so each method states the main actor. A call from another
@@ -56,6 +64,12 @@ package final class FakeGitHub: GitHubAccess {
         calls.append(.write(write))
         await onWrite?(write)
         return try answer(Self.key(write))
+    }
+
+    @MainActor package func fetch(_ read: GitHubRead) async throws(GitHubError) -> Data {
+        calls.append(.fetch(read.name))
+        await onRead?(read.name)
+        return try answer(read.name)
     }
 
     @MainActor package func scopes() async throws(GitHubError) -> GitHubScopes? {

@@ -20,7 +20,7 @@ struct ReviewsRowsTests {
             ])
     }
 
-    @Test(arguments: ReviewsSettingsRow.shown)
+    @Test(arguments: ReviewsSettingsRow.allCases)
     func theSearchFindsEachReviewsRow(_ row: ReviewsSettingsRow) {
         let index = SettingsSearch.index(
             general: [], slash: [], keys: [], live: [], skills: [], shown: [.reviews])

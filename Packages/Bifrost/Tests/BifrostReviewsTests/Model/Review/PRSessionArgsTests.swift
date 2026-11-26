@@ -142,4 +142,14 @@ struct PRSessionArgsTests {
             PRSessionArgs.conflictPrompt(file)
                 == "/bifrost-resolve-conflicts bifrost-input=/r/my repos/input-7c1e0f8a2b5d.json")
     }
+
+    // A CI round types its prompt into the request session of the PR: the CI skill and the input
+    // file of the round, also a path with a space.
+    @Test func theCIPromptNamesTheSkillAndTheInput() {
+        let file = URL(
+            filePath: "/r/my repos/input-7c1e0f8a2b5d.json", directoryHint: .notDirectory)
+        #expect(
+            PRSessionArgs.ciPrompt(file)
+                == "/bifrost-fix-ci bifrost-input=/r/my repos/input-7c1e0f8a2b5d.json")
+    }
 }

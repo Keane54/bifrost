@@ -389,6 +389,18 @@ struct RowTextTests {
         #expect(one.tag?.tip == "1 check failed" && one.notes.isEmpty)
     }
 
+    // The safety net of a CI round has the short text of the safety net, with a tip that names
+    // the failed checks, and it needs the user like the other short texts.
+    @Test func theCISafetyNetHasItsText() {
+        #expect(
+            RowText.claude(.unpushedCI)
+                == label(
+                    "Unpushed changes", .amber,
+                    "Bifrost won't fix failing CI over changes that aren't on GitHub. Ask Claude "
+                        + "to commit them, or discard them."))
+        #expect(ClaudeState.unpushedCI.needsTheUser && ClaudeState.unpushedCI.waitsForUser)
+    }
+
     // The states of the conflict and CI work, and Needs you with a CI question, have the texts,
     // the colours and the tips of the plan. Only Needs you needs the user.
     @Test func theNewStatesHaveTheirTexts() {

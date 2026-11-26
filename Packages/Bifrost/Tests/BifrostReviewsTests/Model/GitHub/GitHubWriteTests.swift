@@ -32,6 +32,14 @@ private func node(_ text: String) throws -> NodeID { try #require(NodeID(text)) 
 private func commit() throws -> CommitID { try #require(CommitID(head)) }
 private func key() throws -> PRKey { try #require(PRKey(text: "Owner-A/Repo-A#7")) }
 
+private func repo() throws -> RepoName { try #require(RepoName("Owner-A/Repo-A")) }
+
+private func consent() throws -> CIConsent {
+    var state = ReviewsState()
+    state.consentToCIFix()
+    return try #require(state.ciConsent(true))
+}
+
 private let comment = DraftComment(path: "src/a.swift", line: 12, side: .right, body: "Nit.")
 
 private func signedCommit() throws -> SignedCommit {
@@ -66,6 +74,7 @@ private func samples() throws -> [GitHubWrite] {
         .discardDraft(review: try node("PRR_1"), click: click),
         .submitDraft(review: try node("PRR_1"), event: .comment, click: click),
         .submitDraft(review: try node("PRR_1"), event: .requestChanges, click: click),
+        .rerunFailedJobs(try repo(), try #require(RunID(55)), consent: try consent()),
     ]
 }
 
@@ -88,6 +97,7 @@ private func caseName(_ write: GitHubWrite) -> String {
     case .removeDraftComment: "removeDraftComment"
     case .discardDraft: "discardDraft"
     case .submitDraft: "submitDraft"
+    case .rerunFailedJobs: "rerunFailedJobs"
     }
 }
 
@@ -115,10 +125,10 @@ private func names(_ text: String) -> [String] {
 struct GitHubWriteTests {
     @Test func eachWriteNamesOnlyItsOwnMutation() throws {
         let writes = try samples()
-        #expect(Set(writes.map(caseName)).count == 15)
+        #expect(Set(writes.map(caseName)).count == 16)
         for write in writes {
             guard let mutation = write.mutation else {
-                #expect(caseName(write) == "createPendingReview")
+                #expect(["createPendingReview", "rerunFailedJobs"].contains(caseName(write)))
                 #expect(try stdin(write)["query"] == nil)
                 #expect(!write.arguments.contains("graphql"))
                 continue
@@ -130,6 +140,23 @@ struct GitHubWriteTests {
             #expect(named == [mutation], "\(caseName(write))")
         }
         #expect(Set(writes.compactMap(\.mutation)) == allowed)
+    }
+
+    @Test func onlyAConsentingStateMakesTheProof() throws {
+        var state = ReviewsState()
+        #expect(state.ciConsent(true) == nil)
+        state.consentToCIFix()
+        #expect(state.ciConsent(false) == nil)
+        #expect(state.ciConsent(true) != nil)
+        let write = GitHubWrite.rerunFailedJobs(
+            try repo(), try #require(RunID(55)), consent: try #require(state.ciConsent(true)))
+        #expect(write.mutation == nil)
+        #expect(
+            write.arguments == [
+                "api", "--method", "POST", "repos/Owner-A/Repo-A/actions/runs/55/rerun-failed-jobs",
+                "--input", "-",
+            ])
+        #expect(write.input == Data("{}".utf8))
     }
 
     @Test func noWriteMergesDismissesUnresolvesOrCloses() throws {

@@ -20,7 +20,7 @@ struct ReviewsSectionTests {
         let p = try await SettingsParts()
         p.model.showTab(.reviews)
         let labels = await shownLabels(ReviewsSection(model: p.model))
-        #expect(labels == ReviewsSettingsRow.shown.map(\.rawValue))
+        #expect(labels == ReviewsSettingsRow.allCases.map(\.rawValue))
     }
 
     // Each turn-on asks first with the texts of the Electron app. A Cancel keeps the setting off,
@@ -86,11 +86,11 @@ struct ReviewsSectionTests {
         #expect(asked.texts.count == 2 && links.calls == [setting])
     }
 
-    // A gh login with no workflow scope: the confirm of the turn-on of the two settings that push
-    // changes opens at once with the last answer that Bifrost knows, and has the warning when the
-    // scope is missing. The read of the scopes runs on and holds nothing back: here it waits at a
-    // gate until the confirm has ended. The watch setting has no warning and no read.
-    @Test(arguments: [ReviewsSection.Confirmed.autoFix, .resolveConflicts, .watch])
+    // A gh login with no workflow scope: the confirm of the turn-on of the three settings that
+    // push changes opens at once with the last answer that Bifrost knows, and has the warning
+    // when the scope is missing. The read of the scopes runs on and holds nothing back: here it
+    // waits at a gate until the confirm has ended. The watch setting has no warning and no read.
+    @Test(arguments: [ReviewsSection.Confirmed.autoFix, .resolveConflicts, .fixCI, .watch])
     func theConfirmWarnsAboutTheWorkflowScope(_ setting: ReviewsSection.Confirmed) async throws {
         let p = try await SettingsParts()
         let steps = Steps()
@@ -119,8 +119,8 @@ struct ReviewsSectionTests {
         #expect(asked.texts.last == setting.confirm)
     }
 
-    // The hint under the two settings that push changes has the warning only while the setting is
-    // on and the gh login has no workflow scope.
+    // The hint under the three settings that push changes has the warning only while the setting
+    // is on and the gh login has no workflow scope.
     @Test func theRowHintWarnsOnlyWhileTheSettingIsOnAndTheScopeIsMissing() {
         let hint = ReviewsSection.workflowScopeHint
         #expect(
@@ -132,15 +132,16 @@ struct ReviewsSectionTests {
         }
         #expect(shown(.autoFix, on: true, missing: true) == "own\n\n" + hint)
         #expect(shown(.resolveConflicts, on: true, missing: true) == "own\n\n" + hint)
+        #expect(shown(.fixCI, on: true, missing: true) == "own\n\n" + hint)
+        #expect(shown(.fixCI, on: false, missing: true) == "own")
         #expect(shown(.autoFix, on: false, missing: true) == "own")
         #expect(shown(.autoFix, on: true, missing: false) == "own")
         #expect(shown(.watch, on: true, missing: true) == "own")
     }
 
     // The settings of merge conflicts and of failing CI come straight after the automatic comment
-    // handling, in this order, in the list of the rows. The section does not show the Fix CI row
-    // and the search does not find it, until the CI watcher exists.
-    @Test func theRowsFollowAutoFixInOrderAndFixCIDoesNotShow() async throws {
+    // handling, in this order, in the list of the rows and in the section.
+    @Test func theRowsFollowAutoFixInOrder() async throws {
         let order: [ReviewsSettingsRow] = [.autoFix, .resolveConflicts, .fixCI]
         let rows = ReviewsSettingsRow.allCases
         let first = try #require(rows.firstIndex(of: .autoFix))
@@ -149,10 +150,8 @@ struct ReviewsSectionTests {
         p.model.showTab(.reviews)
         let labels = await shownLabels(ReviewsSection(model: p.model))
         let shown = try #require(labels.firstIndex(of: ReviewsSettingsRow.autoFix.rawValue))
-        #expect(
-            Array(labels[shown...].prefix(2)) == order.prefix(2).map(\.rawValue))
-        #expect(!labels.contains(ReviewsSettingsRow.fixCI.rawValue))
-        #expect(!ReviewsSettingsRow.shown.contains(.fixCI))
+        #expect(Array(labels[shown...].prefix(3)) == order.map(\.rawValue))
+        #expect(labels.contains("Fix failing CI automatically"))
     }
 
     // The hints and the confirms of the settings of merge conflicts and of failing CI.

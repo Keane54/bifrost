@@ -818,6 +818,47 @@ struct ShellReviewsTests {
         await h.end()
     }
 
+    // The Answer panel flow of a PR with a question about failed CI: a text answer queues one CI
+    // round, with the jobs waiting in the queue, and "I'll fix CI myself" marks the head as the
+    // head of the user and queues nothing.
+    @Test func aCIAnswerQueuesACIRound() async throws {
+        let head = String(repeating: "a", count: 40)
+        let file = """
+            {"version": 1, "ciConsent": true, "prs": {"owner-a/repo-a#55": {"ci": {
+            "chain": ["\(head)"], "fixes": 0, "retries": 0, "handled": [],
+            "question": {"text": "CI still fails. What next?", "head": "\(head)",
+            "jobs": ["test"], "at": 1794300000000, "byClaude": true}}}}}
+            """
+        let h = try await Harness([], mine: [Poll.conflicting(55)], state: file, sessions: true)
+        let pr = try #require(PRKey(text: "owner-a/repo-a#55"))
+        try await h.set { $0.reviewsFixCI = true }
+        try await h.watch()
+        let store = try #require(h.parts.store)
+        let rounds = try #require(h.parts.rounds)
+        rounds.queue.isReady = { _ in false }
+        let flow = try #require(h.parts.answerFlow(for: pr))
+        #expect(flow.ciQuestion?.question.text == "CI still fails. What next?")
+        flow.answerCI("Try the other job.")
+        #expect(await flow.submit())
+        #expect(store.state.prs[pr]?.ci?.question?.answer == "Try the other job.")
+        #expect(store.state.queue.filter { $0.pr == pr && $0.kind == .ci }.count == 1)
+        // A second flow with the question gone offers nothing.
+        #expect(h.parts.answerFlow(for: pr)?.ciQuestion == nil)
+        await store.update { state in
+            state.queue = []
+            state.prs[pr]?.ci?.question?.answer = nil
+        }
+        let again = try #require(h.parts.answerFlow(for: pr))
+        again.handleCIMyself()
+        #expect(await again.submit())
+        #expect(store.state.prs[pr]?.ci?.userHandles?.hex == head)
+        #expect(store.state.prs[pr]?.ci?.question == nil)
+        #expect(store.state.queue.isEmpty)
+        try await h.unwatch()
+        await setupEnded(h.parts)
+        await h.end()
+    }
+
     // While the store is open, the Approve button has its flow, each open of the Review panel
     // gets a new flow, and the Answer panel gets one while the rounds run. A turn-off drops them.
     @Test func thePanelsThatWriteFollowTheStore() async throws {
@@ -1017,5 +1058,24 @@ struct ShellReviewsTests {
         await h.settle()
         #expect(state().object?["problem"] == .string(GitHubError.notLoggedIn.message))
         await h.end()
+    }
+}
+
+// The end of the set-up task of the part, for at most the wait limit. A cancel of the test (its
+// time limit) cancels the task too, so a set-up that never ends cannot hold the test.
+@MainActor
+private func setupEnded(
+    _ parts: ReviewsParts, sourceLocation: SourceLocation = #_sourceLocation
+) async {
+    guard let task = parts.setupTask else { return }
+    let done = TestSignal()
+    Task {
+        await task.value
+        done.send()
+    }
+    _ = await withTaskCancellationHandler {
+        await done.wait(for: "the end of the set-up", sourceLocation: sourceLocation)
+    } onCancel: {
+        task.cancel()
     }
 }

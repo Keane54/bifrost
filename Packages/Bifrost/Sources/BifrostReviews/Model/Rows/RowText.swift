@@ -194,6 +194,9 @@ package enum RowText {
     static let unpushedCommentsTip =
         "Bifrost won't handle new comments over changes that aren't on GitHub. Ask Claude to "
         + "commit them, or discard them."
+    static let unpushedCITip =
+        "Bifrost won't fix failing CI over changes that aren't on GitHub. Ask Claude to commit "
+        + "them, or discard them."
     static let askAgainTip =
         "Bifrost didn't apply your change, because Claude was busy resolving conflicts. Discard "
         + "the edits Claude made for your request so the merge can be resolved first, then ask "
@@ -212,6 +215,8 @@ package enum RowText {
             RowLabel(text: "Unpushed changes", tone: .amber, tip: unpushedCommentsTip)
         case .askAgain:
             RowLabel(text: "Ask again", tone: .amber, tip: askAgainTip)
+        case .unpushedCI:
+            RowLabel(text: "Unpushed changes", tone: .amber, tip: unpushedCITip)
         case .fixing(let items):
             RowLabel(
                 text: "Fixing \(items)", tone: .plain,

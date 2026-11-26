@@ -26,6 +26,9 @@ private final class AnswerPanelFixture {
     let opened = Recorder<PanelID>()
     let closed = Recorder<PanelID>()
     let sent = Recorder<[NodeID: QuestionAnswer]>()
+    let sentCI = Recorder<QuestionAnswer>()
+    // The question about failed CI that the flow shows, or nil.
+    var ci: OpenCIQuestion?
     let pr: PRKey
     let thread: NodeID
     let comment: NodeID
@@ -53,16 +56,25 @@ private final class AnswerPanelFixture {
         panels = ReviewsPanels(
             links: links, opener: opener, look: PanelLook(), menu: { nil },
             clock: ManualClock(), now: { Date() })
-        let (store, sent, opened, closed, panels) = (store, sent, opened, closed, panels)
+        let (store, sent, sentCI, opened, closed, panels) = (
+            store, sent, sentCI, opened, closed, panels
+        )
         links.snapshot = { [weak self] in
             ReviewsSnapshot(phase: .on, mine: self.map { [$0.row] } ?? [])
         }
         links.makeAnswerFlow = { [weak self] pr in
-            AnswerFlow(pr: pr, store: store) { answers in
-                sent.record(answers)
-                self?.during?()
-                return self?.takes ?? false
-            }
+            AnswerFlow(
+                pr: pr, store: store,
+                send: { answers in
+                    sent.record(answers)
+                    self?.during?()
+                    return self?.takes ?? false
+                },
+                ciQuestion: { self?.ci },
+                sendCI: { answer in
+                    sentCI.record(answer)
+                    return self?.takes ?? false
+                })
         }
         links.openPanel = { opened.record($0) }
         links.closePanel = { [weak panels] in
@@ -206,6 +218,51 @@ struct AnswerPanelTests {
         #expect(f.opened.values == [.answer, .answer] && f.answer.flow === flow)
         #expect(f.sent.values.count == 1 && f.answer.error == AnswerPanels.notSentText)
         #expect(flow.answers[f.thread] == "Yes." && f.closed.values.isEmpty)
+        await f.end()
+    }
+
+    // The block of failed CI comes first. Its title has seven characters of the head, its names
+    // line has five names and the count of the rest, and the check turns its text area off. A
+    // panel with only a CI question has something to show, with the intro of the CI question.
+    @Test func theCIBlockShowsTheHeadTheJobsAndTheQuestion() async throws {
+        let f = try await AnswerPanelFixture()
+        let head = try #require(CommitID("0123456789abcdef0123456789abcdef01234567"))
+        #expect(AnswerPanels.ciTitle(head) == "Failed checks on 0123456")
+        #expect(AnswerPanels.ciNames([]) == nil)
+        #expect(AnswerPanels.ciNames(["a", "b"]) == "Failed: a, b")
+        let seven = (1...7).map { "job \($0)" }
+        #expect(
+            AnswerPanels.ciNames(seven) == "Failed: job 1, job 2, job 3, job 4, job 5 and 2 more")
+        #expect(AnswerPanels.fixCIText == "I'll fix CI myself")
+        let question = CIQuestion(
+            text: "CI still fails. What next?", head: head, jobs: Array(seven.prefix(5)),
+            at: Date(), byClaude: true)
+        f.ci = OpenCIQuestion(question: question, failedJobs: seven)
+        f.answer.open(f.pr)
+        let flow = try #require(f.answer.flow)
+        #expect(flow.ciQuestion?.question.text == "CI still fails. What next?")
+        #expect(!f.answer.showsNothing && f.answer.intro == AnswerPanels.introText)
+        f.answer.handled(f.thread).wrappedValue = true
+        f.answer.handled(f.comment).wrappedValue = true
+        #expect(!flow.canSubmit)
+        f.answer.ciAnswer.wrappedValue = "Try the other job."
+        #expect(flow.canSubmit && !f.answer.ciHandled.wrappedValue)
+        f.answer.ciHandled.wrappedValue = true
+        #expect(flow.ciHandled && flow.canSubmit)
+        f.answer.send()
+        await waitUntil { !f.closed.values.isEmpty }
+        #expect(f.sentCI.values == [.handleMyself] && f.closed.values == [.answer])
+        // Only a CI question: the panel shows it, and no comment send goes.
+        await f.store.update { $0.prs[f.pr]?.questions = [:] }
+        f.answer.open(f.pr)
+        #expect(f.answer.questions.isEmpty && !f.answer.showsNothing)
+        #expect(f.answer.intro == AnswerPanels.ciIntroText)
+        #expect(
+            AnswerPanels.ciIntroText
+                == "The failed checks on this pull request need your answer before Claude can "
+                + "carry on.")
+        f.ci = nil
+        #expect(f.answer.showsNothing)
         await f.end()
     }
 }

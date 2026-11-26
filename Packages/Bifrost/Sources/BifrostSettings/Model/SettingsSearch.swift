@@ -63,7 +63,7 @@ package enum SettingsSearch {
 
     // The rows of the shown sections, in the order of the tabs. general has the General rows that
     // the section shows. keys has one row for each key slot: the slot ID, the label and the key.
-    // Reviews has the rows that it shows (ReviewsSettingsRow.shown). updates has the rows of
+    // Reviews has each row (ReviewsSettingsRow). updates has the rows of
     // Updates, and dailyUpdate the rows of Daily update. live and skills are the words of Live
     // details and of Skills, and each section gets one row with all its words. A section with no
     // rows is not in the index: a section that shows the later text, and Live details or Skills
@@ -82,7 +82,7 @@ package enum SettingsSearch {
             case .keys: keys.isEmpty ? nil : keys
             case .live: wordsRow(of: section, live)
             case .skills: wordsRow(of: section, skills)
-            case .reviews: ReviewsSettingsRow.shown.map(row(of:))
+            case .reviews: ReviewsSettingsRow.allCases.map(row(of:))
             case .updates: updates.isEmpty ? nil : updates.map(row(of:))
             case .dailyUpdate:
                 dailyUpdate.isEmpty

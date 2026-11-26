@@ -14,12 +14,18 @@
 //   the merge. The extension in ConflictRounds.swift holds the poll, Resolve now, the jobs and the
 //   ends of this kind, and ConflictRound the steps of one round. Each failure goes to the conflict
 //   mark of the PR, never to lastError.
+// - A CI round: GitHub Actions failed on a PR of the user, Claude reads the failed logs in the
+//   request session of the PR, and Bifrost commits and pushes its fix, re-runs the failed jobs,
+//   or asks the user. The extension in CIRounds.swift holds the poll, the CI question and its
+//   answer, the jobs and the ends of this kind, and CIRound the steps of one round. Each failure
+//   goes to the CI question of the PR, never to lastError.
 //
 // The state of state.json and the queue go together: a click (or a poll) adds the entry to the
 // queue of the file, the start of the round moves it to the round of the PR, and the end clears
 // the round. At the next start, a preparing round goes back to the queue and a running round
 // waits for its session. A posting review round fails; a posting request round sends the rest
-// of its writes; a posting conflict round pushes its merge again.
+// of its writes; a posting conflict round pushes its merge again; a posting CI round pushes its
+// fix again, and a posting re-run goes with nothing sent again.
 //
 // A round that runs stops at its next step when the request of the PR went (a review) or the PR
 // merged or closed (a request), when the clones go, or when the user stops its session. A round
@@ -106,9 +112,16 @@ package final class ReviewRounds {
     // The time of the last failed full read of a request round of each PR. The poll waits
     // WorkRule.readRetry after it before it queues the PR again (waitsAfterReadFailure).
     var readFailures: [PRKey: Duration] = [:]
+    // The time of the last state read of each own PR that the search left out and that GitHub
+    // said is open. The poll does not read the PR again for WorkRule.readRetry (dropIfClosed).
+    var openReads: [PRKey: Duration] = [:]
     // The pair of the poll of each PR whose last automatic conflict round ended with no text, and
     // the time of that end. The poll waits WorkRule.readRetry after it (waitsAfterQuietEnd).
     var quietPairs: [PRKey: (pair: ConflictRound.Pair, at: Duration)] = [:]
+    // The head and the failed job IDs of the poll of each PR whose last CI round ended with no
+    // text, and the time of that end. The poll waits WorkRule.readRetry after it
+    // (waitsAfterQuietCI).
+    var quietCI: [PRKey: (head: CommitID, key: [JobID], at: Duration)] = [:]
     private(set) var config: ReviewsConfig
     // Remove all clones while it runs (removeAll). Its result is the failure of the removal of
     // the folders.
@@ -157,14 +170,18 @@ package final class ReviewRounds {
     // the rest of its writes, a preparing round goes back to the queue (or fails when the user
     // stopped it), and a running round waits for its session. A request round that fails holds
     // its items. A conflict round that runs or posts goes on in its job, which also ends a round
-    // that the user stopped; its failures go to its conflict mark. A CI round of the state goes
-    // with no text (the CI rounds do not run yet). Then queue each entry of the file, oldest
-    // first.
+    // that the user stopped; its failures go to its conflict mark. A CI round never writes
+    // lastError: a posting fix pushes again, a posting re-run is never sent again and its head
+    // gets the question that sends the user to GitHub, a running round waits for its session, a
+    // stopped round gets the stop question on its head, and a preparing round goes back to the
+    // queue with the job key of its head cleared (it never got its turn). Then queue each entry
+    // of the file, oldest first.
     package func start() {
         // The end of a turn of a request session: an own request of the user can go now.
         sessions.requestFree = { [weak self] pr in self?.checkOwnRequest(pr) }
         sessions.start()
         var resumed: [QueuedJob] = []
+        let time = now()
         store.change { state in
             for (pr, prState) in state.prs {
                 guard let round = prState.round else { continue }
@@ -179,11 +196,31 @@ package final class ReviewRounds {
                     next.handleOlder = false
                     next.handleCopilot = false
                 }
-                switch (kind, round.phase) {
-                case (.ci, _):
-                    // The CI rounds come in a later task. Until then a CI round of the state goes.
+                // The round goes back to the queue.
+                func requeue() {
                     next.round = nil
-                case (.request, .posting), (.conflict, .posting), (.conflict, .running):
+                    if !state.queue.contains(where: { $0.pr == pr && $0.kind == kind }) {
+                        state.queue.append(QueueEntry(pr: pr, kind: kind, at: round.at))
+                    }
+                }
+                switch (kind, round.phase) {
+                case (.ci, .posting) where round.fixSHA != nil:
+                    resumed.append(QueuedJob(pr: pr, kind: kind, since: round.at))
+                case (.ci, .posting):
+                    // A re-run write can be on GitHub, so it never goes again, and the user
+                    // checks the pull request there.
+                    next.round = nil
+                    next.ci = Self.postingRerunCI(next.ci, head: round.headSHA, at: time)
+                case (.ci, _) where round.stoppedByUser:
+                    next.round = nil
+                    next.ci = Self.stoppedCI(next.ci, head: round.headSHA, at: time)
+                case (.ci, .preparing):
+                    // The round never got its turn. The queued round saves the key again, so an
+                    // end with no try never puts back a spent key.
+                    next.ci = Self.untriedKey(next.ci, head: round.headSHA)
+                    requeue()
+                case (.request, .posting), (.conflict, .posting), (.conflict, .running),
+                    (.ci, .running):
                     resumed.append(QueuedJob(pr: pr, kind: kind, since: round.at))
                 case (_, .posting):
                     failed(.closedWhilePosting)
@@ -194,10 +231,7 @@ package final class ReviewRounds {
                 case (_, .preparing) where round.stoppedByUser:
                     failed(.stopped)
                 case (_, .preparing):
-                    next.round = nil
-                    if !state.queue.contains(where: { $0.pr == pr && $0.kind == kind }) {
-                        state.queue.append(QueueEntry(pr: pr, kind: kind, at: round.at))
-                    }
+                    requeue()
                 case (_, .running) where round.stoppedByUser:
                     // The user stopped it before the quit: it never waits for its session again.
                     failed(.stopped)
@@ -252,18 +286,38 @@ package final class ReviewRounds {
 
     // A good poll: the rounds that waited for the viewer can start, the review work of each PR
     // whose request went goes, the work of each PR of the user that merged or closed goes, each
-    // PR of the user with new work gets a request round while the automatic rounds are on, and
-    // each PR of the user with conflicts gets a conflict round while the automatic conflict rounds
-    // are on. Only a complete answer shows that a request went or a PR closed.
+    // PR of the user with new work gets a request round while the automatic rounds are on, each
+    // PR of the user with conflicts gets a conflict round while the automatic conflict rounds are
+    // on, and each PR of the user with a new failure of GitHub Actions gets a CI round while the
+    // CI work is on. The marks in doubt settle first (queueConflicts), and a queued entry of the
+    // PR stops the CI rule. Only a complete answer shows that a request went or a PR closed.
     package func afterPoll(_ poll: PollAnswer) {
         guard !removing, !stopped else { return }
         queue.wake()
+        clearLeftOut(poll)
         if !poll.toReviewCut && poll.errors.isEmpty { dropGone(poll, mine: false) }
         if !poll.mineCut && poll.errors.isEmpty { dropGone(poll, mine: true) }
         queueNewWork(poll)
         queueConflicts(poll)
+        queueCIWork(poll)
         // A round that starts now lets a waiting own request go first itself.
         checkOwnRequests(poll)
+    }
+
+    // A poll that lists an own PR ends the time that the search left it out.
+    private func clearLeftOut(_ poll: PollAnswer) {
+        let listed = Set(poll.mine.map(\.key))
+        for pr in listed { openReads[pr] = nil }
+        let marked = store.state.prs.filter {
+            listed.contains($0.key) && $0.value.leftOutSince != nil
+        }
+        guard !marked.isEmpty else { return }
+        store.change { state in
+            for pr in marked.keys {
+                state.prs[pr]?.leftOutSince = nil
+                state.prs[pr]?.leftOutNoted = false
+            }
+        }
     }
 
     // Drop the work of each PR that the poll does not list as open, on one side: the review work
@@ -312,12 +366,17 @@ package final class ReviewRounds {
         }
     }
 
-    // The search did not list the PR of the user. One read gives its state. Only a PR that is
-    // merged, closed or not found loses its work. After a failed read, or for an open PR, the work
-    // stays and the next poll looks again. The work of a round that runs stops first, and the
-    // next poll drops the PR. When the worktree has changes that no round made, one line of the
-    // Event log names them.
+    // The search did not list the PR of the user. One read gives its state. A merged, closed or
+    // not found PR loses its work: the work of a round that runs stops first, and the next poll
+    // drops the PR. After a failed read, the work stays and the next poll reads again. An open PR
+    // keeps its work for now, and Bifrost reads it again only after WorkRule.readRetry. The first
+    // read that says open stores the time (leftOutSince). When WorkRule.leftOutLimit has passed
+    // since that time, the work of a clean copy goes (leftOutDrop), as for a merged PR. A copy
+    // that is not clean stays. A round that runs, or a session that a person uses, only defers
+    // that drop, and it never stops a round of an open PR. When the worktree of a closed PR has
+    // changes that no round made, one line of the Event log names them.
     private func dropIfClosed(_ pr: PRKey) async {
+        if let last = openReads[pr], timeline.now() - last < WorkRule.readRetry { return }
         let lifecycle: PRLifecycle?
         do throws(GitHubError) {
             lifecycle = try await RequestQueries.stateOrGone(pr, client: github)
@@ -329,19 +388,39 @@ package final class ReviewRounds {
                 """)
             return
         }
-        guard lifecycle != .open, !removing, !stopped, !Task.isCancelled else { return }
+        guard !removing, !stopped, !Task.isCancelled else { return }
+        let isOpen = lifecycle == .open
+        if isOpen {
+            openReads[pr] = timeline.now()
+            let since = noteLeftOut(pr)
+            guard now().timeIntervalSince(since) >= leftOutSeconds else { return }
+        }
         // A round that posts, or an own request, ends its writes first.
         if store.state.prs[pr]?.round?.phase == .posting || ownRuns[pr] != nil
             || discards[pr] != nil
         {
+            openReads[pr] = nil
             return
         }
         if let job = queue.runningJob(of: pr) {
-            if job.kind.isMine { halt(pr, .requestGone) }
+            // An open PR keeps its round: the next read after the round ends does the drop.
+            if !isOpen {
+                if job.kind.isMine { halt(pr, .requestGone) }
+                openReads[pr] = nil
+            }
             return
         }
-        queue.cancel(pr)
+        if isOpen {
+            // A person works in the session: the next read looks again.
+            if sessions.requestInUse(pr) { return }
+        } else {
+            queue.cancel(pr)
+        }
         let (files, unread) = await changesOfNoRound(pr)
+        if isOpen {
+            await leftOutDrop(pr, files: files, unread: unread)
+            return
+        }
         await dropRequest(pr)
         if unread {
             eventLine(
@@ -355,6 +434,46 @@ package final class ReviewRounds {
                 "Reviews: Bifrost deleted its copy of \(pr.text) with \(files.count) "
                     + "\(files.count == 1 ? "change" : "changes") that no round made and that "
                     + "are not on GitHub: \(names)\(more).")
+        }
+    }
+
+    private var leftOutSeconds: TimeInterval { Double(WorkRule.leftOutLimit.components.seconds) }
+
+    // The first poll that left the open PR out stores its time. The result is that time.
+    private func noteLeftOut(_ pr: PRKey) -> Date {
+        if let since = store.state.prs[pr]?.leftOutSince { return since }
+        let time = now()
+        store.change { state in
+            state.prs[pr, default: PRState()].leftOutSince = time
+            state.prs[pr]?.leftOutNoted = false
+        }
+        return time
+    }
+
+    // The search left the open PR out for WorkRule.leftOutLimit. A clean copy goes. A copy with
+    // changes that are not on GitHub stays, and one line of the Event log says so one time.
+    private func leftOutDrop(_ pr: PRKey, files: [String], unread: Bool) async {
+        let hasCopy = await repos.hasWorktree(pr)
+        let unpublished = hasCopy ? await repos.hasUnpublishedCommit(pr) : false
+        let clean =
+            !unread && files.isEmpty && !unpublished && store.state.prs[pr]?.outbox == nil
+        // The git reads above wait, and the rows of the registry are old: a fresh poll shows a
+        // turn that a person started in the meantime.
+        if clean, await sessions.requestInUseNow(pr) { return }
+        if clean {
+            queue.cancel(pr)
+            await dropRequest(pr)
+            if hasCopy {
+                eventLine(
+                    "Reviews: GitHub's search hasn't listed \(pr.text) for a day, so Bifrost "
+                        + "deleted its copy.")
+            }
+        } else if store.state.prs[pr]?.leftOutNoted != true {
+            store.change { state in state.prs[pr]?.leftOutNoted = true }
+            eventLine(
+                "Reviews: GitHub's search hasn't listed \(pr.text) for a day. Bifrost kept its "
+                    + "copy, because it has changes that aren't on GitHub. Remove all clones "
+                    + "deletes it.")
         }
     }
 
@@ -555,8 +674,11 @@ package final class ReviewRounds {
                 await runRequest(job, saved: saved)
             case (.conflict, .running), (.conflict, .posting):
                 await runConflict(job, saved: saved)
+            case (.ci, .running), (.ci, .posting):
+                await runCI(job, saved: saved)
             default:
-                // A CI round comes with the CI rounds.
+                // The start of the rounds puts each other round of the state back in the queue,
+                // or ends it.
                 break
             }
             return
@@ -571,16 +693,13 @@ package final class ReviewRounds {
         case .conflict:
             await runConflict(job, saved: nil)
             return
-        case .review, .ci:
+        case .ci:
+            await runCI(job, saved: nil)
+            return
+        case .review:
             break
         }
         // Only a review job goes on from here: a job of another kind never makes a review round.
-        // A CI job does not run here yet: its entry goes, so the row does not show Queued for it.
-        guard job.kind == .review else {
-            await store.update { $0.queue.removeAll { $0.pr == pr && $0.kind == job.kind } }
-            changed()
-            return
-        }
         if answer()?.toReview.first(where: { $0.key == pr })?.ci == .failing {
             // The click no longer counts as an act, and the row says why nothing started.
             await store.update { state in
@@ -721,8 +840,21 @@ package final class ReviewRounds {
             }
             await failConflict(pr, .session(.stopped), pair: conflictPair(pr))
         case (.userStop?, .ci):
-            // A CI round keeps its failures in its own mark (the CI rounds). The stop ends it.
-            await store.update { $0.prs[pr]?.round = nil }
+            // A CI round keeps its failures in its CI question, never in lastError: the question
+            // of its head gets the text of the stop, so no automatic round starts on that head.
+            // After the start of the turn the worktree goes back to the head; a change that no
+            // round made stays (resetIfKnown).
+            let round = store.state.prs[pr]?.round
+            if round?.sessionID != nil, let head = round?.headSHA {
+                await repos.resetIfKnown(pr, to: head)
+            }
+            let time = now()
+            await store.update { state in
+                guard var prState = state.prs[pr] else { return }
+                if prState.round?.kind == .ci { prState.round = nil }
+                prState.ci = Self.stoppedCI(prState.ci, head: round?.headSHA, at: time)
+                state.prs[pr] = prState
+            }
             changed()
         case (.requestGone?, .review):
             await drop(pr)
@@ -731,6 +863,7 @@ package final class ReviewRounds {
         case (.clonesRemoved?, let kind):
             // A request round holds its items, and its click goes, as the clicks of the queue do.
             // A conflict round loses its click and its working mark: the clone of its merge went.
+            // A CI round put back its job key already (CIRounds).
             await store.update { state in
                 state.prs[pr]?.round = nil
                 switch kind {

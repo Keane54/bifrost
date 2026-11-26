@@ -601,6 +601,13 @@ struct MyPRRulesTests {
         #expect(try shown() == .unpushedComments)
         state.prs[try key()]?.waiting?.kind = .askAgain
         #expect(try shown() == .askAgain)
+        state.prs[try key()]?.waiting?.kind = .unpushedCI
+        #expect(try shown() == .unpushedCI)
+        let ci = try row(
+            try R.pull("owner-a/repo-a#1", ci: .running, mergeable: .conflicting, base: R.base),
+            state, config)
+        #expect(ci.status.text == "Unpushed changes" && ci.status.tone == .amber)
+        #expect(ci.mineState?.claude.needsTheUser == true)
         state.prs[try key()]?.waiting = nil
         #expect(try shown() == .error("The push failed."))
         state.prs[try key()]?.lastError = nil

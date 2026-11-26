@@ -42,6 +42,37 @@ package struct GitHubQuery: Sendable, Equatable {
     }
 }
 
+// One REST read: a GET with no body. Only the log of one Actions job. It is not a GraphQL query,
+// so it is a closed type of its own. RepoName and JobID allow only characters that are safe in a
+// path.
+package enum GitHubRead: Sendable, Equatable {
+    case jobLog(RepoName, JobID)
+
+    // The name identifies the read in the log and in the fake of the tests.
+    package var name: String {
+        switch self {
+        case .jobLog(_, let job): "job-log \(job.value)"
+        }
+    }
+
+    // The flag that lets gh print a log with colour codes. Bifrost never prints the bytes to a
+    // terminal, and CILog removes the escape sequences before a file gets the text.
+    static let escapeFlag = "--allow-escape-sequences"
+
+    // The argv of gh: a GET, with no body and no --method.
+    var arguments: [String] { ["api", Self.escapeFlag, path] }
+
+    // The argv for an older gh that does not know escapeFlag.
+    var argumentsWithoutFlag: [String] { ["api", path] }
+
+    private var path: String {
+        switch self {
+        case .jobLog(let repo, let job):
+            "repos/\(repo.owner)/\(repo.name)/actions/jobs/\(job.value)/logs"
+        }
+    }
+}
+
 // The value of a variable of a read.
 package enum GraphQLValue: Sendable, Equatable {
     case string(String), int(Int), bool(Bool), null

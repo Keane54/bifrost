@@ -61,6 +61,8 @@ package enum ClaudeState: Sendable, Equatable {
     case unpushedChanges
     // The same for a request round: the tip names new comments, not the base branch.
     case unpushedComments
+    // The same for a CI round: the tip names the failing CI.
+    case unpushedCI
     case askAgain
     // A request round works on the count of items.
     case fixing(Int)
@@ -89,7 +91,7 @@ package enum ClaudeState: Sendable, Equatable {
     // True when the work waits for the user with a reason (PRState.waitsForYou).
     package var waitsForUser: Bool {
         switch self {
-        case .waitsForYou, .unpushedChanges, .unpushedComments, .askAgain: true
+        case .waitsForYou, .unpushedChanges, .unpushedComments, .unpushedCI, .askAgain: true
         default: false
         }
     }
@@ -98,7 +100,8 @@ package enum ClaudeState: Sendable, Equatable {
     // row then comes first, shows the red box, and makes the tab count red.
     package var needsTheUser: Bool {
         switch self {
-        case .needsYou, .waitsForYou, .unpushedChanges, .unpushedComments, .askAgain: true
+        case .needsYou, .waitsForYou, .unpushedChanges, .unpushedComments, .unpushedCI, .askAgain:
+            true
         case .fixing, .resolvingConflicts, .fixingCI, .queued, .trustNeeded, .cloning, .waiting,
             .error, .retryingCI, .fork, .conflicts:
             false

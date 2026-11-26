@@ -828,6 +828,16 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   Watch GitHub is off, then turn Watch GitHub on: the box should stay on. Do the dialogs make it
   clear what Bifrost will do to your branches?
   ([reviews R36](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] On a scratch PR of one of your own repositories, with "Fix failing CI automatically" on, make
+  a job fail for a fault in the code. The row should show Fixing CI, and then a fix commit should
+  appear on the branch. Then make a job fail only by chance (a flaky test): the row should show
+  Retrying CI, and GitHub should show one re-run of the failed jobs. Keep failing it until the
+  limits are used up (two fixes and one re-run for each pushed commit): the row should show Needs
+  you with the text about the limits, and Claude's session shouldn't get a new turn. Open the
+  Answer panel: the "Failed checks on" block should name the head and the failed jobs. Answer it,
+  and one round should start; on a new failure choose "I'll fix CI myself", and no round should
+  start on that head. In Settings, turning on "Fix failing CI automatically" should ask first. Is
+  each text clear? ([reviews R39](ports/reviews/DELIBERATE-DIFFERENCES.md))
 - [ ] On a scratch PR of yours, push a change to its base branch that conflicts with the PR. After
   the next poll that sees GitHub's conflict, the row should show "Has conflicts" in amber, with a
   tip that names Resolve now, and it should keep its place in its status group (no red box).
@@ -1338,8 +1348,8 @@ pulse line. Use Bifrost Dev on your real home, with a few sessions running.
   "Resolve merge conflicts automatically" in Settings > Reviews. The confirm and the row should say
   that the login can't push workflow changes and give the `gh auth refresh -h github.com -s
   workflow` command. Run the command, click Refresh in the Reviews panel, and the hint should
-  go. Is the text clear? ([reviews R39](ports/reviews/DELIBERATE-DIFFERENCES.md))
+  go. Is the text clear? ([reviews R40](ports/reviews/DELIBERATE-DIFFERENCES.md))
 - [ ] Click Refresh in the Reviews panel. The icon should turn once a second until the poll ends,
   then stop. Wait for a poll of the timer: the icon should stay still. Turn on Reduce Motion in
   System Settings, click Refresh again, and the icon should stay still.
-  ([reviews R40](ports/reviews/DELIBERATE-DIFFERENCES.md))
+  ([reviews R41](ports/reviews/DELIBERATE-DIFFERENCES.md))

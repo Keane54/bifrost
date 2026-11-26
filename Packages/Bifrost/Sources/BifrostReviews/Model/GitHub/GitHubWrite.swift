@@ -102,11 +102,14 @@ package enum GitHubWrite: Sendable, Equatable {
     case removeDraftComment(comment: NodeID, click: UserClick)
     case discardDraft(review: NodeID, click: UserClick)
     case submitDraft(review: NodeID, event: DraftEvent, click: UserClick)
+    // REST POST that runs the failed jobs of one workflow run again. It needs the CIConsent that
+    // only a consenting ReviewsState makes. GitHub answers 201 with an empty body.
+    case rerunFailedJobs(RepoName, RunID, consent: CIConsent)
 
-    // The GraphQL field of the write, or nil for the REST create of a pending review.
+    // The GraphQL field of the write, or nil for the two REST writes.
     package var mutation: String? {
         switch self {
-        case .createPendingReview: nil
+        case .createPendingReview, .rerunFailedJobs: nil
         case .addPendingThread: "addPullRequestReviewThread"
         case .setPendingBody, .editDraftBody: "updatePullRequestReview"
         case .replyToThread: "addPullRequestReviewThreadReply"
@@ -124,12 +127,17 @@ package enum GitHubWrite: Sendable, Equatable {
 
     // The argv of gh. Each write sends its JSON on stdin.
     package var arguments: [String] {
-        guard case .createPendingReview(let pr, _, _, _) = self else {
+        // RepoName, PRKey and RunID allow only characters that are safe in a path.
+        switch self {
+        case .createPendingReview(let pr, _, _, _):
+            let path = "repos/\(pr.repo.owner)/\(pr.repo.name)/pulls/\(pr.number)/reviews"
+            return ["api", "--method", "POST", path, "--input", "-"]
+        case .rerunFailedJobs(let repo, let run, _):
+            let path = "repos/\(repo.owner)/\(repo.name)/actions/runs/\(run.value)"
+            return ["api", "--method", "POST", path + "/rerun-failed-jobs", "--input", "-"]
+        default:
             return ["api", "graphql", "--input", "-"]
         }
-        // RepoName and PRKey allow only characters that are safe in a path.
-        let path = "repos/\(pr.repo.owner)/\(pr.repo.name)/pulls/\(pr.number)/reviews"
-        return ["api", "--method", "POST", path, "--input", "-"]
     }
 
     // The JSON on the stdin of gh.
@@ -183,6 +191,8 @@ package enum GitHubWrite: Sendable, Equatable {
         switch self {
         case .createPendingReview(_, let commit, let body, let comments):
             Self.pendingReview(commit, body: body, comments: comments)
+        case .rerunFailedJobs:
+            .object([:])
         case .addPendingThread(let review, let comment):
             // The first line of a range goes only with a range comment.
             Self.request(

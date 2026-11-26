@@ -19,10 +19,6 @@ package enum ReviewsSettingsRow: String, Sendable, CaseIterable {
     case ignore = "Repositories to ignore"
     case removeClones = "Remove all clones"
 
-    // The rows that the section shows and the search finds. The Fix CI row stays hidden until the
-    // CI watcher exists.
-    package static var shown: [ReviewsSettingsRow] { allCases.filter { $0 != .fixCI } }
-
     // The row of the save tracker. The search finds the row by its label.
     package var row: SettingsRowID { SettingsRowID(.reviews, .found(rawValue)) }
 }

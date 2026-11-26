@@ -40,7 +40,7 @@ private func samples() throws -> [GitCommand] {
         .pathDiff(try commit(), try commit(other), ["src/a.swift"]),
         .changedPaths(try commit(), try commit(other)), .push(try push()),
         .isAncestor(try commit(), of: try commit(other)), .revList(try commit(), max: 20),
-        .mergeBase(try commit(), try commit(other)),
+        .mergeBase(try commit(), try commit(other)), .unpublished(number: 7),
     ]
 }
 
@@ -79,6 +79,7 @@ private func caseName(_ command: GitCommand) -> String {
     case .push: "push"
     case .isAncestor: "isAncestor"
     case .revList: "revList"
+    case .unpublished: "unpublished"
     case .mergeBase: "mergeBase"
     }
 }
@@ -86,7 +87,7 @@ private func caseName(_ command: GitCommand) -> String {
 @Suite("the git commands of Reviews", .testTimeLimit)
 struct GitCommandTests {
     @Test func eachCaseHasASample() throws {
-        #expect(Set(try samples().map(caseName)).count == 32)
+        #expect(Set(try samples().map(caseName)).count == 33)
     }
 
     @Test func thePushHasOneFormAndNoForce() throws {
@@ -265,6 +266,11 @@ struct GitCommandTests {
         #expect(
             GitCommand.revList(try commit(), max: 20).arguments == [
                 "rev-list", "--parents", "--max-count=20", head,
+            ])
+        #expect(
+            GitCommand.unpublished(number: 7).arguments == [
+                "rev-list", "--max-count=1", "HEAD", "--not", "--remotes", "refs/bifrost/pr/7",
+                "--",
             ])
         // A count below 1 never lists the whole history.
         #expect(

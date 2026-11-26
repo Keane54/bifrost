@@ -593,6 +593,31 @@ struct RepoStoreTests {
         #expect(f.log.values.contains(.worktreeKeptAside(pr, path: full)))
     }
 
+    // The commit of a PR that reached the clone only through refs/bifrost/pr/<number> (a pull
+    // head, no branch) is on GitHub. A commit of the copy is not, and a missing ref is a doubt.
+    @Test func theCopyHoldsACommitThatGitHubLacksOnlyWithALocalCommit() async throws {
+        let f = try RepoFixture()
+        defer { f.folder.remove() }
+        let name = try repo("owner-a/repo-a")
+        try await f.source(name, files: ["a.txt": "one\n"])
+        try await f.store.ensureClone(name)
+        let head = try await f.pullHead(name, number: 7, files: ["a.txt": "two\n"])
+        let pr = try #require(PRKey(text: "owner-a/repo-a#7"))
+        // The fetch of the PR gives refs/bifrost/pr/7, and no remote branch holds the head.
+        let fetched = try await f.store.fetchPR(pr, base: try #require(BranchName("main")))
+        #expect(fetched.head == head)
+        let path = try await f.store.prepareWorktree(pr, head: head).path(percentEncoded: false)
+        #expect(await f.store.hasUnpublishedCommit(pr) == false)
+        try "local\n".write(toFile: path + "b.txt", atomically: false, encoding: .utf8)
+        try await f.setup(["add", "-A"], in: path)
+        try await f.setup(["commit", "-q", "-m", "local"], in: path)
+        #expect(await f.store.hasUnpublishedCommit(pr))
+        try await f.setup(["reset", "-q", "--hard", head.hex], in: path)
+        #expect(await f.store.hasUnpublishedCommit(pr) == false)
+        try await f.setup(["update-ref", "-d", "refs/bifrost/pr/7"], in: f.clone(name))
+        #expect(await f.store.hasUnpublishedCommit(pr))
+    }
+
     // The drop of a PR (removePR) follows the same rule: a folder that is not the clone's moves
     // aside with its files, and a worktree of the clone goes.
     @Test func theDropOfAPRKeepsAFolderThatIsNotTheClones() async throws {

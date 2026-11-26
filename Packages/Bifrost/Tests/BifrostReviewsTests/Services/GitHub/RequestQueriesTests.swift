@@ -41,6 +41,10 @@ private final class AnsweringGitHub: GitHubAccess {
         throw .notSent
     }
 
+    @MainActor func fetch(_ read: GitHubRead) async throws(GitHubError) -> Data {
+        throw .refused("No fetch in this test.")
+    }
+
     func names() -> [String] { queries.map(\.name) }
 }
 

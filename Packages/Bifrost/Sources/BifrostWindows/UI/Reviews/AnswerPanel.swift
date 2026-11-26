@@ -6,12 +6,16 @@
 //   that PR, with no answers. While the panel is open for that PR, a second open only brings it
 //   forward, and the answers, a running send and its result stay. A close drops them.
 // - When Reviews stops (Watch GitHub off), the panel closes.
+// - The question about failed CI comes first, in its own block: the title with the start of the
+//   head, the names of the failed jobs, the question, a text area and "I'll fix CI myself",
+//   which turns the text area off. A panel with only that question has an intro of its own.
 // - Each question shows the quote of the reviewer's comment (its author and its place, with View
 //   on GitHub) or only the place, then the question, a text area and "I'll handle this one
 //   myself", which turns the text area off.
 // - Send to Claude acts when each question has an answer or the check, and sends all of them in
 //   one call: the answers start one request round, and a handled comment is handled with no
-//   round. The panel then closes. Cancel closes the panel and sends nothing.
+//   round. The CI answer goes after the comment answers. The panel then closes. Cancel closes
+//   the panel and sends nothing.
 // - The reason of the last failed round of the PR shows under the intro, because the row shows
 //   Needs you while questions are open.
 import AppKit
@@ -29,10 +33,13 @@ package final class AnswerPanels: PanelBodiesPart {
     nonisolated package static let introText =
         "Claude couldn't decide these on its own. Tell it what you'd like, or handle a comment "
         + "yourself."
+    nonisolated package static let ciIntroText =
+        "The failed checks on this pull request need your answer before Claude can carry on."
     nonisolated package static let nothingText = "Nothing to answer right now."
     nonisolated package static let tooManyText =
         "Bifrost can send only a limited number of answers at a time (\(AnswerFlow.maxAnswers))."
     nonisolated package static let handleText = "I'll handle this one myself"
+    nonisolated package static let fixCIText = "I'll fix CI myself"
     nonisolated package static let notSentText =
         "Bifrost couldn't send your answers, because the questions changed. Check them, then "
         + "send them again."
@@ -77,6 +84,28 @@ package final class AnswerPanels: PanelBodiesPart {
 
     // The open questions, or none while the panel has no flow.
     package var questions: [OpenQuestion] { flow?.questions ?? [] }
+
+    // True when the panel has no question about failed CI and no question on a comment.
+    package var showsNothing: Bool { questions.isEmpty && flow?.ciQuestion == nil }
+
+    // The intro of the panel: the CI intro when the question about failed CI is the only one.
+    package var intro: String {
+        questions.isEmpty && flow?.ciQuestion != nil ? Self.ciIntroText : Self.introText
+    }
+
+    // The title of the block of failed CI: the first 7 characters of the head.
+    nonisolated package static func ciTitle(_ head: CommitID) -> String {
+        "Failed checks on \(head.hex.prefix(7))"
+    }
+
+    // The line with the names of the failed jobs: at most five, then the count of the rest. nil
+    // when there are no names.
+    nonisolated package static func ciNames(_ names: [String]) -> String? {
+        guard !names.isEmpty else { return nil }
+        let shown = names.prefix(5).joined(separator: ", ")
+        let more = names.count - 5
+        return "Failed: " + shown + (more > 0 ? " and \(more) more" : "")
+    }
 
     // Send to Claude. The panel closes when the rounds took the answers. The result of a flow of
     // an earlier open does not show.
@@ -124,6 +153,20 @@ package final class AnswerPanels: PanelBodiesPart {
         Binding(
             get: { [weak self] in self?.flow?.answers[item] ?? "" },
             set: { [weak self] in self?.flow?.answer(item, $0) })
+    }
+
+    // The text area of the question about failed CI.
+    var ciAnswer: Binding<String> {
+        Binding(
+            get: { [weak self] in self?.flow?.ciAnswer ?? "" },
+            set: { [weak self] in self?.flow?.answerCI($0) })
+    }
+
+    // The check "I'll fix CI myself".
+    var ciHandled: Binding<Bool> {
+        Binding(
+            get: { [weak self] in self?.flow?.ciHandled ?? false },
+            set: { [weak self] in self?.flow?.handleCIMyself($0) })
     }
 
     // The check "I'll handle this one myself" of the item.
@@ -178,10 +221,10 @@ struct AnswerPanel: View {
         let style = panels.style
         let questions = panels.questions
         VStack(alignment: .leading, spacing: 0) {
-            if let flow = panels.flow, !questions.isEmpty {
+            if let flow = panels.flow, !panels.showsNothing {
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: style.points(4)) {
-                        Text(AnswerPanels.introText).fixedSize(horizontal: false, vertical: true)
+                        Text(panels.intro).fixedSize(horizontal: false, vertical: true)
                         if flow.tooMany {
                             Text(AnswerPanels.tooManyText).foregroundStyle(style.dim)
                         }
@@ -189,6 +232,9 @@ struct AnswerPanel: View {
                             Text(reason)
                                 .foregroundStyle(style.dim)
                                 .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let open = flow.ciQuestion {
+                            CIBlockView(panels: panels, open: open, style: style)
                         }
                         ForEach(questions) { question in
                             QuestionView(
@@ -230,6 +276,35 @@ struct AnswerPanel: View {
         .padding(.horizontal, style.points(12))
         .padding(.vertical, style.points(6))
         .overlay(alignment: .top) { EdgeLineView(metrics: style.metrics) }
+    }
+}
+
+// The question about failed CI: the head, the failed jobs, the question, the answer and the check.
+private struct CIBlockView: View {
+    let panels: AnswerPanels
+    let open: OpenCIQuestion
+    let style: PanelStyle
+
+    var body: some View {
+        let handled = panels.flow?.ciHandled ?? false
+        VStack(alignment: .leading, spacing: style.points(4)) {
+            Text(AnswerPanels.ciTitle(open.question.head)).foregroundStyle(style.dim)
+            if let names = AnswerPanels.ciNames(open.failedJobs) {
+                Text(names).foregroundStyle(style.dim).fixedSize(horizontal: false, vertical: true)
+            }
+            Text(open.question.text)
+                .foregroundStyle(ThemeTokens.textStrong.color)
+                .fixedSize(horizontal: false, vertical: true)
+            ReviewTextArea(
+                text: panels.ciAnswer, placeholder: "Type your answer", lines: 3, style: style
+            )
+            .disabled(handled)
+            .opacity(handled ? 0.4 : 1)
+            Toggle(AnswerPanels.fixCIText, isOn: panels.ciHandled)
+                .toggleStyle(.checkbox)
+                .focusable(false)
+        }
+        .padding(.top, style.points(8))
     }
 }
 

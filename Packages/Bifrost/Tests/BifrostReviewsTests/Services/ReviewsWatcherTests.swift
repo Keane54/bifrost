@@ -87,6 +87,10 @@ private final class HeldGitHub: GitHubAccess {
         try await inner.write(write)
     }
 
+    @MainActor func fetch(_ read: GitHubRead) async throws(GitHubError) -> Data {
+        throw .refused("No fetch in this test.")
+    }
+
     @MainActor func scopes() async throws(GitHubError) -> GitHubScopes? {
         try await inner.scopes()
     }

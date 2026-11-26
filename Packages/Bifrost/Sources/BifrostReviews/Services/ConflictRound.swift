@@ -519,13 +519,16 @@ final class ConflictRound {
     }
 
     // An own request file, or a change of the worktree that no round made, stops the round with
-    // Needs you, and the worktree stays as it is.
+    // Needs you, and the worktree stays as it is (RequestSessionTurn.personWork).
     private func checkNoPersonWork() async throws(Stop) {
-        if await parts.own.waits(pr) { try await refuseOwnRequest() }
-        guard let unknown = await repos.unknownChanges(pr) else {
+        switch await shared.personWork() {
+        case .none:
+            return
+        case .ownRequest:
+            try await refuseOwnRequest()
+        case .unreadable:
             throw .failed(.git("Bifrost couldn't read the changes of its copy."))
-        }
-        guard unknown.isEmpty else {
+        case .changes(let unknown):
             Self.logger.notice(
                 """
                 The copy of \(self.pr.text, privacy: .private) changed after the turn of the \

@@ -19,6 +19,16 @@ private func gh(_ runner: FakeRunner) -> GHRunner {
             path: "/opt/homebrew/bin/gh", environment: environment, folder: folder, runner: runner))
 }
 
+private func consentingState() -> ReviewsState {
+    var state = ReviewsState()
+    state.consentToCIFix()
+    return state
+}
+
+private func jobLog() throws -> GitHubRead {
+    .jobLog(try #require(RepoName("Owner-A/Repo-A")), try #require(JobID(101)))
+}
+
 private func node(_ text: String) throws -> NodeID { try #require(NodeID(text)) }
 
 @Suite("the gh runner of Reviews", .testTimeLimit)
@@ -260,6 +270,100 @@ struct GHRunnerTests {
         #expect(known.allSatisfy { !$0.writeMayHaveHappened })
     }
 
+    // The read of a job log is a GET with no body. gh gets the flag that lets escape sequences
+    // pass, because a CI log has colour codes.
+    @Test func aLogReadIsAGetWithNoBodyInTheReviewsFolder() async throws {
+        let runner = FakeRunner(ExecResult(.exited(0), stdout: "log text"))
+        let answer = try await gh(runner).fetch(try jobLog())
+        #expect(answer == Data("log text".utf8))
+        let run = try #require(runner.commands.first)
+        #expect(
+            run.arguments == [
+                "api", "--allow-escape-sequences", "repos/Owner-A/Repo-A/actions/jobs/101/logs",
+            ])
+        #expect(!run.arguments.contains("--method"))
+        #expect(run.input == nil)
+        #expect(run.directory == folder.path(percentEncoded: false))
+        #expect(run.timeout == .seconds(60))
+        #expect(GHRunner.logTimeout == .seconds(60))
+        #expect(run.outputLimit == 16 * 1_048_576)
+        #expect(run.waitsForEnd)
+    }
+
+    @Test func aLogOverTheLimitIsABadAnswer() async throws {
+        let big = FakeRunner(ExecResult(.overflow, stdout: "partial"))
+        await #expect(throws: GitHubError.badAnswer) { try await gh(big).fetch(try jobLog()) }
+        let gone = FakeRunner(ExecResult(.exited(1), stderr: "gh: Not Found (HTTP 404)"))
+        await #expect(throws: GitHubError.refused("gh: Not Found (HTTP 404)")) {
+            try await gh(gone).fetch(try jobLog())
+        }
+        // Data next to an error is not kept, also when the data is a GraphQL answer.
+        let data = FakeRunner(ExecResult(.exited(1), stdout: #"{"data":{}}"#, stderr: "failed"))
+        await #expect(throws: GitHubError.unknownOutcome("failed")) {
+            try await gh(data).fetch(try jobLog())
+        }
+    }
+
+    // An older gh does not know the flag. The read then runs once more without it.
+    @Test func anOlderGhGetsTheReadOnceMoreWithoutTheFlag() async throws {
+        let old = FakeRunner { command in
+            command.arguments.contains("--allow-escape-sequences")
+                ? ExecResult(.exited(1), stderr: "unknown flag: --allow-escape-sequences\n")
+                : ExecResult(.exited(0), stdout: "plain log")
+        }
+        let answer = try await gh(old).fetch(try jobLog())
+        #expect(answer == Data("plain log".utf8))
+        #expect(
+            old.commands.map(\.arguments) == [
+                ["api", "--allow-escape-sequences", "repos/Owner-A/Repo-A/actions/jobs/101/logs"],
+                ["api", "repos/Owner-A/Repo-A/actions/jobs/101/logs"],
+            ])
+        #expect(old.commands.allSatisfy { $0.input == nil && $0.timeout == .seconds(60) })
+        // The second read can fail too, and it is not read a third time.
+        let flag = "unknown flag: --allow-escape-sequences"
+        let both = FakeRunner(ExecResult(.exited(1), stderr: flag))
+        await #expect(throws: GitHubError.unknownOutcome(flag)) {
+            try await gh(both).fetch(try jobLog())
+        }
+        #expect(both.commands.count == 2)
+    }
+
+    @Test func anyOtherFailureOfALogReadIsNotReadAgain() async throws {
+        let results = [
+            ExecResult(.exited(1), stderr: "unknown flag: --other"),
+            // The flag name alone is no unknown-flag error.
+            ExecResult(
+                .exited(1),
+                stderr: "the response contains terminal escape sequences; pass "
+                    + "--allow-escape-sequences to output it anyway"),
+            ExecResult(.exited(1), stderr: "error connecting to api.github.com"),
+            ExecResult(.exited(1), stderr: "gh: Not Found (HTTP 404)"),
+            ExecResult(.timedOut), ExecResult(.notStarted),
+        ]
+        for result in results {
+            let runner = FakeRunner(result)
+            await #expect(throws: (any Error).self) { try await gh(runner).fetch(try jobLog()) }
+            #expect(runner.commands.count == 1, "\(result.stderr)")
+        }
+    }
+
+    @Test func theRerunWriteIsAPostWithAnEmptyBody() async throws {
+        let runner = FakeRunner(ExecResult(.exited(0), stdout: ""))
+        let state = consentingState()
+        let write = GitHubWrite.rerunFailedJobs(
+            try #require(RepoName("Owner-A/Repo-A")), try #require(RunID(55)),
+            consent: try #require(state.ciConsent(true)))
+        _ = try await gh(runner).write(write)
+        let run = try #require(runner.commands.first)
+        #expect(
+            run.arguments == [
+                "api", "--method", "POST", "repos/Owner-A/Repo-A/actions/runs/55/rerun-failed-jobs",
+                "--input", "-",
+            ])
+        #expect(run.input == Data("{}".utf8))
+        #expect(run.timeout == .seconds(30))
+    }
+
     // The fake of the tests answers by name, records each call and refuses a mutation as gh does.
     @MainActor @Test func theFakeRecordsEachCallAndRefusesAMutation() async throws {
         let write = GitHubWrite.resolveThread(try node("PRRT_1"))
@@ -281,5 +385,13 @@ struct GHRunnerTests {
             comments: [])
         #expect(FakeGitHub.key(create) == FakeGitHub.pendingReviewKey)
         #expect(FakeGitHub.key(write) == "resolveReviewThread")
+        let rerun = GitHubWrite.rerunFailedJobs(
+            try #require(RepoName("o/r")), try #require(RunID(5)),
+            consent: try #require(consentingState().ciConsent(true)))
+        #expect(FakeGitHub.key(rerun) == FakeGitHub.rerunKey)
+        #expect(FakeGitHub.key(rerun) != FakeGitHub.pendingReviewKey)
+        let logs = FakeGitHub(answers: ["job-log 101": .success(Data("log".utf8))])
+        #expect(try await logs.fetch(try jobLog()) == Data("log".utf8))
+        #expect(logs.calls == [.fetch("job-log 101")])
     }
 }

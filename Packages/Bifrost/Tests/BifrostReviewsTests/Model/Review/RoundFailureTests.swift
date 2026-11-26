@@ -84,6 +84,17 @@ struct RoundFailureTests {
         #expect(RoundFailure.stopped.message(for: .conflict) == RoundFailure.stopped.message)
     }
 
+    // A CI round keeps its failures in its CI question (CIStop). Only the safety net gives it a
+    // reason of the row, which names the failed checks.
+    @Test func aCIRoundHasTheTextOfTheSafetyNet() {
+        #expect(
+            RoundFailure.changesNotOnGitHub.message(for: .ci)
+                == "Bifrost's copy of this pull request has changes that aren't on GitHub yet, "
+                + "so Claude didn't start on the failed checks. Ask Claude in its session to "
+                + "commit or undo them.")
+        #expect(RoundFailure.stopped.message(for: .ci) == RoundFailure.stopped.message)
+    }
+
     // The writes of a request round: a refusal before any write says that nothing was posted,
     // writes that stopped give the count and send the user to Try again, and a push that may
     // have landed never says that nothing was posted.

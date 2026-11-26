@@ -487,6 +487,21 @@ package final class RepoStore {
         }
     }
 
+    // True when the worktree of the PR is in its place.
+    package func hasWorktree(_ pr: PRKey) async -> Bool {
+        let (path, folders, git) = (
+            layout.worktree(pr.repo, number: pr.number).plainPath, folders, git
+        )
+        return await BlockingExecutor.run { folders.isFolder(path) && git.belongsToClone(pr) }
+    }
+
+    // True when the worktree of the PR is at a commit that GitHub may not have (GitCommand.
+    // unpublished). A failed read counts as true, so a doubt keeps the copy.
+    package func hasUnpublishedCommit(_ pr: PRKey) async -> Bool {
+        let result = await git.run(.unpublished(number: pr.number), in: .worktree(pr))
+        return !result.succeeded || !result.stdout.trimmed().isEmpty
+    }
+
     // The commit that the worktree of the PR is at, or nil when git fails.
     package func worktreeHead(_ pr: PRKey) async -> CommitID? {
         let parsed = await git.run(.revParse("HEAD^{commit}"), in: .worktree(pr))

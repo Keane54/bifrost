@@ -52,6 +52,12 @@ package enum PRSessionArgs {
         "/bifrost-resolve-conflicts bifrost-input=\(inputFile.path(percentEncoded: false))"
     }
 
+    // The prompt of a CI round in the request session of the PR: the CI skill and the path of the
+    // input file.
+    package static func ciPrompt(_ inputFile: URL) -> String {
+        "/bifrost-fix-ci bifrost-input=\(inputFile.path(percentEncoded: false))"
+    }
+
     // claude --bg --restricted --strict-mcp-config --tools Read Glob Grep Write Skill
     // --permission-mode auto --add-dir <input folder> --plugin-dir <skills> --settings <value>
     // [--model <model>] --name <name> <prompt>

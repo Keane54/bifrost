@@ -69,6 +69,8 @@ which runs `gh`, and `FakeGitHub`, which the tests use instead.
 - A read is a `GitHubQuery`, a GraphQL query with its variables. If any word in the query text is
   `mutation`, in any case, the runner refuses it before `gh` starts, so a read can never change
   anything. The fake refuses it the same way.
+- A job log is one more read, `GET repos/<owner>/<repo>/actions/jobs/<id>/logs`, which the CI
+  round uses.
 - A write is one case of `GitHubWrite`, and nothing else can write. The table below lists them
   all. No case merges, dismisses, unresolves, closes or reopens a PR, edits a PR or a branch, or
   edits, hides or deletes anyone's comment or review, except Claude's own pending draft in the
@@ -90,6 +92,7 @@ which runs `gh`, and `FakeGitHub`, which the tests use instead.
 | `addPRComment` | Answers a top-level comment on your PR | `addComment` | No |
 | `requestReviews` | Asks a reviewer for a new review, keeping the other requests | `requestReviews` with `union: true` | No |
 | `createSignedCommit` | Commits a fix that GitHub signs, only if the branch head is still the one the round started from | `createCommitOnBranch` with `expectedHeadOid` | No |
+| `rerunFailedJobs` | Re-runs the failed jobs of one workflow run | `POST repos/<owner>/<repo>/actions/runs/<id>/rerun-failed-jobs` | No (it needs the CI consent) |
 | `approveCommit` | Approves the reviewed commit with no text | `addPullRequestReview`, event `APPROVE` | Yes |
 | `approveDraft` | Submits Claude's draft as an approval | `submitPullRequestReview`, event `APPROVE` | Yes |
 | `editDraftBody` | Changes the summary of Claude's draft | `updatePullRequestReview` | Yes |
@@ -106,7 +109,7 @@ its own login.
 
 | Limit | Value |
 | --- | --- |
-| Time for one `gh` call | 30 seconds, or 120 seconds for a signed commit, which can carry 4 MiB of files |
+| Time for one `gh` call | 30 seconds, 120 seconds for a signed commit, which can carry 4 MiB of files, or 60 seconds for the read of a job log |
 | Output of one call | 16 MiB |
 | Error line | The first line of `gh`'s error, without hidden characters, at most 200 characters |
 
@@ -138,16 +141,16 @@ base's change of a workflow file, so the merge commit changes it too. When the `
 such scope, the push fails and the round with it.
 
 Bifrost reads the scopes of the login with one closed read, `gh api --include user`, and takes the
-names from the `X-OAuth-Scopes` header (`GitHubScopes`). It keeps only those names, never a token.
-A login with no such header, which is the case for a fine-grained token or a GitHub App token, has
+names from the `X-OAuth-Scopes` header (`GitHubScopes`). It keeps only those names, never a token. A
+login with no such header, which is the case for a fine-grained token or a GitHub App token, has
 unknown scopes, and Bifrost then warns about nothing. It reads the scopes once when Reviews first
 starts in a run of the app, again at each Refresh click, and again when you turn on "Handle comments
-on my PRs automatically" or "Resolve merge conflicts automatically". The confirm opens at once with
-the last answer Bifrost knows, and the hint under the row follows the new read. A read that fails
-keeps the last answer.
+on my PRs automatically", "Resolve merge conflicts automatically" or "Fix failing CI automatically".
+The confirm opens at once with the last answer Bifrost knows, and the hint under the row follows the
+new read. A read that fails keeps the last answer.
 
-When the scopes are known and have no `workflow`, those two rows show a hint while their setting is
-on, and the confirm of their turn-on has the same text:
+When the scopes are known and have no `workflow`, those three rows show a hint while their setting
+is on, and the confirm of their turn-on has the same text:
 
 > Your GitHub login can't push changes to workflow files, so a merge or fix that touches one will
 > fail. Run gh auth refresh -h github.com -s workflow in a terminal to allow it.
@@ -155,8 +158,12 @@ on, and the confirm of their turn-on has the same text:
 A push that GitHub refuses for this reason, whether from the `[remote rejected]` line of `git push`
 or from the error of a signed commit, names the words "workflow" and "scope" in its line
 (`PushRefusal.server`). Bifrost looks for the words before it cuts the line to 200 characters. The
-row then says what to run, in place of the hint about a protected branch. The line itself goes to
-the Event log.
+row then says what to run, in place of the hint about a protected branch. A fix commit of a request
+or CI round can't hold a workflow file in the first place (see "What a fix commit can hold"), but if
+GitHub still refuses a CI fix for this reason, the CI question says "GitHub refused Claude's fix
+because it changes a workflow file and your GitHub login can't push workflow changes, so run gh auth
+refresh -h github.com -s workflow in a terminal. Tell Claude what to try next, or fix it yourself."
+The line itself goes to the Event log.
 
 ### Running git
 
@@ -891,6 +898,7 @@ comment doesn't change it:
 | Needs you | "Needs you" | Red | "Claude needs your answer on 2 comments. Click to answer." With a question about failed CI as well: "Claude needs your answer on 2 comments and on the failed checks. Click to answer.", or with only that question: "Claude needs your help with the failed checks. Click to answer." |
 | Needs you, for your change | "Needs you" | Red | Why your own request didn't go, or why the round didn't start (see "Your own requests") |
 | Unpushed changes | "Unpushed changes" | Amber | "Bifrost won't merge the base branch over changes that aren't on GitHub. Ask Claude to commit them, or discard them." Buttons: Open session, Discard changes |
+| Unpushed changes, for a CI round | "Unpushed changes" | Amber | "Bifrost won't fix failing CI over changes that aren't on GitHub. Ask Claude to commit them, or discard them." Buttons: Open session, Discard changes |
 | Unpushed changes, for a comment round | "Unpushed changes" | Amber | "Bifrost won't handle new comments over changes that aren't on GitHub. Ask Claude to commit them, or discard them." Buttons: Open session, Discard changes |
 | Ask again | "Ask again" | Amber | "Bifrost didn't apply your change, because Claude was busy resolving conflicts. Discard the edits Claude made for your request so the merge can be resolved first, then ask again." Button: Discard edits |
 | Fixing | "Fixing 3", the items of the round | Plain | "Claude is working on 3 comments." |
@@ -1398,11 +1406,23 @@ again in the menu, and sends no notification. When a PR merges or closes (a comp
 lists it), its round stops with nothing more posted, and its request session, worktree, input
 folder and queue entry go, along with its clicks, held items, questions and outbox; the items
 Bifrost already handled stay. The search can leave out an open PR, so a PR that the poll doesn't
-list gets one small read of its state first (`RequestQueries.stateOrGone`), and only a merged,
-closed or not found PR is dropped. An open PR keeps everything, and so does a PR whose read
-failed: the next poll reads again. An open PR that the search never lists (an archived
-repository, for example) keeps its work, and each poll reads it, until the search lists it again or
-you use Remove all clones. GitHub also answers "not found" for a private repository that the
+list gets one small read of its state first (`RequestQueries.stateOrGone`). A merged, closed or not
+found PR is dropped at once. A PR whose read failed keeps its work, and the next poll reads again.
+
+An open PR that the search never lists (an archived repository, for example) keeps its work for
+now. Bifrost reads its state once every 15 minutes while the search keeps leaving it out, and it
+saves the time of the first poll that left it out (`leftOutSince` in `state.json`, so a restart
+doesn't begin the count again). A poll that lists the PR again clears that time. Once the search
+has left the PR out for 24 hours, a clean copy goes the same way as the copy of a merged PR: the
+session, the worktree, the held items, the questions and the clicks. The Event log gets one line:
+"Reviews: GitHub's search hasn't listed owner/repo#7 for a day, so Bifrost deleted its copy." The
+line is missing when no worktree was there. A copy is clean when git shows no change that no round
+made, no commit that GitHub lacks, and no outbox. A copy that isn't clean stays, with its session,
+and the Event log says so once each time the search leaves the PR out: "Reviews: GitHub's search
+hasn't listed owner/repo#7 for a day. Bifrost kept its copy, because it has changes that aren't on
+GitHub. Remove all clones deletes it." A round that runs, or a session that you use, only puts the
+drop off. Bifrost never stops the round of an open PR for this, and it looks again at the next
+read. GitHub also answers "not found" for a private repository that the
 signed-in `gh` account can't see, so after a switch of account the work of its PRs goes.
 A PR that the poll lists needs no read. No round or own request
 of the PR starts while its drop runs, and Remove all clones waits for the drop. When the copy had
@@ -1587,6 +1607,12 @@ that Claude made while it worked on" the PR. If the round committed a fix in the
 worktree's head has moved, so the file is refused and the row shows "Needs you": ask Claude to try
 again. A message with no file can't be told apart from the round's own work (the session runs with
 no hooks, so Bifrost doesn't see your prompt), and its changes count as the round's.
+
+**In a CI round.** Your own request works the same way. One that's waiting when the CI round gets
+the session goes first, and the round then starts again. One that Claude writes in the CI round's
+turn goes right after the round, and Claude's CI fix from that turn doesn't go, because your change
+can be in the same files. A re-run or a question from that turn still goes, and the reset before it
+keeps your change.
 
 **Your edits never ride in a fix.** Bifrost makes a fix commit from the listed files, and an edit of
 yours in one of them must not go to GitHub inside Claude's commit. So it checks the listed files
@@ -1792,6 +1818,90 @@ rounds with real git on a local repository, the fake GitHub and scripted session
 **Trying it by hand.** On a scratch branch of one of your own repositories, open a PR, then push a
 conflicting change to the base. The row shows "Resolving conflicts" while the round runs, and then
 GitHub shows a "Merge <base> into <branch>" commit on the branch. Bifrost never force-pushes.
+
+## CI
+
+When GitHub Actions fails on one of your PRs, a CI round lets Claude look at the failed logs and
+either fix the code or say that the jobs were flaky, and Bifrost then pushes the fix or re-runs the
+failed jobs. It uses the PR's one request session, like the other rounds of yours, so Claude keeps
+the conversation that led here.
+
+**When a round starts.** After each good poll, a PR of yours gets a CI round by itself only when
+all of this holds (`CIRule.startsRound`):
+
+- "Fix failing CI automatically" is on and you confirmed it in this app.
+- The head is settled, which means every check on it is done and Bifrost read all of them, and at
+  least one GitHub Actions job failed in a way a round can act on. A failed status or check run of
+  another CI service is shown, but it never starts a round.
+- GitHub doesn't say the PR conflicts, because the conflict round goes first.
+- Nothing else is going on with the PR: no round running or queued, no own request or drop, no
+  unsent updates, nobody using its request session, and none of your own work waiting for you. A
+  CI round moves the worktree, so it never starts over work of yours that isn't on GitHub.
+- The same head with the same failed jobs didn't start a round before, and you haven't said that
+  you fix CI yourself on this head.
+- No question about failed CI waits for your answer on this head.
+
+**The chain and its limits.** A chain is the commit you pushed plus each commit that Bifrost pushed
+on top of it, which are its CI fixes and its conflict merges. A chain gets two fixes and one
+re-run. Your own push starts a new chain with a fresh budget. When you answer a question about
+failed CI, that allows one more fix. A PR record that didn't read in full spends the budget of its
+head, so a damaged record never gives a fresh one.
+
+**The logs.** Before Claude starts, Bifrost reads the log of each failed job through GitHub, at
+most five jobs (`GET repos/<owner>/<repo>/actions/jobs/<id>/logs`). It keeps the last 200,000 bytes
+of each log, strips the colour codes, and notes where it cut the start. Jobs past the fifth go to
+Claude as "not read", with their names. One read takes at most 60 seconds.
+
+**What Claude decides.** Claude's result is one of three things, and Bifrost checks it against what
+the chain still allows:
+
+| Result | What Bifrost does | The row |
+| --- | --- | --- |
+| Fix | Makes the fix commit with the same checks as a request round's (see "What a fix commit can hold"), then pushes it with the push that never merges a moved branch. The commit joins the chain. | "Fixing CI" while it runs, then the next poll shows the new head |
+| Retry | Re-runs the failed jobs, once for each failed run, in one write each. After an unknown answer from GitHub, it never sends it again. | "Retrying CI" until the checks of the head change |
+| Needs you | Records Claude's question for the Answer panel. | "Needs you" in red |
+
+Both writes need the CI consent: a `CIConsent` that only a confirmed turn-on can make, checked
+again right before each push and each re-run write, so turning the setting off in the middle stops
+the rest. If that happens before the first re-run goes, the round ends quietly and the row doesn't
+show "Retrying CI", but the re-run still counts. Other CI services are status only. Bifrost never
+re-runs or fixes their jobs.
+
+**When a round can't go on.** Each stop that isn't quiet becomes the CI question of the PR, so you
+can tell Claude what to try next. Hitting the limits asks with no new session turn: "Claude has
+already made two fixes and Bifrost has re-run the failed jobs once for this commit, but CI is still
+failing. Tell Claude what to try next, or fix it yourself." A session that ends by itself asks "The
+session ended partway through, so Bifrost didn't push anything. Give Claude a hint and it'll try
+again, or handle it yourself." The other stops say what happened in the same flowing way and end in
+the same offer, such as "Claude spent over 30 minutes on the failed checks, so Bifrost stopped it
+before anything was pushed." or "GitHub didn't accept Claude's fix, so the branch may be protected -
+the Event log has GitHub's reason." A head that moved or a branch someone rewrote ends quietly,
+since the new head is a new chain. When git or GitHub gave a line, the Event log keeps it, such as
+"Bifrost couldn't push Claude's CI fix to acme/app#12: hook declined".
+
+**The safety net.** Changes in the worktree that no round made, found before the turn or just
+before the commit, stop the round and push nothing. The row shows "Unpushed changes" in amber with
+the tip "Bifrost won't fix failing CI over changes that aren't on GitHub. Ask Claude to commit
+them, or discard them." and the buttons Open session and Discard changes. After Discard, the next
+poll tries again. An own request of yours goes first or right after the round, as in the other
+rounds (see "Your own requests").
+
+**A restart.** A round that was getting ready goes back to the queue. One whose session was running
+waits for it. A round that was posting a fix pushes it again, which is safe because the push checks
+the branch first, and if that push can't go, the worktree goes back to the head. If the setting is
+off by then, nothing is pushed, and the failure gets a round again once the setting is back on, with
+the fix still counted. A round that was posting a re-run never sends it again, since GitHub may
+already have started it. It asks "Bifrost can't tell whether GitHub re-ran the failed jobs, so check
+the pull request there." instead, and the row doesn't show "Retrying CI".
+
+`ReviewRounds` runs the rounds, with the poll, the question and the ends in
+`BifrostReviews/Services/CIRounds.swift`, and the steps of one round in `CIRound.swift`. The rules,
+the stop texts and the logs are in `BifrostReviews/Model/CI`, and `CIRoundTests` runs whole rounds
+with real git, the fake GitHub and scripted session rows.
+
+**Trying it by hand.** On a scratch PR of one of your own repositories with "Fix failing CI
+automatically" on, make a job fail. The row shows "Fixing CI" and then a fix commit lands on the
+branch. A flaky job shows "Retrying CI" and GitHub shows one re-run.
 
 ## The panel
 
@@ -2000,21 +2110,40 @@ that's behind.
 When a request round can't decide something on its own, Claude asks you, and the My PRs row shows
 Needs you. Answer Claude in the row menu, or a click on the row, opens the Answer panel for that PR.
 It opens with "Claude couldn't decide these on its own. Tell it what you'd like, or handle a comment
-yourself.", the reason of the last failed round if there was one, and then each open question,
-oldest first.
+yourself.", the reason of the last failed round if there was one, then the question about failed CI
+if there is one, and then each open question on a comment, oldest first. When the question about
+failed CI is the only one, it opens with "The failed checks on this pull request need your answer
+before Claude can carry on." instead.
+
+The question about failed CI comes first and has its own block, titled "Failed checks on" and the
+first seven characters of the head, such as "Failed checks on 1a2b3c4". Under it, "Failed:" names
+the failed jobs, at most five, with " and 2 more" when there are more. Then come Claude's
+question, a box for your answer and "I'll fix CI myself", which turns the box off. It shows only
+while "Fix failing CI automatically" is on and confirmed and the question is about the PR's current
+head. Your answer belongs to that question: if a new push brings a new question while the panel is
+open, the box starts empty again, so an answer never goes to a question you didn't see.
 
 Each question shows the reviewer's comment it's about, with "user-b on src/a.swift line 12" (or "on
 the PR") and View on GitHub, or just the place when Bifrost has no quote. Then come the question, a
 box for your answer (up to 2,000 characters) and "I'll handle this one myself", which turns the box
-off. Send to Claude works once every question has an answer or the check, and sends them all at
-once: the answers start one request round, which takes them into its input, and each comment you
-handle yourself is marked handled with no round. That round runs in the PR's request session, the
-same session that asked the questions (see "PR sessions"), so Claude reads your answers with the
-whole conversation that led to them. An answer is a click, so it starts a round even
-with "Handle comments on my PRs automatically" off; the round then follows the usual work rules and
-never starts another one by itself. Cancel closes the panel and sends nothing. If the questions
-changed in the meantime, the panel says "Bifrost couldn't send your answers, because the questions
-changed. Check them, then send them again." The panel takes at most 50 answers at a time.
+off. Send to Claude works once every question has an answer or the check, and one Send covers the CI
+block and the comments together. The comment answers go first: they start one request round, which
+takes them into its input, and each comment you handle yourself is marked handled with no round.
+That round runs in the PR's request session, the same session that asked the questions (see "PR
+sessions"), so Claude reads your answers with the whole conversation that led to them. An answer is
+a click, so it starts a round even with "Handle comments on my PRs automatically" off; the round
+then follows the usual work rules and never starts another one by itself. Only when the rounds took
+the comment answers does the CI answer go. It starts one CI round in the same session and allows one
+more fix, while "I'll fix CI myself" stops the CI rounds on that head and starts nothing. If that
+round can't get going (changes of yours in the copy, the setting turned off, or updates that still
+wait to go), your answer stays, and the next poll that can start a round uses it. If the comment
+answers lead Claude to push a fix, the question about failed CI was about the old head, so it goes
+away: the new head gets its own CI checks, and its own CI round if they fail. If the question about
+failed CI went away while the comment answers went, nothing is left to send and the panel closes.
+Cancel closes the panel and sends nothing. If the questions changed in the meantime, the panel says
+"Bifrost couldn't send your answers, because the questions changed. Check them, then send them
+again." A second Send then gives only what's still open, so no answer goes twice. The panel takes at
+most 50 answers at a time.
 
 While the panel is open for a PR, clicking that row again just brings it forward, so your answers
 stay, and a send that's running carries on and shows its result. Closing the panel drops the
@@ -2042,7 +2171,7 @@ two rows that are new to this app, and the Settings search finds each row by its
 | Watch GitHub | Check box; each turn-on asks first | Off |
 | Handle comments on my PRs automatically | Check box; each turn-on asks first | On, but see the consent below |
 | Resolve merge conflicts automatically | Check box; each turn-on asks first | Off |
-| Fix failing CI automatically | Check box; each turn-on asks first; hidden for now | Off |
+| Fix failing CI automatically | Check box; each turn-on asks first | Off |
 | Sign commits through GitHub | Check box | Off |
 | Show team requests | Check box | On |
 | Maximum PR sessions | Number from 1 to 10 | 3 |
@@ -2059,10 +2188,6 @@ dialog, and Cancel leaves the box off. Watch GitHub and "Handle comments on my P
 keep the texts of the Electron app. "Resolve merge conflicts automatically" and "Fix failing CI
 automatically" are new to this app, and their rows sit straight after the comments row. Turning
 any of them off needs no confirm.
-
-The Fix failing CI row doesn't show in the section, and the search doesn't find it, because the CI
-watcher that it controls doesn't exist yet. The setting, its key and its consent stay. The row comes
-back with the CI watcher (`ReviewsSettingsRow.shown` lists the rows that show).
 
 > **Watch GitHub?** Bifrost will use your gh login to check your review requests and your pull
 > requests every few minutes. It makes its own copy of each of their repositories, and asks you to

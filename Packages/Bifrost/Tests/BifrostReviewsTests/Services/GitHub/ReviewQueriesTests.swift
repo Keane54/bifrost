@@ -32,6 +32,10 @@ private final class PagedGitHub: GitHubAccess {
     @MainActor func write(_ write: GitHubWrite) async throws(GitHubError) -> Data {
         throw .notSent
     }
+
+    @MainActor func fetch(_ read: GitHubRead) async throws(GitHubError) -> Data {
+        throw .refused("No fetch in this test.")
+    }
 }
 
 @MainActor

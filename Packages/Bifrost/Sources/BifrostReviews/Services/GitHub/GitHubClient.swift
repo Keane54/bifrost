@@ -57,6 +57,11 @@ import OSLog
         try await access.read(query)
     }
 
+    // A REST read of the closed GitHubRead type, for example the log of a job.
+    package func fetch(_ read: GitHubRead) async throws(GitHubError) -> Data {
+        try await access.fetch(read)
+    }
+
     // The scopes of the login, or nil when they are unknown (a login with no scope header). A
     // read that fails throws, so the caller can keep the last answer that it knew.
     package func scopes() async throws(GitHubError) -> GitHubScopes? {

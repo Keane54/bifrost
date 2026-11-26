@@ -38,7 +38,7 @@ package struct ReviewsLinks {
     // The Reviews services record the consent of the CI rounds.
     package var confirmFixCI: @MainActor () -> Void
     // True when the gh login has no workflow scope and Bifrost knows it (ReviewsWatcher.
-    // lacksWorkflowScope). The settings of the merge and of the comments warn then.
+    // lacksWorkflowScope). The settings of the comments, of the merge and of the CI fix warn then.
     package var workflowScopeMissing: @MainActor () -> Bool
     // Read the scopes of the gh login again and wait for the answer. The turn-on of a setting that
     // pushes to the branch calls it before its confirm.
@@ -104,7 +104,7 @@ package struct ReviewsSection: View {
 
         // True for the settings whose rounds can push a change of a workflow file: Bifrost warns
         // about the workflow scope of the gh login at their row and at their turn-on.
-        var pushesChanges: Bool { self == .autoFix || self == .resolveConflicts }
+        var pushesChanges: Bool { self == .autoFix || self == .resolveConflicts || self == .fixCI }
 
         // The confirm of the turn-on. With the warning about the workflow scope when the setting
         // pushes changes and the gh login has no such scope.
@@ -314,8 +314,7 @@ package struct ReviewsSection: View {
             confirmedRow(.watch, hint: nil, style)
             confirmedRow(.autoFix, hint: Self.autoFixHint, style)
             confirmedRow(.resolveConflicts, hint: Self.resolveConflictsHint, style)
-            // The Fix CI row stays hidden until the CI watcher exists. Its setting, key and
-            // consent stay.
+            confirmedRow(.fixCI, hint: Self.fixCIHint, style)
             checkRow(.signedCommits, hint: Self.signedCommitsHint, \.reviewsSignedCommits)
             checkRow(.teamRequests, hint: nil, \.reviewsTeamRequests)
             NumberRow(

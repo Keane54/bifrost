@@ -49,7 +49,10 @@
 //   round (its commit is made), unless a person uses the session, so the next own request
 //   commits on its head.
 // - A reset after the fix commit of a round runs only when the worktree has no change that no
-//   round made (RepoStore.resetIfKnown), so a change of a person after the turn stays.
+//   round made (RepoStore.resetIfKnown), so a change of a person after the turn stays. Each reset
+//   of a round follows the one rule of RequestSessionTurn.resetUnlessInUse.
+// - A CI round (CIRound) commits and pushes its fix through commit and push, with the same checks
+//   of the listed paths and of the push target, and with no outbox.
 import BifrostFoundation
 import Foundation
 import OSLog
@@ -262,18 +265,24 @@ package final class RoundWrites {
     }
 
     fileprivate func pause() async throws(WriteStop) {
-        try? await clock.sleep(for: Self.postGap)
+        await waitBetweenWrites()
         if Task.isCancelled { throw .halted }
+    }
+
+    // The wait of postGap between two writes to GitHub, on the clock of the writes. The re-run
+    // writes of a CI round wait too.
+    func waitBetweenWrites() async {
+        try? await clock.sleep(for: Self.postGap)
     }
 
     // The result of the fix commit: the commit, or the listed paths with an edit that no round
     // made. In the second case the worktree holds no commit of the run.
-    fileprivate enum CommitResult {
+    enum CommitResult {
         case made(CommitID)
         case edited([String])
     }
 
-    fileprivate func commit(
+    func commit(
         _ paths: [String], message: String, head: CommitID, pr: PRKey, own: Bool,
         stamps: [String: PathStamp]?
     ) async throws(FixCommitFailure) -> CommitResult {
@@ -316,7 +325,10 @@ package final class RoundWrites {
         // The files of the session that the commit does not hold go, unless a person uses the
         // session now or the worktree has a change that no round made. The changes of an own
         // request that the file does not list stay.
-        if !own && !inUse(pr) { await repos.resetIfKnown(pr, to: fix) }
+        if !own {
+            await RequestSessionTurn.resetUnlessInUse(
+                pr, to: fix, repos: repos, inUse: inUse(pr), stoppedIt: false)
+        }
         return .made(fix)
     }
 
@@ -328,13 +340,16 @@ package final class RoundWrites {
             await repos.uncommit(pr, to: head)
             return
         }
-        guard !inUse(pr) else { return }
-        await repos.resetIfKnown(pr, to: head)
+        await RequestSessionTurn.resetUnlessInUse(
+            pr, to: head, repos: repos, inUse: inUse(pr), stoppedIt: false)
     }
 
-    fileprivate func push(
+    // The push of the fix: a commit that GitHub signs (SignedPusher), or a git push (Pusher).
+    // onMove: what the git push does on a branch with new commits. A signed push always stops
+    // there, because GitHub refuses a branch that moved.
+    func push(
         _ fix: CommitID, head: CommitID, paths: [String], signed: Bool, pr: PRKey,
-        target: PushTarget
+        target: PushTarget, onMove: BranchMoved = .merge
     ) async throws(PushRefusal) -> PushResult {
         let address = repos.address(of: pr.repo)
         if signed {
@@ -342,7 +357,7 @@ package final class RoundWrites {
                 .push(fix, head: head, paths: paths, pr: pr, to: target)
         }
         return try await Pusher(git: repos.git, address: address)
-            .push(fix, head: head, pr: pr, to: target)
+            .push(fix, head: head, pr: pr, to: target, onMove: onMove)
     }
 
     // A line for the Event log, with each secret hidden.

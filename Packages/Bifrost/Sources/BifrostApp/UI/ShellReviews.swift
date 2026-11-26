@@ -602,9 +602,11 @@ package final class ReviewsParts {
     // The answers go to the request rounds (ReviewRounds.answerQuestions).
     package func answerFlow(for pr: PRKey) -> AnswerFlow? {
         guard let store, let rounds else { return nil }
-        return AnswerFlow(pr: pr, store: store) { [weak rounds] answers in
-            await rounds?.answerQuestions(pr, answers) ?? false
-        }
+        return AnswerFlow(
+            pr: pr, store: store,
+            send: { [weak rounds] answers in await rounds?.answerQuestions(pr, answers) ?? false },
+            ciQuestion: { [weak rounds] in rounds?.ciQuestion(of: pr) },
+            sendCI: { [weak rounds] in await rounds?.answerCI(pr, $0) ?? false })
     }
 
     // The set-up of the clones of the open store, with its links to the watcher: the rows read

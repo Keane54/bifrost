@@ -1010,8 +1010,9 @@ struct ConflictRoundTests {
     // MARK: - The start and the end of the rounds
 
     // A start of Bifrost takes over the conflict rounds of the state: a stopped round that did
-    // not run gets the text of the stop and loses its click, a CI round goes, and a round that
-    // did not run goes back to the queue.
+    // not run gets the text of the stop and loses its click, a stopped CI round goes (its stop
+    // goes to its CI question, CIRoundTests), and a round that did not run goes back to the
+    // queue.
     @Test func aStartTakesOverTheConflictRoundsOfTheState() async throws {
         let f = try await ConflictFixture()
         let (pr, head, base) = (f.pr, f.head, f.base)
@@ -1034,7 +1035,7 @@ struct ConflictRoundTests {
         #expect(state.conflict?.outcome == .failed(ConflictFailure.session(.stopped).message))
         await f.store.update { state in
             var prState = PRState()
-            prState.round = round(stopped: false, kind: .ci)
+            prState.round = round(stopped: true, kind: .ci)
             state.prs[pr] = prState
         }
         await f.restart()

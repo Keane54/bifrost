@@ -120,10 +120,10 @@ struct SkillCheckTests {
             .contentsOfDirectory(atPath: skills.path(percentEncoded: false))
             .filter { !$0.hasPrefix(".") }.sorted()
         let expected: [String: SkillGroup] = [
-            "bifrost-daily-update": .calledByName, "bifrost-grill": .listed,
-            "bifrost-hand-over": .calledByName, "bifrost-humanise": .listed,
-            "bifrost-resolve-comments": .calledByName, "bifrost-resolve-conflicts": .calledByName,
-            "bifrost-review": .calledByName,
+            "bifrost-daily-update": .calledByName, "bifrost-fix-ci": .calledByName,
+            "bifrost-grill": .listed, "bifrost-hand-over": .calledByName,
+            "bifrost-humanise": .listed, "bifrost-resolve-comments": .calledByName,
+            "bifrost-resolve-conflicts": .calledByName, "bifrost-review": .calledByName,
         ]
         #expect(folders == expected.keys.sorted())
         for folder in folders {

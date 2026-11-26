@@ -40,6 +40,9 @@ package enum WorkRule {
     // automatic round of the PR. Such a round chose no items, so without the wait each poll
     // would queue it and read again.
     package static let readRetry: Duration = .seconds(15 * 60)
+    // The time that the search of the poll leaves out an open own PR before Bifrost deletes its
+    // copy, when the copy is clean (ReviewRounds.dropIfClosed).
+    package static let leftOutLimit: Duration = .seconds(24 * 60 * 60)
 
     // The items of a round of the PR, oldest first, at most maxItems. autoFix: the automatic
     // rounds are on (ReviewsState.allowsAutoFix). baseline: the items that were open at the

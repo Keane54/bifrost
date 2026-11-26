@@ -1,9 +1,10 @@
-// The steps of a turn that the request round and the conflict round share. Both rounds run a turn
-// in the one request session of a PR (docs/behaviour/reviews.md, "PR sessions"), and both must
-// keep the work of the user. Each rule of that work lives here once: the safety net before the
-// round changes the worktree, the sandbox of the turn, the wait for the end of the turn with
-// its record, and the reset after the turn. A round keeps its own texts, its own result check
-// and its own stops, and it passes them in.
+// The steps of a turn that the request round, the conflict round and the CI round share. The
+// rounds run a turn in the one request session of a PR (docs/behaviour/reviews.md, "PR
+// sessions"), and each must keep the work of the user. Each rule of that work lives here once:
+// the check of the work of a person (the safety net before the round changes the worktree, and
+// the check before a commit), the sandbox of the turn, the wait for the end of the turn with its
+// record, and the reset after the turn (also for RoundWrites). A round keeps its own texts, its
+// own result check and its own stops, and it passes them in.
 import BifrostFoundation
 import BifrostSessions
 import Foundation
@@ -28,6 +29,19 @@ struct RequestSessionTurn {
         case request
         // The conflicted files of the merge: only these changes count as changes of the round.
         case conflict(Set<String>)
+        // A CI round: each change counts as a change of the round, as for a request round.
+        case ci
+    }
+
+    // The work of a person in the worktree of the PR (personWork).
+    enum PersonWork: Equatable {
+        case none
+        // An own request file of the user waits.
+        case ownRequest
+        // Changes that no round made, sorted.
+        case changes([String])
+        // git did not show the changes.
+        case unreadable
     }
 
     // How the reset finds out whether a person uses the session.
@@ -62,13 +76,28 @@ struct RequestSessionTurn {
 
     // MARK: - Before the turn
 
+    // The one check of the work of a person in the worktree of the PR: an own request file of
+    // the user that waits, else the changes that no round made (RepoStore.unknownChanges). Each
+    // round maps it to its own stops, before it changes the worktree (checkWorktree) and before
+    // it commits.
+    func personWork() async -> PersonWork {
+        if await own.waits(pr) { return .ownRequest }
+        guard let unknown = await repos.unknownChanges(pr) else { return .unreadable }
+        return unknown.isEmpty ? .none : .changes(unknown)
+    }
+
     // The safety net before the round changes the worktree: an own request of the user goes
     // first (ownRequestWaits), and changes that no round made stay (changesNotOnGitHub, with the
     // sorted files in onUnknown). In both cases the round changes nothing.
     func checkWorktree(onUnknown: ([String]) -> Void) async throws(RoundFailure) {
-        if await own.waits(pr) { throw .ownRequestWaits }
-        guard let unknown = await repos.unknownChanges(pr) else { throw .prepareFailed }
-        guard unknown.isEmpty else {
+        switch await personWork() {
+        case .none:
+            return
+        case .ownRequest:
+            throw .ownRequestWaits
+        case .unreadable:
+            throw .prepareFailed
+        case .changes(let unknown):
             onUnknown(unknown)
             Self.logger.notice(
                 """
@@ -188,13 +217,13 @@ struct RequestSessionTurn {
     // conflict round) is a change of the round, so a reset can remove it
     // (RepoStore.markLeftovers). An own request file shows that a request of the user ran in the
     // turn. Then no change counts as a change of the round, no reset removes the changes of the
-    // user, and the result is true. A request round also tells the own requests that the file
-    // came from a round: the file goes as an own request after the round. A conflict round
-    // refuses the file itself.
+    // user, and the result is true. A request round and a CI round also tell the own requests
+    // that the file came from a round: the file goes as an own request after the round (a CI
+    // round then does not commit its fix). A conflict round refuses the file itself.
     func afterTurn() async -> Bool {
         guard await own.waits(pr) else {
             switch kind {
-            case .request: await repos.markLeftovers(pr)
+            case .request, .ci: await repos.markLeftovers(pr)
             case .conflict(let conflicted): await repos.markLeftovers(pr, only: conflicted)
             }
             return false
@@ -212,6 +241,14 @@ struct RequestSessionTurn {
                 """
                 A request of the user ran in the turn of a round of \
                 \(self.pr.text, privacy: .private), so Bifrost keeps the worktree.
+                """)
+        case .ci:
+            own.cameFromRound(pr)
+            Self.logger.notice(
+                """
+                A request of the user ran in the turn of a CI round of \
+                \(self.pr.text, privacy: .private), so Bifrost keeps the worktree and doesn't \
+                push the fix.
                 """)
         }
         return true
@@ -231,11 +268,23 @@ struct RequestSessionTurn {
             case .session(let id): sessions.inUse(id: id)
             case .request: sessions.requestInUse(pr)
             }
+        return await Self.resetUnlessInUse(
+            pr, to: commit, repos: repos, inUse: inUse, stoppedIt: stoppedIt)
+    }
+
+    // The one reset rule of the rounds and of their writes (RoundWrites): while a person can use
+    // the session (inUse) the worktree stays, unless the round stopped the session (stoppedIt).
+    // Else the reset runs only when the worktree has no change that no round made
+    // (RepoStore.resetIfKnown). The result is true when the reset ran.
+    @discardableResult
+    static func resetUnlessInUse(
+        _ pr: PRKey, to commit: CommitID?, repos: RepoStore, inUse: Bool, stoppedIt: Bool
+    ) async -> Bool {
         if !stoppedIt, inUse {
-            Self.logger.notice(
+            logger.notice(
                 """
-                A person uses the session of \(self.pr.text, privacy: .private), so Bifrost \
-                keeps its worktree as it is.
+                A person uses the session of \(pr.text, privacy: .private), so Bifrost keeps its \
+                worktree as it is.
                 """)
             return false
         }
@@ -245,7 +294,7 @@ struct RequestSessionTurn {
     // A conflict round records a timed-out turn after the stop of the session.
     private var recordsAfterStop: Bool {
         switch kind {
-        case .request: false
+        case .request, .ci: false
         case .conflict: true
         }
     }
@@ -254,6 +303,7 @@ struct RequestSessionTurn {
         switch kind {
         case .request: "round"
         case .conflict: "conflict round"
+        case .ci: "CI round"
         }
     }
 }
