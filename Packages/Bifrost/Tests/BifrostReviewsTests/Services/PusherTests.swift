@@ -9,8 +9,18 @@ import Testing
 
 @testable import BifrostReviews
 
-@Suite("the push of a fix", .serialized, .timeLimit(.minutes(3)), .tags(.realProcess))
+// The tests run real git, a second or two of process starts each, so they sit in lanes: a
+// lane runs its tests one at a time and the lanes run side by side. That keeps the suite
+// quick without starting the git of every test at once, which overloads a small machine.
+@Suite("the push of a fix", .timeLimit(.minutes(3)), .tags(.realProcess))
 struct PusherTests {
+    @Suite("a push and its checks", .serialized)
+    struct Pushes {}
+    @Suite("the refusals and the merge push", .serialized)
+    struct Refusals {}
+}
+
+extension PusherTests.Pushes {
     // The branch is at the head of the round: the fix goes as a fast-forward.
     @Test func anAncestorBranchGetsAFastForwardPush() async throws {
         let f = try await PushTestRepo.make()
@@ -210,7 +220,9 @@ struct PusherTests {
         #expect(f.runner.pushes.isEmpty)
         #expect(try await f.branch() == moved)
     }
+}
 
+extension PusherTests.Refusals {
     // GitHub refuses the branch ([remote rejected], here a hook as for a protected branch). Each
     // run would get the same refusal, so the outbox goes: nothing is posted, the item waits in
     // held, and the Event log has the reason of the server.

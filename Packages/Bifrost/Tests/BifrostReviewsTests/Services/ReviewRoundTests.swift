@@ -51,24 +51,30 @@ private final class RoundFixture {
         repos = try RepoFixture(runner: runner)
         let repo = try #require(RepoName("Owner-A/Repo-A"))
         pr = try #require(PRKey(repo: repo, number: 7))
-        let lines = (1...20).map { "line \($0)" }
-        try await repos.source(repo, files: ["src/a.swift": lines.joined(separator: "\n") + "\n"])
-        // The head of the PR: a second commit, at refs/pull/7/head of the source.
-        let work = repos.root + "/work/" + repo.key
-        var changed = lines
-        changed[10] = "line eleven"
-        changed.insert("line 11b", at: 11)
-        try (changed.joined(separator: "\n") + "\n").write(
-            toFile: work + "/src/a.swift", atomically: false, encoding: .utf8)
-        try await repos.setup(["commit", "-q", "-am", "two"], in: work)
-        try await repos.setup(
-            ["push", "-q", repos.root + "/sources/" + repo.key + ".git", "HEAD:refs/pull/7/head"],
-            in: work)
-        let parsed = await ProcessRunner().run(
-            Command(
-                "/usr/bin/git", ["-C", work, "rev-parse", "HEAD"], environment: repos.env,
-                timeout: .seconds(30)))
-        head = try #require(CommitID(parsed.stdout.trimmed()))
+        head = try await repos.shared("review") { repos in
+            let lines = (1...20).map { "line \($0)" }
+            try await repos.source(
+                repo, files: ["src/a.swift": lines.joined(separator: "\n") + "\n"])
+            // The head of the PR: a second commit, at refs/pull/7/head of the source.
+            let work = repos.root + "/work/" + repo.key
+            var changed = lines
+            changed[10] = "line eleven"
+            changed.insert("line 11b", at: 11)
+            try (changed.joined(separator: "\n") + "\n").write(
+                toFile: work + "/src/a.swift", atomically: false, encoding: .utf8)
+            try await repos.setup(["commit", "-q", "-am", "two"], in: work)
+            try await repos.setup(
+                [
+                    "push", "-q", repos.root + "/sources/" + repo.key + ".git",
+                    "HEAD:refs/pull/7/head",
+                ],
+                in: work)
+            let parsed = await ProcessRunner().run(
+                Command(
+                    testGit, ["-C", work, "rev-parse", "HEAD"], environment: repos.env,
+                    timeout: .seconds(30)))
+            return try #require(CommitID(parsed.stdout.trimmed()))
+        }
         store = try await ReviewsStore.open(layout: repos.layout, log: Recorder<StoreEvent>())
         // Claude Code trusts the clone (the .claude.json of the temporary home).
         let clone = String(repos.clone(repo).dropLast())
@@ -227,16 +233,6 @@ private final class RoundFixture {
         }
     }
 
-    // The end of the task of a round. A cancel of the test (its time limit) cancels the round, so
-    // a test that fails never holds the process.
-    func ended(_ round: Task<Void, Never>) async {
-        await withTaskCancellationHandler {
-            await round.value
-        } onCancel: {
-            round.cancel()
-        }
-    }
-
     func show(_ status: AgentStatus) async {
         let entry = AgentEntry(
             sessionId: Self.id, cwd: worktree, isBackground: true, startedAt: 1, name: Self.name,
@@ -269,9 +265,19 @@ private final class RoundFixture {
     }
 }
 
+// The tests run real git, a second or two of process starts each, so they sit in lanes: a
+// lane runs its tests one at a time and the lanes run side by side. That keeps the suite
+// quick without starting the git of every test at once, which overloads a small machine.
 @MainActor
-@Suite("the review rounds", .serialized, .timeLimit(.minutes(3)), .tags(.realProcess))
+@Suite("the review rounds", .timeLimit(.minutes(3)), .tags(.realProcess))
 struct ReviewRoundTests {
+    @MainActor @Suite("a review round", .serialized)
+    struct Rounds {}
+    @MainActor @Suite("the removals, the restarts and the results", .serialized)
+    struct Results {}
+}
+
+extension ReviewRoundTests.Rounds {
     // A round writes the input folder (input.json, the full diff, the mode file and the rules),
     // starts the read-only session in the worktree, and creates the pending review on the
     // reviewed commit with the summary and the comments. The draft texts are kept.
@@ -296,7 +302,7 @@ struct ReviewRoundTests {
         #expect(start.suffix(2).first == RoundFixture.name)
         #expect(start.last == "/bifrost-review bifrost-input=\(f.input)/input.json")
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         #expect(
             f.writes == [
                 .createPendingReview(
@@ -331,7 +337,7 @@ struct ReviewRoundTests {
         let round = try await f.review()
         await f.sessionWorks()
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         #expect(f.writes.isEmpty)
         #expect(f.github.calls.contains(.read(ReviewQueries.reviewName)))
         #expect(f.store.state.prs[f.pr]?.lastError == RoundFailure.notPending.message)
@@ -355,7 +361,7 @@ struct ReviewRoundTests {
         #expect(f.github.calls.count == reads)
         let time = f.deps.clock.now
         await f.show(.idle)
-        await f.ended(round)
+        await ended(round)
         #expect(f.deps.clock.now == time)
         #expect(f.writes.count == 1)
         await f.end()
@@ -368,7 +374,7 @@ struct ReviewRoundTests {
         let round = try await f.review()
         await f.sessionWorks()
         try await f.endTurn(result: f.result { $0["round"] = nil }, passes: false)
-        await f.ended(round)
+        await ended(round)
         #expect(
             f.store.state.prs[f.pr]?.lastError
                 == RoundFailure.badResult(ResultRefusal("the round field is missing")).message)
@@ -382,7 +388,7 @@ struct ReviewRoundTests {
         let f = try await RoundFixture()
         let round = try await f.review()
         f.rounds.afterPoll(Rows.answer(toReview: [try Rows.pull("Owner-A/Repo-A#8")]))
-        await f.ended(round)
+        await ended(round)
         await waitUntil { f.store.state.queue.isEmpty }
         #expect(f.store.state.prs[f.pr]?.round == nil)
         #expect(f.store.state.prs[f.pr]?.actedAt == nil)
@@ -397,7 +403,7 @@ struct ReviewRoundTests {
         let round = try await f.review()
         await f.sessionWorks()
         try await f.endTurn(result: f.result { $0["why"] = "" }, passes: false)
-        await f.ended(round)
+        await ended(round)
         #expect(
             f.store.state.prs[f.pr]?.lastError
                 == RoundFailure.badResult(ResultRefusal("the why field is empty")).message)
@@ -412,11 +418,11 @@ struct ReviewRoundTests {
         let round = try await f.review()
         await f.sessionWorks()
         let stop = Task { await f.rounds.stopSession(f.pr) }
-        await f.ended(round)
+        await ended(round)
         await waitUntil { f.deps.calls.claudeRuns.contains { $0 == ["stop", "abcdef12"] } }
         // The stop waits for the row to park; its time limit ends the wait.
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await stop.value
+        await ended(stop)
         #expect(f.writes.isEmpty)
         #expect(f.store.state.prs[f.pr]?.lastError == RoundFailure.stopped.message)
         #expect(f.store.state.prs[f.pr]?.round == nil)
@@ -432,7 +438,7 @@ struct ReviewRoundTests {
         let round = try await f.review()
         await f.sessionWorks()
         try await f.endTurn(result: nil)
-        await f.ended(round)
+        await ended(round)
         let reason = RoundFailure.noResult.message
         #expect(f.store.state.prs[f.pr]?.lastError == reason)
         #expect(f.writes.isEmpty)
@@ -453,7 +459,7 @@ struct ReviewRoundTests {
         let first = try await f.review()
         await f.sessionWorks()
         try await f.endTurn(result: nil)
-        await f.ended(first)
+        await ended(first)
         #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
         let second = try await f.review()
         await waitUntil { f.deps.calls.claudeRuns.filter { $0.first == "--bg" }.count == 2 }
@@ -465,7 +471,7 @@ struct ReviewRoundTests {
         #expect(runs[started].last == PRSessionArgs.reviewPrompt(input))
         await f.sessionWorks()
         try await f.endTurn(result: f.result())
-        await f.ended(second)
+        await ended(second)
         #expect(f.store.state.prs[f.pr]?.lastError == nil)
         await f.end()
     }
@@ -495,7 +501,7 @@ struct ReviewRoundTests {
         await f.sessionWorks()
         #expect(row(request)?.toReviewState == .reviewing)
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         var drafted = request
         drafted.viewerPendingReviewID = try ReviewData.node("PRR_new")
         let shown = try #require(row(drafted))
@@ -510,13 +516,15 @@ struct ReviewRoundTests {
         let round = try await f.review()
         await f.sessionWorks()
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         f.rounds.afterPoll(Rows.answer(toReview: [try Rows.pull("Owner-A/Repo-A#7")]))
         await f.rounds.cancel(f.pr)
         #expect(f.notices.values == [.draftReady(f.pr)])
         await f.end()
     }
+}
 
+extension ReviewRoundTests.Results {
     // Remove all clones: the review session of the PR goes (claude rm), and the review that waits
     // in the queue (here an entry of an earlier run that waits for the trust step of the user,
     // which claude refused) goes with its entry.
@@ -525,7 +533,7 @@ struct ReviewRoundTests {
         let round = try await f.review()
         await f.sessionWorks()
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         #expect(f.store.state.prs[f.pr]?.reviewSession != nil)
         f.setup.waitsForTrust(f.pr.repo, refusedByClaude: true)
         await f.store.update { $0.queue.append(QueueEntry(pr: f.pr, kind: .review, at: Rows.now)) }
@@ -603,7 +611,7 @@ struct ReviewRoundTests {
         await f.sessionWorks()
         runner.arm(file: f.input + "/result.json", text: "{ not json")
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.round == nil && state.lastError == nil)
         #expect(!f.writes.isEmpty)
@@ -618,7 +626,7 @@ struct ReviewRoundTests {
         await f.sessionWorks()
         await f.store.update { $0.prs[f.pr]?.round = nil }
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         #expect(f.writes.isEmpty)
         #expect(f.store.state.prs[f.pr]?.lastError == RoundFailure.notSaved.message)
         await f.end()
@@ -630,7 +638,7 @@ struct ReviewRoundTests {
     @Test func aClickGivesOneStartToACloneThatTheReadCallsUntrusted() async throws {
         let f = try await RoundFixture(trusted: false)
         let first = try await f.review()
-        await first.value
+        await ended(first)
         #expect(f.setup.clones.needsTrust == [f.pr.repo])
         #expect(f.rounds.queue.waiting == [f.pr])
         #expect(!f.deps.calls.claudeRuns.contains { $0.first == "--bg" })
@@ -640,7 +648,7 @@ struct ReviewRoundTests {
         #expect(f.setup.clones.needsTrust.isEmpty)
         #expect(await f.setup.trustsForStart(f.pr.repo))
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         #expect(f.writes.count == 1)
         await f.end()
     }
@@ -649,7 +657,7 @@ struct ReviewRoundTests {
     // follows until a trust step ends, which gives one more start.
     @Test func aRefusedStartWaitsForTheTrustStep() async throws {
         let f = try await RoundFixture(trusted: false)
-        await (try f.review()).value
+        await ended(try f.review())
         await f.rounds.cancel(f.pr)
         f.deps.calls.answerClaude { args in
             args.first == "--bg"
@@ -657,7 +665,7 @@ struct ReviewRoundTests {
                 : ExecResult(.exited(0))
         }
         let refused = try await f.review()
-        await refused.value
+        await ended(refused)
         let starts = { f.deps.calls.claudeRuns.filter { $0.first == "--bg" }.count }
         #expect(starts() == 1)
         #expect(f.rounds.queue.waiting == [f.pr])
@@ -675,7 +683,7 @@ struct ReviewRoundTests {
         await f.sessionWorks()
         #expect(starts() == 2)
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         #expect(f.writes.count == 1)
         await f.end()
     }
@@ -728,7 +736,7 @@ struct ReviewRoundTests {
         #expect(f.store.state.prs[f.pr]?.round?.phase == .running)
         let round = try #require(f.rounds.queue.task(of: f.pr))
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         #expect(f.writes.count == 1)
         #expect(f.store.state.prs[f.pr]?.recommendation?.reviewID != nil)
         #expect(f.deps.calls.claudeRuns.filter { $0.first == "--bg" }.count == 1)
@@ -750,7 +758,7 @@ struct ReviewRoundTests {
             ]
         }
         try await f.endTurn(result: result)
-        await f.ended(round)
+        await ended(round)
         #expect(f.writes.isEmpty)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.round == nil && state.lastError == nil)
@@ -782,7 +790,7 @@ struct ReviewRoundTests {
             ReviewData.item("nit", line: 11, body: "`n` says less than `retries`."),
         ]
         try await f.endTurn(result: f.resultV2 { $0["findings"] = findings })
-        await f.ended(round)
+        await ended(round)
         #expect(
             f.writes == [
                 .createPendingReview(
@@ -817,7 +825,7 @@ struct ReviewRoundTests {
                 $0["note"] = .string(note)
                 $0["findings"] = findings
             })
-        await f.ended(first)
+        await ended(first)
         #expect(f.writes.count == 1)
         #expect(f.store.state.prs[f.pr]?.recommendation?.note == note)
         let second = try await f.review()
@@ -830,7 +838,7 @@ struct ReviewRoundTests {
                 $0["summary"] = ""
                 $0["findings"] = findings
             })
-        await f.ended(second)
+        await ended(second)
         let mark = try #require(f.store.state.prs[f.pr]?.recommendation)
         #expect(mark.value == .approve && mark.note == note)
         #expect(f.writes.count == 1)
@@ -856,7 +864,7 @@ struct ReviewRoundTests {
             $0["comments"] = []
         }
         try await f.endTurn(result: result)
-        await f.ended(round)
+        await ended(round)
         #expect(f.writes.isEmpty)
         let mark = try #require(f.store.state.prs[f.pr]?.recommendation)
         #expect(mark.value == .approve && mark.reviewID == nil && mark.note == "")
@@ -878,7 +886,7 @@ struct ReviewRoundTests {
         try "changed\n".write(
             toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
         try await f.endTurn(result: f.result())
-        await f.ended(round)
+        await ended(round)
         #expect(!FileManager.default.fileExists(atPath: f.worktree + "/stray.txt"))
         let file = try String(contentsOfFile: f.worktree + "/src/a.swift", encoding: .utf8)
         #expect(file.contains("line eleven"))

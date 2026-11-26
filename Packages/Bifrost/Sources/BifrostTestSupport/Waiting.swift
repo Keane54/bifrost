@@ -112,6 +112,19 @@ package func fileExists(_ path: String) -> Bool {
     return lstat(path, &info) == 0
 }
 
+// Wait for the end of a task that the test started, such as the task of a round. When the test
+// is cancelled, for example by its time limit, the task is cancelled too. A plain await of its
+// value would go on waiting, as the cancel of a test never reaches a task it made, so a round
+// that a defect holds would hang the whole run instead of failing its test.
+package func ended(_ task: Task<Void, Never>?) async {
+    guard let task else { return }
+    await withTaskCancellationHandler {
+        await task.value
+    } onCancel: {
+        task.cancel()
+    }
+}
+
 // The end of a task, as a flag that a wait reads.
 @MainActor
 package final class TaskEnd {

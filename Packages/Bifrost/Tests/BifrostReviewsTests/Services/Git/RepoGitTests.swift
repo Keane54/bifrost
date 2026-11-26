@@ -454,7 +454,7 @@ struct RepoGitPinTests {
         let repo = try await GitTestRepo.make()
         defer { repo.folder.remove() }
         let app = RepoGit(
-            path: "/usr/bin/git", environment: repo.env, layout: repo.layout,
+            path: testGit, environment: repo.env, layout: repo.layout,
             runner: ProcessRunner())
         let folder = repo.layout.reposRoot.appending(path: "other")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

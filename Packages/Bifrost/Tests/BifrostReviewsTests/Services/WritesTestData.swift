@@ -234,7 +234,7 @@ final class WritesFixture {
             layout = ReviewsLayout(
                 folder: URL(filePath: made.realPath + "/reviews", directoryHint: .isDirectory))
             git = RepoGit(
-                path: "/usr/bin/git", environment: [:], layout: layout, runner: ProcessRunner())
+                path: testGit, environment: [:], layout: layout, runner: ProcessRunner())
             address = URL(filePath: made.realPath + "/source")
         }
         pr = try ReviewData.pr()

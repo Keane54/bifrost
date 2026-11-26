@@ -85,12 +85,18 @@ private final class CIFixture {
         repos = try RepoFixture(runner: runner)
         let repo = try #require(RepoName("Owner-A/Repo-A"))
         pr = try #require(PRKey(repo: repo, number: 7))
-        base = try await repos.source(repo, files: ["src/a.swift": Self.lines()])
-        let work = repos.root + "/work/" + repo.key
-        try await repos.setup(["checkout", "-q", "-b", "feat"], in: work)
-        head = try await Self.commit(
-            repos, work, [11: "line eleven feat"], refs: ["refs/pull/7/head", "refs/heads/feat"])
-        try await repos.setup(["checkout", "-q", "main"], in: work)
+        let made = try await repos.shared("ci") { repos in
+            let base = try await repos.source(repo, files: ["src/a.swift": Self.lines()])
+            let work = repos.root + "/work/" + repo.key
+            try await repos.setup(["checkout", "-q", "-b", "feat"], in: work)
+            let head = try await Self.commit(
+                repos, work, [11: "line eleven feat"],
+                refs: ["refs/pull/7/head", "refs/heads/feat"])
+            try await repos.setup(["checkout", "-q", "main"], in: work)
+            return (base: base, head: head)
+        }
+        base = made.base
+        head = made.head
         if let file {
             try FileManager.default.createDirectory(
                 at: repos.layout.folder, withIntermediateDirectories: true)
@@ -186,7 +192,7 @@ private final class CIFixture {
         try await repos.setup(["push", "-q", "-f", bare] + refs.map { "HEAD:" + $0 }, in: work)
         let parsed = await ProcessRunner().run(
             Command(
-                "/usr/bin/git", ["-C", work, "rev-parse", "HEAD"], environment: repos.env,
+                testGit, ["-C", work, "rev-parse", "HEAD"], environment: repos.env,
                 timeout: .seconds(30)))
         return try #require(CommitID(parsed.stdout.trimmed()))
     }
@@ -334,7 +340,7 @@ private final class CIFixture {
     func sourceGit(_ args: [String]) async -> String {
         let result = await ProcessRunner().run(
             Command(
-                "/usr/bin/git", ["-C", bare] + args, environment: repos.env,
+                testGit, ["-C", bare] + args, environment: repos.env,
                 timeout: .seconds(30)))
         return result.stdout.trimmed()
     }
@@ -415,6 +421,16 @@ private final class CIFixture {
     func turnWaitSawWork() async {
         let limit = deps.clock.now.offset + ReviewRounds.limit
         await waitUntil { self.deps.clock.nextDeadline?.offset == limit }
+    }
+
+    // A turn finds the session busy: once its wait for a free row sleeps on the clock, the
+    // clock moves on by PRSessions.busyWait, so the turn gives up on the session. The real git
+    // of the round can take any time before that, so the test waits for the timer and doesn't
+    // guess how long to keep the clock moving.
+    func busyWaitPasses() async {
+        let deadline = deps.clock.now.offset + PRSessions.busyWait
+        await waitUntil { self.deps.clock.nextDeadline?.offset == deadline }
+        deps.clock.advance(by: PRSessions.busyWait)
     }
 
     // The files of the round that runs, from the token of the round in the state.
@@ -569,17 +585,6 @@ private final class CIFixture {
     }
 }
 
-// The end of a task of the test, such as the task of a round. A cancel of the test (its time
-// limit) cancels the task too, so a round that never ends cannot hold the test.
-private func ended(_ task: Task<Void, Never>?) async {
-    guard let task else { return }
-    await withTaskCancellationHandler {
-        await task.value
-    } onCancel: {
-        task.cancel()
-    }
-}
-
 private func job(_ id: Int) throws -> JobID {
     try #require(JobID(id))
 }
@@ -588,9 +593,21 @@ private func run(_ id: Int) throws -> RunID {
     try #require(RunID(id))
 }
 
+// The tests run real git, a second or two of process starts each, so they sit in lanes: a
+// lane runs its tests one at a time and the lanes run side by side. That keeps the suite
+// quick without starting the git of every test at once, which overloads a small machine.
 @MainActor
-@Suite("the CI rounds", .serialized, .timeLimit(.minutes(3)), .tags(.realProcess))
+@Suite("the CI rounds", .timeLimit(.minutes(3)), .tags(.realProcess))
 struct CIRoundTests {
+    @MainActor @Suite("one round and its questions", .serialized)
+    struct Rounds {}
+    @MainActor @Suite("the gate and the checks before the writes", .serialized)
+    struct Writes {}
+    @MainActor @Suite("the logs, the work of a person and the starts", .serialized)
+    struct People {}
+}
+
+extension CIRoundTests.Rounds {
     // MARK: - One round
 
     // A poll that shows a failed Actions job starts one round. The key of the failure is saved
@@ -970,7 +987,9 @@ struct CIRoundTests {
         #expect(f.store.state.queue.isEmpty && f.rounds.queue.task(of: f.pr) == nil)
         await f.end()
     }
+}
 
+extension CIRoundTests.Writes {
     // MARK: - The gate
 
     // A failed status of another CI service, or a failed check run of another app, is status
@@ -1299,7 +1318,9 @@ struct CIRoundTests {
         await ended(round)
         await f.end()
     }
+}
 
+extension CIRoundTests.People {
     // MARK: - The logs
 
     // A log over the limit goes in cut: its file starts with the cut note, and the input says so.
@@ -1474,18 +1495,9 @@ struct CIRoundTests {
         await f.show(.busy)
         let next = try await f.userPush()
         try f.github(head: next)
-        let finished = Recorder<Bool>()
         let job = QueuedJob(pr: f.pr, kind: .ci, since: Rows.now)
-        let run = Task {
-            await f.rounds.runCI(job, saved: nil)
-            finished.record(true)
-        }
-        var turns = 0
-        while finished.values.isEmpty, turns < 2000 {
-            f.deps.clock.advance(by: .seconds(30))
-            try await Task.sleep(for: .milliseconds(2))
-            turns += 1
-        }
+        let run = Task { await f.rounds.runCI(job, saved: nil) }
+        await f.busyWaitPasses()
         await ended(run)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.round == nil && state.waiting == nil && state.lastError == nil)

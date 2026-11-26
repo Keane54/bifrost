@@ -62,7 +62,7 @@ struct PushTestRepo {
         try await repo.setup(["branch", "feat"], in: repo.source)
         let runner = RecordingGit(before: before)
         let git = RepoGit(
-            path: "/usr/bin/git", environment: repo.env, layout: repo.layout,
+            path: testGit, environment: repo.env, layout: repo.layout,
             identity: GitTestRepo.identity, localRemotesForTestHome: true, runner: runner)
         return PushTestRepo(repo: repo, runner: runner, git: git)
     }
@@ -165,7 +165,7 @@ struct PushTestRepo {
         let identity = ["-c", "user.name=Other", "-c", "user.email=other@example.invalid"]
         let result = await ProcessRunner().run(
             Command(
-                "/usr/bin/git", identity + ["-C", dir] + args, environment: env,
+                testGit, identity + ["-C", dir] + args, environment: env,
                 timeout: .seconds(30)))
         try #require(result.succeeded, "git \(args.joined(separator: " ")): \(result.stderr)")
         return result.stdout.trimmed()

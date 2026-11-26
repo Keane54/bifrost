@@ -178,7 +178,7 @@ private final class Harness {
                 "GIT_CONFIG_GLOBAL": "/dev/null",
             ]
             let git = RepoGit(
-                path: "/usr/bin/git", environment: env, layout: layout,
+                path: testGit, environment: env, layout: layout,
                 localRemotesForTestHome: true, runner: ProcessRunner())
             let sources = folder.path
             repos =

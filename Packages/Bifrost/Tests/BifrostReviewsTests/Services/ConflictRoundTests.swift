@@ -81,14 +81,20 @@ private final class ConflictFixture {
         repos = try RepoFixture(runner: runner)
         let repo = try #require(RepoName("Owner-A/Repo-A"))
         pr = try #require(PRKey(repo: repo, number: 7))
-        try await repos.source(repo, files: ["src/a.swift": Self.lines()])
-        let work = repos.root + "/work/" + repo.key
-        try await repos.setup(["checkout", "-q", "-b", "feat"], in: work)
-        head = try await Self.commit(
-            repos, work, [11: "line eleven feat"], refs: ["refs/pull/7/head", "refs/heads/feat"])
-        try await repos.setup(["checkout", "-q", "main"], in: work)
-        base = try await Self.commit(
-            repos, work, [conflict ? 11 : 18: "line main"], refs: ["refs/heads/main"])
+        let made = try await repos.shared("conflict \(conflict)") { repos in
+            try await repos.source(repo, files: ["src/a.swift": Self.lines()])
+            let work = repos.root + "/work/" + repo.key
+            try await repos.setup(["checkout", "-q", "-b", "feat"], in: work)
+            let head = try await Self.commit(
+                repos, work, [11: "line eleven feat"],
+                refs: ["refs/pull/7/head", "refs/heads/feat"])
+            try await repos.setup(["checkout", "-q", "main"], in: work)
+            let base = try await Self.commit(
+                repos, work, [conflict ? 11 : 18: "line main"], refs: ["refs/heads/main"])
+            return (base: base, head: head)
+        }
+        base = made.base
+        head = made.head
         store = try await ReviewsStore.open(layout: repos.layout, log: Recorder<StoreEvent>())
         // Claude Code trusts the clone (the .claude.json of the temporary home).
         let clone = String(repos.clone(repo).dropLast())
@@ -177,7 +183,7 @@ private final class ConflictFixture {
         try await repos.setup(["push", "-q", "-f", bare] + refs.map { "HEAD:" + $0 }, in: work)
         let parsed = await ProcessRunner().run(
             Command(
-                "/usr/bin/git", ["-C", work, "rev-parse", "HEAD"], environment: repos.env,
+                testGit, ["-C", work, "rev-parse", "HEAD"], environment: repos.env,
                 timeout: .seconds(30)))
         return try #require(CommitID(parsed.stdout.trimmed()))
     }
@@ -230,7 +236,7 @@ private final class ConflictFixture {
     func sourceGit(_ args: [String]) async -> String {
         let result = await ProcessRunner().run(
             Command(
-                "/usr/bin/git", ["-C", bare] + args, environment: repos.env,
+                testGit, ["-C", bare] + args, environment: repos.env,
                 timeout: .seconds(30)))
         return result.stdout.trimmed()
     }
@@ -308,6 +314,16 @@ private final class ConflictFixture {
         await waitUntil { self.deps.clock.nextDeadline?.offset == limit }
     }
 
+    // A turn finds the session busy: once its wait for a free row sleeps on the clock, the
+    // clock moves on by PRSessions.busyWait, so the turn gives up on the session. The real git
+    // of the round can take any time before that, so the test waits for the timer and doesn't
+    // guess how long to keep the clock moving.
+    func busyWaitPasses() async {
+        let deadline = deps.clock.now.offset + PRSessions.busyWait
+        await waitUntil { self.deps.clock.nextDeadline?.offset == deadline }
+        deps.clock.advance(by: PRSessions.busyWait)
+    }
+
     // The files of the round that runs, from the token of the round in the state.
     func files() throws -> RoundFiles {
         let token = try #require(store.state.prs[pr]?.round?.token)
@@ -358,7 +374,7 @@ private final class ConflictFixture {
         if let sends { await typedTurnWorks(sends: sends) } else { await sessionWorks() }
         try resolve()
         try await endTurn(result: result())
-        await round.value
+        await ended(round)
         return try await branch()
     }
 
@@ -474,9 +490,23 @@ private final class ConflictFixture {
     }
 }
 
+// The tests run real git, a second or two of process starts each, so they sit in lanes: a
+// lane runs its tests one at a time and the lanes run side by side. That keeps the suite
+// quick without starting the git of every test at once, which overloads a small machine.
 @MainActor
-@Suite("the conflict rounds", .serialized, .timeLimit(.minutes(3)), .tags(.realProcess))
+@Suite("the conflict rounds", .timeLimit(.minutes(3)), .tags(.realProcess))
 struct ConflictRoundTests {
+    @MainActor @Suite("a round and what it pushes", .serialized)
+    struct Rounds {}
+    @MainActor @Suite("the stops and the restarts of a round", .serialized)
+    struct Stops {}
+    @MainActor @Suite("the checks, the failures and the starts", .serialized)
+    struct Checks {}
+    @MainActor @Suite("the ends of a round", .serialized)
+    struct Ends {}
+}
+
+extension ConflictRoundTests.Rounds {
     // A poll that shows the conflict starts one round. Bifrost merges main into feat in its clone,
     // the session starts in the worktree at the merge with the markers, with the conflict prompt,
     // and Claude resolves the file. Bifrost commits the merge (parents head and main tip, "Merge
@@ -506,7 +536,7 @@ struct ConflictRoundTests {
             ])
         try f.resolve()
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         let merge = try await f.branch()
         let object = try await f.object(merge)
         #expect(object.parents == [f.head, f.base] && !object.signed)
@@ -543,7 +573,7 @@ struct ConflictRoundTests {
         let round = try f.pollNow()
         await f.sessionWorks()
         try await f.endTurn(result: f.result(needsYou: "Only you can pick the line."))
-        await round.value
+        await ended(round)
         let reason = ConflictFailure.claude("Only you can pick the line.").message
         #expect(f.mark?.outcome == .failed(reason))
         #expect(try await f.branch() == f.head)
@@ -561,7 +591,7 @@ struct ConflictRoundTests {
         let round = try f.pollNow()
         await f.sessionWorks()
         try await f.endTurn(result: f.result(needsYou: "Only you can pick the line."))
-        await round.value
+        await ended(round)
         let base = try await f.pushMain(lineEleven: "line main again")
         try f.github(head: f.head, base: base)
         let merge = try await f.resolvedRound(typed: 1)
@@ -577,14 +607,14 @@ struct ConflictRoundTests {
         let round = try f.pollNow()
         await f.sessionWorks()
         try await f.endTurn(result: f.result(needsYou: "Only you can pick the line."))
-        await round.value
+        await ended(round)
         await f.rounds.resolveNow(f.pr)
         let again = try #require(f.rounds.queue.task(of: f.pr))
         await f.typedTurnWorks(sends: 1)
         #expect(f.store.state.prs[f.pr]?.resolveNow == true)
         try f.resolve()
         try await f.endTurn(result: f.result())
-        await again.value
+        await ended(again)
         let merge = try await f.branch()
         #expect(f.mark?.outcome == .pushed(merge) && f.store.state.prs[f.pr]?.resolveNow == false)
         await f.end()
@@ -597,7 +627,7 @@ struct ConflictRoundTests {
         await g.sessionWorks()
         try g.resolve()
         try await g.endTurn(result: g.result())
-        await clicked.value
+        await ended(clicked)
         #expect(g.mark?.outcome == .pushed(try await g.branch()))
         await g.end()
     }
@@ -609,7 +639,7 @@ struct ConflictRoundTests {
         let round = try f.pollNow()
         await f.sessionWorks()
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         #expect(f.mark?.outcome == .failed(ConflictFailure.markersLeft.message))
         #expect(try await f.branch() == f.head)
         #expect(await f.worktreeHead() == f.head)
@@ -626,7 +656,7 @@ struct ConflictRoundTests {
         try f.resolve()
         try "notes\n".write(toFile: f.worktree + "/notes.txt", atomically: false, encoding: .utf8)
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         // The file is no change of the round, so it stays and the row shows Needs you.
         #expect(f.mark == nil)
         #expect(f.store.state.prs[f.pr]?.waiting?.files == ["notes.txt"])
@@ -639,14 +669,16 @@ struct ConflictRoundTests {
     // nothing is pushed.
     @Test func aCleanLocalMergePushesNothing() async throws {
         let f = try await ConflictFixture(conflict: false)
-        await (try f.pollNow()).value
+        await ended(try f.pollNow())
         #expect(f.bgRuns.isEmpty && f.prompts.sends.isEmpty)
         #expect(f.mark?.outcome == .failed(ConflictFailure.noConflict.message))
         #expect(try await f.branch() == f.head)
         #expect(f.store.state.prs[f.pr]?.round == nil)
         await f.end()
     }
+}
 
+extension ConflictRoundTests.Stops {
     // Another person pushes to feat during the turn: the push finds new commits and pushes
     // nothing (BranchMoved.stop), with no text, and the new head is a new pair.
     @Test func aBranchThatMovedDuringTheRoundGetsNoPush() async throws {
@@ -656,7 +688,7 @@ struct ConflictRoundTests {
         let moved = try await f.otherPush()
         try f.resolve()
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         #expect(try await f.branch() == moved)
         #expect(f.mark == nil && f.store.state.prs[f.pr]?.round == nil)
         #expect(f.store.state.prs[f.pr]?.lastError == nil)
@@ -673,7 +705,7 @@ struct ConflictRoundTests {
         f.rounds.apply(ReviewsConfig(resolveConflicts: false))
         try f.resolve()
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         #expect(try await f.branch() == f.head)
         #expect(f.mark == nil && f.store.state.prs[f.pr]?.round == nil)
         #expect(await f.worktreeHead() == f.head)
@@ -720,7 +752,7 @@ struct ConflictRoundTests {
         let merge = try await f.postingRound(pushed: alreadyPushed)
         await f.restart()
         let round = try #require(f.rounds.queue.task(of: f.pr))
-        await round.value
+        await ended(round)
         #expect(try await f.branch() == merge)
         #expect(f.mark?.outcome == .pushed(merge) && f.store.state.prs[f.pr]?.round == nil)
         #expect(f.bgRuns.isEmpty)
@@ -738,7 +770,7 @@ struct ConflictRoundTests {
         #expect(f.store.state.prs[f.pr]?.round?.phase == .running)
         let round = try #require(f.rounds.queue.task(of: f.pr))
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         let merge = try await f.branch()
         #expect(try await f.object(merge).parents == [f.head, f.base])
         #expect(f.mark?.outcome == .pushed(merge) && f.bgRuns.count == 1)
@@ -753,7 +785,7 @@ struct ConflictRoundTests {
         await f.sessionWorks()
         f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle("MERGED"))
         f.rounds.afterPoll(Rows.answer(mine: []))
-        await round.value
+        await ended(round)
         await waitUntil { f.rounds.drops[f.pr] == nil }
         #expect(f.deps.calls.claudeRuns.contains(["rm", "abcdef12"]))
         let state = try #require(f.store.state.prs[f.pr])
@@ -771,10 +803,10 @@ struct ConflictRoundTests {
         let round = try f.pollNow()
         await f.sessionWorks()
         let stop = Task { await f.rounds.stopSession(f.pr) }
-        await round.value
+        await ended(round)
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await stop.value
+        await ended(stop)
         #expect(f.mark?.outcome == .failed(ConflictFailure.session(.stopped).message))
         #expect(f.store.state.prs[f.pr]?.round == nil)
         #expect(f.store.state.prs[f.pr]?.lastError == nil)
@@ -795,7 +827,7 @@ struct ConflictRoundTests {
         let auto = try #require(await f.worktreeHead())
         try f.writeOwnRequest(head: auto)
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.waiting?.reason == OwnRequestStop.conflictMerge.message)
         #expect(state.waiting?.kind == .askAgain)
@@ -842,13 +874,13 @@ struct ConflictRoundTests {
         let round = try f.pollNow()
         await f.sessionWorks()
         try await f.endTurn(result: f.result(needsYou: "Only you can pick the line."))
-        await round.value
+        await ended(round)
         #expect(await f.worktreeHead() == f.head)
         try "person\n".write(
             toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
         await f.rounds.resolveNow(f.pr)
         let again = try #require(f.rounds.queue.task(of: f.pr))
-        await again.value
+        await ended(again)
         #expect(f.prompts.sends.isEmpty && f.bgRuns.count == 1)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.waiting?.reason == RoundFailure.changesNotOnGitHub.message(for: .conflict))
@@ -882,7 +914,9 @@ struct ConflictRoundTests {
         #expect(f.mark?.outcome == .pushed(merge))
         await f.end()
     }
+}
 
+extension ConflictRoundTests.Checks {
     // MARK: - The checks before the push
 
     // A person adds a file to the worktree after the end of the turn and before the commit: the
@@ -898,7 +932,7 @@ struct ConflictRoundTests {
             try? "mine\n".write(toFile: file, atomically: false, encoding: .utf8)
         }
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.waiting?.kind == .unpushed && state.waiting?.files == ["person.txt"])
         #expect(state.conflict == nil && state.round == nil && state.lastError == nil)
@@ -921,7 +955,7 @@ struct ConflictRoundTests {
         )
         runner.beforeFirstAdd { try? data.write(to: URL(filePath: file)) }
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.waiting?.reason == OwnRequestStop.conflictMerge.message)
         #expect(state.conflict == nil && state.round == nil)
@@ -944,7 +978,7 @@ struct ConflictRoundTests {
             await f.show(.busy)
         }
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         f.github.onRead = nil
         #expect(try await f.branch() != f.head)
         let at = try #require(await f.worktreeHead())
@@ -961,7 +995,7 @@ struct ConflictRoundTests {
         await f.sessionWorks()
         try f.resolve()
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         guard case .failed(let text)? = f.mark?.outcome else {
             Issue.record("The mark is not a failure.")
             return await f.end()
@@ -982,7 +1016,7 @@ struct ConflictRoundTests {
         f.deps.clock.advance(by: ReviewRounds.limit)
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await round.value
+        await ended(round)
         #expect(f.mark?.outcome == .failed(ConflictFailure.session(.timeout).message))
         #expect(try await f.branch() == f.head)
         #expect(await f.worktreeHead() == f.head)
@@ -999,7 +1033,7 @@ struct ConflictRoundTests {
         await f.show(.waiting, waitingFor: "permission")
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await round.value
+        await ended(round)
         #expect(f.mark?.outcome == .failed(ConflictFailure.session(.blocked).message))
         #expect(try await f.branch() == f.head)
         #expect(await f.worktreeHead() == f.head)
@@ -1061,7 +1095,7 @@ struct ConflictRoundTests {
         await f.store.update { $0.prs[pr]?.resolveNow = true }
         #expect(f.mark?.outcome == .working)
         #expect(await f.rounds.removeAll(then: { nil }) == nil)
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[pr])
         #expect(state.round == nil && state.conflict == nil && !state.resolveNow)
         #expect(f.store.state.queue.isEmpty)
@@ -1088,9 +1122,9 @@ struct ConflictRoundTests {
         f.github.answers[RequestQueries.commentsName] = .success(ConflictFixture.noThreads())
         f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle())
         f.rounds.afterPoll(f.poll)
-        for _ in 0..<200 where try await f.branch() == f.head {
-            try await Task.sleep(for: .milliseconds(50))
-        }
+        // The own request writes its line in the Event log once its push went.
+        let line = "Reviews: Bifrost committed and pushed the change you asked for on \(f.pr.text)."
+        await waitUntil { f.events.values.contains(line) }
         let pushed = try await f.branch()
         #expect(
             await f.sourceGit(["log", "-1", "--format=%P %s", pushed.hex])
@@ -1143,13 +1177,15 @@ struct ConflictRoundTests {
         _ = try await f.postingRound(pushed: false)
         await f.restart()
         let round = try #require(f.rounds.queue.task(of: f.pr))
-        await round.value
+        await ended(round)
         #expect(try await f.branch() == f.head)
         #expect(f.mark == nil && f.store.state.prs[f.pr]?.round == nil)
         #expect(await f.worktreeHead() == f.head)
         await f.end()
     }
+}
 
+extension ConflictRoundTests.Ends {
     // MARK: - The ends of a round
 
     // A merge that went, while the copy cannot be reset (a person uses the session, or a change
@@ -1171,7 +1207,7 @@ struct ConflictRoundTests {
             }
         }
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         f.github.onRead = nil
         let merge = try await f.branch()
         #expect(merge != f.head)
@@ -1192,7 +1228,7 @@ struct ConflictRoundTests {
         f.deps.clock.advance(by: ReviewRounds.limit)
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await round.value
+        await ended(round)
         #expect(f.mark?.outcome == .failed(ConflictFailure.session(.timeout).message))
         #expect(try await f.branch() == f.head)
         #expect(await f.worktreeHead() == f.head)
@@ -1212,7 +1248,7 @@ struct ConflictRoundTests {
         f.deps.clock.advance(by: ReviewRounds.limit)
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await round.value
+        await ended(round)
         #expect(f.mark?.outcome == .failed(ConflictFailure.session(.timeout).message))
         #expect(try await f.branch() == f.head)
         #expect(try String(contentsOfFile: file, encoding: .utf8) == "mine\n")
@@ -1227,23 +1263,14 @@ struct ConflictRoundTests {
         let first = try f.pollNow()
         await f.sessionWorks()
         try await f.endTurn(result: f.result(needsYou: "Only you can pick the line."))
-        await first.value
+        await ended(first)
         await f.show(.busy)
         let base = try await f.pushMain(lineEleven: "line main again")
         try f.github(head: f.head, base: base)
-        let ended = Recorder<Bool>()
         let job = QueuedJob(pr: f.pr, kind: .conflict, since: Rows.now)
-        let run = Task {
-            await f.rounds.runConflict(job, saved: nil)
-            ended.record(true)
-        }
-        var turns = 0
-        while ended.values.isEmpty, turns < 2000 {
-            f.deps.clock.advance(by: .seconds(30))
-            try await Task.sleep(for: .milliseconds(2))
-            turns += 1
-        }
-        await run.value
+        let run = Task { await f.rounds.runConflict(job, saved: nil) }
+        await f.busyWaitPasses()
+        await ended(run)
         #expect(f.mark == nil && f.store.state.prs[f.pr]?.round == nil)
         #expect(f.store.state.prs[f.pr]?.waiting == nil)
         await f.show(.idle)
@@ -1259,7 +1286,7 @@ struct ConflictRoundTests {
         let merge = try await f.postingRound(pushed: true)
         await f.restart()
         let round = try #require(f.rounds.queue.task(of: f.pr))
-        await round.value
+        await ended(round)
         #expect(try await f.branch() == merge)
         #expect(f.mark?.outcome == .pushed(merge) && f.store.state.prs[f.pr]?.round == nil)
         await f.end()
@@ -1271,7 +1298,7 @@ struct ConflictRoundTests {
         let f = try await ConflictFixture()
         f.github.answers[HeadQueries.name] = .success(
             ConflictFixture.headRead(head: f.head, base: f.base, mergeable: "MERGEABLE"))
-        await (try f.pollNow()).value
+        await ended(try f.pollNow())
         #expect(f.mark == nil && f.store.state.queue.isEmpty)
         f.rounds.afterPoll(f.poll)
         #expect(f.rounds.queue.task(of: f.pr) == nil)
@@ -1281,7 +1308,7 @@ struct ConflictRoundTests {
         try await f.clock.sleep(for: .seconds(2))
         f.rounds.afterPoll(f.poll)
         let again = try #require(f.rounds.queue.task(of: f.pr))
-        await again.value
+        await ended(again)
         await f.end()
     }
 
@@ -1294,7 +1321,7 @@ struct ConflictRoundTests {
         f.rounds.afterPoll(f.poll)
         await f.rounds.resolveNow(f.pr)
         let round = try #require(f.rounds.queue.task(of: f.pr))
-        await round.value
+        await ended(round)
         #expect(f.mark == nil && f.store.state.prs[f.pr]?.round == nil)
         let line = try #require(f.events.values.first)
         #expect(line.contains("Owner-A/Repo-A#7") && line.contains("couldn't load"))
@@ -1315,7 +1342,7 @@ struct ConflictRoundTests {
         await f.sessionWorks()
         try f.resolve()
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         let merge = try await f.branch()
         #expect(f.mark?.outcome == .pushed(merge))
         #expect(f.store.state.prs[f.pr]?.waiting == nil)
@@ -1333,7 +1360,7 @@ struct ConflictRoundTests {
         let file = f.worktree + "/person.txt"
         try "mine\n".write(toFile: file, atomically: false, encoding: .utf8)
         try await f.endTurn(result: f.result())
-        await round.value
+        await ended(round)
         #expect(try String(contentsOfFile: file, encoding: .utf8) == "mine\n")
         #expect(f.store.state.prs[f.pr]?.waiting?.files == ["person.txt"])
         #expect(try await f.branch() == f.head)
@@ -1348,10 +1375,10 @@ struct ConflictRoundTests {
         let file = f.worktree + "/person.txt"
         try "mine\n".write(toFile: file, atomically: false, encoding: .utf8)
         let stop = Task { await f.rounds.stopSession(f.pr) }
-        await round.value
+        await ended(round)
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await stop.value
+        await ended(stop)
         #expect(try String(contentsOfFile: file, encoding: .utf8) == "mine\n")
         #expect(try await f.branch() == f.head)
         await f.end()
@@ -1365,7 +1392,8 @@ struct ConflictRoundTests {
             ConflictFixture.headRead(head: f.head, base: f.base, mergeable: "MERGEABLE"))
         f.rounds.afterPoll(f.poll)
         await f.rounds.resolveNow(f.pr)
-        await (try #require(f.rounds.queue.task(of: f.pr))).value
+        let queued = try #require(f.rounds.queue.task(of: f.pr))
+        await ended(queued)
         #expect(f.rounds.quietPairs.isEmpty)
         await f.end()
     }
@@ -1408,7 +1436,7 @@ struct ConflictRoundTests {
             let first = try f.pollNow()
             await f.sessionWorks()
             try await f.endTurn(result: f.result(needsYou: "Only you can pick the line."))
-            await first.value
+            await ended(first)
             await f.show(.busy)
             let base = try await f.pushMain(lineEleven: "line main again")
             try f.github(head: f.head, base: base)
@@ -1417,7 +1445,7 @@ struct ConflictRoundTests {
         #expect(f.store.state.queue.isEmpty && f.rounds.queue.task(of: f.pr) == nil)
         gate.record(true)
         if work == "own request" {
-            await f.rounds.ownRuns[f.pr]?.value
+            await ended(f.rounds.ownRuns[f.pr])
             f.rounds.ownRuns[f.pr] = nil
         } else if work == "discard" {
             _ = await f.rounds.discards[f.pr]?.value

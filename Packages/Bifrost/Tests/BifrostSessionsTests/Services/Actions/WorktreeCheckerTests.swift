@@ -409,7 +409,7 @@ struct RealWorktreeCheckTests {
         func run(_ args: [String], in dir: String) async throws {
             let result = await runner.run(
                 Command(
-                    "/usr/bin/git", ["-C", dir] + args, environment: env, timeout: .seconds(30)))
+                    testGit, ["-C", dir] + args, environment: env, timeout: .seconds(30)))
             try #require(result.succeeded, "git \(args.joined(separator: " ")): \(result.stderr)")
         }
         try FileManager.default.createDirectory(atPath: repo, withIntermediateDirectories: true)
@@ -436,7 +436,7 @@ struct RealWorktreeCheckTests {
         #expect(await check.trackedChanges(worktree) == 1)
         let withHead = await check.checkWithHead(worktree)
         let real = await runner.run(
-            Command("/usr/bin/git", ["-C", worktree, "rev-parse", "HEAD"], environment: env))
+            Command(testGit, ["-C", worktree, "rev-parse", "HEAD"], environment: env))
         #expect(withHead?.head == real.stdout.trimmed())
     }
 }

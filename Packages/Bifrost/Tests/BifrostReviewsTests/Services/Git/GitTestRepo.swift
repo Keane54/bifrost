@@ -52,7 +52,7 @@ struct GitTestRepo {
             folder: URL(filePath: root + "/reviews", directoryHint: .isDirectory))
         let pr = try #require(PRKey(text: "Owner-A/Repo-A#7"))
         let git = RepoGit(
-            path: "/usr/bin/git", environment: env, layout: layout, identity: identity,
+            path: testGit, environment: env, layout: layout, identity: identity,
             localRemotesForTestHome: true, runner: ProcessRunner())
         let source = root + "/source"
         let fm = FileManager.default
@@ -109,7 +109,7 @@ struct GitTestRepo {
         ]
         let result = await ProcessRunner().run(
             Command(
-                "/usr/bin/git", identity + ["-C", dir] + args, environment: env,
+                testGit, identity + ["-C", dir] + args, environment: env,
                 timeout: .seconds(30)))
         try #require(result.succeeded, "git \(args.joined(separator: " ")): \(result.stderr)")
     }

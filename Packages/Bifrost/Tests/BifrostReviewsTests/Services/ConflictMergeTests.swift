@@ -112,8 +112,20 @@ private func isGit(_ failure: ConflictFailure?) -> Bool {
     if case .git? = failure { true } else { false }
 }
 
-@Suite("the git of a conflict round", .serialized, .timeLimit(.minutes(3)), .tags(.realProcess))
+// The tests run real git, a second or two of process starts each, so they sit in lanes: a
+// lane runs its tests one at a time and the lanes run side by side. That keeps the suite
+// quick without starting the git of every test at once, which overloads a small machine.
+@Suite("the git of a conflict round", .timeLimit(.minutes(3)), .tags(.realProcess))
 struct ConflictMergeTests {
+    @Suite("the start of a merge", .serialized)
+    struct Starts {}
+    @Suite("the commit of a merge", .serialized)
+    struct Commits {}
+    @Suite("the checks of the worktree before the commit", .serialized)
+    struct Checks {}
+}
+
+extension ConflictMergeTests.Starts {
     // The merge of main into feat has a conflict on line 11. The auto commit holds the whole
     // merge, with the markers in src/a.swift and the new file of main, and its parents are the
     // head and the base.
@@ -256,7 +268,9 @@ struct ConflictMergeTests {
             try await r.checkWorktree(start)
         }
     }
+}
 
+extension ConflictMergeTests.Commits {
     // Claude resolved the conflict: the commit is a merge of the head and the base with the
     // message "Merge main into feat", with no signature. It holds the resolved file and the new
     // file of main.
@@ -375,7 +389,9 @@ struct ConflictMergeTests {
         let made = try await r.commit(start)
         #expect(try await r.file(path, of: made) + "\n" == table("x = 4"))
     }
+}
 
+extension ConflictMergeTests.Checks {
     // git or the file system can't answer the check before the session (here a folder that
     // can't be read). That can work in a later try, so the text asks for one.
     @Test func aCheckOfTheWorktreeThatFailsCanBeTriedAgain() async throws {

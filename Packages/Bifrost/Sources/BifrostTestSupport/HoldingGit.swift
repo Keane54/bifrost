@@ -3,8 +3,8 @@ import Foundation
 // A git program for the tests of the clones of Reviews: a shell script that holds each clone. A
 // clone adds its pid and its real folder to the log, then sleeps until SIGKILL ends it: it
 // ignores SIGTERM, and the sleep keeps the pid and the ignored signal of the script. So only the
-// SIGKILL at the end of the grace of a stop ends it. Each other command runs the real
-// /usr/bin/git. The script and its log are in the temporary folder of the test, so a test can
+// SIGKILL at the end of the grace of a stop ends it. Each other command runs the real git
+// (testGit). The script and its log are in the temporary folder of the test, so a test can
 // check that a stop ended the git that it started.
 package struct HoldingGit: Sendable {
     // One clone that runs or ran: its pid and its real folder.
@@ -30,7 +30,7 @@ package struct HoldingGit: Sendable {
                     exec /bin/sleep 600
                 fi
             done
-            exec /usr/bin/git "$@"
+            exec '\(testGit)' "$@"
 
             """
         try script.write(toFile: path, atomically: false, encoding: .utf8)

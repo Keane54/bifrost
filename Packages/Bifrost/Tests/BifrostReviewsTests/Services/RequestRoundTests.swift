@@ -79,26 +79,7 @@ private final class RequestFixture {
         repos = try RepoFixture(runner: runner)
         let repo = try #require(RepoName("Owner-A/Repo-A"))
         pr = try #require(PRKey(repo: repo, number: 7))
-        let lines = (1...20).map { "line \($0)" }
-        try await repos.source(repo, files: ["src/a.swift": lines.joined(separator: "\n") + "\n"])
-        // The head of the PR: a second commit, at refs/pull/7/head of the source.
-        let work = repos.root + "/work/" + repo.key
-        var changed = lines
-        changed[10] = "line eleven"
-        try (changed.joined(separator: "\n") + "\n").write(
-            toFile: work + "/src/a.swift", atomically: false, encoding: .utf8)
-        try await repos.setup(["commit", "-q", "-am", "two"], in: work)
-        try await repos.setup(
-            [
-                "push", "-q", repos.root + "/sources/" + repo.key + ".git",
-                "HEAD:refs/pull/7/head", "HEAD:refs/heads/feat",
-            ],
-            in: work)
-        let parsed = await ProcessRunner().run(
-            Command(
-                "/usr/bin/git", ["-C", work, "rev-parse", "HEAD"], environment: repos.env,
-                timeout: .seconds(30)))
-        head = try #require(CommitID(parsed.stdout.trimmed()))
+        head = try await repos.shared("request") { try await Self.source($0, repo) }
         store = try await ReviewsStore.open(layout: repos.layout, log: Recorder<StoreEvent>())
         // Claude Code trusts the clone (the .claude.json of the temporary home).
         let clone = String(repos.clone(repo).dropLast())
@@ -155,6 +136,30 @@ private final class RequestFixture {
         }
         await deps.start()
         rounds.start()
+    }
+
+    // The source of the repository: a first commit of src/a.swift, and the head of the PR, a
+    // second commit at refs/pull/7/head and at the branch feat. The result is the head.
+    private static func source(_ repos: RepoFixture, _ repo: RepoName) async throws -> CommitID {
+        let lines = (1...20).map { "line \($0)" }
+        try await repos.source(repo, files: ["src/a.swift": lines.joined(separator: "\n") + "\n"])
+        let work = repos.root + "/work/" + repo.key
+        var changed = lines
+        changed[10] = "line eleven"
+        try (changed.joined(separator: "\n") + "\n").write(
+            toFile: work + "/src/a.swift", atomically: false, encoding: .utf8)
+        try await repos.setup(["commit", "-q", "-am", "two"], in: work)
+        try await repos.setup(
+            [
+                "push", "-q", repos.root + "/sources/" + repo.key + ".git",
+                "HEAD:refs/pull/7/head", "HEAD:refs/heads/feat",
+            ],
+            in: work)
+        let parsed = await ProcessRunner().run(
+            Command(
+                testGit, ["-C", work, "rev-parse", "HEAD"], environment: repos.env,
+                timeout: .seconds(30)))
+        return try #require(CommitID(parsed.stdout.trimmed()))
     }
 
     private static func rounds(
@@ -294,7 +299,7 @@ private final class RequestFixture {
         let bare = repos.root + "/sources/" + pr.repo.key + ".git"
         let parsed = await ProcessRunner().run(
             Command(
-                "/usr/bin/git", ["-C", bare, "rev-parse", "refs/heads/feat"],
+                testGit, ["-C", bare, "rev-parse", "refs/heads/feat"],
                 environment: repos.env, timeout: .seconds(30)))
         return try #require(CommitID(parsed.stdout.trimmed()))
     }
@@ -432,7 +437,7 @@ private final class RequestFixture {
         await sessionWorks()
         let made = try files()
         try await endTurn(result: result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await first.value
+        await ended(first)
         return made
     }
 
@@ -539,7 +544,7 @@ private final class RequestFixture {
         let bare = repos.root + "/sources/" + pr.repo.key + ".git"
         let result = await ProcessRunner().run(
             Command(
-                "/usr/bin/git", ["-C", bare] + args, environment: repos.env,
+                testGit, ["-C", bare] + args, environment: repos.env,
                 timeout: .seconds(30)))
         return result.stdout.trimmed()
     }
@@ -577,9 +582,33 @@ private final class RequestFixture {
     }
 }
 
+// The tests run real git, a second or two of process starts each, so they sit in lanes: a
+// lane runs its tests one at a time and the lanes run side by side. That keeps the suite
+// quick without starting the git of every test at once, which overloads a small machine.
 @MainActor
-@Suite("the request rounds", .serialized, .timeLimit(.minutes(3)), .tags(.realProcess))
+@Suite("the request rounds", .timeLimit(.minutes(3)), .tags(.realProcess))
 struct RequestRoundTests {
+    @MainActor @Suite("a round from start to end", .serialized)
+    struct Rounds {}
+    @MainActor @Suite("the reads and the writes of a round", .serialized)
+    struct Reads {}
+    @MainActor @Suite("the one session of the PR", .serialized)
+    struct Session {}
+    @MainActor @Suite("the own requests of the user", .serialized)
+    struct OwnRequests {}
+    @MainActor @Suite("the discard of the changes", .serialized)
+    struct Discards {}
+    @MainActor @Suite("the push of an own request", .serialized)
+    struct OwnPushes {}
+    @MainActor @Suite("a PR that the search leaves out", .serialized)
+    struct Drops: DropTests {}
+    @MainActor @Suite("the details of a drop", .serialized)
+    struct DropDetails: DropTests {}
+    @MainActor @Suite("edits of a person and the fix commit", .serialized)
+    struct Edits {}
+}
+
+extension RequestRoundTests.Rounds {
     // A poll with new work starts a round: the session runs in the worktree of the PR with the
     // request flags and the sandbox of the clone, and reads the round folder with the input file
     // (the token and the items), the full diff, the mode and the rules, each with the round ID of
@@ -630,7 +659,7 @@ struct RequestRoundTests {
                 [["id": "PRRT_1", "outcome": "fixed"]],
                 commit: ["message": "fix: use the new name", "paths": ["src/a.swift"]],
                 checks: "passed"))
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.round == nil && state.lastError == nil && state.outbox == nil)
         let fix = try await f.branch()
@@ -661,7 +690,7 @@ struct RequestRoundTests {
                 ["id": "PRRT_1", "outcome": "needs-you", "question": "Rename it or keep it?"],
                 ["id": "PRRT_2", "outcome": "needs-you", "question": "Is the limit 10?"],
             ]))
-        await round.value
+        await ended(round)
         #expect(f.notices.values == [.needsYou(f.pr, questions: 2)])
         let question = try #require(f.store.state.prs[f.pr]?.questions[try f.node("PRRT_1")])
         #expect(question.text == "Rename it or keep it?" && question.place == "src/a.swift line 12")
@@ -694,7 +723,7 @@ struct RequestRoundTests {
             result: f.result([
                 ["id": "PRRT_1", "outcome": "needs-you", "question": "Rename it or keep it?"]
             ]))
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.round == nil && state.lastError == nil)
         #expect(state.questions[try f.node("PRRT_1")]?.text == "Rename it or keep it?")
@@ -714,7 +743,7 @@ struct RequestRoundTests {
         f.deps.clock.advance(by: ReviewRounds.limit)
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.lastError == RoundFailure.timeout.message(for: .request))
         let item = try f.node("PRRT_1")
@@ -733,7 +762,7 @@ struct RequestRoundTests {
         await f.sessionWorks()
         f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle("MERGED"))
         f.rounds.afterPoll(Rows.answer(mine: []))
-        await round.value
+        await ended(round)
         #expect(f.deps.calls.claudeRuns.contains(["stop", "abcdef12"]))
         #expect(f.deps.calls.claudeRuns.contains(["rm", "abcdef12"]))
         let state = try #require(f.store.state.prs[f.pr])
@@ -746,7 +775,7 @@ struct RequestRoundTests {
         let g = try await RequestFixture()
         g.github.answers[RequestQueries.contextName] = .success(
             RequestFixture.context(head: g.head, state: "MERGED"))
-        await (try g.poll()).value
+        await ended(try g.poll())
         #expect(g.start == nil)
         #expect(g.store.state.prs[g.pr]?.round == nil && g.store.state.prs[g.pr]?.lastError == nil)
         await g.end()
@@ -766,7 +795,7 @@ struct RequestRoundTests {
         #expect(try f.inputFile()["items"]?.array?.first?.object?["id"] == "PRRT_1")
         #expect(f.store.state.prs[f.pr]?.handleOlder == false)
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await round.value
+        await ended(round)
         #expect(f.store.state.prs[f.pr]?.handled[try f.node("PRRT_1")] != nil)
         #expect(f.writes.isEmpty)
         await f.end()
@@ -823,7 +852,7 @@ struct RequestRoundTests {
         let items = try f.inputFile()["items"]?.array?.compactMap { $0.object?["id"] }
         #expect(items == ["PRRT_1"])
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await round.value
+        await ended(round)
         #expect(f.writes.isEmpty)
         await f.end()
     }
@@ -868,7 +897,7 @@ struct RequestRoundTests {
                 ["PRRT_1", "PRRT_2", "PRRT_3"].map { id -> JSONValue in
                     ["id": .string(id), "outcome": "no-action"]
                 }))
-        await round.value
+        await ended(round)
         #expect(f.store.state.prs[f.pr]?.held.isEmpty == true && f.writes.isEmpty)
         await f.end()
     }
@@ -907,12 +936,14 @@ struct RequestRoundTests {
         #expect(state.handled[second]?.lastReplyAt == RequestFixture.threadTime)
         #expect(state.questions[second] == nil)
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await round.value
+        await ended(round)
         #expect(f.store.state.prs[f.pr]?.questions.isEmpty == true)
         #expect(f.notices.values.isEmpty)
         await f.end()
     }
+}
 
+extension RequestRoundTests.Reads {
     // A Fixed item that names an earlier commit needs a commit of the PR: after the merge base
     // and in the head of the round. The merge base and a commit that the clone does not have
     // refuse the result: the round holds its item and writes nothing. The head passes: the
@@ -932,7 +963,7 @@ struct RequestRoundTests {
         ][by]
         try await f.endTurn(
             result: f.result([["id": "PRRT_1", "outcome": "fixed", "by": .text(commit)]]))
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         let item = try f.node("PRRT_1")
         #expect(state.round == nil && state.outbox == nil && f.notices.values.isEmpty)
@@ -963,7 +994,8 @@ struct RequestRoundTests {
         f.github.answers[RequestQueries.threadsName] = .success(
             RequestFixture.threads(ids, cut: true))
         await f.rounds.handle(f.pr, copilot: false)
-        await (try #require(f.rounds.queue.task(of: f.pr))).value
+        let queued = try #require(f.rounds.queue.task(of: f.pr))
+        await ended(queued)
         #expect(f.start == nil && f.writes.isEmpty && f.notices.values.isEmpty)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.lastError == RoundFailure.tooManyComments.message(for: .request))
@@ -979,7 +1011,7 @@ struct RequestRoundTests {
     @Test func aFailedReadQueuesNoRoundUntilTheWaitEnds() async throws {
         let f = try await RequestFixture()
         f.github.answers[RequestQueries.contextName] = .failure(.unknownOutcome("Bad gateway"))
-        await (try f.poll()).value
+        await ended(try f.poll())
         let error = RoundFailure.readFailed(.unknownOutcome("Bad gateway"))
         #expect(f.store.state.prs[f.pr]?.lastError == error.message(for: .request))
         // The polls in the wait queue nothing and read nothing.
@@ -1005,7 +1037,7 @@ struct RequestRoundTests {
         let f = try await RequestFixture()
         f.github.answers[RequestQueries.contextName] = .success(
             RequestFixture.context(head: f.head, author: "user-b"))
-        await (try f.poll()).value
+        await ended(try f.poll())
         #expect(f.start == nil && f.writes.isEmpty && f.notices.values.isEmpty)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.lastError == RoundFailure.notYours.message(for: .request))
@@ -1025,7 +1057,7 @@ struct RequestRoundTests {
         await f.show(.waiting, waitingFor: "permission")
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.lastError == RoundFailure.blocked.message(for: .request))
         let item = try f.node("PRRT_1")
@@ -1105,7 +1137,8 @@ struct RequestRoundTests {
             }
         }
         await f.rounds.tryAgain(f.pr)
-        await (try #require(f.rounds.queue.task(of: f.pr))).value
+        let queued = try #require(f.rounds.queue.task(of: f.pr))
+        await ended(queued)
         for task in removal.values { #expect(await task.value == nil) }
         #expect(
             f.writes == [
@@ -1165,13 +1198,15 @@ struct RequestRoundTests {
         #expect(f.store.state.prs[f.pr]?.round?.phase == .running)
         let round = try #require(f.rounds.queue.task(of: f.pr))
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await round.value
+        await ended(round)
         #expect(f.store.state.prs[f.pr]?.handled[try f.node("PRRT_1")] != nil)
         #expect(f.store.state.prs[f.pr]?.round == nil)
         #expect(f.deps.calls.claudeRuns.filter { $0.first == "--bg" }.count == 1)
         await f.end()
     }
+}
 
+extension RequestRoundTests.Session {
     // MARK: - The one session of the PR
 
     // Two rounds of a PR use one session: the first round starts it, and the second round types
@@ -1183,7 +1218,7 @@ struct RequestRoundTests {
         await f.sessionWorks()
         let one = try f.files()
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await first.value
+        await ended(first)
         #expect(f.store.state.prs[f.pr]?.handled[try f.node("PRRT_1")] != nil)
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
         await f.typedTurnWorks(sends: 1)
@@ -1199,7 +1234,7 @@ struct RequestRoundTests {
         #expect(try f.inputFile()["items"]?.array?.compactMap { $0.object?["id"] } == ["PRRT_2"])
         #expect(f.store.state.prs[f.pr]?.requestSession?.rounds == 2)
         try await f.endTurn(result: f.result([["id": "PRRT_2", "outcome": "no-action"]]))
-        await second.value
+        await ended(second)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.handled[try f.node("PRRT_2")] != nil && state.lastError == nil)
         #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" || $0.first == "stop" })
@@ -1215,7 +1250,7 @@ struct RequestRoundTests {
         let one = try f.files()
         let late = try f.result([["id": "PRRT_1", "outcome": "no-action"]])
         try await f.endTurn(result: late)
-        await first.value
+        await ended(first)
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
         await f.typedTurnWorks(sends: 1)
         let two = try f.files()
@@ -1227,7 +1262,7 @@ struct RequestRoundTests {
         await waitUntil { f.deps.clock.nextDeadline?.offset == settle }
         #expect(f.store.state.prs[f.pr]?.round?.phase == .running)
         try f.result([["id": "PRRT_2", "outcome": "no-action"]]).write(to: two.result)
-        await second.value
+        await ended(second)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.handled[try f.node("PRRT_2")] != nil && state.lastError == nil)
         await f.end()
@@ -1243,7 +1278,7 @@ struct RequestRoundTests {
             result: f.result([
                 ["id": "PRRT_1", "outcome": "needs-you", "question": "Rename it or keep it?"]
             ]))
-        await first.value
+        await ended(first)
         let item = try f.node("PRRT_1")
         #expect(await f.rounds.answerQuestions(f.pr, [item: .text("Rename it.")]))
         let second = try #require(f.rounds.queue.task(of: f.pr))
@@ -1261,7 +1296,7 @@ struct RequestRoundTests {
         #expect(items.first?["question"] == "Rename it or keep it?")
         #expect(items.first?["answer"] == "Rename it.")
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await second.value
+        await ended(second)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.questions.isEmpty && state.handled[item] != nil)
         #expect(state.requestSession?.sessionID.text == RequestFixture.id)
@@ -1276,7 +1311,7 @@ struct RequestRoundTests {
         let first = try await f.poll()
         await f.sessionWorks()
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await first.value
+        await ended(first)
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
         await f.typedTurnWorks(sends: 1)
         await f.show(.waiting, waitingFor: "permission")
@@ -1287,7 +1322,7 @@ struct RequestRoundTests {
         try #require(f.deps.calls.claudeRuns.contains(["stop", "abcdef12"]))
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await second.value
+        await ended(second)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.lastError == RoundFailure.blocked.message(for: .request))
         let item = try f.node("PRRT_2")
@@ -1309,7 +1344,7 @@ struct RequestRoundTests {
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
         await f.roundWaits()
         f.deps.clock.advance(by: PRSessions.busyWait)
-        await second.value
+        await ended(second)
         let state = try #require(f.store.state.prs[f.pr])
         let item = try f.node("PRRT_2")
         #expect(state.lastError == RoundFailure.sessionBusy.message(for: .request))
@@ -1349,7 +1384,7 @@ struct RequestRoundTests {
         // A cancel of the test (its time limit) stops the round too, so a round that wrongly
         // starts its turn cannot hold the test.
         await withTaskCancellationHandler {
-            await second.value
+            await ended(second)
         } onCancel: {
             second.cancel()
         }
@@ -1379,7 +1414,7 @@ struct RequestRoundTests {
         let two = try f.files()
         #expect(f.inputNames == f.names(of: two))
         try await f.endTurn(result: f.result([["id": "PRRT_2", "outcome": "no-action"]]))
-        await third.value
+        await ended(third)
         #expect(f.store.state.prs[f.pr]?.lastError == nil)
         await f.end()
     }
@@ -1408,7 +1443,7 @@ struct RequestRoundTests {
                 [["id": "PRRT_1", "outcome": "fixed"]],
                 commit: ["message": "fix: use the new name", "paths": ["src/a.swift"]],
                 checks: "passed"))
-        await round.value
+        await ended(round)
         #expect(FileManager.default.fileExists(atPath: leftover) == inUse)
         #expect(try await f.branch() != f.head)
         // The person is done, with no change.
@@ -1418,7 +1453,7 @@ struct RequestRoundTests {
         #expect(!FileManager.default.fileExists(atPath: leftover))
         #expect(f.store.state.prs[f.pr]?.waitsForYou == nil)
         try await f.endTurn(result: f.result([["id": "PRRT_2", "outcome": "no-action"]]))
-        await second.value
+        await ended(second)
         #expect(f.store.state.prs[f.pr]?.lastError == nil)
         await f.end()
     }
@@ -1431,7 +1466,7 @@ struct RequestRoundTests {
         f.prompts.refusals = [.cancelled]
         f.prompts.onSend = { try? f.personWorks() }
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
-        await second.value
+        await ended(second)
         let state = try #require(f.store.state.prs[f.pr])
         let item = try f.node("PRRT_2")
         #expect(state.lastError == RoundFailure.stopped.message(for: .request))
@@ -1453,10 +1488,10 @@ struct RequestRoundTests {
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
         await f.roundWaits()
         let stop = Task { await f.rounds.stopSession(f.pr) }
-        await second.value
+        await ended(second)
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await stop.value
+        await ended(stop)
         let state = try #require(f.store.state.prs[f.pr])
         let item = try f.node("PRRT_2")
         #expect(state.lastError == RoundFailure.stopped.message(for: .request))
@@ -1492,7 +1527,7 @@ struct RequestRoundTests {
         } else {
             try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
         }
-        await round.value
+        await ended(round)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.round == nil && state.lastError == nil)
         #expect(state.handled[try f.node("PRRT_1")] != nil)
@@ -1500,7 +1535,9 @@ struct RequestRoundTests {
         if fix { #expect(try await f.branch() != f.head) }
         await f.end()
     }
+}
 
+extension RequestRoundTests.OwnRequests {
     // MARK: - The own requests of the user
 
     // Between rounds, the person asks Claude in the session for a change. At the end of that turn
@@ -1550,7 +1587,7 @@ struct RequestRoundTests {
         // The change that the file does not list stays, so the next round asks the person.
         try #require(FileManager.default.fileExists(atPath: notes))
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
-        await second.value
+        await ended(second)
         #expect(
             f.store.state.prs[f.pr]?.waitsForYou
                 == RoundFailure.changesNotOnGitHub.message(for: .request))
@@ -1654,7 +1691,7 @@ struct RequestRoundTests {
         f.rounds.afterPoll(f.answer)
         #expect(f.rounds.ownRuns[f.pr] == nil)
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await round.value
+        await ended(round)
         await f.ownEnded()
         let pushed = try await f.branch()
         #expect(
@@ -1684,10 +1721,10 @@ struct RequestRoundTests {
         try changed.write(toFile: f.worktree + "/src/a.swift", atomically: false, encoding: .utf8)
         if file { try f.writeOwnRequest(paths: ["src/a.swift"]) }
         let stop = Task { await f.rounds.stopSession(f.pr) }
-        await round.value
+        await ended(round)
         await f.parkWaitStarted()
         f.deps.clock.advance(by: SessionActions.parkWait)
-        await stop.value
+        await ended(stop)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.lastError == RoundFailure.stopped.message(for: .request))
         // The session no longer works.
@@ -1702,7 +1739,9 @@ struct RequestRoundTests {
         }
         await f.end()
     }
+}
 
+extension RequestRoundTests.Discards {
     // The person undoes the changes in the session after the safety net stopped the round, so
     // the files that the reason keeps are gone. A pick of Discard these changes then finds
     // nothing to discard: it says so, and the reason clears.
@@ -1711,7 +1750,7 @@ struct RequestRoundTests {
         _ = try await f.firstRound()
         try await f.personTurn { try f.personWorks() }
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
-        await second.value
+        await ended(second)
         #expect(f.store.state.prs[f.pr]?.waiting?.files.count == 2)
         try await f.personTurn {
             try RequestFixture.lineEleven("line eleven").write(
@@ -1736,7 +1775,7 @@ struct RequestRoundTests {
         #expect(await f.rounds.discardChanges(f.pr, click: UserClick()) == .notNow)
         #expect(f.workOfThePersonStays)
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
-        await second.value
+        await ended(second)
         #expect(f.store.state.prs[f.pr]?.waitsForYou != nil)
         #expect(await f.rounds.changesToDiscard(f.pr) == .files(["notes.txt", "src/a.swift"]))
         #expect(await f.rounds.discardChanges(f.pr, click: UserClick()) == .discarded)
@@ -1750,7 +1789,7 @@ struct RequestRoundTests {
         let third = try #require(f.rounds.queue.task(of: f.pr))
         await f.typedTurnWorks(sends: 1)
         try await f.endTurn(result: f.result([["id": "PRRT_2", "outcome": "no-action"]]))
-        await third.value
+        await ended(third)
         #expect(f.store.state.prs[f.pr]?.lastError == nil)
         await f.end()
     }
@@ -1763,7 +1802,7 @@ struct RequestRoundTests {
         _ = try await f.firstRound()
         try await f.personTurn { try f.personWorks() }
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
-        await second.value
+        await ended(second)
         let lock = GitPlace.adminFolder(f.pr, f.repos.layout) + "/index.lock"
         try "".write(toFile: lock, atomically: false, encoding: .utf8)
         #expect(await f.rounds.discardChanges(f.pr, click: UserClick()) == .failed)
@@ -1794,7 +1833,7 @@ struct RequestRoundTests {
             }
         }
         let second = try await f.newThreads(["PRRT_1", "PRRT_2"])
-        await second.value
+        await ended(second)
         let waiting = try #require(f.store.state.prs[f.pr]?.waiting)
         #expect(waiting.files.count == 5 && waiting.fileCount == 42)
         let answer = try f.answer(threads: ["PRRT_1", "PRRT_2"])
@@ -1823,7 +1862,7 @@ struct RequestRoundTests {
             f.store.state.prs[f.pr]?.round == nil || f.prompts.sends.count == 2
         }
         try #require(f.prompts.sends.count == 1)
-        await second.value
+        await ended(second)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.waitsForYou == RoundFailure.changesNotOnGitHub.message(for: .request))
         #expect(state.held == [try f.node("PRRT_2")] && state.lastError == nil)
@@ -1858,7 +1897,9 @@ struct RequestRoundTests {
         #expect(state.outbox == nil && state.waitsForYou == nil)
         await f.end()
     }
+}
 
+extension RequestRoundTests.OwnPushes {
     // Try again on a kept own outbox sends it through the own request: a push that goes clears
     // the reason and writes the line of the own request in the Event log; a conflict shows Needs
     // you with the text of the own request, not an error of a round, and keeps the change.
@@ -1886,7 +1927,8 @@ struct RequestRoundTests {
         }
         #expect(Rows.mine(f.answer, f.store.state).first?.unsentUpdates == true)
         await f.rounds.tryAgain(f.pr)
-        await (try #require(f.rounds.queue.task(of: f.pr))).value
+        let queued = try #require(f.rounds.queue.task(of: f.pr))
+        await ended(queued)
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.lastError == nil && state.outbox == nil && state.round == nil)
         if let theirs {
@@ -1936,7 +1978,7 @@ struct RequestRoundTests {
         #expect(f.bgRuns.count == 1)
         try await f.endTurn(
             result: f.result([["id": "PRRT_2", "outcome": "no-action"]], head: pushed))
-        await second.value
+        await ended(second)
         f.github.onRead = nil
         let state = try #require(f.store.state.prs[f.pr])
         #expect(state.handled[try f.node("PRRT_2")] != nil)
@@ -2035,7 +2077,7 @@ struct RequestRoundTests {
             result: f.result([
                 ["id": "PRRT_1", "outcome": "needs-you", "question": "Rename it or keep it?"]
             ]))
-        await round.value
+        await ended(round)
         #expect(f.store.state.prs[f.pr]?.requestSession != nil)
         #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
         f.github.answers[RequestQueries.stateName] = .success(WritesData.lifecycle("MERGED"))
@@ -2047,10 +2089,16 @@ struct RequestRoundTests {
         #expect(!FileManager.default.fileExists(atPath: f.input))
         await f.end()
     }
+}
 
+// The helpers of the two lanes of a PR that the search leaves out.
+@MainActor
+private protocol DropTests {}
+
+extension DropTests {
     // A PR of the user with a session that waits for an answer, and a change of no round in its
     // worktree when withChange is true.
-    private func fixtureWithSession(
+    func fixtureWithSession(
         withChange: Bool = false, runner: any CommandRunner = ProcessRunner()
     ) async throws -> RequestFixture {
         let f = try await RequestFixture(runner: runner)
@@ -2060,7 +2108,7 @@ struct RequestRoundTests {
             result: f.result([
                 ["id": "PRRT_1", "outcome": "needs-you", "question": "Rename it or keep it?"]
             ]))
-        await round.value
+        await ended(round)
         if withChange {
             try "mine\n".write(
                 toFile: f.worktree + "/mine.txt", atomically: false, encoding: .utf8)
@@ -2068,10 +2116,26 @@ struct RequestRoundTests {
         return f
     }
 
-    private func stateReads(_ f: RequestFixture) -> Int {
+    func stateReads(_ f: RequestFixture) -> Int {
         f.github.calls.filter { $0 == .read(RequestQueries.stateName) }.count
     }
 
+    func leaveOut(_ f: RequestFixture) async {
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+    }
+
+    static func keptLine(_ pr: PRKey) -> String {
+        "Reviews: GitHub's search hasn't listed \(pr.text) for a day. Bifrost kept its copy, "
+            + "because it has changes that aren't on GitHub. Remove all clones deletes it."
+    }
+
+    static func droppedLine(_ pr: PRKey) -> String {
+        "Reviews: GitHub's search hasn't listed \(pr.text) for a day, so Bifrost deleted its copy."
+    }
+}
+
+extension RequestRoundTests.Drops {
     // A search that leaves out an open PR (an index gap) must not delete its session and its copy.
     // The poll reads the state of the PR, and an open PR stays.
     @Test func anOpenPRThatTheSearchLeavesOutKeepsItsWork() async throws {
@@ -2135,20 +2199,6 @@ struct RequestRoundTests {
     }
 
     // A poll that leaves the PR out, and the end of the drop task that it starts.
-    private func leaveOut(_ f: RequestFixture) async {
-        f.rounds.afterPoll(Rows.answer(mine: []))
-        await waitUntil { f.rounds.drops[f.pr] == nil }
-    }
-
-    private static func keptLine(_ pr: PRKey) -> String {
-        "Reviews: GitHub's search hasn't listed \(pr.text) for a day. Bifrost kept its copy, "
-            + "because it has changes that aren't on GitHub. Remove all clones deletes it."
-    }
-
-    private static func droppedLine(_ pr: PRKey) -> String {
-        "Reviews: GitHub's search hasn't listed \(pr.text) for a day, so Bifrost deleted its copy."
-    }
-
     // An open PR that the search leaves out for good costs one state read in each
     // WorkRule.readRetry, not one in each poll.
     @Test func anOpenPRThatTheSearchLeavesOutIsReadAtMostEachFifteenMinutes() async throws {
@@ -2259,7 +2309,7 @@ struct RequestRoundTests {
             return
         }
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await round.value
+        await ended(round)
         #expect(f.store.state.prs[f.pr]?.requestSession != nil)
         try await f.pass(WorkRule.readRetry)
         await leaveOut(f)
@@ -2345,7 +2395,9 @@ struct RequestRoundTests {
         #expect(FileManager.default.fileExists(atPath: f.worktree))
         await f.end()
     }
+}
 
+extension RequestRoundTests.DropDetails {
     // A PR with no worktree (only its held items, questions or marks are left) loses them after a
     // day with no line about a copy.
     @Test func aPRWithNoWorktreeIsDroppedWithNoLine() async throws {
@@ -2513,14 +2565,16 @@ struct RequestRoundTests {
         let round = try await f.poll()
         await f.sessionWorks()
         try await f.endTurn(result: f.result([["id": "PRRT_1", "outcome": "no-action"]]))
-        await round.value
+        await ended(round)
         #expect(f.store.state.prs[f.pr]?.requestSession != nil)
         #expect(await f.rounds.removeAll { nil } == nil)
         #expect(f.deps.calls.claudeRuns.contains(["rm", "abcdef12"]))
         #expect(f.store.state.prs[f.pr]?.requestSession == nil)
         await f.end()
     }
+}
 
+extension RequestRoundTests.Edits {
     // MARK: - Edits of a person never ride in a fix commit
 
     private static let fixCommit: JSONValue = [
@@ -2541,7 +2595,7 @@ struct RequestRoundTests {
         try await f.endTurn(
             result: f.result(
                 [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
-        await round.value
+        await ended(round)
         await f.ownEnded()
         let log = await f.sourceGit(["log", "--format=%P|%s", "\(f.head.hex)..feat"])
         #expect(log == "\(f.head.hex)|refactor: rename line 11")
@@ -2574,7 +2628,7 @@ struct RequestRoundTests {
                     ["id": "PRRT_1", "outcome": "fixed"],
                     ["id": "PRRT_2", "outcome": "no-fix", "reply": "We keep it."],
                 ], commit: Self.fixCommit, checks: "passed"))
-        await round.value
+        await ended(round)
         #expect(edited.values == [true])
         #expect(try await f.branch() == f.head)
         // The reply that needs no fix goes, and no "Fixed by" reply does.
@@ -2605,7 +2659,7 @@ struct RequestRoundTests {
         try await f.endTurn(
             result: f.result(
                 [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
-        await round.value
+        await ended(round)
         #expect(try await f.branch() == f.head && f.writes.isEmpty)
         #expect(await f.worktreeHead() == f.head && f.fileA == "person\n")
         #expect(f.store.state.prs[f.pr]?.waiting?.files == ["src/a.swift"])
@@ -2739,7 +2793,7 @@ struct RequestRoundTests {
         try await f.endTurn(
             result: f.result(
                 [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
-        await round.value
+        await ended(round)
         await f.ownEnded()
         let log = await f.sourceGit(["log", "--format=%P|%s", "\(f.head.hex)..feat"])
         #expect(log == "\(f.head.hex)|refactor: rename line 11")
@@ -2779,7 +2833,7 @@ struct RequestRoundTests {
         try await f.endTurn(
             result: f.result(
                 [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
-        await round.value
+        await ended(round)
         #expect(try await f.branch() == theirs.values.first)
         #expect(await f.worktreeHead() == f.head)
         await f.end()
@@ -2802,7 +2856,7 @@ struct RequestRoundTests {
         try await f.endTurn(
             result: f.result(
                 [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
-        await round.value
+        await ended(round)
         #expect(try await f.branch() == f.head && f.writes.isEmpty)
         #expect(f.store.state.prs[f.pr]?.lastError == RoundFailure.prClosed.message(for: .request))
         #expect(await f.worktreeHead() == f.head)
@@ -2823,7 +2877,7 @@ struct RequestRoundTests {
         try await f.endTurn(
             result: f.result(
                 [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
-        await round.value
+        await ended(round)
         #expect(try await f.branch() == f.head && f.writes.isEmpty)
         let at = try #require(await f.worktreeHead())
         #expect(at != f.head)
@@ -2846,7 +2900,7 @@ struct RequestRoundTests {
         try await f.endTurn(
             result: f.result(
                 [["id": "PRRT_1", "outcome": "fixed"]], commit: Self.fixCommit, checks: "passed"))
-        await round.value
+        await ended(round)
         let fix = try await f.branch()
         #expect(fix != f.head)
         #expect(f.writes.first == .replyToThread(

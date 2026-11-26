@@ -44,11 +44,46 @@ struct RepoFixture {
         layout = ReviewsLayout(
             folder: URL(filePath: root + "/reviews", directoryHint: .isDirectory))
         git = RepoGit(
-            path: self.holding?.path ?? "/usr/bin/git", environment: env, layout: layout,
+            path: self.holding?.path ?? testGit, environment: env, layout: layout,
             identity: GitTestRepo.identity, localRemotesForTestHome: true, runner: runner)
         let sources = root + "/sources"
         address = { URL(filePath: "\(sources)/\($0.key).git", directoryHint: .isDirectory) }
         store = RepoStore(layout: layout, git: git, cloneAddress: address, clock: clock, log: log)
+    }
+
+    // The work and sources folders of a set-up that many tests share, made once per test process.
+    // The first test to ask for a key runs make on a fixture of its own and keeps an image of
+    // those two folders and make's result, and every test then gets a fresh copy of the image in
+    // its own root, along with that result. The set-up's ten or so git runs cost about a second
+    // a test in the sandbox, so this way only the first test pays for them. The config of a bare
+    // source names the work repository it was cloned from, so the copy names its own instead.
+    func shared<Value: Sendable>(
+        _ key: String, make: @escaping @MainActor (RepoFixture) async throws -> Value
+    ) async throws -> Value {
+        let made: SharedSetup
+        if let task = sharedSetups[key] {
+            made = try await task.value
+        } else {
+            let task = Task { @MainActor () throws -> SharedSetup in
+                let template = try RepoFixture()
+                defer { template.folder.remove() }
+                let value = try await make(template)
+                let image = try FolderImage(of: template.root, folders: ["work", "sources"])
+                return SharedSetup(root: template.root, image: image, value: value)
+            }
+            sharedSetups[key] = task
+            do {
+                made = try await task.value
+            } catch {
+                sharedSetups[key] = nil
+                throw error
+            }
+        }
+        let (old, new) = (Data(made.root.utf8), Data(root.utf8))
+        try made.image.editing { path, data in
+            path.hasSuffix(".git/config") ? data.replacing(old, with: new) : nil
+        }.write(to: root)
+        return try #require(made.value as? Value)
     }
 
     // A bare source repository for the repository, with one commit of the files. The result is
@@ -79,7 +114,7 @@ struct RepoFixture {
         try await setup(["config", "uploadpack.allowFilter", "true"], in: bare)
         try await setup(["config", "uploadpack.allowAnySHA1InWant", "true"], in: bare)
         let head = await ProcessRunner().run(
-            Command("/usr/bin/git", ["-C", work, "rev-parse", "HEAD"], environment: env,
+            Command(testGit, ["-C", work, "rev-parse", "HEAD"], environment: env,
                 timeout: .seconds(30)))
         return try #require(CommitID(head.stdout.trimmed()))
     }
@@ -113,7 +148,7 @@ struct RepoFixture {
         ]
         let result = await ProcessRunner().run(
             Command(
-                "/usr/bin/git", identity + ["-C", dir] + args, environment: env,
+                testGit, identity + ["-C", dir] + args, environment: env,
                 timeout: .seconds(30)))
         try #require(result.succeeded, "git \(args.joined(separator: " ")): \(result.stderr)")
     }
@@ -159,7 +194,7 @@ struct RepoFixture {
     // The output of a plain git command in the folder.
     func gitOutput(_ args: [String], in dir: String) async -> String {
         await ProcessRunner().run(
-            Command("/usr/bin/git", ["-C", dir] + args, environment: env, timeout: .seconds(30))
+            Command(testGit, ["-C", dir] + args, environment: env, timeout: .seconds(30))
         ).stdout.trimmed()
     }
 
@@ -175,6 +210,18 @@ struct RepoFixture {
         return attributes?[.type] as? FileAttributeType == .typeDirectory
     }
 }
+
+// A set-up of RepoFixture.shared: the root it was made in, the image of its work and sources
+// folders and the result of its make.
+private struct SharedSetup: Sendable {
+    var root: String
+    var image: FolderImage
+    var value: any Sendable
+}
+
+// The set-ups that the tests of this process share, by key. A set-up that fails is dropped, so
+// the next test makes it again.
+@MainActor private var sharedSetups: [String: Task<SharedSetup, any Error>] = [:]
 
 private func repo(_ text: String) throws -> RepoName { try #require(RepoName(text)) }
 
