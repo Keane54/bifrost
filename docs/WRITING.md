@@ -28,8 +28,8 @@ English that explains things clearly rather than listing them as tersely as poss
 - **Humanise it.** Run the final text through the `bifrost-humanise` skill. Contractions and "you"
   are fine. British spelling.
 
-Docs never use ASD-STE100 (Simplified Technical English). That style is for code comments and commit
-messages only.
+Nothing in this repo uses ASD-STE100 (Simplified Technical English): not the docs, not code
+comments and not commit messages. Write them all in the same natural voice.
 
 ### An example
 
@@ -74,5 +74,6 @@ this as a step, so it isn't left for later.
 | `docs/archive/` | Finished plans and phase records (local only, not in git) |
 
 Plans and other docs written for agents (`docs/plans/`) can stay short and terse to save tokens,
-as long as they lose no meaning. Code comments and commit messages keep the ASD-STE100 style.
-In-app text stays friendly and plain.
+as long as they lose no meaning. Code comments and commit messages use the same natural voice as the
+docs, kept tight: one or two flowing sentences on what the code does and why, never a list of
+fragments. In-app text stays friendly and plain.
