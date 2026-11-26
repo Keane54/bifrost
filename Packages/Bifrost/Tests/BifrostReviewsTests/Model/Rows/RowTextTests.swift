@@ -45,6 +45,13 @@ private func draft(_ review: String, path: String) throws -> DraftRecord {
 
 @Suite("the row texts", .testTimeLimit)
 struct RowTextTests {
+    // A PR number never gets a thousands separator.
+    @Test func thePRNumberHasNoThousandsSeparator() {
+        #expect(RowText.number(2027) == "#2027")
+        #expect(RowText.number(123_456) == "#123456")
+        #expect(RowText.number(7) == "#7")
+    }
+
     @Test func theAgeAndTheSizeTexts() {
         #expect(RowText.age(.seconds(-5)) == "just now")
         #expect(RowText.age(.seconds(59)) == "just now")
@@ -374,7 +381,12 @@ struct RowTextTests {
         #expect(RowText.status(.approved, cut: false) == label("Approved", .green))
         #expect(
             RowText.status(.pending, cut: true)
-                == label("Pending", .dim, "Bifrost read only the newest items of this PR."))
+                == label(
+                    "Pending review", .dim, "Bifrost read only the newest items of this PR."))
+        #expect(RowText.status(.drafted, cut: false) == label("In draft", .dim))
+        #expect(
+            RowText.status(.drafted, cut: true)
+                == label("In draft", .dim, "Bifrost read only the newest items of this PR."))
 
         let trust =
             "Bifrost needs you to trust this repository first. Click Trust at the top of the panel."

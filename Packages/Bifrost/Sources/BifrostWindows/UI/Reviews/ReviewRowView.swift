@@ -403,7 +403,8 @@ private struct PRNumberLink: View {
 
     var body: some View {
         Button(action: open) {
-            Text("#\(number)")
+            // Verbatim, so SwiftUI doesn't localize the number into "#2,027".
+            Text(verbatim: RowText.number(number))
                 .underline(hovered)
                 .foregroundStyle((hovered ? ThemeTokens.text : ThemeTokens.textDim).color)
                 .lineLimit(1)

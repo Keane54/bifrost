@@ -894,7 +894,8 @@ The review status comes from the first rule that holds:
 | Changes requested | Red | The latest decision of a human reviewer requests changes |
 | Comments | Blue | A thread is open in the work, the older items, the questions or the outbox |
 | Approved | Soft green | A human reviewer approved, and no thread is open |
-| Pending | Grey | Anything else, also with no reviewer |
+| In draft | Grey | The PR is a draft on GitHub, and none of the rules above holds |
+| Pending review | Grey | Anything else, also with no reviewer |
 
 Only threads give Comments. A review body or a top-level comment is still work for a round, but it
 doesn't change the status, so a "Thanks" never hides an approval. Copilot is never a reviewer here:
@@ -957,8 +958,8 @@ haven't yet turned it on and confirmed it in this app, the new work waits too, s
 older.
 
 A row where Claude needs you comes first. The others follow by status, in the order Changes
-requested, Comments, Pending and Approved, and inside a group the most recently updated PR comes
-first.
+requested, Comments, Pending review (In draft sorts with it) and Approved, and inside a group the
+most recently updated PR comes first.
 
 `ToReviewRulesTests`, `MyPRRulesTests`, `RowTextTests`, `IgnoreRuleTests` and `ReviewRowTests`
 cover these rules, each with a fixed time.

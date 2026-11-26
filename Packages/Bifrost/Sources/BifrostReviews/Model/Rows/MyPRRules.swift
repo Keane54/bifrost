@@ -241,7 +241,7 @@ enum MyPRRules {
         return switch status {
         case .changesRequested: 1
         case .comments: 2
-        case .pending: 3
+        case .pending, .drafted: 3
         case .approved: 4
         }
     }
@@ -252,14 +252,16 @@ enum MyPRRules {
     //    Only a thread counts: a review body or a top-level comment stays work, but does not
     //    change the status, so a "Thanks" never hides an approval.
     // 3. Approved: a human reviewer approved, and no thread is open.
-    // 4. Pending: each other case, also with no reviewer.
+    // 4. In draft: the PR is a draft on GitHub, and none of the rules above holds.
+    // 5. Pending: each other case, also with no reviewer.
     // Copilot is never a reviewer here: its threads can give Comments, but never Approved.
     static func status(_ pr: PullRequest, viewer: String, items: OpenItems) -> ReviewStatus {
         let decisions = humanDecisions(pr.decisions, viewer: viewer)
         if decisions.contains(.changesRequested) { return .changesRequested }
         let lists = [items.work, items.older, items.questions, items.posting]
         if lists.joined().contains(where: { $0.kind == .thread }) { return .comments }
-        return decisions.contains(.approved) ? .approved : .pending
+        if decisions.contains(.approved) { return .approved }
+        return pr.isDraft ? .drafted : .pending
     }
 
     // The latest decision of each human reviewer: an approval, a change request or a dismissal.

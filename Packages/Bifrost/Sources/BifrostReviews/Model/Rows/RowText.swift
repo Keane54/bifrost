@@ -15,6 +15,12 @@ package enum RowText {
     }
 
     // The size of a PR: "+12 −3", with the minus sign U+2212.
+    // The PR number as "#2027". Plain string interpolation, so it never picks up the thousands
+    // separator that a localized SwiftUI Text would add ("#2,027").
+    package static func number(_ number: Int) -> String {
+        "#\(number)"
+    }
+
     package static func size(additions: Int, deletions: Int) -> String {
         "+\(additions) \u{2212}\(deletions)"
     }
@@ -235,7 +241,8 @@ package enum RowText {
         case .changesRequested: RowLabel(text: "Changes requested", tone: .red, tip: tip)
         case .comments: RowLabel(text: "Comments", tone: .blue, tip: tip)
         case .approved: RowLabel(text: "Approved", tone: .green, tip: tip)
-        case .pending: RowLabel(text: "Pending", tone: .dim, tip: tip)
+        case .pending: RowLabel(text: "Pending review", tone: .dim, tip: tip)
+        case .drafted: RowLabel(text: "In draft", tone: .dim, tip: tip)
         }
     }
 

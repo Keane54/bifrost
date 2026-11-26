@@ -88,6 +88,23 @@ struct MyPRRulesTests {
         #expect(try status(R.pull("owner-a/repo-a#1")) == .pending)
     }
 
+    @Test func aDraftPRWithNoReviewsIsInDraftAndAnyOtherStatusStays() throws {
+        let status = { (pr: PullRequest) in try row(pr).mineState?.status }
+        #expect(try status(R.pull("owner-a/repo-a#1", draft: true)) == .drafted)
+        #expect(try status(R.pull("owner-a/repo-a#1")) == .pending)
+
+        // A draft with a change request, an approval or an open thread keeps that status.
+        let changes = try R.review("PRR_1", by: member, .changesRequested, at: R.at(-100))
+        let approval = try R.review("PRR_2", by: member, .approved, at: R.at(-50))
+        #expect(try status(R.pull("owner-a/repo-a#1", decisions: [changes], draft: true))
+            == .changesRequested)
+        #expect(try status(R.pull("owner-a/repo-a#1", decisions: [approval], draft: true))
+            == .approved)
+        let thread = try R.thread("PRRT_1", by: member)
+        #expect(try status(R.pull("owner-a/repo-a#1", threads: [thread], draft: true))
+            == .comments)
+    }
+
     @Test func onlyTrustedThreadsAndCommentsAreOpenItems() throws {
         let outsider = R.person("user-x", .contributor)
         let bot = Author(login: "ci-bot", isBot: true, association: .member)

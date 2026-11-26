@@ -76,10 +76,10 @@ enum Rows {
         reviews: [PRReview] = [], decisions: [PRReview] = [], threads: [PRThread] = [],
         comments: [PRComment] = [], failedChecks: Int = 0, fork: Bool = false,
         cutThreads: Bool = false, mergeable: Mergeable? = nil, base: String = "",
-        checks: HeadChecks = HeadChecks()
+        checks: HeadChecks = HeadChecks(), draft: Bool = false
     ) throws -> PullRequest {
         PullRequest(
-            key: try key(text), title: title, author: author, isDraft: false, additions: 12,
+            key: try key(text), title: title, author: author, isDraft: draft, additions: 12,
             deletions: 3, createdAt: at(-600), updatedAt: updatedAt, reviewDecision: decision,
             requestedUsers: (direct ? [viewer] : []) + reviewers,
             requestedTeams: direct ? [] : ["team-a"], isDirectRequest: direct,

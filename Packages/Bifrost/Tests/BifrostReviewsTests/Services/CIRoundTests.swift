@@ -293,7 +293,14 @@ private final class CIFixture {
                 }
             }
             try? await repos.setup(["add", "-A"], in: work)
-            try? await repos.setup(["commit", "-q", "-m", commit.headline], in: work)
+            // GitHub signs these commits as itself. Using its identity here also keeps the hash
+            // apart from Bifrost's local fix commit, which has the same tree, parent and message
+            // and could land in the same second.
+            try? await repos.setup(
+                [
+                    "-c", "user.name=GitHub", "-c", "user.email=noreply@github.com", "commit", "-q",
+                    "-m", commit.headline,
+                ], in: work)
             try? await repos.setup(["push", "-q", "-f", bare, "HEAD:refs/heads/feat"], in: work)
             try? await repos.setup(["checkout", "-q", "main"], in: work)
             guard let made = try? await self.branch() else { return }

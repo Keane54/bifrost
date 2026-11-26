@@ -42,9 +42,10 @@ package enum ToReviewState: Sendable, Equatable {
     case teamRequest
 }
 
-// The review status of a My PRs row.
+// The review status of a My PRs row. Drafted is a draft PR that has no review status of its own
+// yet, so it would otherwise show as pending.
 package enum ReviewStatus: Sendable {
-    case changesRequested, comments, approved, pending
+    case changesRequested, comments, approved, pending, drafted
 }
 
 // What Claude does on a PR of the user.
