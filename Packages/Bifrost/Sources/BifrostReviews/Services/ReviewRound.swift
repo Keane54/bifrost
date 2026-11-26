@@ -1,7 +1,8 @@
 // One review round (docs/behaviour/reviews.md, "Review rounds"): Claude reviews the PR of another
-// person in a read-only session and leaves a pending review that only the user sees. The
-// coordinator (ReviewRounds) makes one ReviewRound for each run of a job, and ends the round by
-// how its steps stop.
+// person in a read-only session. A Request changes or Comment result leaves a pending review that
+// only the user sees. An Approve result leaves no write, only the mark of the PR. The coordinator
+// (ReviewRounds) makes one ReviewRound for each run of a job, and ends the round by how its steps
+// stop.
 //
 // The steps, after a click on Review:
 // 1. The clone of the repository (a click tries a failed clone again at once), and the trust read
@@ -19,10 +20,13 @@
 // 4. The session (PRSessions.start), then the wait for the end of its turn
 //    (PRSessions.waitForTurnEnd). Then the worktree is reset and its changes counted.
 // 5. The strict check of result.json (ReviewResult), made at the end of the turn: the round uses
-//    that checked result and never reads the file again. The state saves the posting phase before
-//    the first write, so a quit during the writes never posts again (closedWhilePosting at the
-//    next start). A second read of the PR gives the pending review of the user, and the writes
-//    go through PendingReviewWrites.
+//    that checked result and never reads the file again. An Approve result writes nothing to
+//    GitHub: the mark of the PR keeps its note and its findings for the Review panel. For another
+//    result, the state saves the posting phase before the first write, so a quit during the
+//    writes never posts again (closedWhilePosting at the next start). A second read of the PR
+//    gives the pending review of the user, and the writes go through PendingReviewWrites: the
+//    summary and each bug and minor finding. A nit and the note never go to GitHub. The mark
+//    keeps the note and all the findings.
 // A round whose session ran when Bifrost started goes on at step 4 (resume).
 import BifrostFoundation
 import BifrostSessions
@@ -41,7 +45,7 @@ final class ReviewRound {
     }
 
     // How a good round ended: it left a pending review (drafted), or it posted nothing because
-    // Claude suggests Approve with nothing to say (reviewed).
+    // Claude suggests Approve (reviewed).
     enum Ended {
         case drafted, reviewed
     }
@@ -250,11 +254,14 @@ final class ReviewRound {
         }
     }
 
-    // Step 5: the pending review. An Approve with nothing to say posts nothing.
+    // Step 5: the pending review. An Approve never writes in the round, whatever its findings:
+    // the mark keeps them, and the user sees them before anything goes to GitHub.
     private func post(_ outcome: ReviewOutcome, input: ReviewInput) async throws(Stop) -> Ended {
         let (pr, head) = (pr, input.headSHA)
-        let placed = PendingReviewPlan.place(outcome, diff: input.diff)
-        if placed.summary.trimmed().isEmpty && placed.comments.isEmpty {
+        let placed = PendingReviewPlan.place(outcome)
+        if outcome.recommendation == .approve
+            || (placed.summary.trimmed().isEmpty && placed.comments.isEmpty)
+        {
             await succeed(outcome, head: head, review: nil, drafts: [])
             return .reviewed
         }
@@ -276,8 +283,7 @@ final class ReviewRound {
         }
         let review: NodeID
         do throws(RoundFailure) {
-            let plan = try PendingReviewPlan.plan(
-                outcome, diff: input.diff, head: head, pending: again.pending)
+            let plan = try PendingReviewPlan.plan(outcome, head: head, pending: again.pending)
             review = try await PendingReviewWrites(github: parts.github).send(
                 plan, pr: pr, head: head)
         } catch {
@@ -299,15 +305,15 @@ final class ReviewRound {
         return .drafted
     }
 
-    // A good round: the round clears with its error, and the PR keeps the recommendation, the
-    // reviewed commit and the draft texts.
+    // A good round: the round clears with its error, and the PR keeps the recommendation with
+    // the note and all the findings of the result, the reviewed commit and the draft texts.
     private func succeed(
         _ outcome: ReviewOutcome, head: CommitID, review: NodeID?, drafts: [DraftRecord]
     ) async {
         let pr = pr
         let mark = RecommendationMark(
             value: outcome.recommendation, why: outcome.reason, headSHA: head, reviewID: review,
-            at: parts.now())
+            at: parts.now(), note: outcome.note, findings: outcome.findings)
         await store.update { state in
             var prState = state.prs[pr] ?? PRState()
             prState.round = nil

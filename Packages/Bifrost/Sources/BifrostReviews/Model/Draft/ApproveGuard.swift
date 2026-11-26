@@ -2,7 +2,9 @@
 // write of the Approve button or of the Review panel (FreshPR), the checks of an approval and the
 // guard that makes its one write. Only a click of the user starts an approval, and Bifrost reads
 // the PR again just before the write: the write goes only to the PR that GitHub gives for the
-// row, only on the commit that Claude reviewed, and only with the draft review of Claude's mark.
+// row, only on the commit that Claude reviewed, and only with no text or with the post of the
+// Review panel (the findings of the mark that the user ticked). Approve never submits a draft
+// review: Claude's old Approve draft opens in the Review panel, so the user sees it first.
 import BifrostFoundation
 import Foundation
 
@@ -56,15 +58,7 @@ package struct FreshPR: Sendable, Equatable {
                     id: review, body: item["body"]?.string ?? "",
                     commit: item["commit"]?.object?["oid"]?.string.flatMap(CommitID.init))
             }.first
-            let opinions = node["opinions"].nodes.compactMap { item -> ViewerOpinion? in
-                guard let state = item["state"]?.string.flatMap(ReviewState.init(rawValue:))
-                else { return nil }
-                return ViewerOpinion(
-                    state: state, commit: item["commit"]?.object?["oid"]?.string,
-                    submittedAt: item["submittedAt"]?.string.flatMap {
-                        try? Date($0, strategy: .iso8601)
-                    })
-            }
+            let opinions = ViewerOpinion.list(node["opinions"].nodes)
             return .success(
                 FreshPR(
                     id: id, url: node["url"]?.string ?? "", state: state,
@@ -73,6 +67,23 @@ package struct FreshPR: Sendable, Equatable {
                         rollup: commit?["statusCheckRollup"]?.object?["state"]?.string,
                         commit: commit?["oid"]?.string, head: head.hex),
                     pending: pending, opinions: opinions))
+        }
+    }
+}
+
+extension ViewerOpinion {
+    // The reviews of the viewer in a list of the answer, leaving out any whose state we don't
+    // know.
+    static func list(_ nodes: [[String: JSONValue]]) -> [ViewerOpinion] {
+        nodes.compactMap { item in
+            guard let state = item["state"]?.string.flatMap(ReviewState.init(rawValue:)) else {
+                return nil
+            }
+            return ViewerOpinion(
+                state: state, commit: item["commit"]?.object?["oid"]?.string,
+                submittedAt: item["submittedAt"]?.string.flatMap {
+                    try? Date($0, strategy: .iso8601)
+                })
         }
     }
 }
@@ -91,15 +102,18 @@ package enum ApproveRefusal: Error, Sendable, Equatable {
     case alreadyApproved
     case ciFailing
     case ciRunning
-    // The user has a pending review of their own: an approval with no draft can't go next to it.
+    // The user has a pending review of their own: an approval can't go next to it.
     case pendingReview
-    // Claude's draft review is not the pending review on GitHub any more.
-    case draftMissing
-    case draftOtherCommit
     // The guard refused the write: it didn't match Claude's review. Nothing was sent.
     case guardRefused
     // The fresh read failed. Nothing was sent.
     case readFailed(GitHubError)
+    // An approval of the PR runs now, and an approval of the Review panel never waits for it.
+    // Nothing was sent.
+    case busy
+    // A review write of the findings form of the PR may have gone, and no poll after it has
+    // shown the true state on GitHub (ReviewWrites.waitsForPoll). Nothing was sent.
+    case waitsForPoll
     // GitHub refused the write; the Event log has its line.
     case refusedByGitHub
     // The write didn't go, for a reason of gh (not installed, not logged in, ...).
@@ -135,17 +149,14 @@ package enum ApproveRefusal: Error, Sendable, Equatable {
         case .pendingReview:
             "You have a draft review on this pull request. Submit or delete it on GitHub first, "
                 + "then try again."
-        case .draftMissing:
-            "Bifrost couldn't find Claude's draft review on GitHub, so it didn't approve. The "
-                + "draft may have been submitted or deleted."
-        case .draftOtherCommit:
-            "Claude's draft review is on another commit, so Bifrost didn't submit it."
         case .guardRefused:
             "Bifrost stopped this approval because it didn't match Claude's review. Nothing was "
                 + "posted."
         case .readFailed(let error):
             "Bifrost couldn't load this pull request from GitHub, so it didn't approve it. "
                 + error.message
+        case .busy: "This pull request is still being approved, so try again once it's done."
+        case .waitsForPoll: FindingsRefusal.unknown.message
         case .refusedByGitHub:
             "GitHub didn't accept the approval. The Event log has the details."
         case .notSent(let error): "Bifrost couldn't approve this pull request. \(error.message)"
@@ -172,6 +183,8 @@ package enum ApproveGuard {
         if fresh.state != .open { return .closed }
         if fresh.author.lowercased() == viewer.lowercased() { return .ownPR }
         if !isApprovable(mark) { return .notSuggested }
+        // Approve never submits a draft: Claude's old Approve draft opens in the Review panel.
+        if mark.reviewID != nil { return .notSuggested }
         if fresh.headSHA != mark.headSHA { return .headMoved }
         switch fresh.ci {
         case .failing?: return .ciFailing
@@ -181,28 +194,28 @@ package enum ApproveGuard {
         if ToReviewRules.approvedOnHead(fresh.opinions, head: fresh.headSHA.hex) {
             return .alreadyApproved
         }
-        // GitHub keeps one pending review for each user: an approval with no draft can't go
-        // next to one.
-        guard let review = mark.reviewID else { return fresh.pending == nil ? nil : .pendingReview }
-        guard let pending = fresh.pending, pending.id == review else { return .draftMissing }
-        return pending.commit == mark.headSHA ? nil : .draftOtherCommit
+        // GitHub keeps one pending review for each user: an approval can't go next to one.
+        return fresh.pending == nil ? nil : .pendingReview
     }
 
     // The one write of the approval, or nil when the guard refuses it. The write goes only to the
     // PR of the row (the key of the address that GitHub gave), only on the reviewed commit, and
-    // only with the draft of the mark: a mark with no draft approves the head commit with no
-    // text, and a mark with a draft submits that draft as an approval, with its body as it is.
+    // only for a mark with no draft: it approves the head commit with no text. A post of the
+    // Review panel that is not empty goes in one review write with the event Approve, and only
+    // with line comments of the findings of the mark (FindingsPlan.review). A mark with a draft
+    // gives no write, with or without a post.
     package static func write(
-        _ fresh: FreshPR, pr: PRKey, mark: RecommendationMark, click: UserClick
+        _ fresh: FreshPR, pr: PRKey, mark: RecommendationMark, post: ReviewPost? = nil,
+        click: UserClick
     ) -> GitHubWrite? {
-        guard fresh.key == pr, isApprovable(mark) else { return nil }
-        guard let review = mark.reviewID else {
-            guard fresh.headSHA == mark.headSHA else { return nil }
+        guard fresh.key == pr, isApprovable(mark), mark.reviewID == nil,
+            fresh.headSHA == mark.headSHA
+        else { return nil }
+        guard let post = post.flatMap({ $0.isEmpty ? nil : $0 }) else {
             return .approveCommit(pr: fresh.id, commit: fresh.headSHA, click: click)
         }
-        guard let pending = fresh.pending, pending.id == review, pending.commit == mark.headSHA
-        else { return nil }
-        return .approveDraft(review: pending.id, click: click)
+        return FindingsPlan.review(
+            fresh, pr: pr, mark: mark, post: post, event: .approve, click: click)
     }
 
     // The result of the write from the answer of GitHub: nil when GitHub approved. An answer with

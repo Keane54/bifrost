@@ -853,9 +853,9 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
 - [ ] Type "not a repo" in Repositories to ignore and press Enter. The reason "Use owner/repo or
   owner/*." should show in the error line of the row, with its close button, and the field should
   keep your text. ([settings S51](ports/settings/DELIBERATE-DIFFERENCES.md))
-- [ ] On a test PR where Claude suggests Approve, click Approve on the row. The PR should be
-  approved on GitHub on the reviewed commit (with Claude's draft as the approval when it left one),
-  and the row should move to You approved after the poll. Push a commit to the PR first and click
+- [ ] On a test PR where Claude suggests Approve and found nothing, click Approve on the row. The
+  PR should be approved on GitHub on the reviewed commit, and the row should move to You approved
+  after the poll. Push a commit to the PR first and click
   Approve again: Bifrost should approve nothing and say why in the error line at the bottom of the
   panel. While CI runs, the button should be greyed out with its tip. Is the line a good place for
   the reason? ([reviews R24](ports/reviews/DELIBERATE-DIFFERENCES.md))
@@ -898,6 +898,30 @@ a test PR is fine, but a session you start by hand still gets a `bifrost-test-` 
   one question and tick "I'll handle this one myself" on another, then Send to Claude: one request
   round should start with your answer, and the other comment should count as handled with no
   round. Does the panel read clearly? ([reviews R26](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] On a PR where you're a requested reviewer and Claude finds only small points, click Review.
+  When the round ends, the notification should say "Claude suggests approving …, but found 1 minor
+  point for you to check." (or similar), and the row should say "Approval recommended" and "Claude
+  found 1 minor point." Approve should open the Review panel with Claude's note, the finding
+  ticked, and nothing on GitHub yet. Does the note read well?
+  ([reviews R42](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] In that panel, tick nothing and leave the summary empty: the line above the buttons should
+  say "Approve will post just your approval, with no comment." Tick a finding and type a summary,
+  and the line should follow each change. Close the panel without sending; nothing should be on
+  GitHub. ([reviews R42](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] On a PR where Claude finds only nits, Approve should approve at once with no comment, and See
+  Claude's review in the row menu should show the nits under a closed Nits row.
+  ([reviews R42](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] Comment with one ticked finding on a changed line: GitHub should show your review with that
+  comment on that line, and nothing of Claude's note. While it sends, the three buttons should turn
+  into "Commenting…" without the line above them moving.
+  ([reviews R42](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] Turn the network off just as you click Comment in that panel, so gh can't tell whether
+  GitHub got it. The panel should say "Bifrost can't tell whether GitHub saved your review, so click
+  Refresh to check." with its buttons off, and the row's Approve should be grey with the same tip.
+  Close the panel and open it again: the line should still be there. Turn the network back on and
+  click Refresh. If GitHub has the comment, the row should say You commented and the panel should
+  lock; if not, the buttons should come back. Either way, nothing should post twice.
+  ([reviews R42](ports/reviews/DELIBERATE-DIFFERENCES.md))
 
 ## Settings and files
 

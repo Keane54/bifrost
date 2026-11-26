@@ -13,12 +13,18 @@
 //   it does nothing. Cmd+click opens the PR on GitHub: only its https address on github.com. A
 //   right-click or a Control-click shows the row menu (ReviewsMenu).
 // - Approve (the button, or the item of the menu) approves through ApproveFlow with the click of
-//   the user. Its button waits while CI runs. A refusal shows in the error line. Comment and
-//   Request changes open the Review panel for Claude's draft.
+//   the user when Claude found nothing or only nits. When Claude found something above a nit, it
+//   opens the Review panel on Claude's findings, and on Claude's old Approve draft it opens the
+//   Review panel on that draft: then it writes nothing. Its button waits while CI runs. A refusal
+//   shows in the error line. Comment and Request changes open the Review panel for Claude's
+//   draft, and See Claude's review opens it on Claude's findings.
 // - While a review write of a PR runs (an approval, or a send of the Review panel), and for the
 //   time of ReviewWrites.hold after GitHub confirmed it, the row shows the progress in the place
 //   of its state text and its buttons (ReviewWrites.progress), and the menu has no Approve, no
-//   Comment and no Request changes. A refusal ends the progress at once.
+//   Comment, no Request changes and no See Claude's review. A refusal ends the progress at once.
+// - While a review write of a PR may have gone and no poll after it has shown the true state
+//   (ReviewWrites.waitsForPoll), Approve, Comment and Request changes are off and not in the
+//   menu, so nothing goes a second time. The tip of Approve then says to click Refresh.
 // - A display clock ticks while the panel is in a frame. Each tick asks the watcher for new time
 //   texts of the rows, with no poll, and moves the time of "Last checked".
 import AppKit
@@ -127,12 +133,16 @@ package final class ReviewsPanelLinks {
     package var openAnswer: @MainActor (PRKey) -> Void = { _ in }
     // Open the Review panel for Claude's draft of the PR.
     package var openDraft: @MainActor (PRKey) -> Void = { _ in }
+    // Open the Review panel on Claude's findings of the PR.
+    package var openFindings: @MainActor (PRKey) -> Void = { _ in }
     // The Approve button (ApproveFlow) while Reviews runs, or nil.
     package var approver: @MainActor () -> ApproveFlow? = { nil }
     // The progress and the result of the review writes of the rows while Reviews runs, or nil.
     package var writes: @MainActor () -> ReviewWrites? = { nil }
     // A new flow of the Review panel, or nil while Reviews doesn't run.
     package var makeDraftFlow: @MainActor () -> DraftFlow? = { nil }
+    // A new flow of the findings form of the Review panel, or nil while Reviews doesn't run.
+    package var makeFindingsFlow: @MainActor () -> FindingsFlow? = { nil }
     // A new flow of the Answer panel for the PR, or nil while Reviews doesn't run.
     package var makeAnswerFlow: @MainActor (PRKey) -> AnswerFlow? = { _ in nil }
     // The check of Discard these changes: the changed files of the copy of the PR, or why the
@@ -357,19 +367,24 @@ package final class ReviewsPanelModel {
         return snapshot.toReview.first { $0.id == pr } ?? snapshot.mine.first { $0.id == pr }
     }
 
-    // The items of the row menu of the PR, or nil when the PR has no row. Approve, Comment and
-    // Request changes are not there while a review write of the PR has a progress.
+    // The items of the row menu of the PR, or nil when the PR has no row. An item of a review
+    // write is there only while it acts (isEnabled): not while a review write of the PR has a
+    // progress or waits for a poll.
     package func menuItems(_ pr: PRKey) -> [ReviewsMenuItem]? {
-        let writing = progress(pr) != nil
-        return row(pr).map {
-            ReviewsMenu.items($0, hasSession: links.session(pr) != nil).filter {
-                !writing || !Self.writeItems.contains($0)
+        row(pr).map { row in
+            ReviewsMenu.items(row, hasSession: links.session(pr) != nil).filter {
+                !Self.writeItems.contains($0) || isEnabled($0, row)
             }
         }
     }
 
-    // The items that start a review write: Approve, and the Review panel of Claude's draft.
-    private static let writeItems: Set<ReviewsMenuItem> = [.approve, .comment, .requestChanges]
+    // The items of a review write: Approve, and the Review panel of Claude's draft or findings.
+    private static let writeItems: Set<ReviewsMenuItem> = [
+        .approve, .comment, .requestChanges, .seeReview,
+    ]
+    // The items that can send a review again: they wait while a review write of the PR waits
+    // for a poll. See Claude's review only opens the Review panel, which waits on its own.
+    private static let sendItems: Set<ReviewsMenuItem> = [.approve, .comment, .requestChanges]
 
     // The progress of the review write of the PR, or nil. The row shows it in the place of its
     // state text and its buttons.
@@ -385,13 +400,18 @@ package final class ReviewsPanelModel {
         return row.status
     }
 
-    // True when a button of the row acts now: Approve waits while CI runs. Approve, Comment and
-    // Request changes wait while a review write of the PR has a progress. Each other button acts.
+    // True when a button of the row acts now: Approve waits while CI runs. Approve, Comment,
+    // Request changes and See Claude's review wait while a review write of the PR has a progress,
+    // and Approve, Comment and Request changes also while it waits for a poll. Each other button
+    // acts.
     package func isEnabled(_ item: ReviewsMenuItem, _ row: ReviewRow) -> Bool {
         // Open session on a My PRs row acts only while the PR has a session.
         if item == .openSession { return links.session(row.id) != nil }
         guard Self.writeItems.contains(item) else { return true }
         guard progress(row.id) == nil else { return false }
+        if Self.sendItems.contains(item), links.writes()?.waitsForPoll(row.id) == true {
+            return false
+        }
         return item != .approve || row.approve == .ready
     }
 
@@ -401,14 +421,23 @@ package final class ReviewsPanelModel {
     nonisolated package static let draftTip =
         "Check Claude's draft, change it if you like, and send it."
 
-    // The tip of a button of the row, or nil.
+    // The tip of a button of the row, or nil. While a review write of the PR waits for a poll,
+    // the tip of Approve says why it is off.
     package func tip(_ item: ReviewsMenuItem, _ row: ReviewRow) -> String? {
         switch item {
         case .approve:
+            if links.writes()?.waitsForPoll(row.id) == true {
+                return ApproveRefusal.waitsForPoll.message
+            }
             if row.approve == .waitsForCI { return ApproveRefusal.ciRunning.message }
-            return row.state == .toReview(.draftReady)
-                ? "Submit Claude's draft review on GitHub as an approval."
-                : "Approve this pull request on GitHub."
+            switch row.approveCheck {
+            case .findings?: return "Check Claude's findings before you approve."
+            case .draft?: return "Check Claude's draft before you approve or send it."
+            case nil:
+                return row.nits > 0
+                    ? "Approve this pull request on GitHub without posting nits."
+                    : "Approve this pull request on GitHub."
+            }
         case .comment, .requestChanges: return Self.draftTip
         case .remove: return Self.removeTip
         default: return nil
@@ -446,6 +475,7 @@ package final class ReviewsPanelModel {
         // Approve needs the click of the user (approve(_:click:)).
         case .approve: break
         case .comment, .requestChanges: links.openDraft(pr)
+        case .seeReview: links.openFindings(pr)
         case .review: links.run(.review(pr))
         case .tryAgain:
             links.run(row(pr)?.tab == .mine ? .tryAgain(pr) : .review(pr))
@@ -512,13 +542,24 @@ package final class ReviewsPanelModel {
     }
 
     // Approve the PR with the click of the user: the button or the item of the menu. It acts
-    // only while the row of now offers Approve and the approval of the PR has no progress. The
-    // task starts in the click, so the row shows Approving at once and a second click finds the
-    // progress. A refusal shows in the error line.
+    // only while the row of now offers Approve and the approval of the PR has no progress. When
+    // the row has a check (ReviewRow.approveCheck), Approve only opens the Review panel on
+    // Claude's findings or on Claude's old Approve draft, and writes nothing. Else the task starts
+    // in the click, so the row shows Approving at once and a second click finds the progress. A
+    // refusal shows in the error line.
     package func approve(_ pr: PRKey, click: UserClick) {
-        guard let row = row(pr), isEnabled(.approve, row), let approver = links.approver() else {
+        guard let row = row(pr), isEnabled(.approve, row) else { return }
+        switch row.approveCheck {
+        case .findings?:
+            links.openFindings(pr)
             return
+        case .draft?:
+            links.openDraft(pr)
+            return
+        case nil:
+            break
         }
+        guard let approver = links.approver() else { return }
         error = nil
         approval = Task.immediate { [weak self] in
             do throws(ApproveRefusal) {

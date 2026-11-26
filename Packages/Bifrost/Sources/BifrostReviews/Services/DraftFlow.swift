@@ -2,17 +2,22 @@
 // checks Claude's draft review (a Comment or a Request changes draft), edits it in Bifrost, and
 // sends it, discards it or approves instead. Only a click of the user starts a write: each button
 // makes the UserClick in its action. The edits stay in the panel until Send review.
-// - The panel offers a draft while the PR has Claude's Comment or Request changes mark with a draft
-//   review, and no round runs or waits (offeredMark).
+// - The panel offers a draft while the PR has Claude's mark with a draft review, and no round
+//   runs or waits (offeredMark): a Comment or Request changes draft, or Claude's old Approve draft
+//   from before the findings, which the Approve button of the row opens here and never submits.
 // - The open reads the PR and the draft from GitHub (DraftQueries) and keeps what it showed
 //   (OpenedDraft). Each action reads both again and refuses when they changed
 //   (DraftEdits.refusal, DraftEdits.problem, DraftEdits.plan): a change on GitHub after the open
 //   is never written over, and a delete never takes a comment that the panel didn't show.
+// - The panel shows the private note of the mark. No write holds it: each write holds only the
+//   draft as GitHub gives it, with the edits of the user.
 // - Just before each edit of the summary or of a comment, a fresh read of the review checks that
 //   it is still pending and the viewer's, because GitHub's update edits a submitted review too.
 // - Each write goes through the guard (DraftEdits.write): only Claude's draft of the mark, on the
 //   PR of the row and on the reviewed commit. A write that GitHub can have made is never sent
-//   again by itself; a poll follows it, and each action that worked.
+//   again by itself; a poll follows it, and each action that worked. While a review write of the
+//   findings form of the PR may have gone (ReviewWrites.waitsForPoll), no action sends anything,
+//   and a click asks for a poll.
 // - After a send or a discard the mark goes. Approve instead deletes the draft first, marks the
 //   mark deleted, then approves the head with no text through the Approve button (ApproveFlow).
 // - A send shows its progress on the row and in the panel (ReviewWrites.send): from the click to
@@ -26,11 +31,13 @@ import Observation
 @MainActor
 @Observable
 package final class DraftFlow {
-    // What the panel shows of Claude's mark: the recommendation, its reason, and whether the PR
-    // changed after the review (then only Discard draft can go).
+    // What the panel shows of Claude's mark: the recommendation, its reason, the private note
+    // ("" for a mark from before the notes), and whether the PR changed after the review (then
+    // only Discard draft can go). The note never goes into a write.
     package struct Shown: Sendable, Equatable {
         package var recommendation: Recommendation
         package var why: String
+        package var note: String
         package var headMoved: Bool
     }
 
@@ -102,7 +109,8 @@ package final class DraftFlow {
         self.mark = mark
         opened = OpenedDraft(draft)
         shown = Shown(
-            recommendation: mark.value, why: mark.why, headMoved: fresh.headSHA != mark.headSHA)
+            recommendation: mark.value, why: mark.why, note: mark.note,
+            headMoved: fresh.headSHA != mark.headSHA)
         summary = draft.body
         comments = DraftEdits.comments(draft, drafts: store.state.drafts)
     }
@@ -114,7 +122,8 @@ package final class DraftFlow {
     package func send(_ event: DraftEvent, click: UserClick) async throws(DraftRefusal) {
         try await act { () async throws(DraftRefusal) in
             let (pr, mark, viewer) = try startWrite()
-            try await writes.send(pr, event) { () async throws(DraftRefusal) -> String in
+            try await writes.send(pr, event, busy: .busy) {
+                () async throws(DraftRefusal) -> String in
                 let fresh = try await readFresh(pr, viewer: viewer, mark: mark, needsHead: true)
                 let draft = try await readDraft(pr, mark: mark)
                 guard offeredMark(pr) == mark, let opened else { throw .gone }
@@ -182,11 +191,13 @@ package final class DraftFlow {
         }
     }
 
-    // The start of a write: the row still offers the draft that the panel opened.
+    // The start of a write: the row still offers the draft that the panel opened, and no review
+    // write of the PR waits for a poll.
     private func startWrite() throws(DraftRefusal) -> (PRKey, RecommendationMark, String) {
         guard store.isOpen, let pr, let viewer = viewer(), let mark = offeredMark(pr),
             mark == self.mark, opened?.review == mark.reviewID
         else { throw .notOffered }
+        if writes.waitsForPoll(pr) { throw .waitsForPoll }
         return (pr, mark, viewer)
     }
 
@@ -220,12 +231,12 @@ package final class DraftFlow {
         return pr
     }
 
-    // The mark of the PR while the row offers the draft: Claude's Comment or Request changes
-    // mark with a draft review, and no round of the PR that runs or waits. Else nil.
+    // The mark of the PR while the row offers the draft: a mark of Claude with a draft review,
+    // and no round of the PR that runs or waits. Else nil. A mark of a deleted draft has no draft.
     private func offeredMark(_ pr: PRKey) -> RecommendationMark? {
         let state = store.state
         guard let prState = state.prs[pr], let mark = prState.recommendation,
-            mark.reviewID != nil, !ApproveGuard.isApprovable(mark), prState.round == nil,
+            mark.reviewID != nil, prState.round == nil,
             !state.queue.contains(where: { $0.pr == pr })
         else { return nil }
         return mark

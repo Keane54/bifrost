@@ -11,9 +11,9 @@ import Testing
 @MainActor
 @Suite("the Approve button", .testTimeLimit)
 struct ApproveFlowTests {
-    private func approve(_ f: FlowFixture) async -> ApproveRefusal? {
+    private func approve(_ f: FlowFixture, panel: PanelApproval? = nil) async -> ApproveRefusal? {
         do throws(ApproveRefusal) {
-            try await f.approver.approve(f.pr, click: UserClick())
+            try await f.approver.approve(f.pr, panel: panel, click: UserClick())
             return nil
         } catch {
             return error
@@ -43,18 +43,12 @@ struct ApproveFlowTests {
         await f.end()
     }
 
-    // A head that is not the reviewed commit refuses the approval and writes nothing, and so
-    // does Claude's draft on another commit.
+    // A head that is not the reviewed commit refuses the approval and writes nothing.
     @Test func aMovedHeadRefusesTheApproval() async throws {
         let f = try await FlowFixture()
         await f.setMark(try f.mark(.approve, draft: false))
         f.answerFresh(head: try ReviewData.commit(ReviewData.oldHex), pending: .some(nil))
         #expect(await approve(f) == .headMoved)
-        await f.setMark(try f.mark(.approve))
-        f.answerFresh(
-            pending: DraftAnswers.Pending(
-                id: FlowFixture.claudeReview, commit: try ReviewData.commit(ReviewData.oldHex)))
-        #expect(await approve(f) == .draftOtherCommit)
         #expect(f.written.isEmpty && f.polls.values.isEmpty)
         #expect(
             ApproveRefusal.headMoved.message
@@ -87,24 +81,62 @@ struct ApproveFlowTests {
         await f.end()
     }
 
-    // A mark with Claude's draft submits that draft as the approval. A review that GitHub saves
-    // in another state is not an approval, and the next poll shows the truth.
-    @Test func aDraftIsSubmittedAsTheApproval() async throws {
+    // A review that GitHub saves in another state is not an approval, and the next poll shows
+    // the truth.
+    @Test func aReviewInAnotherStateIsNotAnApproval() async throws {
         let f = try await FlowFixture()
-        await f.setMark(try f.mark(.approve))
-        f.answerFresh()
-        let write = GitHubWrite.approveDraft(
-            review: try ReviewData.node(FlowFixture.claudeReview), click: UserClick())
+        await f.setMark(try f.mark(.approve, draft: false))
+        f.answerFresh(pending: .some(nil))
+        let write = GitHubWrite.approveCommit(
+            pr: try ReviewData.node("PR_node7"), commit: f.head, click: UserClick())
         f.answerWrite(write, state: "APPROVED")
         #expect(await approve(f) == nil)
         #expect(f.written == [write])
         f.answerWrite(write, state: "COMMENTED")
         #expect(await approve(f) == .notApproved)
-        #expect(f.polls.values.count == 2)
-        // Claude's draft that is not the pending review any more: nothing goes.
-        f.answerFresh(pending: DraftAnswers.Pending(id: "PRR_other", commit: f.head))
-        #expect(await approve(f) == .draftMissing)
-        #expect(f.written.count == 2)
+        #expect(f.polls.values.count == 2 && f.written == [write, write])
+        await f.end()
+    }
+
+    // Approve never submits a draft review: Claude's old Approve draft opens in the Review panel
+    // (ReviewsPanelModel.approve). So a call for a mark with a draft reads nothing and writes
+    // nothing, also when the draft is the pending review on the head, and so does a panel
+    // approval of that mark.
+    @Test func aMarkWithADraftIsNotApprovedByTheButton() async throws {
+        let f = try await FlowFixture()
+        let mark = try f.mark(.approve)
+        await f.setMark(mark)
+        f.answerFresh()
+        #expect(await approve(f) == .notSuggested)
+        let panel = PanelApproval(mark: mark, post: ReviewPost(body: "", threads: []))
+        #expect(await approve(f, panel: panel) == .notSuggested)
+        #expect(f.github.calls.isEmpty && f.polls.values.isEmpty)
+        #expect(f.writes.progress(f.pr) == nil)
+        await f.end()
+    }
+
+    // While a review write of the findings form of the PR may have gone, Approve sends nothing
+    // until a poll that started after that result gives a good answer. A click asks for a poll
+    // and says so. Then Approve works again.
+    @Test func approveWaitsForThePollOfAnUnsureReview() async throws {
+        let f = try await FlowFixture()
+        await f.setMark(try f.mark(.approve, draft: false))
+        f.answerFresh(pending: .some(nil))
+        let write = GitHubWrite.approveCommit(
+            pr: try ReviewData.node("PR_node7"), commit: f.head, click: UserClick())
+        f.answerWrite(write, state: "APPROVED")
+        f.writes.mayHaveGone(f.pr)
+        #expect(await approve(f) == .waitsForPoll)
+        #expect(f.github.calls.isEmpty && f.polls.values.count == 1)
+        #expect(f.writes.progress(f.pr) == nil)
+        #expect(
+            ApproveRefusal.waitsForPoll.message
+                == "Bifrost can't tell whether GitHub saved your review, so click Refresh to "
+                + "check.")
+        #expect(!ApproveRefusal.waitsForPoll.mayHaveApproved)
+        await f.pollAnswered()
+        #expect(await approve(f) == nil)
+        #expect(f.written == [write])
         await f.end()
     }
 
@@ -136,7 +168,8 @@ struct ApproveFlowTests {
     }
 
     // A write that GitHub can have made is never sent again by itself: the click says so, asks
-    // for a poll and leaves the line of gh in the Event log. A refusal of GitHub says so too.
+    // for a poll and leaves the line of gh in the Event log. A refusal of GitHub says so too. A
+    // plain approval does not make the PR wait for a poll: a second click reads the PR first.
     @Test func anUnknownResultIsNotSentAgain() async throws {
         let f = try await FlowFixture()
         await f.setMark(try f.mark(.approve, draft: false))
@@ -146,6 +179,8 @@ struct ApproveFlowTests {
         f.github.answers[FakeGitHub.key(write)] = .failure(.unknownOutcome("HTTP 502"))
         #expect(await approve(f) == .unknown)
         #expect(f.written == [write] && f.polls.values.count == 1)
+        // Only an approval of the Review panel makes the PR wait for a poll.
+        #expect(!f.writes.waitsForPoll(f.pr))
         f.github.answers[FakeGitHub.key(write)] = .failure(.refused("Can not approve"))
         #expect(await approve(f) == .refusedByGitHub)
         #expect(f.written.count == 2 && f.polls.values.count == 1)
@@ -267,6 +302,120 @@ struct ApproveFlowTests {
         #expect(f.writes.progress(f.pr) == nil && f.writes.held.isEmpty)
         #expect(f.progressEnds.values.count == 1)
         #expect(f.written == [write] && ReviewWrites.hold == .seconds(3))
+        await f.end()
+    }
+
+    // An approval from the Review panel is the one review write of its post: the ticked findings
+    // and the summary, with the event Approve. The row shows approving while it runs, then
+    // approved. The mark stays.
+    @Test func aPanelApprovalPostsOnlyTheTickedFindings() async throws {
+        let f = try await FlowFixture()
+        let mark = f.findingsMark()
+        await f.setMark(mark)
+        f.answerFresh(pending: .some(nil))
+        let post = FindingsPlan.post(mark.findings, ticked: [0, 1], summary: "Looks good.")
+        let write = GitHubWrite.reviewCommit(
+            pr: try ReviewData.node("PR_node7"), commit: f.head, event: .approve, body: post.body,
+            threads: post.threads, click: UserClick())
+        f.answerWrite(write, state: "APPROVED")
+        let gate = TestGate()
+        defer { gate.openAll() }
+        f.github.onWrite = { _ in await gate.pass() }
+        let (approver, pr) = (f.approver, f.pr)
+        let click = Task { () async -> ApproveRefusal? in
+            do throws(ApproveRefusal) {
+                try await approver.approve(
+                    pr, panel: PanelApproval(mark: mark, post: post), click: UserClick())
+                return nil
+            } catch {
+                return error
+            }
+        }
+        #expect(await gate.waitUntilHolding(1))
+        #expect(f.writes.progress(f.pr) == .running(.approve))
+        gate.open()
+        #expect(await click.value == nil)
+        #expect(f.written == [write])
+        #expect(f.reads == [DraftQueries.freshName])
+        #expect(f.writes.progress(f.pr) == .confirmed(.approve))
+        #expect(f.polls.values.count == 1 && f.savedMark == mark)
+        await f.end()
+    }
+
+    // The panel approves only the mark that it showed: an older mark, or a mark that changes
+    // while the fresh read runs, sends nothing.
+    @Test func aPanelApprovalOfAnOlderMarkIsRefused() async throws {
+        let f = try await FlowFixture()
+        let old = f.findingsMark(at: Rows.at(-90))
+        let mark = f.findingsMark()
+        await f.setMark(mark)
+        f.answerFresh(pending: .some(nil))
+        let post = FindingsPlan.post(old.findings, ticked: [0], summary: "")
+        #expect(await approve(f, panel: PanelApproval(mark: old, post: post)) == .notSuggested)
+        #expect(f.github.calls.isEmpty)
+        let (store, pr) = (f.store, f.pr)
+        let newer = f.findingsMark(at: Rows.at(-1))
+        f.github.onRead = { _ in
+            await store.update { $0.prs[pr]?.recommendation = newer }
+        }
+        #expect(await approve(f, panel: PanelApproval(mark: mark, post: post)) == .notSuggested)
+        #expect(f.reads == [DraftQueries.freshName] && f.written.isEmpty)
+        await f.end()
+    }
+
+    // A panel approval while another write of the PR runs sends nothing and says so: it never
+    // waits for a plain approval, because that approval does not post what the panel showed.
+    @Test func aPanelApprovalNeverJoinsARunningApproval() async throws {
+        let f = try await FlowFixture()
+        let mark = f.findingsMark()
+        await f.setMark(mark)
+        f.answerFresh(pending: .some(nil))
+        let plain = GitHubWrite.approveCommit(
+            pr: try ReviewData.node("PR_node7"), commit: f.head, click: UserClick())
+        f.answerWrite(plain, state: "APPROVED")
+        let gate = TestGate()
+        defer { gate.openAll() }
+        f.github.onWrite = { _ in await gate.pass() }
+        let (approver, writes, pr) = (f.approver, f.writes, f.pr)
+        let first = Task { () async -> ApproveRefusal? in
+            do throws(ApproveRefusal) {
+                try await approver.approve(pr, click: UserClick())
+                return nil
+            } catch {
+                return error
+            }
+        }
+        #expect(await gate.waitUntilHolding(1))
+        let panel = PanelApproval(
+            mark: mark, post: FindingsPlan.post(mark.findings, ticked: [0], summary: ""))
+        #expect(await approve(f, panel: panel) == .busy)
+        gate.open()
+        #expect(await first.value == nil)
+        #expect(f.written == [plain])
+        // While a send of the PR runs, a panel approval is busy too.
+        let head = f.head.hex
+        let sending = TestGate()
+        defer { sending.openAll() }
+        let send = Task { () async -> DraftRefusal? in
+            do throws(DraftRefusal) {
+                try await writes.send(pr, .comment, busy: .busy) {
+                    () async throws(DraftRefusal) -> String in
+                    await sending.pass()
+                    return head
+                }
+                return nil
+            } catch {
+                return error
+            }
+        }
+        #expect(await sending.waitUntilHolding(1))
+        #expect(await approve(f, panel: panel) == .busy)
+        sending.open()
+        #expect(await send.value == nil)
+        #expect(f.written == [plain])
+        #expect(
+            ApproveRefusal.busy.message
+                == "This pull request is still being approved, so try again once it's done.")
         await f.end()
     }
 

@@ -125,7 +125,7 @@ struct IdEdgeTests {
             (PanelKind.answer, 560.0, 420.0), (.chat, 720, 480), (.dailyUpdate, 560, 520),
             (.eventLog, 640, 360), (.heimdall, 520, 520), (.module, 560, 420),
             (.overview, 760, 360), (.overviewSettings, 360, 420), (.performance, 520, 460),
-            (.reviewDraft, 620, 560), (.reviews, 480, 420), (.selectedItem, 360, 300),
+            (.reviewDraft, 700, 560), (.reviews, 480, 420), (.selectedItem, 360, 300),
             (.serviceStatus, 420, 240), (.settings, 720, 540), (.showInfo, 460, 560),
             (.trust, 640, 380), (.usageHud, 360, 180), (.watchlist, 320, 280),
         ])

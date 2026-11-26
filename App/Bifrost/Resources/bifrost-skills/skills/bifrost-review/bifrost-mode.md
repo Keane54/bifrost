@@ -64,8 +64,8 @@ When `review.kind` is `first`, review `files.fullDiff`.
 - `review.note` `unchanged`: the head commit is the commit of the last review of the user.
 - `review.note` `rewritten`: the author rewrote the history after the last review of the user, or
   Bifrost cannot find the commit of that review.
-- With either note, review the full diff. When the review has other text, add one sentence that
-  says why. Else write no summary.
+- With either note, review the full diff. With `request-changes`, add one sentence to the summary
+  that says why. With `approve`, say it in the `note` field of the result.
 - With `review.note` `rewritten`, also check the earlier threads and summaries, as steps 3 to 5
   below say.
 
@@ -79,18 +79,64 @@ When `review.kind` is `re-review`:
    read the code at the head commit and the replies in the thread. Did the author fix it, answer
    it, or leave it as it was? Check the code also when a thread is resolved or outdated.
 4. An earlier point that the author did not fix counts again with its first kind, unless the
-   answer of the author shows that no change is necessary. Put it in the summary with the link of
-   its thread or its review. Never make a new line comment for it, because its thread exists
-   already.
-5. In the summary, say which earlier points are fixed and which are still open.
+   answer of the author shows that no change is necessary. Never make a new line comment or a
+   finding with a place for it, because its thread exists already.
+   - With `request-changes`, put it in the summary with the link of its thread or its review.
+   - With `approve`, list it as a finding with no place and with its first kind. Put the link of
+     its thread or its review in its body.
+5. With `request-changes`, say in the summary which earlier points are fixed and which are still
+   open.
+
+## Findings and the note
+
+This section replaces section 6 of `SKILL.md`. It also changes the style point of section 4.
+
+- List each new finding as one item of `findings`. Do this also when you recommend Approve.
+- Give each finding one kind:
+  - `bug`: a Bug or error of section 5 of `SKILL.md`. A security problem is a bug.
+  - `minor`: a Minor finding of section 5 of `SKILL.md`.
+  - `nit`: a style, naming, formatting or order point, or a small clean-up with no failure behind
+    it.
+- Section 4 of `SKILL.md` says that you must never report style, naming, formatting or order. In a
+  Bifrost round, you can report such a point as a nit. Report it only when its fix is clear and
+  you are sure of it. The other points of "Never report" in section 4 still apply. A nit is never
+  a question.
+- List nits only when you recommend `approve`. With `request-changes`, do not list nits.
+- The recommendation: when one finding is a `bug`, recommend `request-changes`. Else recommend
+  `approve`.
+- The summary: write it only with `request-changes`. In a few sentences, say what blocks the PR.
+  In a re-review, also say which earlier points are fixed and which are still open, with their
+  links. With `approve`, write `""`.
+- Never repeat a finding in the summary. Bifrost puts each finding that is not on a line of the
+  diff into the text of the review itself.
+- The body of a finding obeys the rules of section 7 of `SKILL.md` for a line comment. Give one
+  problem only. Never ask a question. Use a suggestion block only for a small fix that you are sure
+  of.
+- Never write a control character or a character that changes the direction of the text in a
+  body. Name such a character in words, for example "U+202E".
+- The place: a finding on lines has `path`, `line` and `side`, and `startLine` for a range. Obey
+  the line rules of "Write the review". A finding outside the hunks still gets its path and its
+  line. A finding on the whole PR, for example a missing goal, has no place.
+- A finding on a file that is not in `changedFiles` has no place. Give its path and its line in
+  its body.
+- The note is for the user only. Bifrost shows it in its Review panel and never posts it. Keep it
+  short: say what the PR does and what you checked, in plain text with no Markdown. Write it in a
+  natural voice, as `files.rules` says: join the clauses that belong together with commas, "and",
+  "but" or "so", and do not write a row of short sentences. Do not speak to the author. Use
+  British spelling. Write at most 2,000 characters, with no control character or direction
+  character except a line break.
 
 ## Write the review
 
-- Read `files.rules` before you write the summary and the comments, and obey it.
-- Section 6 of `SKILL.md` gives the recommendation and what the review holds.
-- Each line comment is on a line inside a hunk of `files.fullDiff` (section 7 of `SKILL.md`).
-  Take the line numbers from `files.fullDiff`, also in a re-review. The old lines of
-  `files.sinceDiff` are lines of the commit of the last review, not lines of the base.
+- Read `files.rules` before you write the note, the summary and the findings, and obey it.
+- Write the note, the summary and the findings in the voice that section 7 of `SKILL.md` gives.
+  This file uses short, controlled sentences so that each rule is exact. Do not copy that style
+  into the review.
+- The section "Findings and the note" gives the recommendation and what the review holds.
+- Put each finding with a place on a line inside a hunk of `files.fullDiff` when the problem is
+  there (section 7 of `SKILL.md`). Take the line numbers from `files.fullDiff`, also in a
+  re-review. The old lines of `files.sinceDiff` are lines of the commit of the last review, not
+  lines of the base.
 - Side `RIGHT` is for a line of the head version: an added line or an unchanged line. The line
   numbers that Read shows for a file in the current folder are the numbers of the head version.
 - Side `LEFT` is for a deleted line. Its number is the line number in the base version. Count it
@@ -99,30 +145,40 @@ When `review.kind` is `re-review`:
 - Count the lines of a hunk from the numbers in its header. A context line counts on both sides, a
   `-` line counts on the base side only, and a `+` line counts on the head side only. A context
   line starts with a space.
-- Put a problem outside the hunks in the summary, with its path and line.
+- A finding outside the hunks still gets its path and its line. Bifrost puts it into the text of
+  the review. Do not put it in the summary.
 
 ## The result file
 
 Write exactly one file: `files.result`. Write no other file. Use the Write tool with the full path
 from the input file. Write only the JSON object, with no code fence and no other text around it.
 
-This example is a `request-changes` result with one comment:
+This example is an `approve` result with one minor finding and one nit:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "pr": "example-org/api#7",
   "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "round": "0f8a2c1e-5b7d-4c3a-9e21-6d4b8f0a1c2e",
-  "recommendation": "request-changes",
-  "why": "The new limit check lets a client go one request over its limit.",
-  "summary": "One bug blocks this: the limit check in `src/limit.ts` is off by one.",
-  "comments": [
+  "recommendation": "approve",
+  "why": "the retry change is correct, but one log line is misleading",
+  "note": "The PR adds a retry with backoff to the upload client. I checked the backoff limits, the cancel path and the new tests.",
+  "summary": "",
+  "findings": [
     {
-      "path": "src/limit.ts",
+      "kind": "minor",
+      "path": "src/upload.ts",
+      "line": 40,
+      "side": "RIGHT",
+      "body": "The log says \"retry 3 of 3\" before the last try, so a reader thinks it gave up.\n\nLog the count after the try."
+    },
+    {
+      "kind": "nit",
+      "path": "src/upload.ts",
       "line": 12,
       "side": "RIGHT",
-      "body": "With `<=`, a client gets one request more than its limit.\n\nUse `<` here."
+      "body": "`n` is the retry count; `retries` says it."
     }
   ]
 }
@@ -130,29 +186,37 @@ This example is a `request-changes` result with one comment:
 
 Bifrost checks the file. If one rule fails, Bifrost refuses the whole file and posts nothing.
 
-- `version`: always `1`.
+- `version`: always `2`.
 - `pr`: the value of `pr.key`, exactly.
 - `headSha`: the value of `pr.headSha`, exactly.
 - `round`: the value of `round` of the input file, exactly.
-- `recommendation`: `approve` or `request-changes`. These are Approve and Request changes in
-  section 6 of `SKILL.md`.
-- `why`: one sentence on one line that gives the reason for the recommendation, from 1 to 300
-  characters. Bifrost shows it on the row of the PR.
-- `summary`: the body of the review (section 7 of `SKILL.md`), 20,000 characters at most. Write
-  `""` when the review has no summary.
-- `comments`: the line comments, 50 at most. Write `[]` when there are none.
-- Each comment has these fields:
+- `recommendation`: `approve` or `request-changes`, as "Findings and the note" says.
+- `why`: the reason for the recommendation, as one short clause on one line, from 1 to 300
+  characters. Start it with a lower-case letter, and put no full stop at the end. Bifrost shows
+  it on the row of the PR after "Claude suggests: Approve - " or "Claude suggests: Request
+  changes - ", and adds the punctuation.
+- `note`: the note for the user, from 1 to 2,000 characters. It can hold line breaks. It must not
+  hold another control character or a character that changes the direction of the text.
+- `summary`: the body of the review, 20,000 characters at most. With `approve`, write `""`. It can
+  hold line breaks and tabs. It must not hold another control character or a character that
+  changes the direction of the text.
+- `findings`: the findings, 50 at most. Write `[]` when there are none.
+- Each finding has these fields:
+  - `kind`: `bug`, `minor` or `nit`.
   - `path`: a path from `changedFiles`, exactly as it is there. It must not be a binary file.
-  - `line`: the line of the comment, a whole number of 1 or more. For a range, the last line.
+  - `line`: the line of the finding, a whole number of 1 or more. For a range, the last line.
   - `side`: `RIGHT` or `LEFT`, as "Write the review" says.
   - `startLine`: only for a range of lines. It is the first line, below `line` and in the same
-    hunk. Leave it out for a comment on one line. Do not write `null`.
+    hunk. Leave it out for a finding on one line. Do not write `null`.
   - `startSide`: only with `startLine`, and the same value as `side`. You can leave it out.
-  - `body`: the text of the comment in Markdown, from 1 to 10,000 characters.
-- `approve` has no line comments. Put each minor point in the summary.
-- `request-changes` needs text: a summary, one or more comments, or both.
+  - `body`: the text of the finding in Markdown, from 1 to 10,000 characters. It can hold line
+    breaks and tabs. It must not hold another control character or a character that changes the
+    direction of the text.
+- A finding with no place has only `kind` and `body`. Write all of `path`, `line` and `side`, or
+  none of them.
+- `request-changes` needs text: a summary, a `bug` or `minor` finding, or both.
 - A text with only white space counts as empty.
-- Use no other field, in the object or in a comment.
+- Use no other field, in the object or in a finding.
 - Inside a string, write a line break as `\n` and a tab as `\t`, and put `\` before each `"` and
   each `\`.
 

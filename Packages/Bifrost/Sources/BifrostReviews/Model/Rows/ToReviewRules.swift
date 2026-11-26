@@ -172,21 +172,48 @@ enum ToReviewRules {
             pr.author, RowText.size(additions: pr.additions, deletions: pr.deletions),
             RowText.age(RowText.span(since: pr.requestedAt, now: now)),
         ]
-        if let result {
-            notes = [
-                RowText.line(
-                    result, drafted: mark.flatMap { drafted($0, state.drafts) },
-                    approvals: pr.approvals)
-            ]
-        }
+        if let result { notes = [line(result, mark, state.drafts, approvals: pr.approvals)] }
+        let approve = approveOffer(pr, rowState, mark)
+        let findings = findingsPanel(rowState, mark)
         return ReviewRow(
             id: pr.key, state: .toReview(rowState), repo: pr.key.repo.name, title: pr.title,
             dot: result?.dot, tag: pr.isDirectRequest ? nil : RowText.team, review: nil,
             reviewers: [], notes: notes, status: status(pr, rowState, mark, result, now: now),
             reviewable: reviewable(
                 rowState, ownDraft: rowState == .draftReady && mark != nil, pr.ci),
-            approve: approveOffer(pr, rowState, mark), draft: draftOffer(rowState, mark),
-            ci: pr.ci)
+            approve: approve, draft: draftOffer(rowState, mark),
+            approveCheck: approve == nil ? nil : approveCheck(mark), findingsPanel: findings,
+            nits: findings ? mark?.findings.count(.nit) ?? 0 : 0, ci: pr.ci)
+    }
+
+    // The line of Claude's result. An Approve with no draft counts Claude's findings
+    // (RowText.found). The other results tell what Claude drafted.
+    private static func line(
+        _ result: ClaudeResult, _ mark: RecommendationMark?, _ drafts: [DraftRecord],
+        approvals: Int
+    ) -> String {
+        if result == .approve, let mark, mark.reviewID == nil, !mark.deleted {
+            return RowText.found(mark.findings)
+        }
+        return RowText.line(
+            result, drafted: mark.flatMap { drafted($0, drafts) }, approvals: approvals)
+    }
+
+    // What Approve opens first (user decision, 2026-11-20): the Review panel on Claude's findings
+    // for a finding above a nit, and the Review panel on Claude's old Approve draft, which Approve
+    // never submits as it is. nil: Approve approves at once with no text, for no findings or only
+    // nits, and for a mark of a deleted draft.
+    static func approveCheck(_ mark: RecommendationMark?) -> ApproveCheck? {
+        guard let mark else { return nil }
+        if mark.reviewID != nil { return mark.value == .approve ? .draft : nil }
+        return FindingsPlan.offers(mark) && mark.findings.aboveNits ? .findings : nil
+    }
+
+    // True when the row menu offers See Claude's review: a Looks good row whose Approve mark has
+    // no draft and has Claude's note or a finding. A mark from before the findings has neither.
+    static func findingsPanel(_ rowState: ToReviewState, _ mark: RecommendationMark?) -> Bool {
+        guard rowState == .reviewed, let mark, FindingsPlan.offers(mark) else { return false }
+        return !mark.note.isEmpty || !mark.findings.isEmpty
     }
 
     // The Approve button (user decision, 2026-11-13): a Looks good or a Draft ready row that

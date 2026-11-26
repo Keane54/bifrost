@@ -2,9 +2,10 @@
 // panel, so the part has at most one body: a host of the SwiftUI panel with its model. The body
 // runs its display clock while it is in a frame, and a release stops it. The part also holds the
 // trust panel (TrustPanels), which the Trust buttons of the panel open, and gives the bodies of
-// the Review panel (ReviewDraftPanels), which Comment and Request changes open, and of the Answer
-// panel (AnswerPanels), which Answer Claude opens. When Reviews stops, the part closes these three
-// panels.
+// the Review panel (ReviewDraftPanels) and of the Answer panel (AnswerPanels), which Answer Claude
+// opens. Comment and Request changes open the Review panel on Claude's draft. Approve on a finding
+// above a nit and See Claude's review open it on Claude's findings, and Approve on Claude's old
+// Approve draft opens it on that draft. When Reviews stops, the part closes these three panels.
 import AppKit
 import BifrostFoundation
 import BifrostLayout
@@ -49,6 +50,7 @@ package final class ReviewsPanels: PanelBodiesPart {
         draft = ReviewDraftPanels(links: links, look: look)
         answer = AnswerPanels(links: links, opener: opener, look: look)
         links.openDraft = { [weak draft] in draft?.open($0) }
+        links.openFindings = { [weak draft] in draft?.openFindings($0) }
         links.openAnswer = { [weak answer] in answer?.open($0) }
     }
 

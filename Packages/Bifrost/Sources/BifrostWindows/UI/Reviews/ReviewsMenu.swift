@@ -1,10 +1,10 @@
 // The row menu of the Reviews panel (docs/behaviour/reviews.md, "The panel") on the Bifrost menu:
 // only the items that apply to the row, in the order of the menu of the Electron app. Only
 // Approve writes to GitHub, and only with the click of the user (a UserClick that the menu makes
-// at the choice): Review starts a round, which leaves only a pending review; Comment and Request
-// changes open the Review panel, whose buttons make their own clicks; and Handle now, Handle
-// Copilot comments and Try again on a PR of the user start a request round, whose result Bifrost
-// checks before it posts.
+// at the choice): Review starts a round, which leaves only a pending review; Comment, Request
+// changes and See Claude's review open the Review panel, whose buttons make their own clicks; and
+// Handle now, Handle Copilot comments and Try again on a PR of the user start a request round,
+// whose result Bifrost checks before it posts.
 //
 // The menu shows the row of now and follows it, as the row menu of a session does
 // (FollowingMenu): each change of the rows gives it the items of the row of now, and it closes
@@ -20,6 +20,8 @@ package enum ReviewsMenuItem: String, Sendable, CaseIterable {
     // Open the Review panel for Claude's Comment or Request changes draft.
     case comment
     case requestChanges = "request-changes"
+    // Open the Review panel on Claude's note and findings of an approval. It is not a button.
+    case seeReview = "see-review"
     case review
     case tryAgain = "try-again"
     case remove
@@ -42,6 +44,7 @@ package enum ReviewsMenuItem: String, Sendable, CaseIterable {
         case .approve: "Approve"
         case .comment: "Comment"
         case .requestChanges: "Request changes"
+        case .seeReview: "See Claude's review"
         case .review: "Review"
         case .tryAgain: "Try again"
         case .remove: "Remove"
@@ -64,10 +67,11 @@ package enum ReviewsMenuItem: String, Sendable, CaseIterable {
 package enum ReviewsMenu {
     // The items of the row, in their order: Open on GitHub for each row; Open session while the
     // PR has a session that is not parked; Approve while the row offers it and CI doesn't run;
-    // Comment or Request changes while the row offers Claude's draft; Review (Try again on a
-    // failed row) while a round can start; Remove for a row that others approved; Cancel review
-    // for a review that waits; Stop session; Pause for a new request and End pause now for a
-    // paused row. A My PRs row has its own items (mineItems).
+    // Comment or Request changes while the row offers Claude's draft; See Claude's review while
+    // the row shows an approval with Claude's note or findings; Review (Try again on a failed
+    // row) while a round can start; Remove for a row that others approved; Cancel review for a
+    // review that waits; Stop session; Pause for a new request and End pause now for a paused
+    // row. A My PRs row has its own items (mineItems).
     package static func items(_ row: ReviewRow, hasSession: Bool) -> [ReviewsMenuItem] {
         guard case .toReview(let state) = row.state else {
             return mineItems(row, hasSession: hasSession)
@@ -76,6 +80,7 @@ package enum ReviewsMenu {
         if hasSession { items.append(.openSession) }
         if row.approve == .ready { items.append(.approve) }
         if let draft = row.draft { items.append(draftItem(draft)) }
+        if row.findingsPanel { items.append(.seeReview) }
         if row.reviewable {
             if case .failed = state { items.append(.tryAgain) } else { items.append(.review) }
         }

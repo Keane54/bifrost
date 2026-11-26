@@ -563,8 +563,14 @@ package final class ReviewsParts {
         case .success(let store):
             readConsents(store)
             let setup = makeSetup(store, watcher: watcher)
+            let client = client
             let writes = ReviewWrites(
-                clock: clock, progressEnded: { [weak watcher] in watcher?.refreshTimes() })
+                clock: clock, polls: { [weak watcher] in watcher?.polls ?? PollCount() },
+                progressEnded: { [weak watcher] in watcher?.refreshTimes() },
+                ownReviews: { [weak watcher] pr in
+                    guard let viewer = watcher?.answer?.viewer else { return nil }
+                    return try? await DraftQueries.ownReviews(pr, viewer: viewer, on: client)
+                }, now: now)
             let approver = ApproveFlow(
                 store: store, github: client, writes: writes,
                 viewer: { [weak watcher] in watcher?.answer?.viewer },
@@ -578,6 +584,13 @@ package final class ReviewsParts {
                         makeRounds(store, setup: $0, watcher: watcher, writes: writes)
                     },
                     approver: approver, writes: writes))
+            // After each good poll, also check any unsure Comment against your own reviews, as
+            // no poll can show a comment. This wraps whatever the setup and the rounds hooked up.
+            let answered = watcher.answered
+            watcher.answered = { [weak writes] answer in
+                answered(answer)
+                writes?.checkComments()
+            }
             settleConsents(store)
         case .failure(let failure):
             phase = .refused(failure, watcher)
@@ -593,6 +606,17 @@ package final class ReviewsParts {
         guard let open else { return nil }
         let watcher = open.watcher
         return DraftFlow(
+            store: open.store, github: client, approver: open.approver, writes: open.writes,
+            viewer: { [weak watcher] in watcher?.answer?.viewer },
+            ended: { [weak watcher] in watcher?.refresh() }, eventLine: eventLine)
+    }
+
+    // A new flow for an open of the findings form of the Review panel, or nil while the store is
+    // not open.
+    package func findingsFlow() -> FindingsFlow? {
+        guard let open else { return nil }
+        let watcher = open.watcher
+        return FindingsFlow(
             store: open.store, github: client, approver: open.approver, writes: open.writes,
             viewer: { [weak watcher] in watcher?.answer?.viewer },
             ended: { [weak watcher] in watcher?.refresh() }, eventLine: eventLine)
@@ -799,6 +823,7 @@ extension Shell {
         links.approver = { [weak services] in services?.reviews?.approver }
         links.writes = { [weak services] in services?.reviews?.writes }
         links.makeDraftFlow = { [weak services] in services?.reviews?.draftFlow() }
+        links.makeFindingsFlow = { [weak services] in services?.reviews?.findingsFlow() }
         links.makeAnswerFlow = { [weak services] in services?.reviews?.answerFlow(for: $0) }
         links.changesToDiscard = { [weak services] pr in
             await services?.reviews?.rounds?.changesToDiscard(pr) ?? .notNow

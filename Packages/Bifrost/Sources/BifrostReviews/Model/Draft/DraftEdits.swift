@@ -153,6 +153,9 @@ package enum DraftRefusal: Error, Sendable, Equatable {
     case notOffered
     // Another action of the panel runs now. This one sent nothing.
     case busy
+    // A review write of the findings form of the PR may have gone, and no poll after it has
+    // shown the true state on GitHub (ReviewWrites.waitsForPoll). Nothing was sent.
+    case waitsForPoll
     case closed
     case ownPR
     case gone
@@ -193,7 +196,8 @@ package enum DraftRefusal: Error, Sendable, Equatable {
     // state.
     package var mayHaveChanged: Bool {
         switch self {
-        case .editUnknown, .sendUnknown, .notAsSent, .discardUnknown, .insteadUnknown, .notPending:
+        case .editUnknown, .sendUnknown, .notAsSent, .discardUnknown, .insteadUnknown, .notPending,
+            .waitsForPoll:
             true
         default: false
         }
@@ -204,6 +208,7 @@ package enum DraftRefusal: Error, Sendable, Equatable {
         case .notOffered:
             "You can't change this draft right now. The row in the Reviews panel shows why."
         case .busy: "Bifrost is still working on this draft. Wait for it to finish, then try again."
+        case .waitsForPoll: FindingsRefusal.unknown.message
         case .closed:
             "This pull request is closed or merged, so Bifrost didn't change the draft."
         case .ownPR: "This is your own pull request, so Bifrost didn't change the draft."

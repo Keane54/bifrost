@@ -4,9 +4,9 @@ import Foundation
 
 // The answers of GitHub for the tests of the Approve button, the Review panel and the Answer
 // panel, for FakeGitHub: the fresh read of a PR (DraftQueries.fresh), the read of a draft review
-// (DraftQueries.draft), the state of a review now (ReviewQueries.review) and the answer of a
-// write. The answer of a write takes the field of its GraphQL write from GitHubWrite.mutation, so
-// this file names no mutation.
+// (DraftQueries.draft), your own reviews on a PR (DraftQueries.ownReviews), the state of a review
+// now (ReviewQueries.review) and the answer of a write. The answer of a write takes the field of
+// its GraphQL write from GitHubWrite.mutation, so this file names no mutation.
 package enum DraftAnswers {
     // A pending review in the fresh read.
     package struct Pending {
@@ -74,6 +74,17 @@ package enum DraftAnswers {
                 ]
             ]
         ])
+    }
+
+    // The read of your own finished reviews on a PR: each with its state, commit and time.
+    package static func ownReviews(_ reviews: [Opinion]) -> Data {
+        let list: [JSONValue] = reviews.map {
+            [
+                "state": .string($0.state), "submittedAt": .string($0.at.formatted(.iso8601)),
+                "commit": ["oid": .string($0.commit.hex)],
+            ]
+        }
+        return json(["data": ["repository": ["pullRequest": ["reviews": ["nodes": .array(list)]]]]])
     }
 
     // One page of the read of a draft review: pending, by the viewer, on the commit.

@@ -14,11 +14,14 @@ struct DraftFlowTests {
     private static let claudeComment = "PRRC_claude"
     private static let userComment = "PRRC_user"
 
-    // Claude's Comment draft on the head with a summary, Claude's comment on src/a.swift line 11
-    // and a comment that the user added on src/b.swift line 3. The panel opened it.
-    private func opened() async throws -> (FlowFixture, DraftFlow) {
+    // Claude's Comment draft (or a draft of the value) on the head with a summary, Claude's
+    // comment on src/a.swift line 11 and a comment that the user added on src/b.swift line 3, and
+    // the private note of the mark. The panel opened it.
+    private func opened(_ value: Recommendation = .comment, note: String = "") async throws
+        -> (FlowFixture, DraftFlow)
+    {
         let f = try await FlowFixture()
-        let mark = try f.mark(.comment)
+        let mark = try f.mark(value, note: note)
         await f.setMark(mark)
         let pr = f.pr
         let review = try ReviewData.node(FlowFixture.claudeReview)
@@ -69,7 +72,8 @@ struct DraftFlowTests {
         #expect(flow.isCurrent && !f.draftFlow().isCurrent)
         #expect(
             flow.shown
-                == DraftFlow.Shown(recommendation: .comment, why: "The reason.", headMoved: false))
+                == DraftFlow.Shown(
+                    recommendation: .comment, why: "The reason.", note: "", headMoved: false))
         #expect(flow.summary == "Summary.")
         #expect(flow.comments.map(\.place) == ["src/a.swift line 11", "src/b.swift lines 1-3"])
         #expect(flow.comments.map(\.yours) == [false, true])
@@ -311,6 +315,106 @@ struct DraftFlowTests {
         #expect(f.written == [discard, approve])
         #expect(f.savedMark?.deleted == true && f.savedMark?.reviewID == nil)
         #expect(f.savedMark?.value == .comment)
+        await f.end()
+    }
+
+    // Claude's old Approve draft (from before the findings) opens in the Review panel: Approve
+    // never submits it as it is. Approve instead deletes it, then approves the head with no text.
+    @Test func anOldApproveDraftOpensInTheReviewPanel() async throws {
+        let (f, flow) = try await opened(.approve)
+        #expect(flow.isCurrent && flow.shown?.recommendation == .approve)
+        #expect(flow.summary == "Summary." && flow.comments.count == 2 && f.written.isEmpty)
+        let discard = GitHubWrite.discardDraft(
+            review: try ReviewData.node(FlowFixture.claudeReview), click: UserClick())
+        let approve = GitHubWrite.approveCommit(
+            pr: try ReviewData.node("PR_node7"), commit: f.head, click: UserClick())
+        f.answerWrite(discard)
+        f.answerWrite(approve, state: "APPROVED")
+        f.github.queued[DraftQueries.freshName] = [
+            .success(DraftAnswers.fresh(
+                f.pr, head: f.head,
+                pending: DraftAnswers.Pending(id: FlowFixture.claudeReview, commit: f.head))),
+            .success(DraftAnswers.fresh(f.pr, head: f.head)),
+        ]
+        try await flow.approveInstead(click: UserClick())
+        #expect(f.written == [discard, approve])
+        #expect(f.savedMark?.deleted == true && f.savedMark?.value == .approve)
+        await f.end()
+    }
+
+    // Claude's private note shows in the panel, and no write of the panel holds it: Send review,
+    // Discard draft and Approve instead of a Request changes draft with a note write only the
+    // draft and the approval.
+    @Test func noSendOfTheDraftHoldsTheNote() async throws {
+        let (f, flow) = try await opened(.requestChanges, note: FlowFixture.note)
+        #expect(flow.shown?.note == FlowFixture.note)
+        let mark = try f.mark(.requestChanges, note: FlowFixture.note)
+        let review = try ReviewData.node(FlowFixture.claudeReview)
+        let submit = GitHubWrite.submitDraft(
+            review: review, event: .requestChanges, click: UserClick())
+        f.answerWrite(submit, state: "CHANGES_REQUESTED")
+        #expect(await refusal { () async throws(DraftRefusal) in
+            try await flow.send(.requestChanges, click: UserClick())
+        } == nil)
+        await f.setMark(mark)
+        try await flow.open(f.pr)
+        let discard = GitHubWrite.discardDraft(review: review, click: UserClick())
+        f.answerWrite(discard)
+        #expect(await refusal { () async throws(DraftRefusal) in
+            try await flow.discard(click: UserClick())
+        } == nil)
+        await f.setMark(mark)
+        try await flow.open(f.pr)
+        let approve = GitHubWrite.approveCommit(
+            pr: try ReviewData.node("PR_node7"), commit: f.head, click: UserClick())
+        f.answerWrite(approve, state: "APPROVED")
+        f.github.queued[DraftQueries.freshName] = [
+            .success(DraftAnswers.fresh(
+                f.pr, head: f.head,
+                pending: DraftAnswers.Pending(id: FlowFixture.claudeReview, commit: f.head))),
+            .success(DraftAnswers.fresh(f.pr, head: f.head)),
+        ]
+        #expect(await refusal { () async throws(DraftRefusal) in
+            try await flow.approveInstead(click: UserClick())
+        } == nil)
+        #expect(f.written == [submit, discard, discard, approve])
+        for write in f.written {
+            #expect(!String(decoding: write.input, as: UTF8.self).contains(FlowFixture.note))
+        }
+        await f.end()
+    }
+
+    // While a review write of the findings form of the PR may have gone, no button of the panel
+    // sends anything until a poll that started after that result gives a good answer. Each click
+    // asks for a poll and says so. Then the panel sends again.
+    @Test func aDraftWaitsForThePollOfAnUnsureReview() async throws {
+        let (f, flow) = try await opened()
+        let calls = f.github.calls.count
+        f.writes.mayHaveGone(f.pr)
+        let actions: [() async throws(DraftRefusal) -> Void] = [
+            { () async throws(DraftRefusal) in try await flow.send(.comment, click: UserClick()) },
+            { () async throws(DraftRefusal) in
+                try await flow.send(.requestChanges, click: UserClick())
+            },
+            { () async throws(DraftRefusal) in try await flow.discard(click: UserClick()) },
+            { () async throws(DraftRefusal) in try await flow.approveInstead(click: UserClick()) },
+        ]
+        for action in actions {
+            #expect(await refusal(action) == .waitsForPoll)
+        }
+        #expect(f.github.calls.count == calls && f.polls.values.count == 4)
+        #expect(f.writes.progress(f.pr) == nil && f.savedMark?.reviewID != nil)
+        #expect(
+            DraftRefusal.waitsForPoll.message
+                == "Bifrost can't tell whether GitHub saved your review, so click Refresh to "
+                + "check.")
+        await f.pollAnswered()
+        let submit = GitHubWrite.submitDraft(
+            review: try ReviewData.node(FlowFixture.claudeReview), event: .comment,
+            click: UserClick())
+        f.answerWrite(submit, state: "COMMENTED")
+        try await flow.send(.comment, click: UserClick())
+        #expect(f.written == [submit])
         await f.end()
     }
 

@@ -309,6 +309,31 @@ struct ReviewsWatcherTests {
         await harness.end()
     }
 
+    // The watcher counts the polls that start, and gives the number of the poll of the last good
+    // answer. A refresh during a poll gives one more poll, and a poll that fails answers nothing.
+    @Test func thePollCountGivesThePollOfTheLastGoodAnswer() async throws {
+        let harness = try await Harness(holdRead: true)
+        #expect(harness.watcher.polls == PollCount())
+        harness.watcher.apply(ReviewsConfig(watch: true))
+        await harness.held.gate.waitUntilHolding()
+        #expect(harness.watcher.polls == PollCount(started: 1, answered: 0))
+        harness.watcher.refresh()
+        harness.github.answers["poll"] = .failure(.notLoggedIn)
+        harness.held.gate.open()
+        await harness.held.gate.waitUntilHolding()
+        #expect(harness.watcher.polls == PollCount(started: 2, answered: 0))
+        harness.github.answers["poll"] = .success(try FixtureFiles.data("poll-basic"))
+        harness.held.gate.open()
+        await harness.settle()
+        #expect(harness.watcher.polls == PollCount(started: 2, answered: 2))
+        harness.github.answers["poll"] = .failure(.notLoggedIn)
+        harness.held.gate.openAll()
+        harness.watcher.refresh()
+        await harness.settle()
+        #expect(harness.watcher.polls == PollCount(started: 3, answered: 2))
+        await harness.end()
+    }
+
     // The flag of a refresh that the user asked for: true from the click until the poll that the
     // click asked for ends, also when it fails. The first poll and a poll of the timer leave it
     // false. A click during a poll of the timer keeps it true until the next poll ends.
@@ -603,6 +628,43 @@ struct ReviewsWatcherTests {
         harness.watcher.notify(.trustNeeded(try #require(RepoName("owner-a/repo-b"))))
         #expect(harness.notifier.shown.count == 3)
         #expect(harness.notifier.shown.allSatisfy { $0.source == .reviews })
+        await harness.end()
+    }
+
+    // The notification of a Looks good round says what Claude found: nothing, or the count of
+    // each kind of finding as line 2 of the row gives it, so it never says "nothing to flag" for a
+    // round with findings.
+    @Test func theLooksGoodNotificationSaysWhatClaudeFound() async throws {
+        let harness = try await Harness()
+        await harness.start()
+        harness.watcher.focused = { false }
+        let key = try #require(PRKey(text: viewerKey))
+        let head = try #require(CommitID(String(repeating: "a", count: 40)))
+        let store = harness.store
+        func found(_ kinds: [FindingKind]) async {
+            let findings = kinds.map {
+                Finding(kind: $0, place: nil, body: "A point.", onDiff: false)
+            }
+            await store.update { state in
+                var prState = state.prs[key] ?? PRState()
+                prState.recommendation = RecommendationMark(
+                    value: .approve, why: "the change is small", headSHA: head, reviewID: nil,
+                    at: Date(timeIntervalSince1970: 1_794_312_000), findings: findings)
+                state.prs[key] = prState
+            }
+            harness.watcher.notify(.reviewed(key))
+        }
+        await found([])
+        await found([.nit, .minor, .minor])
+        await found([.nit, .nit])
+        #expect(
+            harness.notifier.shown.map(\.body) == [
+                "Claude found nothing to flag in owner-a/repo-b#101, so nothing was posted.",
+                "Claude suggests approving owner-a/repo-b#101, but found 2 minor points and 1 nit "
+                    + "for you to check.",
+                "Claude suggests approving owner-a/repo-b#101, but found 2 nits for you to check.",
+            ])
+        #expect(harness.notifier.shown.allSatisfy { $0.title == "Claude suggests you approve" })
         await harness.end()
     }
 

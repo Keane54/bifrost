@@ -1,28 +1,32 @@
 // The pending review of a review round (docs/behaviour/reviews.md, "Review rounds"): what Bifrost
-// writes on GitHub for a good result. Only the user submits the review.
-// - GitHub refuses a whole review when one comment is on a line that the diff does not show, so
-//   such a comment moves into the summary, with its path and its line, after the summary of the
-//   session (user decision, 2026-11-11).
+// writes on GitHub for a good Request changes or Comment result. Only the user submits the review.
+// An Approve result posts nothing in a round, so it has no plan.
+// - The draft holds the summary and each bug and minor finding. A nit and the note never go to
+//   GitHub in a round.
+// - GitHub refuses a whole review when one comment is on a line that the diff does not show, so a
+//   finding off the diff (Finding.onDiff) moves into the summary, with its path and its line,
+//   after the summary of the session (user decision, 2026-11-11). A finding on the whole PR moves
+//   into the summary as its body.
 // - With no pending review of the user, Bifrost creates one on the reviewed commit, with the
 //   summary and the comments.
 // - With a pending review of the user, Bifrost adds each comment to it as a new thread, and puts
 //   its summary below the text of the user after a blank line (user decision, 2026-11-11). A
 //   thread goes on the commit of that review, so a review on another commit fails the round and
 //   nothing is posted.
-// - An Approve with no summary and no comments posts nothing.
+// - A result with no summary and no finding above a nit posts nothing.
 import BifrostFoundation
 
-// The result with each comment in its place: the comments on lines of the diff, and the summary
-// with the moved comments.
+// The result with each finding of the draft in its place: the comments on lines of the diff, and
+// the summary with the moved findings.
 package struct PlacedReview: Sendable, Equatable {
     package var summary: String
     package var comments: [DraftComment]
-    // The count of the comments that moved into the summary.
+    // The count of the findings that moved into the summary.
     package var moved: Int
 }
 
 package enum PendingReviewPlan: Sendable, Equatable {
-    // An Approve with nothing to say: no write.
+    // A result with nothing to post: no write.
     case nothing
     // A new pending review on the reviewed commit.
     case create(body: String, comments: [DraftComment])
@@ -30,30 +34,30 @@ package enum PendingReviewPlan: Sendable, Equatable {
     // is no summary to add.
     case add(review: NodeID, comments: [DraftComment], body: String?)
 
-    // Move each comment that the diff does not show into the summary. The summary of the
-    // session stays first, and each moved comment is a paragraph: its path as code, its line and
-    // its body.
-    package static func place(_ outcome: ReviewOutcome, diff: [DiffFile]) -> PlacedReview {
+    // Put each bug and minor finding in its place: a line comment when the diff shows it, else a
+    // paragraph of the summary. The summary of the session stays first.
+    package static func place(_ outcome: ReviewOutcome) -> PlacedReview {
         var kept: [DraftComment] = []
         var parts = outcome.summary.trimmed().isEmpty ? [] : [outcome.summary]
-        for comment in outcome.comments {
-            if DiffLines.shows(diff, comment) {
+        var moved = 0
+        for finding in outcome.draftFindings {
+            if let comment = finding.comment {
                 kept.append(comment)
             } else {
-                parts.append("\(codeSpan(comment.path)) line \(comment.line): \(comment.body)")
+                parts.append(finding.paragraph)
+                moved += 1
             }
         }
         return PlacedReview(
-            summary: parts.joined(separator: "\n\n"), comments: kept,
-            moved: outcome.comments.count - kept.count)
+            summary: parts.joined(separator: "\n\n"), comments: kept, moved: moved)
     }
 
     // The writes for the result on the reviewed head, with the pending review of the user from a
     // read after the session ended.
     package static func plan(
-        _ outcome: ReviewOutcome, diff: [DiffFile], head: CommitID, pending: PendingDraft?
+        _ outcome: ReviewOutcome, head: CommitID, pending: PendingDraft?
     ) throws(RoundFailure) -> PendingReviewPlan {
-        let placed = place(outcome, diff: diff)
+        let placed = place(outcome)
         let hasSummary = !placed.summary.trimmed().isEmpty
         guard hasSummary || !placed.comments.isEmpty else { return .nothing }
         guard let pending else {

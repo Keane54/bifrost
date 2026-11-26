@@ -176,13 +176,27 @@ private final class RoundFixture {
     var input: String { repos.layout.inputFolder(pr.repo, number: 7).plainPath }
     var worktree: String { GitPlace.worktree(pr, repos.layout) }
 
-    // A good result file of the review of the head.
     // The token of the round comes from its input.json, as the session reads it.
-    func result(_ change: (inout [String: JSONValue]) -> Void = { _ in }) -> Data {
+    private var token: String? {
         let file = try? Data(contentsOf: URL(filePath: input + "/input.json"))
-        let token = file.flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) }?
+        return file.flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) }?
             .object?["round"]?.string
+    }
+
+    // A good version 1 result file of the review of the head.
+    func result(_ change: (inout [String: JSONValue]) -> Void = { _ in }) -> Data {
+        let (head, token) = (head, token)
         return ReviewData.result {
+            $0["headSha"] = .string(head.hex)
+            if let token { $0["round"] = .string(token) }
+            change(&$0)
+        }
+    }
+
+    // A good version 2 result file of the review of the head.
+    func resultV2(_ change: (inout [String: JSONValue]) -> Void = { _ in }) -> Data {
+        let (head, token) = (head, token)
+        return ReviewData.resultV2 {
             $0["headSha"] = .string(head.hex)
             if let token { $0["round"] = .string(token) }
             change(&$0)
@@ -464,7 +478,9 @@ struct ReviewRoundTests {
         let writes = ReviewWrites(clock: ManualClock())
         f.rounds.reviewStarted = { writes.forget($0) }
         let head = f.head.hex
-        try await writes.send(f.pr, .comment) { () async throws(DraftRefusal) -> String in head }
+        try await writes.send(f.pr, .comment, busy: .busy) {
+            () async throws(DraftRefusal) -> String in head
+        }
         var request = try Rows.pull(f.pr.text)
         request.headSHA = head
         func row(_ request: PullRequest) -> ReviewRow? {
@@ -716,6 +732,139 @@ struct ReviewRoundTests {
         #expect(f.writes.count == 1)
         #expect(f.store.state.prs[f.pr]?.recommendation?.reviewID != nil)
         #expect(f.deps.calls.claudeRuns.filter { $0.first == "--bg" }.count == 1)
+        await f.end()
+    }
+
+    // A round that recommends Approve never writes to GitHub, also with findings. The mark keeps
+    // the note and each finding with onDiff, for the Review panel.
+    @Test func anApproveRoundPostsNothingAndKeepsTheFindings() async throws {
+        let f = try await RoundFixture()
+        let round = try await f.review()
+        await f.sessionWorks()
+        let result = f.resultV2 {
+            $0["recommendation"] = "approve"
+            $0["summary"] = ""
+            $0["findings"] = [
+                ReviewData.item("minor", line: 11, body: "The log line says the wrong count."),
+                ReviewData.item("nit", line: 99, body: "`n` says less than `retries`."),
+            ]
+        }
+        try await f.endTurn(result: result)
+        await f.ended(round)
+        #expect(f.writes.isEmpty)
+        let state = try #require(f.store.state.prs[f.pr])
+        #expect(state.round == nil && state.lastError == nil)
+        #expect(state.lastReviewedCommit == f.head)
+        let mark = try #require(state.recommendation)
+        #expect(mark.value == .approve && mark.reviewID == nil && !mark.deleted)
+        #expect(mark.note == ReviewData.note)
+        #expect(
+            mark.findings == [
+                ReviewData.finding(
+                    .minor, line: 11, body: "The log line says the wrong count.", onDiff: true),
+                ReviewData.finding(.nit, line: 99, body: "`n` says less than `retries`."),
+            ])
+        #expect(f.store.state.drafts.isEmpty)
+        #expect(f.notices.values == [.reviewed(f.pr)])
+        await f.end()
+    }
+
+    // A Request changes round leaves a pending review with the summary, the bug on the diff as
+    // a line comment and the minor finding off the diff as a paragraph of the summary. The nit
+    // stays off GitHub. The mark keeps all three findings.
+    @Test func aChangesRoundDraftsTheBugAndMinorFindings() async throws {
+        let f = try await RoundFixture()
+        let round = try await f.review()
+        await f.sessionWorks()
+        let findings: JSONValue = [
+            ReviewData.item("bug", line: 11, body: "Use `<` here."),
+            ReviewData.item("minor", line: 99, body: "The log line says the wrong count."),
+            ReviewData.item("nit", line: 11, body: "`n` says less than `retries`."),
+        ]
+        try await f.endTurn(result: f.resultV2 { $0["findings"] = findings })
+        await f.ended(round)
+        #expect(
+            f.writes == [
+                .createPendingReview(
+                    f.pr, commit: f.head,
+                    body: "One bug blocks this.\n\n`src/a.swift` line 99: "
+                        + "The log line says the wrong count.",
+                    comments: [RoundFixture.comment])
+            ])
+        let mark = try #require(f.store.state.prs[f.pr]?.recommendation)
+        #expect(mark.value == .requestChanges)
+        #expect(mark.reviewID == (try ReviewData.node("PRR_new")))
+        #expect(mark.note == ReviewData.note)
+        #expect(mark.findings.map(\.kind) == [.bug, .minor, .nit])
+        #expect(mark.findings.map(\.onDiff) == [true, false, true])
+        await f.end()
+    }
+
+    // Claude's note is for the user only: no write of a round holds it. A Request changes round
+    // writes its review without the note, and a later Approve round writes nothing.
+    @Test func theNoteNeverGoesToGitHub() async throws {
+        let note = "PRIVATE-NOTE-4c1e"
+        let f = try await RoundFixture()
+        let first = try await f.review()
+        await f.sessionWorks()
+        let findings: JSONValue = [
+            ReviewData.item("bug", line: 11, body: "Use `<` here."),
+            ReviewData.item("minor", line: 99, body: "The log line says the wrong count."),
+            ReviewData.item("nit", body: "The names of the two tests swap."),
+        ]
+        try await f.endTurn(
+            result: f.resultV2 {
+                $0["note"] = .string(note)
+                $0["findings"] = findings
+            })
+        await f.ended(first)
+        #expect(f.writes.count == 1)
+        #expect(f.store.state.prs[f.pr]?.recommendation?.note == note)
+        let second = try await f.review()
+        await waitUntil { f.deps.calls.claudeRuns.filter { $0.first == "--bg" }.count == 2 }
+        await f.sessionWorks()
+        try await f.endTurn(
+            result: f.resultV2 {
+                $0["recommendation"] = "approve"
+                $0["note"] = .string(note)
+                $0["summary"] = ""
+                $0["findings"] = findings
+            })
+        await f.ended(second)
+        let mark = try #require(f.store.state.prs[f.pr]?.recommendation)
+        #expect(mark.value == .approve && mark.note == note)
+        #expect(f.writes.count == 1)
+        for write in f.writes {
+            #expect(!String(decoding: write.input, as: UTF8.self).contains(note))
+        }
+        await f.end()
+    }
+
+    // A round that ran when Bifrost quit can end with a version 1 result, because its input
+    // folder holds the old mode file. Its Approve summary becomes one minor finding on the whole
+    // PR, and the round writes nothing.
+    @Test func aResumedRoundTakesAnOldApproveResult() async throws {
+        let f = try await RoundFixture()
+        _ = try await f.review()
+        await f.sessionWorks()
+        try await f.restart()
+        #expect(f.store.state.prs[f.pr]?.round?.phase == .running)
+        let round = try #require(f.rounds.queue.task(of: f.pr))
+        let result = f.result {
+            $0["recommendation"] = "approve"
+            $0["summary"] = "Two small points."
+            $0["comments"] = []
+        }
+        try await f.endTurn(result: result)
+        await f.ended(round)
+        #expect(f.writes.isEmpty)
+        let mark = try #require(f.store.state.prs[f.pr]?.recommendation)
+        #expect(mark.value == .approve && mark.reviewID == nil && mark.note == "")
+        #expect(
+            mark.findings == [
+                Finding(kind: .minor, place: nil, body: "Two small points.", onDiff: false)
+            ])
+        #expect(f.store.state.prs[f.pr]?.lastError == nil)
         await f.end()
     }
 

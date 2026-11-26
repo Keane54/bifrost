@@ -101,7 +101,7 @@ struct RowTextTests {
             looksGood.status
                 == RowLabel(
                     text: "Approval recommended", tone: .green,
-                    tip: "Claude suggests: Approve. Small and safe. Nothing was posted."))
+                    tip: "Claude suggests: Approve - Small and safe."))
         #expect(looksGood.notes == ["Claude found nothing to change."])
 
         let comment = try row(R.pull(key.text, pending: "PRR_d1")) {
@@ -129,7 +129,7 @@ struct RowTextTests {
             changes.status
                 == RowLabel(
                     text: "Changes required", tone: .red,
-                    tip: "Claude suggests: Request changes. It drops data. Click Request "
+                    tip: "Claude suggests: Request changes - It drops data. Click Request "
                         + "changes to check the draft and send it."))
 
         let approve = try row(R.pull(key.text, pending: "PRR_d3")) {
@@ -139,8 +139,7 @@ struct RowTextTests {
         #expect(approve.notes == ["Claude drafted a summary."])
         #expect(
             approve.status.tip
-                == "Claude suggests: Approve. Click Approve to submit Claude's draft as an "
-                + "approval.")
+                == "Claude suggests: Approve. Click Approve to check Claude's draft.")
 
         // Bifrost kept no draft comment of the review.
         let unknown = try row(R.pull(key.text, pending: "PRR_d4")) {
@@ -297,6 +296,76 @@ struct RowTextTests {
         #expect(RowText.progress(.confirmed(.approve)) == label("Approved", .green))
         #expect(RowText.progress(.confirmed(.comment)) == label("Commented", .amber))
         #expect(RowText.progress(.confirmed(.requestChanges)) == label("Changes requested", .red))
+    }
+
+    // The line of an approval counts Claude's findings: the kinds that are not 0, in the order
+    // bugs, minor points, nits, each in the singular or the plural, joined as in a sentence.
+    @Test func theFindingsLineCountsEachKind() {
+        func found(_ kinds: [FindingKind]) -> String {
+            RowText.found(kinds.map { Finding(kind: $0, place: nil, body: "A.", onDiff: false) })
+        }
+        #expect(found([]) == "Claude found nothing to change.")
+        #expect(found([.nit]) == "Claude found only 1 nit.")
+        #expect(found([.nit, .nit, .nit]) == "Claude found only 3 nits.")
+        #expect(found([.bug]) == "Claude found 1 bug.")
+        #expect(found([.bug, .bug]) == "Claude found 2 bugs.")
+        #expect(found([.minor]) == "Claude found 1 minor point.")
+        #expect(found([.minor, .minor]) == "Claude found 2 minor points.")
+        #expect(found([.bug, .minor]) == "Claude found 1 bug and 1 minor point.")
+        #expect(found([.minor, .nit, .minor]) == "Claude found 2 minor points and 1 nit.")
+        #expect(found([.nit, .bug, .nit]) == "Claude found 1 bug and 2 nits.")
+        #expect(
+            found([.minor, .bug, .nit, .bug, .minor])
+                == "Claude found 2 bugs, 2 minor points and 1 nit.")
+        #expect(found([.nit, .minor, .bug]) == "Claude found 1 bug, 1 minor point and 1 nit.")
+    }
+
+    // The tip of an approval says what Approve does: nothing found, only nits, a finding above a
+    // nit, and Claude's old Approve draft. The recommendation line is "Claude suggests: Approve -
+    // why", and Bifrost adds the punctuation. A why that ends a sentence gets no second full
+    // stop, and loses it before a comma. No why gives "Claude suggests: Approve".
+    @Test func theTipOfAnApprovalSaysWhatApproveDoes() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        func tip(
+            _ kinds: [FindingKind], why: String = "the retry change is correct", draft: Bool = false
+        ) throws -> String? {
+            let findings = kinds.map { Finding(kind: $0, place: nil, body: "A.", onDiff: false) }
+            return try row(R.pull(key.text, pending: draft ? "PRR_d1" : nil)) {
+                $0.prs[key, default: PRState()].recommendation = RecommendationMark(
+                    value: .approve, why: why, headSHA: try R.commit("a"),
+                    reviewID: draft ? try R.node("PRR_d1") : nil, at: R.at(-5),
+                    findings: findings)
+            }.status.tip
+        }
+        #expect(try tip([]) == "Claude suggests: Approve - the retry change is correct.")
+        #expect(
+            try tip([.nit, .nit])
+                == "Claude suggests: Approve - the retry change is correct, so approving won't "
+                + "post nits. To read them, check Claude's review from the menu.")
+        #expect(
+            try tip([.minor, .nit])
+                == "Claude suggests: Approve - the retry change is correct. Click Approve to "
+                + "check Claude's findings.")
+        #expect(
+            try tip([], draft: true)
+                == "Claude suggests: Approve - the retry change is correct. Click Approve to "
+                + "check Claude's draft.")
+        // The punctuation of an old why, and of no why.
+        #expect(try tip([], why: "Small and safe.") == "Claude suggests: Approve - Small and safe.")
+        #expect(
+            try tip([.bug], why: "Small and safe.")
+                == "Claude suggests: Approve - Small and safe. Click Approve to check Claude's "
+                + "findings.")
+        #expect(
+            try tip([.nit], why: "Small and safe.")
+                == "Claude suggests: Approve - Small and safe, so approving won't post nits. To "
+                + "read them, check Claude's review from the menu.")
+        #expect(try tip([], why: "Is it safe?") == "Claude suggests: Approve - Is it safe?")
+        #expect(try tip([], why: "") == "Claude suggests: Approve.")
+        #expect(
+            try tip([.nit], why: "")
+                == "Claude suggests: Approve, so approving won't post nits. To read them, check "
+                + "Claude's review from the menu.")
     }
 
     @Test func theTextsAndTipsOfTheMyPRsTab() throws {

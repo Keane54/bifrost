@@ -25,10 +25,26 @@
 // - A To review row of a review that GitHub confirmed says You approved, You requested changes or
 //   You commented until a poll shows the review (reviewedHere: ReviewWrites.reviewedHere), so a
 //   poll that is behind GitHub never brings Approve or Claude's draft back.
+// - The watcher counts the polls that start and keeps the number of the poll of the last good
+//   answer (polls). A review write that may have gone waits for a good answer of a poll that
+//   started after its result (ReviewWrites.waitsForPoll).
 import BifrostFoundation
 import BifrostSessions
 import Foundation
 import Observation
+
+// The polls of the watcher: the number of the polls that started, and the number of the poll of
+// the last good answer. The polls never overlap, so a good answer is of the poll that started
+// last.
+package struct PollCount: Sendable, Equatable {
+    package var started: Int
+    package var answered: Int
+
+    package init(started: Int = 0, answered: Int = 0) {
+        self.started = started
+        self.answered = answered
+    }
+}
 
 // A notification that other parts of Reviews ask for (the rounds of later tasks).
 package enum ReviewsNotice: Sendable, Equatable {
@@ -36,7 +52,8 @@ package enum ReviewsNotice: Sendable, Equatable {
     // More than AlertRules.maxNotifications new requests in one poll.
     case newRequests(Int)
     case draftReady(PRKey)
-    // A review round found nothing to flag: Claude suggests Approve, and nothing was posted.
+    // A review round ended with Claude's Approve: nothing was posted. The text counts the
+    // findings of the mark, or says that Claude found nothing to flag.
     case reviewed(PRKey)
     case needsYou(PRKey, questions: Int)
     case trustNeeded(RepoName)
@@ -53,6 +70,9 @@ package final class ReviewsWatcher {
     package private(set) var problem: GitHubError?
     // The time of the last good poll.
     package private(set) var lastPoll: Date?
+    // The polls that started and the poll of the last good answer. The count never goes back, also
+    // after a stop.
+    package private(set) var polls = PollCount()
     // Why Reviews does not run: the store did not open.
     package private(set) var refusal: ReviewsStoreError?
 
@@ -255,6 +275,7 @@ package final class ReviewsWatcher {
     private func poll() {
         guard case .waiting = phase else { return }
         pollTimer.stop()
+        polls.started += 1
         phase = .polling(Task { [weak self] in await self?.run() }, again: false)
     }
 
@@ -302,6 +323,7 @@ package final class ReviewsWatcher {
         answer = fresh
         problem = nil
         lastPoll = time
+        polls.answered = polls.started
         health.record(.poll(.reviews, .ok))
         rebuild()
         notifyNew(arrived)
@@ -457,7 +479,12 @@ package final class ReviewsWatcher {
         case .draftReady(let pr):
             return "Claude finished its draft for \(pr.text). Check it before you send it."
         case .reviewed(let pr):
-            return "Claude found nothing to flag in \(pr.text). Nothing was posted."
+            let findings = store?.state.prs[pr]?.recommendation?.findings ?? []
+            guard !findings.isEmpty else {
+                return "Claude found nothing to flag in \(pr.text), so nothing was posted."
+            }
+            return "Claude suggests approving \(pr.text), but found "
+                + "\(RowText.findingsList(findings)) for you to check."
         case .needsYou(let pr, let questions):
             let count = questions == 1 ? "a question" : "\(questions) questions"
             return "Claude has \(count) for you on \(pr.text)."

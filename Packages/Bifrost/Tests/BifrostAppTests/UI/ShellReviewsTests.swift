@@ -1011,6 +1011,117 @@ struct ShellReviewsTests {
         await h.end()
     }
 
+    // The review writes of the open store read the polls of its watcher: a write that may have
+    // gone waits until a poll that starts after it gives a good answer.
+    @Test func aWriteThatMayHaveGoneWaitsForTheNextPollOfTheWatcher() async throws {
+        let h = try await Harness()
+        try await h.watch()
+        let writes = try #require(h.parts.writes)
+        let watcher = try #require(h.parts.watcher)
+        let pr = try #require(PRKey(text: "Owner-A/Repo-A#7"))
+        writes.mayHaveGone(pr)
+        #expect(writes.waitsForPoll(pr))
+        watcher.refresh()
+        await h.settle()
+        #expect(!writes.waitsForPoll(pr))
+        await h.end()
+    }
+
+    // An unsure Comment on the open store is checked against your own reviews after the next
+    // good poll of the watcher: GitHub has it, so the row says You commented, the wait ends and
+    // nothing can go again for that head.
+    @Test func anUnsureCommentIsCheckedAfterTheNextPoll() async throws {
+        let h = try await Harness()
+        try await h.watch()
+        let pr = try #require(PRKey(text: "owner-a/repo-a#101"))
+        let head = try #require(CommitID(String(repeating: "a", count: 40)))
+        let store = try #require(h.parts.store)
+        let at = h.wall.date
+        await store.update { state in
+            var prState = state.prs[pr] ?? PRState()
+            prState.recommendation = RecommendationMark(
+                value: .approve, why: "the retry works", headSHA: head, reviewID: nil, at: at,
+                findings: [Finding(kind: .minor, place: nil, body: "A point.", onDiff: false)])
+            state.prs[pr] = prState
+        }
+        h.github.answers["poll"] = .success(try Poll.answer([Poll.pr(101, head: head.hex)]))
+        h.github.answers[DraftQueries.ownReviewsName] = .success(
+            DraftAnswers.ownReviews([
+                DraftAnswers.Opinion(state: "COMMENTED", commit: head, at: h.wall.date)
+            ]))
+        let writes = try #require(h.parts.writes)
+        writes.commentMayHaveGone(pr, head: head.hex)
+        #expect(writes.waitsForPoll(pr))
+        h.parts.run(.refresh)
+        await h.settle()
+        await writes.checkTask(pr)?.value
+        #expect(!writes.waitsForPoll(pr) && writes.commented(pr, on: head.hex))
+        #expect(h.github.calls.contains(.read(DraftQueries.ownReviewsName)))
+        await h.settle()
+        let row = try #require(h.parts.watcher?.toReview.first)
+        #expect(row.id == pr && row.status.text == "You commented" && row.approve == nil)
+        await h.end()
+    }
+
+    // With the links to the open store, Approve on a row where Claude found something above a
+    // nit opens the Review panel on a findings flow of the store (ReviewsParts.findingsFlow). Its
+    // Approve with one tick sends one review write that holds the approval and that finding.
+    @Test func aFindingsRowApprovesThroughTheReviewPanel() async throws {
+        let h = try await Harness()
+        try await h.watch()
+        let pr = try #require(PRKey(text: "owner-a/repo-a#101"))
+        let head = try #require(CommitID(String(repeating: "a", count: 40)))
+        let store = try #require(h.parts.store)
+        let at = h.wall.date
+        let minor = Finding(
+            kind: .minor, place: FindingPlace(path: "src/a.swift", line: 4, side: .right),
+            body: "The retry has no limit.", onDiff: true)
+        let nit = Finding(kind: .nit, place: nil, body: "A clearer name helps.", onDiff: false)
+        await store.update { state in
+            var prState = state.prs[pr] ?? PRState()
+            prState.recommendation = RecommendationMark(
+                value: .approve, why: "the retry works", headSHA: head, reviewID: nil, at: at,
+                note: "What the change does.", findings: [minor, nit])
+            state.prs[pr] = prState
+        }
+        h.github.answers["poll"] = .success(try Poll.answer([Poll.pr(101, head: head.hex)]))
+        h.parts.run(.refresh)
+        await h.settle()
+        #expect(h.parts.watcher?.toReview.first?.approveCheck == .findings)
+        let (parts, settings) = (h.parts, h.settings)
+        let links = ReviewsPanelLinks()
+        links.snapshot = {
+            ReviewsParts.snapshot(
+                settings: settings.settings, parts: parts, claudeMissing: false)
+        }
+        links.approver = { parts.approver }
+        links.writes = { parts.writes }
+        links.makeFindingsFlow = { parts.findingsFlow() }
+        let panels = ReviewsPanels(
+            links: links, opener: FakeOpener(), look: PanelLook(), menu: { nil },
+            clock: ManualClock(), now: { Date() })
+        let model = ReviewsPanelModel(
+            links: links, opener: FakeOpener(), look: PanelLook(), menu: { nil },
+            clock: ManualClock(), now: { Date() })
+        model.approve(pr, click: UserClick())
+        let findings = try #require(panels.draft.findings)
+        #expect(panels.draft.pr == pr && findings.ticked == [0] && model.approval == nil)
+        #expect(findings.shown?.note == "What the change does." && panels.draft.canPost)
+        h.github.answers[DraftQueries.freshName] = .success(DraftAnswers.fresh(pr, head: head))
+        let write = GitHubWrite.reviewCommit(
+            pr: try #require(NodeID("PR_node7")), commit: head, event: .approve, body: "",
+            threads: [try #require(minor.comment)], click: UserClick())
+        h.github.answers[FakeGitHub.key(write)] = .success(
+            DraftAnswers.written(write, state: "APPROVED"))
+        panels.draft.approveFindings(click: UserClick())
+        await panels.draft.task?.value
+        await h.settle()
+        #expect(panels.draft.error == nil)
+        let written = h.github.calls.filter { if case .write = $0 { true } else { false } }
+        #expect(written == [.write(write)])
+        await h.end()
+    }
+
     @Test func theStateShowsTheFlashThePauseAndTheRoundOfEachRow() async throws {
         let started = 1_794_300_000_000
         let file = """

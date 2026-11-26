@@ -91,6 +91,11 @@ private func toReview(_ text: String, _ state: ToReviewState) throws -> ReviewRo
             tone: .plain, tip: nil))
 }
 
+// A finding of the kind with no place.
+private func finding(_ kind: FindingKind) -> Finding {
+    Finding(kind: kind, place: nil, body: "A point.", onDiff: false)
+}
+
 private func mine(_ text: String, _ claude: ClaudeState) throws -> ReviewRow {
     let pr = try key(text)
     return ReviewRow(
@@ -731,6 +736,171 @@ struct ReviewsPanelTests {
         #expect(model.approval == nil && p.feed.commands.isEmpty)
     }
 
+    // Approve on a row where Claude found something above a nit opens the Review panel on
+    // Claude's findings: no approval starts, nothing goes to GitHub and no error shows.
+    @Test func approveOnAFindingsRowOpensThePanelAndWritesNothing() async throws {
+        let f = try await DraftPanelFixture(.approve, draft: false)
+        await f.setMark(.approve, draft: false, findings: [finding(.minor), finding(.nit)])
+        f.answerFresh(pending: false)
+        f.row.approveCheck = .findings
+        f.row.findingsPanel = true
+        let findings = Recorder<PRKey>()
+        let drafts = Recorder<PRKey>()
+        f.links.openFindings = { findings.record($0) }
+        f.links.openDraft = { drafts.record($0) }
+        let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
+        #expect(model.isEnabled(.approve, f.row))
+        model.approve(f.pr, click: UserClick())
+        #expect(findings.values == [f.pr] && drafts.values.isEmpty)
+        #expect(model.approval == nil && model.error == nil)
+        #expect(f.github.calls.isEmpty && model.progress(f.pr) == nil)
+        f.panels.releaseBody(for: .reviews)
+        await f.end()
+    }
+
+    // Approve on a row where Claude found only nits approves at once with no text: one plain
+    // approval, and no Review panel.
+    @Test func approveOnANitsOnlyRowApprovesAtOnce() async throws {
+        let f = try await DraftPanelFixture(.approve, draft: false)
+        await f.setMark(.approve, draft: false, findings: [finding(.nit), finding(.nit)])
+        f.answerFresh(pending: false)
+        f.row.findingsPanel = true
+        f.row.nits = 2
+        let approve = GitHubWrite.approveCommit(
+            pr: try #require(NodeID("PR_node7")), commit: f.head, click: UserClick())
+        f.answer(approve, state: "APPROVED")
+        let findings = Recorder<PRKey>()
+        f.links.openFindings = { findings.record($0) }
+        let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
+        model.approve(f.pr, click: UserClick())
+        await model.approval?.value
+        #expect(f.written == [approve] && model.error == nil)
+        #expect(findings.values.isEmpty && f.opened.values.isEmpty)
+        f.panels.releaseBody(for: .reviews)
+        await f.end()
+    }
+
+    // See Claude's review is an item of the row menu, after the item of Claude's draft and
+    // before Review, and not a button of the row. It opens the Review panel on Claude's
+    // findings. While a review write of the PR runs, it is not in the menu.
+    @Test func seeClaudesReviewOpensThePanel() async throws {
+        var both = try toReview("owner-a/repo-a#3", .draftReady)
+        both.draft = .comment
+        both.findingsPanel = true
+        both.reviewable = true
+        #expect(
+            ReviewsMenu.items(both, hasSession: false)
+                == [.openOnGitHub, .comment, .seeReview, .review])
+        let f = try await DraftPanelFixture(.approve, draft: false)
+        await f.setMark(.approve, draft: false, findings: [finding(.nit)])
+        f.answerFresh(pending: false)
+        f.row.findingsPanel = true
+        f.row.nits = 1
+        f.row.reviewable = true
+        let findings = Recorder<PRKey>()
+        f.links.openFindings = { findings.record($0) }
+        let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
+        #expect(model.menuItems(f.pr) == [.openOnGitHub, .approve, .seeReview, .review])
+        #expect(ReviewsMenu.buttons(f.row) == [.approve])
+        #expect(ReviewsMenuItem.seeReview.label == "See Claude's review")
+        #expect(ReviewsMenuItem.seeReview.rawValue == "see-review")
+        model.choose(.seeReview, for: f.pr)
+        #expect(findings.values == [f.pr] && f.github.calls.isEmpty)
+        // While the approval runs, the item leaves the menu, and a choice does nothing.
+        let approve = GitHubWrite.approveCommit(
+            pr: try #require(NodeID("PR_node7")), commit: f.head, click: UserClick())
+        f.answer(approve, state: "APPROVED")
+        let gate = TestGate()
+        defer { gate.openAll() }
+        f.github.onWrite = { _ in await gate.pass() }
+        model.approve(f.pr, click: UserClick())
+        #expect(await gate.waitUntilHolding(1))
+        #expect(model.menuItems(f.pr) == [.openOnGitHub, .review])
+        model.choose(.seeReview, for: f.pr)
+        #expect(findings.values == [f.pr])
+        gate.open()
+        await model.approval?.value
+        await f.endHold()
+        #expect(model.menuItems(f.pr)?.contains(.seeReview) == true)
+        f.panels.releaseBody(for: .reviews)
+        await f.end()
+    }
+
+    // Approve on a row with Claude's old Approve draft (from before the findings) opens that
+    // draft in the Review panel: no approval starts and nothing goes to GitHub.
+    @Test func approveOnAnOldApproveDraftOpensTheDraft() async throws {
+        let f = try await DraftPanelFixture(.approve)
+        #expect(f.row.approveCheck == .draft && f.row.draft == nil)
+        let drafts = Recorder<PRKey>()
+        let findings = Recorder<PRKey>()
+        f.links.openDraft = { drafts.record($0) }
+        f.links.openFindings = { findings.record($0) }
+        let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
+        model.approve(f.pr, click: UserClick())
+        #expect(drafts.values == [f.pr] && findings.values.isEmpty)
+        #expect(model.approval == nil && model.error == nil && f.github.calls.isEmpty)
+        f.panels.releaseBody(for: .reviews)
+        await f.end()
+    }
+
+    // The tip of Approve says what a click does: wait for CI, check Claude's findings or draft
+    // first, approve with no nits, or approve.
+    @Test func theApproveTipFollowsTheFindings() async throws {
+        let p = Parts()
+        func row(_ check: ApproveCheck?, nits: Int = 0, ci: Bool = false) throws -> ReviewRow {
+            var row = try toReview("owner-a/repo-a#1", check == .draft ? .draftReady : .reviewed)
+            row.approve = ci ? .waitsForCI : .ready
+            row.approveCheck = check
+            row.nits = nits
+            return row
+        }
+        let model = try p.model()
+        #expect(
+            model.tip(.approve, try row(.findings, nits: 1))
+                == "Check Claude's findings before you approve.")
+        #expect(
+            model.tip(.approve, try row(.draft))
+                == "Check Claude's draft before you approve or send it.")
+        #expect(
+            model.tip(.approve, try row(nil, nits: 2))
+                == "Approve this pull request on GitHub without posting nits.")
+        #expect(model.tip(.approve, try row(nil)) == "Approve this pull request on GitHub.")
+        #expect(
+            model.tip(.approve, try row(.findings, ci: true))
+                == "CI is still running. Approve when it has passed.")
+    }
+
+    // While a review write of the PR may have gone and no poll shows it yet, the row's Approve
+    // and draft buttons are off and those items leave the menu, so nothing goes twice. The tip
+    // of Approve says why. See Claude's review stays. A poll that started after the result ends
+    // the wait.
+    @Test func theRowWaitsForThePollOfAnUnsureReview() async throws {
+        let f = try await DraftPanelFixture(.approve, draft: false)
+        f.answerFresh(pending: false)
+        f.row.findingsPanel = true
+        var draftRow = f.row
+        draftRow.approve = nil
+        draftRow.draft = .comment
+        let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
+        f.writes.mayHaveGone(f.pr)
+        #expect(!model.isEnabled(.approve, f.row))
+        #expect(
+            model.tip(.approve, f.row)
+                == "Bifrost can't tell whether GitHub saved your review, so click Refresh to "
+                + "check.")
+        #expect(!model.isEnabled(.comment, draftRow) && !model.isEnabled(.requestChanges, draftRow))
+        #expect(model.isEnabled(.seeReview, f.row))
+        #expect(model.menuItems(f.pr) == [.openOnGitHub, .seeReview])
+        model.approve(f.pr, click: UserClick())
+        #expect(model.approval == nil && f.github.calls.isEmpty)
+        f.watcherPolls.answered()
+        #expect(model.isEnabled(.approve, f.row) && model.isEnabled(.comment, draftRow))
+        #expect(model.menuItems(f.pr) == [.openOnGitHub, .approve, .seeReview])
+        #expect(model.tip(.approve, f.row) == "Approve this pull request on GitHub.")
+        f.panels.releaseBody(for: .reviews)
+        await f.end()
+    }
+
     // Cmd+click opens the https address of the PR on github.com, and only that address. It opens
     // no chat, also for a session that works. The PR number and Open on GitHub open the same
     // address.
@@ -785,7 +955,8 @@ struct ReviewsPanelTests {
         #expect(
             ReviewsMenuItem.allCases.map(\.label) == [
                 "Open on GitHub", "Open session", "Approve", "Comment", "Request changes",
-                "Review", "Try again", "Remove", "Cancel review", "Stop session", "Pause",
+                "See Claude's review", "Review", "Try again", "Remove", "Cancel review",
+                "Stop session", "Pause",
                 "End pause now", "Answer Claude", "Handle now", "Handle Copilot comments",
                 "Resolve now", "Cancel", "Don't send the rest", "Discard these changes",
             ])

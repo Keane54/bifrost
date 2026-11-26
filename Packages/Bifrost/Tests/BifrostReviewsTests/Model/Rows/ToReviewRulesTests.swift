@@ -25,6 +25,17 @@ private func seen(
     return state
 }
 
+// A mark of Claude with a finding of each kind in the list, on the commit of the character.
+private func findingsMark(
+    _ kinds: [FindingKind], value: Recommendation = .approve, review: String? = nil,
+    deleted: Bool = false, note: String = "", head: Character = "a"
+) throws -> RecommendationMark {
+    RecommendationMark(
+        value: value, why: "", headSHA: try R.commit(head), reviewID: try review.map(R.node),
+        at: R.at(-5), deleted: deleted, note: note,
+        findings: kinds.map { Finding(kind: $0, place: nil, body: "A point.", onDiff: false) })
+}
+
 @Suite("the To review rows", .testTimeLimit)
 struct ToReviewRulesTests {
     // A team request shows its text in the light cyan accent.
@@ -460,7 +471,7 @@ struct ToReviewRulesTests {
         // A mark of an older commit has no Approve.
         state.prs[key]?.recommendation?.headSHA = try R.commit("b")
         #expect(row(plain)?.approve == nil)
-        // Claude's Approve draft: Approve submits it.
+        // Claude's old Approve draft: Approve opens it in the Review panel.
         state.prs[key]?.recommendation = RecommendationMark(
             value: .approve, why: "", headSHA: try R.commit("a"), reviewID: try R.node("PRR_c"),
             at: R.at(-5))
@@ -479,6 +490,119 @@ struct ToReviewRulesTests {
             value: .comment, why: "", headSHA: try R.commit("a"), reviewID: nil, at: R.at(-5),
             deleted: true)
         #expect(row(plain)?.approve == .ready && row(plain)?.draft == nil)
+    }
+
+    // Approve opens the Review panel first only for a finding above a nit (Claude's findings) or
+    // for Claude's old Approve draft. Nothing, only nits and a mark of a deleted draft approve at
+    // once. The row has the check only while it offers Approve.
+    @Test func approveOpensThePanelOnlyForAFindingAboveANit() throws {
+        let table: [(RecommendationMark, ApproveCheck?)] = [
+            (try findingsMark([]), nil),
+            (try findingsMark([.nit, .nit]), nil),
+            (try findingsMark([.minor]), .findings),
+            (try findingsMark([.bug, .nit]), .findings),
+            (try findingsMark([.minor], value: .comment, deleted: true), nil),
+            (try findingsMark([], review: "PRR_c"), .draft),
+            (try findingsMark([], value: .comment, review: "PRR_c"), nil),
+        ]
+        for (index, (mark, check)) in table.enumerated() {
+            #expect(ToReviewRules.approveCheck(mark) == check, "row \(index)")
+        }
+        #expect(ToReviewRules.approveCheck(nil) == nil)
+        // On the row.
+        let key = try R.key("owner-a/repo-a#1")
+        var state = seen(key)
+        func row(_ pr: PullRequest) -> ReviewRow? {
+            R.toReview(R.answer(toReview: [pr]), state).first
+        }
+        state.prs[key, default: PRState()].recommendation = try findingsMark([.minor])
+        let plain = try R.pull(key.text)
+        #expect(row(plain)?.approve == .ready && row(plain)?.approveCheck == .findings)
+        #expect(row(try R.pull(key.text, ci: .running))?.approveCheck == .findings)
+        let failing = row(try R.pull(key.text, ci: .failing))
+        #expect(failing?.approve == nil && failing?.approveCheck == nil)
+        state.prs[key]?.recommendation = try findingsMark([.nit, .nit])
+        #expect(row(plain)?.approve == .ready && row(plain)?.approveCheck == nil)
+        // Claude's Comment draft offers no Approve, so no check.
+        state.prs[key]?.recommendation = try findingsMark([], value: .comment, review: "PRR_c")
+        let comment = row(try R.pull(key.text, pending: "PRR_c"))
+        #expect(comment?.approve == nil && comment?.approveCheck == nil)
+        #expect(comment?.draft == .comment && comment?.offersDraft == true)
+    }
+
+    // See Claude's review needs a Looks good row whose Approve mark has Claude's note or a
+    // finding. An old mark has neither, so it has no menu item. A draft and New commits have none.
+    @Test func seeClaudesReviewNeedsANoteOrAFinding() throws {
+        #expect(ToReviewRules.findingsPanel(.reviewed, try findingsMark([], note: "A note.")))
+        #expect(ToReviewRules.findingsPanel(.reviewed, try findingsMark([.nit])))
+        #expect(!ToReviewRules.findingsPanel(.reviewed, try findingsMark([])))
+        #expect(!ToReviewRules.findingsPanel(.reviewed, nil))
+        let changes = try findingsMark([.bug], value: .requestChanges, review: "PRR_c")
+        #expect(!ToReviewRules.findingsPanel(.draftReady, changes))
+        let deleted = try findingsMark([.bug], value: .comment, deleted: true)
+        #expect(!ToReviewRules.findingsPanel(.reviewed, deleted))
+        #expect(!ToReviewRules.findingsPanel(.newCommits, try findingsMark([.minor])))
+        // On the row.
+        let key = try R.key("owner-a/repo-a#1")
+        var state = seen(key)
+        func row(_ pr: PullRequest) -> ReviewRow? {
+            R.toReview(R.answer(toReview: [pr]), state).first
+        }
+        state.prs[key, default: PRState()].recommendation = try findingsMark([], note: "A note.")
+        #expect(row(try R.pull(key.text))?.findingsPanel == true)
+        state.prs[key]?.recommendation = try findingsMark([])
+        #expect(row(try R.pull(key.text))?.findingsPanel == false)
+        state.prs[key]?.recommendation = changes
+        let draft = row(try R.pull(key.text, pending: "PRR_c"))
+        #expect(draft?.toReviewState == .draftReady && draft?.findingsPanel == false)
+        state.prs[key]?.recommendation = try findingsMark([.minor], head: "b")
+        let moved = row(try R.pull(key.text))
+        #expect(moved?.toReviewState == .newCommits && moved?.findingsPanel == false)
+    }
+
+    // The second line of a Looks good row counts Claude's findings, and the row knows its nits.
+    @Test func theLineCountsTheFindings() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        var state = seen(key)
+        func row() throws -> ReviewRow {
+            try #require(R.toReview(R.answer(toReview: [try R.pull(key.text)]), state).first)
+        }
+        let cases: [([FindingKind], String, Int)] = [
+            ([], "Claude found nothing to change.", 0),
+            ([.nit, .nit], "Claude found only 2 nits.", 2),
+            ([.minor, .nit, .minor], "Claude found 2 minor points and 1 nit.", 1),
+        ]
+        for (kinds, line, nits) in cases {
+            state.prs[key, default: PRState()].recommendation = try findingsMark(kinds)
+            let shown = try row()
+            #expect(shown.toReviewState == .reviewed)
+            #expect(shown.notes == [line] && shown.nits == nits)
+        }
+    }
+
+    // Claude's old Approve draft (from before the findings): Approve opens it in the draft form of
+    // the Review panel, so the row offers the draft there, and its tip says so.
+    @Test func anOldApproveDraftMakesApproveOpenTheDraft() throws {
+        let key = try R.key("owner-a/repo-a#1")
+        var state = seen(key)
+        state.prs[key, default: PRState()].recommendation = RecommendationMark(
+            value: .approve, why: "the change is small", headSHA: try R.commit("a"),
+            reviewID: try R.node("PRR_c"), at: R.at(-5))
+        state.drafts = [
+            DraftRecord(
+                reviewID: try R.node("PRR_c"), pr: key, path: "", line: 0, body: "Fine.",
+                at: R.at(-5))
+        ]
+        let answer = R.answer(toReview: [try R.pull(key.text, pending: "PRR_c")])
+        let row = try #require(R.toReview(answer, state).first)
+        #expect(row.toReviewState == .draftReady)
+        #expect(row.approve == .ready && row.approveCheck == .draft)
+        #expect(row.draft == nil && row.offersDraft && !row.findingsPanel && row.nits == 0)
+        #expect(row.notes == ["Claude drafted a summary."])
+        #expect(
+            row.status.tip
+                == "Claude suggests: Approve - the change is small. Click Approve to check "
+                + "Claude's draft.")
     }
 
     @Test func eachStateFollowsItsRule() throws {

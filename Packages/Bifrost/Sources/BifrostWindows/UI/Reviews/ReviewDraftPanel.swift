@@ -1,23 +1,35 @@
-// The Review panel (docs/behaviour/reviews.md, "The Review panel"; PanelID.reviewDraft): the user
-// checks Claude's draft review for one To review row, edits it, and sends it, discards it or
-// approves instead. The flow (DraftFlow) reads the draft from GitHub at the open and again before
-// each write, and holds the edits until Send review.
+// The Review panel (docs/behaviour/reviews.md, "The Review panel"; PanelID.reviewDraft) for one
+// To review row. It has two forms, and it shows one of them at a time:
+// - The draft form: the user checks Claude's draft review, edits it, and sends it, discards it or
+//   approves instead. The flow (DraftFlow) reads the draft from GitHub at the open and again
+//   before each write, and holds the edits until Send review.
+// - The findings form (ReviewFindingsPanel.swift): the user reads Claude's note and findings of
+//   an approval, ticks the findings to post, can type a summary, and then comments, requests
+//   changes or approves. The flow (FindingsFlow) reads only the state at the open.
 //
-// - Comment or Request changes on a row (or in its menu) opens the panel for that PR: it reads
-//   the draft and starts with no edits. While the panel is open for that PR and shows the draft
-//   that the row offers, or an action runs, a second open only brings it forward, and the edits,
-//   the action and its result stay. A close drops them.
+// - Comment or Request changes on a row (or in its menu) opens the draft form for that PR: it
+//   reads the draft and starts with no edits. Approve on Claude's old Approve draft opens the
+//   same form. Approve on a finding above a nit, and See Claude's review, open the findings form:
+//   the bug and minor findings start ticked, the nits start unticked under the closed Nits row.
+// - While the panel is open for that PR and shows what the row offers, or an action runs, a
+//   second open of the same form only brings it forward, and the edits (or the ticks and the
+//   summary), the action and its result stay. A close drops them.
 // - When Reviews stops (Watch GitHub off), the panel closes.
-// - The panel shows Claude's suggestion and its reason, the summary, and each comment with its
-//   place, the last lines of its diff hunk and "Added by you" for a comment that the user added
-//   on GitHub. A comment can be removed and brought back (Undo). All text from GitHub shows as
-//   plain text only.
+// - The draft form shows Claude's suggestion and its reason, Claude's private note, the summary,
+//   and each comment with its place, the last lines of its diff hunk and "Added by you" for a
+//   comment that the user added on GitHub. A comment can be removed and brought back (Undo). All
+//   text from GitHub and from Claude's result shows as plain text only. The note never goes into
+//   a write.
 // - The footer has Discard draft and Approve instead, the "Send as" switch (Comment or Request
 //   changes, at first Claude's suggestion) and Send review. Each button makes the click of the
 //   user in its action, and the action starts in the click. A PR that changed after the review
 //   allows only Discard draft, and a row that no longer offers the draft allows nothing and says
 //   so. While a send of the draft runs, its progress takes the place of Send review
-//   (WriteProgressLabel), as on the row, so a second click finds no button.
+//   (WriteProgressLabel), as on the row, so a second click finds no button. The place of the
+//   button keeps one width, so "Send as" and the switch do not move (SendSlot).
+// - While a review write of the PR may have gone and no poll after it has shown the true state
+//   (ReviewWrites.waitsForPoll), no button of either form acts, and a strip above the footer says
+//   why, so the panel explains itself however you got there.
 // - A delete of a draft that holds comments of the user asks first (Keep draft, or the button
 //   again in the strip).
 // - An action that worked closes the panel. A refusal shows in the error line, and the edits stay.
@@ -45,17 +57,36 @@ package final class ReviewDraftPanels: PanelBodiesPart {
         + "draft. You can still discard it."
     nonisolated package static let lockedText =
         "You can't change this draft right now. The row in the Reviews panel shows why."
+    nonisolated package static let notOpenedFindingsText = "Bifrost couldn't open Claude's review."
+    nonisolated package static let lockedFindingsText =
+        "You can't send this review right now, its row in the Reviews panel shows why."
+
+    // The form of the last open: Claude's draft, or Claude's findings.
+    enum Form {
+        case draft, findings
+    }
 
     // The PR of the panel, or nil.
     package private(set) var pr: PRKey?
-    // The flow of the open, or nil while Reviews doesn't run.
+    // The form of the last open. The placeholder of an open that failed follows it.
+    private(set) var form = Form.draft
+    // The flow of the draft form, or nil while Reviews doesn't run or the findings form shows.
     package private(set) var flow: DraftFlow?
+    // The flow of the findings form, or nil while Reviews doesn't run or the draft form shows.
+    package private(set) var findings: FindingsFlow?
+    // True while the Nits row of the findings form is open. Each open closes it.
+    package private(set) var nitsOpen = false
     // The "Send as" switch.
     package var event = DraftEvent.comment
     // The delete that waits for the confirm, or nil.
     package private(set) var confirm: Confirm?
     // The reason of the open or of the last action that didn't work, until the user closes it.
-    package private(set) var error: String?
+    package private(set) var error: String? {
+        didSet { if error == nil { errorMayHaveChanged = false } }
+    }
+    // True when the error line is about a write that GitHub may have acted on, so it already says
+    // as much as the wait strip would, in its own words.
+    private var errorMayHaveChanged = false
 
     @ObservationIgnored package let links: ReviewsPanelLinks
     @ObservationIgnored private let look: PanelLook
@@ -83,6 +114,9 @@ package final class ReviewDraftPanels: PanelBodiesPart {
             return
         }
         self.pr = pr
+        form = .draft
+        findings = nil
+        nitsOpen = false
         confirm = nil
         error = nil
         event = .comment
@@ -105,6 +139,37 @@ package final class ReviewDraftPanels: PanelBodiesPart {
         }
     }
 
+    // Open the panel on Claude's findings of the PR. While the panel shows the findings of the
+    // PR that the row offers, or an action of the findings form runs, the open only brings it
+    // forward: the ticks, the summary, the Nits row, the action and its result stay. Else a new
+    // flow shows the note and the findings of the mark, which are in the state, so the open reads
+    // nothing from GitHub. An action of an earlier flow goes on to its end, and its result no
+    // longer shows.
+    package func openFindings(_ pr: PRKey) {
+        if pr == self.pr, let findings, findings.busy || findings.isCurrent {
+            links.openPanel(.reviewDraft)
+            return
+        }
+        self.pr = pr
+        form = .findings
+        flow = nil
+        confirm = nil
+        error = nil
+        nitsOpen = false
+        let findings = links.makeFindingsFlow()
+        self.findings = findings
+        links.openPanel(.reviewDraft)
+        guard let findings else {
+            error = FindingsRefusal.notOffered.message
+            return
+        }
+        do throws(FindingsRefusal) {
+            try findings.open(pr)
+        } catch {
+            self.error = error.message
+        }
+    }
+
     // MARK: - What the panel shows
 
     // The row of the PR in the To review tab of now, or nil.
@@ -117,16 +182,34 @@ package final class ReviewDraftPanels: PanelBodiesPart {
     // Reviews off), while no action of the panel runs.
     package var isLocked: Bool {
         guard let flow, flow.shown != nil, !flow.busy else { return false }
-        return row?.draft == nil
+        return row?.offersDraft != true
     }
 
     // The count of the comments that the user added to the draft on GitHub.
     package var yoursCount: Int { flow?.comments.count(where: \.yours) ?? 0 }
 
-    // Discard draft acts while a draft shows, no action runs and the row offers the draft.
+    // True while a review write of the PR may have gone and no poll after it has shown the true
+    // state on GitHub (ReviewWrites.waitsForPoll). No button of the panel acts then.
+    var waitsForPoll: Bool {
+        guard let pr else { return false }
+        return links.writes()?.waitsForPoll(pr) == true
+    }
+
+    // What the strip above the footer says while the PR waits for a poll, or nil. It shows in both
+    // forms, also after a close and a new open or when the wait started elsewhere, but not while
+    // the error line is about a write that GitHub may have acted on: that line already explains
+    // the wait, and two takes on it would only disagree.
+    package var waitText: String? {
+        guard waitsForPoll, flow?.shown != nil || findings?.shown != nil else { return nil }
+        if error != nil && errorMayHaveChanged { return nil }
+        return FindingsRefusal.unknown.message
+    }
+
+    // Discard draft acts while a draft shows, no action runs, the row offers the draft and no
+    // review write of the PR waits for a poll.
     package var canDiscard: Bool {
         guard let flow, flow.shown != nil, !flow.busy else { return false }
-        return !isLocked
+        return !isLocked && !waitsForPoll
     }
 
     // Send review and Approve instead also need the reviewed commit as the head of the PR.
@@ -141,6 +224,88 @@ package final class ReviewDraftPanels: PanelBodiesPart {
             review != .approve
         else { return nil }
         return review
+    }
+
+    // MARK: - What the findings form shows
+
+    // True when the row no longer offers the findings that the form shows (a round, a newer mark
+    // of Claude, an answer that changed the row, Reviews off), or a check found your unsure
+    // Comment on GitHub, while no action of the form runs.
+    package var findingsLocked: Bool {
+        guard let findings, findings.shown != nil, !findings.busy else { return false }
+        return row?.findingsPanel != true || !findings.isCurrent || findings.commentFound
+    }
+
+    // Comment, Request changes and Approve act while the findings show, no action runs, the form
+    // is not locked, no review write of the PR runs and none waits for a poll.
+    package var canPost: Bool {
+        guard let findings, findings.shown != nil, !findings.busy else { return false }
+        return !findingsLocked && !findings.waitsForPoll && posting == nil
+    }
+
+    // The review of the write of the PR while it runs and the findings form shows, or nil
+    // (ReviewWrites). Its progress takes the place of the three buttons.
+    package var posting: ReviewVerdict? {
+        guard let pr, findings?.shown != nil,
+            case .running(let review)? = links.writes()?.progress(pr)
+        else { return nil }
+        return review
+    }
+
+    // The indexes of the findings above a nit, as the form lists them: the bugs, then the minor
+    // findings, each in the order of the result.
+    package var findingRows: [Int] {
+        guard let found = findings?.shown?.findings else { return [] }
+        return [FindingKind.bug, .minor].flatMap { kind in
+            found.indices.filter { found[$0].kind == kind }
+        }
+    }
+
+    // The indexes of the nits, in the order of the result. They show under the Nits row.
+    package var nitRows: [Int] {
+        guard let found = findings?.shown?.findings else { return [] }
+        return found.indices.filter { found[$0].kind == .nit }
+    }
+
+    // The line above the three buttons: what a button posts now. It counts the ticked findings,
+    // and a summary that is all white space counts as no summary.
+    package var postHint: String {
+        guard let findings, let shown = findings.shown else { return "" }
+        let count = findings.ticked.count(where: { shown.findings.indices.contains($0) })
+        let summary = !findings.summary.trimmed().isEmpty
+        let ticks = count == 1 ? "the finding you ticked" : "the \(count) findings you ticked"
+        switch (count > 0, summary) {
+        case (false, false): return "Approve will post just your approval, with no comment."
+        case (true, false): return "Your review will include \(ticks)."
+        case (false, true): return "Your review will include your summary."
+        case (true, true): return "Your review will include your summary and \(ticks)."
+        }
+    }
+
+    // The tick of the finding at the index of the mark.
+    func ticked(_ index: Int) -> Binding<Bool> {
+        Binding(
+            get: { [weak self] in self?.findings?.ticked.contains(index) == true },
+            set: { [weak self] on in
+                guard let findings = self?.findings else { return }
+                if on {
+                    findings.ticked.insert(index)
+                } else {
+                    findings.ticked.remove(index)
+                }
+            })
+    }
+
+    // The summary that the user types in the findings form.
+    var findingSummary: Binding<String> {
+        Binding(
+            get: { [weak self] in self?.findings?.summary ?? "" },
+            set: { [weak self] text in self?.findings?.summary = text })
+    }
+
+    // Open or close the Nits row.
+    package func toggleNits() {
+        nitsOpen.toggle()
     }
 
     // The text of the confirm strip.
@@ -179,6 +344,24 @@ package final class ReviewDraftPanels: PanelBodiesPart {
         }
         run(flow) { () async throws(DraftRefusal) in
             try await flow.approveInstead(click: click)
+        }
+    }
+
+    // Approve in the findings form: the ticked findings and the summary go with the approval,
+    // and with nothing ticked and no summary it is a plain approval with no text.
+    package func approveFindings(click: UserClick) {
+        guard canPost, let findings else { return }
+        runFindings(findings) { () async throws(FindingsRefusal) in
+            try await findings.approve(click: click)
+        }
+    }
+
+    // Comment or Request changes in the findings form: one review write of the ticked findings
+    // and the summary with the event.
+    package func sendFindings(_ event: DraftEvent, click: UserClick) {
+        guard canPost, let findings else { return }
+        runFindings(findings) { () async throws(FindingsRefusal) in
+            try await findings.send(event, click: click)
         }
     }
 
@@ -233,18 +416,48 @@ package final class ReviewDraftPanels: PanelBodiesPart {
             confirm = nil
             if let refusal {
                 error = refusal.message
+                errorMayHaveChanged = refusal.mayHaveChanged
             } else {
                 links.closePanel(.reviewDraft)
             }
         }
     }
 
-    // Reviews stopped: the panel closes, and the flow and its edits go, because the flow holds
-    // the closed store. An action that runs goes on to its end, and its result does not show.
+    // Run an action of the findings form, as run does for the draft form. One that worked closes
+    // the panel. After a refusal the ticks and the summary stay. The result of a flow of an
+    // earlier open does not show.
+    private func runFindings(
+        _ findings: FindingsFlow,
+        _ action: @escaping @MainActor () async throws(FindingsRefusal) -> Void
+    ) {
+        error = nil
+        task = Task.immediate { [weak self] in
+            let refusal: FindingsRefusal?
+            do throws(FindingsRefusal) {
+                try await action()
+                refusal = nil
+            } catch {
+                refusal = error
+            }
+            guard let self, self.findings === findings else { return }
+            if let refusal {
+                error = refusal.message
+                errorMayHaveChanged = refusal.mayHaveChanged
+            } else {
+                links.closePanel(.reviewDraft)
+            }
+        }
+    }
+
+    // Reviews stopped: the panel closes, and the flows with the edits and the ticks go, because a
+    // flow holds the closed store. An action that runs goes on to its end, and its result does
+    // not show.
     package func reviewsStopped() {
         let open = pr != nil || host != nil
         pr = nil
         flow = nil
+        findings = nil
+        nitsOpen = false
         confirm = nil
         error = nil
         if open { links.closePanel(.reviewDraft) }
@@ -267,25 +480,30 @@ package final class ReviewDraftPanels: PanelBodiesPart {
         return "\(pr.repo) #\(pr.number)"
     }
 
-    // The panel closed: the flow and its edits go.
+    // The panel closed: the flows with the edits and the ticks go.
     package func releaseBody(for panel: PanelID) {
         guard panel == .reviewDraft else { return }
         host = nil
         pr = nil
         flow = nil
+        findings = nil
+        nitsOpen = false
         confirm = nil
         error = nil
     }
 }
 
-// The body of the Review panel.
+// The body of the Review panel: the findings form, the draft form, or a line in their place.
+// The error line stays at the bottom for both forms.
 struct ReviewDraftPanel: View {
     let panels: ReviewDraftPanels
 
     var body: some View {
         let style = panels.style
         VStack(alignment: .leading, spacing: 0) {
-            if let flow = panels.flow, let shown = flow.shown {
+            if let findings = panels.findings, let shown = findings.shown {
+                ReviewFindingsBody(panels: panels, findings: findings, shown: shown, style: style)
+            } else if let flow = panels.flow, let shown = flow.shown {
                 draft(flow, shown, style)
             } else {
                 Text(placeholder)
@@ -303,9 +521,16 @@ struct ReviewDraftPanel: View {
         .foregroundStyle(ThemeTokens.text.color)
     }
 
+    // The open of the findings form reads nothing, so it never loads: with no findings shown,
+    // it failed.
     private var placeholder: String {
         guard panels.pr != nil else { return ReviewDraftPanels.nothingText }
-        return panels.error == nil ? ReviewDraftPanels.loadingText : ReviewDraftPanels.notOpenedText
+        switch panels.form {
+        case .findings: return ReviewDraftPanels.notOpenedFindingsText
+        case .draft:
+            return panels.error == nil
+                ? ReviewDraftPanels.loadingText : ReviewDraftPanels.notOpenedText
+        }
     }
 
     @ViewBuilder
@@ -314,17 +539,18 @@ struct ReviewDraftPanel: View {
     {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: style.points(4)) {
-                suggestion(shown)
+                SuggestionLine(recommendation: shown.recommendation, why: shown.why)
+                NoteBox(note: shown.note, style: style)
                 if shown.headMoved {
                     Text(ReviewDraftPanels.changedText).foregroundStyle(style.dim)
                 }
-                label("Summary", style)
+                Self.label("Summary", style)
                 ReviewTextArea(
                     text: Binding(get: { flow.summary }, set: { flow.summary = $0 }),
                     placeholder: "Write a summary", lines: 4, style: style
                 )
                 .disabled(flow.busy)
-                label("Comments (\(flow.comments.count))", style)
+                Self.label("Comments (\(flow.comments.count))", style)
                 if flow.comments.isEmpty {
                     Text("No comments in this draft.").foregroundStyle(style.dim)
                 }
@@ -337,23 +563,21 @@ struct ReviewDraftPanel: View {
         }
         if let confirm = panels.confirm { confirmStrip(confirm, style) }
         if panels.isLocked {
-            strip(style) { Text(ReviewDraftPanels.lockedText).foregroundStyle(style.dim) }
+            Self.strip(style) { Text(ReviewDraftPanels.lockedText).foregroundStyle(style.dim) }
         }
-        footer(style)
+        if let wait = panels.waitText { Self.waitStrip(wait, style) }
+        DraftFooter(panels: panels, style: style)
     }
 
-    // "Claude suggests: Request changes. Why."
-    private func suggestion(_ shown: DraftFlow.Shown) -> some View {
-        let name = RowText.recommendation(shown.recommendation)
-        var text = AttributedString("Claude suggests: ")
-        var value = AttributedString(name)
-        value.foregroundColor = Self.tone(shown.recommendation).colour
-        text += value
-        text += AttributedString(shown.why.isEmpty ? "." : ". \(shown.why)")
-        return Text(text).fixedSize(horizontal: false, vertical: true)
+    // The strip that says why the buttons are off while the PR waits for a poll.
+    static func waitStrip(_ text: String, _ style: PanelStyle) -> some View {
+        strip(style) {
+            Text(text).foregroundStyle(style.dim).fixedSize(horizontal: false, vertical: true)
+        }
     }
 
-    private func label(_ text: String, _ style: PanelStyle) -> some View {
+    // A label of a part of a form: the text in capitals, in the small dim font.
+    static func label(_ text: String, _ style: PanelStyle) -> some View {
         Text(text.uppercased())
             .font(style.font(10))
             .foregroundStyle(style.dim)
@@ -363,7 +587,7 @@ struct ReviewDraftPanel: View {
     private func confirmStrip(_ confirm: ReviewDraftPanels.Confirm, _ style: PanelStyle)
         -> some View
     {
-        strip(style) {
+        Self.strip(style) {
             Text(panels.confirmText(confirm)).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: style.points(8))
             Button("Keep draft") { panels.keepDraft() }
@@ -382,42 +606,8 @@ struct ReviewDraftPanel: View {
         }
     }
 
-    private func footer(_ style: PanelStyle) -> some View {
-        strip(style) {
-            Button("Discard draft") { panels.discard(click: UserClick()) }
-                .buttonStyle(RowButtonStyle(tone: .plain, style: style))
-                .disabled(!panels.canDiscard)
-                .focusable(false)
-            Button("Approve instead") { panels.approveInstead(click: UserClick()) }
-                .buttonStyle(RowButtonStyle(tone: .tinted(.green), style: style))
-                .disabled(!panels.canSend)
-                .focusable(false)
-            Spacer(minLength: style.points(8))
-            Text("Send as").foregroundStyle(style.dim)
-            HStack(spacing: 0) {
-                ForEach([DraftEvent.comment, .requestChanges], id: \.self) { event in
-                    SendAsButton(
-                        title: event == .comment ? "Comment" : "Request changes",
-                        on: panels.event == event, tone: Self.tone(event), style: style
-                    ) { panels.event = event }
-                    .disabled(panels.flow?.busy != false)
-                }
-            }
-            .overlay { Rectangle().strokeBorder(style.edge, lineWidth: style.points(1)) }
-            if let sending = panels.sending {
-                WriteProgressLabel(progress: .running(sending), style: style)
-            } else {
-                Button("Send review") { panels.send(click: UserClick()) }
-                    .buttonStyle(
-                        RowButtonStyle(tone: .tinted(Self.tone(panels.event)), style: style)
-                    )
-                    .disabled(!panels.canSend)
-                    .focusable(false)
-            }
-        }
-    }
-
-    private func strip(_ style: PanelStyle, @ViewBuilder _ content: () -> some View) -> some View {
+    // A strip of a form under its scroll view: a row with a line of the panel edge colour on top.
+    static func strip(_ style: PanelStyle, @ViewBuilder _ content: () -> some View) -> some View {
         HStack(spacing: style.points(6)) { content() }
             .padding(.horizontal, style.points(12))
             .padding(.vertical, style.points(6))
@@ -436,6 +626,81 @@ struct ReviewDraftPanel: View {
 
     static func tone(_ event: DraftEvent) -> RowTone {
         event == .comment ? .amber : .red
+    }
+}
+
+// The footer of the draft form: Discard draft and Approve instead, then "Send as", the switch and
+// Send review on the right. The panel opens wide enough for all of it on one line, and if you make
+// it narrower the right part drops to a second line instead of being cut off. Send review keeps
+// the same width either way.
+struct DraftFooter: View {
+    let panels: ReviewDraftPanels
+    let style: PanelStyle
+
+    var body: some View {
+        ReviewDraftPanel.strip(style) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: style.points(6)) {
+                    draftButtons
+                    Spacer(minLength: style.points(8))
+                    sendBar
+                }
+                VStack(alignment: .leading, spacing: style.points(6)) {
+                    HStack(spacing: style.points(6)) { draftButtons }
+                    HStack(spacing: style.points(6)) {
+                        Spacer(minLength: 0)
+                        sendBar
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var draftButtons: some View {
+        Button("Discard draft") { panels.discard(click: UserClick()) }
+            .buttonStyle(RowButtonStyle(tone: .plain, style: style))
+            .disabled(!panels.canDiscard)
+            .focusable(false)
+        Button("Approve instead") { panels.approveInstead(click: UserClick()) }
+            .buttonStyle(RowButtonStyle(tone: .tinted(.green), style: style))
+            .disabled(!panels.canSend)
+            .focusable(false)
+    }
+
+    // "Send as", the switch and Send review.
+    @ViewBuilder
+    private var sendBar: some View {
+        Text("Send as").foregroundStyle(style.dim).fixedSize()
+        HStack(spacing: 0) {
+            ForEach([DraftEvent.comment, .requestChanges], id: \.self) { event in
+                SendAsButton(
+                    title: event == .comment ? "Comment" : "Request changes",
+                    on: panels.event == event, tone: ReviewDraftPanel.tone(event), style: style
+                ) { panels.event = event }
+                .disabled(panels.flow?.busy != false)
+            }
+        }
+        .overlay { Rectangle().strokeBorder(style.edge, lineWidth: style.points(1)) }
+        DraftSendButton(panels: panels, style: style)
+    }
+}
+
+// Send review of the draft form, with the progress of a send of the draft in its place. The place
+// keeps one width (SendSlot), so "Send as" and the switch to its left do not move.
+struct DraftSendButton: View {
+    let panels: ReviewDraftPanels
+    let style: PanelStyle
+
+    var body: some View {
+        SendSlot(progress: panels.sending, style: style) { live in
+            Button("Send review") { panels.send(click: UserClick()) }
+                .buttonStyle(
+                    RowButtonStyle(tone: .tinted(ReviewDraftPanel.tone(panels.event)), style: style)
+                )
+                .disabled(!live || !panels.canSend)
+                .focusable(false)
+        }
     }
 }
 

@@ -2,7 +2,8 @@
 // and "The Review panel"). Each read is a GitHubQuery: a GraphQL query with its values in
 // variables, never in the text. The fresh read gives the PR just before a write (FreshPR), and
 // the draft read gives Claude's draft review with its comments, at most DraftEdits.maxComments.
-// The state of a review just before an edit is ReviewQueries.review.
+// The state of a review just before an edit is ReviewQueries.review. The own reviews read checks
+// whether an unsure Comment of the findings form reached GitHub, as a poll never lists a comment.
 import BifrostFoundation
 import Foundation
 
@@ -10,6 +11,7 @@ import Foundation
 package enum DraftQueries {
     package static let freshName = "draftContext"
     package static let draftName = "draftReview"
+    package static let ownReviewsName = "ownReviews"
 
     // The PR, the CI of its head, the pending reviews (only the viewer sees a pending review),
     // and the newest opinions of the viewer.
@@ -25,6 +27,21 @@ package enum DraftQueries {
               }
               opinions: reviews(
                 author: $login, states: [APPROVED, CHANGES_REQUESTED, DISMISSED], last: 20
+              ) {
+                nodes { state submittedAt commit { oid } }
+              }
+            }
+          }
+        }
+        """
+
+    // The latest finished reviews of the viewer on the PR, with their state, time and commit.
+    static let ownReviewsText = """
+        query OwnReviews($owner: String!, $repo: String!, $number: Int!, $login: String!) {
+          repository(owner: $owner, name: $repo) {
+            pullRequest(number: $number) {
+              reviews(
+                author: $login, states: [COMMENTED, APPROVED, CHANGES_REQUESTED], last: 20
               ) {
                 nodes { state submittedAt commit { oid } }
               }
@@ -59,6 +76,19 @@ package enum DraftQueries {
                 "number": .int(pr.number), "login": .string(viewer),
             ])
         return try FreshPR.decode(await github.read(query)).get()
+    }
+
+    // Your own latest finished reviews on the PR.
+    package static func ownReviews(
+        _ pr: PRKey, viewer: String, on github: GitHubClient
+    ) async throws(GitHubError) -> [ViewerOpinion] {
+        let query = GitHubQuery(
+            name: ownReviewsName, text: ownReviewsText,
+            variables: [
+                "owner": .string(pr.repo.owner), "repo": .string(pr.repo.name),
+                "number": .int(pr.number), "login": .string(viewer),
+            ])
+        return try FindingsPlan.ownReviews(await github.read(query)).get()
     }
 
     // The draft review with its comments, page by page. A review with more comments than

@@ -2,12 +2,12 @@
 // the only code that names a GraphQL mutation or builds the argv of a write (the forbidden rule
 // github-write). No case merges, dismisses, unresolves, closes or reopens a PR, edits a PR or a
 // ref, or edits or deletes a comment that is not a part of the pending draft of Claude (the rule
-// github-never). An approve or a change of the draft needs a UserClick, which only the Reviews
-// panels make (the rule user-click).
+// github-never). An approve, a review of a commit or a change of the draft needs a UserClick,
+// which only the Reviews panels make (the rule user-click).
 //
 // Each value goes in a variable of the JSON on the stdin of gh, never in the text of a mutation
-// and never in the argv. The event of an approve and of a submit is a part of the text of its
-// mutation, not a variable.
+// and never in the argv. The event of an approve, of a submit and of a review of a commit is a part
+// of the text of its mutation, not a variable.
 import BifrostFoundation
 import Foundation
 
@@ -20,6 +20,19 @@ package struct UserClick: Sendable, Equatable {
 // The event of a submit of the draft of Claude in the Review panel. Approve has its own writes.
 package enum DraftEvent: String, Sendable {
     case comment = "COMMENT", requestChanges = "REQUEST_CHANGES"
+}
+
+// The event of a review of a commit (reviewCommit). Its raw value goes in the text of the
+// mutation, never in a variable.
+package enum ReviewEvent: String, Sendable {
+    case approve = "APPROVE", comment = "COMMENT", requestChanges = "REQUEST_CHANGES"
+
+    package init(_ event: DraftEvent) {
+        switch event {
+        case .comment: self = .comment
+        case .requestChanges: self = .requestChanges
+        }
+    }
 }
 
 // The side of the diff of a comment.
@@ -95,8 +108,11 @@ package enum GitHubWrite: Sendable, Equatable {
     case createSignedCommit(SignedCommit)
     // addPullRequestReview with the event APPROVE: an approval with no text.
     case approveCommit(pr: NodeID, commit: CommitID, click: UserClick)
-    // submitPullRequestReview with the event APPROVE: the draft of Claude as an approval.
-    case approveDraft(review: NodeID, click: UserClick)
+    // addPullRequestReview with an event, a review text and line comments, in one write: a review
+    // of Claude's findings from the Review panel.
+    case reviewCommit(
+        pr: NodeID, commit: CommitID, event: ReviewEvent, body: String, threads: [DraftComment],
+        click: UserClick)
     case editDraftBody(review: NodeID, body: String, click: UserClick)
     case editDraftComment(comment: NodeID, body: String, click: UserClick)
     case removeDraftComment(comment: NodeID, click: UserClick)
@@ -118,7 +134,8 @@ package enum GitHubWrite: Sendable, Equatable {
         case .requestReviews: "requestReviews"
         case .createSignedCommit: "createCommitOnBranch"
         case .approveCommit: "addPullRequestReview"
-        case .approveDraft, .submitDraft: "submitPullRequestReview"
+        case .reviewCommit: "addPullRequestReview"
+        case .submitDraft: "submitPullRequestReview"
         case .editDraftComment: "updatePullRequestReviewComment"
         case .removeDraftComment: "deletePullRequestReviewComment"
         case .discardDraft: "deletePullRequestReview"
@@ -290,17 +307,10 @@ package enum GitHubWrite: Sendable, Equatable {
                 """,
                 ["pr": .string(pr.text), "commit": .string(commit.hex)]
             )
-        case .approveDraft(let review, _):
+        case .reviewCommit(let pr, let commit, let event, let body, let threads, _):
             Self.request(
-                """
-                mutation ApproveDraft($review: ID!) {
-                  submitPullRequestReview(input: {
-                    pullRequestReviewId: $review, event: APPROVE
-                  }) { pullRequestReview { id state } }
-                }
-                """,
-                ["review": .string(review.text)]
-            )
+                Self.reviewText(event),
+                Self.reviewVariables(pr, commit: commit, body: body, threads: threads))
         case .editDraftComment(let comment, let body, _):
             Self.request(
                 """
@@ -357,6 +367,72 @@ package enum GitHubWrite: Sendable, Equatable {
                 ["review": .string(review.text)]
             )
         }
+    }
+
+    // The text of a review of a commit, with its event as a literal. One text for each event.
+    private static func reviewText(_ event: ReviewEvent) -> String {
+        switch event {
+        case .approve:
+            """
+            mutation ReviewApprove(
+              $pr: ID!, $commit: GitObjectID!, $body: String,
+              $threads: [DraftPullRequestReviewThread]
+            ) {
+              addPullRequestReview(input: {
+                pullRequestId: $pr, commitOID: $commit, event: APPROVE, body: $body,
+                threads: $threads
+              }) { pullRequestReview { id state } }
+            }
+            """
+        case .comment:
+            """
+            mutation ReviewComment(
+              $pr: ID!, $commit: GitObjectID!, $body: String,
+              $threads: [DraftPullRequestReviewThread]
+            ) {
+              addPullRequestReview(input: {
+                pullRequestId: $pr, commitOID: $commit, event: COMMENT, body: $body,
+                threads: $threads
+              }) { pullRequestReview { id state } }
+            }
+            """
+        case .requestChanges:
+            """
+            mutation ReviewChanges(
+              $pr: ID!, $commit: GitObjectID!, $body: String,
+              $threads: [DraftPullRequestReviewThread]
+            ) {
+              addPullRequestReview(input: {
+                pullRequestId: $pr, commitOID: $commit, event: REQUEST_CHANGES, body: $body,
+                threads: $threads
+              }) { pullRequestReview { id state } }
+            }
+            """
+        }
+    }
+
+    // The variables of a review of a commit. A blank review text and an empty list of line
+    // comments are left out. A range comment gives its first line on the side of the comment.
+    private static func reviewVariables(
+        _ pr: NodeID, commit: CommitID, body: String, threads: [DraftComment]
+    ) -> [String: JSONValue] {
+        var variables: [String: JSONValue] = ["pr": .string(pr.text), "commit": .string(commit.hex)]
+        if !body.trimmed().isEmpty { variables["body"] = .string(body) }
+        if !threads.isEmpty {
+            variables["threads"] = .array(
+                threads.map { thread in
+                    var fields: [String: JSONValue] = [
+                        "path": .string(thread.path), "line": .int(thread.line),
+                        "side": .string(thread.side.rawValue), "body": .string(thread.body),
+                    ]
+                    if let start = thread.startLine {
+                        fields["startLine"] = .int(start)
+                        fields["startSide"] = .string(thread.side.rawValue)
+                    }
+                    return .object(fields)
+                })
+        }
+        return variables
     }
 
     // The CreateCommitOnBranchInput of a signed commit. Each file goes as base64. A headline

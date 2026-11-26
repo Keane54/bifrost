@@ -154,6 +154,15 @@ package enum ApproveOffer: Sendable, Equatable {
     case ready, waitsForCI
 }
 
+// What the Approve button of a To review row opens first (ToReviewRules.approveCheck). nil on
+// the row: Approve approves at once, with no text.
+package enum ApproveCheck: Sendable, Equatable {
+    // Claude found something above a nit: the Review panel on Claude's findings.
+    case findings
+    // Claude's Approve draft from before the findings: the Review panel on that draft.
+    case draft
+}
+
 // The kind of a review that the user gives on GitHub: an approval, a comment or a request for
 // changes. The progress of a write (ReviewWriteProgress), a review that GitHub confirmed
 // (ConfirmedReview) and the review of the user on the head in a poll answer
@@ -226,6 +235,13 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
     // changes), or nil.
     package var approve: ApproveOffer?
     package var draft: DraftEvent?
+    // To review: what Approve opens first, or nil when Approve approves at once
+    // (ToReviewRules.approveCheck). Only a row with an Approve button has a check.
+    package var approveCheck: ApproveCheck?
+    // To review: true when the row menu offers See Claude's review (ToReviewRules.findingsPanel).
+    // nits is the count of the nits of the Approve mark that the row shows.
+    package var findingsPanel: Bool
+    package var nits: Int
     // To review: the CI state of the PR, or nil when the PR has no checks. Failing CI stops the
     // flash of a new request (flash).
     package var ci: CIState?
@@ -251,8 +267,9 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
         id: PRKey, state: RowState, repo: String, title: String, dot: RowTone? = nil,
         tag: RowLabel? = nil, review: RowLabel? = nil, reviewers: [Reviewer] = [],
         notes: [String] = [], status: RowLabel, reviewable: Bool = false,
-        approve: ApproveOffer? = nil, draft: DraftEvent? = nil, ci: CIState? = nil,
-        waiting: Int = 0, laterCopilot: Int = 0, questions: Int = 0, unsentUpdates: Bool = false,
+        approve: ApproveOffer? = nil, draft: DraftEvent? = nil, approveCheck: ApproveCheck? = nil,
+        findingsPanel: Bool = false, nits: Int = 0, ci: CIState? = nil, waiting: Int = 0,
+        laterCopilot: Int = 0, questions: Int = 0, unsentUpdates: Bool = false,
         unsavedFiles: Int = 0, resolvable: Bool = false
     ) {
         self.id = id
@@ -268,6 +285,9 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
         self.reviewable = reviewable
         self.approve = approve
         self.draft = draft
+        self.approveCheck = approveCheck
+        self.findingsPanel = findingsPanel
+        self.nits = nits
         self.ci = ci
         self.waiting = waiting
         self.laterCopilot = laterCopilot
@@ -293,6 +313,10 @@ package struct ReviewRow: Sendable, Equatable, Identifiable {
 
     // Remove hides only a row that others approved (ReviewsState.hide).
     package var isRemovable: Bool { state == .toReview(.approvedByOthers) }
+
+    // True when the row offers a draft review of Claude to the Review panel: a Comment or Request
+    // changes draft, or Claude's old Approve draft, which Approve opens there.
+    package var offersDraft: Bool { draft != nil || approveCheck == .draft }
 }
 
 // What Reviews knows of the clones of the repositories, for the rows (docs/behaviour/reviews.md,

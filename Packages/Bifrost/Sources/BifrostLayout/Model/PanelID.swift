@@ -22,7 +22,8 @@ public enum PanelKind: String, Sendable, CaseIterable {
         case .overview: LayoutSize(w: 760, h: 360)
         case .overviewSettings: LayoutSize(w: 360, h: 420)
         case .performance: LayoutSize(w: 520, h: 460)
-        case .reviewDraft: LayoutSize(w: 620, h: 560)
+        // Wide enough for the draft form's footer on one line, send slot and all.
+        case .reviewDraft: LayoutSize(w: 700, h: 560)
         case .reviews: LayoutSize(w: 480, h: 420)
         case .selectedItem: LayoutSize(w: 360, h: 300)
         case .serviceStatus: LayoutSize(w: 420, h: 240)

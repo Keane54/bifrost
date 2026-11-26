@@ -87,4 +87,63 @@ enum ReviewData {
         items[0] = .object(first)
         fields["comments"] = .array(items)
     }
+
+    static let note = "The PR changes the limit check. I checked the limit and its tests."
+
+    // A good version 2 result file of a Request changes review with a note and one bug finding,
+    // with a change.
+    static func resultV2(_ change: (inout [String: JSONValue]) -> Void = { _ in }) -> Data {
+        var fields: [String: JSONValue] = [
+            "version": 2, "pr": "Owner-A/Repo-A#7", "headSha": .string(headHex),
+            "recommendation": "request-changes", "why": "the new limit check is off by one",
+            "note": .string(note), "summary": "One bug blocks this.",
+            "findings": [
+                [
+                    "kind": "bug", "path": "src/a.swift", "line": 11, "side": "RIGHT",
+                    "body": "Use `<` here.",
+                ]
+            ],
+        ]
+        change(&fields)
+        return json(.object(fields))
+    }
+
+    // A change of the first finding of a version 2 result.
+    static func finding(
+        _ fields: inout [String: JSONValue], _ change: (inout [String: JSONValue]) -> Void
+    ) {
+        var items = fields["findings"]?.array ?? []
+        var first = items.first?.object ?? [:]
+        change(&first)
+        items[0] = .object(first)
+        fields["findings"] = .array(items)
+    }
+
+    // A finding item of a result file on src/a.swift, or on the whole PR with no line.
+    static func item(
+        _ kind: String, line: Int? = nil, side: String = "RIGHT", startLine: Int? = nil,
+        body: String
+    ) -> JSONValue {
+        var fields: [String: JSONValue] = ["kind": .string(kind), "body": .string(body)]
+        if let line {
+            fields["path"] = "src/a.swift"
+            fields["line"] = .int(line)
+            fields["side"] = .string(side)
+        }
+        if let startLine { fields["startLine"] = .int(startLine) }
+        return .object(fields)
+    }
+
+    // A finding on src/a.swift, or on the whole PR with no line.
+    static func finding(
+        _ kind: FindingKind, line: Int? = nil, side: DiffSide = .right, startLine: Int? = nil,
+        body: String, onDiff: Bool = false
+    ) -> Finding {
+        Finding(
+            kind: kind,
+            place: line.map {
+                FindingPlace(path: "src/a.swift", line: $0, side: side, startLine: startLine)
+            },
+            body: body, onDiff: onDiff)
+    }
 }

@@ -17,7 +17,8 @@ arguments is the path of the input file. The path can hold spaces. Read `mode.md
 that file, and obey it.
 
 `mode.md` replaces sections 1, 8, 9 and 10 and the reference file. It also changes section 2: it
-gives the check of the earlier threads and summaries in its own words. Sections 3 to 7 and the
+gives the check of the earlier threads and summaries in its own words. It also replaces section 6,
+and it lets you report the style points of section 4 as nits. Sections 3, 4, 5 and 7 and the
 rules that always apply still apply, with two changes:
 
 - The humanise rules are in the file that `files.rules` of the input file names.

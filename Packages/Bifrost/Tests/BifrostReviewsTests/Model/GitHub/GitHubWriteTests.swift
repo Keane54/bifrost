@@ -67,13 +67,21 @@ private func samples() throws -> [GitHubWrite] {
         .requestReviews(pr: try node("PR_1"), users: [try node("U_1"), try node("U_2")]),
         .createSignedCommit(try signedCommit()),
         .approveCommit(pr: try node("PR_1"), commit: try commit(), click: click),
-        .approveDraft(review: try node("PRR_1"), click: click),
         .editDraftBody(review: try node("PRR_1"), body: "New summary.", click: click),
         .editDraftComment(comment: try node("PRRC_1"), body: "New text.", click: click),
         .removeDraftComment(comment: try node("PRRC_1"), click: click),
         .discardDraft(review: try node("PRR_1"), click: click),
         .submitDraft(review: try node("PRR_1"), event: .comment, click: click),
         .submitDraft(review: try node("PRR_1"), event: .requestChanges, click: click),
+        .reviewCommit(
+            pr: try node("PR_1"), commit: try commit(), event: .approve, body: "Summary.",
+            threads: [comment], click: click),
+        .reviewCommit(
+            pr: try node("PR_1"), commit: try commit(), event: .comment, body: "", threads: [],
+            click: click),
+        .reviewCommit(
+            pr: try node("PR_1"), commit: try commit(), event: .requestChanges, body: "Summary.",
+            threads: [], click: click),
         .rerunFailedJobs(try repo(), try #require(RunID(55)), consent: try consent()),
     ]
 }
@@ -91,12 +99,12 @@ private func caseName(_ write: GitHubWrite) -> String {
     case .requestReviews: "requestReviews"
     case .createSignedCommit: "createSignedCommit"
     case .approveCommit: "approveCommit"
-    case .approveDraft: "approveDraft"
     case .editDraftBody: "editDraftBody"
     case .editDraftComment: "editDraftComment"
     case .removeDraftComment: "removeDraftComment"
     case .discardDraft: "discardDraft"
     case .submitDraft: "submitDraft"
+    case .reviewCommit: "reviewCommit"
     case .rerunFailedJobs: "rerunFailedJobs"
     }
 }
@@ -193,8 +201,7 @@ struct GitHubWriteTests {
     @Test func eachApprovalHasTheEventApprove() throws {
         let click = UserClick()
         let approvals: [GitHubWrite] = [
-            .approveCommit(pr: try node("PR_1"), commit: try commit(), click: click),
-            .approveDraft(review: try node("PRR_1"), click: click),
+            .approveCommit(pr: try node("PR_1"), commit: try commit(), click: click)
         ]
         for write in approvals {
             let text = try query(write)
@@ -204,7 +211,6 @@ struct GitHubWriteTests {
         }
         #expect(
             try variables(approvals[0]) == ["pr": "PR_1", "commit": .string(head)])
-        #expect(try variables(approvals[1]) == ["review": "PRR_1"])
     }
 
     @Test func eachDraftSubmitHasItsOwnEvent() throws {
@@ -221,6 +227,58 @@ struct GitHubWriteTests {
             #expect(text.contains("event: \(word)"))
             #expect(try variables(write) == ["review": "PRR_1"])
         }
+    }
+
+    // A review of the reviewed commit fixes its event in the text of its one mutation. No
+    // variable can change the event.
+    @Test func aReviewOfACommitFixesItsEventInTheText() throws {
+        let events: [(ReviewEvent, String)] = [
+            (.approve, "APPROVE"), (.comment, "COMMENT"), (.requestChanges, "REQUEST_CHANGES"),
+        ]
+        for (event, word) in events {
+            let write = GitHubWrite.reviewCommit(
+                pr: try node("PR_1"), commit: try commit(), event: event, body: "Summary.",
+                threads: [comment], click: UserClick())
+            #expect(write.mutation == "addPullRequestReview")
+            #expect(write.arguments == ["api", "graphql", "--input", "-"])
+            let text = try query(write)
+            let used = Set(names(text)).intersection(["APPROVE", "COMMENT", "REQUEST_CHANGES"])
+            #expect(used == [word])
+            #expect(text.contains("event: \(word)"))
+            let named = Set(names(text)).intersection(allowed.union(never))
+            #expect(named == ["addPullRequestReview"])
+            #expect(!text.contains("$event"))
+            #expect(try variables(write)["event"] == nil)
+        }
+        #expect(ReviewEvent(DraftEvent.comment) == .comment)
+        #expect(ReviewEvent(DraftEvent.requestChanges) == .requestChanges)
+    }
+
+    // The review sends a review text and line comments only when it has them. A range comment
+    // gives its first line on the side of the comment.
+    @Test func aReviewOfACommitSendsOnlyTheTextItHas() throws {
+        let bare = GitHubWrite.reviewCommit(
+            pr: try node("PR_1"), commit: try commit(), event: .approve, body: " \n ",
+            threads: [], click: UserClick())
+        #expect(try variables(bare) == ["pr": "PR_1", "commit": .string(head)])
+        let range = DraftComment(
+            path: "src/b.swift", line: 12, side: .left, startLine: 10, body: "A range.")
+        let full = GitHubWrite.reviewCommit(
+            pr: try node("PR_1"), commit: try commit(), event: .comment, body: "Summary.",
+            threads: [range, comment], click: UserClick())
+        #expect(
+            try variables(full) == [
+                "pr": "PR_1", "commit": .string(head), "body": "Summary.",
+                "threads": [
+                    [
+                        "path": "src/b.swift", "line": 12, "side": "LEFT", "body": "A range.",
+                        "startLine": 10, "startSide": "LEFT",
+                    ],
+                    ["path": "src/a.swift", "line": 12, "side": "RIGHT", "body": "Nit."],
+                ],
+            ])
+        let text = try query(full)
+        #expect(text.contains("body: $body") && text.contains("threads: $threads"))
     }
 
     @Test func theSignedCommitExpectsTheHeadOfTheRound() throws {
@@ -256,9 +314,9 @@ struct GitHubWriteTests {
         #expect(try variables(writes[5]) == ["subject": "PR_1", "body": "> A request\n\nDone."])
         #expect(try variables(writes[6]) == ["pr": "PR_1", "users": ["U_1", "U_2"]])
         #expect(try query(writes[6]).contains("union: true"))
-        #expect(try variables(writes[10]) == ["review": "PRR_1", "body": "New summary."])
-        #expect(try variables(writes[11]) == ["comment": "PRRC_1", "body": "New text."])
-        #expect(try variables(writes[12]) == ["comment": "PRRC_1"])
-        #expect(try variables(writes[13]) == ["review": "PRR_1"])
+        #expect(try variables(writes[9]) == ["review": "PRR_1", "body": "New summary."])
+        #expect(try variables(writes[10]) == ["comment": "PRRC_1", "body": "New text."])
+        #expect(try variables(writes[11]) == ["comment": "PRRC_1"])
+        #expect(try variables(writes[12]) == ["review": "PRR_1"])
     }
 }

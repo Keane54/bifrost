@@ -12,7 +12,8 @@
 //   new request. Review on a new request has the strong text colour. Approve makes the click of
 //   the user in its action, and waits while CI runs. While a review write of the PR has a
 //   progress (an approval, or a send of the Review panel), the progress takes the place of the
-//   state text and the buttons (WriteProgressLabel).
+//   state text and the buttons (WriteProgressLabel). That place keeps one width while the write
+//   runs (ReviewRowActions), so nothing to its left moves (user decision, 2026-11-25).
 // - Line 2 of My PRs: the review status with its square, the reviewers in the colours of their
 //   opinions, the notes (later Copilot comments, older comments), then at the right the Claude
 //   state with its tip. Needs you has the red box of the Overview before its text.
@@ -111,27 +112,7 @@ struct ReviewRowView: View {
         HStack(alignment: .center, spacing: style.points(10)) {
             notes
             Spacer(minLength: 0)
-            HStack(spacing: style.points(6)) {
-                if let status = model.shownStatus(row) { label(status) }
-                if let progress = model.progress(row.id) {
-                    WriteProgressLabel(progress: progress, style: style)
-                } else {
-                    ForEach(ReviewsMenu.buttons(row), id: \.self) { item in
-                        Button(item.label) {
-                            if item == .approve {
-                                model.approve(row.id, click: UserClick())
-                            } else {
-                                model.choose(item, for: row.id)
-                            }
-                        }
-                        .buttonStyle(RowButtonStyle(tone: tone(item), style: style))
-                        .disabled(!model.isEnabled(item, row))
-                        .focusable(false)
-                        .tip(model.tip(item, row))
-                    }
-                }
-            }
-            .fixedSize()
+            ReviewRowActions(model: model, row: row, style: style)
         }
         .foregroundStyle(ThemeTokens.textDim.color)
     }
@@ -218,6 +199,65 @@ struct ReviewRowView: View {
         return text
     }
 
+}
+
+// The place of the state text and the buttons of a To review row (user decision, 2026-11-25). While
+// a review write of the PR has a progress, the progress shows there in place of them. The place
+// keeps one width while the write runs, so nothing to its left moves when the progress starts or
+// ends: hidden copies of the state text with the buttons and of the widest progress
+// ("Requesting changes…") lie under the shown content, so the place is as wide as the wider of the
+// two. A hidden copy keeps its size, but it shows nothing, takes no click and has no tip.
+struct ReviewRowActions: View {
+    // The progress with the widest text. Its hidden copy does not turn its loader.
+    static let widest = ReviewWriteProgress.running(.requestChanges)
+
+    let model: ReviewsPanelModel
+    let row: ReviewRow
+    let style: PanelStyle
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Group {
+                WriteProgressLabel(progress: Self.widest, style: style, turns: false)
+                idle(row.status.text.isEmpty ? nil : row.status, live: false)
+            }
+            .hidden()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            if let progress = model.progress(row.id) {
+                WriteProgressLabel(progress: progress, style: style)
+            } else {
+                idle(model.shownStatus(row), live: true)
+            }
+        }
+        .fixedSize()
+    }
+
+    // The state text and the buttons of the row. Only the live copy has the tips and the clicks.
+    private func idle(_ status: RowLabel?, live: Bool) -> some View {
+        HStack(spacing: style.points(6)) {
+            if let status {
+                Text(status.text)
+                    .foregroundStyle(status.tone.colour)
+                    .lineLimit(1)
+                    .tip(live ? status.tip : nil)
+            }
+            ForEach(ReviewsMenu.buttons(row), id: \.self) { item in
+                Button(item.label) {
+                    if item == .approve {
+                        model.approve(row.id, click: UserClick())
+                    } else {
+                        model.choose(item, for: row.id)
+                    }
+                }
+                .buttonStyle(RowButtonStyle(tone: tone(item), style: style))
+                .disabled(!live || !model.isEnabled(item, row))
+                .focusable(false)
+                .tip(live ? model.tip(item, row) : nil)
+            }
+        }
+    }
+
     // The tone of a button: each result of Claude has its colour, Remove is dim, and Review on a
     // new request is strong.
     private func tone(_ item: ReviewsMenuItem) -> RowButtonStyle.Tone {
@@ -294,12 +334,14 @@ private struct Flashing<Content: View>: View {
 // then the lucide check with "Approved", "Commented" or "Changes requested" in the colour of the
 // review. With Reduce Motion on, the loader does not turn. The label has the height and the side
 // padding of a row button, so the row keeps its height. It is not a button: it takes no click.
+// turns false keeps the loader still, for a hidden copy that only holds the width of the label.
 struct WriteProgressLabel: View {
     // The time of one turn of the loader, in seconds.
     nonisolated static let turn: TimeInterval = 1
 
     let progress: ReviewWriteProgress
     let style: PanelStyle
+    var turns = true
 
     var body: some View {
         let label = RowText.progress(progress)
@@ -319,7 +361,7 @@ struct WriteProgressLabel: View {
 
     // A turn ends at 360 degrees, which looks the same as the start, so the repeat has no jump.
     private var loader: some View {
-        TurningIcon(turning: true, icon: ButtonIcon(icon: .loader, size: style.points(12)))
+        TurningIcon(turning: turns, icon: ButtonIcon(icon: .loader, size: style.points(12)))
     }
 }
 

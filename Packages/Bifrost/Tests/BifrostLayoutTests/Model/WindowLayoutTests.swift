@@ -79,7 +79,7 @@ struct WindowLayoutTests {
     @Test("the review draft is a panel kind")
     func reviewDraft() {
         #expect(kind("review-draft") == .reviewDraft)
-        #expect(defaultSize(.reviewDraft) == size(h: 560, w: 620))
+        #expect(defaultSize(.reviewDraft) == size(h: 560, w: 700))
     }
 
     @Test("the answer is a panel kind")

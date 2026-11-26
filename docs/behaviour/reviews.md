@@ -94,7 +94,7 @@ which runs `gh`, and `FakeGitHub`, which the tests use instead.
 | `createSignedCommit` | Commits a fix that GitHub signs, only if the branch head is still the one the round started from | `createCommitOnBranch` with `expectedHeadOid` | No |
 | `rerunFailedJobs` | Re-runs the failed jobs of one workflow run | `POST repos/<owner>/<repo>/actions/runs/<id>/rerun-failed-jobs` | No (it needs the CI consent) |
 | `approveCommit` | Approves the reviewed commit with no text | `addPullRequestReview`, event `APPROVE` | Yes |
-| `approveDraft` | Submits Claude's draft as an approval | `submitPullRequestReview`, event `APPROVE` | Yes |
+| `reviewCommit` | Posts your review of the reviewed commit, with the text and the line comments you chose in the Review panel, in one write | `addPullRequestReview`, event `APPROVE`, `COMMENT` or `REQUEST_CHANGES` fixed in the text, with `body` and `threads` | Yes |
 | `editDraftBody` | Changes the summary of Claude's draft | `updatePullRequestReview` | Yes |
 | `editDraftComment` | Changes one comment of Claude's draft | `updatePullRequestReviewComment` | Yes |
 | `removeDraftComment` | Removes one comment from Claude's draft | `deletePullRequestReviewComment` | Yes |
@@ -772,14 +772,25 @@ with no draft, while you have no pending review, so an old mark never shows next
 
 | Result | Right side | Colour | Second line |
 | --- | --- | --- | --- |
-| Claude suggests Approve | "Approval recommended" | Soft green | What Claude drafted, such as "Claude drafted a summary and 2 comments." or "Claude found nothing to change." |
+| Claude suggests Approve | "Approval recommended" | Soft green | What Claude found, such as "Claude found nothing to change.", "Claude found only 2 nits." or "Claude found 2 minor points and 1 nit." (for Claude's old Approve draft, what it drafted) |
 | Claude drafted a comment | "Draft ready" | Amber | What Claude drafted |
 | Claude drafted a request for changes | "Changes required" | Red | What Claude drafted |
 | You deleted Claude's draft to approve | "Draft deleted" | Grey | "You deleted Claude's draft. Approve when you're ready." |
 | Others approved | "Approved by others" | Grey | "2 people approved it, so you don't need to review it." ("Others approved it" when the count is 0) |
 
+When Claude suggests Approve, the second line counts the findings it listed. Each kind that has at
+least one finding gets its count, in the order bugs, minor points and nits ("1 bug", "2 minor
+points", "1 nit"), joined the way you'd write them in a sentence: "Claude found 1 bug, 2 minor
+points and 2 nits." A review with only nits says "Claude found only 2 nits.", and one with nothing
+says "Claude found nothing to change." That count also decides what Approve does (see "Approve").
+A mark that an older version of Bifrost saved has no findings and no note, so its row reads
+"Claude found nothing to change.", Approve approves it straight away, and its menu has no See
+Claude's review.
+
 What Claude drafted comes from the draft comments Bifrost saved for the review: a comment with no
-path is the summary. When Bifrost kept none, the line is "Claude drafted a review."
+path is the summary. When Bifrost kept none, the line is "Claude drafted a review." Claude's old
+Approve draft, a pending review with only a summary that a round left before Claude listed its
+findings, still says what Claude drafted.
 
 Failing or running CI replaces the right side of a row that waits for you (a new request, Waiting
 for you, a team request, a failed review, Looks good, Draft ready and Paused), while the second line
@@ -794,8 +805,11 @@ A failed review keeps its reason as the tip, also under CI. The other tips:
 
 | Row | Tip |
 | --- | --- |
-| Draft ready with Claude's mark | "Claude suggests: Comment. *Why.* Click Comment to check the draft and send it.", with Request changes in the same form, and "Click Approve to submit Claude's draft as an approval." for Approve |
-| Looks good | "Claude suggests: Approve. *Why.* Nothing was posted." |
+| Draft ready with Claude's mark | "Claude suggests: Comment - *why*. Click Comment to check the draft and send it.", with Request changes in the same form |
+| Draft ready with Claude's old Approve draft | "Claude suggests: Approve - *why*. Click Approve to check Claude's draft." |
+| Looks good, nothing found | "Claude suggests: Approve - *why*." |
+| Looks good, only nits | "Claude suggests: Approve - *why*, so approving won't post nits. To read them, check Claude's review from the menu." |
+| Looks good, a finding above a nit | "Claude suggests: Approve - *why*. Click Approve to check Claude's findings." |
 | Draft deleted | "You deleted Claude's draft. Click Approve to approve this pull request." |
 | Trust needed | "Bifrost needs you to trust this repository first. Click Trust at the top of the panel." |
 | Queued | "Waiting for a free review slot." |
@@ -803,6 +817,11 @@ A failed review keeps its reason as the tip, also under CI. The other tips:
 | You approved | "You approved this pull request on GitHub." |
 | You requested changes | "You requested changes on this pull request on GitHub." |
 | You commented | "You commented on this pull request on GitHub." |
+
+*Why* is Claude's own short reason, which the review skill asks it to write as one clause in lower
+case with no full stop, so Bifrost adds the punctuation the tips show. A reason from an older
+result that already ends with a full stop keeps it without a second one, and loses it only where a
+comma follows. With no reason the line is just "Claude suggests: Approve".
 
 The second line of a row with no result has the author, the size (`+12 −3`, with a real minus
 sign) and the age of the request: "just now" under a minute, then "5m ago", "3h ago" and "2d ago".
@@ -1194,7 +1213,8 @@ A round goes like this:
 4. **The session.** The review session starts and Bifrost waits for its turn to end (see "When a
    turn ends"). Then it counts what the session changed in its worktree, logs the count, and
    resets the worktree.
-5. **The result.** Bifrost checks `result.json` strictly, then writes the pending review.
+5. **The result.** Bifrost checks `result.json` strictly. A Request changes result becomes a
+   pending review; an Approve writes nothing.
 
 The input file tells the session what kind of review to do, based on your last submitted review
 of the PR (a pending review, or a review made only of replies, doesn't count):
@@ -1206,21 +1226,40 @@ of the PR (a pending review, or a review made only of replies, doesn't count):
 | On an ancestor of the head | The changes since that commit, plus a check of your earlier threads and summaries |
 | On a commit that's gone (a rewritten history) or that Bifrost can't find | The full diff, plus the same check of your earlier points |
 
-The result check is strict: if one rule fails, Bifrost refuses the whole file and posts nothing,
-and the reason it gives names only the field or the limit, never text from the file. The limits
-are those of the Electron app: the file is at most 1 MiB, with at most 50 comments of up to 10,000
-characters each, a summary of up to 20,000 characters, and a reason of up to 300 characters on one
-line with no control or text-direction characters. The file must give back the round's token, a
-comment must be on a file of the diff that isn't binary, and an Approve has no line comments.
+The result lists every finding as its own item, whichever way Claude recommends: its kind (a
+bug, a minor point or a nit), its place (a file and a line or a range of lines, or no place for a
+point about the whole PR, such as a missing goal) and its text. It also carries a short private
+note for you, saying what the PR does and what Claude checked, which never goes to GitHub.
 
-Then the pending review. GitHub refuses a whole review if a single comment is on a line the diff
-doesn't show, so such a comment moves into the summary with its path and line instead. If you
+The result check is strict: if one rule fails, Bifrost refuses the whole file and posts nothing,
+and the reason it gives names only the field or the limit, never text from the file. The file is
+at most 1 MiB, with at most 50 findings, a note of up to 2,000 characters, a summary of up to
+20,000 characters, and a reason of up to 300 characters on one line. A finding's place follows the
+rules a line comment always had: a file of the diff that isn't binary, a line of 1 or more on one
+side, and for a range a first line below the last. Its text can be up to 10,000 characters. The
+note, the reason, the summary and the findings can't hold control or text-direction characters,
+apart from line breaks and tabs in the note, the summary and the findings. The file must give back
+the round's token, and an Approve has no summary, because its points are all findings.
+
+The check still reads the older form of the file (version 1, with line comments and no note),
+because a round that started before an update has the old `mode.md` in its input folder. Each old
+comment becomes a bug finding at the same place. An old Approve kept its minor points in the
+summary, so that summary becomes one minor finding about the whole PR, which you see in the Review
+panel before anything is posted. Any session can write the old form, so its comments and its
+summary are held to the same rule as findings and can't hold control or text-direction characters.
+
+An Approve never writes anything to GitHub during the round, whatever Claude found. The note and
+the findings stay in Bifrost for the Review panel, and the row shows "Looks good".
+
+A Request changes result becomes a pending review with the summary and each bug and minor
+finding, never the nits and never the note. GitHub refuses a whole review if a single comment is
+on a line the diff doesn't show, so a finding on such a line goes into the summary with its path
+and line instead, and a finding about the whole PR goes in as a paragraph of its own. If you
 already have a pending review of your own on that commit, Claude's comments go into it as new
 threads and its summary goes below yours after a blank line; if your pending review is on another
 commit, the round fails and nothing is posted. Just before each write to your pending review,
 Bifrost reads it again and only goes ahead if it's still pending and still yours, because GitHub
-would otherwise happily edit a review you've already submitted. An Approve with nothing to say
-posts nothing at all, and the row shows "Looks good".
+would otherwise happily edit a review you've already submitted.
 
 Bifrost saves the round as posting before its first write. If GitHub may have made a write it
 didn't confirm (a timeout, an answer it couldn't read), the round fails with a reason that sends
@@ -1228,21 +1267,25 @@ you to GitHub and never tries again by itself; the same happens at the next star
 was posting when Bifrost quit, Electron rounds included. A round that was getting ready goes back
 to the queue at the next start, and one whose session was still running carries on waiting for it.
 
-A good round records the recommendation, the reviewed commit and the text of each draft comment,
-sends one notification ("Your review draft is ready", or "Claude suggests you approve" when nothing
-was posted) and polls at once, so the row shows the draft without waiting for the next poll. A
-failed round shows "Review failed" with the reason in its tip and a Try again button, and sends no
+A good round records the recommendation with Claude's note and all its findings (nits included), the
+reviewed commit and the text of each draft comment. It sends one notification ("Your review draft is
+ready", or "Claude suggests you approve" when nothing was posted) and polls at once, so the row
+shows the draft without waiting for the next poll. The approval notification says what Claude
+found, counted the same way as the row's second line: "Claude found nothing to flag in
+owner/repo#7, so nothing was posted." with no findings, and "Claude suggests approving
+owner/repo#7, but found 2 minor points and 1 nit for you to check." with some. A failed round
+shows "Review failed" with the reason in its tip and a Try again button, and sends no
 notification. Stop session on a running round ends it with nothing posted, and the session stays
 so you can read it. When the review request goes, its round stops, and its session, worktree,
 input folder and queue entry go with it; a round that's in the middle of posting finishes its
 writes first. Remove all clones stops the rounds, deletes the review sessions and drops the queued
 reviews before it removes the clones.
 
-`ReviewRounds` in `BifrostReviews/Services/ReviewRound.swift` runs the rounds, with
-`ReviewQueries` for the reads, and `Baseline`, `ReviewInput`, `ReviewResult`, `DiffLines`,
-`PendingReviewPlan` and `RoundFailure` in `BifrostReviews/Model/Review` for the rules and the
-texts. `ReviewRoundTests` covers whole rounds with real git on a local repository, the fake GitHub
-and scripted session rows, and each model file has its own suite.
+`ReviewRounds` in `BifrostReviews/Services/ReviewRound.swift` runs the rounds, with `ReviewQueries`
+for the reads, and `Baseline`, `ReviewInput`, `ReviewResult`, `Finding`, `DiffLines`,
+`PendingReviewPlan` and `RoundFailure` in `BifrostReviews/Model/Review` for the rules and the texts.
+`ReviewRoundTests` covers whole rounds with real git on a local repository, the fake GitHub and
+scripted session rows, and each model file has its own suite.
 
 ## Request rounds
 
@@ -1952,7 +1995,8 @@ and changes nothing on GitHub. A PR with failing CI gets no Review button.
   row. On a To review row they come in this order: Open on GitHub; Open session while the PR has a
   session that isn't parked; Approve while the row offers it, CI isn't running and nothing is being
   written to the PR; Comment or Request changes while the row offers Claude's draft and nothing is
-  being written to the PR; Review
+  being written to the PR; See Claude's review while the row shows an approval with Claude's note
+  or findings and nothing is being written to the PR; Review
   (Try again on a failed row) whenever a round can start; Remove on a row that others approved;
   Cancel review while a review waits in the queue or for trust; Stop session; Pause on a new
   request; and End pause now on a paused row. On a My PRs row: Open on
@@ -1963,8 +2007,9 @@ and changes nothing on GitHub. A PR with failing CI gets no Review button.
   for Try again; Cancel while a round waits in the queue; and Stop session while a round runs. A PR
   from a fork has Open on GitHub only. While the menu is open it follows the row, and it closes if
   the row goes. Only Approve writes to GitHub, and only because you chose it: a review round only
-  ever leaves a pending review, Comment and Request changes just open the Review panel, Don't send
-  the rest sends nothing, and a request round's result is checked before Bifrost posts anything.
+  ever leaves a pending review, Comment and Request changes just open the Review panel, See
+  Claude's review only opens the Review panel on Claude's findings, Don't send the rest sends
+  nothing, and a request round's result is checked before Bifrost posts anything.
 - The rows never take the keyboard focus, and neither does the panel.
 
 The ages on line 2 and "Paused 42m" are worked out when the rows are built, so the panel keeps them
@@ -1982,20 +2027,35 @@ a line in the Event log.
 
 ### Approve
 
-Approve is the one-click way to agree with Claude. It shows on a To review row where Claude
-suggests approving the commit you'd be approving: a Looks good row (Claude found nothing to flag
-and posted nothing), a Draft ready row whose draft is Claude's Approve draft, or a row where you
-deleted Claude's draft with Approve instead in the Review panel. It doesn't show once your latest
-opinion on GitHub already approves the head commit, and a PR with failing CI gets none. While CI is
-running the button is there but greyed out, with the tip "CI is still running. Approve when it has
+Approve is the quick way to agree with Claude. It shows on a To review row where Claude
+suggests approving the commit you'd be approving: a Looks good row (Claude suggested Approve and
+posted nothing), a Draft ready row with Claude's old Approve draft, or a row where you deleted
+Claude's draft with Approve instead in the Review panel. It doesn't show once your latest opinion
+on GitHub already approves the head commit, and a PR with failing CI gets none. While CI is running
+the button is there but greyed out, with the tip "CI is still running. Approve when it has
 passed.", and it stays out of the row menu.
+
+What a click does depends on what Claude found, because Bifrost never posts anything you haven't
+seen first:
+
+| Claude found | Approve | Tip |
+| --- | --- | --- |
+| Nothing | Approves straight away, with no text | "Approve this pull request on GitHub." |
+| Only nits | Approves straight away, with no text, so the nits aren't posted; See Claude's review in the row menu shows them | "Approve this pull request on GitHub without posting nits." |
+| Anything above a nit | Opens the Review panel on Claude's findings, and writes nothing | "Check Claude's findings before you approve." |
+| An old Approve draft | Opens that draft in the Review panel, and writes nothing | "Check Claude's draft before you approve or send it." |
+
+An old Approve draft is a pending review with only a summary that a review round left before
+Claude listed its findings, and a saved state can still hold one. Approve never submits it as it
+is: the Review panel shows it, and from there you can send it as a comment or a request for
+changes, discard it, or approve instead, which deletes the draft and approves with no text. A row
+where you deleted Claude's draft approves straight away, as a row with nothing found does.
 
 Bifrost only approves when you click: the button (or the menu item) makes the click, and nothing
 else in the app can. Before it writes anything, Bifrost reads the PR from GitHub again and checks
 that it's still the PR Claude reviewed. The write then goes only to the PR whose address GitHub
-gave back, only on the commit Claude reviewed, and only with Claude's own draft, so it either
-approves that commit with no text or submits Claude's draft as the approval with its summary as it
-is.
+gave back and only on the commit Claude reviewed, and it approves that commit with no text. Only
+the Review panel can add your summary or Claude's findings to an approval.
 
 The row shows how the approval is going, so a click never looks stuck. As soon as you click, the
 button gives way to a spinning loader and "Approving…", so there's nothing to click a second time,
@@ -2010,6 +2070,10 @@ that GitHub confirmed, and the row says You approved until a poll shows the revi
 you start a new review round on the PR): it never goes back to offering Approve. If the approval
 doesn't go through, the Approve button comes back at once and the reason shows in the error line.
 
+The progress never pushes the rest of the row around, because the space for the state text and the
+buttons is always as wide as the wider of the two: what the row shows before you click, or the
+widest progress, "Requesting changes…". A short state text just leaves a little room before it.
+
 When Bifrost doesn't approve, the reason shows in the error line at the bottom of the Reviews
 panel:
 
@@ -2022,41 +2086,66 @@ panel:
 | CI failing, or still running | "CI is failing on this pull request, so Bifrost didn't approve it." or "CI is still running. Approve when it has passed." |
 | You've already approved the head | "You already approved this commit on GitHub." |
 | You have a draft review of your own | "You have a draft review on this pull request. Submit or delete it on GitHub first, then try again." |
-| Claude's draft is gone, or on another commit | "Bifrost couldn't find Claude's draft review on GitHub, so it didn't approve. The draft may have been submitted or deleted." or "Claude's draft review is on another commit, so Bifrost didn't submit it." |
+| A review you sent from the Review panel may have reached GitHub, and no poll has shown it yet | "Bifrost can't tell whether GitHub saved your review, so click Refresh to check." |
 | GitHub refused it | "GitHub didn't accept the approval. The Event log has the details." |
 | GitHub may have saved it | "Bifrost couldn't tell if GitHub saved your approval. Click Refresh to check." |
 
 An approval that GitHub may have saved is never sent again by itself: Bifrost polls, and a second
-click reads the PR again first, so it can't approve twice. GitHub's own words for a refusal go to
-the Event log with any token hidden.
+click reads the PR again first, so it can't approve twice. The same goes for a review that the
+Review panel sent and that GitHub may have saved: until a poll that started after it gets a good
+answer (for a Comment, until a read of your own reviews settles it, see "The findings form"),
+Approve, Comment and Request changes are greyed out on the row and gone from its menu, and the
+buttons of the Review panel are off for that PR. The tip of the greyed-out Approve says why, and so
+does a line above the Review panel's buttons: "Bifrost can't tell whether GitHub saved your review,
+so click Refresh to check." A click that still reaches a flow by another path sends nothing, says
+the same and asks for a poll instead. GitHub's own words for a refusal go to the Event log with any
+token hidden.
 
 `ApproveFlow` runs the click, `ApproveGuard` holds the checks and the write, and
 `DraftQueries.fresh` is the read. `ReviewWrites` keeps the progress that the row shows
 (`ReviewWriteProgress`, drawn by `WriteProgressLabel`) and the approvals GitHub confirmed, and it
 does the same for a send of the Review panel. While an approval has a progress, the watcher keeps
-its row when a poll drops the PR (`ReviewRows.holding`). `ApproveFlowTests`, `ApproveGuardTests`
-and `ReviewDraftPanelTests.theRowShowsTheProgressOfItsApproval` cover them.
+its row when a poll drops the PR (`ReviewRows.holding`), and `ReviewRowActions` keeps the width
+of the row's state text and buttons. `ToReviewRules.approveCheck` decides what Approve opens first,
+and `ReviewsPanelModel.approve` follows it. `ApproveFlowTests`, `ApproveGuardTests`,
+`ToReviewRulesTests`, `ReviewsPanelTests`,
+`ReviewDraftPanelTests.theRowShowsTheProgressOfItsApproval` and
+`ReviewDraftPanelTests.theRowKeepsTheWidthOfItsActionsDuringAWrite` cover them.
 
 ### The Review panel
 
-When Claude leaves a Comment or Request changes draft, the row offers a button with that name. It
-opens the Review panel, where you check Claude's draft review, edit it, and then send it, throw it
-away or approve instead. The panel reads the draft from GitHub when it opens and starts with no
-edits; its title has the PR after it, such as "Review Owner/Repo #7". While it's open for a PR,
-clicking that PR's button again just brings the panel forward, so your edits stay, and an action
-that's running carries on and shows its result. The click only reads the draft again when there's
-nothing to keep: the first read failed, or Claude has left a newer draft since. Closing the panel
-drops the edits, and turning Watch GitHub off closes it.
+The Review panel is where you see what Claude found before anything of it reaches GitHub. It has
+two forms, one for each kind of result: the draft form, for a Comment or Request changes draft that
+Claude left on GitHub, and the findings form, for an approval, where Claude's findings stay in
+Bifrost until you choose what to post. The panel shows one form at a time, and its title has the
+PR after it, such as "Review Owner/Repo #7". Closing the panel drops whatever you'd done in it,
+and turning Watch GitHub off closes it.
 
-At the top, the panel shows Claude's suggestion and reason ("Claude suggests: Request changes. Two
-small bugs."). Below it are the summary and each comment of the draft, with its place ("src/a.swift
+#### The draft form
+
+When Claude leaves a Comment or Request changes draft, the row offers a button with that name. It
+opens the draft form, where you check Claude's draft review, edit it, and then send it, throw it
+away or approve instead. Approve on a row with Claude's old Approve draft opens the same form on
+that draft (see "Approve"). The form reads the draft from GitHub when it opens and starts with no
+edits. While it's open for a PR, clicking that PR's button again just brings the panel forward, so
+your edits stay, and an action that's running carries on and shows its result. The click only
+reads the draft again when there's nothing to keep: the first read failed, or Claude has left a
+newer draft since.
+
+At the top, the form shows Claude's suggestion and reason ("Claude suggests: Request changes - two
+small bugs."), with Claude's private note under it when the result has one (see "The findings
+form"). Below them are the summary and each comment of the draft, with its place ("src/a.swift
 line 12", or "lines 10-12" for a range), the last four lines of its diff and its text. A comment
 you added to the draft on GitHub yourself says "Added by you". You can edit any text, and remove a
-comment (Undo brings it back). Everything from GitHub shows as plain text only.
+comment (Undo brings it back). Everything from GitHub and from Claude's result shows as plain text
+only, and the note never goes into anything the form writes.
 
 The footer has Discard draft and Approve instead on the left, and on the right the "Send as"
-switch (Comment or Request changes, starting at Claude's suggestion) with Send review. Each button
-makes your click; nothing else writes to the draft. What each does:
+switch (Comment or Request changes, starting at Claude's suggestion, or at Comment for Claude's
+old Approve draft) with Send review. The panel opens 700 wide, which is enough for all of that on
+one line. If you make it narrower, "Send as", the switch and Send review move to a second line
+rather than being cut off. Each button makes your click; nothing else writes to the draft. What
+each does:
 
 - **Send review** writes your changes to the draft (the summary, each changed comment, each removed
   comment), then submits it with the event of the switch. Request changes needs a summary, a send
@@ -2078,17 +2167,19 @@ submitted review too.
 Send review shows how the send is going, the same way Approve does on a row. As soon as you click,
 the button gives way to a spinning loader with "Commenting…" or "Requesting changes…", so there's
 nothing to click a second time, and the row in the Reviews panel shows the same progress in place
-of its state text and buttons, with Comment or Request changes gone from its menu. Once GitHub
-confirms the review, the panel closes and the row shows a check with "Commented" in amber or
-"Changes requested" in red for 3 seconds, staying in place even if the poll straight after drops
-the PR. GitHub usually drops the review request once you've reviewed, so the row then goes. If
-GitHub still lists the request, the row says You commented or You requested changes, with no
-button for the draft and no Review button, and it stays that way until a poll shows your review on
-that commit, the PR gets new commits or the request goes. That way a poll that's a moment behind
-GitHub never brings Claude's draft back. A poll never lists a comment, though, so starting a new
-review round on the PR (Review in the row menu) also ends it: the row then shows the round, and
-then the round's own draft. If the send doesn't go through, the progress ends at once,
-Send review comes back and the reason shows in the panel's error line.
+of its state text and buttons, with Comment or Request changes gone from its menu. The space for
+Send review is always as wide as the widest progress, "Requesting changes…", so "Send as" and the
+switch never move when a send starts or ends, which leaves a little room before Send review while
+nothing is sending. Once GitHub confirms the review, the panel closes and the row shows a check with
+"Commented" in amber or "Changes requested" in red for 3 seconds, staying in place even if the poll
+straight after drops the PR. GitHub usually drops the review request once you've reviewed, so the
+row then goes. If GitHub still lists the request, the row says You commented or You requested
+changes, with no button for the draft and no Review button, and it stays that way until a poll
+shows your review on that commit, the PR gets new commits or the request goes. That way a poll
+that's a moment behind GitHub never brings Claude's draft back. A poll never lists a comment,
+though, so starting a new review round on the PR (Review in the row menu) also ends it: the row
+then shows the round, and then the round's own draft. If the send doesn't go through, the progress
+ends at once, Send review comes back and the reason shows in the panel's error line.
 
 If the draft holds comments you added on GitHub, Discard draft and Approve instead ask first
 ("Discard draft also deletes the comment you added to this draft on GitHub.") with Keep draft next
@@ -2096,14 +2187,132 @@ to the button. An action that works closes the panel and polls straight away. On
 its reason in the panel's error line and keeps your edits, so you can try again; a change that
 GitHub may have saved is never sent again by itself. When the row no longer offers the draft (a
 round started, or the draft is gone), the panel says "You can't change this draft right now. The row
-in the Reviews panel shows why." and allows nothing.
+in the Reviews panel shows why." and allows nothing. While a review that the findings form sent may
+have reached GitHub and no poll has shown it yet, the draft form's buttons are off too, with the
+same line above them as in the findings form (see "The findings form").
 
-`DraftFlow` runs the panel, `DraftEdits` holds the checks, the plan of a send and the guard of each
-write, and `ReviewDraftPanels` is the panel. `ReviewWrites` keeps the progress of a send and the
-review that GitHub confirmed, as it does for Approve. `DraftFlowTests`, `DraftEditsTests` and
-`ReviewDraftPanelTests` cover them, and
+#### The findings form
+
+When Claude suggests Approve but found something above a nit, Approve on the row opens the
+findings form instead of approving (see "Approve"), and See Claude's review in the row menu opens it
+for any approval that has a note or findings, nits included. Claude's note and findings are already
+in Bifrost from the review round, so the form reads nothing from GitHub to open.
+
+The form shows, from the top:
+
+- Claude's suggestion and reason, such as "Claude suggests: Approve - the retry works, but there's a
+  minor issue.", with Approve in green.
+- Claude's note, under the label "Claude's note": a short private summary of what the PR does and
+  what Claude checked, shown as plain text in a box with "Claude's notes are not posted to GitHub."
+  under it. Bifrost never puts the note into anything it writes, from either form.
+- "Findings (3)", with each bug and minor finding: a check box, its tag ("Bug" in red, "Minor" in
+  amber), its text and its place ("src/a.swift line 12", "src/a.swift lines 10-12", or "The whole
+  pull request"). Bugs come first, then minor findings, each in the order Claude gave them. A
+  finding on a line that the diff doesn't show adds "This line isn't in the diff, so it'll go in
+  the main review comment instead.", because GitHub refuses a whole review with a comment on such a
+  line. When nothing is above a nit, the list says "Claude found nothing to change." (or "Claude
+  found nothing to change, only the nits below.").
+- A "Nits (2)" row, which opens and closes the nits the same way as the Details row of the
+  Performance panel. Each nit has a grey "Nit" tag. The row starts closed every time the form
+  opens.
+- "Summary", an optional box: "Add a summary if you want, you'll need one if requesting changes."
+
+Bugs and minor findings start ticked, and nits start unticked, so what you see ticked is what goes.
+Above the buttons, a line says what a click posts, and it follows each tick and each edit of the
+summary (a summary of only spaces counts as none):
+
+| Ticked | Summary | Line |
+| --- | --- | --- |
+| Nothing | None | "Approve will post just your approval, with no comment." |
+| 1 finding (or 3) | None | "Your review will include the finding you ticked." ("the 3 findings you ticked") |
+| Nothing | Typed | "Your review will include your summary." |
+| 1 finding (or 3) | Typed | "Your review will include your summary and the finding you ticked." ("the 3 findings you ticked") |
+
+The buttons are Comment in amber, Request changes in red and Approve in green, and each one makes
+your click. Each sends one review of the commit Claude reviewed, holding only what you typed and
+ticked: your summary first as the review text, then each ticked finding that has no line comment
+(one off the diff, or about the whole PR) as a paragraph of that text with its path and line, and
+each ticked finding on a line the diff shows as a comment on that line. Request changes needs a
+summary you typed, because GitHub won't take that review without text ("Add a summary to request
+changes."), and Comment needs a summary or a tick ("Add a summary or tick a finding before you
+comment."). Approve with nothing ticked and no summary is a plain approval with no text, the same
+as Approve on a row where Claude found nothing.
+
+Approve goes through the same checks as the row's button, with your review added: the PR is read
+again, and Bifrost approves only the commit Claude reviewed, with no draft review of yours in the
+way, and refuses for the same reasons as the row (see "Approve"). Comment and Request changes read
+the PR again just before the write too. The write goes only to the PR whose address GitHub gave
+back, and only with line comments that are Claude's findings of that review. When a review isn't
+sent, the reason shows in the panel's error line, and your ticks and summary stay:
+
+| Why | Text |
+| --- | --- |
+| The row no longer offers these findings | "You can't send this review right now, its row in the Reviews panel shows why." |
+| A review of the PR is sending | "A review of this pull request is still sending, so try again once it's done." |
+| An approval of the PR is running | "This pull request is still being approved, so try again once it's done." |
+| The PR closed or merged | "This pull request has been closed or merged, so the review wasn't sent." |
+| It's your own PR | "You can't review your own pull request, so the review wasn't sent." |
+| New commits since the review | "This pull request has changed since Claude reviewed it, so you'll need a new review before sending." |
+| You have a draft review of your own | "You have a draft review on this pull request. Submit or delete it on GitHub first, then try again." |
+| The review is over GitHub's limit | "This review is too long for GitHub, so untick some findings or shorten the summary." |
+| The write didn't match Claude's findings | "This review didn't match Claude's findings, so Bifrost stopped it and nothing was posted." |
+| The read of the PR failed | "Bifrost couldn't load this pull request from GitHub, so the review wasn't sent." and gh's reason |
+| GitHub refused it | "GitHub rejected the review, check the Event log for details." |
+| GitHub may have saved it | "Bifrost can't tell whether GitHub saved your review, so click Refresh to check." |
+| GitHub saved a different review | "GitHub saved the review, but it doesn't match what you sent, so check it on GitHub." |
+| gh couldn't send it | "Bifrost couldn't send this review." and gh's reason |
+
+A refusal from GitHub leaves "Reviews: GitHub rejected the review of owner/repo#7: …" in the
+Event log, and an unsure result leaves "Reviews: Bifrost can't tell whether GitHub saved the review
+of owner/repo#7: …", with any token hidden.
+
+A click shows its progress at once: the three buttons give way to a spinning loader with
+"Approving…", "Commenting…" or "Requesting changes…", and the row shows the same progress in place
+of its state text and buttons. The space for the buttons keeps its width, so the line above them
+doesn't move. Once GitHub confirms the review, the panel closes and polls straight away, and the
+row shows "Approved", "Commented" or "Changes requested" for 3 seconds, then You approved, You
+commented or You requested changes until a poll shows your review, as it does after a send of the
+draft form.
+
+A review that GitHub may have saved is never sent again by itself. After a Comment, Request changes
+or Approve whose result Bifrost can't be sure of, the buttons of both forms stay off, and the row's
+Approve, Comment and Request changes too, until Bifrost knows what happened. In that time a line
+above the buttons says "Bifrost can't tell whether GitHub saved your review, so click Refresh to
+check.", whichever way you got to the panel: it's there after you close it and open it again, and
+when the wait started from somewhere else while the panel was open. The line stays out of the way
+while the error line is about that write, since the error line already explains it (an unsure
+Approve, say, or a review that GitHub saved in another state), and it goes when the wait ends.
+
+For a request for changes or an approval, the wait ends at the first good poll that started after
+that result, because a poll shows those reviews: if GitHub has yours on the head, the row moves to
+You requested changes or You approved and the panel locks. A poll never lists a plain comment, so
+an unsure Comment waits for a check instead. After each good poll (the one Bifrost asks for straight
+away, and each Refresh), Bifrost reads your own latest reviews on that PR. A review of yours on that
+commit from about the time of the send on counts as the comment: the row says You commented, the
+panel locks, and nothing can go again for that commit. A good read without one means GitHub didn't
+save it, so the wait ends and the buttons come back. If the read fails, the wait stays and the next
+poll tries again.
+
+While the panel shows the findings of a PR, Approve on its row or See Claude's review just brings
+the panel forward, with your ticks, your summary, the Nits row and any running action and its
+result as they were. A close drops them, and the next open starts again with the bugs and minor
+findings ticked and the nits closed. When the row no longer offers those findings (a new review
+round started, Claude left a newer result, or the row changed), the form keeps showing them but
+locks with "You can't send this review right now, its row in the Reviews panel shows why.", and
+opening it again shows Claude's newer findings.
+
+`DraftFlow` runs the draft form, and `DraftEdits` holds its checks, the plan of a send and the
+guard of each write. `FindingsFlow` runs the findings form, and `FindingsPlan` holds what a click
+posts, its checks, the fresh check of the PR and the guard of its one write. `ReviewDraftPanels`
+holds the panel with both forms, and `ReviewFindingsPanel.swift` draws the findings form.
+`ReviewWrites` keeps the progress of a send, the review that GitHub confirmed and the wait for a
+poll, as it does for Approve, and checks an unsure Comment with `DraftQueries.ownReviews`.
+`DraftFlowTests`, `DraftEditsTests`, `FindingsFlowTests`, `FindingsPlanTests`,
+`ReviewDraftPanelTests` and `ReviewFindingsPanelTests` cover them,
 `ShellReviewsTests.aConfirmedSendShowsYouRequestedChangesWhileThePollIsBehind` covers a poll
-that's behind.
+that's behind, `ShellReviewsTests.anUnsureCommentIsCheckedAfterTheNextPoll` covers the check on
+the open store, and `ShellReviewsTests.aFindingsRowApprovesThroughTheReviewPanel` covers the
+findings form on the open store.
 
 ### The Answer panel
 

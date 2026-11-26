@@ -99,24 +99,54 @@ package enum RowText {
         }
     }
 
-    // The tip of a mark of Claude: what Claude suggests and why, and what to do next.
+    // The tip of a mark of Claude: what Claude suggests and why, and what to do next, in one flow
+    // of text. On a Looks good row, the next step follows the findings: nothing, only nits (which
+    // Approve does not post), or a finding above a nit (Approve opens the Review panel).
     static func suggestion(_ mark: RecommendationMark, _ state: ToReviewState) -> String? {
-        let why = mark.why.isEmpty ? "" : " \(mark.why)"
+        let name = recommendation(mark.value)
         switch state {
         case .reviewed:
-            return "Claude suggests: Approve.\(why) Nothing was posted."
+            if mark.findings.isEmpty { return sentence(name, mark.why) }
+            guard mark.findings.aboveNits else {
+                return "\(clause(name, mark.why)), so approving won't post nits. To read them, "
+                    + "check Claude's review from the menu."
+            }
+            return "\(sentence(name, mark.why)) Click Approve to check Claude's findings."
         case .draftReady:
-            let name = recommendation(mark.value)
             let next =
                 mark.value == .approve
-                ? "Click Approve to submit Claude's draft as an approval."
+                ? "Click Approve to check Claude's draft."
                 : "Click \(name) to check the draft and send it."
-            return "Claude suggests: \(name).\(why) \(next)"
+            return "\(sentence(name, mark.why)) \(next)"
         case .newRequest, .newCommits, .failed, .waitingForYou, .trustNeeded, .reviewing, .queued,
             .paused, .youApproved, .youRequestedChanges, .youCommented, .approvedByOthers,
             .teamRequest:
             return nil
         }
+    }
+
+    // "Claude suggests: <name> - <why>", or "Claude suggests: <name>" with no why. The review
+    // skill asks for a why in lower case with no full stop at the end (bifrost-mode.md), so this
+    // text adds the punctuation. A why of an old result keeps its capital letter.
+    private static func clause(_ name: String, _ why: String) -> String {
+        guard !why.isEmpty else { return "Claude suggests: \(name)" }
+        // A comma follows the clause, so a full stop at the end of the why goes.
+        let reason = why.hasSuffix(".") ? String(why.dropLast()) : why
+        return "Claude suggests: \(name) - \(reason)"
+    }
+
+    // The recommendation line as a sentence. A why that ends a sentence gets no second full stop.
+    private static func sentence(_ name: String, _ why: String) -> String {
+        "Claude suggests: \(name)\(sentenceEnd(why))"
+    }
+
+    // The end of the recommendation line after the name: " - <why>." or "." with no why. A why
+    // that ends a sentence gets no second full stop. The Review panel shows the line with the
+    // name in its colour.
+    package static func sentenceEnd(_ why: String) -> String {
+        guard !why.isEmpty else { return "." }
+        let ends = why.hasSuffix(".") || why.hasSuffix("!") || why.hasSuffix("?")
+        return " - \(why)\(ends ? "" : ".")"
     }
 
     package static func recommendation(_ value: Recommendation) -> String {
@@ -149,6 +179,31 @@ package enum RowText {
                 }
             return RowLabel(text: text, tone: review.tone, tip: nil)
         }
+    }
+
+    // The line of an Approve of Claude with no draft: the count of the findings of each kind
+    // that is not 0, in the order bugs, minor points, nits. "Claude found nothing to change." for
+    // no findings, and "Claude found only 2 nits." for nits alone.
+    package static func found(_ findings: [Finding]) -> String {
+        guard !findings.isEmpty else { return "Claude found nothing to change." }
+        guard findings.aboveNits else { return "Claude found only \(findingsList(findings))." }
+        return "Claude found \(findingsList(findings))."
+    }
+
+    // The count of the findings of each kind that is not 0, in the order bugs, minor points,
+    // nits, joined "a and b" or "a, b and c": "2 minor points and 1 nit". The line of a row and
+    // the notification of a Looks good round use it.
+    package static func findingsList(_ findings: [Finding]) -> String {
+        let kinds: [(FindingKind, String, String)] = [
+            (.bug, "bug", "bugs"), (.minor, "minor point", "minor points"), (.nit, "nit", "nits"),
+        ]
+        let parts = kinds.compactMap { kind, one, many -> String? in
+            let found = findings.count(kind)
+            return found == 0 ? nil : count(found, one, many)
+        }
+        return parts.count < 2
+            ? parts.joined()
+            : parts.dropLast().joined(separator: ", ") + " and " + (parts.last ?? "")
     }
 
     // The line of Claude's result in place of the author, the size and the age.

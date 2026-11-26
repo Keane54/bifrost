@@ -1,9 +1,7 @@
 // The Review panel and the Approve button of the Reviews panel (docs/behaviour/reviews.md,
 // "Approve" and "The Review panel"): the controls, the error line, the one GitHub write of each
 // button, with a click, and the progress of an approval and of a send on the row and in the
-// panel. The panels run on the real
-// flows over a Reviews store in a temporary folder and FakeGitHub, so no test reaches GitHub. A
-// close of a panel releases its body, as the canvas of the window does.
+// panel. The panels run on the real flows of DraftPanelFixture, so no test reaches GitHub.
 import AppKit
 import BifrostFoundation
 import BifrostLayout
@@ -16,150 +14,6 @@ import SwiftUI
 import Testing
 
 @testable import BifrostWindows
-
-@MainActor
-private final class DraftPanelFixture {
-    static let viewer = "viewer-a"
-
-    let folder: TemporaryFolder
-    let store: ReviewsStore
-    let github = FakeGitHub()
-    let client: GitHubClient
-    let approver: ApproveFlow
-    // The progress of the review writes on the rows, on the clock of the time that a row shows
-    // the result of a write.
-    let writes: ReviewWrites
-    let clock = ManualClock()
-    let links = ReviewsPanelLinks()
-    let panels: ReviewsPanels
-    let opened = Recorder<PanelID>()
-    let closed = Recorder<PanelID>()
-    let pr: PRKey
-    let head: CommitID
-    let review: NodeID
-    let claudeComment: NodeID
-    let userComment: NodeID
-    // The To review row of the PR in the snapshot.
-    var row: ReviewRow
-
-    // Claude's draft of the value on PR 7, with Claude's comment and one that the user added on
-    // GitHub; the row offers the Review panel (or Approve for an Approve mark).
-    init(_ value: Recommendation = .comment) async throws {
-        UITestApp.prepare()
-        folder = try TemporaryFolder()
-        let layout = ReviewsLayout(
-            folder: URL(filePath: folder.realPath + "/reviews", directoryHint: .isDirectory))
-        store = try await ReviewsStore.open(layout: layout, log: Recorder<StoreEvent>())
-        client = GitHubClient(access: github)
-        pr = try #require(PRKey(text: "Owner-A/Repo-A#7"))
-        head = try #require(CommitID(String(repeating: "c", count: 40)))
-        review = try #require(NodeID("PRR_claude"))
-        claudeComment = try #require(NodeID("PRRC_claude"))
-        userComment = try #require(NodeID("PRRC_user"))
-        let (store, client) = (store, client)
-        let writes = ReviewWrites(clock: clock)
-        self.writes = writes
-        let approver = ApproveFlow(
-            store: store, github: client, writes: writes, viewer: { Self.viewer })
-        self.approver = approver
-        row = ReviewRow(
-            id: pr, state: .toReview(.draftReady), repo: "Repo-A", title: "Add the cache",
-            status: RowLabel(text: "Draft ready", tone: .amber, tip: nil),
-            approve: value == .approve ? .ready : nil,
-            draft: value == .requestChanges ? .requestChanges : value == .comment ? .comment : nil)
-        panels = ReviewsPanels(
-            links: links, opener: FakeOpener(), look: PanelLook(), menu: { nil },
-            clock: ManualClock(), now: { Date() })
-        let (opened, closed, panels) = (opened, closed, panels)
-        links.snapshot = { [weak self] in
-            ReviewsSnapshot(phase: .on, toReview: self.map { [$0.row] } ?? [])
-        }
-        links.approver = { approver }
-        links.writes = { writes }
-        links.makeDraftFlow = {
-            DraftFlow(
-                store: store, github: client, approver: approver, writes: writes,
-                viewer: { Self.viewer })
-        }
-        links.openPanel = { opened.record($0) }
-        links.closePanel = { [weak panels] in
-            closed.record($0)
-            panels?.releaseBody(for: $0)
-        }
-        await setMark(value)
-        let pr = pr
-        let review = review
-        await store.update { state in
-            state.drafts = [
-                DraftRecord(
-                    reviewID: review, pr: pr, path: "src/a.swift", line: 11, body: "Use <.",
-                    at: Date(timeIntervalSince1970: 1_794_312_000))
-            ]
-        }
-        answerFresh()
-        github.answers[DraftQueries.draftName] = .success(
-            DraftAnswers.draft(
-                "PRR_claude", body: "Summary.", commit: head,
-                comments: [
-                    DraftRead.Comment(
-                        id: claudeComment, path: "src/a.swift", line: 11, body: "Use <."),
-                    DraftRead.Comment(id: userComment, path: "src/b.swift", line: 3, body: "Mine."),
-                ]))
-        github.answers[ReviewQueries.reviewName] = .success(DraftAnswers.reviewNow(commit: head))
-    }
-
-    // Claude's mark of the value on the head, with its draft review.
-    func setMark(_ value: Recommendation) async {
-        let mark = RecommendationMark(
-            value: value, why: "Two small bugs.", headSHA: head, reviewID: review,
-            at: Date(timeIntervalSince1970: 1_794_312_000))
-        let pr = pr
-        await store.update { state in
-            var prState = state.prs[pr] ?? PRState()
-            prState.recommendation = mark
-            state.prs[pr] = prState
-        }
-    }
-
-    // The fresh read: Claude's draft is the pending review on the head, unless pending is false.
-    func answerFresh(head: CommitID? = nil, pending: Bool = true) {
-        github.answers[DraftQueries.freshName] = .success(
-            DraftAnswers.fresh(
-                pr, head: head ?? self.head,
-                pending: pending ? DraftAnswers.Pending(id: "PRR_claude", commit: self.head) : nil))
-    }
-
-    func answer(_ write: GitHubWrite, state: String? = nil) {
-        github.answers[FakeGitHub.key(write)] = .success(DraftAnswers.written(write, state: state))
-    }
-
-    var draft: ReviewDraftPanels { panels.draft }
-
-    // Open the Review panel and wait for the read of the draft.
-    func open() async {
-        draft.open(pr)
-        await draft.task?.value
-    }
-
-    var written: [GitHubWrite] {
-        github.calls.compactMap { if case .write(let write) = $0 { write } else { nil } }
-    }
-
-    // Move the clock to the end of the time that the row shows the result of a write, and wait
-    // for the end of the progress.
-    func endHold() async {
-        let hold = writes.holdTask(pr)
-        #expect(await clock.waitForSleepers(1))
-        clock.advance(by: ReviewWrites.hold)
-        await hold?.value
-    }
-
-    func end() async {
-        panels.releaseBody(for: .reviewDraft)
-        await store.close().value
-        folder.remove()
-    }
-}
 
 @MainActor
 @Suite("the Review panel", .serialized, .testTimeLimit, .tags(.window))
@@ -230,7 +84,8 @@ struct ReviewDraftPanelTests {
     // Each button gives GitHub its one write, with the click of the user: Send review submits the
     // draft as it is, Discard draft deletes it (after the confirm for the user's comment), and
     // Approve instead deletes it and approves the head. Each one that worked closes the panel. The
-    // Approve button of a row approves Claude's Approve draft.
+    // Approve button of a row with Claude's old Approve draft opens that draft in the panel and
+    // writes nothing.
     @Test func eachButtonSendsItsOneWrite() async throws {
         let f = try await DraftPanelFixture()
         let submit = GitHubWrite.submitDraft(review: f.review, event: .comment, click: UserClick())
@@ -276,28 +131,43 @@ struct ReviewDraftPanelTests {
         // The row shows Approved after Approve instead too, until the end of the hold.
         #expect(f.writes.progress(f.pr) == .confirmed(.approve))
         await f.endHold()
-        // The Approve button of a row with Claude's Approve draft submits that draft.
+        // The Approve button of a row with Claude's old Approve draft opens that draft.
         await f.setMark(.approve)
         f.row.approve = .ready
         f.row.draft = nil
+        f.row.approveCheck = .draft
         f.answerFresh()
-        let approveDraft = GitHubWrite.approveDraft(review: f.review, click: UserClick())
-        f.answer(approveDraft, state: "APPROVED")
         let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
         #expect(ReviewsMenu.buttons(f.row) == [.approve])
         #expect(model.menuItems(f.pr)?.contains(.approve) == true)
         model.approve(f.pr, click: UserClick())
-        await model.approval?.value
-        #expect(f.written.last == approveDraft && f.written.count == 5)
-        #expect(model.error == nil)
-        // A refusal of the approval shows in the error line of the Reviews panel.
-        await f.endHold()
-        f.answerFresh(pending: false)
-        model.approve(f.pr, click: UserClick())
-        await model.approval?.value
-        #expect(model.error == ApproveRefusal.draftMissing.message)
-        #expect(f.written.count == 5)
+        #expect(model.approval == nil && f.draft.pr == f.pr)
+        #expect(f.opened.values.count == 4 && f.opened.values.last == .reviewDraft)
+        await f.draft.task?.value
+        #expect(f.draft.flow?.shown?.recommendation == .approve)
+        #expect(f.written.count == 4 && model.error == nil)
         f.panels.releaseBody(for: .reviews)
+        await f.end()
+    }
+
+    // The panel on Claude's old Approve draft is not locked: the row offers that draft through
+    // its Approve button, so Discard draft and Send review act. A row that no longer offers it
+    // locks the panel.
+    @Test func anOldApproveDraftIsNotLocked() async throws {
+        let f = try await DraftPanelFixture(.approve)
+        #expect(f.row.draft == nil && f.row.offersDraft)
+        await f.open()
+        #expect(f.draft.flow?.shown?.recommendation == .approve)
+        #expect(!f.draft.isLocked && f.draft.canDiscard && f.draft.canSend)
+        let submit = GitHubWrite.submitDraft(review: f.review, event: .comment, click: UserClick())
+        f.answer(submit, state: "COMMENTED")
+        f.draft.send(click: UserClick())
+        await f.draft.task?.value
+        #expect(f.written == [submit] && f.closed.values == [.reviewDraft])
+        await f.setMark(.approve)
+        await f.open()
+        f.row.approveCheck = nil
+        #expect(f.draft.isLocked && !f.draft.canDiscard && !f.draft.canSend)
         await f.end()
     }
 
@@ -307,8 +177,10 @@ struct ReviewDraftPanelTests {
     // rows or drops the row. After the hold, the row has its buttons again. A refusal ends the
     // progress at once, and the reason shows in the error line.
     @Test func theRowShowsTheProgressOfItsApproval() async throws {
-        let f = try await DraftPanelFixture(.approve)
-        let write = GitHubWrite.approveDraft(review: f.review, click: UserClick())
+        let f = try await DraftPanelFixture(.approve, draft: false)
+        f.answerFresh(pending: false)
+        let write = GitHubWrite.approveCommit(
+            pr: try #require(NodeID("PR_node7")), commit: f.head, click: UserClick())
         f.answer(write, state: "APPROVED")
         let gate = TestGate()
         defer { gate.openAll() }
@@ -346,17 +218,60 @@ struct ReviewDraftPanelTests {
         #expect(model.progress(f.pr) == nil)
         #expect(model.isEnabled(.approve, f.row))
         #expect(model.menuItems(f.pr) == [.openOnGitHub, .approve])
-        // A refusal ends the progress and shows the reason.
-        f.answerFresh(pending: false)
+        // A refusal ends the progress and shows the reason: here a pending review of the user.
+        f.answerFresh(pending: true)
         model.approve(f.pr, click: UserClick())
         #expect(model.progress(f.pr) == .running(.approve))
         await model.approval?.value
         #expect(model.progress(f.pr) == nil)
         #expect(model.shownStatus(f.row) == f.row.status)
-        #expect(model.error == ApproveRefusal.draftMissing.message)
+        #expect(model.error == ApproveRefusal.pendingReview.message)
         #expect(f.written == [write])
         #expect(RowText.progress(.running(.approve)).text == "Approving\u{2026}")
         #expect(RowText.progress(.confirmed(.approve)).text == "Approved")
+        f.panels.releaseBody(for: .reviews)
+        await f.end()
+    }
+
+    // The place of the state text and the buttons of a row keeps one width while a review write
+    // runs, so nothing to the left of it moves when the progress starts, when GitHub confirms the
+    // write, or when the progress ends. The place is as wide as the wider of its idle content and
+    // the widest progress ("Requesting changes…"), so a row with a short text keeps that width.
+    @Test func theRowKeepsTheWidthOfItsActionsDuringAWrite() async throws {
+        let f = try await DraftPanelFixture(.approve, draft: false)
+        f.answerFresh(pending: false)
+        let write = GitHubWrite.approveCommit(
+            pr: try #require(NodeID("PR_node7")), commit: f.head, click: UserClick())
+        f.answer(write, state: "APPROVED")
+        let gate = TestGate()
+        defer { gate.openAll() }
+        f.github.onWrite = { _ in await gate.pass() }
+        let model = try #require(f.panels.body(for: .reviews) as? ReviewsHost).rootView.model
+        let style = model.style
+        func width(_ row: ReviewRow) -> CGFloat {
+            NSHostingView(rootView: ReviewRowActions(model: model, row: row, style: style))
+                .fittingSize.width
+        }
+        let widest = NSHostingView(
+            rootView: WriteProgressLabel(progress: .running(.requestChanges), style: style)
+        ).fittingSize.width
+        var narrow = f.row
+        narrow.approve = nil
+        narrow.status = RowLabel(text: "Queued", tone: .plain, tip: nil)
+        let idle = width(f.row)
+        #expect(idle >= widest && width(narrow) == widest)
+        model.approve(f.pr, click: UserClick())
+        #expect(await gate.waitUntilHolding(1))
+        #expect(model.progress(f.pr) == .running(.approve))
+        #expect(width(f.row) == idle && width(narrow) == widest)
+        gate.open()
+        await model.approval?.value
+        #expect(model.progress(f.pr) == .confirmed(.approve))
+        #expect(width(f.row) == idle && width(narrow) == widest)
+        await f.endHold()
+        #expect(model.progress(f.pr) == nil)
+        #expect(width(f.row) == idle && width(narrow) == widest)
+        #expect(f.written == [write])
         f.panels.releaseBody(for: .reviews)
         await f.end()
     }
@@ -474,6 +389,101 @@ struct ReviewDraftPanelTests {
         #expect(f.written == [submit] && f.draft.flow === flow)
         #expect(f.draft.error == DraftRefusal.sendFailed.message)
         #expect(flow.summary == "Summary." && f.closed.values.isEmpty)
+        await f.end()
+    }
+
+    // The draft form shows Claude's suggestion and, under it, Claude's private note from the
+    // mark. A mark from before the notes has no note, so the form shows none.
+    @Test func theDraftFormShowsTheNote() async throws {
+        let f = try await DraftPanelFixture(.requestChanges)
+        await f.setMark(.requestChanges, note: DraftPanelFixture.note)
+        await f.open()
+        #expect(f.draft.flow?.shown?.note == DraftPanelFixture.note)
+        #expect(
+            String(SuggestionLine.text(.requestChanges, why: "Two small bugs.").characters)
+                == "Claude suggests: Request changes - Two small bugs.")
+        f.links.closePanel(.reviewDraft)
+        await f.setMark(.requestChanges)
+        await f.open()
+        #expect(f.draft.flow?.shown?.note == "")
+        #expect(f.written.isEmpty)
+        await f.end()
+    }
+
+    // The place of Send review is always as wide as the widest progress ("Requesting
+    // changes…"), so the "Send as" switch to its left does not move when a send starts or ends.
+    @Test func theSendButtonKeepsItsPlaceDuringASend() async throws {
+        let f = try await DraftPanelFixture(.requestChanges)
+        let submit = GitHubWrite.submitDraft(
+            review: f.review, event: .requestChanges, click: UserClick())
+        f.answer(submit, state: "CHANGES_REQUESTED")
+        let gate = TestGate()
+        defer { gate.openAll() }
+        f.github.onWrite = { _ in await gate.pass() }
+        await f.open()
+        let (draft, style) = (f.draft, f.draft.style)
+        func width() -> CGFloat {
+            NSHostingView(rootView: DraftSendButton(panels: draft, style: style)).fittingSize.width
+        }
+        let widest = NSHostingView(
+            rootView: WriteProgressLabel(progress: .running(.requestChanges), style: style)
+        ).fittingSize.width
+        #expect(width() == widest)
+        f.draft.send(click: UserClick())
+        #expect(f.draft.sending == .requestChanges)
+        #expect(width() == widest)
+        #expect(await gate.waitUntilHolding(1))
+        gate.open()
+        await f.draft.task?.value
+        #expect(f.written == [submit] && f.closed.values == [.reviewDraft])
+        #expect(width() == widest)
+        await f.endHold()
+        await f.end()
+    }
+
+    // While a review from the findings form of the PR might have reached GitHub and no poll has
+    // shown it yet, Send review, Discard draft and Approve instead are off and the draft form says
+    // why, also after a close and a new open. A poll that started after the result ends the wait,
+    // and the text goes with it.
+    @Test func theDraftButtonsWaitForThePollOfAnUnsureReview() async throws {
+        let f = try await DraftPanelFixture()
+        await f.open()
+        let open = f.draft.task
+        let calls = f.github.calls.count
+        #expect(f.draft.canSend && f.draft.canDiscard && f.draft.waitText == nil)
+        f.writes.mayHaveGone(f.pr)
+        #expect(!f.draft.canSend && !f.draft.canDiscard && !f.draft.isLocked)
+        #expect(f.draft.waitText == FindingsRefusal.unknown.message)
+        f.draft.send(click: UserClick())
+        f.draft.discard(click: UserClick())
+        f.draft.approveInstead(click: UserClick())
+        #expect(f.draft.task == open && f.draft.confirm == nil)
+        #expect(f.github.calls.count == calls)
+        f.links.closePanel(.reviewDraft)
+        await f.open()
+        #expect(!f.draft.canSend && f.draft.waitText == FindingsRefusal.unknown.message)
+        f.watcherPolls.answered()
+        #expect(f.draft.canSend && f.draft.canDiscard && f.draft.waitText == nil)
+        #expect(f.written.isEmpty)
+        await f.end()
+    }
+
+    // The panel opens 700 wide, which leaves room for the whole draft footer on one line, send
+    // slot included. Make it narrower than that and the right part moves to a second line.
+    @Test func theFooterFitsOnOneLineAtTheDefaultWidth() async throws {
+        let f = try await DraftPanelFixture(.requestChanges)
+        await f.open()
+        let style = f.draft.style
+        let host = NSHostingController(rootView: DraftFooter(panels: f.draft, style: style))
+        func height(_ width: CGFloat) -> CGFloat {
+            host.sizeThatFits(in: CGSize(width: width, height: 10_000)).height
+        }
+        #expect(PanelKind.reviewDraft.defaultSize.w == 700)
+        // The body of a frame is the frame less its border on each side.
+        let body = style.points(PanelKind.reviewDraft.defaultSize.w - 2 * FrameView.border)
+        let oneLine = height(5_000)
+        #expect(height(body) == oneLine)
+        #expect(height(style.points(620 - 2 * FrameView.border)) > oneLine)
         await f.end()
     }
 

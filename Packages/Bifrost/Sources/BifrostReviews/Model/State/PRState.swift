@@ -163,10 +163,15 @@ package struct RecommendationMark: Sendable, Equatable, StoredValue {
     // True when the user deleted the draft with Approve and not with the Review panel. The row
     // then offers the Approve button. Only a mark with no draft can have a deleted draft.
     package var deleted: Bool
+    // Claude's note for the user, for the Review panel. Bifrost never posts it. A mark of an
+    // earlier build, or of a version 1 result, has none.
+    package var note: String
+    // Each finding of the round, of all kinds, for the Review panel.
+    package var findings: [Finding]
 
     package init(
         value: Recommendation, why: String, headSHA: CommitID, reviewID: NodeID?, at: Date,
-        deleted: Bool = false
+        deleted: Bool = false, note: String = "", findings: [Finding] = []
     ) {
         self.value = value
         self.why = why
@@ -174,18 +179,32 @@ package struct RecommendationMark: Sendable, Equatable, StoredValue {
         self.reviewID = reviewID
         self.at = at
         self.deleted = deleted && reviewID == nil
+        self.note = note
+        self.findings = findings
     }
 
+    // A findings value that is not a list, null included, or one finding that does not read
+    // gives no mark. A damaged list then never makes a mark look like a mark with only nits or
+    // with no findings. A note that is not text is dropped alone.
     package init?(stored value: JSONValue, dropped: inout DroppedFields) {
         guard let object = StoredObject(value, place: "prs.recommendation"),
             let mark = object["value"]?.string.flatMap(Recommendation.init(rawValue:)),
             let why = object["why"]?.string, let headSHA = object["headSha"]?.commitID,
             let at = object["at"]?.time
         else { return nil }
+        var findings: [Finding] = []
+        if let list = object.fields["findings"] {
+            guard let items = list.array else { return nil }
+            for item in items {
+                guard let finding = Finding(stored: item, dropped: &dropped) else { return nil }
+                findings.append(finding)
+            }
+        }
         self.init(
             value: mark, why: why, headSHA: headSHA,
             reviewID: object.read("reviewId", &dropped, \.nodeID), at: at,
-            deleted: object.flag("deleted", &dropped))
+            deleted: object.flag("deleted", &dropped),
+            note: object.read("note", &dropped, \.string) ?? "", findings: findings)
     }
 
     package var stored: JSONValue {
@@ -194,6 +213,8 @@ package struct RecommendationMark: Sendable, Equatable, StoredValue {
             "reviewId": .text(reviewID?.text), "at": .time(at),
         ]
         if deleted { fields["deleted"] = true }
+        if !note.isEmpty { fields["note"] = .string(note) }
+        if !findings.isEmpty { fields["findings"] = .array(findings.map(\.stored)) }
         return .object(fields)
     }
 }

@@ -564,6 +564,118 @@ struct ReviewsStateTests {
         #expect(!PRState(stored: settled.stored, dropped: &dropped).markInDoubt)
     }
 
+    // The mark of a review round keeps Claude's note and each finding with its kind, its place,
+    // its body and onDiff, for the Review panel. A mark with no note and no findings stores
+    // neither key.
+    @Test func aMarkKeepsItsNoteAndFindings() throws {
+        let findings = [
+            Finding(
+                kind: .bug, place: FindingPlace(path: "src/a.swift", line: 11, side: .right),
+                body: "Use `<` here.", onDiff: true),
+            Finding(
+                kind: .minor,
+                place: FindingPlace(path: "src/b.swift", line: 12, side: .left, startLine: 10),
+                body: "A range.", onDiff: false),
+            Finding(kind: .nit, place: nil, body: "On the whole PR.", onDiff: false),
+        ]
+        let at = time(1_794_000_000_000)
+        let mark = RecommendationMark(
+            value: .approve, why: "only small points", headSHA: try commit("a"), reviewID: nil,
+            at: at, note: "Line one.\nLine two.", findings: findings)
+        var dropped = DroppedFields()
+        #expect(RecommendationMark(stored: mark.stored, dropped: &dropped) == mark)
+        #expect(dropped.sorted.isEmpty)
+        let fields = try #require(mark.stored.object)
+        #expect(fields["note"] == "Line one.\nLine two.")
+        #expect(
+            fields["findings"]
+                == [
+                    [
+                        "kind": "bug", "path": "src/a.swift", "line": 11, "side": "RIGHT",
+                        "body": "Use `<` here.", "onDiff": true,
+                    ],
+                    [
+                        "kind": "minor", "path": "src/b.swift", "line": 12, "side": "LEFT",
+                        "startLine": 10, "body": "A range.", "onDiff": false,
+                    ],
+                    ["kind": "nit", "body": "On the whole PR.", "onDiff": false],
+                ])
+        // The whole file keeps them too.
+        let pr = try key("owner-a/repo-a#4")
+        var prState = PRState()
+        prState.recommendation = mark
+        var state = ReviewsState()
+        state.prs[pr] = prState
+        let read = try stored(JSONFile.encode(state))
+        #expect(read.state.prs[pr]?.recommendation == mark)
+        #expect(read.dropped == [])
+
+        let plain = RecommendationMark(
+            value: .requestChanges, why: "a bug", headSHA: try commit("a"),
+            reviewID: try node("PRR_new"), at: at)
+        let keys = try #require(plain.stored.object).keys
+        #expect(!keys.contains("note") && !keys.contains("findings"))
+    }
+
+    // A mark that an earlier build saved has no note and no findings. It reads with an empty
+    // note and no findings, drops nothing, and saves in the same form.
+    @Test func anOldMarkReadsWithNoNoteAndNoFindings() throws {
+        let old: JSONValue = [
+            "value": "approve", "why": "Looks good.", "headSha": .string(try commit("a").hex),
+            "reviewId": .null, "at": 1_794_000_000_000,
+        ]
+        var dropped = DroppedFields()
+        let mark = try #require(RecommendationMark(stored: old, dropped: &dropped))
+        #expect(mark.note == "" && mark.findings == [])
+        #expect(mark.value == .approve && mark.reviewID == nil && mark.why == "Looks good.")
+        #expect(dropped.sorted.isEmpty)
+        #expect(mark.stored == old)
+    }
+
+    // A mark whose findings do not read in full goes as a whole, so a damaged file never makes a
+    // mark look like it has only nits or nothing. The record of the PR is then in doubt. An
+    // unknown key of a finding is ignored, and a note that is not text goes alone.
+    @Test func aMarkWhoseFindingsDoNotReadInFullIsDropped() throws {
+        let pr = try key("owner-a/repo-a#4")
+        let head = try commit("a").hex
+        func read(_ change: (inout [String: JSONValue]) -> Void) throws -> PRState {
+            var mark: [String: JSONValue] = [
+                "value": "approve", "why": "only nits", "headSha": .string(head),
+                "reviewId": .null, "at": 1_794_000_000_000,
+            ]
+            change(&mark)
+            let record: JSONValue = ["recommendation": .object(mark)]
+            let file: JSONValue = ["version": 1, "prs": .object([pr.text: record])]
+            return try #require(try stored(ReviewData.json(file)).state.prs[pr])
+        }
+        let good: JSONValue = [
+            "kind": "minor", "path": "src/a.swift", "line": 11, "side": "RIGHT",
+            "body": "A point.", "onDiff": true,
+        ]
+        let bad: [JSONValue] = [
+            "none", .null, [["kind": "style", "body": "A point."]],
+            [["kind": "nit", "path": "src/a.swift", "body": "A point."]],
+            [good, ["kind": "nit", "line": 3, "side": "RIGHT", "body": "A point."]],
+            [["kind": "nit", "path": "src/a.swift", "line": 0, "side": "RIGHT", "body": "B."]],
+            [["kind": "nit", "startLine": 2, "body": "A point."]],
+            [["kind": "nit", "body": 1]], [["kind": "nit", "body": "A point.", "onDiff": "yes"]],
+            [1],
+        ]
+        for findings in bad {
+            let record = try read { $0["findings"] = findings }
+            #expect(record.recommendation == nil, "\(findings)")
+            #expect(record.markInDoubt, "\(findings)")
+        }
+        let kept = try read {
+            $0["findings"] = [good, ["kind": "nit", "body": "A point.", "extra": 1]]
+        }
+        #expect(kept.recommendation?.findings.map(\.kind) == [.minor, .nit])
+        #expect(kept.recommendation?.findings.last?.onDiff == false && !kept.markInDoubt)
+        let noNote = try read { $0["note"] = 5 }
+        #expect(noNote.recommendation?.note == "" && noNote.recommendation?.value == .approve)
+        #expect(noNote.markInDoubt)
+    }
+
     // A CI mark that Bifrost can't read in full has no fix and no re-run left: a bad count, the
     // loss of any other field, or a value that is not an object makes both counts their limits.
     // A chain with a bad commit reads as no chain. The good fields stay, and the save of the read

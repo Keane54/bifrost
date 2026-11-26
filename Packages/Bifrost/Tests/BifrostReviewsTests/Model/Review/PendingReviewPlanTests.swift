@@ -11,43 +11,66 @@ private typealias D = ReviewData
 struct PendingReviewPlanTests {
     private func outcome(
         _ recommendation: Recommendation = .requestChanges, summary: String = "Summary.",
-        comments: [DraftComment] = []
+        findings: [Finding] = []
     ) -> ReviewOutcome {
         ReviewOutcome(
-            recommendation: recommendation, reason: "Why.", summary: summary, comments: comments)
+            recommendation: recommendation, reason: "why", note: "A note for the user.",
+            summary: summary, findings: findings)
     }
 
-    private let inside = DraftComment(path: "src/a.swift", line: 12, side: .right, body: "In.")
+    private let inside = D.finding(.bug, line: 12, body: "In.", onDiff: true)
 
-    // GitHub refuses a whole review with a comment outside the diff, so such a comment moves into
-    // the summary with its path and its line. A path with backticks gets a longer fence.
-    @Test func aCommentOutsideTheDiffMovesIntoTheSummary() throws {
-        let outside = DraftComment(path: "src/a.swift", line: 40, side: .right, body: "Out.")
-        let wrongSide = DraftComment(path: "src/a.swift", line: 14, side: .left, body: "Left.")
-        let tick = DraftComment(path: "a`b.swift", line: 3, side: .right, body: "Tick.")
-        let range = DraftComment(
-            path: "src/a.swift", line: 12, side: .right, startLine: 9, body: "Range.")
-        let placed = PendingReviewPlan.place(
-            outcome(comments: [inside, outside, wrongSide, tick, range]), diff: D.diff)
-        #expect(placed.comments == [inside])
-        #expect(placed.moved == 4)
+    private var insideComment: DraftComment {
+        DraftComment(path: "src/a.swift", line: 12, side: .right, body: "In.")
+    }
+
+    // The bug and minor findings on lines of the diff are the line comments of the draft, in
+    // their order. A nit never goes into the draft, as a comment or in the summary.
+    @Test func onlyTheBugAndMinorFindingsGoInTheDraft() throws {
+        let minor = D.finding(.minor, line: 11, startLine: 10, body: "Range.", onDiff: true)
+        let nit = D.finding(.nit, line: 13, body: "Rename it.", onDiff: true)
+        let offNit = D.finding(.nit, line: 99, body: "Order.")
+        let placed = PendingReviewPlan.place(outcome(findings: [nit, inside, offNit, minor]))
+        #expect(
+            placed.comments == [
+                insideComment,
+                DraftComment(
+                    path: "src/a.swift", line: 11, side: .right, startLine: 10, body: "Range."),
+            ])
+        #expect(placed.summary == "Summary." && placed.moved == 0)
+        #expect(
+            try PendingReviewPlan.plan(
+                outcome(findings: [inside, nit]), head: try D.commit(), pending: nil)
+                == .create(body: "Summary.", comments: [insideComment]))
+    }
+
+    // GitHub refuses a whole review with a comment outside the diff, so a finding that the diff
+    // does not show moves into the summary with its path and its line, and a finding on the whole
+    // PR moves in as its body. A path with backticks gets a longer fence.
+    @Test func aFindingOffTheDiffMovesIntoTheSummary() throws {
+        let outside = D.finding(.minor, line: 99, body: "Out.")
+        let whole = D.finding(.bug, body: "The PR misses its main goal.")
+        let tick = Finding(
+            kind: .minor, place: FindingPlace(path: "a`b.swift", line: 3, side: .right),
+            body: "Tick.", onDiff: false)
+        let placed = PendingReviewPlan.place(outcome(findings: [inside, outside, whole]))
+        #expect(placed.comments == [insideComment])
+        #expect(placed.moved == 2)
         #expect(
             placed.summary == """
                 Summary.
 
-                `src/a.swift` line 40: Out.
+                `src/a.swift` line 99: Out.
 
-                `src/a.swift` line 14: Left.
-
-                ``a`b.swift`` line 3: Tick.
-
-                `src/a.swift` line 12: Range.
+                The PR misses its main goal.
                 """)
+        let fenced = PendingReviewPlan.place(outcome(summary: " ", findings: [tick]))
+        #expect(fenced.summary == "``a`b.swift`` line 3: Tick." && fenced.moved == 1)
         let plan = try PendingReviewPlan.plan(
-            outcome(comments: [inside, outside]), diff: D.diff, head: try D.commit(), pending: nil)
+            outcome(findings: [inside, outside]), head: try D.commit(), pending: nil)
         #expect(
             plan == .create(
-                body: "Summary.\n\n`src/a.swift` line 40: Out.", comments: [inside]))
+                body: "Summary.\n\n`src/a.swift` line 99: Out.", comments: [insideComment]))
     }
 
     // With a pending review of the user on the reviewed commit, each comment is a new thread,
@@ -56,22 +79,20 @@ struct PendingReviewPlanTests {
         let pending = PendingDraft(
             id: try D.node("PRR_mine"), body: "My draft.", commit: try D.commit())
         let plan = try PendingReviewPlan.plan(
-            outcome(comments: [inside]), diff: D.diff, head: try D.commit(), pending: pending)
+            outcome(findings: [inside]), head: try D.commit(), pending: pending)
         #expect(
             plan == .add(
-                review: try D.node("PRR_mine"), comments: [inside],
+                review: try D.node("PRR_mine"), comments: [insideComment],
                 body: "My draft.\n\nSummary."))
         // An empty draft text gets only the summary, and no summary sets no body.
         let empty = PendingDraft(id: try D.node("PRR_mine"), body: " ", commit: try D.commit())
         #expect(
-            try PendingReviewPlan.plan(
-                outcome(), diff: D.diff, head: try D.commit(), pending: empty)
+            try PendingReviewPlan.plan(outcome(), head: try D.commit(), pending: empty)
                 == .add(review: try D.node("PRR_mine"), comments: [], body: "Summary."))
         #expect(
             try PendingReviewPlan.plan(
-                outcome(summary: "", comments: [inside]), diff: D.diff, head: try D.commit(),
-                pending: pending)
-                == .add(review: try D.node("PRR_mine"), comments: [inside], body: nil))
+                outcome(summary: "", findings: [inside]), head: try D.commit(), pending: pending)
+                == .add(review: try D.node("PRR_mine"), comments: [insideComment], body: nil))
     }
 
     // A thread goes on the commit of the pending review, so a review on another commit fails
@@ -81,20 +102,21 @@ struct PendingReviewPlanTests {
             id: try D.node("PRR_mine"), body: "", commit: try D.commit(D.oldHex))
         #expect(throws: RoundFailure.otherCommit) {
             try PendingReviewPlan.plan(
-                outcome(comments: [inside]), diff: D.diff, head: try D.commit(), pending: pending)
+                outcome(findings: [inside]), head: try D.commit(), pending: pending)
         }
     }
 
-    // An Approve with no summary and no comments posts nothing.
-    @Test func anApproveWithNothingToSayPostsNothing() throws {
+    // A result with no summary and nothing but nits has nothing to post.
+    @Test func aResultWithNothingToPostPostsNothing() throws {
+        let nit = D.finding(.nit, line: 12, body: "Rename it.", onDiff: true)
         #expect(
             try PendingReviewPlan.plan(
-                outcome(.approve, summary: " \n"), diff: D.diff, head: try D.commit(),
-                pending: nil) == .nothing)
+                outcome(summary: " \n", findings: [nit]), head: try D.commit(), pending: nil)
+                == .nothing)
         #expect(
             try PendingReviewPlan.plan(
-                outcome(.approve, summary: "Looks good."), diff: D.diff, head: try D.commit(),
-                pending: nil) == .create(body: "Looks good.", comments: []))
+                outcome(summary: "Blocks.", findings: [nit]), head: try D.commit(), pending: nil)
+                == .create(body: "Blocks.", comments: []))
     }
 
     // The text of the user and the summary together may not pass the limit of GitHub.
@@ -105,7 +127,7 @@ struct PendingReviewPlanTests {
             commit: try D.commit())
         #expect(throws: RoundFailure.draftTooLong) {
             try PendingReviewPlan.plan(
-                outcome(summary: summary), diff: D.diff, head: try D.commit(), pending: pending)
+                outcome(summary: summary), head: try D.commit(), pending: pending)
         }
     }
 }
