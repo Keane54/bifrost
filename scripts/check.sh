@@ -292,13 +292,17 @@ run_step rules-selftest scripts/test-check-rules.sh
 run_step debug-names-selftest scripts/test-debug-only-names.sh
 run_step rules python3 -I scripts/check_rules.py .
 run_step forbidden python3 -I scripts/check_forbidden.py Packages App
+# Node 24 or later runs the mod's TypeScript as it is, so the test of the Live details mod needs no
+# build and no packages.
+run_step live-mod node --test scripts/test-live-mod.ts
 run_step resolve resolve_package
 run_step sandbox-selftest scripts/test-run-sandboxed.sh
 run_step tests --after resolve package_tests
 run_step package-release --after resolve package_release
 run_step build-debug xcode_build Debug
 # The self-test of the release scripts. It needs the Sparkle tools that the Debug build resolves
-# into .build/spm. The test of the semantic-release config needs Node, so CI runs it (ci.yml).
+# into .build/spm. The test of the semantic-release config needs the pnpm packages, so CI runs it
+# (ci.yml).
 run_step release-selftest --after build-debug scripts/test-release.sh
 run_step bundled-selftest --after build-debug \
     scripts/test-check-bundled.sh "$products/Debug/Bifrost Dev.app"

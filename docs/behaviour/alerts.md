@@ -44,7 +44,9 @@ sent the session a prompt.
 
 - A new yellow box gives a notification only when you've sent the session a prompt since its last
   yellow box, or since Bifrost started. A turn that a background task, another session or agent, a
-  schedule or a system message started stays quiet, though its box still shows on the row.
+  schedule, a system message or Claude Code itself started (a resume after a usage limit, say)
+  stays quiet, though its box still shows on the row. Only a prompt you typed, sent from a Remote
+  Control client or Slack, or sent by the host of an SDK session counts as yours.
 - Each new yellow box uses up the prompts before it, even when no notification shows because the
   window has the focus or Notifications is off. Once you've seen the answer, a later wake-up won't
   tell you about it again.

@@ -54,8 +54,17 @@ jobs:
             'Packages/Bifrost/Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      # The steps of check.sh: the self-tests of the checkers, the rules, the package tests in the
-      # test sandbox, the Debug and the Release builds, the release self-test and the smoke test.
+      # The live-mod step of check.sh runs the mod's TypeScript in Node, which needs 24 or later
+      # to strip the types. It installs nothing, so there's no cache.
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      # The steps of check.sh: the self-tests of the checkers, the rules, the test of the Live
+      # details mod, the package tests in the test sandbox, the Debug and the Release builds, the
+      # release self-test and the smoke test.
       # The Release build has no BIFROST_CUTOVER, so the smoke script refuses to start it.
       # --keep-going runs each step and lists each failure, so one run shows all of them.
       # GitHub sets CI=true, so the Xcode builds skip the trust prompt of the package build

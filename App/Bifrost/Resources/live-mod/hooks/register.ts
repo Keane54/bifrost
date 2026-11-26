@@ -43,13 +43,15 @@ type Kind =
 
 type Data = Record<string, unknown>
 
-// The origins of a prompt that a person sent: Enter at the prompt of a terminal, a Remote
-// Control client, the host of an SDK session, a ping of the owner from Slack, and the follow-up
-// of the engine to an action of the person in the interface.
+// The prompt origins that a person starts: Enter at the prompt (composer, also through claude
+// attach), a Remote Control client (bridge), the host of an SDK or -p session (sdk) and a ping from
+// Slack (slack-ping). It's the same list Claude Code's own sec-default mod uses to decide that a
+// person prompted. human is the engine's name for typed input before the hook layer turns it into
+// composer or bridge, so it's only here in case a build ever hands it through as it is.
 const PERSON_ORIGINS: ReadonlySet<string> = new Set([
-  'auto-continuation',
   'bridge',
   'composer',
+  'human',
   'sdk',
   'slack-ping',
 ])
@@ -97,23 +99,17 @@ function readHome($: EngineInterface): Promise<string | undefined> {
   return home
 }
 
-// Return true when a person sent the prompt, false when the harness or another program sent it,
-// and undefined when the event has no origin. The engine sets the origin, and no hook can set it.
-// The mod reads no text of the prompt.
-// - A prompt of a plugin counts only when the plugin sent it as the words of the person (asUser).
-// - An unclassified prompt counts when the person sees it as typed (no isMeta). A same-user
-//   socket that the engine cannot attest gives this origin. An idle notice or a delivery receipt
-//   of the engine has isMeta, so it does not count.
-// - Each other origin does not count: a background task, a schedule, another session or agent,
-//   a channel of an MCP server, a coordinator, an observer, or an origin that this mod does not
-//   know.
+// Return true when a person started the prompt, false when Claude Code or another program did,
+// and undefined when the event has no origin at all, as from an older Claude Code. Claude Code
+// stamps the origin and no hook can change it, so the mod never needs the prompt's text. Every
+// other kind is the machine: auto-continuation (a quota resume, a retry or a command's follow-up),
+// unclassified (no provenance, which Claude Code never presumes is human), a task notification, a
+// schedule, another session or agent, a channel, a coordinator, an observer, a plugin, even one
+// that says asUser, and any kind the mod doesn't know. A hidden prompt (isMeta) never counts.
 function fromPerson(e: PromptSubmitInput): boolean | undefined {
-  const origin = e.origin
-  if (typeof origin?.kind !== 'string') return undefined
-  if (PERSON_ORIGINS.has(origin.kind)) return true
-  if (origin.kind === 'plugin') return origin.asUser === true
-  if (origin.kind === 'unclassified') return e.isMeta !== true
-  return false
+  const kind = e.origin?.kind
+  if (typeof kind !== 'string') return undefined
+  return PERSON_ORIGINS.has(kind) && e.isMeta !== true
 }
 
 // Return the Claude Code version, or undefined. The promise never rejects.
@@ -233,9 +229,9 @@ export const register: Register = on => {
     return next(e)
   }).catch((_, e, next) => next(e))
 
-  // Tell Bifrost if a person sent the prompt. Bifrost shows the notification of a finished turn
-  // only after a prompt of a person. The line holds no text of the prompt. With no origin, the
-  // mod sends no line, so Bifrost notifies each finished turn as before.
+  // Tell Bifrost whether a person started the prompt, as it only notifies a finished turn after
+  // one. The line holds no text of the prompt. With no origin there's no line, so a Claude Code
+  // that stamps no origins keeps the old rule of notifying every finished turn.
   on('prompt.submit', ($, e, next) => {
     const person = fromPerson(e)
     if (person !== undefined) void send($, 'prompt', { person })

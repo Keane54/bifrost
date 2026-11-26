@@ -100,9 +100,9 @@ The rest of the line rules:
 ## Who sent a prompt
 
 Claude Code doesn't only start a turn when you type. A background task that finishes, a message
-from another session or agent, a schedule or a channel can each hand a session a prompt, and
-Bifrost has to tell those apart from yours, so that it only notifies you about the turns you're
-waiting on ("A finished turn" in `docs/behaviour/alerts.md`).
+from another session or agent, a schedule, a channel or Claude Code itself can each hand a session
+a prompt, and Bifrost has to tell those apart from yours, so that it only notifies you about the
+turns you're waiting on ("A finished turn" in `docs/behaviour/alerts.md`).
 
 The mod makes that call inside Claude Code and sends a `prompt` line for every prompt the session
 receives, with one flag, `person`. No text of the prompt leaves Claude Code. Instead of looking at
@@ -111,10 +111,16 @@ and which no plugin can change:
 
 | Origin | Counts as yours? |
 | --- | --- |
-| `composer` (Enter at the prompt, also through `claude attach`), `bridge` (a Remote Control client), `sdk` (the host of an SDK session), `slack-ping` (you pinging the session from Slack), `auto-continuation` (Claude Code following up on something you chose in its interface) | Yes |
-| `plugin` | Only when the plugin sent it as your own words (`asUser`) |
-| `unclassified` | Yes, unless Claude Code hides it from you (`isMeta`), as it does an idle notice or a delivery receipt |
+| `composer` (Enter at the prompt, also through `claude attach`), `bridge` (a Remote Control client), `sdk` (the host of an SDK or `-p` session), `slack-ping` (a ping for the session from Slack) | Yes, unless Claude Code hides the prompt from you (`isMeta`) |
+| `auto-continuation` (Claude Code carrying on by itself: a resume after a usage limit, a retry, or the follow-up prompt of a command, an accepted goal or an approved plan) | No |
+| `unclassified` (a prompt with no provenance, such as a teammate's reply in an agent team, which Claude Code never presumes came from you) | No |
+| `plugin`, even with `asUser`, since a plugin can submit a prompt from any hook, a timer included | No |
 | `task-notification`, `scheduled-trigger`, `peer`, `peer-send-message`, `projects-relay`, `channel`, `coordinator`, `observer`, `observer-activity`, and any origin the mod doesn't know | No |
+
+The first row is the same list that Claude Code's own `sec-default` mod uses to decide that a
+person prompted, with the same rule about hidden prompts. The mod also accepts `human`, Claude
+Code's own name for typed input, in case a build ever hands it to a hook without turning it into
+`composer` or `bridge` first. The test in `scripts/test-live-mod.ts` pins every kind in the table.
 
 A prompt with no origin, which an older Claude Code could give, gets no line at all. Bifrost keeps
 the newest prompt that counts as yours for each session ID, numbered from one counter for the
@@ -124,14 +130,17 @@ notifies as before.
 
 The flag is only as good as the origin, and that has limits:
 
-- A prompt that reaches the session over a channel Claude Code can't vouch for, such as a socket
-  of the same user, arrives as `unclassified` and counts as yours. A message from a teammate in an
-  agent team arrives unstamped too, so it counts as yours unless Claude Code hides it.
+- A prompt that reaches the session over a path Claude Code can't vouch for, such as a socket of
+  the same user, arrives as `unclassified` and doesn't count, even when you sent it.
+- A turn that Claude Code starts after you choose something in its interface counts as Claude
+  Code's. Approving a plan with a cleared context is the one you'll notice: the plan runs in a new
+  session ID as `auto-continuation`, so the end of it stays quiet.
 - An origin that a later Claude Code adds counts as not yours until the mod learns it. A new way
   for you to send a prompt would stay quiet until then.
 - A message from a channel that an MCP server relays (`channel`) never counts, even when you wrote
   it, because anyone in the channel can write there.
-- A program that drives a session through the SDK counts as you, so its turns still notify.
+- A program that drives a session through the SDK counts as you, and in an SDK or `-p` session
+  Claude Code calls any prompt without a stamp `sdk`, so those turns still notify.
 - The mod sends the line as the prompt is submitted, before the plugins after it have their say,
   so a prompt that another plugin then drops still counts.
 - A running session picks up a new copy of the mod only after `/reload-plugins` or a restart (see
