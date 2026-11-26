@@ -110,6 +110,10 @@ package enum ConflictFailure: Error, Sendable, Equatable {
         case .refused:
             "GitHub didn't accept the merge, so the branch may be protected. The Event log has "
                 + "GitHub's reason."
+        case .workflowScope:
+            "GitHub refused the merge because it changes a workflow file and your GitHub login "
+                + "can't push workflow changes, so run \(PushRefusal.refreshCommand) in a "
+                + "terminal and then click Resolve now."
         case .git, .conflict, .tooLarge, .fileMode:
             "Bifrost couldn't push the merge. The Event log has the details." + again
         case .unknown:

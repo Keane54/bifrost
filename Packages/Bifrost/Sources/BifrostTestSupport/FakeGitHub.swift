@@ -30,6 +30,11 @@ package final class FakeGitHub: GitHubAccess {
     // reads, for example as a person who types into a session.
     package var onRead: (@MainActor (String) async -> Void)?
 
+    // The answer of scopes(), and the number of its reads. A scopes read is no entry of calls: it
+    // is no query and no write. The default is a login with no scope header (unknown).
+    package var scopes: Result<GitHubScopes?, GitHubError> = .success(nil)
+    package private(set) var scopeReads = 0
+
     package init(answers: [String: Result<Data, GitHubError>] = [:]) {
         self.answers = answers
     }
@@ -51,6 +56,11 @@ package final class FakeGitHub: GitHubAccess {
         calls.append(.write(write))
         await onWrite?(write)
         return try answer(Self.key(write))
+    }
+
+    @MainActor package func scopes() async throws(GitHubError) -> GitHubScopes? {
+        scopeReads += 1
+        return try scopes.get()
     }
 
     private func answer(_ key: String) throws(GitHubError) -> Data {

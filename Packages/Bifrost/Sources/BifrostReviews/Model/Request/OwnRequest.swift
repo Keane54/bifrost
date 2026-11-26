@@ -186,6 +186,10 @@ package enum OwnRequestStop: Error, Sendable, Equatable {
         case .refused:
             "GitHub didn't accept your change, so the branch may be protected. The Event log has "
                 + "GitHub's reason. \(kept)"
+        case .workflowScope:
+            "GitHub refused your change because it touches a workflow file and your GitHub login "
+                + "can't push workflow changes, so run \(PushRefusal.refreshCommand) in a "
+                + "terminal and then try again. \(kept)"
         case .git:
             "Bifrost couldn't push your change. The Event log has the details. Choose Try again "
                 + "to push it."

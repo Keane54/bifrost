@@ -142,6 +142,12 @@ struct ConflictFailureTests {
                     + "has GitHub's reason."
             ),
             (
+                .workflowScope("[remote rejected] (workflow scope)"),
+                "GitHub refused the merge because it changes a workflow file and your GitHub login "
+                    + "can't push workflow changes, so run gh auth refresh -h github.com -s "
+                    + "workflow in a terminal and then click Resolve now."
+            ),
+            (
                 .git("fatal: unable to access"),
                 "Bifrost couldn't push the merge. The Event log has the details." + again
             ),

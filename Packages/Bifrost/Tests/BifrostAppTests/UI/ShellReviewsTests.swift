@@ -340,6 +340,36 @@ struct ShellReviewsTests {
         await h.end()
     }
 
+    // The snapshot of the panel carries the flag of a refresh that the user asked for.
+    @Test func theSnapshotShowsARefreshOfTheUser() async throws {
+        let h = try await Harness()
+        try await h.watch()
+        #expect(!h.snapshot().refreshing)
+        let watcher = try #require(h.parts.watcher)
+        watcher.refresh()
+        #expect(h.snapshot().refreshing)
+        await watcher.pollTask?.value
+        #expect(!h.snapshot().refreshing)
+        await h.end()
+    }
+
+    // The links of Settings to the scopes of the gh login: the warning follows the watcher, and a
+    // read asked for by Settings replaces the answer. The Shell gives these two calls to Settings
+    // (Shell.settingsLinks). A test of the Shell can't set the scopes, because the Shell makes
+    // its own gh access, so this test covers the part that the links call.
+    @Test func theScopeLinksFollowTheWatcher() async throws {
+        let h = try await Harness()
+        #expect(!h.parts.workflowScopeMissing)
+        h.github.scopes = .success(GitHubScopes(names: ["repo"]))
+        try await h.watch()
+        await h.parts.watcher?.scopesReadTask?.value
+        #expect(h.parts.workflowScopeMissing)
+        h.github.scopes = .success(GitHubScopes(names: ["repo", "workflow"]))
+        await h.parts.readScopes()
+        #expect(!h.parts.workflowScopeMissing)
+        await h.end()
+    }
+
     // A turn-off stops the watcher and the polls, closes the store and frees its lock, so a new
     // open takes it. A second turn-on opens the store again.
     @Test func watchGitHubOffStopsAndFreesTheLock() async throws {

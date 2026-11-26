@@ -136,4 +136,15 @@ struct OwnRequestTests {
         // No text names a path or holds a text of the file.
         #expect(!OwnRequestStop.notSaved.message.contains("own-request"))
     }
+
+    // A push that GitHub refuses for the workflow scope tells the user what to run.
+    @Test func aWorkflowScopeRefusalSaysHowToAllowIt() {
+        let stop = OwnRequestStop.wrote(.pushFailed(.workflowScope("line")))
+        #expect(
+            stop.message
+                == "GitHub refused your change because it touches a workflow file and your GitHub "
+                + "login can't push workflow changes, so run gh auth refresh -h github.com -s "
+                + "workflow in a terminal and then try again. Your change is still in Bifrost's "
+                + "copy of this pull request.")
+    }
 }

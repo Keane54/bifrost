@@ -86,6 +86,57 @@ struct ReviewsSectionTests {
         #expect(asked.texts.count == 2 && links.calls == [setting])
     }
 
+    // A gh login with no workflow scope: the confirm of the turn-on of the two settings that push
+    // changes opens at once with the last answer that Bifrost knows, and has the warning when the
+    // scope is missing. The read of the scopes runs on and holds nothing back: here it waits at a
+    // gate until the confirm has ended. The watch setting has no warning and no read.
+    @Test(arguments: [ReviewsSection.Confirmed.autoFix, .resolveConflicts, .watch])
+    func theConfirmWarnsAboutTheWorkflowScope(_ setting: ReviewsSection.Confirmed) async throws {
+        let p = try await SettingsParts()
+        let steps = Steps()
+        let missing = Missing()
+        let gate = TestGate()
+        p.model.links.reviews = ReviewsLinks(
+            workflowScopeMissing: { steps.list.append("check"); return missing.value },
+            readScopes: { steps.list.append("read"); await gate.pass() })
+        let asked = Asked()
+        p.model.links.confirm = { asked.texts.append($0); return false }
+        let section = ReviewsSection(model: p.model)
+        _ = await section.change(setting, to: false)
+        steps.list = []
+        missing.value = true
+        _ = await section.change(setting, to: true)
+        let warns = setting != .watch
+        if warns { await gate.waitUntilHolding() }
+        // The check ran before the read ended, and the read began.
+        #expect(steps.list == (warns ? ["check", "read"] : ["check"]))
+        #expect(
+            asked.texts.map(\.body).first?.hasSuffix("\n\n" + ReviewsSection.workflowScopeHint)
+                == warns)
+        gate.openAll()
+        missing.value = false
+        _ = await section.change(setting, to: true)
+        #expect(asked.texts.last == setting.confirm)
+    }
+
+    // The hint under the two settings that push changes has the warning only while the setting is
+    // on and the gh login has no workflow scope.
+    @Test func theRowHintWarnsOnlyWhileTheSettingIsOnAndTheScopeIsMissing() {
+        let hint = ReviewsSection.workflowScopeHint
+        #expect(
+            hint == "Your GitHub login can't push changes to workflow files, so a merge or fix "
+                + "that touches one will fail. Run gh auth refresh -h github.com -s workflow in a "
+                + "terminal to allow it.")
+        func shown(_ setting: ReviewsSection.Confirmed, on: Bool, missing: Bool) -> String? {
+            ReviewsSection.hint(setting, "own", isOn: on, workflowScopeMissing: missing)
+        }
+        #expect(shown(.autoFix, on: true, missing: true) == "own\n\n" + hint)
+        #expect(shown(.resolveConflicts, on: true, missing: true) == "own\n\n" + hint)
+        #expect(shown(.autoFix, on: false, missing: true) == "own")
+        #expect(shown(.autoFix, on: true, missing: false) == "own")
+        #expect(shown(.watch, on: true, missing: true) == "own")
+    }
+
     // The settings of merge conflicts and of failing CI come straight after the automatic comment
     // handling, in this order, in the list of the rows. The section does not show the Fix CI row
     // and the search does not find it, until the CI watcher exists.
@@ -258,4 +309,15 @@ private final class LinkCalls {
 private final class Consents {
     var count = 0
     var failure: String?
+}
+
+// The order of the calls of the scope links, and the answer of the check.
+@MainActor
+private final class Steps {
+    var list: [String] = []
+}
+
+@MainActor
+private final class Missing {
+    var value = false
 }

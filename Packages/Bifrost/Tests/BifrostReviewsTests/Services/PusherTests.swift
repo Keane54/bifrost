@@ -242,6 +242,31 @@ struct PusherTests {
         await f.end()
     }
 
+    // A hook that says the token needs the workflow scope (as GitHub does for a change of a
+    // workflow file) gives the refusal with its own case, and the Event log has the line.
+    @MainActor
+    @Test func aPushThatNeedsTheWorkflowScopeHasItsOwnRefusal() async throws {
+        let repo = try await PushTestRepo.make()
+        defer { repo.remove() }
+        let hook = repo.repo.source + "/.git/hooks/pre-receive"
+        try "#!/bin/sh\necho 'without workflow scope' >&2\nexit 1\n".write(
+            toFile: hook, atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook)
+        let fix = try await repo.fix(["a.txt": "fixed\n"])
+        let target = try repo.target
+        do throws(PushRefusal) {
+            _ = try await Pusher(git: repo.git, address: repo.address)
+                .push(fix, head: repo.head, pr: repo.pr, to: target)
+            Issue.record("The push should have failed.")
+        } catch {
+            guard case .workflowScope(let line) = error else {
+                Issue.record("Wrong refusal: \(error)")
+                return
+            }
+            #expect(line.contains("[remote rejected]") && line.contains("workflow scope"))
+        }
+    }
+
     // Another person changed the fixed line: the push has a conflict. The other reply and its
     // resolve still go, the "Fixed by" reply and its resolve drop, the outbox goes, the fixed item
     // waits in held and the other item is handled.

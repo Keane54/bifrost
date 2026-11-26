@@ -147,7 +147,7 @@ private struct ReviewsTabBar: View {
                     .lineLimit(1)
                     .padding(.trailing, metrics.points(4))
             }
-            RefreshButton(style: model.style) { model.refresh() }
+            RefreshButton(model: model)
                 .padding(.trailing, metrics.points(4))
         }
         .frame(height: metrics.points(22))
@@ -204,15 +204,22 @@ private struct TabButton: View {
     }
 }
 
-// The Refresh button: the refresh icon of 12 in a button of 16, with its Bifrost tooltip.
-private struct RefreshButton: View {
-    let style: PanelStyle
-    let action: () -> Void
+// The Refresh button: the refresh icon of 12 in a button of 16, with its Bifrost tooltip. The icon
+// turns as the loader of a review write does (TurningIcon) while a refresh that the user asked for
+// runs. The button keeps its size, its tip and its click.
+struct RefreshButton: View {
+    let model: ReviewsPanelModel
+
+    // True while a refresh that the user asked for runs.
+    var turning: Bool { model.isRefreshing }
+    private var style: PanelStyle { model.style }
 
     var body: some View {
-        Button(action: action) {
-            ButtonIcon(icon: .refreshCw, size: style.points(12))
-                .frame(width: style.points(16), height: style.points(16))
+        Button(action: { model.refresh() }) {
+            TurningIcon(
+                turning: turning, icon: ButtonIcon(icon: .refreshCw, size: style.points(12))
+            )
+            .frame(width: style.points(16), height: style.points(16))
         }
         .buttonStyle(IconButtonStyle(style: style))
         .focusable(false)

@@ -7,6 +7,9 @@
 //   that poll, because the poll that runs can hold an answer from before the change of the user.
 //   Several refreshes during one poll give one more poll. A new interval counts from the start
 //   of the wait that runs.
+// - The scopes of the gh login (GitHubScopes) are read in a task of their own, with the first start
+//   of Reviews in a run of the app and at each refresh. A poll never waits for them. A login with
+//   no workflow scope (lacksWorkflowScope) makes Settings warn before a round fails.
 // - Each good poll first records its marks in the state (ReviewsState.recordPoll), then builds
 //   the rows. So the first poll after the first turn-on never flashes an open request. Then the
 //   new requests notify (ReviewsState.recordNotices): a request whose CI fails waits until its
@@ -53,6 +56,19 @@ package final class ReviewsWatcher {
     // Why Reviews does not run: the store did not open.
     package private(set) var refusal: ReviewsStoreError?
 
+    // The scopes of the gh login at the last read, or nil while they are unknown: not read yet, no
+    // scope header (a fine-grained token), or a read that failed.
+    package private(set) var scopes: GitHubScopes?
+
+    // True when the scopes are known and have no workflow scope.
+    package var lacksWorkflowScope: Bool { scopes?.lacksWorkflow ?? false }
+
+    // True from a click on Refresh until the poll that the click asked for ends, also when that
+    // poll fails. A click during a poll asks for one more poll, so the flag stays until that poll
+    // ends. A poll of the timer and the first poll leave it false. The panel turns its Refresh
+    // icon while it is true.
+    package private(set) var refreshing = false
+
     // True when the window has the focus. The shell reads it from the window. The default counts
     // the window as not focused.
     @ObservationIgnored package var focused: @MainActor () -> Bool = { false }
@@ -88,6 +104,9 @@ package final class ReviewsWatcher {
     @ObservationIgnored private let pauseTimer: TimerSlot
     @ObservationIgnored private var config = ReviewsConfig()
     @ObservationIgnored private var phase = Phase.stopped
+    // The read of the scopes that runs, and whether this run of the app read them at a start.
+    @ObservationIgnored private var scopesTask: Task<Void, Never>?
+    @ObservationIgnored private var scopesReadAtStart = false
     // The start of the wait that runs, on the timeline.
     @ObservationIgnored private var waitStart: Duration = .zero
     // macOS refused a notification. The shell adds one line to the Event log, as for the alerts.
@@ -136,6 +155,9 @@ package final class ReviewsWatcher {
         if case .polling(let task, _) = phase { task } else { nil }
     }
 
+    // The task of the read of the scopes that runs or ran last, or nil. A test waits for it.
+    package var scopesReadTask: Task<Void, Never>? { scopesTask }
+
     // The task of the timer of the next poll, or nil. A test waits for it.
     package var pollTimerTask: Task<Void, Never>? { pollTimer.task }
 
@@ -155,6 +177,10 @@ package final class ReviewsWatcher {
             log.record(.started(interval: new.pollInterval))
             phase = .waiting
             poll()
+            if !scopesReadAtStart {
+                scopesReadAtStart = true
+                readScopes()
+            }
         case (false, .stopped):
             break
         case (false, _):
@@ -173,6 +199,8 @@ package final class ReviewsWatcher {
     package func stop() {
         if case .stopped = phase { return }
         if case .polling(let task, _) = phase { task.cancel() }
+        scopesTask?.cancel()
+        refreshing = false
         phase = .stopped
         pollTimer.stop()
         pauseTimer.stop()
@@ -191,10 +219,37 @@ package final class ReviewsWatcher {
     // end of that poll.
     package func refresh() {
         switch phase {
-        case .stopped: break
+        case .stopped: return
         case .waiting: poll()
         case .polling(let task, _): phase = .polling(task, again: true)
         }
+        refreshing = true
+        readScopes()
+    }
+
+    // Read the scopes of the login again, in a task of their own. A read that runs ends first, so
+    // the answer of the last read is the one that stays. A read that fails changes nothing. The
+    // read is one call of gh, never a poll, and it keeps only the names of the scopes.
+    package func readScopes() {
+        scopesTask?.cancel()
+        scopesTask = Task { [weak self, github] in
+            let read: GitHubScopes?
+            do throws(GitHubError) {
+                read = try await github.scopes()
+            } catch {
+                // A read that fails keeps the last answer, so a good warning stays.
+                return
+            }
+            guard !Task.isCancelled, let self else { return }
+            if read != scopes { scopes = read }
+        }
+    }
+
+    // Read the scopes of the login and wait for the answer. Settings calls it before a turn-on
+    // confirm, so the confirm has the warning of the answer of now.
+    package func readScopesNow() async {
+        readScopes()
+        await scopesTask?.value
     }
 
     private func poll() {
@@ -215,7 +270,12 @@ package final class ReviewsWatcher {
         var again = false
         if case .polling(_, let more) = phase { again = more }
         phase = .waiting
-        if again { poll() } else { schedule(elapsed: .zero) }
+        if again {
+            poll()
+        } else {
+            refreshing = false
+            schedule(elapsed: .zero)
+        }
     }
 
     private func fetch() async -> Result<PollAnswer, GitHubError> {

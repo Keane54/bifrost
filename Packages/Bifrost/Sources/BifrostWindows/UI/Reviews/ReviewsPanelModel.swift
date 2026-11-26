@@ -63,11 +63,13 @@ package struct ReviewsSnapshot: Sendable, Equatable {
     // The repositories whose clone needs the trust of the user, with the count of their PRs
     // (RepoSetup.needsTrust).
     package var needsTrust: [RepoName: Int]
+    // True while a refresh that the user asked for with a click runs (ReviewsWatcher.refreshing).
+    package var refreshing: Bool
 
     package init(
         phase: Phase, toReview: [ReviewRow] = [], mine: [ReviewRow] = [],
         problem: GitHubError? = nil, lastPoll: Date? = nil, needsConsent: Bool = false,
-        rowFlash: Bool = true, needsTrust: [RepoName: Int] = [:]
+        rowFlash: Bool = true, needsTrust: [RepoName: Int] = [:], refreshing: Bool = false
     ) {
         self.phase = phase
         self.toReview = toReview
@@ -77,6 +79,7 @@ package struct ReviewsSnapshot: Sendable, Equatable {
         self.needsConsent = needsConsent
         self.rowFlash = rowFlash
         self.needsTrust = needsTrust
+        self.refreshing = refreshing
     }
 }
 
@@ -525,6 +528,9 @@ package final class ReviewsPanelModel {
             }
         }
     }
+
+    // True while a refresh that the user asked for runs: the Refresh icon turns.
+    package var isRefreshing: Bool { snapshot.phase == .on && snapshot.refreshing }
 
     package func refresh() {
         links.run(.refresh)

@@ -89,7 +89,7 @@ package struct Pusher: Sendable {
             switch answer {
             case .lostRace: continue
             case .madeBranch: throw .deleted(madeAgain: true)
-            case .pushed, .refused, .failed: break
+            case .pushed, .refused, .workflowScope, .failed: break
             }
             // The branch on GitHub gives the true outcome.
             let after: CommitID
@@ -105,6 +105,7 @@ package struct Pusher: Sendable {
                 throw .unknown("The branch on GitHub doesn't have the fix after the push.")
             }
             if case .refused(let reason) = answer { throw .refused(reason) }
+            if case .workflowScope(let reason) = answer { throw .workflowScope(reason) }
             // git ended the push with an error of its own, so the push is over. A push that git
             // did not end (a time limit or a stop) can still reach GitHub.
             if case .exited = result.end { throw .git(RepoStore.reason(result)) }

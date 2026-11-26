@@ -842,7 +842,11 @@ public final class Shell {
                     services?.reviews?.resolveConflictsConfirmed()
                 },
                 confirmFixCI: { [weak services] in services?.reviews?.fixCIConfirmed() },
-                removeClones: { [weak services] in await services?.reviews?.removeAllClones() }),
+                removeClones: { [weak services] in await services?.reviews?.removeAllClones() },
+                workflowScopeMissing: { [weak services] in
+                    services?.reviews?.workflowScopeMissing ?? false
+                },
+                readScopes: { [weak services] in await services?.reviews?.readScopes() }),
             updates: UpdatesLinks(
                 version: updater.version, state: updater.state, check: updater.check,
                 openReleaseNotes: { [weak self] in _ = self?.openReleaseNotes() }),

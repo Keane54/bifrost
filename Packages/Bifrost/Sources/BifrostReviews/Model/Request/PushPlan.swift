@@ -42,6 +42,10 @@ package enum PushRefusal: Error, Sendable, Equatable {
     // ([remote rejected], for example a protected branch or a hook), or a signed commit that GitHub
     // did not make. The text is the reason of git or of GitHub.
     case refused(String)
+    // GitHub refused the fix because the gh login has no workflow scope: the fix changes a file
+    // below .github/workflows. The text is the line of git or of GitHub. The refusal comes again
+    // in each run until the user adds the scope.
+    case workflowScope(String)
     // A git command failed (or gh did not send the signed commit), and the branch on GitHub does
     // not have the fix. A later run can work, so the outbox keeps the push. The text is the line
     // of git or of gh.
@@ -59,13 +63,29 @@ package enum PushRefusal: Error, Sendable, Equatable {
         }
     }
 
+    // The refusal for the reason of a server or of GitHub: workflowScope when the line names the
+    // workflow scope (the words "workflow" and "scope", in any case), else refused.
+    package static func server(_ line: String) -> PushRefusal {
+        namesWorkflowScope(line) ? .workflowScope(line) : .refused(line)
+    }
+
+    // True when the line names the words "workflow" and "scope", in any case.
+    package static func namesWorkflowScope(_ line: String) -> Bool {
+        let text = line.lowercased()
+        return text.contains("workflow") && text.contains("scope")
+    }
+
     // The text for the Event log, or nil.
     package var detail: String? {
         switch self {
-        case .refused(let line), .git(let line), .unknown(let line): line.isEmpty ? nil : line
+        case .refused(let line), .workflowScope(let line), .git(let line), .unknown(let line):
+            line.isEmpty ? nil : line
         default: nil
         }
     }
+
+    // The command that adds the workflow scope to the gh login.
+    package static let refreshCommand = "gh auth refresh -h github.com -s workflow"
 
     package var message: String {
         let unsigned =
@@ -102,6 +122,10 @@ package enum PushRefusal: Error, Sendable, Equatable {
         case .refused:
             return "GitHub didn't accept Claude's fix, so Bifrost posted nothing. The branch may "
                 + "be protected. The Event log has GitHub's reason."
+        case .workflowScope:
+            return "GitHub refused Claude's fix because it changes a workflow file and your GitHub "
+                + "login can't push workflow changes, so run \(PushRefusal.refreshCommand) in a "
+                + "terminal and then try again."
         case .git:
             return "Bifrost couldn't push Claude's fix, so it posted nothing. The Event log has "
                 + "the details. Choose Try again."
@@ -183,6 +207,9 @@ package enum PushAnswer: Sendable, Equatable {
     // The server refused the branch ([remote rejected]): a protected branch or a hook. Each run
     // gets the same refusal. The text is the reason of the server.
     case refused(String)
+    // The server refused the branch because the gh login has no workflow scope. The text is the
+    // reason of the server. The words are read before the text is cut for the log.
+    case workflowScope(String)
     case failed
 }
 
@@ -318,7 +345,8 @@ package enum PushPlan {
                 .map { $0.trimmed() }.first { $0.hasPrefix("remote:") }
             let reason = [String(line[start.lowerBound...]).trimmed(), remote]
                 .compactMap { $0 }.joined(separator: " ")
-            return .refused(String(reason.prefix(200)))
+            let cut = String(reason.prefix(200))
+            return PushRefusal.namesWorkflowScope(reason) ? .workflowScope(cut) : .refused(cut)
         }
         guard result.end != .timedOut else { return .failed }
         let text = result.stdout + "\n" + result.stderr

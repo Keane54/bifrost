@@ -116,8 +116,8 @@ GitHub first.
 
 | Error | When | Could a write have happened? |
 | --- | --- | --- |
-| Not installed | `gh` didn't start | No |
-| Not logged in | Exit code 4, or an error that tells you to run `gh auth login` | No |
+| Not installed | `gh` didn't start. The text says to install it and to log in with `gh auth login -s workflow` | No |
+| Not logged in | Exit code 4, or an error that tells you to run `gh auth login`. The text says to run `gh auth login -s workflow` | No |
 | Not sent | Bifrost held back a read that contained a mutation | No |
 | Refused | GitHub answered and the answer proves nothing changed: an HTTP 4xx status, or GraphQL errors with no result and no sign that GitHub stopped part way | No |
 | Timed out | `gh` didn't finish within its time limit | Yes |
@@ -129,6 +129,34 @@ read keeps such an answer, so a poll can keep the PRs it did get. A write never 
 `gh` exits cleanly: its errors make it a refusal or an unknown outcome by the rules above. Errors
 next to a result mean the write ran and something after it failed, and GitHub's own timeout error
 can come after a write completed, so neither counts as proof that nothing changed.
+
+### The workflow scope
+
+GitHub refuses a push that changes a file below `.github/workflows` unless the login has the
+`workflow` scope. A conflict round is the usual case: the merge of the base branch brings in the
+base's change of a workflow file, so the merge commit changes it too. When the `gh` login has no
+such scope, the push fails and the round with it.
+
+Bifrost reads the scopes of the login with one closed read, `gh api --include user`, and takes the
+names from the `X-OAuth-Scopes` header (`GitHubScopes`). It keeps only those names, never a token.
+A login with no such header, which is the case for a fine-grained token or a GitHub App token, has
+unknown scopes, and Bifrost then warns about nothing. It reads the scopes once when Reviews first
+starts in a run of the app, again at each Refresh click, and again when you turn on "Handle comments
+on my PRs automatically" or "Resolve merge conflicts automatically". The confirm opens at once with
+the last answer Bifrost knows, and the hint under the row follows the new read. A read that fails
+keeps the last answer.
+
+When the scopes are known and have no `workflow`, those two rows show a hint while their setting is
+on, and the confirm of their turn-on has the same text:
+
+> Your GitHub login can't push changes to workflow files, so a merge or fix that touches one will
+> fail. Run gh auth refresh -h github.com -s workflow in a terminal to allow it.
+
+A push that GitHub refuses for this reason, whether from the `[remote rejected]` line of `git push`
+or from the error of a signed commit, names the words "workflow" and "scope" in its line
+(`PushRefusal.server`). Bifrost looks for the words before it cuts the line to 200 characters. The
+row then says what to run, in place of the hint about a protected branch. The line itself goes to
+the Event log.
 
 ### Running git
 
@@ -1660,6 +1688,7 @@ and the reason stay, and the error line says so.
 | A gone branch | "The branch is gone from GitHub, so Bifrost didn't push your change." + K |
 | A refused target or a fork | "Bifrost won't push to this branch, so it didn't push your change." + K, or "This pull request comes from a fork, where Bifrost can't push, so it didn't push your change." + K |
 | GitHub refused the push | "GitHub didn't accept your change, so the branch may be protected. The Event log has GitHub's reason." + K |
+| GitHub refused the push for the workflow scope | "GitHub refused your change because it touches a workflow file and your GitHub login can't push workflow changes, so run gh auth refresh -h github.com -s workflow in a terminal and then try again." + K |
 | A signed commit that can't go | "Your change is over 4 MB, which is too large for a commit that GitHub signs." or "Your change touches a link or a file that must stay executable, and GitHub can't keep that in a commit it signs.", then "Turn off Sign commits through GitHub, then ask Claude in its session to try again." + K |
 | git or GitHub couldn't be reached | "Bifrost couldn't push your change. The Event log has the details. Choose Try again to push it." (or the GitHub error with the same ending) |
 | The push may have landed | "Bifrost can't tell if your change reached GitHub. Check the pull request on GitHub, then choose Try again." |
@@ -1772,7 +1801,10 @@ change of yours that needs you on one of your PRs. It opens the Reviews panel, w
 tabs, To review and My PRs, each with its count. The To review count turns red while a row flashes,
 and the My PRs count while a row of yours shows "Needs you". To the right of the tabs, "Last
 checked 09:07" says when the last good poll was (with the day too once that's another day), and
-Refresh polls straight away.
+Refresh polls straight away. Its icon turns, once a second and with no end, from your click until
+the poll that the click asked for ends, also when that poll fails. A click during a poll of the
+timer asks for one more poll, so the icon turns until that one ends. A poll of the timer and the
+first poll never turn it, and with Reduce Motion on it stays still (`ReviewsWatcher.refreshing`).
 
 What the panel shows below the tabs depends on where Reviews is:
 

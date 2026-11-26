@@ -86,6 +86,10 @@ private final class HeldGitHub: GitHubAccess {
     @MainActor func write(_ write: GitHubWrite) async throws(GitHubError) -> Data {
         try await inner.write(write)
     }
+
+    @MainActor func scopes() async throws(GitHubError) -> GitHubScopes? {
+        try await inner.scopes()
+    }
 }
 
 @MainActor
@@ -189,6 +193,70 @@ private struct Harness {
 @MainActor
 @Suite("the Reviews watcher", .testTimeLimit)
 struct ReviewsWatcherTests {
+    // The scopes of the gh login are read in their own task: once at the first start of Reviews
+    // in the run of the app, and at each refresh of the user, never at a poll of the timer. A login
+    // with no workflow scope makes lacksWorkflowScope true.
+    @Test func theScopesAreReadAtTheFirstStartAndAtEachRefresh() async throws {
+        let harness = try await Harness()
+        harness.github.scopes = .success(GitHubScopes(names: ["repo", "gist"]))
+        #expect(!harness.watcher.lacksWorkflowScope)
+        await harness.start()
+        await harness.watcher.scopesReadTask?.value
+        #expect(harness.github.scopeReads == 1 && harness.watcher.lacksWorkflowScope)
+        // A turn-off and a new turn-on of Watch GitHub do not read again in this run.
+        harness.watcher.apply(ReviewsConfig(watch: false))
+        await harness.start()
+        await harness.watcher.scopesReadTask?.value
+        #expect(harness.github.scopeReads == 1)
+        // A poll of the timer reads no scopes.
+        await harness.tick(.seconds(120))
+        #expect(harness.github.scopeReads == 1)
+        // A refresh reads them again, and the new answer replaces the old one.
+        harness.github.scopes = .success(GitHubScopes(names: ["repo", "workflow"]))
+        harness.watcher.refresh()
+        await harness.watcher.scopesReadTask?.value
+        await harness.settle()
+        #expect(harness.github.scopeReads == 2 && !harness.watcher.lacksWorkflowScope)
+        await harness.end()
+    }
+
+    // A read that fails keeps the last answer that Bifrost knew, so the warning stays. A login
+    // with no scope header gives an unknown answer, which replaces it.
+    @Test func aFailedScopesReadKeepsTheLastAnswer() async throws {
+        let harness = try await Harness()
+        harness.github.scopes = .success(GitHubScopes(names: ["repo"]))
+        await harness.start()
+        await harness.watcher.scopesReadTask?.value
+        #expect(harness.watcher.lacksWorkflowScope)
+        harness.github.scopes = .failure(.timedOut)
+        harness.watcher.refresh()
+        await harness.watcher.scopesReadTask?.value
+        await harness.settle()
+        #expect(harness.github.scopeReads == 2 && harness.watcher.lacksWorkflowScope)
+        harness.github.scopes = .success(nil)
+        harness.watcher.refresh()
+        await harness.watcher.scopesReadTask?.value
+        await harness.settle()
+        #expect(harness.watcher.scopes == nil)
+        await harness.end()
+    }
+
+    // A login with no scope header and a read that fails both leave the scopes unknown, so no
+    // warning shows.
+    @Test func unknownScopesGiveNoWarning() async throws {
+        let harness = try await Harness()
+        harness.github.scopes = .success(nil)
+        await harness.start()
+        await harness.watcher.scopesReadTask?.value
+        #expect(harness.watcher.scopes == nil && !harness.watcher.lacksWorkflowScope)
+        harness.github.scopes = .failure(.timedOut)
+        harness.watcher.refresh()
+        await harness.watcher.scopesReadTask?.value
+        await harness.settle()
+        #expect(harness.watcher.scopes == nil && !harness.watcher.lacksWorkflowScope)
+        await harness.end()
+    }
+
     @Test func thePollRunsAtTheIntervalAndOnRefresh() async throws {
         let harness = try await Harness()
         await harness.start()
@@ -234,6 +302,66 @@ struct ReviewsWatcherTests {
         harness.held.gate.openAll()
         await harness.settle()
         #expect(harness.github.calls.count == 2)
+        await harness.end()
+    }
+
+    // The flag of a refresh that the user asked for: true from the click until the poll that the
+    // click asked for ends, also when it fails. The first poll and a poll of the timer leave it
+    // false. A click during a poll of the timer keeps it true until the next poll ends.
+    @Test func theRefreshFlagFollowsTheClickAndNotTheTimer() async throws {
+        let harness = try await Harness(holdRead: true)
+        let gate = harness.held.gate
+        harness.watcher.apply(ReviewsConfig(watch: true))
+        await gate.waitUntilHolding()
+        #expect(!harness.watcher.refreshing)
+        gate.open()
+        await harness.settle()
+        #expect(!harness.watcher.refreshing)
+        // A click in the wait: true during its poll, false after it.
+        harness.watcher.refresh()
+        await gate.waitUntilHolding()
+        #expect(harness.watcher.refreshing)
+        gate.open()
+        await harness.settle()
+        #expect(!harness.watcher.refreshing)
+        // A poll of the timer leaves it false.
+        let timer = harness.watcher.pollTimerTask
+        harness.advance(.seconds(120))
+        await timer?.value
+        await gate.waitUntilHolding()
+        #expect(!harness.watcher.refreshing)
+        // A click during that poll asks for one more poll: true until that one ends.
+        harness.watcher.refresh()
+        #expect(harness.watcher.refreshing)
+        gate.open()
+        await gate.waitUntilHolding()
+        #expect(harness.watcher.refreshing)
+        gate.open()
+        await harness.settle()
+        #expect(!harness.watcher.refreshing)
+        await harness.end()
+    }
+
+    // A poll that fails ends the refresh too, and a stop clears the flag.
+    @Test func aFailedPollEndsTheRefreshAndAStopClearsIt() async throws {
+        let harness = try await Harness(holdRead: true)
+        let gate = harness.held.gate
+        harness.watcher.apply(ReviewsConfig(watch: true))
+        await gate.waitUntilHolding()
+        gate.open()
+        await harness.settle()
+        harness.github.answers["poll"] = .failure(.timedOut)
+        harness.watcher.refresh()
+        await gate.waitUntilHolding()
+        #expect(harness.watcher.refreshing)
+        gate.open()
+        await harness.settle()
+        #expect(harness.watcher.problem == .timedOut && !harness.watcher.refreshing)
+        harness.watcher.refresh()
+        await gate.waitUntilHolding()
+        #expect(harness.watcher.refreshing)
+        harness.watcher.stop()
+        #expect(!harness.watcher.refreshing)
         await harness.end()
     }
 

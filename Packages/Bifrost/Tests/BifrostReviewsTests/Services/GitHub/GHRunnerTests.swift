@@ -39,6 +39,35 @@ struct GHRunnerTests {
         #expect(run.waitsForEnd)
     }
 
+    // The scopes of the login come from one closed read: gh api --include user, with no input.
+    // Only the scope names stay: the answer has no other use, and gh gives no token.
+    @Test func theScopesReadIsOneClosedCommand() async throws {
+        let output = "HTTP/2.0 200 OK\nX-Oauth-Scopes: gist, repo\n\n{}"
+        let runner = FakeRunner(ExecResult(.exited(0), stdout: output))
+        let scopes = try await gh(runner).scopes()
+        #expect(scopes?.names == ["gist", "repo"] && scopes?.lacksWorkflow == true)
+        let run = try #require(runner.commands.first)
+        #expect(run.arguments == ["api", "--include", "user"])
+        #expect(run.directory == folder.path(percentEncoded: false))
+        #expect(run.timeout == .seconds(30))
+        let silent = FakeRunner(ExecResult(.exited(0), stdout: "HTTP/2.0 200 OK\n\n{}"))
+        #expect(try await gh(silent).scopes() == nil)
+        let failed = FakeRunner(ExecResult(.exited(4)))
+        await #expect(throws: GitHubError.notLoggedIn) { _ = try await gh(failed).scopes() }
+    }
+
+    // The texts that tell the user to log in ask for the workflow scope too.
+    @Test func theLoginTextsAskForTheWorkflowScope() {
+        #expect(
+            GitHubError.notInstalled.message
+                == "GitHub CLI (gh) isn't installed. Install it with Homebrew (brew install gh), "
+                + "log in with gh auth login -s workflow, then click Refresh.")
+        #expect(
+            GitHubError.notLoggedIn.message
+                == "GitHub CLI (gh) isn't logged in. Run gh auth login -s workflow in a terminal, "
+                + "then click Refresh.")
+    }
+
     // A PR head can hold a git config, and gh reads the config of its folder.
     @Test func ghRunsInTheReviewsFolder() async throws {
         let runner = FakeRunner(ExecResult(.exited(0), stdout: "{}"))

@@ -106,9 +106,10 @@ package enum GitHubError: Error, Sendable, Equatable {
         switch self {
         case .notInstalled:
             "GitHub CLI (gh) isn't installed. Install it with Homebrew (brew install gh), log in "
-                + "with gh auth login, then click Refresh."
+                + "with gh auth login -s workflow, then click Refresh."
         case .notLoggedIn:
-            "GitHub CLI (gh) isn't logged in. Run gh auth login in a terminal, then click Refresh."
+            "GitHub CLI (gh) isn't logged in. Run gh auth login -s workflow in a terminal, then "
+                + "click Refresh."
         case .notSent: "Bifrost didn't send this request, because it would change GitHub."
         case .refused(let line):
             line.isEmpty ? "GitHub refused the request." : "GitHub refused the request: \(line)"

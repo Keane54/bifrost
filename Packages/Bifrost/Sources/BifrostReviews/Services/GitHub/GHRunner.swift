@@ -10,6 +10,13 @@ import Foundation
 package protocol GitHubAccess: Sendable {
     func read(_ query: GitHubQuery) async throws(GitHubError) -> Data
     func write(_ write: GitHubWrite) async throws(GitHubError) -> Data
+    // The scopes of the login, or nil when the login has no scope header.
+    func scopes() async throws(GitHubError) -> GitHubScopes?
+}
+
+extension GitHubAccess {
+    // An access that cannot tell the scopes gives none.
+    package func scopes() async throws(GitHubError) -> GitHubScopes? { nil }
 }
 
 package struct GHRunner: GitHubAccess {
@@ -59,6 +66,15 @@ package struct GHRunner: GitHubAccess {
         if let error = Self.error(of: result) { throw error }
         if let failure = Self.graphQLFailure(result.stdout) { throw failure }
         return Data(result.stdout.utf8)
+    }
+
+    // The scopes of the login: the one closed read `gh api --include user`, which has no input.
+    // Only the scope names leave this call. The body of the answer is the user of the login, and
+    // it is dropped. Bifrost never reads or keeps a token.
+    package func scopes() async throws(GitHubError) -> GitHubScopes? {
+        let result = await run(["api", "--include", "user"], input: Data(), timeout: Self.timeout)
+        if let error = Self.error(of: result) { throw error }
+        return GitHubScopes(output: result.stdout)
     }
 
     private func run(_ arguments: [String], input: Data, timeout: Duration) async -> ExecResult {

@@ -37,6 +37,12 @@ package struct ReviewsLinks {
     // The user turned on "Fix failing CI automatically" with its confirm, and the setting saved.
     // The Reviews services record the consent of the CI rounds.
     package var confirmFixCI: @MainActor () -> Void
+    // True when the gh login has no workflow scope and Bifrost knows it (ReviewsWatcher.
+    // lacksWorkflowScope). The settings of the merge and of the comments warn then.
+    package var workflowScopeMissing: @MainActor () -> Bool
+    // Read the scopes of the gh login again and wait for the answer. The turn-on of a setting that
+    // pushes to the branch calls it before its confirm.
+    package var readScopes: @MainActor () async -> Void
     // The user confirmed Remove all clones. The Reviews services delete the clones. The result
     // is the friendly text of a failure, or nil when the clones went.
     package var removeClones: @MainActor () async -> String?
@@ -45,12 +51,16 @@ package struct ReviewsLinks {
         confirmAutoFix: @escaping @MainActor () -> Void = {},
         confirmResolveConflicts: @escaping @MainActor () -> Void = {},
         confirmFixCI: @escaping @MainActor () -> Void = {},
-        removeClones: @escaping @MainActor () async -> String? = { nil }
+        removeClones: @escaping @MainActor () async -> String? = { nil },
+        workflowScopeMissing: @escaping @MainActor () -> Bool = { false },
+        readScopes: @escaping @MainActor () async -> Void = {}
     ) {
         self.confirmAutoFix = confirmAutoFix
         self.confirmResolveConflicts = confirmResolveConflicts
         self.confirmFixCI = confirmFixCI
         self.removeClones = removeClones
+        self.workflowScopeMissing = workflowScopeMissing
+        self.readScopes = readScopes
     }
 }
 
@@ -90,6 +100,20 @@ package struct ReviewsSection: View {
             case .resolveConflicts: ReviewsSection.resolveConflictsConfirm
             case .fixCI: ReviewsSection.fixCIConfirm
             }
+        }
+
+        // True for the settings whose rounds can push a change of a workflow file: Bifrost warns
+        // about the workflow scope of the gh login at their row and at their turn-on.
+        var pushesChanges: Bool { self == .autoFix || self == .resolveConflicts }
+
+        // The confirm of the turn-on. With the warning about the workflow scope when the setting
+        // pushes changes and the gh login has no such scope.
+        package func confirm(workflowScopeMissing: Bool) -> ConfirmText {
+            var text = confirm
+            if workflowScopeMissing && pushesChanges {
+                text.body += "\n\n" + ReviewsSection.workflowScopeHint
+            }
+            return text
         }
 
         // The link that records the consent after a confirmed turn-on, or nil for a setting
@@ -174,6 +198,19 @@ package struct ReviewsSection: View {
         "Bifrost sends each fix to GitHub with your gh login, and GitHub signs the commit, so it "
         + "shows as Verified. You don't need a signing key."
 
+    nonisolated package static let workflowScopeHint =
+        "Your GitHub login can't push changes to workflow files, so a merge or fix that touches "
+        + "one will fail. Run gh auth refresh -h github.com -s workflow in a terminal to allow it."
+
+    // The hint under a row that asks first: its own hint, and the warning about the workflow scope
+    // while the setting is on and the gh login has no workflow scope.
+    nonisolated package static func hint(
+        _ setting: Confirmed, _ own: String?, isOn: Bool, workflowScopeMissing: Bool
+    ) -> String? {
+        guard isOn && workflowScopeMissing && setting.pushesChanges else { return own }
+        return [own, workflowScopeHint].compactMap { $0 }.joined(separator: "\n\n")
+    }
+
     nonisolated package static let ignoreFieldLabel = "New repository to ignore"
     nonisolated package static let ignorePlaceholder = "owner/repo or owner/*"
     // The ID of the draft of the field of the ignore list.
@@ -204,9 +241,17 @@ package struct ReviewsSection: View {
     package func change(_ setting: Confirmed, to on: Bool) async -> Bool {
         let turnOn = on && !model.store.settings[keyPath: setting.setting]
         if turnOn {
-            guard let confirm = model.links.confirm, await confirm(setting.confirm) else {
-                return false
+            guard let confirm = model.links.confirm else { return false }
+            // The confirm opens at once with the last answer that Bifrost knows, because a read
+            // of gh can take as long as its time limit. The read runs on, and the hint under the
+            // row follows its answer.
+            if setting.pushesChanges {
+                let read = model.links.reviews.readScopes
+                Task { await read() }
             }
+            let text = setting.confirm(
+                workflowScopeMissing: model.links.reviews.workflowScopeMissing())
+            guard await confirm(text) else { return false }
         }
         let path = setting.setting
         let saved = await model.save(setting.row.row) { $0[keyPath: path] = on }.value
@@ -303,7 +348,10 @@ package struct ReviewsSection: View {
     {
         let isOn = model.store.settings[keyPath: setting.setting]
         let label = setting.row.rawValue
-        return SettingRow(model: model, row: setting.row.row, label: label, hint: hint) {
+        let shownHint = Self.hint(
+            setting, hint, isOn: isOn,
+            workflowScopeMissing: model.links.reviews.workflowScopeMissing())
+        return SettingRow(model: model, row: setting.row.row, label: label, hint: shownHint) {
             Toggle(
                 isOn: Binding(
                     get: { isOn }, set: { value in Task { await change(setting, to: value) } })

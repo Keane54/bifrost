@@ -79,6 +79,23 @@ struct SignedPusherTests {
         #expect(try await g.branch() == moved)
     }
 
+    // GitHub refuses the signed commit because the token has no workflow scope: the branch is
+    // where it was, and the refusal has its own case with the line of GitHub.
+    @Test func aSignedCommitThatNeedsTheWorkflowScopeHasItsOwnRefusal() async throws {
+        let f = try await PushTestRepo.make()
+        defer { f.remove() }
+        let fix = try await f.fix(["a.txt": "fixed\n"])
+        let line =
+            "Refusing to allow an OAuth App to create or update workflow without workflow scope"
+        let github = FakeGitHub(answers: ["createCommitOnBranch": .failure(.refused(line))])
+        await #expect(throws: PushRefusal.workflowScope(line)) {
+            _ = try await SignedPusher(
+                git: f.git, address: f.address, github: GitHubClient(access: github)
+            ).push(fix, head: f.head, paths: ["a.txt"], pr: f.pr, to: try f.target)
+        }
+        #expect(try await f.branch() == f.head)
+    }
+
     // A PR from a fork gets no write and runs no git.
     @Test func aForkIsRefusedBeforeAnyWrite() async throws {
         let f = try await PushTestRepo.make()

@@ -57,6 +57,12 @@ import OSLog
         try await access.read(query)
     }
 
+    // The scopes of the login, or nil when they are unknown (a login with no scope header). A
+    // read that fails throws, so the caller can keep the last answer that it knew.
+    package func scopes() async throws(GitHubError) -> GitHubScopes? {
+        try await access.scopes()
+    }
+
     // The write goes through the closed GitHubWrite and the check of the access.
     package func write(_ write: GitHubWrite) async throws(GitHubError) -> Data {
         try await access.write(write)

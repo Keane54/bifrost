@@ -57,7 +57,8 @@ resize, snap and stack them, then save the layout by name.
 
 - A Mac with Apple silicon and macOS 26 or later.
 - The Claude Code CLI (`claude`), on the PATH of your login shell.
-- The GitHub CLI (`gh`) for Reviews, logged in with `gh auth login`.
+- The GitHub CLI (`gh`) for Reviews, logged in with `gh auth login -s workflow`, so that
+  Bifrost can push a merge that changes a workflow file.
 
 ## Install
 

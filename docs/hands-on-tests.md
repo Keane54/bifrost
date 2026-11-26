@@ -1334,3 +1334,12 @@ pulse line. Use Bifrost Dev on your real home, with a few sessions running.
   Move the pointer over the dialog, its Cancel and Delete buttons and the backdrop: the arrow
   cursor should show, never the I-beam. In the New session dialog, the name field should still
   show the I-beam. Do the same with a chat under the dialog.
+- [ ] With a `gh` login that has no `workflow` scope (check with `gh auth status`), turn on
+  "Resolve merge conflicts automatically" in Settings > Reviews. The confirm and the row should say
+  that the login can't push workflow changes and give the `gh auth refresh -h github.com -s
+  workflow` command. Run the command, click Refresh in the Reviews panel, and the hint should
+  go. Is the text clear? ([reviews R39](ports/reviews/DELIBERATE-DIFFERENCES.md))
+- [ ] Click Refresh in the Reviews panel. The icon should turn once a second until the poll ends,
+  then stop. Wait for a poll of the timer: the icon should stay still. Turn on Reduce Motion in
+  System Settings, click Refresh again, and the icon should stay still.
+  ([reviews R40](ports/reviews/DELIBERATE-DIFFERENCES.md))

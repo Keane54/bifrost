@@ -353,7 +353,8 @@ package final class ReviewsParts {
         return ReviewsSnapshot(
             phase: .on, toReview: watcher.toReview, mine: watcher.mine, problem: watcher.problem,
             lastPoll: watcher.lastPoll, needsConsent: parts.autoFixConsent != true,
-            rowFlash: rowFlash, needsTrust: parts.setup?.needsTrust ?? [:])
+            rowFlash: rowFlash, needsTrust: parts.setup?.needsTrust ?? [:],
+            refreshing: watcher.refreshing)
     }
 
     // MARK: - The clones
@@ -434,6 +435,16 @@ package final class ReviewsParts {
             open.watcher.apply(new)
             open.rounds?.apply(new)
         }
+    }
+
+    // True when the watcher knows that the gh login has no workflow scope. Settings shows a
+    // warning then. With no watcher the scopes are unknown.
+    package var workflowScopeMissing: Bool { watcher?.lacksWorkflowScope ?? false }
+
+    // Read the scopes of the gh login again (ReviewsLinks.readScopes). With no watcher, the first
+    // start of Reviews reads them.
+    package func readScopes() async {
+        await watcher?.readScopesNow()
     }
 
     // The user confirmed a turn-on of "Handle comments on my PRs automatically" in Settings, and

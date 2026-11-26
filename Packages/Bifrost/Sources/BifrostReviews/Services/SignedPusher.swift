@@ -77,7 +77,7 @@ package struct SignedPusher {
         case .refused? where after != head:
             throw .moved
         case .refused?:
-            throw .refused(Self.line(failure, commit))
+            throw PushRefusal.server(Self.line(failure, commit))
         case let error?:
             // gh did not send the write (not installed or not logged in).
             throw .git(error.message)

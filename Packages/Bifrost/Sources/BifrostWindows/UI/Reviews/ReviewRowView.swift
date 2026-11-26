@@ -300,7 +300,6 @@ struct WriteProgressLabel: View {
 
     let progress: ReviewWriteProgress
     let style: PanelStyle
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let label = RowText.progress(progress)
@@ -319,17 +318,36 @@ struct WriteProgressLabel: View {
     }
 
     // A turn ends at 360 degrees, which looks the same as the start, so the repeat has no jump.
-    @ViewBuilder
     private var loader: some View {
-        let icon = ButtonIcon(icon: .loader, size: style.points(12))
-        if reduceMotion {
-            icon
-        } else {
+        TurningIcon(turning: true, icon: ButtonIcon(icon: .loader, size: style.points(12)))
+    }
+}
+
+// An icon that turns one time each second, linear and with no end, while turning is true. With
+// Reduce Motion on, or while turning is false, it does not turn. A turn ends at 360 degrees, which
+// looks the same as the start, so the repeat has no jump.
+struct TurningIcon: View {
+    // The time of one turn, in seconds.
+    nonisolated static var turn: TimeInterval { WriteProgressLabel.turn }
+
+    // True when the icon turns: it is asked to, and Reduce Motion is off.
+    nonisolated static func turns(_ turning: Bool, reduceMotion: Bool) -> Bool {
+        turning && !reduceMotion
+    }
+
+    let turning: Bool
+    let icon: ButtonIcon
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if Self.turns(turning, reduceMotion: reduceMotion) {
             icon.keyframeAnimator(initialValue: Angle.zero, repeating: true) { view, angle in
                 view.rotationEffect(angle)
             } keyframes: { _ in
-                LinearKeyframe(Angle.degrees(360), duration: Self.turn)
+                LinearKeyframe(Angle.degrees(360), duration: WriteProgressLabel.turn)
             }
+        } else {
+            icon
         }
     }
 }

@@ -86,6 +86,45 @@ struct PushPlanTests {
         #expect(answer(.exited(128), " ", "fatal: unable to access") == .failed)
     }
 
+    // A refusal whose line says that the token needs the workflow scope has its own case, from the
+    // [remote rejected] line of git push and from the GraphQL error of a signed commit. Each other
+    // refusal stays a plain refusal. The line stays for the Event log.
+    @Test func aRefusalThatNamesTheWorkflowScopeHasItsOwnCase() {
+        let push =
+            "[remote rejected] (refusing to allow an OAuth App to create or update workflow "
+            + "`.github/workflows/build.yml` without `workflow` scope)"
+        #expect(PushRefusal.server(push) == .workflowScope(push))
+        let signed =
+            "Refusing to allow an OAuth App to create or update a Workflow without WORKFLOW Scope"
+        #expect(PushRefusal.server(signed) == .workflowScope(signed))
+        let protected = "[remote rejected] (protected)"
+        #expect(PushRefusal.server(protected) == .refused(protected))
+        let other = "Updates a workflow file"
+        #expect(PushRefusal.server(other) == .refused(other))
+        #expect(PushRefusal.workflowScope(push).detail == push)
+        #expect(!PushRefusal.workflowScope(push).keepsOtherWrites)
+        #expect(
+            PushRefusal.workflowScope("x").message
+                == "GitHub refused Claude's fix because it changes a workflow file and your GitHub "
+                + "login can't push workflow changes, so run gh auth refresh -h github.com -s "
+                + "workflow in a terminal and then try again.")
+    }
+
+    // The words of the workflow scope are read before the reason is cut to 200 characters, so a
+    // long path can't hide them.
+    @Test func aLongReasonStillNamesTheWorkflowScope() {
+        let path = String(repeating: "a/", count: 120) + "build.yml"
+        let reason = "(refusing to allow an OAuth App to create or update workflow `\(path)` "
+            + "without `workflow` scope)"
+        let result = ExecResult(
+            .exited(1), stdout: "!\ta:refs/heads/feat\t[remote rejected] \(reason)\n")
+        guard case .workflowScope(let line) = PushPlan.answer(result) else {
+            Issue.record("Wrong answer: \(PushPlan.answer(result))")
+            return
+        }
+        #expect(line.count == 200 && line.hasPrefix("[remote rejected] (refusing"))
+    }
+
     // A tree listing gives the mode and the object of each path. A fix commit holds only plain
     // and executable files: a link and a submodule are refused.
     @Test func aTreeListingGivesEachModeAndTheFileRule() {

@@ -910,6 +910,28 @@ struct ReviewsPanelTests {
         #expect(!model.showsHint)
     }
 
+    // The Refresh icon turns only while the snapshot says that a refresh of the user runs, and
+    // only while Reviews is on. With Reduce Motion on, or with no refresh, the icon stays still.
+    @Test func theRefreshIconTurnsOnlyWhileARefreshOfTheUserRuns() throws {
+        let p = Parts()
+        let model = try p.model()
+        #expect(!model.isRefreshing)
+        p.feed.snapshot.refreshing = true
+        #expect(model.isRefreshing)
+        p.feed.snapshot.phase = .starting
+        #expect(!model.isRefreshing)
+        // The Refresh button of the panel gets the flag of the model.
+        p.feed.snapshot.phase = .on
+        p.feed.snapshot.refreshing = false
+        #expect(!RefreshButton(model: model).turning)
+        p.feed.snapshot.refreshing = true
+        #expect(RefreshButton(model: model).turning)
+        #expect(TurningIcon.turns(true, reduceMotion: false))
+        #expect(!TurningIcon.turns(true, reduceMotion: true))
+        #expect(!TurningIcon.turns(false, reduceMotion: false))
+        #expect(TurningIcon.turn == WriteProgressLabel.turn)
+    }
+
     // The display clock asks for new time texts at the start and at each tick, with no poll, and
     // "Last checked" follows the time of the panel. A release stops the clock.
     @Test func theDisplayClockRefreshesTheTimeTexts() async throws {
