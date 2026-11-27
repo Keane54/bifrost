@@ -181,7 +181,7 @@ struct FixCommitTests {
             posting: true, items: [item: Rows.at(-120)])
         let task = Task { await f.writes.resume(f.pr) }
         quit.withLock { $0 = task }
-        await task.value
+        await ended(task)
         let kept = try #require(f.state?.outbox)
         #expect(kept.posts.map(\.state) == [.sending, .todo, .todo, .todo])
         #expect(f.state?.round?.phase == .posting && f.state?.lastError == nil)

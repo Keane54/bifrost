@@ -57,6 +57,8 @@ struct RepoFixture {
     // its own root, along with that result. The set-up's ten or so git runs cost about a second
     // a test in the sandbox, so this way only the first test pays for them. The config of a bare
     // source names the work repository it was cloned from, so the copy names its own instead.
+    // The waits on the set-up are plain awaits, not ended(): every test that asks for the key
+    // waits on the same task, so passing one test's cancel on would fail all the others.
     func shared<Value: Sendable>(
         _ key: String, make: @escaping @MainActor (RepoFixture) async throws -> Value
     ) async throws -> Value {
@@ -180,7 +182,7 @@ struct RepoFixture {
             await waitUntil { graceSleeps() }
             gitClock.advance(by: RepoGit.stopGrace)
         }
-        await stopping.value
+        await ended(stopping)
     }
 
     func exists(_ path: String) -> Bool { FileManager.default.fileExists(atPath: path) }
@@ -254,9 +256,25 @@ private final class NoCleanRunner: CommandRunner {
     }
 }
 
+// The tests run real git, a second or two of process starts each, so they sit in lanes: a
+// lane runs its tests one at a time and the lanes run side by side. Each test makes its own
+// fixture in its own folder and none of them uses the shared set-up, so the lanes share nothing.
 @MainActor
-@Suite("the repo store of Reviews", .serialized, .testTimeLimit, .tags(.realProcess))
+@Suite("the repo store of Reviews", .testTimeLimit, .tags(.realProcess))
 struct RepoStoreTests {
+    @MainActor @Suite("a clone, its worktree and the changes in it", .serialized)
+    struct Worktrees {}
+    @MainActor @Suite("the input and round folders of a PR", .serialized)
+    struct Folders {}
+    @MainActor @Suite("a worktree that stays for the next round", .serialized)
+    struct Places {}
+    @MainActor @Suite("the checks before a copy is kept or dropped", .serialized)
+    struct Checks {}
+    @MainActor @Suite("a failed, stopped or removed clone, and the hooks", .serialized)
+    struct Clones {}
+}
+
+extension RepoStoreTests.Worktrees {
     // The clone is in lower case below the repos folder, with no checkout (no file of the
     // repository in the folder) and no blobs (a partial clone with the blob filter).
     @Test func aCloneHasNoCheckoutAndNoBlobs() async throws {
@@ -441,7 +459,9 @@ struct RepoStoreTests {
         #expect(await f.store.worktreeHead(pr) == head)
         #expect(await f.store.changedPaths(pr) == ["a.txt", "c.txt"])
     }
+}
 
+extension RepoStoreTests.Folders {
     // The input folder of a PR is empty with mode 0700 at each call. When the request goes, the
     // worktree and the input folder go, and git forgets the worktree. The clone stays.
     @Test func aGoneRequestRemovesItsWorktreeAndInputFolder() async throws {
@@ -525,7 +545,9 @@ struct RepoStoreTests {
         #expect(f.exists(outside + "/keep.txt"))
         #expect(f.mode(outside) == outsideMode)
     }
+}
 
+extension RepoStoreTests.Places {
     // A worktree of the PR that is in its place stays for the next round: the same folder moves
     // to the new head, a file that the last round added goes, and its .git file is written again.
     @Test func placeWorktreeKeepsTheFolderAndMovesItToTheNewHead() async throws {
@@ -639,7 +661,9 @@ struct RepoStoreTests {
         #expect(try String(contentsOfFile: full + "/mine.txt", encoding: .utf8) == "work\n")
         #expect(f.log.values.contains(.worktreeKeptAside(pr, path: full)))
     }
+}
 
+extension RepoStoreTests.Checks {
     // The commit of a PR that reached the clone only through refs/bifrost/pr/<number> (a pull
     // head, no branch) is on GitHub. A commit of the copy is not, and a missing ref is a doubt.
     @Test func theCopyHoldsACommitThatGitHubLacksOnlyWithALocalCommit() async throws {
@@ -749,7 +773,9 @@ struct RepoStoreTests {
         #expect(f.exists(outside + "/a.txt"))
         #expect(await f.gitOutput(["rev-parse", "HEAD"], in: path) == head.hex)
     }
+}
 
+extension RepoStoreTests.Clones {
     // A failed clone leaves no folder and logs one line. The repository counts as failed for 1
     // hour on the clock, and a second failure in a row logs nothing more. A clone that works
     // clears the failure.
@@ -813,11 +839,11 @@ struct RepoStoreTests {
         #expect(!stopped.value)
         #expect(kill(clone.pid, 0) == 0)
         gitClock.advance(by: RepoGit.stopGrace)
-        await stopping.value
+        await ended(stopping)
         #expect(kill(clone.pid, 0) != 0)
         #expect(!f.exists(clone.folder))
         #expect(f.temporaryFolders(name).isEmpty)
-        #expect(await cloning.value == .cancelled)
+        #expect(await ended(cloning) == .cancelled)
         #expect(!f.store.failedRecently(name))
         #expect(f.log.values.isEmpty)
         #expect(!(await f.store.hasClone(name)))
@@ -844,8 +870,8 @@ struct RepoStoreTests {
         await f.stop(f.store)
         await f.stop(restarted)
         for clone in clones { #expect(kill(clone.pid, 0) != 0) }
-        _ = await first.value
-        _ = await second.value
+        _ = await ended(first)
+        _ = await ended(second)
         #expect(f.temporaryFolders(name).isEmpty)
     }
 

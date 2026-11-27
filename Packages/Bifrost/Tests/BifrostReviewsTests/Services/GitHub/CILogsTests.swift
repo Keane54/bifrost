@@ -77,7 +77,7 @@ struct CILogsTests {
         let place = try repo()
         let task = Task { await CILogs.read(jobs, repo: place, client: client) }
         fake.onRead = { name in if name == "job-log 105" { task.cancel() } }
-        let result = await task.value
+        let result = await ended(task)
         #expect(result.map(\.check.job?.value) == Array(101...105))
         #expect(result.allSatisfy { $0.missing == nil })
         #expect(fake.calls == (101...105).map { .fetch("job-log \($0)") })

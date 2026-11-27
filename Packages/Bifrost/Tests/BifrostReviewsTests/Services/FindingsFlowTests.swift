@@ -284,7 +284,7 @@ struct FindingsFlowTests {
             try await flow.send(.comment, click: UserClick())
         } == .busy)
         gate.open()
-        #expect(await row.value == nil)
+        #expect(await ended(row) == nil)
         #expect(f.written == [comment, plain])
         await f.end()
     }
@@ -515,6 +515,31 @@ struct FindingsFlowTests {
         await f.end()
     }
 
+    // The check takes a review of yours on the head from up to two minutes before the unsure
+    // send as the one we sent (FindingsPlan.savedSlack): gh gives up on a write after 30
+    // seconds, GitHub's times have whole seconds and the Mac's clock can be a little off. A
+    // review from a second before that window is an older one, so the form unlocks.
+    @Test(arguments: zip([120, 121], [true, false]))
+    func theCheckOfAnUnsureCommentLooksBackTwoMinutes(_ seconds: Int, _ found: Bool)
+        async throws
+    {
+        let (f, flow) = try await opened()
+        let comment = try review(f, .comment, flow.post)
+        f.github.answers[FakeGitHub.key(comment)] = .failure(.unknownOutcome("HTTP 502"))
+        #expect(await refusal { () async throws(FindingsRefusal) in
+            try await flow.send(.comment, click: UserClick())
+        } == .unknown)
+        let saved = Rows.now.addingTimeInterval(-Double(seconds))
+        f.github.answers[DraftQueries.ownReviewsName] = .success(
+            DraftAnswers.ownReviews([
+                DraftAnswers.Opinion(state: "COMMENTED", commit: f.head, at: saved)
+            ]))
+        await f.pollAnswered()
+        #expect(!flow.waitsForPoll)
+        #expect(flow.commentFound == found)
+        await f.end()
+    }
+
     // A failed read of your own reviews keeps the lock, so the form still sends nothing. The next
     // poll tries the read again, and a good read then settles it.
     @Test func aFailedReadKeepsTheLock() async throws {
@@ -560,7 +585,7 @@ struct FindingsFlowTests {
         #expect(await gate.waitUntilHolding(1))
         #expect(f.writes.progress(f.pr) == .running(.comment) && flow.busy)
         gate.open()
-        #expect(await send.value == nil)
+        #expect(await ended(send) == nil)
         #expect(f.writes.progress(f.pr) == .confirmed(.comment))
         let reviewed = f.writes.reviewedHere(answer)
         #expect(reviewed == [f.pr: ConfirmedReview(.comment, head: f.head.hex)])

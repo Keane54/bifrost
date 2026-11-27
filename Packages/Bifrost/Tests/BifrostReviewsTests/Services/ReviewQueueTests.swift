@@ -120,17 +120,17 @@ struct ReviewQueueTests {
         #expect(await gate.waitUntilHolding(2))
         queue.stop()
         #expect(Set(cancels.values) == [try pr(1), try pr(2)])
-        let ended = Recorder<Void>()
+        let waitEnded = Recorder<Void>()
         let waiting = Task {
             await queue.waitForEnd()
-            ended.record(())
+            waitEnded.record(())
         }
         gate.open()
         await waitUntil { queue.running.count == 1 }
-        #expect(ended.values.isEmpty)
+        #expect(waitEnded.values.isEmpty)
         gate.openAll()
-        await waiting.value
-        #expect(queue.running.isEmpty && ended.values.count == 1)
+        await ended(waiting)
+        #expect(queue.running.isEmpty && waitEnded.values.count == 1)
     }
 
     // The reason of a halt is a part of the running job: a PR with no running job keeps none,

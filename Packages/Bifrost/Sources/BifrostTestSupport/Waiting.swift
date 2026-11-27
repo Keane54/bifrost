@@ -125,6 +125,26 @@ package func ended(_ task: Task<Void, Never>?) async {
     }
 }
 
+// The same wait for a task with a result, which the wait gives back.
+@discardableResult
+package func ended<Value: Sendable>(_ task: Task<Value, Never>) async -> Value {
+    await withTaskCancellationHandler {
+        await task.value
+    } onCancel: {
+        task.cancel()
+    }
+}
+
+// The same for a task that can throw: the wait throws its error.
+@discardableResult
+package func ended<Value: Sendable>(_ task: Task<Value, any Error>) async throws -> Value {
+    try await withTaskCancellationHandler {
+        try await task.value
+    } onCancel: {
+        task.cancel()
+    }
+}
+
 // The end of a task, as a flag that a wait reads.
 @MainActor
 package final class TaskEnd {

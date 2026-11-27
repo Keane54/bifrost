@@ -273,7 +273,7 @@ final class WritesFixture {
     }
 
     func end() async {
-        await store.close().value
+        await ended(store.close())
         folder?.remove()
     }
 

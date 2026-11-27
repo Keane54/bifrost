@@ -107,7 +107,7 @@ struct RoundWritesTests {
         let quit = Task { await f.writes.resume(f.pr) }
         await waitUntil { manual.sleeperCount == 1 }
         quit.cancel()
-        await quit.value
+        await ended(quit)
         #expect(f.written == [.replyToThread(thread: first, body: "We keep it.")])
         #expect(f.state?.round?.phase == .posting)
         #expect(f.state?.outbox?.posts.map(\.state) == [.done, .todo, .todo, .todo, .todo])

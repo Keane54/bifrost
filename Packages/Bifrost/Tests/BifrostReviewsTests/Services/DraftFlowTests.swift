@@ -281,7 +281,7 @@ struct DraftFlowTests {
         f.answerWrite(submit, state: "COMMENTED")
         // The store closes while GitHub takes the write, so the save of the mark fails.
         let store = f.store
-        f.github.onWrite = { _ in await store.close().value }
+        f.github.onWrite = { _ in await ended(store.close()) }
         try await flow.send(.comment, click: UserClick())
         #expect(f.written == [submit] && f.polls.values.count == 1)
         #expect(
@@ -445,7 +445,7 @@ struct DraftFlowTests {
         #expect(f.writes.progress(f.pr) == .running(review))
         #expect(f.writes.running == [f.pr] && f.writes.held == [f.pr])
         gate.open()
-        #expect(await send.value == nil)
+        #expect(await ended(send) == nil)
         #expect(f.writes.progress(f.pr) == .confirmed(review))
         #expect(f.writes.running.isEmpty && f.writes.held == [f.pr])
         #expect(f.progressEnds.values.isEmpty)
@@ -454,7 +454,7 @@ struct DraftFlowTests {
         f.clock.advance(by: ReviewWrites.hold - .milliseconds(1))
         #expect(f.clock.sleeperCount == 1 && f.writes.progress(f.pr) == .confirmed(review))
         f.clock.advance(by: .milliseconds(1))
-        await hold.value
+        await ended(hold)
         #expect(f.writes.progress(f.pr) == nil && f.writes.held.isEmpty)
         #expect(f.progressEnds.values.count == 1 && f.written == [submit])
         await f.end()

@@ -207,7 +207,7 @@ private final class RequestFixture {
     func end() async {
         rounds.stop()
         await rounds.waitForEnd()
-        await store.close().value
+        await ended(store.close())
         repos.folder.remove()
     }
 
@@ -1139,7 +1139,7 @@ extension RequestRoundTests.Reads {
         await f.rounds.tryAgain(f.pr)
         let queued = try #require(f.rounds.queue.task(of: f.pr))
         await ended(queued)
-        for task in removal.values { #expect(await task.value == nil) }
+        for task in removal.values { #expect(await ended(task) == nil) }
         #expect(
             f.writes == [
                 .replyToThread(thread: first, body: "We keep it."), .resolveThread(first),
@@ -1383,11 +1383,7 @@ extension RequestRoundTests.Session {
         await f.show(.idle)
         // A cancel of the test (its time limit) stops the round too, so a round that wrongly
         // starts its turn cannot hold the test.
-        await withTaskCancellationHandler {
-            await ended(second)
-        } onCancel: {
-            second.cancel()
-        }
+        await ended(second)
         let reason = RoundFailure.changesNotOnGitHub.message(for: .request)
         let state = try #require(f.store.state.prs[f.pr])
         let item = try f.node("PRRT_2")
@@ -2379,6 +2375,36 @@ extension RequestRoundTests.Drops {
         await f.end()
     }
 
+    // The fresh poll before the drop fails: Bifrost can't tell whether a person just started a
+    // turn, so the failure counts as in use and the clean copy stays. The next read, with a poll
+    // that works, drops it.
+    @Test func aFailedPollBeforeTheDropKeepsTheCopy() async throws {
+        let runner = GateRunner { $0.contains("rev-list") && $0.contains("--not") }
+        let f = try await fixtureWithSession(runner: runner)
+        await leaveOut(f)
+        try await f.pass(.seconds(24 * 3600))
+        f.rounds.afterPoll(Rows.answer(mine: []))
+        await runner.gate.waitUntilHolding()
+        // The session is idle in the rows, and the list of claude fails from now on.
+        #expect(!f.rounds.sessions.requestInUse(f.pr))
+        let polls = f.deps.lists.activeCalls
+        f.deps.lists.activeFailure = .emptyOutput
+        runner.gate.openAll()
+        await waitUntil { f.rounds.drops[f.pr] == nil }
+        #expect(f.deps.lists.activeCalls > polls)
+        #expect(!f.deps.calls.claudeRuns.contains { $0.first == "rm" })
+        #expect(f.store.state.prs[f.pr]?.requestSession != nil)
+        #expect(FileManager.default.fileExists(atPath: f.worktree))
+        #expect(f.events.values.isEmpty)
+        f.deps.lists.activeFailure = nil
+        try await f.pass(WorkRule.readRetry)
+        await leaveOut(f)
+        #expect(f.store.state.prs[f.pr]?.requestSession == nil)
+        #expect(!FileManager.default.fileExists(atPath: f.worktree))
+        #expect(f.events.values == [Self.droppedLine(f.pr)])
+        await f.end()
+    }
+
     // A commit in the worktree that GitHub lacks is a change that is not on GitHub, also when the
     // tree is clean.
     @Test func anOpenPRWithACommitThatIsNotOnGitHubKeepsItsCopy() async throws {
@@ -2525,7 +2551,7 @@ extension RequestRoundTests.DropDetails {
         }
         try await Task.sleep(for: .milliseconds(500))
         gate.open()
-        #expect(await removal.value == nil)
+        #expect(await ended(removal) == nil)
         #expect(dropRuns.values == [true])
         await f.end()
     }

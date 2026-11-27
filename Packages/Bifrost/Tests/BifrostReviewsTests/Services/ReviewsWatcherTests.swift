@@ -126,7 +126,7 @@ private struct Harness {
             }
             try #require(await writeGate.waitUntilWriting())
             writeGate.open()
-            store = try await opening.value
+            store = try await ended(opening)
         } else {
             writeGate.openAll()
             store = try await ReviewsStore.open(layout: layout, log: storeLog, steps: steps)
@@ -150,7 +150,7 @@ private struct Harness {
         watcher.stop()
         held.gate.openAll()
         writeGate.openAll()
-        await store.close().value
+        await ended(store.close())
         folder.remove()
     }
 
@@ -169,7 +169,7 @@ private struct Harness {
 
     // Wait for the poll that runs and the timer of the next poll.
     func settle() async {
-        while let task = watcher.pollTask { await task.value }
+        while let task = watcher.pollTask { await ended(task) }
         await clock.waitForSleepers(1)
     }
 
@@ -184,7 +184,7 @@ private struct Harness {
     func tick(_ span: Duration) async {
         let timer = watcher.pollTimerTask
         advance(span)
-        await timer?.value
+        await ended(timer)
         await settle()
     }
 
@@ -205,12 +205,12 @@ struct ReviewsWatcherTests {
         harness.github.scopes = .success(GitHubScopes(names: ["repo", "gist"]))
         #expect(!harness.watcher.lacksWorkflowScope)
         await harness.start()
-        await harness.watcher.scopesReadTask?.value
+        await ended(harness.watcher.scopesReadTask)
         #expect(harness.github.scopeReads == 1 && harness.watcher.lacksWorkflowScope)
         // A turn-off and a new turn-on of Watch GitHub do not read again in this run.
         harness.watcher.apply(ReviewsConfig(watch: false))
         await harness.start()
-        await harness.watcher.scopesReadTask?.value
+        await ended(harness.watcher.scopesReadTask)
         #expect(harness.github.scopeReads == 1)
         // A poll of the timer reads no scopes.
         await harness.tick(.seconds(120))
@@ -218,7 +218,7 @@ struct ReviewsWatcherTests {
         // A refresh reads them again, and the new answer replaces the old one.
         harness.github.scopes = .success(GitHubScopes(names: ["repo", "workflow"]))
         harness.watcher.refresh()
-        await harness.watcher.scopesReadTask?.value
+        await ended(harness.watcher.scopesReadTask)
         await harness.settle()
         #expect(harness.github.scopeReads == 2 && !harness.watcher.lacksWorkflowScope)
         await harness.end()
@@ -230,16 +230,16 @@ struct ReviewsWatcherTests {
         let harness = try await Harness()
         harness.github.scopes = .success(GitHubScopes(names: ["repo"]))
         await harness.start()
-        await harness.watcher.scopesReadTask?.value
+        await ended(harness.watcher.scopesReadTask)
         #expect(harness.watcher.lacksWorkflowScope)
         harness.github.scopes = .failure(.timedOut)
         harness.watcher.refresh()
-        await harness.watcher.scopesReadTask?.value
+        await ended(harness.watcher.scopesReadTask)
         await harness.settle()
         #expect(harness.github.scopeReads == 2 && harness.watcher.lacksWorkflowScope)
         harness.github.scopes = .success(nil)
         harness.watcher.refresh()
-        await harness.watcher.scopesReadTask?.value
+        await ended(harness.watcher.scopesReadTask)
         await harness.settle()
         #expect(harness.watcher.scopes == nil)
         await harness.end()
@@ -251,11 +251,11 @@ struct ReviewsWatcherTests {
         let harness = try await Harness()
         harness.github.scopes = .success(nil)
         await harness.start()
-        await harness.watcher.scopesReadTask?.value
+        await ended(harness.watcher.scopesReadTask)
         #expect(harness.watcher.scopes == nil && !harness.watcher.lacksWorkflowScope)
         harness.github.scopes = .failure(.timedOut)
         harness.watcher.refresh()
-        await harness.watcher.scopesReadTask?.value
+        await ended(harness.watcher.scopesReadTask)
         await harness.settle()
         #expect(harness.watcher.scopes == nil && !harness.watcher.lacksWorkflowScope)
         await harness.end()
@@ -356,7 +356,7 @@ struct ReviewsWatcherTests {
         // A poll of the timer leaves it false.
         let timer = harness.watcher.pollTimerTask
         harness.advance(.seconds(120))
-        await timer?.value
+        await ended(timer)
         await gate.waitUntilHolding()
         #expect(!harness.watcher.refreshing)
         // A click during that poll asks for one more poll: true until that one ends.
@@ -401,7 +401,7 @@ struct ReviewsWatcherTests {
         let poll = harness.watcher.pollTask
         harness.watcher.stop()
         harness.held.gate.openAll()
-        await poll?.value
+        await ended(poll)
         #expect(harness.watcher.answer == nil && harness.watcher.toReview.isEmpty)
         #expect(harness.store.state.turnedOnAt == nil && harness.notifier.shown.isEmpty)
         #expect(harness.clock.sleeperCount == 0)
@@ -417,7 +417,7 @@ struct ReviewsWatcherTests {
         harness.watcher.apply(ReviewsConfig(watch: true))
         let poll = harness.watcher.pollTask
         try #require(await harness.writeGate.waitUntilWriting())
-        await poll?.value
+        await ended(poll)
         #expect(harness.watcher.lastPoll != nil && harness.store.state.turnedOnAt != nil)
         harness.watcher.stop()
         harness.writeGate.openAll()
@@ -690,7 +690,7 @@ struct ReviewsWatcherTests {
         #expect(harness.watcher.toReview.first { $0.id == key }?.flash == false)
         let timer = harness.watcher.pauseTimerTask
         harness.advance(.seconds(1))
-        await timer?.value
+        await ended(timer)
         #expect(harness.watcher.toReview.first { $0.id == key }?.flash == true)
         #expect(harness.watcher.pauseTimerTask == nil && harness.clock.sleeperCount == 1)
         await harness.end()

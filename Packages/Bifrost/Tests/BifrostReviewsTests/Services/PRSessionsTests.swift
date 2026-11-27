@@ -64,7 +64,7 @@ struct SessionsFixture {
 
     func end() async {
         sessions.stop()
-        await store.close().value
+        await ended(store.close())
         folder.remove()
     }
 
@@ -271,11 +271,7 @@ struct SessionsFixture {
     func result(
         _ task: Task<Result<BegunTurn, RoundFailure>, Never>
     ) async -> Result<BegunTurn, RoundFailure> {
-        await withTaskCancellationHandler {
-            await task.value
-        } onCancel: {
-            task.cancel()
-        }
+        await ended(task)
     }
 
     // The failure of the turn, or nil when it began.
@@ -333,7 +329,7 @@ struct PRSessionsTests {
         let wait = f.waitForTurnEnd(row, checks: checks, accepted: accepted)
         await waitUntil { f.deadline == .seconds(120) }
         try Data("good".utf8).write(to: f.result)
-        #expect(await wait.value == nil)
+        #expect(await ended(wait) == nil)
         #expect(f.deps.clock.now.offset == .zero)
         #expect(checks.values.last == "good")
         // The end gives the value that the check accepted.
@@ -352,7 +348,7 @@ struct PRSessionsTests {
         try Data("good".utf8).write(to: f.result)
         await waitUntil { checks.values == ["good"] }
         _ = try await f.show(SessionsFixture.entry(.idle))
-        #expect(await wait.value == nil)
+        #expect(await ended(wait) == nil)
         #expect(f.deps.clock.now.offset == .zero)
         // The file did not change, so the end at the idle row read it no more.
         #expect(checks.values == ["good"])
@@ -374,7 +370,7 @@ struct PRSessionsTests {
         f.deps.clock.advance(by: .seconds(1))
         await waitUntil { f.deadline == .seconds(1800) }
         await f.deps.poll()
-        #expect(await wait.value == nil)
+        #expect(await ended(wait) == nil)
         // The turn ended with no result that passed the check.
         #expect(accepted.values == [nil])
         await f.end()
@@ -407,7 +403,7 @@ struct PRSessionsTests {
         f.deps.clock.advance(by: deadline - now)
         await waitUntil { f.deadline == .seconds(1800) }
         await f.deps.poll()
-        #expect(await wait.value == nil)
+        #expect(await ended(wait) == nil)
         await f.end()
     }
 
@@ -434,7 +430,7 @@ struct PRSessionsTests {
         f.deps.clock.advance(by: deadline - now)
         await waitUntil { f.deadline == .seconds(1800) }
         await f.deps.poll()
-        #expect(await wait.value == nil)
+        #expect(await ended(wait) == nil)
         await f.end()
     }
 
@@ -475,7 +471,7 @@ struct PRSessionsTests {
         let wait = f.waitForTurnEnd(row)
         await waitUntil { f.deadline == .seconds(1800) }
         _ = try await f.show(SessionsFixture.entry(.waiting, waitingFor: "permission"))
-        #expect(await wait.value == .blocked)
+        #expect(await ended(wait) == .blocked)
         await f.end()
     }
 
@@ -490,7 +486,7 @@ struct PRSessionsTests {
         await f.deps.show([]) { rows in rows.isEmpty }
         f.deps.clock.advance(by: .seconds(70))
         await f.deps.poll()
-        #expect(await wait.value == .sessionEnded)
+        #expect(await ended(wait) == .sessionEnded)
         await f.end()
     }
 
@@ -509,7 +505,7 @@ struct PRSessionsTests {
         f.deps.clock.advance(by: .seconds(10))
         await waitUntil { f.deadline == .seconds(1800) }
         await f.deps.poll()
-        #expect(await wait.value == nil)
+        #expect(await ended(wait) == nil)
         await f.end()
     }
 
@@ -537,7 +533,7 @@ struct PRSessionsTests {
         await waitUntil { f.deadline == .seconds(1800) }
         #expect(!end.ended)
         await f.deps.poll()
-        #expect(await wait.value == nil)
+        #expect(await ended(wait) == nil)
         await f.end()
     }
 
@@ -590,7 +586,7 @@ struct PRSessionsTests {
             try? await f.sessions.start(pr, .review, args: args, in: f.input)
         }
         await f.deps.poll()
-        let row = try #require(await start.value)
+        let row = try #require(await ended(start))
         #expect(row.sessionId == SessionsFixture.id)
         #expect(f.deps.row(SessionsFixture.id)?.prSession == true)
         #expect(f.store.state.prs[pr]?.reviewSession?.name == SessionsFixture.name)

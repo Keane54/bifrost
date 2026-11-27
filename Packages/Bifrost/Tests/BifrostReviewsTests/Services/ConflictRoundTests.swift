@@ -161,7 +161,7 @@ private final class ConflictFixture {
     func end() async {
         rounds.stop()
         await rounds.waitForEnd()
-        await store.close().value
+        await ended(store.close())
         repos.folder.remove()
     }
 
@@ -1448,7 +1448,7 @@ extension ConflictRoundTests.Ends {
             await ended(f.rounds.ownRuns[f.pr])
             f.rounds.ownRuns[f.pr] = nil
         } else if work == "discard" {
-            _ = await f.rounds.discards[f.pr]?.value
+            if let discard = f.rounds.discards[f.pr] { await ended(discard) }
             f.rounds.discards[f.pr] = nil
         } else {
             await f.show(.idle)

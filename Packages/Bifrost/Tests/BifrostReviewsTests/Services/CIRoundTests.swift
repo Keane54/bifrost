@@ -170,7 +170,7 @@ private final class CIFixture {
     func end() async {
         rounds.stop()
         await rounds.waitForEnd()
-        await store.close().value
+        await ended(store.close())
         repos.folder.remove()
     }
 

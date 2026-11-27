@@ -92,7 +92,7 @@ private func openThroughGate(
     let opening = Task { try await openStore(layout, steps: gate.steps) }
     try #require(await gate.waitUntilWriting())
     gate.open()
-    return try await opening.value
+    return try await ended(opening)
 }
 
 @MainActor
@@ -110,7 +110,7 @@ struct ReviewsStoreTests {
         #expect(try Data(contentsOf: layout.stateCopy) == electron)
         #expect(mode(layout.stateCopy) == 0o600)
         #expect(try Data(contentsOf: layout.stateFile) != electron)
-        await store.close().value
+        await ended(store.close())
 
         let (empty, fresh) = try home()
         defer { empty.remove() }
@@ -118,7 +118,7 @@ struct ReviewsStoreTests {
         #expect(first.tookOver)
         #expect(try Data(contentsOf: fresh.stateCopy) == Data())
         #expect(try reread(fresh).autoFixConsent == false)
-        await first.close().value
+        await ended(first.close())
     }
 
     // A later open makes no copy and takes nothing over: the copy keeps the Electron bytes.
@@ -129,14 +129,14 @@ struct ReviewsStoreTests {
         try put(electron, at: layout.stateFile)
         let first = try await openStore(layout)
         await first.update { $0.setUpAt = now }
-        await first.close().value
+        await ended(first.close())
 
         let second = try await openStore(layout)
         #expect(!second.tookOver)
         #expect(second.state.setUpAt == now)
         #expect(try Data(contentsOf: layout.stateCopy) == electron)
         await second.update { $0.setUpAt = nil }
-        await second.close().value
+        await ended(second.close())
         #expect(try Data(contentsOf: layout.stateCopy) == electron)
     }
 
@@ -161,16 +161,16 @@ struct ReviewsStoreTests {
         let pr = try key("owner-a/repo-a#1")
         #expect(first.state.prs[pr]?.ci?.fixes == CIRule.maxFixes)
         #expect(first.state.prs[pr]?.conflict?.outcome == .failed(""))
-        await first.close().value
+        await ended(first.close())
         #expect(try Data(contentsOf: layout.stateFile) == Data(text.utf8))
         let second = try await ReviewsStore.open(layout: layout, log: run, now: now)
-        await second.close().value
+        await ended(second.close())
         let path = layout.stateFile.path(percentEncoded: false)
         let names = ["prs.ci.fixes", "prs.conflict.outcome"]
         #expect(events.values == [.defaulted(file: path, keys: names)])
         let next = try await ReviewsStore.open(
             layout: layout, log: ReviewsStoreLog(base: events), now: now)
-        await next.close().value
+        await ended(next.close())
         #expect(events.values == Array(repeating: .defaulted(file: path, keys: names), count: 2))
     }
 
@@ -186,7 +186,7 @@ struct ReviewsStoreTests {
         #expect(store.tookOver)
         #expect(try store.state.prs[key("owner-a/repo-b#7")]?.outbox == nil)
         #expect(try Data(contentsOf: layout.stateCopy) == electron)
-        await store.close().value
+        await ended(store.close())
     }
 
     // Each outbox of the Electron state goes: the items whose writes all went are handled, and
@@ -231,7 +231,7 @@ struct ReviewsStoreTests {
 
         #expect(state.prs.values.allSatisfy { $0.outbox == nil && $0.round?.kind != .request })
         #expect(try reread(layout) == state)
-        await store.close().value
+        await ended(store.close())
     }
 
     // The poll gives the key in lower case. It finds the PR of the Electron key in another case,
@@ -253,7 +253,7 @@ struct ReviewsStoreTests {
         let saved = try readSaved(layout.stateFile).fields
         #expect(saved?["prs"]?.object?.keys.sorted() == ["Owner-A/Repo-B#12"])
         #expect(saved?["hidden"] == ["Owner-A/Repo-B#12": 1_794_005_000_000])
-        await store.close().value
+        await ended(store.close())
     }
 
     // The take-over turns the consent of the automatic rounds off and starts the new work now,
@@ -268,12 +268,12 @@ struct ReviewsStoreTests {
         let saved = try readSaved(layout.stateFile).fields
         #expect(saved?["autoFixConsent"] == false)
         #expect(saved?["fixFrom"] == .int(nowMs))
-        await store.close().value
+        await ended(store.close())
 
         let later = try await openStore(layout)
         #expect(!later.tookOver)
         #expect(later.state.autoFixConsent == false && later.state.fixFrom == now)
-        await later.close().value
+        await ended(later.close())
     }
 
     // A file that does not parse gives the empty state. The store copies it to
@@ -281,7 +281,7 @@ struct ReviewsStoreTests {
     @Test func anUnreadableFileIsKeptBeforeTheFirstSave() async throws {
         let (folder, layout) = try home()
         defer { folder.remove() }
-        try await openStore(layout).close().value
+        try await ended(openStore(layout).close())
         let broken = Data("{ \"version\": 1, ".utf8)
         try put(broken, at: layout.stateFile)
         let unreadable = layout.folder.appending(path: "state.json.unreadable")
@@ -297,7 +297,7 @@ struct ReviewsStoreTests {
         let kept = StoreEvent.keptUnreadableCopy(
             file: path(layout.stateFile), copy: path(unreadable))
         #expect(log.values == [kept])
-        await store.close().value
+        await ended(store.close())
     }
 
     // Each update changes the state at once. The saves run one at a time, and the file gets the
@@ -310,7 +310,7 @@ struct ReviewsStoreTests {
         let opening = Task { try await openStore(layout, steps: gate.steps) }
         try #require(await gate.waitUntilWriting())
         gate.open()
-        let store = try await opening.value
+        let store = try await ended(opening)
         #expect(gate.writes == 1)
 
         let first = Task.immediate { await store.update { $0.turnedOnAt = time(1) } }
@@ -319,11 +319,11 @@ struct ReviewsStoreTests {
         let third = Task.immediate { await store.update { $0.turnedOnAt = time(3) } }
         #expect(store.state.turnedOnAt == time(3))
         gate.openAll()
-        let results = [await first.value, await second.value, await third.value]
+        let results = [await ended(first), await ended(second), await ended(third)]
         #expect(results == [true, true, true])
         #expect(gate.writes == 3)
         #expect(try reread(layout).turnedOnAt == time(3))
-        await store.close().value
+        await ended(store.close())
     }
 
     // A failed write gives false and keeps the change in the state. The next update writes again,
@@ -346,7 +346,7 @@ struct ReviewsStoreTests {
         failing.fail(false)
         #expect(await store.update { _ in })
         #expect(try reread(layout).setUpAt == now)
-        await store.close().value
+        await ended(store.close())
     }
 
     // A save that the saver skips (the save is off, because the copy of a file that does not
@@ -354,7 +354,7 @@ struct ReviewsStoreTests {
     @Test func aSkippedWriteGivesFalse() async throws {
         let (folder, layout) = try home()
         defer { folder.remove() }
-        try await openStore(layout).close().value
+        try await ended(openStore(layout).close())
         let broken = Data("{ broken".utf8)
         try put(broken, at: layout.stateFile)
         // A folder with a file in it at the path of the copy makes the copy fail.
@@ -362,7 +362,7 @@ struct ReviewsStoreTests {
         let store = try await openStore(layout)
         #expect(await store.update { $0.setUpAt = now } == false)
         #expect(try Data(contentsOf: layout.stateFile) == broken)
-        await store.close().value
+        await ended(store.close())
     }
 
     // Saves that wait while a write runs merge into one write. Each update gets the result of
@@ -376,22 +376,22 @@ struct ReviewsStoreTests {
         let opening = Task { try await openStore(layout, steps: failing.steps) }
         try #require(await gate.waitUntilWriting())
         gate.open()
-        let store = try await opening.value
+        let store = try await ended(opening)
 
         let first = Task.immediate { await store.update { $0.setUpAt = time(1) } }
         try #require(await gate.waitUntilWriting())
         let second = Task.immediate { await store.update { $0.setUpAt = time(2) } }
         let third = Task.immediate { await store.update { $0.setUpAt = time(3) } }
         gate.open()
-        #expect(await first.value)
+        #expect(await ended(first))
         try #require(await gate.waitUntilWriting())
         failing.fail(true)
         gate.open()
-        #expect(await second.value == false)
-        #expect(await third.value == false)
+        #expect(await ended(second) == false)
+        #expect(await ended(third) == false)
         #expect(gate.writes == 2)
         #expect(try reread(layout).setUpAt == time(1))
-        await store.close().value
+        await ended(store.close())
     }
 
     // An update after the close changes nothing and gives false.
@@ -399,7 +399,7 @@ struct ReviewsStoreTests {
         let (folder, layout) = try home()
         defer { folder.remove() }
         let store = try await openStore(layout)
-        await store.close().value
+        await ended(store.close())
         #expect(await store.update { $0.setUpAt = now } == false)
         #expect(store.state.setUpAt == nil)
         #expect(try reread(layout).setUpAt == nil)
@@ -444,11 +444,11 @@ struct ReviewsStoreTests {
         try #require(await gate.waitUntilWriting())
         await #expect(throws: ReviewsStoreError.otherCopy) { try await openStore(layout) }
         gate.open()
-        #expect(await pending.value)
+        #expect(await ended(pending))
         await waitUntil { watched == nil }
         let next = try await openStore(layout)
         #expect(next.state.setUpAt == now)
-        await next.close().value
+        await ended(next.close())
     }
 
     // A root that is not an object is a file that does not parse: the store keeps it in
@@ -456,7 +456,7 @@ struct ReviewsStoreTests {
     @Test func aRootThatIsNotAnObjectIsKeptAside() async throws {
         let (folder, layout) = try home()
         defer { folder.remove() }
-        try await openStore(layout).close().value
+        try await ended(openStore(layout).close())
         let list = Data("[1, 2]".utf8)
         try put(list, at: layout.stateFile)
         let unreadable = layout.folder.appending(path: "state.json.unreadable")
@@ -468,7 +468,7 @@ struct ReviewsStoreTests {
         let kept = StoreEvent.keptUnreadableCopy(
             file: path(layout.stateFile), copy: path(unreadable))
         #expect(log.values == [kept])
-        await store.close().value
+        await ended(store.close())
     }
 
     // The take-over of an Electron file that does not parse keeps two copies of its bytes: the
@@ -489,7 +489,7 @@ struct ReviewsStoreTests {
         let kept = StoreEvent.keptUnreadableCopy(
             file: path(layout.stateFile), copy: path(unreadable))
         #expect(log.values == [kept])
-        await store.close().value
+        await ended(store.close())
     }
 
     // The write of the safety copy never replaces a file that is at its path, and it leaves no
@@ -513,6 +513,6 @@ struct ReviewsStoreTests {
         let store = try await openStore(layout)
         #expect(try readSaved(layout.stateFile).fields?["laterField"] == "kept")
         #expect(store.state.hidden.count == 2)
-        await store.close().value
+        await ended(store.close())
     }
 }

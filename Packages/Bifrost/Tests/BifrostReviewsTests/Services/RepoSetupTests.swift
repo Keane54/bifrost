@@ -65,7 +65,7 @@ private struct SetupFixture {
     }
 
     func end() async {
-        await store.close().value
+        await ended(store.close())
         repos.folder.remove()
     }
 
@@ -163,7 +163,7 @@ struct RepoSetupTests {
         await f.store.update { $0.setUpAt = SetupFixture.time }
         let b = try repo("owner-b/repo-b")
         try await f.repos.source(b)
-        await f.store.close().value
+        await ended(f.store.close())
         let answer = R.answer(mine: [try R.pull("owner-b/repo-b#2")])
         await f.setup.run(for: answer, ignoring: [])
         #expect(f.setup.needsTrust == [b: 1])

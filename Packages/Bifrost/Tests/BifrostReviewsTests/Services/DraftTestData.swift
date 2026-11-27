@@ -76,8 +76,8 @@ final class FlowFixture {
     let polls = Recorder<Bool>()
     let progressEnds = Recorder<Bool>()
     let lines = Recorder<String>()
-    // The polls of the watcher. ended() records a poll request in polls and asks watcherPolls for
-    // a poll, as the shell does (ReviewsWatcher.refresh).
+    // The polls of the watcher. askForPoll records a poll request in polls and asks
+    // watcherPolls for a poll, as the shell does (ReviewsWatcher.refresh).
     let watcherPolls = FakePolls()
     let pr: PRKey
     let head: CommitID
@@ -116,7 +116,7 @@ final class FlowFixture {
         let lines = lines
         return DraftFlow(
             store: store, github: client, approver: approver, writes: writes,
-            viewer: { Self.viewer }, ended: ended, eventLine: { lines.record($0) })
+            viewer: { Self.viewer }, ended: askForPoll, eventLine: { lines.record($0) })
     }
 
     // A flow of the findings form of the Review panel on the services of the fixture.
@@ -124,11 +124,11 @@ final class FlowFixture {
         let lines = lines
         return FindingsFlow(
             store: store, github: client, approver: approver, writes: writes,
-            viewer: { Self.viewer }, ended: ended, eventLine: { lines.record($0) })
+            viewer: { Self.viewer }, ended: askForPoll, eventLine: { lines.record($0) })
     }
 
     // A request of a flow for a poll: it is recorded, and the watcher starts the poll.
-    private var ended: @MainActor () -> Void {
+    private var askForPoll: @MainActor () -> Void {
         let (polls, watcherPolls) = (polls, watcherPolls)
         return {
             polls.record(true)
@@ -143,7 +143,7 @@ final class FlowFixture {
         if !watcherPolls.running { watcherPolls.start() }
         watcherPolls.answer()
         writes.checkComments()
-        await writes.checkTask(pr)?.value
+        await ended(writes.checkTask(pr))
     }
 
     func setMark(_ mark: RecommendationMark?) async {
@@ -212,7 +212,7 @@ final class FlowFixture {
     var savedMark: RecommendationMark? { store.state.prs[pr]?.recommendation }
 
     func end() async {
-        await store.close().value
+        await ended(store.close())
         folder.remove()
     }
 }

@@ -45,7 +45,7 @@ struct ReviewsLockTests {
         #expect(
             ReviewsStoreError.otherCopy.message
                 == "Reviews is running in another copy of Bifrost.")
-        await store.close().value
+        await ended(store.close())
     }
 
     // A closed store frees the lock after its saves, so a new open works. An update after the
@@ -55,13 +55,13 @@ struct ReviewsLockTests {
         defer { folder.remove() }
         let reviews = layout(folder)
         let store = try await openStore(reviews)
-        await store.close().value
+        await ended(store.close())
         await store.update { $0.setUpAt = Date(timeIntervalSince1970: 1) }
         #expect(store.state.setUpAt == nil)
 
         let again = try await openStore(reviews)
         #expect(again.state.setUpAt == nil)
-        await again.close().value
+        await ended(again.close())
 
         let lock = try ReviewsStore.takeLock(reviews)
         lock.release()

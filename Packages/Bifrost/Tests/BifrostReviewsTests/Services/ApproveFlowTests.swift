@@ -189,7 +189,7 @@ struct ApproveFlowTests {
             ApproveRefusal.unknown.message
                 == "Bifrost couldn't tell if GitHub saved your approval. Click Refresh to check.")
         // A closed store writes nothing.
-        await f.store.close().value
+        await ended(f.store.close())
         #expect(await approve(f) == .notReady)
         #expect(f.written.count == 2)
         f.folder.remove()
@@ -221,8 +221,8 @@ struct ApproveFlowTests {
         // The gate opens only once the second call waits.
         let opener = Task { gate.open() }
         #expect(await approve(f) == .refusedByGitHub)
-        #expect(await first.value == .refusedByGitHub)
-        await opener.value
+        #expect(await ended(first) == .refusedByGitHub)
+        await ended(opener)
         #expect(f.written == [write] && f.writes.running.isEmpty)
         await f.end()
     }
@@ -289,7 +289,7 @@ struct ApproveFlowTests {
         #expect(f.writes.progress(f.pr) == .running(.approve))
         #expect(f.writes.running == [f.pr] && f.writes.held == [f.pr])
         gate.open()
-        #expect(await click.value == nil)
+        #expect(await ended(click) == nil)
         #expect(f.writes.progress(f.pr) == .confirmed(.approve))
         #expect(f.writes.running.isEmpty && f.writes.held == [f.pr])
         #expect(f.progressEnds.values.isEmpty)
@@ -298,7 +298,7 @@ struct ApproveFlowTests {
         f.clock.advance(by: ReviewWrites.hold - .milliseconds(1))
         #expect(f.clock.sleeperCount == 1 && f.writes.progress(f.pr) == .confirmed(.approve))
         f.clock.advance(by: .milliseconds(1))
-        await hold.value
+        await ended(hold)
         #expect(f.writes.progress(f.pr) == nil && f.writes.held.isEmpty)
         #expect(f.progressEnds.values.count == 1)
         #expect(f.written == [write] && ReviewWrites.hold == .seconds(3))
@@ -334,7 +334,7 @@ struct ApproveFlowTests {
         #expect(await gate.waitUntilHolding(1))
         #expect(f.writes.progress(f.pr) == .running(.approve))
         gate.open()
-        #expect(await click.value == nil)
+        #expect(await ended(click) == nil)
         #expect(f.written == [write])
         #expect(f.reads == [DraftQueries.freshName])
         #expect(f.writes.progress(f.pr) == .confirmed(.approve))
@@ -390,7 +390,7 @@ struct ApproveFlowTests {
             mark: mark, post: FindingsPlan.post(mark.findings, ticked: [0], summary: ""))
         #expect(await approve(f, panel: panel) == .busy)
         gate.open()
-        #expect(await first.value == nil)
+        #expect(await ended(first) == nil)
         #expect(f.written == [plain])
         // While a send of the PR runs, a panel approval is busy too.
         let head = f.head.hex
@@ -411,7 +411,7 @@ struct ApproveFlowTests {
         #expect(await sending.waitUntilHolding(1))
         #expect(await approve(f, panel: panel) == .busy)
         sending.open()
-        #expect(await send.value == nil)
+        #expect(await ended(send) == nil)
         #expect(f.written == [plain])
         #expect(
             ApproveRefusal.busy.message

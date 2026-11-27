@@ -155,7 +155,7 @@ private final class RoundFixture {
     func end() async {
         rounds.stop()
         await rounds.waitForEnd()
-        await store.close().value
+        await ended(store.close())
         repos.folder.remove()
     }
 
@@ -597,7 +597,8 @@ extension ReviewRoundTests.Results {
             return "The folder is busy."
         }
         #expect(first == "The folder is busy.")
-        #expect(await second.withLock({ $0 })?.value == "The folder is busy.")
+        let secondTask = try #require(second.withLock { $0 })
+        #expect(await ended(secondTask) == "The folder is busy.")
         #expect(!f.rounds.removing)
         await f.end()
     }
