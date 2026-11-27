@@ -13,6 +13,10 @@ dist/
 .release-version
 .release-notes.md
 
+# The packages and the bundle of the host check's test module, which its build script makes.
+tools/module-host-check/module/node_modules/
+tools/module-host-check/module/dist/
+
 # The design, the plans and the phase records stay on the machine that writes them.
 docs/specs/
 docs/plans/

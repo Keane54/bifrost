@@ -1,0 +1,302 @@
+name: Module host check
+
+# Proves the module host works when it's built like a release: signed with the Developer ID and
+# the hardened runtime, notarised and stapled. It only runs by hand on main, from Actions > Module
+# host check > Run workflow or with "gh workflow run module-host-check.yml", and each macOS image
+# leaves an artifact with the stapled app and its report.json for seven days.
+#
+# It has three jobs for the same reason as the Release workflow: no third-party code ever runs next
+# to the signing keys (user decision, 2026-11-19, docs/release.md). The build job runs SwiftPM,
+# pnpm and esbuild with no secrets, the sign job holds the secrets but only signs and notarises the
+# app it's handed, and the check job runs the stapled app with no secrets at all. Each job checks
+# out the commit the run started on, so all three use the same scripts and the same code.
+#
+# Each action is pinned by the SHA of its commit, as in ci.yml, because a tag can move. The comment
+# gives the tag of that commit.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the check app (no secrets)
+    # Only main can sign, as the "release" environment allows only main, so a run from another
+    # branch stops here before any runner starts.
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    env:
+      # The pinned Xcode, as in ci.yml.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the Xcode version
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            message="The runner has no $DEVELOPER_DIR."
+            echo "::error::$message Pin an Xcode of the runner image (docs/release.md)."
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          xcodebuild -version
+          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      # The test module's build runs its TypeScript in Node, which needs 24 or later to strip the
+      # types. No cache, as the workflow only runs by hand.
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      # With no identity the script signs ad hoc, and the sign job signs the app again for real.
+      - name: Build the check app
+        run: scripts/module-host-check/build.sh
+
+      # An artifact keeps no file mode, so the app goes into a ZIP of ditto first.
+      - name: Pack the unsigned app
+        run: |
+          out="$RUNNER_TEMP/unsigned"
+          mkdir -p "$out"
+          ditto -c -k --keepParent ".build/module-host-check/Bifrost Module Host Check.app" \
+            "$out/module-host-check.zip"
+
+      - name: Upload the unsigned app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: module-host-check-unsigned
+          path: ${{ runner.temp }}/unsigned/
+          if-no-files-found: error
+          retention-days: 1
+
+  sign:
+    name: Sign and notarise
+    needs: build
+    runs-on: macos-26
+    # The signing secrets live only in this environment, and it allows only main. This job builds
+    # nothing and restores no cache, and it runs nothing inside the app: only GitHub's own
+    # actions, the repo's scripts and Apple's tools.
+    environment: release
+    env:
+      # The pinned Xcode, as in ci.yml. notarytool and stapler come from it.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the Xcode version
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            message="The runner has no $DEVELOPER_DIR."
+            echo "::error::$message Pin an Xcode of the runner image (docs/release.md)."
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          xcodebuild -version
+          echo "macOS SDK $(xcrun --sdk macosx --show-sdk-version)"
+
+      - name: Download the unsigned app
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: module-host-check-unsigned
+          path: ${{ runner.temp }}/unsigned
+
+      # The artifact is only data: no step runs a file of it, and build.sh --sign-only refuses an
+      # app with a symbolic link in it before it signs.
+      - name: Unpack the unsigned app
+        run: |
+          ditto -x -k "$RUNNER_TEMP/unsigned/module-host-check.zip" "$RUNNER_TEMP/app"
+          echo "APP=$RUNNER_TEMP/app/Bifrost Module Host Check.app" >> "$GITHUB_ENV"
+
+      # notarytool reads the App Store Connect key from a file. A later step deletes it.
+      - name: Write the notarisation key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$key"
+          chmod 600 "$key"
+          echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
+
+      # The keychain holds the Developer ID certificate of the CSC_LINK secret, and codesign finds
+      # the identity in it (build.sh --keychain). A later step deletes it.
+      - name: Make the signing keychain
+        env:
+          P12_BASE64: ${{ secrets.CSC_LINK }}
+          P12_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          p12="$RUNNER_TEMP/signing.p12"
+          password="$(openssl rand -base64 32)"
+          printf '%s' "$P12_BASE64" | base64 --decode > "$p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$p12" -k "$keychain" -f pkcs12 -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" \
+            "$keychain" > /dev/null
+          rm -f "$p12"
+          # Add the keychain to the search list, and keep the keychains that are there.
+          existing=$(security list-keychains -d user | tr -d '"')
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s "$keychain" $existing
+          security find-identity -v -p codesigning "$keychain"
+          echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      # The signing identity and the team ID are public, as every signed app shows them in its
+      # code signature, so the workflow reads them from the certificate in the keychain and the repo
+      # and the secrets hold no signing name.
+      - name: Read the signing identity
+        shell: bash
+        run: |
+          security find-identity -v -p codesigning "$SIGNING_KEYCHAIN" |
+            scripts/release/signing-identity.sh >> "$GITHUB_ENV"
+
+      # The host first, then the app, each with the hardened runtime, a secure timestamp and its
+      # own identifier. --sign-only builds nothing.
+      - name: Sign the app
+        run: >-
+          scripts/module-host-check/build.sh --sign-only "$APP" --identity "$SIGNING_IDENTITY"
+          --keychain "$SIGNING_KEYCHAIN"
+
+      # notarise.sh sends a ZIP of the app, waits for the result, checks that it says Accepted and
+      # staples the ticket to the app.
+      - name: Notarise and staple the app
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: scripts/release/notarise.sh "$APP"
+
+      # No later step needs a key. The step also runs after a failed step.
+      - name: Remove the signing keychain and the key files
+        if: always()
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          if [ -e "$keychain" ]; then
+            security delete-keychain "$keychain"
+          fi
+          rm -f "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Pack the stapled app
+        run: |
+          out="$RUNNER_TEMP/signed"
+          mkdir -p "$out"
+          ditto -c -k --keepParent "$APP" "$out/module-host-check.zip"
+
+      - name: Upload the stapled app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: module-host-check-signed
+          path: ${{ runner.temp }}/signed/
+          if-no-files-found: error
+          retention-days: 1
+
+  check:
+    name: Check the host on ${{ matrix.image }} (no secrets)
+    needs: sign
+    strategy:
+      # One image failing shouldn't hide what the others found.
+      fail-fast: false
+      matrix:
+        # macos-26 is the only image for now, and a newer macOS image goes into this list when
+        # GitHub offers one. The job pins no Xcode, as stapler from the image's default one is all
+        # it needs, so that's the only line to change.
+        image: [macos-26]
+    runs-on: ${{ matrix.image }}
+
+    steps:
+      # The stapled app and the report both go in out/, which the last step uploads.
+      - name: Download the stapled app
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: module-host-check-signed
+          path: ${{ runner.temp }}/out
+
+      - name: Unpack the stapled app
+        id: unpack
+        run: |
+          ditto -x -k "$RUNNER_TEMP/out/module-host-check.zip" "$RUNNER_TEMP/app"
+          echo "APP=$RUNNER_TEMP/app/Bifrost Module Host Check.app" >> "$GITHUB_ENV"
+
+      - name: Check the signature
+        run: codesign --verify --deep --strict --verbose=2 "$APP"
+
+      # The same checks as scripts/release/verify-app.sh: the stapled ticket must always validate,
+      # then Gatekeeper must accept the app as notarised. When Gatekeeper is off on the runner,
+      # spctl accepts any app, so that check is skipped and the ticket covers the notarisation. The
+      # job summary says which case it was, and opening the download on a real Mac stays the real
+      # Gatekeeper check.
+      - name: Check the stapled ticket and Gatekeeper
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          line=""
+          xcrun stapler validate "$APP" || line="FAIL: the stapled ticket of the app isn't valid."
+          if [ -z "$line" ]; then
+            code=0
+            result=$(spctl --assess --type execute --verbose=4 "$APP" 2>&1) || code=$?
+            printf '%s\n' "$result"
+            case $result in
+              *"override=security disabled"*)
+                line="SKIP: Gatekeeper is off on this runner, so spctl can't check the app; the"
+                line="$line stapled ticket covers the notarisation."
+                ;;
+              *"Notarized Developer ID"*)
+                if [ "$code" -eq 0 ]; then
+                  line="PASS: Gatekeeper accepts the app as notarised Developer ID code."
+                else
+                  line="FAIL: spctl names a notarised app, but it exited $code."
+                fi
+                ;;
+              *) line="FAIL: Gatekeeper doesn't accept the app as notarised Developer ID code." ;;
+            esac
+          fi
+          echo "$line"
+          echo "Gatekeeper on $IMAGE: $line" >> "$GITHUB_STEP_SUMMARY"
+          case $line in
+            FAIL:*) echo "::error::$line"; exit 1 ;;
+          esac
+
+      # codesign prints the entitlements on stdout, so the host has none when stdout is empty.
+      - name: Check that the host has no entitlements
+        run: |
+          entitlements=$(codesign -d --entitlements - "$APP/Contents/Helpers/bifrost-module-host")
+          if [ -n "$entitlements" ]; then
+            printf '%s\n' "$entitlements"
+            echo "::error::The host has entitlements, and it must have none."
+            exit 1
+          fi
+          echo "The host has no entitlements."
+
+      # The checks run even when a check above failed, so a failed run still says how the host
+      # did, and the failed step still fails the job. --ci exits 1 on any FAIL.
+      - name: Run the host checks
+        if: ${{ !cancelled() && steps.unpack.outcome == 'success' }}
+        timeout-minutes: 10
+        run: |
+          report="$RUNNER_TEMP/out/report.json"
+          code=0
+          "$APP/Contents/MacOS/module-host-check" --ci > "$report" || code=$?
+          cat "$report"
+          exit "$code"
+
+      # Also after a failed step, so a failed run still gives its report.
+      - name: Upload the app and its report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: module-host-check-${{ matrix.image }}
+          path: ${{ runner.temp }}/out/
+          retention-days: 7

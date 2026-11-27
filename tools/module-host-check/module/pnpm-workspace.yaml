@@ -1,0 +1,4 @@
+# esbuild's install script only checks its binary, which pnpm already installs from its
+# platform package, so it doesn't need to run.
+allowBuilds:
+  esbuild: false

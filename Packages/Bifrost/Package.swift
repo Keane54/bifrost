@@ -40,11 +40,13 @@ func tests(_ name: String, _ dependencies: [Target.Dependency], resources: [Reso
 let package = Package(
     name: "Bifrost",
     platforms: [.macOS(.v26)],
-    // The modules that the app target of Bifrost.xcodeproj imports.
+    // The modules that the app target of Bifrost.xcodeproj imports, and the module host, which
+    // ships as its own executable.
     products: [
         "BifrostFoundation", "BifrostLayout", "BifrostLook", "BifrostKeyboard", "BifrostSessions",
         "BifrostSettings", "BifrostDictation", "BifrostChat", "BifrostWindows", "BifrostApp",
-    ].map { .library(name: $0, targets: [$0]) },
+    ].map { .library(name: $0, targets: [$0]) }
+        + [.executable(name: "bifrost-module-host", targets: ["BifrostModuleHost"])],
     dependencies: [
         // The terminal of the chat windows: an exact version. The chat terminal uses it, and the
         // key scenarios of the tests type into a real terminal view.
@@ -113,6 +115,18 @@ let package = Package(
                 "BifrostDictation", "BifrostChat", "BifrostWindows", "BifrostHealth",
                 "BifrostDailyUpdate", .product(name: "SwiftTerm", package: "SwiftTerm"),
             ]),
+        // The module host's message types, sandbox profile and self-test rule. It uses none of the
+        // modules above, because the host links nothing but Foundation and JavaScriptCore.
+        module("BifrostModuleHostCore"),
+        // sandbox.h is in no Swift module and sandbox_init is deprecated, so the host makes that
+        // one call through this small C target.
+        .target(name: "BifrostModuleHostSandbox"),
+        // The module host, one process for each running module, which runs the module's
+        // JavaScript in its own sandbox and talks JSON lines with its parent.
+        .executableTarget(
+            name: "BifrostModuleHost",
+            dependencies: ["BifrostModuleHostCore", "BifrostModuleHostSandbox"],
+            swiftSettings: features),
         // The shared fakes and helpers of the tests. The app never links it.
         module(
             "BifrostTestSupport",
@@ -190,6 +204,7 @@ let package = Package(
                 "BifrostDailyUpdate",
             ],
             resources: [.copy("Services/Import/Fixtures")]),
+        tests("BifrostModuleHostCore", []),
     ],
     swiftLanguageModes: [.v6]
 )

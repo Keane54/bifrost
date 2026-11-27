@@ -1,0 +1,20 @@
+{
+  "name": "bifrost-module-host-check-module",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node build.ts",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-reconciler": "0.34.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
