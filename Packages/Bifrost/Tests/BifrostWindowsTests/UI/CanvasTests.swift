@@ -231,6 +231,108 @@ struct CanvasTests {
         #expect(lowerBody.otherPresses == 0)
     }
 
+    // A drag or a release of the right or other button, or a scroll, that the top frame passes
+    // on never reaches the frame under it either. Through super AppKit gave it to the view
+    // beneath, so a chat terminal there got a release it never saw pressed, and a scroll over
+    // the title bar scrolled the panel under it. A plain view over the part of the lower body
+    // that the top frame leaves free shows first that the events of the test do reach the view
+    // beneath when nothing hands them on.
+    @Test func aDragAReleaseOrAScrollOnTheTopFrameNeverReachesTheFrameUnderIt() throws {
+        let f = CanvasFixture()
+        defer { f.close() }
+        _ = f.open("watchlist", at: rect(150, 80, 400, 300))
+        let top = f.open("settings", at: rect(100, 90, 400, 300))
+        let lowerBody = try #require(f.bodies.views[panel("watchlist")])
+        let topBody = try #require(f.bodies.views[panel("settings")])
+        let types: [NSEvent.EventType] = [
+            .rightMouseDragged, .rightMouseUp, .otherMouseDragged, .otherMouseUp, .scrollWheel,
+        ]
+        let cover = NSView()
+        f.canvas.dialogLayer = cover
+        let besideTheTopFrame = CGPoint(x: 520, y: 200)
+        for type in types {
+            #expect(f.mouse.send(type, at: besideTheTopFrame, in: f.canvas) === cover)
+        }
+        #expect(lowerBody.passedOn == types)
+        f.canvas.dialogLayer = nil
+        let overLowerBody = CGPoint(x: 300, y: 114)
+        for type in types {
+            #expect(f.mouse.send(type, at: overLowerBody, in: f.canvas) === f.view(top).titleBar)
+        }
+        #expect(lowerBody.passedOn == types)
+        #expect(topBody.passedOn.isEmpty)
+        #expect(f.model.layout.focusedFrame?.id == top)
+    }
+
+    // A right or other-button press, drag or release on the backdrop of a dialog stops at the
+    // overlay and the canvas, as on a frame. Through super AppKit gave it to the view behind the
+    // backdrop, so a right-click there focused the frame behind the dialog, and a body there got
+    // the rest.
+    @Test func aRightPressOnADialogNeverReachesTheFramesBehindIt() async throws {
+        let f = CanvasFixture(bifrostWindow: true)
+        defer { f.close() }
+        let host = DialogHost(look: PanelLook(), clock: ManualClock())
+        f.canvas.dialogLayer = host.view
+        // The lower frame is to the right of the box of the dialog, which is 420 wide in the
+        // middle of the canvas.
+        _ = f.open("watchlist", at: rect(850, 100, 300, 300))
+        let top = f.open("settings", at: rect(100, 100, 400, 300))
+        let lowerBody = try #require(f.bodies.views[panel("watchlist")])
+        let ask = Task {
+            await host.confirm(
+                ConfirmText(title: "Stop session", body: "b", confirm: "Stop"), openFolder: nil,
+                onBusy: {})
+        }
+        await waitUntil { host.isOpen }
+        let types: [NSEvent.EventType] = [
+            .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown,
+            .otherMouseDragged, .otherMouseUp,
+        ]
+        for point in [CGPoint(x: 1000, y: 110), CGPoint(x: 1000, y: 250)] {
+            for type in types {
+                let hit = f.mouse.send(type, at: point, in: f.canvas)
+                #expect(hit === host.view || hit?.isDescendant(of: host.view) == true)
+            }
+        }
+        #expect(f.model.layout.focusedFrame?.id == top)
+        #expect(lowerBody.rightPresses == 0 && lowerBody.otherPresses == 0)
+        #expect(lowerBody.passedOn.isEmpty)
+        #expect(host.isOpen)
+        host.escape()
+        #expect(await ask.value == false)
+    }
+
+    // A right or other-button press, drag or release on the button of a chat's dictation notice
+    // never reaches the chat terminal under the notice. Through super AppKit gave what the button
+    // passed on to the terminal beneath it. The press still goes to the frame, which takes the
+    // focus.
+    @Test func aRightPressOnTheDictationNoticeNeverReachesTheTerminal() throws {
+        let f = CanvasFixture()
+        defer { f.close() }
+        let chat = ChatPanelBody(metrics: CanvasMetrics(interfaceScale: 100))
+        let terminal = FakeBody()
+        chat.host.addSubview(terminal)
+        f.bodies.given[panel("settings")] = chat
+        let lower = f.open("settings", at: rect(100, 100, 400, 300))
+        let top = f.open("watchlist", at: rect(600, 100, 300, 300))
+        #expect(f.model.layout.focusedFrame?.id == top)
+        chat.showDictationNotice(
+            NoticeLine(text: DictationNoticeText.error(.micDenied), opensSettings: true))
+        chat.layoutSubtreeIfNeeded()
+        terminal.frame = chat.host.bounds
+        let button = chat.dictationNotice.button
+        let point = f.canvas.convert(
+            NSPoint(x: button.bounds.midX, y: button.bounds.midY), from: button)
+        let types: [NSEvent.EventType] = [
+            .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown,
+            .otherMouseDragged, .otherMouseUp,
+        ]
+        for type in types { #expect(f.mouse.send(type, at: point, in: f.canvas) === button) }
+        #expect(terminal.rightPresses == 0 && terminal.otherPresses == 0)
+        #expect(terminal.passedOn.isEmpty)
+        #expect(f.model.layout.focusedFrame?.id == lower)
+    }
+
     // A press on a title bar button of a lower frame brings the frame to the front before the
     // click.
     @Test func aPressOnATitleButtonOfALowerFrameBringsItToTheFront() {

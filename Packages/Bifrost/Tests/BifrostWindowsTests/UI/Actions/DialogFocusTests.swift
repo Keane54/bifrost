@@ -126,6 +126,37 @@ struct DialogFocusTests {
         #expect(p.window.firstResponder === p.body)
     }
 
+    // While the layer itself has the focus, as after the open or a click on the box, a request
+    // for no view, the window or a view outside the layer leaves the focus on the layer. The
+    // move of the focus from the layer into a field stopped at the holder, and when SwiftUI
+    // looked during that stop it dropped the field's focus state, so now and then the name field
+    // above never got the focus after the open. From the holder the same requests stay there.
+    @Test func aRequestWhileTheLayerHasTheFocusLeavesItOnTheLayer() async throws {
+        let p = try await Parts(active: [])
+        defer { p.close() }
+        let layer = p.h.dialogs.view
+        let ask = Task {
+            await p.h.dialogs.confirm(
+                ConfirmText(title: "Stop session", body: "b", confirm: "Stop"), openFolder: nil,
+                onBusy: {})
+        }
+        await waitUntil { p.h.dialogs.isOpen }
+        let requests: [NSResponder?] = [nil, p.window, p.body]
+        #expect(p.window.makeFirstResponder(layer))
+        for request in requests {
+            #expect(p.window.makeFirstResponder(request))
+            #expect(p.window.firstResponder === layer)
+        }
+        #expect(p.window.makeFirstResponder(layer.focusHolder))
+        for request in requests {
+            #expect(p.window.makeFirstResponder(request))
+            #expect(p.window.firstResponder === layer.focusHolder)
+        }
+        p.h.dialogs.escape()
+        #expect(await ask.value == false)
+        #expect(p.window.firstResponder === p.body)
+    }
+
     // The same for New session: the folder field has the focus before the start. After a failed
     // check of the start, the folder field has the focus again, and the reason still shows.
     @Test func aFailedStartGivesTheFocusToTheFolderField() async throws {

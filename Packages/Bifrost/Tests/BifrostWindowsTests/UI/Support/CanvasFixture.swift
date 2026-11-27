@@ -10,16 +10,23 @@ import Observation
 // A body that takes each press, as a terminal or a SwiftUI control does: the press does not go
 // up the responder chain to the frame. It can be the first responder. It counts each time it
 // leaves its window, and the right and other-button presses it gets, so a test can tell when a
-// press meant for another frame reached it.
+// press meant for another frame reached it. It takes the drags, the releases of those buttons
+// and the scrolls too, and keeps their kinds in order.
 final class FakeBody: NSView {
     private(set) var leftWindow = 0
     private(set) var rightPresses = 0
     private(set) var otherPresses = 0
+    private(set) var passedOn: [NSEvent.EventType] = []
 
     override var acceptsFirstResponder: Bool { true }
     override func mouseDown(with event: NSEvent) {}
     override func rightMouseDown(with event: NSEvent) { rightPresses += 1 }
     override func otherMouseDown(with event: NSEvent) { otherPresses += 1 }
+    override func rightMouseDragged(with event: NSEvent) { passedOn.append(event.type) }
+    override func rightMouseUp(with event: NSEvent) { passedOn.append(event.type) }
+    override func otherMouseDragged(with event: NSEvent) { passedOn.append(event.type) }
+    override func otherMouseUp(with event: NSEvent) { passedOn.append(event.type) }
+    override func scrollWheel(with event: NSEvent) { passedOn.append(event.type) }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
@@ -35,9 +42,13 @@ final class FakeBodies: PanelBodies {
     @ObservationIgnored private(set) var views: [PanelID: FakeBody] = [:]
     @ObservationIgnored private(set) var made: [PanelID: Int] = [:]
     @ObservationIgnored private(set) var released: [PanelID] = []
+    // A body of another kind for a panel, such as a chat body, which the canvas gets in place
+    // of a FakeBody.
+    @ObservationIgnored var given: [PanelID: NSView] = [:]
     var titles: [PanelID: String] = [:]
 
     func body(for panel: PanelID) -> NSView {
+        if let view = given[panel] { return view }
         if let view = views[panel] { return view }
         let view = FakeBody()
         views[panel] = view

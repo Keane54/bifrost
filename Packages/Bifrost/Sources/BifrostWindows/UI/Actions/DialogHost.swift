@@ -269,6 +269,35 @@ package final class DialogLayerView: NSHostingView<DialogLayer> {
         host?.escape()
     }
 
+    // A right or other-button press, drag or release that the dialog didn't use goes straight
+    // to the canvas, as in FrameView. Through super AppKit handed it to the view under the
+    // backdrop at that point, so a right-click there focused the frame behind the dialog, or
+    // reached a chat terminal in it. A text field of a dialog is a view of its own, so its
+    // context menu still works.
+    override package func rightMouseDown(with event: NSEvent) {
+        nextResponder?.rightMouseDown(with: event)
+    }
+
+    override package func rightMouseDragged(with event: NSEvent) {
+        nextResponder?.rightMouseDragged(with: event)
+    }
+
+    override package func rightMouseUp(with event: NSEvent) {
+        nextResponder?.rightMouseUp(with: event)
+    }
+
+    override package func otherMouseDown(with event: NSEvent) {
+        nextResponder?.otherMouseDown(with: event)
+    }
+
+    override package func otherMouseDragged(with event: NSEvent) {
+        nextResponder?.otherMouseDragged(with: event)
+    }
+
+    override package func otherMouseUp(with event: NSEvent) {
+        nextResponder?.otherMouseUp(with: event)
+    }
+
     // The overlay owns the cursor of its whole area: the arrow. A chat terminal under the overlay
     // sets the I-beam for its own area, and the cursor rects of a view do not depend on the
     // views over it. A text field of a dialog is a subview, so its own I-beam rect stays.

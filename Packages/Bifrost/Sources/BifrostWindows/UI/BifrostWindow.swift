@@ -116,11 +116,17 @@ public class BifrostWindow: NSWindow {
     // outside its layer, the window itself and nil give the focus to the focus holder of the
     // layer (DialogLayerView.focusHolder): for example a field of the dialog that a busy save
     // turns off gives the focus to the window. The holder is not the layer itself, so SwiftUI
-    // sees that the field lost the focus.
+    // sees that the field lost the focus. While the layer itself has the focus, as after the
+    // open or a click on the box, such a request leaves it on the layer instead: the move of the
+    // focus from the layer into a field stops at the holder otherwise, and if SwiftUI looks
+    // during that stop it drops the field's focus state, so the field never gets the focus.
     override public func makeFirstResponder(_ responder: NSResponder?) -> Bool {
         let before = firstResponder
         let target =
-            openDialog.map { $0.keeps(responder) ? responder : $0.focusHolder } ?? responder
+            openDialog.map { dialog -> NSResponder? in
+                if dialog.keeps(responder) { return responder }
+                return before === dialog ? dialog : dialog.focusHolder
+            } ?? responder
         let done = super.makeFirstResponder(target)
         if done, firstResponder !== before {
             filter?.focusChanged(from: before, to: firstResponder)

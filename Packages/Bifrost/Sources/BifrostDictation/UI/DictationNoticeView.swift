@@ -146,6 +146,34 @@ package final class DictationNoticeView: NSView {
         return hit === button || hit.isDescendant(of: button) ? button : nil
     }
 
+    // A right or other-button press, drag or release on the button comes up to the notice,
+    // which hands it straight to the chat body, as FrameView does with the canvas. Through
+    // super AppKit handed it to the terminal under the notice at that point, and the terminal
+    // took a press that was meant for the button.
+    package override func rightMouseDown(with event: NSEvent) {
+        nextResponder?.rightMouseDown(with: event)
+    }
+
+    package override func rightMouseDragged(with event: NSEvent) {
+        nextResponder?.rightMouseDragged(with: event)
+    }
+
+    package override func rightMouseUp(with event: NSEvent) {
+        nextResponder?.rightMouseUp(with: event)
+    }
+
+    package override func otherMouseDown(with event: NSEvent) {
+        nextResponder?.otherMouseDown(with: event)
+    }
+
+    package override func otherMouseDragged(with event: NSEvent) {
+        nextResponder?.otherMouseDragged(with: event)
+    }
+
+    package override func otherMouseUp(with event: NSEvent) {
+        nextResponder?.otherMouseUp(with: event)
+    }
+
     package override func isAccessibilityElement() -> Bool { false }
 
     package override func accessibilityChildren() -> [Any]? {

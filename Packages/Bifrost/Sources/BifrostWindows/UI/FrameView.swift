@@ -556,6 +556,30 @@ final class FrameView: NSView {
         nextResponder?.otherMouseDown(with: event)
     }
 
+    // The drag and the release of those buttons, and a scroll that no part of the frame used,
+    // go to the canvas for the same reason. Through super a chat terminal in the frame beneath
+    // got a release it never saw pressed, and a scroll over the title bar scrolled the panel
+    // under it.
+    override func rightMouseDragged(with event: NSEvent) {
+        nextResponder?.rightMouseDragged(with: event)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        nextResponder?.rightMouseUp(with: event)
+    }
+
+    override func otherMouseDragged(with event: NSEvent) {
+        nextResponder?.otherMouseDragged(with: event)
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        nextResponder?.otherMouseUp(with: event)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        nextResponder?.scrollWheel(with: event)
+    }
+
     override func resetCursorRects() {
         guard !locked else { return }
         let w = bounds.width

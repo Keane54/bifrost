@@ -104,6 +104,48 @@ final class MouseDriver {
         for point in points { drag(to: point, in: view) }
         if let last = points.last { up(at: last, in: view) }
     }
+
+    // A right or other-button press, drag or release, or a scroll, at a point in the coordinates
+    // of the view, given straight to the view that a press there hits. AppKit gives a drag and a
+    // release to the view of the press, which is that view when the test sends them at the point
+    // of the press. A control gets the event too, as only a left press runs the event loop of a
+    // control. The result is the view that got the event.
+    @discardableResult
+    func send(_ type: NSEvent.EventType, at point: CGPoint, in view: NSView) -> NSView? {
+        let windowPoint = view.convert(point, to: nil)
+        let made = type == .scrollWheel ? scroll(at: windowPoint) : event(type, at: windowPoint)
+        guard let hit = hitView(at: point, in: view), let made else { return nil }
+        switch type {
+        case .rightMouseDown: hit.rightMouseDown(with: made)
+        case .rightMouseDragged: hit.rightMouseDragged(with: made)
+        case .rightMouseUp: hit.rightMouseUp(with: made)
+        case .otherMouseDown: hit.otherMouseDown(with: made)
+        case .otherMouseDragged: hit.otherMouseDragged(with: made)
+        case .otherMouseUp: hit.otherMouseUp(with: made)
+        case .scrollWheel: hit.scrollWheel(with: made)
+        default: return nil
+        }
+        return hit
+    }
+
+    // A scroll of a few points at a point of the window. NSEvent can't make a scroll, so it comes
+    // from a CGEvent at the same place on the screen, where y runs down from the top of the main
+    // display, and for this window.
+    func scroll(at windowPoint: NSPoint) -> NSEvent? {
+        guard
+            let made = CGEvent(
+                scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: -4,
+                wheel2: 0, wheel3: 0)
+        else { return nil }
+        let screen = window.convertPoint(toScreen: windowPoint)
+        let height = CGDisplayBounds(CGMainDisplayID()).height
+        made.location = CGPoint(x: screen.x, y: height - screen.y)
+        let number = Int64(window.windowNumber)
+        made.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: number)
+        made.setIntegerValueField(
+            .mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: number)
+        return NSEvent(cgEvent: made)
+    }
 }
 
 extension NSTableView {
